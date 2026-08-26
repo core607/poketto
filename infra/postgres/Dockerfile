@@ -49,8 +49,7 @@ FROM docker.io/library/postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c
 LABEL org.opencontainers.image.source="https://github.com/core607/poketto"
 LABEL org.opencontainers.image.description="PostgreSQL 17 with zhparser for Poketto"
 
-RUN localedef -i zh_CN -c -f UTF-8 -A /usr/share/locale/locale.alias zh_CN.UTF-8
-ENV LANG=zh_CN.UTF-8
+ENV LANG=C.UTF-8
 
 COPY --from=builder /usr/lib/postgresql/${PG_MAJOR}/lib/zhparser.so /usr/lib/postgresql/${PG_MAJOR}/lib/
 COPY --from=builder /usr/local/lib/libscws.* /usr/local/lib/
