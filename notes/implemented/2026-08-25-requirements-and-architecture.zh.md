@@ -42,7 +42,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 技术栈
 
-JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：write / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、JTE + htmx + Tailwind。
+JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：content / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、JTE + htmx + Tailwind。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。另提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随所用 SDK 的已验证版本固定；v1 用静态 API Key 是有意识的简化，不宣称实现 MCP 标准 OAuth 流程；Streamable HTTP 校验 Origin 白名单。
 

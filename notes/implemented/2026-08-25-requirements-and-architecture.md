@@ -42,7 +42,7 @@ Stored content-addressed by SHA-256 in the data directory, outside git; document
 
 ## Technology stack
 
-JDK 26 (fallback: 25 LTS), Spring Boot 4, Spring Modulith (modules: write / projection / search / web / qa / mcp / auth), Spring AI (MCP server and tool calling), JGit, commonmark-java + Jackson YAML, PostgreSQL 17 + zhparser (requires a custom image, not the stock postgres image), Caffeine, JTE + htmx + Tailwind.
+JDK 26 (fallback: 25 LTS), Spring Boot 4, Spring Modulith (modules: content / projection / search / web / qa / mcp / auth), Spring AI (MCP server and tool calling), JGit, commonmark-java + Jackson YAML, PostgreSQL 17 + zhparser (requires a custom image, not the stock postgres image), Caffeine, JTE + htmx + Tailwind.
 CI: GitHub Actions + Testcontainers; images publish to GHCR. A docker-save-over-SSH deployment script is provided for networks with restricted registry access. GraalVM Native Image and JDK structured concurrency (preview) stay on the experimental track.
 The MCP protocol version is pinned to the verified version of the SDK in use; static API keys in v1 are a deliberate simplification, with no claim to the MCP standard OAuth flow; Streamable HTTP validates an Origin allowlist.
 
