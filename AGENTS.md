@@ -6,20 +6,30 @@ The public README and requirements note have .zh.md counterparts; edit both side
 
 ## Arrival guide
 
-Current phase: preparation. Requirements are settled, development has not started, and no tasks await implementation.
+Current phase: development. The executable baseline is established; product capabilities are implemented only from an assigned, settled task.
 
 An agent arriving for the first time:
 
-1. Read this file, then the requirements note. That is enough to answer "what is this project and where does it stand".
-2. In your first reply, confirm two things with the user: your understanding of the project and its phase, and what the user wants to do this time. **Do not start work on your own.**
-3. In this phase you may: answer questions and discuss; write or edit documents following the skills; record decisions the user has made as notes.
-4. In this phase you may not: write product code; push to main directly (changes go through short-lived branches and PRs); treat ideas under discussion as settled decisions.
-
-Update this section when the phase advances (development starts, the command table is established).
+1. Read this file, then the requirements note. Read the [development baseline](notes/implemented/2026-08-26-development-baseline.md) when changing the build, module boundaries, database test image, or CI.
+2. In your first reply, confirm your understanding of the project and current task before changing it. Do not infer a product task from the roadmap or implement ideas still under discussion.
+3. Work on a short-lived branch. Keep product code inside the owning application module and add evidence that exercises the changed behavior.
+4. Never push or create a pull request without the user's explicit authorization; never push directly to main.
 
 ## Phase clause (delete this section at the first release)
 
 There are no external users during development: rename and refactor freely; write no compatibility shims. The database schema and the content-repo format may change destructively; rebuild instead of migrating.
+
+## Commands
+
+Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon.
+
+| Command | Purpose |
+|---|---|
+| `./gradlew bootRun` | Start the application locally |
+| `./gradlew test` | Run fast unit, context, and module-boundary tests |
+| `./gradlew integrationTest` | Build the PostgreSQL 17 + zhparser image and run database integration tests |
+| `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
+| `./gradlew check` | Run the complete local and CI verification suite |
 
 ## Decision records (notes/)
 

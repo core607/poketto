@@ -6,7 +6,7 @@
 
 ## 状态
 
-筹备中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)）；开发尚未开始；目前没有可运行的代码。
+开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)），可执行的开发基线已经建立；产品功能尚未实现。
 
 ## 适合谁
 
@@ -20,8 +20,23 @@
 ```
 AGENTS.md            本仓库的 agent 工作规则（从这里开始）
 .agents/skills/      可复用工序：文风、评审、检查、笔记生命周期
+build.gradle.kts     Gradle 构建与校验入口
+src/                 应用模块及其测试
+infra/postgres/      可复现的 PostgreSQL 17 + zhparser 测试镜像
 notes/               决策记录：proposed / implemented / rejected / archived
 ```
+
+## 开发
+
+使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。
+
+```sh
+./gradlew test repoCheck
+./gradlew check
+./gradlew bootRun
+```
+
+Windows 下使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。
 
 ## 授权
 
