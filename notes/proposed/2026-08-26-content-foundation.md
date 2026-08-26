@@ -3,6 +3,8 @@
 Date: 2026-08-26
 Status: Proposed
 
+[中文](2026-08-26-content-foundation.zh.md)
+
 ## Problem
 
 Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) establish that a separate git repository is the source of truth, document identity is a repository-wide UUID, and revisions are content hashes. They do not yet define the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, or revision encoding.
