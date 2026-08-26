@@ -82,11 +82,14 @@ tasks.register("repoCheck") {
             }
         }
 
-        val allowedChineseCounterparts = requiredPairs.flatMap { listOf(it.first, it.second) }.toSet()
         repositoryFiles { path -> path.isRegularFile() && path.name.endsWith(".zh.md") }
-            .map(Path::repositoryPath)
-            .filterNot(allowedChineseCounterparts::contains)
-            .forEach { errors += "unexpected Chinese counterpart: $it" }
+            .forEach { chinese ->
+                val englishName = chinese.name.removeSuffix(".zh.md") + ".md"
+                val english = chinese.resolveSibling(englishName)
+                if (!english.isRegularFile()) {
+                    errors += "Chinese document has no English counterpart: ${chinese.repositoryPath()}"
+                }
+            }
 
         val hanCharacter = Regex("""\p{IsHan}""")
         val englishAgentSurfaces = buildList {
