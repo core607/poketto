@@ -49,7 +49,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 - Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
 - Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, stop and report it.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
-- main is protected and never pushed directly; changes go through short-lived branches and PRs.
+- Treat main as protected and never push directly; changes go through short-lived branches and PRs. Restore platform enforcement before the repository becomes public.
 - No credentials in the repository, ever. `.env` is the first line of .gitignore.
 
 ## Skills (.agents/skills/)
