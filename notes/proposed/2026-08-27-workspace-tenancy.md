@@ -1,76 +1,76 @@
-# 工作空间与租户边界
+# Workspace and Tenant Boundaries
 
 Date: 2026-08-27
 Status: Proposed
 
-## 问题
+## Problem
 
-[需求与架构](../implemented/2026-08-25-requirements-and-architecture.zh.md)把 Poketto 限定为单实例单租户。这能减少首轮实现面，但会让内容仓、投影、缓存、权限和后台任务在没有租户边界的前提下成形。以后再增加多个独立知识空间，就必须逐层补写隔离条件，最容易遗漏的恰好是搜索、缓存和异步任务等不会出现在主请求路径中的地方。
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) limit Poketto to one instance and one tenant. That constraint reduces the first implementation surface, but it also allows content repositories, projections, caches, authorization, and background work to form without a tenant boundary. Adding independent knowledge spaces later would require isolation conditions to be threaded through every layer. Search, caches, and asynchronous work are the easiest paths to miss because they do not all appear in the primary request flow.
 
-Poketto 需要把多工作空间作为核心数据模型，同时保留单空间自托管作为默认运行形态。开放注册、计费和 SaaS 运营不属于这项能力。
+Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the default topology. Open registration, billing, and SaaS operation are separate concerns.
 
-本提案在实现后取代需求文档中的“单实例单租户”限制，但保留“不开放注册”。
+Once implemented, this proposal replaces the requirements' single-tenant restriction while preserving the prohibition on open registration.
 
-## 提案
+## Proposal
 
-### 工作空间模型
+### Workspace model
 
-- `workspace` 是租户、安全和数据销毁边界。每个工作空间使用不可变的规范小写 UUID 作为 `workspace_id`；名称、公开域名和展示 slug 都不是身份。
-- 应用内部始终使用工作空间模型。默认部署在所有者初始化时只创建一个工作空间，不显示工作空间切换入口。
-- 自助创建额外工作空间默认关闭。部署者显式启用后，只有实例管理员可以创建；这个开关不改变数据库、目录或权限模型。
-- 一个账户可以加入多个工作空间，角色属于账户与工作空间之间的 membership，而不是账户的全局属性。成员加入流程由[邀请制成员提案](2026-08-27-invitation-only-membership.md)负责。
+- A `workspace` is the tenant, security, and data-destruction boundary. Each workspace has an immutable canonical lowercase UUID as its `workspace_id`; its name, public domain, and display slug are not identifiers.
+- The application always uses the workspace model internally. A default deployment creates one workspace during owner initialization and does not show a workspace switcher.
+- Self-service creation of additional workspaces is disabled by default. When the operator explicitly enables it, only an instance administrator may create them. This setting does not change the database, directory, or authorization model.
+- An account may join multiple workspaces. A role belongs to the membership between an account and a workspace, not to the account globally. The [invitation-only membership proposal](2026-08-27-invitation-only-membership.md) owns the joining flow.
 
-### 数据隔离
+### Data isolation
 
-- 每个工作空间拥有独立内容仓，固定在 `<data-dir>/workspaces/<workspace-id>/content`。一个仓库只承载一个工作空间，单写约束也按仓库独立成立。
-- PostgreSQL 中所有工作空间所属的权威数据和派生数据都显式携带 `workspace_id`。唯一约束、外键和查询条件包含该字段；投影 checkpoint 至少由 `(workspace_id, last_indexed_commit)` 标识。
-- blob 使用工作空间命名空间。即使两个工作空间上传相同字节，对外路径、查询和错误也不得暴露另一空间是否已经拥有相同 hash；物理层是否去重不属于本提案。
-- API Key、成员权限、访客问答预算、审计记录、缓存键和后台任务都绑定一个工作空间。跨空间管理使用独立的实例管理权限，不把普通 workspace owner 提升为实例管理员。
-- 删除工作空间意味着销毁其内容仓、blob 命名空间、权威数据库记录和派生投影。实现删除前必须另立包含等待期、备份与恢复边界的提案；本轮不提供删除操作。
+- Each workspace owns a separate content repository at `<data-dir>/workspaces/<workspace-id>/content`. One repository serves one workspace, and the single-writer constraint applies independently to each repository.
+- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it. Projection checkpoints are identified by at least `(workspace_id, last_indexed_commit)`.
+- Blobs use a workspace namespace. Even when two workspaces upload identical bytes, external paths, queries, and errors must not reveal that another workspace has the same hash. Physical deduplication is outside this proposal.
+- API keys, member permissions, visitor-Q&A budgets, audit records, cache keys, and background tasks belong to a workspace. Cross-workspace administration uses a distinct instance-level authority; a workspace owner is not implicitly an instance administrator.
+- Deleting a workspace destroys its content repository, blob namespace, authoritative database rows, and derived projection. No deletion operation may be implemented until a separate proposal defines its waiting period, backup boundary, and recovery behavior.
 
-### 上下文传播与授权
+### Context propagation and authorization
 
-- 模块边界上的工作空间所属操作显式接收 `WorkspaceId`；不得从全局静态变量、线程局部变量或“唯一工作空间”假设中隐式取得。
-- HTTP、MCP 和后台任务先解析经过授权的 workspace context，再调用领域操作。调用者提供的路径、文档 UUID、blob hash 或筛选条件不能替代授权后的 `WorkspaceId`。
-- 搜索、列表、历史、错误信息和计数均不得返回其他工作空间的数据或其存在性信号。一次请求不能通过缺失与无权限两种不同响应枚举另一工作空间的对象。
-- 异步事件和重试任务把 `workspace_id` 作为持久化载荷的一部分。日志与指标可以记录不可逆的内部 workspace 标识，但不得把私密名称、内容或凭据写入标签。
+- Workspace-owned operations at module boundaries accept `WorkspaceId` explicitly. They must not obtain it from global state, thread-local state, or an assumption that only one workspace exists.
+- HTTP, MCP, and background entry points resolve an authorized workspace context before calling domain operations. A caller-provided path, document UUID, blob hash, or filter cannot substitute for the authorized `WorkspaceId`.
+- Search, lists, history, errors, and counts must not expose another workspace's data or its existence. Missing and unauthorized objects cannot use distinguishable responses that allow cross-workspace enumeration.
+- Asynchronous events and retry records persist `workspace_id` in their payload. Logs and metrics may include an opaque, non-reversible internal workspace identifier, but not a private name, content, or credential.
 
-### 默认拓扑
+### Default topology
 
-默认配置仍是一个实例、一个工作空间、一个本地内容仓、本地 PostgreSQL 和本地 blob 目录。多工作空间能力改变隔离模型，不要求云服务、Kubernetes、开放注册或多个运行副本。
+The default remains one instance, one workspace, one local content repository, local PostgreSQL, and a local blob directory. Multi-workspace isolation changes the data model; it does not require cloud services, Kubernetes, open registration, or multiple application replicas.
 
-云 PostgreSQL 使用同一 JDBC 契约，不增加专用驱动接口。Kubernetes 和对象存储只有在具备可运行实现及自动验证时才进入仓库；多工作空间本身不要求这些部署能力。
+Cloud PostgreSQL uses the same JDBC contract and does not need a provider-specific driver abstraction. Kubernetes and object storage enter the repository only with a runnable implementation and automated verification; multi-workspace support does not depend on either.
 
-## 第一轮实现范围与顺序
+## First implementation scope and order
 
-本提案是内容、权限和投影实现的串行前置任务。第一轮建立 `WorkspaceId` 值类型、工作空间目录解析、工作空间 catalog、默认单空间初始化和跨空间隔离测试，并为后续 PostgreSQL 表规定强制的 `workspace_id` 契约。
+This proposal is a serial prerequisite for content, authorization, and projection work. The first implementation introduces the `WorkspaceId` value type, workspace path resolution, a workspace catalog, default single-workspace initialization, cross-workspace isolation tests, and a mandatory `workspace_id` contract for later PostgreSQL tables.
 
-[内容仓与文档基础](2026-08-26-content-foundation.zh.md)和邀请制成员可在本提案完成后并行实现。内容写入、投影、搜索、MCP 和访客问答必须建立在工作空间边界之上，不得先以单空间假设实现再回填租户字段。
+The [content repository foundation](2026-08-26-content-foundation.md) and invitation-only membership may proceed in parallel after this boundary is implemented. Content writes, projection, search, MCP, and visitor Q&A must build on the workspace boundary rather than first implementing a single-workspace path and adding tenant fields later.
 
-本轮不实现额外工作空间的管理界面、开放注册、计费、租户迁移、跨空间搜索、共享文档或工作空间删除。
+This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
 
-## 考虑过的替代方案
+## Alternatives considered
 
-**保持单租户，未来再改。** 首轮代码更少，但租户条件会横切内容路径、数据库约束、缓存、事件和权限。项目尚未建立这些功能，现在引入边界的成本最低。
+**Remain single-tenant and change later.** The first implementation would be smaller, but tenant scope crosses content paths, database constraints, caches, events, and authorization. Those features do not exist yet, so the boundary is cheapest to establish now.
 
-**一个 Git 仓库按目录容纳所有工作空间。** 仓库数量更少，但 Git 历史、备份、恢复和删除都无法按租户隔离，任何仓级操作都能接触全部私密内容。每空间一仓让 Git 的物理边界与安全边界一致。
+**Store every workspace in subdirectories of one Git repository.** This reduces repository count, but Git history, backup, recovery, and deletion would no longer be isolated per tenant. A repository per workspace aligns the Git boundary with the security boundary.
 
-**只在 HTTP 层过滤 workspace。** 这不能约束后台任务、MCP、缓存或内部调用。工作空间必须进入模块契约和持久化键，而不是只做路由参数。
+**Filter workspace access only at the HTTP layer.** This does not constrain background jobs, MCP, caches, or internal calls. Workspace scope belongs in module contracts and persistence keys, not only in route parameters.
 
-**立即引入 PostgreSQL Row-Level Security。** RLS 可以形成额外防线，但连接池事务上下文、迁移角色和表所有者旁路都需要独立设计。第一轮使用显式作用域、数据库约束和隔离测试；是否增加 RLS 由后续安全评估决定。
+**Add PostgreSQL Row-Level Security immediately.** RLS can provide another defense layer, but connection-pool transaction context, migration roles, and table-owner bypass need a separate design. The first implementation uses explicit scope, database constraints, and isolation tests. A later security review may propose RLS.
 
-## 验收条件
+## Acceptance
 
-- 中英文需求文档同步描述多工作空间隔离能力、默认单工作空间拓扑和关闭自助创建的配置，并从 v1 non-goals 中移除多租户；开放注册仍明确不做。
-- 默认配置只创建并暴露一个工作空间，且不提供开放注册或自助创建额外工作空间的入口。
-- 两个工作空间可以拥有相同的文档 UUID、相同相对路径和相同 blob hash，而读取、搜索、缓存、错误与审计结果不会串空间。
-- 内容目录解析只接受规范 `WorkspaceId`，所得路径保持在 `<data-dir>/workspaces/` 内，拒绝路径穿越和别名冲突。
-- 模块边界测试证明工作空间所属操作都要求 `WorkspaceId`；没有依赖“默认租户”的隐藏生产路径。
-- 后台任务和投影 checkpoint 的测试证明两个工作空间可独立推进、失败与重建。
-- Spring Modulith 校验、`./gradlew test`、`./gradlew integrationTest`、`./gradlew repoCheck` 与 `git diff --check` 通过。
+- Both requirements documents describe multi-workspace isolation, the default single-workspace topology, and disabled self-service workspace creation. Multi-tenancy is removed from the v1 non-goals while open registration remains explicitly excluded.
+- The default configuration creates and exposes one workspace and provides no open-registration or self-service additional-workspace entry point.
+- Two workspaces may contain the same document UUID, relative path, and blob hash without sharing reads, search results, cache entries, errors, or audit data.
+- Content path resolution accepts only a canonical `WorkspaceId`, keeps the result below `<data-dir>/workspaces/`, and rejects traversal and alias collisions.
+- Module-boundary tests prove that every workspace-owned operation requires `WorkspaceId`; no hidden production path relies on a default tenant.
+- Background-task and projection-checkpoint tests prove that two workspaces advance, fail, and rebuild independently.
+- Spring Modulith verification, `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` pass.
 
-## 风险
+## Risks
 
-所有工作空间所属数据都携带作用域，会增加主键、查询和测试的显式参数。这是有意承担的隔离成本；通过一个“单租户快捷路径”绕开它，会让默认模式与多工作空间模式形成两套安全语义。
+Explicit scope on all workspace-owned data adds parameters to keys, queries, and tests. This is the intended cost of isolation. A single-tenant shortcut would give the default and multi-workspace modes different security semantics.
 
-每空间一仓会增加仓库和后台任务数量。仓间没有事务依赖，可以按 workspace 分片并行；单仓写入继续串行。实际规模超过单进程管理能力前，不引入分布式锁或消息队列。
+A repository per workspace increases repository and background-worker counts. Workspaces have no cross-repository transaction dependency, so they can be sharded and processed in parallel while writes remain serialized within each repository. Distributed locks and message queues remain unnecessary until measured scale exceeds one process.

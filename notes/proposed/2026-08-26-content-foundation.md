@@ -3,7 +3,7 @@
 Date: 2026-08-26
 Status: Proposed
 
-[中文](2026-08-26-content-foundation.zh.md)
+[Chinese](2026-08-26-content-foundation.zh.md)
 
 ## Problem
 

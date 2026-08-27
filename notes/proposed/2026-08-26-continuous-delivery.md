@@ -1,81 +1,81 @@
-# 持续交付与单机部署
+# Continuous Delivery for a Single Host
 
 Date: 2026-08-26
 Status: Proposed
 
-## 问题
+## Problem
 
-[需求与架构](../implemented/2026-08-25-requirements-and-architecture.zh.md)规定应用镜像发布到 GHCR，并为无法稳定访问镜像仓库的网络提供经 SSH 传输 `docker save` 产物的备用路径。[开发基线](../implemented/2026-08-26-development-baseline.md)目前只在 pull request 和 `main` push 上运行完整校验，不构建可部署镜像，也没有可重复执行的生产 Compose 与部署脚本。
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require application images in GHCR and a fallback that transfers a `docker save` artifact over SSH when registry access is unreliable. The [development baseline](../implemented/2026-08-26-development-baseline.md) currently runs complete verification for pull requests and `main` pushes but builds no deployable image and provides no repeatable production Compose or deployment script.
 
-Poketto 面向单机自托管。第一条 CD 路径只需保证通过校验的提交能够产生不可变镜像，并由一个受约束的 SSH 入口部署到 Linux + Docker Compose 主机。自动回退、制品晋升和发布证明在出现实际需求前不进入首轮实现。
+Poketto targets a self-hosted single machine. Its first delivery path needs only to turn a verified commit into immutable images and deploy them to a Linux Docker Compose host through a constrained SSH entrance. Automatic rollback, artifact promotion, and release attestation remain outside the first implementation until operating evidence justifies them.
 
-## 提案
+## Proposal
 
-### 验证与镜像发布
+### Verification and image publication
 
-- 保留现有 pull request `check`。规范仓库的 `main` push 在同一提交通过 `check` 后构建应用和 PostgreSQL 17 + zhparser OCI 镜像，并发布到 GHCR。
-- 镜像携带源码 commit 标签和标准 revision 元数据。部署使用 registry 返回的不可变 digest；移动标签只用于发现，不能决定生产实际版本。
-- 发布 job 只获得 `contents: read` 与 `packages: write`。验证 job、pull request 和部署 job 不继承包写权限。所有第三方 Actions 固定到完整 commit SHA。
-- 镜像不包含 `.env`、API Key、内容仓、数据库卷、blob 目录或其他运行时状态。
+- Keep the existing pull-request `check`. After the canonical repository's `main` passes `check`, the same workflow builds the application image and the PostgreSQL 17 + zhparser OCI image and publishes both to GHCR.
+- Images carry a source-commit tag and standard revision metadata. Deployment uses immutable digests returned by the registry; moving tags aid discovery but never select the production version.
+- The publication job receives only `contents: read` and `packages: write`. Verification, pull-request, and deployment jobs do not inherit package-write authority. Every third-party Action is pinned to a full commit SHA.
+- Images contain no `.env`, API key, content repository, database volume, blob directory, or other runtime state.
 
-### 可选自动部署
+### Optional automatic deployment
 
-- 未配置生产目标时，流水线在镜像发布后成功结束。生产部署只有在仓库变量显式启用并配置 GitHub `production` environment 后运行；开源仓库不依赖任何维护者的私有服务器才能通过 CI。
-- 部署 job 使用固定 concurrency group，并且不取消已经开始的部署。连续 `main` push 不得并发修改同一主机。
-- `production` environment 保存 SSH 私钥、固定 host key 和必要的 registry 凭据。流水线不使用个人 SSH key、`StrictHostKeyChecking=no` 或生产主机上的自托管 Actions runner。
-- GitHub Actions 摘要记录源码 commit、镜像 digest、目标 environment 与健康结果，不打印 secret、远端环境文件或敏感命令参数。
+- Without a configured production target, the workflow succeeds after publication. Production deployment runs only when a repository variable explicitly enables it and a GitHub `production` environment exists. Open-source CI must not depend on a maintainer's private server.
+- The deployment job uses a fixed concurrency group and does not cancel an in-progress deployment. Consecutive `main` pushes cannot mutate the same host concurrently.
+- The `production` environment stores the SSH private key, pinned host key, and required registry credentials. The workflow uses neither a personal SSH key, `StrictHostKeyChecking=no`, nor a self-hosted Actions runner on the production host.
+- The GitHub Actions summary records the source commit, image digests, target environment, and health result without printing secrets, remote environment files, or sensitive command arguments.
 
-### Compose 与 SSH 脚本
+### Compose and SSH scripts
 
-- 仓库提供通用生产 Compose 文件和无交互部署脚本。主机、端口、域名、持久化目录与 secret 只存在于操作者环境或 GitHub environment。
-- 部署账户只服务 Poketto，并只拥有运行部署入口所需的权限。远端脚本取得部署锁，校验 Compose、环境文件、持久化目录和磁盘空间，再更新容器；它不得删除、重建或回滚数据卷。
-- 默认由生产主机按 digest 从 GHCR 拉取镜像。受限网络脚本允许操作者或 GitHub-hosted runner 拉取同一 digest，通过 `docker save`、SSH 和 `docker load` 传输，然后调用相同远端部署入口。
-- 应用与数据库都提供 Compose 健康检查。部署只有在真实服务通过健康检查后才成功；`docker compose up` 的退出码不足以证明部署完成。
-- 失败部署返回失败并保留诊断信息，不自动猜测可安全运行的旧镜像。操作者可以用先前记录的精确 digest 重新运行同一脚本；首轮不建立候选清单、自动晋升或自动回退状态机。
-- 对同一组 digest 重复执行脚本是幂等的。中断后重试从主机上的实际镜像与容器状态重新判断，不依赖上一条 workflow 的文字状态。
+- The repository provides a generic production Compose file and non-interactive deployment script. Hostname, port, domain, persistent paths, and secrets exist only in the operator environment or GitHub environment.
+- A dedicated Poketto deployment account has only the authority needed to invoke the deployment entrance. The remote script obtains a deployment lock and validates Compose, the environment file, persistent directories, and available disk space before replacing containers. It never deletes, recreates, or rolls back data volumes.
+- By default the production host pulls exact digests from GHCR. The restricted-network path lets an operator or GitHub-hosted runner pull those same digests, transfer `docker save` output over SSH, run `docker load`, and invoke the same remote deployment entrance.
+- The application and database both expose Compose health checks. Deployment succeeds only after the real service health entrance passes; a successful `docker compose up` exit code is insufficient.
+- A failed deployment returns failure and preserves diagnostics but does not guess which old image is safe. The operator may rerun the same script with a previously recorded digest. The first implementation has no candidate manifest, automatic promotion, or rollback state machine.
+- Repeating the script with the same digests is idempotent. A retry after interruption derives its next action from actual host image and container state rather than prose recorded by the previous workflow.
 
-### 持久化边界
+### Persistence boundary
 
-容器部署只改变镜像和 Compose 管理的进程，不恢复或迁移内容仓、blob 和 PostgreSQL 权威表。包含不兼容持久化变更的功能提案必须定义自己的迁移、失败恢复和旧版本可否启动；部署脚本不能根据文件差异猜测兼容性。
+Container deployment changes only images and Compose-managed processes. It neither restores nor migrates content repositories, blobs, or authoritative PostgreSQL tables. A feature proposal that makes an incompatible persistent change must define its own migration, failure recovery, and old-version behavior; the deployment script cannot infer compatibility from file differences.
 
-[异地备份与恢复](2026-08-27-off-host-backup-and-restore.md)完成并提供机器可读的新鲜度信号前，生产自动部署保持关闭。镜像发布和手动执行部署脚本不依赖该提案，但操作者必须明确承担尚无自动备份门槛的风险。
+Production automatic deployment remains disabled until the [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) supplies a machine-readable freshness signal. Image publication and manual deployment do not depend on that proposal, but an operator must explicitly accept the absence of an automated backup gate.
 
-## 第一轮实现范围与依赖
+## First implementation scope and dependencies
 
-第一轮包括应用容器、生产 Compose、应用健康入口、两个 OCI 镜像的 GHCR 发布、按 digest 的 SSH 部署、部署锁、健康确认、受限网络传输脚本及针对性测试。
+The first implementation includes an application container, production Compose, an application health entrance, publication of both OCI images to GHCR, digest-pinned SSH deployment, a deployment lock, health confirmation, the restricted-network transfer script, and focused tests.
 
-它不实现域名、TLS、反向代理、日志平台、provenance attestation、部署清单晋升、自动回退、蓝绿双栈、任意历史版本选择器或数据库迁移框架。镜像发布可以在当前开发基线上独立实现；自动部署必须等待异地备份提案的门槛实现。
+It excludes domains, TLS, reverse proxies, a logging platform, provenance attestation, deployment-manifest promotion, automatic rollback, blue-green stacks, an arbitrary-version selector, and a database migration framework. Image publication may build on the current development baseline independently. Automatic deployment waits for the off-host backup gate.
 
-## 考虑过的替代方案
+## Alternatives considered
 
-**生产主机运行自托管 GitHub Actions runner。** 它能直接访问 Docker，但仓库工作流会获得接近宿主机 root 的执行面。受限 SSH 账户更容易审计和撤销。
+**Run a self-hosted GitHub Actions runner on the production host.** It provides direct Docker access but gives repository workflows an execution surface close to host root. A constrained SSH account is easier to audit and revoke.
 
-**Watchtower 轮询移动标签。** 配置简单，但部署决定无法稳定对应通过 CI 的 commit。流水线传递不可变 digest。
+**Let Watchtower poll a moving tag.** This is easy to configure, but a deployment decision no longer maps reliably to the commit that passed CI. The workflow passes immutable digests instead.
 
-**候选清单、自动晋升与自动回退。** 这些机制能改善无人值守恢复，但需要定义持久化兼容性和额外状态。首轮以失败停止和按已知 digest 重跑为边界，真实运维需求出现后再提案。
+**Add candidate manifests, automatic promotion, and automatic rollback.** These mechanisms can improve unattended recovery but require persistent-compatibility rules and additional state. The first implementation stops on failure and reruns a known digest; later operating evidence may justify a separate proposal.
 
-**只发布镜像，不提供脚本。** 维护者仍需临时拼接 SSH、Compose、锁和健康检查步骤，部署不可重复。一个通用脚本是最小可维护交付面。
+**Publish images without a deployment script.** Every operator would still improvise SSH, Compose, locking, and health checks. One generic script is the minimum maintainable delivery surface.
 
-**Kubernetes 或蓝绿部署。** 默认目标是 2 核 4 GB 单机，额外编排面和双份常驻资源不符合当前运行约束。数据归属与运行平台彼此独立，未来 K8s 部署不需要改变本提案的镜像产物。
+**Use Kubernetes or blue-green deployment.** The default target is a two-core, 4 GB machine; another orchestration surface and duplicate resident stack do not fit that constraint. Runtime platform and data authority remain independent, so a future Kubernetes deployment can consume the same image artifacts.
 
-## 验收条件
+## Acceptance
 
-- pull request 只运行无生产 secret、无包写权限的完整 `check`；未经合并的代码不能发布镜像或部署。
-- `main` 的 `check` 成功后，应用和 PostgreSQL 镜像发布到 GHCR，源码 commit 与两个不可变 digest 可从同一 workflow run 查到。
-- 未配置生产环境时发布成功且部署明确跳过；启用后缺少变量或 secret 会失败并指出缺项。
-- 在可丢弃 Linux 主机上，registry pull 与 `docker save` over SSH 都能使用同一 digest 启动 Compose，并通过真实健康入口。
-- 两次相邻部署不会并发修改主机；中断后重试与重复部署同一 digest 不删除持久化数据。
-- 健康失败使 workflow 失败且不会被成功日志掩盖；使用先前 digest 重跑同一脚本可以恢复旧镜像，自动回退不属于验收范围。
-- SSH host key、部署私钥、registry 凭据和远端环境文件不出现在仓库、构建制品、Actions 摘要或测试日志中。
-- 自动化测试覆盖 digest 校验、锁、幂等、缺失配置、传输失败和健康超时；一次可丢弃主机演练覆盖真实 Compose 入口。
-- `./gradlew check` 与 `git diff --check` 通过；实现不修改远端 required checks 或 environment 设置。
+- A pull request runs complete `check` without production secrets or package-write authority. Unmerged code cannot publish or deploy.
+- After a `main` commit passes `check`, the application and PostgreSQL images appear in GHCR, and the source commit plus both immutable digests are available from the same workflow run.
+- Publication succeeds and deployment is explicitly skipped when production is not configured. When deployment is enabled, missing variables or secrets fail with an actionable list.
+- On a disposable Linux host, registry pull and `docker save` over SSH can start the same Compose stack from identical digests and pass the real health entrance.
+- Adjacent deployments cannot mutate the host concurrently. Retry after interruption and redeployment of the same digest preserve persistent data.
+- A failed health check fails the workflow and is not hidden by successful setup logs. Rerunning the same script with a previous digest can restore an older image; automatic rollback is not part of acceptance.
+- SSH host keys, deployment private keys, registry credentials, and remote environment files appear in neither the repository, artifacts, Actions summary, nor test logs.
+- Automated tests cover digest validation, locking, idempotency, missing configuration, transfer failure, and health timeout. One disposable-host drill covers the real Compose entrance.
+- `./gradlew check` and `git diff --check` pass. Implementation does not modify remote required checks or environment settings.
 
-## 风险
+## Risks
 
-自动部署 `main` 会让通过 CI 但存在语义缺陷的变更更快进入生产。健康检查只能证明服务可运行；关闭开关与按精确 digest 手动恢复是首轮控制手段。
+Automatic deployment from `main` moves a semantically defective change into production faster after CI passes. Health checks prove that the service runs, not that its behavior is correct. The enable switch and manual restoration of a precise digest are the first controls.
 
-GitHub-hosted runner 持有可连接生产机的短期环境和 secret。专用账户、固定 host key、最小权限和不向 pull request 暴露 secret 可以缩小影响，但 `main` 上的 workflow 仍属于信任根。
+A GitHub-hosted runner temporarily holds the secret needed to reach production. A dedicated account, pinned host key, minimum permissions, and exclusion from pull-request workflows reduce the surface, but the trusted `main` workflow remains part of the security root.
 
-镜像级恢复不能撤销数据库或内容格式变化。兼容性不明时自动启动旧容器可能比停机更危险，因此首轮不自动回退。
+Image rollback cannot undo a database or content-format change. Starting an old container with unknown compatibility may be more dangerous than downtime, so the first implementation does not roll back automatically.
 
-每次 `main` 构建两个镜像会增加 Actions 时间与 GHCR 存储。先保持可追踪的单一路径；实际成本出现后，再根据构建上下文复用未变化的数据库镜像。
+Building two images on every `main` update consumes Actions time and GHCR storage. Keep one traceable path first; if measured cost becomes material, reuse the unchanged database image by build context.

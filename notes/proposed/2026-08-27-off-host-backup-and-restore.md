@@ -1,69 +1,69 @@
-# 异地备份与恢复
+# Off-Host Backup and Restore
 
 Date: 2026-08-27
 Status: Proposed
 
-## 问题
+## Problem
 
-[需求与架构](../implemented/2026-08-25-requirements-and-architecture.zh.md)要求内容历史、图片 blob 和 PostgreSQL 非派生表具有异地副本，但尚未规定加密、保留期、恢复点、失败可见性和恢复演练。只运行 `git push`、`rclone sync` 或 `pg_dump` 不能证明数据可以在主机丢失后恢复，也可能把误删同步到所谓备份。
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, image blobs, and non-derived PostgreSQL tables but do not define encryption, retention, recovery points, failure visibility, or restore drills. Running `git push`, `rclone sync`, or `pg_dump` does not prove that data survives host loss and may propagate a deletion into the supposed backup.
 
-默认自包含部署把权威状态保存在单机，因此生产自动部署前必须建立可验证的异地恢复路径。备份提供灾难恢复，不参与正常请求的一致性判断。
+The default self-contained topology keeps authoritative state on one machine, so production automatic deployment requires a verified off-host recovery path. Backup provides disaster recovery and does not participate in normal request consistency.
 
-## 提案
+## Proposal
 
-### 共同规则
+### Common rules
 
-- 生产配置为内容仓、blob 和 PostgreSQL 非派生数据指定至少一个主机外目标。目标可以是自托管服务或部署者选择的第三方对象存储；应用正确运行不依赖该目标持续在线。
-- 私密内容在离开主机前使用部署者持有的密钥加密。远端凭据、加密密钥和恢复材料不进入代码仓、内容仓、备份包、日志或指标。
-- 每类备份记录最后成功时间、覆盖的 workspace、源 checkpoint、目标标识、字节数和去敏后的失败类别。新一次失败不能抹去最近成功恢复点。
-- 备份具有保留期和版本历史。默认流程不得把源端删除立即传播为所有异地副本的删除；清理使用独立、延迟且可审计的保留任务。
-- 文档提供从空数据目录恢复的步骤。每种介质必须通过自动化或定期演练证明产物可读、校验和正确，并能使应用达到已声明的 checkpoint。
+- Production configuration names at least one off-host target for content repositories, blobs, and non-derived PostgreSQL data. A target may be a self-hosted service or operator-selected third-party object storage. Normal application operation does not require continuous target availability.
+- Private content is encrypted before it leaves the host with a key controlled by the operator. Remote credentials, encryption keys, and recovery material never enter the code repository, content repositories, backup bundles, logs, or metrics.
+- Each medium records the last successful time, covered workspaces, source checkpoint, target identifier, byte count, and sanitized failure category. A new failure cannot erase the latest successful recovery point.
+- Backups retain versions for a defined period. The default flow does not immediately propagate a source deletion into every off-host copy; cleanup is a separate delayed and auditable retention task.
+- Documentation starts a restore from an empty data directory. Automated checks or scheduled drills for each medium prove that artifacts are readable, checksums match, and the application can reach the declared checkpoint.
 
-### 内容仓
+### Content repositories
 
-- [Git 复制与写入确认](2026-08-27-git-durability-modes.md)提供逐 commit 的远端镜像和复制延迟。备份目标额外保护 remote ref 与可达对象，禁止 force push，并保留足以从误删或错误 ref 更新恢复的历史。
-- 恢复先建立每个 workspace 的本地仓库并校验对象，再恢复其他权威存储。内容 `main` 决定投影重建起点；远端镜像状态不能覆盖更新的有效离线备份。
+- [Git replication and write acknowledgement](2026-08-27-git-durability-modes.md) provides per-commit remote mirroring and lag status. The backup target also protects remote refs and reachable objects, forbids force pushes, and retains enough history to recover from an accidental deletion or incorrect ref update.
+- Restore creates and validates each workspace's local repository before restoring other authoritative stores. Content `main` determines the projection rebuild point. Remote-mirror state cannot overwrite a newer valid offline backup.
 
-### Blob
+### Blobs
 
-- blob 继续以 SHA-256 内容寻址保存在 workspace 命名空间。备份上传不可变对象和一份可验证清单，清单记录 workspace、hash、大小和媒体类型。
-- 传输可以使用 `rclone` 支持的对象存储，但默认采用追加/复制语义及目标端版本保留，不使用会立即删除目标对象的裸 `sync` 作为唯一备份。
-- 恢复逐个验证文件 hash。缺失或损坏的 blob 被明确报告；不能用空文件、占位图或重新编码后的不同字节冒充原对象。
+- Blobs remain SHA-256 content-addressed inside a workspace namespace. Backup uploads immutable objects and a verifiable manifest containing workspace, hash, size, and media type.
+- Transfer may use an object store supported by `rclone`, but the default uses append or copy semantics with target-side version retention. A bare `sync` that immediately deletes target objects cannot be the only backup.
+- Restore verifies every file hash. Missing or corrupt blobs are reported explicitly; an empty file, placeholder image, or re-encoded byte sequence cannot stand in for the original object.
 
 ### PostgreSQL
 
-- 备份只把非派生表作为必须恢复的数据：账户、membership、邀请、API Key 元数据、审计、预算和工作空间 catalog。secret 仍按其存储契约保持哈希或加密形式。
-- 实现可以生成整库 dump，但恢复流程必须丢弃并从内容仓重建派生投影及其 checkpoint。旧投影不能与更新的内容 `main` 一起恢复后直接提供查询。
-- dump 与 manifest 一起记录数据库 schema 版本、创建时间和覆盖的 workspace。恢复在隔离数据库中先验证 schema、行数约束和关键外键，再替换生产数据。
+- Accounts, memberships, invitations, API-key metadata, audits, budgets, and the workspace catalog are the non-derived data that must be recoverable. Secrets retain their hashed or encrypted storage contract.
+- The implementation may create a whole-database dump, but restore discards and rebuilds derived projections and their checkpoints from the content repositories. A stale projection cannot serve queries beside a newer content `main`.
+- A dump manifest records database schema version, creation time, and covered workspaces. Restore verifies schema, row-count invariants, and critical foreign keys in an isolated database before replacing production data.
 
-## 实现范围与依赖
+## Implementation scope and dependencies
 
-内容镜像依赖 Git 复制提案；blob 备份依赖本地 blob 存储；数据库备份依赖首批非派生表和 schema 管理机制。三类备份不存在共同的实现前置，因此按各自依赖分成独立任务；全部完成并通过一次联合恢复演练后，生产自动部署才可把“最近备份可用”作为前置条件。
+Content backup depends on Git replication, blob backup depends on local blob storage, and database backup depends on the first non-derived tables and schema-management mechanism. These media have no common implementation prerequisite and therefore become separate tasks behind their own dependencies. Production automatic deployment may check a recent verified backup only after all three exist and pass one combined restore drill.
 
-第一轮为现有介质提供备份命令、加密配置、保留规则、机器可读状态、恢复命令和可丢弃环境中的恢复测试。它不实现跨区域热备、自动故障转移、连续数据库归档或零恢复点目标。
+The first implementation provides backup commands, encryption configuration, retention rules, machine-readable state, restore commands, and restore tests in disposable environments for the available media. It excludes multi-region hot standby, automatic failover, continuous database archiving, and a zero recovery-point objective.
 
-## 考虑过的替代方案
+## Alternatives considered
 
-**把 Git remote 当作全部备份。** Git 能保护内容文本与历史，但不包含 blob 和 PostgreSQL 权威表；远端 ref 也可能被错误或恶意更新。
+**Treat the Git remote as the complete backup.** Git protects content text and history but contains neither blobs nor authoritative PostgreSQL rows. A mistaken or malicious ref update can also damage the mirror.
 
-**定时 `rclone sync` 整个数据目录。** 操作简单，但会复制临时文件、运行时锁和派生状态，并可能传播删除。按介质生成可验证产物使恢复边界明确。
+**Run `rclone sync` over the whole data directory.** This is simple but copies temporary files, runtime locks, and derived state and may propagate deletions. Verifiable artifacts per medium make the recovery boundary explicit.
 
-**备份整个 PostgreSQL 后原样启动。** 它会恢复过时投影和 checkpoint。权威表恢复后重建投影，才能重新建立内容与查询的一致关系。
+**Restore a whole PostgreSQL dump and start immediately.** This can restore stale projections and checkpoints. Restoring authoritative rows and rebuilding projections re-establishes consistency with content.
 
-**只有人工恢复说明。** 文档不能证明命令仍能读取当前格式。可丢弃环境中的恢复测试负责发现密钥、schema、清单和路径漂移。
+**Rely only on a manual restore guide.** Documentation cannot prove that current commands still read current formats. Disposable restore tests expose drift in keys, schemas, manifests, and paths.
 
-## 验收条件
+## Acceptance
 
-- 三类权威介质都能在主机外保留加密、版本化且带校验信息的恢复点；缺失目标或密钥会产生明确失败，不会报告成功。
-- 连续失败不会删除最近成功恢复点；状态能显示最后成功时间和当前复制延迟，但不泄露路径、内容或凭据。
-- 从空数据目录恢复后，内容 commit、blob hash 和非派生数据库约束与备份 manifest 一致。
-- 恢复流程丢弃旧投影并从各 workspace 内容 `main` 重建，checkpoint 不会越过实际索引的 commit。
-- 删除源文件或移动 ref 后，至少一个受保留策略覆盖的旧恢复点仍可取回。
-- 备份与恢复测试使用可丢弃仓库、对象存储和 PostgreSQL，不读取开发者真实数据。
-- `./gradlew repoCheck`、相关自动化测试与 `git diff --check` 通过。
+- All three authoritative media can retain an encrypted, versioned, checksummed recovery point off-host. A missing target or key fails explicitly and cannot report success.
+- Consecutive failures do not delete the latest successful recovery point. Status exposes the last success and current lag without revealing paths, content, or credentials.
+- A restore into an empty data directory produces content commits, blob hashes, and non-derived database constraints matching the backup manifest.
+- Restore discards stale projections and rebuilds them from each workspace content `main`; no checkpoint advances beyond the commit actually indexed.
+- After a source deletion or ref move, at least one recovery point covered by retention remains retrievable.
+- Backup and restore tests use disposable repositories, object storage, and PostgreSQL and never read developer data.
+- `./gradlew repoCheck`, the relevant automated tests, and `git diff --check` pass.
 
-## 风险
+## Risks
 
-加密备份把密钥保管变成独立恢复前提。密钥与数据放在同一主机只能防止存储提供方读取，不能覆盖整机丢失；运维文档必须要求把恢复密钥保存在另一受控位置。
+Encrypted backup makes key custody an independent recovery prerequisite. Keeping the key and data on the same host protects against a storage provider reading the backup but not against total host loss. Operations documentation must require the recovery key to live in another controlled location.
 
-备份新鲜度不是数据正确性的证明。只有恢复演练能验证格式、密钥和依赖仍然匹配；自动部署门槛应检查最近一次已验证备份，而不是只看最后一次上传命令的退出码。
+Backup freshness does not prove data correctness. Only a restore drill validates formats, keys, and dependencies together. An automatic-deployment gate must inspect the latest verified backup rather than only the exit code of the latest upload command.

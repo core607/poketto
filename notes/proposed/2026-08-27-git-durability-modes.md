@@ -1,75 +1,75 @@
-# Git 复制与写入确认模式
+# Git Replication and Write Acknowledgement Modes
 
 Date: 2026-08-27
 Status: Proposed
 
-## 问题
+## Problem
 
-[需求与架构](../implemented/2026-08-25-requirements-and-architecture.zh.md)已经把本地内容仓的 `main` 定为真理，并以本地 commit 成功作为机器写入确认点。它只把 remote 描述为可选备份，没有规定复制时机、失败恢复、可观测性，也没有定义需要异地落盘后才确认的部署方式。
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) make the local content repository's `main` the source of truth and acknowledge a machine write after its local commit succeeds. They describe the remote only as an optional backup and do not define replication timing, failure recovery, observability, or a deployment mode that waits for off-host durability before acknowledging a write.
 
-本地权威必须保持断网可写，同时允许部署者通过一个耐久策略配置把远端确认纳入写路径。两种模式共享同一内容模型和 Git 复制机制，不形成两套业务实现。
+Local authority must remain writable without a network while allowing an operator to put remote confirmation in the write path through one durability setting. Both modes share the same content model and Git replication mechanism rather than forming separate business implementations.
 
-## 提案
+## Proposal
 
-### 权威与远端边界
+### Authority and remote boundary
 
-- 每个工作空间的本地非裸仓库及其 `main` 是默认权威。应用是该仓的唯一机器写入器；写操作按仓串行。
-- 所有者可以在服务器上的内容工作树直接编辑并 commit，作为 break-glass。v1 不支持从外部工作站直接 push 到应用检出的非裸 `main`。
-- 配置的 remote `main` 是输出镜像，不是第二个编辑入口。部署文档要求禁止其他用户和自动化直接改写或 force-push 该分支。
-- 远端领先或与本地分叉不是可重试网络错误。复制停止并报告 divergence；应用绝不自动 force push，也不猜测应保留哪一侧。
+- Each workspace's local non-bare repository and its `main` are authoritative by default. The application is the only machine writer, and writes are serialized per repository.
+- The owner may edit and commit directly in the server's content worktree as a break-glass path. v1 does not accept a push from an external workstation into the checked-out non-bare `main`.
+- The configured remote `main` is an output mirror, not a second editing entrance. Operations documentation requires every other user and automation to avoid direct updates and force pushes to that ref.
+- A remote that is ahead of or divergent from local state is not a retryable network failure. Replication stops and reports divergence. The application never force-pushes automatically or guesses which side to preserve.
 
-### 确认策略
+### Acknowledgement policy
 
-配置 `poketto.git.acknowledgement` 接受两个值：
+`poketto.git.acknowledgement` accepts two values:
 
-- `local`：默认值。本地 `main` commit 成功即确认写入；同仓复制 worker 随后异步推进 remote。
-- `mirrored`：只有 remote 已接受候选 commit，且本地 `main` 已推进到该 commit 后才返回成功。没有可用 remote、凭据或一致的起始 ref 时，应用启动失败而不是退回 `local`。
+- `local`, the default: the write succeeds when the local `main` commit succeeds. A per-repository replication worker advances the remote asynchronously.
+- `mirrored`: the write succeeds only after the remote accepts the candidate commit and local `main` advances to it. The application fails startup rather than falling back to `local` when the remote, credentials, or common starting ref are unavailable.
 
-策略是实例级默认值；未来如需按 workspace 覆盖必须另行增加配置契约。运行中改变策略需要重启并执行启动时一致性检查。
+The setting is an instance-level default. A future per-workspace override requires a separate configuration contract. Changing the policy at runtime requires restart and the startup consistency check.
 
-`mirrored` 模式不能先把候选提交暴露到本地 `main` 再尝试 push。应用在持有仓库写锁时根据当前 `main` 构造未发布 commit，将该 commit 以远端当前 ref 为前提推送；远端接受后再快进本地 `main`。push 失败只留下不可达对象，不改变可见本地历史。远端成功而本地 ref 更新前崩溃时，启动恢复可以在证明远端是本地 `main` 的后代后快进本地；其他关系均停止启动并要求人工处理。
+`mirrored` cannot expose a candidate on local `main` before attempting the push. While holding the repository write lock, the application builds an unpublished commit from the current `main` and pushes it with the current remote ref as a precondition. It advances local `main` only after the remote accepts the candidate. A rejected push leaves only unreachable local objects and does not change visible local history. If the process crashes after remote success but before the local ref update, startup may advance local state only after proving that remote `main` descends from local `main`; every other relationship blocks startup for operator intervention.
 
-### 异步复制与状态
+### Asynchronous replication and status
 
-- `local` 模式在每次 commit 后唤醒按仓唯一的复制 worker。连续提交可以合并为一次 push；worker 推进到启动 push 时观察到的最新本地 `main`，不为每个 commit 建立持久任务。
-- 临时网络、认证服务和远端限流错误使用有上限的指数退避并持续暴露失败状态。认证失败、权限拒绝、non-fast-forward 和仓库不存在需要明确分类；永久错误不能被无尽重试掩盖。
-- 写入结果返回 `commit_sha` 和当时观察到的 `indexed`、`mirrored` 布尔值。后二者是彼此独立的投影，不构成三阶段状态机，也不改变写操作按所选策略得出的成功或失败。
-- 运维状态按 workspace 暴露 `local_head`、`last_mirrored_commit`、`last_indexed_commit`、各自落后 commit 数与持续时间、最后尝试时间和去敏后的失败类别。普通成员不能读取远端地址、凭据或其他空间状态。
-- remote 已包含目标 commit 才算 mirrored。仅上传对象、启动 push 或记录任务成功都不能推进 `last_mirrored_commit`。
+- In `local` mode, every commit wakes the single replication worker for its repository. Several consecutive commits may collapse into one push because the worker advances the remote to the latest local `main` observed when the push begins; it does not persist one queue item per commit.
+- Temporary network failures, authentication-service failures, and remote rate limits use bounded exponential backoff while remaining observable. Authentication failure, permission denial, a missing repository, and non-fast-forward rejection have distinct classifications. An endless retry loop must not hide a permanent failure.
+- Write outcomes expose `commit_sha` when known and the independently observed `committed`, `mirrored`, and `indexed` booleans. `committed` means local `main` contains the candidate, `mirrored` means the remote contains it, and `indexed` means the projection checkpoint covers it. These observations are not a three-stage state machine and do not change success under the selected acknowledgement policy.
+- Per-workspace operational state exposes `local_head`, `last_mirrored_commit`, `last_indexed_commit`, each lag in commits and duration, the last attempt time, and a sanitized failure category. Ordinary members cannot read remote addresses, credentials, or another workspace's state.
+- A commit is mirrored only when the remote contains it. Uploading objects, starting a push, or recording a successful task does not advance `last_mirrored_commit`.
 
-### 复制与备份的关系
+### Relationship to backup
 
-远端镜像缩小主机丢失时的内容恢复点，但不能替代独立备份策略：凭据泄露、错误删除和仓库损坏可能传播到远端。[异地备份与恢复提案](2026-08-27-off-host-backup-and-restore.md)负责保留期、加密和恢复演练。
+A remote mirror reduces the content recovery point after host loss but does not replace an independent backup policy. Credential compromise, accidental deletion, and repository corruption can propagate to the remote. The [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) owns retention, encryption, and recovery drills.
 
-## 实现范围与依赖
+## Implementation scope and dependencies
 
-本提案依赖[工作空间与租户边界](2026-08-27-workspace-tenancy.md)以及[内容仓与文档基础](2026-08-26-content-foundation.zh.md)，必须在两者之后实现。异步复制和 `mirrored` 确认共享一个 Git remote adapter、ref 比较和错误分类，可以在同一任务内完成。
+This proposal depends on the [workspace and tenant boundary](2026-08-27-workspace-tenancy.md) and the [content repository foundation](2026-08-26-content-foundation.md) and must follow both. Asynchronous replication and `mirrored` acknowledgement share one Git remote adapter, ref comparison implementation, and error taxonomy and may be implemented in one task.
 
-第一轮包括配置绑定、启动一致性检查、候选 commit 发布、按仓复制 worker、checkpoint、状态查询和使用本地 bare remote 的故障测试。它不实现 GitHub 专用 API、外部 push 接收、自动合并、远端仓库创建或冲突裁决。
+The first implementation includes configuration binding, startup consistency checks, candidate publication, per-repository replication workers, checkpoints, status queries, and failure tests against local bare remotes. It excludes GitHub-specific APIs, external push ingestion, automatic merge, remote-repository creation, and conflict arbitration.
 
-## 考虑过的替代方案
+## Alternatives considered
 
-**始终以远端 push 作为确认点。** 这能获得统一的异地耐久语义，但让网络和远端服务进入每次写入，违背默认自包含运行。`mirrored` 保留为显式严格策略。
+**Always require a remote push before acknowledgement.** This gives uniform off-host durability but makes network and remote availability part of every write, contrary to the default self-contained topology. `mirrored` remains an explicit strict policy.
 
-**先 commit 本地 `main`，严格模式下同步 push。** 代码更直接，但 push 失败后内容已经可见，调用方却收到失败；重试可能产生重复写入。未发布 commit 把确认失败与正式历史隔开。
+**Commit to local `main` before synchronously pushing in strict mode.** This is simpler, but a push failure leaves visible content while the caller receives failure, and a retry may duplicate the write. An unpublished commit keeps acknowledgement failure out of visible local history.
 
-**每个 commit 建立独立复制队列项。** 它提供逐项状态，但 Git push 最新 ref 已经包含全部祖先。按仓合并唤醒减少持久队列和重复网络请求，checkpoint 仍能表达复制进度。
+**Persist a replication queue item for every commit.** This provides per-item state, but pushing the newest ref already carries every ancestor. Per-repository wakeup coalescing avoids redundant durable queue entries and network requests while a checkpoint still represents progress.
 
-**允许远端和本地同时接受人工写入。** 这会引入双写、拉取与合并策略，使 remote 不再是镜像。外部协作需要新的远端权威或 ingress 提案。
+**Accept human writes on both local and remote repositories.** This introduces dual writes, pull, and merge policy and makes the remote more than a mirror. External collaboration requires a separate remote-authority or ingress proposal.
 
-## 验收条件
+## Acceptance
 
-- 中英文需求文档同步描述默认本地确认、可选 `mirrored` 确认、远端镜像边界，以及 `committed`、`mirrored`、`indexed` 相互独立的结果语义。
-- `local` 模式在 remote 不可用时仍确认本地写入，并准确报告 `mirrored=false`；恢复网络后 worker 将远端推进到本地 HEAD。
-- 连续本地提交可以由一次 push 全部镜像，checkpoint 指向远端实际包含的 commit。
-- `mirrored` 模式在 push 被拒绝时不改变本地 `main`；成功时远端与本地都包含返回的 `commit_sha`。
-- 故障测试覆盖远端成功后本地推进前崩溃、远端落后、远端领先、分叉、认证失败、non-fast-forward、网络超时和进程重启。
-- divergence 从自动重试中退出并阻止后续镜像写入；任何路径都不执行 force push 或自动合并。
-- 两个 workspace 的锁、remote、checkpoint、重试与状态完全独立。
-- `./gradlew test`、使用本地 bare remote 的集成测试、`./gradlew repoCheck` 与 `git diff --check` 通过。
+- Both requirements documents describe default local acknowledgement, optional `mirrored` acknowledgement, the remote-mirror boundary, and the independent `committed`, `mirrored`, and `indexed` result semantics.
+- `local` acknowledges a write while the remote is unavailable and reports `mirrored=false`; the worker advances the remote to local HEAD after connectivity returns.
+- One push may mirror several consecutive local commits, and the checkpoint identifies a commit the remote actually contains.
+- A rejected `mirrored` push does not change local `main`; success leaves both local and remote refs containing the returned `commit_sha`.
+- Failure tests cover a crash after remote success but before the local update, remote-behind, remote-ahead, divergence, authentication failure, non-fast-forward rejection, network timeout, and process restart.
+- Divergence exits automatic retry and blocks later mirrored writes. No path force-pushes or merges automatically.
+- Locks, remotes, checkpoints, retries, and status remain independent for two workspaces.
+- `./gradlew test`, integration tests against local bare remotes, `./gradlew repoCheck`, and `git diff --check` pass.
 
-## 风险
+## Risks
 
-`mirrored` 模式把远端可用性纳入写入成功率。它是部署者主动选择的耐久策略，错误信息必须区分“未提交”“已远端保存、等待本地恢复”和“本地已确认但尚未索引”，避免调用方盲目重试。
+`mirrored` makes remote availability part of the write success rate. Errors must distinguish an uncommitted write, a candidate stored remotely and awaiting local recovery, and a locally committed write awaiting indexing so callers do not retry blindly.
 
-Git remote 通常只提供仓库级 ref 语义，不提供 Poketto 业务事务。实现必须以 ref 关系和实际远端读取为证据，不能把一次命令的模糊成功日志当成耐久确认。
+A Git remote generally provides repository-level ref semantics, not a Poketto business transaction. The implementation must prove durability through ref relationships and an actual remote read rather than treating an ambiguous successful command log as evidence.
