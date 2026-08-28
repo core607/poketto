@@ -29,6 +29,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew test` | Run fast unit, context, and module-boundary tests |
 | `./gradlew integrationTest` | Build the PostgreSQL 17 + zhparser image and run database integration tests |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
+| `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |
 | `./gradlew check` | Run the complete local and CI verification suite |
 
 ## Decision records (notes/)
@@ -45,16 +46,18 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 
 ## Rules
 
-- Agent instructions and skills are English-only. The requirements note and public README retain .zh.md counterparts; other notes may be written in either language without requiring a pair.
+- Agent instructions and skills are English-only. The requirements note and public README retain .zh.md counterparts; other notes are English by default and do not require a Chinese counterpart.
 - Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
 - Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, stop and report it.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
-- main is protected and never pushed directly; changes go through short-lived branches and PRs.
+- Treat main as protected and never push directly; changes go through short-lived branches and PRs. Restore platform enforcement before the repository becomes public.
 - No credentials in the repository, ever. `.env` is the first line of .gitignore.
 
 ## Skills (.agents/skills/)
 
 Skills own reusable workflows and specialized decision standards. Keep each entrypoint concise, but preserve every rule that changes a decision, permission, stopping condition, or required evidence. Mark infrastructure-dependent commands "to be filled" until the owning tool exists. Strengthen an existing owner before adding a new skill; add one when a distinct workflow repeatedly fails.
+
+`.agents/skills/` is the single source; Claude Code discovers project skills only below `.claude/skills/`, so that directory holds generated stubs. Never edit stubs by hand: run `./gradlew syncClaudeSkills` after changing a skill's frontmatter or invocation policy, and `repoCheck` fails when stubs drift.
 
 | Skill | Purpose |
 |---|---|
