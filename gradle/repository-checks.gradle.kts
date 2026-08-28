@@ -24,6 +24,50 @@ fun repositoryFiles(predicate: (Path) -> Boolean): List<Path> =
 
 fun Path.repositoryPath(): String = repositoryRoot.relativize(this).toString().replace('\\', '/')
 
+val agentSkillsRoot: Path = repositoryRoot.resolve(".agents/skills")
+val claudeSkillsRoot: Path = repositoryRoot.resolve(".claude/skills")
+
+fun skillFrontmatter(skillFile: Path): Map<String, String>? {
+    val normalized = Files.readString(skillFile, StandardCharsets.UTF_8).replace("\r\n", "\n")
+    val frontmatterEnd = normalized.indexOf("\n---\n", startIndex = 4)
+    if (!normalized.startsWith("---\n") || frontmatterEnd < 0) {
+        return null
+    }
+    return normalized.substring(4, frontmatterEnd)
+        .lineSequence()
+        .mapNotNull { line ->
+            val separator = line.indexOf(':')
+            if (separator <= 0) null
+            else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
+        }
+        .toMap()
+}
+
+// Claude Code discovers project skills only below .claude/skills; Codex discovers .agents/skills.
+// The stubs mirror name, description, and invocation policy so both agents auto-load one source.
+fun claudeSkillStub(skillDirectory: Path): String? {
+    val metadata = skillFrontmatter(skillDirectory.resolve("SKILL.md")) ?: return null
+    val name = metadata["name"] ?: return null
+    val description = metadata["description"] ?: return null
+    val policy = skillDirectory.resolve("agents/openai.yaml")
+    val userInvokedOnly = policy.isRegularFile() &&
+        Files.readString(policy, StandardCharsets.UTF_8).contains("allow_implicit_invocation: false")
+    return buildString {
+        appendLine("---")
+        appendLine("name: $name")
+        appendLine("description: $description")
+        if (userInvokedOnly) {
+            appendLine("disable-model-invocation: true")
+        }
+        appendLine("---")
+        appendLine()
+        appendLine(
+            "Generated from [.agents/skills/$name/SKILL.md](../../../.agents/skills/$name/SKILL.md) " +
+                "by `./gradlew syncClaudeSkills`; do not edit. Read that file and follow it exactly.",
+        )
+    }
+}
+
 tasks.register("repoCheck") {
     group = "verification"
     description = "Validates repository documents, agent rules, and skill metadata."
@@ -110,8 +154,7 @@ tasks.register("repoCheck") {
             }
         }
 
-        val skillsRoot = repositoryRoot.resolve(".agents/skills")
-        val skillDirectories = Files.list(skillsRoot).use { paths ->
+        val skillDirectories = Files.list(agentSkillsRoot).use { paths ->
             paths.filter(Path::isDirectory).sorted().toList()
         }
         val skillNames = mutableSetOf<String>()
@@ -121,21 +164,11 @@ tasks.register("repoCheck") {
                 errors += "missing SKILL.md: ${directory.repositoryPath()}"
                 return@forEach
             }
-            val normalized = Files.readString(skillFile, StandardCharsets.UTF_8)
-                .replace("\r\n", "\n")
-            val frontmatterEnd = normalized.indexOf("\n---\n", startIndex = 4)
-            if (!normalized.startsWith("---\n") || frontmatterEnd < 0) {
+            val metadata = skillFrontmatter(skillFile)
+            if (metadata == null) {
                 errors += "invalid skill frontmatter: ${skillFile.repositoryPath()}"
                 return@forEach
             }
-            val metadata = normalized.substring(4, frontmatterEnd)
-                .lineSequence()
-                .mapNotNull { line ->
-                    val separator = line.indexOf(':')
-                    if (separator <= 0) null
-                    else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
-                }
-                .toMap()
             val name = metadata["name"]
             if (name != directory.name) {
                 errors += "skill name '$name' does not match directory '${directory.name}'"
@@ -159,7 +192,29 @@ tasks.register("repoCheck") {
                 "listed=${inventoryNames.sorted()}, actual=${directoryNames.sorted()}"
         }
 
-        val translatePolicy = skillsRoot.resolve("translate-docs/agents/openai.yaml")
+        skillDirectories.forEach { directory ->
+            val expectedStub = claudeSkillStub(directory) ?: return@forEach
+            val stubFile = claudeSkillsRoot.resolve(directory.name).resolve("SKILL.md")
+            if (!stubFile.isRegularFile()) {
+                errors += "missing Claude Code skill stub (run ./gradlew syncClaudeSkills): " +
+                    stubFile.repositoryPath()
+            } else if (
+                Files.readString(stubFile, StandardCharsets.UTF_8).replace("\r\n", "\n") != expectedStub
+            ) {
+                errors += "stale Claude Code skill stub (run ./gradlew syncClaudeSkills): " +
+                    stubFile.repositoryPath()
+            }
+        }
+        if (claudeSkillsRoot.isDirectory()) {
+            Files.list(claudeSkillsRoot).use { paths -> paths.sorted().toList() }.forEach { entry ->
+                if (entry.name !in directoryNames) {
+                    errors += "Claude Code skill stub has no .agents/skills source " +
+                        "(run ./gradlew syncClaudeSkills): ${entry.repositoryPath()}"
+                }
+            }
+        }
+
+        val translatePolicy = agentSkillsRoot.resolve("translate-docs/agents/openai.yaml")
         if (!translatePolicy.isRegularFile() ||
             !Files.readString(translatePolicy, StandardCharsets.UTF_8)
                 .contains("allow_implicit_invocation: false")
@@ -193,5 +248,36 @@ tasks.register("repoCheck") {
             "Repository checks passed: ${markdownFiles.size} Markdown files, " +
                 "${skillDirectories.size} skills.",
         )
+    }
+}
+
+tasks.register("syncClaudeSkills") {
+    group = "documentation"
+    description = "Regenerates the Claude Code skill stubs in .claude/skills from .agents/skills."
+
+    doLast {
+        val skillDirectories = Files.list(agentSkillsRoot).use { paths ->
+            paths.filter(Path::isDirectory).sorted().toList()
+        }
+        Files.createDirectories(claudeSkillsRoot)
+        val sourceNames = mutableSetOf<String>()
+        skillDirectories.forEach { directory ->
+            val stub = claudeSkillStub(directory) ?: throw GradleException(
+                "cannot derive a Claude Code stub; fix the skill first: " +
+                    "${directory.repositoryPath()}/SKILL.md",
+            )
+            sourceNames += directory.name
+            val stubFile = claudeSkillsRoot.resolve(directory.name).resolve("SKILL.md")
+            Files.createDirectories(stubFile.parent)
+            Files.writeString(stubFile, stub, StandardCharsets.UTF_8)
+        }
+        Files.list(claudeSkillsRoot).use { paths -> paths.sorted().toList() }
+            .filterNot { entry -> entry.name in sourceNames }
+            .forEach { orphan ->
+                Files.walk(orphan).use { walk ->
+                    walk.sorted(java.util.Comparator.reverseOrder()).forEach(Files::delete)
+                }
+            }
+        logger.lifecycle("Synchronized ${sourceNames.size} Claude Code skill stubs.")
     }
 }

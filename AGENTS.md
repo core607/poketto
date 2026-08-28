@@ -29,6 +29,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew test` | Run fast unit, context, and module-boundary tests |
 | `./gradlew integrationTest` | Build the PostgreSQL 17 + zhparser image and run database integration tests |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
+| `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |
 | `./gradlew check` | Run the complete local and CI verification suite |
 
 ## Decision records (notes/)
@@ -55,6 +56,8 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 ## Skills (.agents/skills/)
 
 Skills own reusable workflows and specialized decision standards. Keep each entrypoint concise, but preserve every rule that changes a decision, permission, stopping condition, or required evidence. Mark infrastructure-dependent commands "to be filled" until the owning tool exists. Strengthen an existing owner before adding a new skill; add one when a distinct workflow repeatedly fails.
+
+`.agents/skills/` is the single source; Claude Code discovers project skills only below `.claude/skills/`, so that directory holds generated stubs. Never edit stubs by hand: run `./gradlew syncClaudeSkills` after changing a skill's frontmatter or invocation policy, and `repoCheck` fails when stubs drift.
 
 | Skill | Purpose |
 |---|---|
