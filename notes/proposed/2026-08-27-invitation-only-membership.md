@@ -18,7 +18,7 @@ Sharing an owner account or long-lived API key obscures attribution and prevents
 - A workspace always retains at least one active `OWNER`. Disabling a member, leaving a workspace, or transferring ownership cannot remove the last owner.
 - Human sessions, AI API keys, and system tasks are distinct principal types. Audit records preserve the acting principal and do not attribute a member's or AI's work to the owner.
 
-This proposal defines the security contract for accounts, sessions, and invitations; page styling is outside its scope. Human login uses local credentials and server-side sessions managed by Spring Security. Passwords use an upgradeable adaptive password encoder and are never stored or logged in plaintext. Browser sessions use `HttpOnly`, `Secure`, and an appropriate `SameSite` cookie policy, and every state-changing request has CSRF protection.
+This proposal defines the security contract for accounts, sessions, and invitations; page styling is outside its scope. Human login uses local credentials and server-side sessions managed by Spring Security. Passwords use an upgradeable adaptive password encoder and are never stored or logged in plaintext. Login attempts are throttled per account and per source address to slow online password guessing. Browser sessions use `HttpOnly`, `Secure`, and an appropriate `SameSite` cookie policy, and every state-changing request has CSRF protection.
 
 ### Invitation lifecycle
 

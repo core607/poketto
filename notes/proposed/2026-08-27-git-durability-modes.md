@@ -23,7 +23,7 @@ Local authority must remain writable without a network while allowing an operato
 `poketto.git.acknowledgement` accepts two values:
 
 - `local`, the default: the write succeeds when the local `main` commit succeeds. A per-repository replication worker advances the remote asynchronously.
-- `mirrored`: the write succeeds only after the remote accepts the candidate commit and local `main` advances to it. The application fails startup rather than falling back to `local` when the remote, credentials, or common starting ref are unavailable.
+- `mirrored`: the write succeeds only after the remote accepts the candidate commit and local `main` advances to it. The application fails startup rather than falling back to `local` when the remote, credentials, or common starting ref are unavailable. An unborn local `main` with no remote `main` ref is a valid starting state: the first write publishes the root commit. A remote `main` that already has commits while local `main` is unborn blocks startup for operator intervention.
 
 The setting is an instance-level default. A future per-workspace override requires a separate configuration contract. Changing the policy at runtime requires restart and the startup consistency check.
 
@@ -39,7 +39,7 @@ The setting is an instance-level default. A future per-workspace override requir
 
 ### Relationship to backup
 
-A remote mirror reduces the content recovery point after host loss but does not replace an independent backup policy. Credential compromise, accidental deletion, and repository corruption can propagate to the remote. The [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) owns retention, encryption, and recovery drills.
+A remote mirror reduces the content recovery point after host loss but does not replace an independent backup policy. Credential compromise, accidental deletion, and repository corruption can propagate to the remote. The [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) owns retention, confidentiality boundaries, and recovery drills.
 
 ## Implementation scope and dependencies
 
@@ -63,7 +63,7 @@ The first implementation includes configuration binding, startup consistency che
 - `local` acknowledges a write while the remote is unavailable and reports `mirrored=false`; the worker advances the remote to local HEAD after connectivity returns.
 - One push may mirror several consecutive local commits, and the checkpoint identifies a commit the remote actually contains.
 - A rejected `mirrored` push does not change local `main`; success leaves both local and remote refs containing the returned `commit_sha`.
-- Failure tests cover a crash after remote success but before the local update, remote-behind, remote-ahead, divergence, authentication failure, non-fast-forward rejection, network timeout, and process restart.
+- Failure tests cover a crash after remote success but before the local update, an unborn `main` start with and without an existing remote ref, remote-behind, remote-ahead, divergence, authentication failure, non-fast-forward rejection, network timeout, and process restart.
 - Divergence exits automatic retry and blocks later mirrored writes. No path force-pushes or merges automatically.
 - Locks, remotes, checkpoints, retries, and status remain independent for two workspaces.
 - `./gradlew test`, integration tests against local bare remotes, `./gradlew repoCheck`, and `git diff --check` pass.
