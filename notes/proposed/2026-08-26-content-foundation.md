@@ -52,7 +52,7 @@ Markdown body.
 - `title` is required, trimmed, non-empty, and contains no control characters.
 - `visibility` is exactly `private` or `public`.
 - `tags` is an explicit YAML sequence. Values are trimmed, non-empty strings; duplicates after Unicode normalization and case folding are invalid while original display spelling is preserved.
-- `created_at` and `updated_at` are required RFC 3339 UTC instants. Machine writes preserve `created_at` and advance `updated_at` whenever the serialized document changes.
+- `created_at` and `updated_at` are required RFC 3339 UTC instants. Machine writes preserve `created_at` and advance `updated_at` whenever the serialized document changes. This layer's canonical serialization owns that transition rule; write entry points added later reuse it rather than restating it.
 - `published_at` is optional. The first publish operation sets it; later edits or a visibility change back to private do not erase it.
 - Unknown fields, duplicate YAML keys, aliases, custom tags, multiple YAML documents, malformed delimiters, invalid UTF-8, and a byte-order mark are invalid for machine writes.
 - The body may be empty. This layer preserves it as text and does not render Markdown, sanitize HTML, fetch links, or interpret instructions.
