@@ -5,7 +5,7 @@ Status: Proposed
 
 ## Problem
 
-The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, image blobs, and non-derived PostgreSQL tables but do not define encryption, retention, recovery points, failure visibility, or restore drills. Running `git push`, `rclone sync`, or `pg_dump` does not prove that data survives host loss and may propagate a deletion into the supposed backup.
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, image blobs, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running `git push`, `rclone sync`, or `pg_dump` does not prove that data survives host loss and may propagate a deletion into the supposed backup.
 
 The default self-contained topology keeps authoritative state on one machine, so production automatic deployment requires a verified off-host recovery path. Backup provides disaster recovery and does not participate in normal request consistency.
 
@@ -14,7 +14,7 @@ The default self-contained topology keeps authoritative state on one machine, so
 ### Common rules
 
 - Production configuration names at least one off-host target for content repositories, blobs, and non-derived PostgreSQL data. A target may be a self-hosted service or operator-selected third-party object storage. Normal application operation does not require continuous target availability.
-- Private content is encrypted before it leaves the host with a key controlled by the operator. Remote credentials, encryption keys, and recovery material never enter the code repository, content repositories, backup bundles, logs, or metrics.
+- Backups are not encrypted in v1. Confidentiality relies on the operator choosing private, access-controlled targets; a public or shared-tenant target is a configuration error. Remote credentials and recovery material never enter the code repository, content repositories, backup bundles, logs, or metrics.
 - Each medium records the last successful time, covered workspaces, source checkpoint, target identifier, byte count, and sanitized failure category. A new failure cannot erase the latest successful recovery point.
 - Backups retain versions for a defined period. The default flow does not immediately propagate a source deletion into every off-host copy; cleanup is a separate delayed and auditable retention task.
 - Documentation starts a restore from an empty data directory. Automated checks or scheduled drills for each medium prove that artifacts are readable, checksums match, and the application can reach the declared checkpoint.
@@ -40,7 +40,7 @@ The default self-contained topology keeps authoritative state on one machine, so
 
 Content backup depends on Git replication, blob backup depends on local blob storage, and database backup depends on the first non-derived tables and schema-management mechanism. These media have no common implementation prerequisite and therefore become separate tasks behind their own dependencies. Production automatic deployment may check a recent verified backup only after all three exist and pass one combined restore drill.
 
-The first implementation provides backup commands, encryption configuration, retention rules, machine-readable state, restore commands, and restore tests in disposable environments for the available media. It excludes multi-region hot standby, automatic failover, continuous database archiving, and a zero recovery-point objective.
+The first implementation provides backup commands, retention rules, machine-readable state, restore commands, and restore tests in disposable environments for the available media. It excludes multi-region hot standby, automatic failover, continuous database archiving, and a zero recovery-point objective.
 
 ## Alternatives considered
 
@@ -50,11 +50,13 @@ The first implementation provides backup commands, encryption configuration, ret
 
 **Restore a whole PostgreSQL dump and start immediately.** This can restore stale projections and checkpoints. Restoring authoritative rows and rebuilding projections re-establishes consistency with content.
 
-**Rely only on a manual restore guide.** Documentation cannot prove that current commands still read current formats. Disposable restore tests expose drift in keys, schemas, manifests, and paths.
+**Rely only on a manual restore guide.** Documentation cannot prove that current commands still read current formats. Disposable restore tests expose drift in schemas, manifests, and paths.
+
+**Encrypt backups before they leave the host.** Client-side encryption would protect content from the storage provider, but key custody becomes an independent recovery prerequisite — a lost key silently turns every recovery point unreadable — and the content git mirror would still carry plaintext, leaving mixed guarantees. v1 keeps backups readable with the operator's target credentials alone; a later proposal may add encryption together with a key-custody and restore-drill story.
 
 ## Acceptance
 
-- All three authoritative media can retain an encrypted, versioned, checksummed recovery point off-host. A missing target or key fails explicitly and cannot report success.
+- All three authoritative media can retain a versioned, checksummed recovery point off-host. A missing target fails explicitly and cannot report success.
 - Consecutive failures do not delete the latest successful recovery point. Status exposes the last success and current lag without revealing paths, content, or credentials.
 - A restore into an empty data directory produces content commits, blob hashes, and non-derived database constraints matching the backup manifest.
 - Restore discards stale projections and rebuilds them from each workspace content `main`; no checkpoint advances beyond the commit actually indexed.
@@ -64,6 +66,6 @@ The first implementation provides backup commands, encryption configuration, ret
 
 ## Risks
 
-Encrypted backup makes key custody an independent recovery prerequisite. Keeping the key and data on the same host protects against a storage provider reading the backup but not against total host loss. Operations documentation must require the recovery key to live in another controlled location.
+Unencrypted backups place private content inside each target's trust domain. A compromised target account discloses content as well as history, so target credentials are secrets and target selection is a privacy decision; operations documentation must say both.
 
 Backup freshness does not prove data correctness. Only a restore drill validates formats, keys, and dependencies together. An automatic-deployment gate must inspect the latest verified backup rather than only the exit code of the latest upload command.
