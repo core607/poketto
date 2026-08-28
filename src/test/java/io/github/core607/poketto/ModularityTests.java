@@ -19,6 +19,7 @@ class ModularityTests {
                         "projection",
                         "qa",
                         "search",
+                        "workspace",
                         "web");
     }
 }

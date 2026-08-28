@@ -36,7 +36,7 @@ This proposal defines the security contract for accounts, sessions, and invitati
 
 ## Implementation scope and dependencies
 
-This proposal depends on the [workspace and tenant boundary](2026-08-27-workspace-tenancy.md). It may proceed in parallel with the content repository foundation once that boundary exists, but human end-to-end acceptance also requires administration pages for initialization, login, invitations, and member management.
+The implemented [workspace and tenant boundary](../implemented/2026-08-27-workspace-tenancy.md) is this proposal's foundation. Membership may proceed in parallel with the content repository foundation, but human end-to-end acceptance also requires administration pages for initialization, login, invitations, and member management.
 
 The first implementation includes accounts, memberships, invitations, server-side sessions, owner initialization, password login, logout, invitation acceptance, membership suspension, authorization checks, audit attribution, and database integration tests. It excludes email delivery, OAuth, social login, passkeys, open registration, self-service workspace creation, and an instance-level operations console.
 

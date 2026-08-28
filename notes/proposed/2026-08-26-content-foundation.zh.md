@@ -7,7 +7,7 @@ Status: Proposed
 
 ## 问题
 
-Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检索、渲染或 MCP 工具。[需求文档](../implemented/2026-08-25-requirements-and-architecture.zh.md)已经确定：独立的 git 仓库是真理之源，文档身份是全仓唯一的 UUID，revision 是内容 hash。[工作空间边界提案](2026-08-27-workspace-tenancy.md)进一步规定每个工作空间拥有一个仓库。这些决定尚未规定仓库初始化契约、受管路径布局、frontmatter schema、机器写入的规范形式和 revision 编码。
+Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检索、渲染或 MCP 工具。[需求文档](../implemented/2026-08-25-requirements-and-architecture.zh.md)已经确定：独立的 git 仓库是真理之源，文档身份是全仓唯一的 UUID，revision 是内容 hash。已实现的[工作空间边界](../implemented/2026-08-27-workspace-tenancy.md)进一步规定每个工作空间拥有一个仓库。这些决定尚未规定仓库初始化契约、受管路径布局、frontmatter schema、机器写入的规范形式和 revision 编码。
 
 如果这些细节分别在后续功能中自行成形，同一份文档就会在 content、projection、web 和 MCP 模块中得到互不兼容的表示。
 
@@ -68,7 +68,7 @@ Markdown 正文。
 
 ### 第一轮实现范围
 
-[工作空间边界](2026-08-27-workspace-tenancy.md)是本提案的串行前置。它实现后，本轮加入配置绑定、按工作空间的仓库初始化与校验、文档解析与规范序列化、值类型、git tree 扫描和针对性测试。不包含 create、update、delete、publish、投影、HTTP 或 MCP 入口；这些操作将在后续的短命变更中建立在此边界之上。
+在[工作空间边界](../implemented/2026-08-27-workspace-tenancy.md)已经落地的基础上，本轮加入配置绑定、按工作空间的仓库初始化与校验、文档解析与规范序列化、值类型、git tree 扫描和针对性测试。不包含 create、update、delete、publish、投影、HTTP 或 MCP 入口；这些操作将在后续的短命变更中建立在此边界之上。
 
 ## 备选方案
 

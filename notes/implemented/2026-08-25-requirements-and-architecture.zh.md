@@ -10,21 +10,22 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 ## 设计原则
 
 - 开源：代码与项目文档采用 Apache-2.0；美术素材与站点发布的创作内容采用 CC BY-NC-SA 4.0。
-- 单实例单租户，不开放注册。使用者是站点所有者、其信任的成员与这些人的 AI，凭发放的 API Key 访问。
+- 单实例，不开放注册。使用者是工作空间所有者、其信任的成员与这些人的 AI，通过已发放的身份或 API Key 在获授权的工作空间内行动。
 - 面向低配置单机设计（2 核 4G 级别可运行全套服务），组件选择以省资源为先。
-- 使用方式是 clone 自部署。代码仓与内容仓分离：内容仓由服务首次启动时自动 git init，remote 备份可选。
+- 使用方式是 clone 自部署。代码仓与各工作空间的内容仓分离：服务在工作空间建成时自动 git init 对应内容仓，remote 备份可选。
 
 ## 核心架构决策
 
-1. 文件为真理之源。内容是 git 仓库中的 Markdown；PostgreSQL 只做派生投影（search_documents 表），可随时全量重建。投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
-2. 写入模型：main 分支即真理。机器入口（MCP、管理端）强校验 frontmatter、串行写入、由服务代为 commit，commit 记录调用者身份；人工 git push 由 git 原生 non-fast-forward 检查把关，投影对其内容做 lint 标记而非拒收。git commit 成功是写入的确认点；索引落后时如实返回 committed 与 indexed 两个状态，防止调用方重试重复建档。
+1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库；PostgreSQL 只做内容的派生投影（search_documents 表），可随时全量重建。每个工作空间的投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
+2. 写入模型：每个工作空间内容仓的 main 分支即真理。机器入口（MCP、管理端）强校验 frontmatter、按仓库串行写入、由服务代为 commit，commit 记录调用者身份；人工 git push 由 git 原生 non-fast-forward 检查把关，投影对其内容做 lint 标记而非拒收。git commit 成功是写入的确认点；索引落后时如实返回 committed 与 indexed 两个状态，防止调用方重试重复建档。
 3. 检索以 agentic 方式为默认。服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
-4. 信任分层。所有者可直接操作文件（属 break-glass，改完需显式重索引）；成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
+4. 信任分层。工作空间所有者可直接操作该工作空间的文件（属 break-glass，改完需显式重索引）；成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
+5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间，不提供自助创建更多工作空间的入口。
 
 ## MCP 工具
 
 search、get_doc、list_tags、list_recent、create_doc、update_doc、delete_doc、clip_url、publish、history。
-文档身份是 frontmatter 中的 UUID，创建即分配，改名不变，全仓唯一；revision 是文档内容的 hash（对外为不透明 token），commit sha 只用于审计。update 与 delete 携带 expected_revision，不符时返回冲突而非覆盖。publish 把文档可见性改为 public 并提交；公开是对互联网的不可逆动作，管理端须作相应提示。错误信息面向 AI 书写，包含可执行的纠正提示。
+文档身份是 frontmatter 中的 UUID，创建即分配，改名不变，在所属工作空间的内容仓内唯一；其他工作空间可独立使用同一 UUID。revision 是文档内容的 hash（对外为不透明 token），commit sha 只用于审计。update 与 delete 携带 expected_revision，不符时返回冲突而非覆盖。publish 把文档可见性改为 public 并提交；公开是对互联网的不可逆动作，管理端须作相应提示。错误信息面向 AI 书写，包含可执行的纠正提示。
 
 ## 访客问答护栏
 
@@ -34,18 +35,18 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 备份
 
-文档文本与历史靠内容仓 git remote；图片 blob 与数据库非派生表（key、审计、预算）各走 off-host 定时备份；投影表不备份，可重建。
+每个工作空间的文档文本与历史靠所属内容仓的 git remote；图片 blob 与数据库非派生表（工作空间目录、key、审计、预算）各走 off-host 定时备份；投影表不备份，可重建。
 
 ## 图片
 
-以 SHA-256 内容寻址存于数据目录，不进 git，文档引用 hash 而非路径；v1 不做物理删除。检索先用文件名与旁注文本入索引，pHash 做近重复检测；视觉模型描述与多模态 embedding 在后续阶段评估。
+以 SHA-256 内容寻址存于数据目录中的工作空间命名空间，不进 git，文档引用 hash 而非路径；v1 不做物理删除。检索先用文件名与旁注文本入索引，pHash 做近重复检测；视觉模型描述与多模态 embedding 在后续阶段评估。
 
 ## 技术栈
 
-JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：content / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、JTE + htmx + Tailwind。
+JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：workspace / content / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、JTE + htmx + Tailwind。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。另提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随所用 SDK 的已验证版本固定；v1 用静态 API Key 是有意识的简化，不宣称实现 MCP 标准 OAuth 流程；Streamable HTTP 校验 Origin 白名单。
 
 ## 不做清单
 
-多租户与注册、OAuth、评论点赞等社交功能、微服务与 K8s 与消息队列、知识图谱、重 RAG 管道（切块 + 重排 + 多路召回）、富文本编辑器、图床 CDN、移动端、界面多语言、访客会话历史、Redis（单实例下预算计数归 PostgreSQL、限流归 JVM、缓存归 Caffeine）。
+开放注册与自助创建工作空间、OAuth、评论点赞等社交功能、微服务与 K8s 与消息队列、知识图谱、重 RAG 管道（切块 + 重排 + 多路召回）、富文本编辑器、图床 CDN、移动端、界面多语言、访客会话历史、Redis（单实例下预算计数归 PostgreSQL、限流归 JVM、缓存归 Caffeine）。

@@ -7,7 +7,7 @@ Status: Proposed
 
 ## Problem
 
-Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) establish that a separate git repository is the source of truth, document identity is a repository-wide UUID, and revisions are content hashes. The [workspace boundary proposal](2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. These decisions do not yet define the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, or revision encoding.
+Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) establish that a separate git repository is the source of truth, document identity is a repository-wide UUID, and revisions are content hashes. The implemented [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. These decisions do not yet define the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, or revision encoding.
 
 If those details emerge independently inside later features, the same document will acquire incompatible representations across the content, projection, web, and MCP modules.
 
@@ -68,7 +68,7 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 ### Scope of the first implementation
 
-The [workspace boundary](2026-08-27-workspace-tenancy.md) is a serial prerequisite. After it is implemented, this first implementation adds configuration binding, per-workspace repository bootstrap and validation, document parsing and canonical serialization, value types, tree scanning, and focused tests. It does not add create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations will build on this boundary in later short-lived changes.
+With the [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) in place, this first implementation adds configuration binding, per-workspace repository bootstrap and validation, document parsing and canonical serialization, value types, tree scanning, and focused tests. It does not add create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations will build on this boundary in later short-lived changes.
 
 ## Alternatives
 

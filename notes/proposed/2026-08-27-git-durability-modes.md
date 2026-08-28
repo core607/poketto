@@ -43,7 +43,7 @@ A remote mirror reduces the content recovery point after host loss but does not 
 
 ## Implementation scope and dependencies
 
-This proposal depends on the [workspace and tenant boundary](2026-08-27-workspace-tenancy.md) and the [content repository foundation](2026-08-26-content-foundation.md) and must follow both. Asynchronous replication and `mirrored` acknowledgement share one Git remote adapter, ref comparison implementation, and error taxonomy and may be implemented in one task.
+This proposal depends on the implemented [workspace and tenant boundary](../implemented/2026-08-27-workspace-tenancy.md) and the [content repository foundation](2026-08-26-content-foundation.md) and must follow both. Asynchronous replication and `mirrored` acknowledgement share one Git remote adapter, ref comparison implementation, and error taxonomy and may be implemented in one task.
 
 The first implementation includes configuration binding, startup consistency checks, candidate publication, per-repository replication workers, checkpoints, status queries, and failure tests against local bare remotes. It excludes GitHub-specific APIs, external push ingestion, automatic merge, remote-repository creation, and conflict arbitration.
 

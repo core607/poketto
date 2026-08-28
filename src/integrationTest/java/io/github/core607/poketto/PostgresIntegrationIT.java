@@ -1,7 +1,10 @@
 package io.github.core607.poketto;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
+import io.github.core607.poketto.workspace.Workspace;
+import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +30,9 @@ class PostgresIntegrationIT {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private WorkspaceCatalog workspaces;
+
     @Test
     void providesPostgres17WithWorkingZhparser() {
         Integer majorVersion = jdbc.queryForObject(
@@ -43,5 +49,19 @@ class PostgresIntegrationIT {
                 "select count(*) from ts_parse('zhparser', '知识库支持中文搜索')",
                 Integer.class);
         assertThat(tokenCount).isPositive();
+    }
+
+    @Test
+    void initializesAndExposesOneDefaultWorkspace() {
+        Workspace defaultWorkspace = workspaces.defaultWorkspace();
+
+        assertThat(workspaces.findById(defaultWorkspace.id())).contains(defaultWorkspace);
+        assertThatNullPointerException()
+                .isThrownBy(() -> workspaces.findById(null))
+                .withMessage("workspaceId");
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from workspaces",
+                        Integer.class))
+                .isOne();
     }
 }
