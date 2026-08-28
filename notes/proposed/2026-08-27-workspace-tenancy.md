@@ -23,7 +23,7 @@ Once implemented, this proposal replaces the requirements' single-tenant restric
 ### Data isolation
 
 - Each workspace owns a separate content repository at `<data-dir>/workspaces/<workspace-id>/content`. One repository serves one workspace, and the single-writer constraint applies independently to each repository.
-- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it. Projection checkpoints are identified by at least `(workspace_id, last_indexed_commit)`.
+- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it. A projection checkpoint is keyed by its workspace, stores that workspace's last indexed commit, and is never shared across workspaces.
 - Blobs use a workspace namespace. Even when two workspaces upload identical bytes, external paths, queries, and errors must not reveal that another workspace has the same hash. Physical deduplication is outside this proposal.
 - API keys, member permissions, visitor-Q&A budgets, audit records, cache keys, and background tasks belong to a workspace. Cross-workspace administration uses a distinct instance-level authority; a workspace owner is not implicitly an instance administrator.
 - Deleting a workspace destroys its content repository, blob namespace, authoritative database rows, and derived projection. No deletion operation may be implemented until a separate proposal defines its waiting period, backup boundary, and recovery behavior.
@@ -61,13 +61,18 @@ This implementation does not include an additional-workspace UI, open registrati
 
 ## Acceptance
 
+For the first implementation:
+
 - Both requirements documents describe multi-workspace isolation, the default single-workspace topology, and disabled self-service workspace creation. Multi-tenancy is removed from the v1 non-goals while open registration remains explicitly excluded.
 - The default configuration creates and exposes one workspace and provides no open-registration or self-service additional-workspace entry point.
-- Two workspaces may contain the same document UUID, relative path, and blob hash without sharing reads, search results, cache entries, errors, or audit data.
-- Content path resolution accepts only a canonical `WorkspaceId`, keeps the result below `<data-dir>/workspaces/`, and rejects traversal and alias collisions.
+- Content path resolution accepts only a canonical `WorkspaceId`, keeps the result below `<data-dir>/workspaces/`, and rejects traversal and alias collisions. Two workspaces with identical relative paths resolve to disjoint directories.
 - Module-boundary tests prove that every workspace-owned operation requires `WorkspaceId`; no hidden production path relies on a default tenant.
-- Background-task and projection-checkpoint tests prove that two workspaces advance, fail, and rebuild independently.
 - Spring Modulith verification, `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` pass.
+
+Standing isolation invariants — the feature that introduces each kind of state proves them for that state in its own acceptance:
+
+- Two workspaces may contain the same document UUID, relative path, and blob hash without sharing reads, search results, cache entries, errors, or audit data.
+- Background-task and projection-checkpoint tests prove that two workspaces advance, fail, and rebuild independently.
 
 ## Risks
 
