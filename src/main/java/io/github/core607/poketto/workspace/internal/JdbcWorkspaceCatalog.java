@@ -41,7 +41,7 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
 
     @Override
     public Optional<Workspace> findById(WorkspaceId workspaceId) {
-        Objects.requireNonNull(workspaceId, "workspaceId");
+        Objects.requireNonNull(workspaceId, "workspace id must not be null");
         List<Workspace> matches = jdbc.query(
                 "select " + SELECT_COLUMNS + " from workspaces where workspace_id = ?",
                 WORKSPACE_ROW,

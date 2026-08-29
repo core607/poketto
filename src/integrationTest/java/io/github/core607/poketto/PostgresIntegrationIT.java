@@ -7,6 +7,8 @@ import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,6 +35,9 @@ class PostgresIntegrationIT {
     @Autowired
     private WorkspaceCatalog workspaces;
 
+    @Autowired
+    private ApplicationRunner defaultWorkspaceInitializer;
+
     @Test
     void providesPostgres17WithWorkingZhparser() {
         Integer majorVersion = jdbc.queryForObject(
@@ -58,7 +63,21 @@ class PostgresIntegrationIT {
         assertThat(workspaces.findById(defaultWorkspace.id())).contains(defaultWorkspace);
         assertThatNullPointerException()
                 .isThrownBy(() -> workspaces.findById(null))
-                .withMessage("workspaceId");
+                .withMessage("workspace id must not be null");
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from workspaces",
+                        Integer.class))
+                .isOne();
+    }
+
+    @Test
+    void reusesTheStoredDefaultWorkspaceWhenInitializationRunsAgain() throws Exception {
+        Workspace before = workspaces.defaultWorkspace();
+
+        // Rerunning the initializer bean stands in for a later application start.
+        defaultWorkspaceInitializer.run(new DefaultApplicationArguments());
+
+        assertThat(workspaces.defaultWorkspace()).isEqualTo(before);
         assertThat(jdbc.queryForObject(
                         "select count(*) from workspaces",
                         Integer.class))
