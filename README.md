@@ -6,7 +6,7 @@ A self-hosted personal knowledge base whose public face is a blog. The same Mark
 
 ## Status
 
-Development. Requirements and architecture are settled ([requirements](notes/implemented/2026-08-25-requirements-and-architecture.md)), and the executable baseline is in place. Product features have not been implemented yet.
+Development. Requirements and architecture are settled ([requirements](notes/implemented/2026-08-25-requirements-and-architecture.md)). The executable baseline and workspace isolation boundary are implemented; content capabilities are still proposed.
 
 ## Who this is for
 
@@ -29,6 +29,8 @@ notes/               Decision records: proposed / implemented / rejected / archi
 ## Development
 
 Use Java 26 and the checked-in Gradle Wrapper. Docker is required for database integration tests and the complete check; the faster unit and repository checks do not require it.
+
+Application startup requires a PostgreSQL data source. Set `SPRING_DATASOURCE_URL` and any credentials required by the database before `bootRun`. Flyway creates the workspace catalog and the application creates one durable default workspace on first start.
 
 ```sh
 ./gradlew test repoCheck

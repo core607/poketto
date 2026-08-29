@@ -6,7 +6,7 @@
 
 ## 状态
 
-开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)），可执行的开发基线已经建立；产品功能尚未实现。
+开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)）。可执行开发基线与工作空间隔离边界已经实现；内容能力仍处于提案阶段。
 
 ## 适合谁
 
@@ -29,6 +29,8 @@ notes/               决策记录：proposed / implemented / rejected / archived
 ## 开发
 
 使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。
+
+应用启动需要 PostgreSQL 数据源。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`，以及数据库所需的认证信息。Flyway 会创建工作空间目录表，应用在首次启动时创建一个持久的默认工作空间。
 
 ```sh
 ./gradlew test repoCheck
