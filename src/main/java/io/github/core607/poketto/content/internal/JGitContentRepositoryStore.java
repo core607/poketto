@@ -26,6 +26,7 @@ import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.RepositoryState;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
@@ -211,7 +212,15 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                                 + currentBranch,
                         null);
             }
-            repository.getRepositoryState();
+            RepositoryState state = repository.getRepositoryState();
+            if (state != RepositoryState.SAFE) {
+                throw failure(
+                        workspaceId,
+                        contentDirectory,
+                        "content repository must not have a git operation in progress; state is "
+                                + state,
+                        null);
+            }
         } catch (IOException | RuntimeException exception) {
             if (exception instanceof ContentRepositoryException repositoryException) {
                 throw repositoryException;

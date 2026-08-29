@@ -114,6 +114,20 @@ class CanonicalDocumentCodecTests {
     }
 
     @Test
+    void escapesUnicodeLineAndParagraphSeparatorsInQuotedScalars() {
+        DocumentContent document = document("Line\u2028One", List.of("Tag\u2029Two"), "Body");
+
+        byte[] serialized = codec.serialize(document);
+
+        assertThat(new String(serialized, StandardCharsets.UTF_8))
+                .contains("\\u2028")
+                .contains("\\u2029")
+                .doesNotContain("\u2028")
+                .doesNotContain("\u2029");
+        assertThat(codec.parse(serialized)).isEqualTo(document);
+    }
+
+    @Test
     void updatePreservesIdentityAndPublicationWhileAdvancingOnlyRealChanges() {
         DocumentContent current = document("Title", List.of("one"), "Body");
         DocumentContent unchangedWithInventedTimestamp = new DocumentContent(

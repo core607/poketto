@@ -381,7 +381,11 @@ final class CanonicalDocumentCodec {
                 case '\r' -> quoted.append("\\r");
                 case '\t' -> quoted.append("\\t");
                 default -> {
-                    if (Character.isISOControl(codePoint)) {
+                    // YAML 1.1 readers treat U+2028 and U+2029 as line breaks and fold them
+                    // inside quoted scalars, so they must never appear raw.
+                    if (Character.isISOControl(codePoint)
+                            || codePoint == '\u2028'
+                            || codePoint == '\u2029') {
                         quoted.append(String.format("\\u%04x", codePoint));
                     } else {
                         quoted.appendCodePoint(codePoint);

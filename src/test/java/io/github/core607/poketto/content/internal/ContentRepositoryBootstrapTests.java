@@ -124,6 +124,23 @@ class ContentRepositoryBootstrapTests {
                 .hasMessageContaining("repository metadata cannot be read");
     }
 
+    @Test
+    void rejectsARepositoryWithAGitOperationInProgress() throws Exception {
+        WorkspacePaths paths = paths();
+        WorkspaceId workspaceId = WorkspaceId.random();
+        Path content = paths.contentDirectory(workspaceId);
+        Files.createDirectories(content);
+        try (Git ignored = Git.init().setInitialBranch("main").setDirectory(content.toFile()).call()) {
+            // The merge marker puts the recognized repository into an in-progress state.
+        }
+        Files.writeString(
+                content.resolve(".git/MERGE_HEAD"),
+                "0123456789012345678901234567890123456789\n");
+
+        assertThatThrownBy(() -> store(paths).ensureReady(workspaceId))
+                .hasMessageContaining("git operation in progress");
+    }
+
     private WorkspacePaths paths() {
         return new WorkspacePaths(dataDirectory.toAbsolutePath());
     }

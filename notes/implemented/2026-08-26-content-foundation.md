@@ -28,7 +28,7 @@ Repository validation and failure messages identify both the workspace and resol
 
 - Manage Markdown documents only below `documents/` in the content repository. Root files may describe or configure the repository without becoming user documents.
 - Treat a path as location, not identity. A document may move anywhere below `documents/` without changing its UUID.
-- Accept UTF-8 `.md` files at any depth. Reject absolute paths, traversal, non-Markdown extensions, and path collisions after Unicode NFC normalization and case folding so the same repository behaves consistently on Windows and Linux.
+- Accept UTF-8 `.md` files at any depth. Reject absolute paths, traversal, non-Markdown extensions, names Windows cannot store (reserved device names, `<>:"|?*` and control characters, segments ending in a dot or space, an empty name before `.md`), and path collisions after Unicode NFC normalization and case folding so the same repository behaves consistently on Windows and Linux.
 
 ### Frontmatter and body
 
@@ -103,3 +103,5 @@ Exact-byte revisions make manual line-ending or formatting changes visible as co
 Repository-wide scanning is linear in document count. It is the simplest correct foundation; later work may add an in-memory catalog or derived index without changing git's authority.
 
 Per-workspace repositories increase the number of Git handles and scans. Repository resources must be opened for the scoped operation and closed deterministically; the first implementation does not keep an unbounded cache of open repositories.
+
+`scan` fails the whole repository when any managed file is invalid, so one malformed break-glass commit blocks reading every committed document. The architecture requires projection to lint rather than reject human commits, so projection needs per-document error reporting or its own tree read; that contract belongs to the projection proposal and may reshape this scan interface.
