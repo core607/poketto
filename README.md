@@ -6,7 +6,7 @@ A self-hosted personal knowledge base whose public face is a blog. The same Mark
 
 ## Status
 
-Development. Requirements and architecture are settled ([requirements](notes/implemented/2026-08-25-requirements-and-architecture.md)). The executable baseline and workspace isolation boundary are implemented; content capabilities are still proposed.
+Development. Requirements and architecture are settled ([requirements](notes/implemented/2026-08-25-requirements-and-architecture.md)). The executable baseline, workspace isolation, and content repository and document foundation are implemented. Document writes, projection, search, rendering, and MCP entry points remain proposed.
 
 ## Who this is for
 
@@ -30,15 +30,15 @@ notes/               Decision records: proposed / implemented / rejected / archi
 
 Use Java 26 and the checked-in Gradle Wrapper. Docker is required for database integration tests and the complete check; the faster unit and repository checks do not require it.
 
-Application startup requires a PostgreSQL data source. Set `SPRING_DATASOURCE_URL` and any credentials required by the database before `bootRun`. Flyway creates the workspace catalog and the application creates one durable default workspace on first start.
+Application startup requires a PostgreSQL data source and an absolute `POKETTO_DATA_DIR`. Set `SPRING_DATASOURCE_URL`, any database credentials, and the data directory before `bootRun`. Flyway creates the workspace catalog; the application creates one durable default workspace and an unborn `main` content repository below `<data-dir>/workspaces/<workspace-id>/content` on first start.
 
 ```sh
 ./gradlew test repoCheck
 ./gradlew check
-./gradlew bootRun
+POKETTO_DATA_DIR=/srv/poketto ./gradlew bootRun
 ```
 
-On Windows, use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
+On Windows, set `$env:POKETTO_DATA_DIR` to an absolute path and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
 
 ## License
 

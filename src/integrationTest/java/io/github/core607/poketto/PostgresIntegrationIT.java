@@ -5,13 +5,20 @@ import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspacePaths;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -20,6 +27,14 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest
 class PostgresIntegrationIT {
+
+    @TempDir
+    static Path dataDirectory;
+
+    @DynamicPropertySource
+    static void contentProperties(DynamicPropertyRegistry registry) {
+        registry.add("poketto.data-dir", () -> dataDirectory.toAbsolutePath().toString());
+    }
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName
             .parse(System.getProperty("poketto.postgres.image"))
@@ -36,6 +51,10 @@ class PostgresIntegrationIT {
     private WorkspaceCatalog workspaces;
 
     @Autowired
+    private WorkspacePaths workspacePaths;
+
+    @Autowired
+    @Qualifier("defaultWorkspaceInitializer")
     private ApplicationRunner defaultWorkspaceInitializer;
 
     @Test
@@ -68,6 +87,9 @@ class PostgresIntegrationIT {
                         "select count(*) from workspaces",
                         Integer.class))
                 .isOne();
+        assertThat(Files.isDirectory(
+                        workspacePaths.contentDirectory(defaultWorkspace.id()).resolve(".git")))
+                .isTrue();
     }
 
     @Test
