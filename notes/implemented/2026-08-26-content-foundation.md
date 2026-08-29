@@ -1,17 +1,17 @@
 # Content Repository and Document Foundation
 
 Date: 2026-08-26
-Status: Proposed
+Status: Implemented
 
 [Chinese](2026-08-26-content-foundation.zh.md)
 
 ## Problem
 
-Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) establish that a separate git repository is the source of truth, document identity is a repository-wide UUID, and revisions are content hashes. The implemented [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. These decisions do not yet define the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, or revision encoding.
+Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. The [requirements](2026-08-25-requirements-and-architecture.md) establish that a separate git repository is the source of truth, document identity is a repository-wide UUID, and revisions are content hashes. The implemented [workspace boundary](2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. This decision defines the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, and revision encoding.
 
 If those details emerge independently inside later features, the same document will acquire incompatible representations across the content, projection, web, and MCP modules.
 
-## Proposal
+## Decision
 
 ### Data directory and repository bootstrap
 
@@ -22,13 +22,13 @@ If those details emerge independently inside later features, the same document w
 - Refuse to initialize a non-empty directory that is not already a git repository. The error must identify the path and tell the operator to choose an empty directory or initialize and commit the existing content explicitly.
 - Fail startup on a bare repository, a worktree whose current branch is not `main`, or a repository whose metadata cannot be read. Repository repair and branch switching remain operator actions.
 
-Repository validation and failure messages identify both the workspace and resolved path without disclosing another workspace's directory. Tests provide their own temporary absolute data directories. Implementing this proposal also updates the local run documentation so `bootRun` supplies or explains the required setting.
+Repository validation and failure messages identify both the workspace and resolved path without disclosing another workspace's directory. Tests provide their own temporary absolute data directories. The local run documentation explains the required setting.
 
 ### Managed document layout
 
 - Manage Markdown documents only below `documents/` in the content repository. Root files may describe or configure the repository without becoming user documents.
 - Treat a path as location, not identity. A document may move anywhere below `documents/` without changing its UUID.
-- Accept UTF-8 `.md` files at any depth. Reject absolute paths, traversal, non-Markdown extensions, and path collisions after Unicode NFC normalization and case folding so the same repository behaves consistently on Windows and Linux.
+- Accept UTF-8 `.md` files at any depth. Reject absolute paths, traversal, non-Markdown extensions, names Windows cannot store (reserved device names, `<>:"|?*` and control characters, segments ending in a dot or space, an empty name before `.md`), and path collisions after Unicode NFC normalization and case folding so the same repository behaves consistently on Windows and Linux.
 
 ### Frontmatter and body
 
@@ -66,9 +66,9 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 - Do not derive revisions from parsed fields or commit SHAs. Formatting and line-ending changes are edits and therefore produce new revisions.
 - Detect duplicate document UUIDs while scanning a tree. Return a repository-integrity error naming every conflicting path; never choose one document implicitly.
 
-### Scope of the first implementation
+### Implemented scope
 
-With the [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) in place, this first implementation adds configuration binding, per-workspace repository bootstrap and validation, document parsing and canonical serialization, value types, tree scanning, and focused tests. It does not add create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations will build on this boundary in later short-lived changes.
+The content module binds the data directory, bootstraps and validates per-workspace repositories, parses and canonically serializes documents, exposes the content value types, and scans committed `main` trees. It does not provide create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations build on this boundary.
 
 ## Alternatives
 
@@ -86,14 +86,13 @@ Hashing parsed content would ignore harmless formatting changes, but it requires
 
 Allowing arbitrary frontmatter fields would make extensions easy, but misspellings would become durable data and downstream modules would infer different schemas. Schema evolution should be explicit while the project has no compatibility obligation.
 
-## Acceptance
+## Verification
 
-- Repository tests cover absent, empty, valid existing, non-empty non-repository, bare, unreadable, wrong-branch, and unborn-`main` cases without using the developer's real data directory. Two workspaces can use identical relative paths and document UUIDs without sharing repositories or scan results.
-- Document tests cover every field invariant, YAML restriction, canonical byte output, empty and Unicode bodies, path validation, tag normalization, timestamp transition rules, and optional `published_at` round trips.
-- Revision tests pin exact byte hashing and prove that content, metadata, formatting, and line-ending edits change the token while identical blobs do not.
-- Tree-scan tests detect duplicate UUIDs and cross-platform path collisions with errors that name every conflicting repository path.
-- Spring Modulith verification continues to pass; content contracts require `WorkspaceId` and do not expose JGit or YAML implementation types.
-- `./gradlew test`, `./gradlew repoCheck`, and `git diff --check` pass. The implementation does not require Docker because it does not touch PostgreSQL.
+- `ContentRepositoryBootstrapTests` covers absent, empty, valid existing, non-empty non-repository, bare, unreadable, wrong-branch, and unborn-`main` cases in temporary data directories.
+- `CanonicalDocumentCodecTests`, `DocumentValueTests`, and `DocumentPathRulesTests` cover field invariants, YAML restrictions, canonical bytes, empty and Unicode bodies, path validation, tag normalization, timestamp transitions, publication round trips, and exact-byte revisions.
+- `ContentRepositoryScanTests` proves workspace isolation, committed-tree reads, duplicate UUID detection, and cross-platform path-collision reporting.
+- `ModularityTests` verifies that public content contracts depend on `WorkspaceId` without exposing JGit or YAML implementation types.
+- `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` cover this implementation. The integration suite verifies that workspace catalog initialization and content repository bootstrap complete together against PostgreSQL.
 
 ## Risks
 
@@ -104,3 +103,5 @@ Exact-byte revisions make manual line-ending or formatting changes visible as co
 Repository-wide scanning is linear in document count. It is the simplest correct foundation; later work may add an in-memory catalog or derived index without changing git's authority.
 
 Per-workspace repositories increase the number of Git handles and scans. Repository resources must be opened for the scoped operation and closed deterministically; the first implementation does not keep an unbounded cache of open repositories.
+
+`scan` fails the whole repository when any managed file is invalid, so one malformed break-glass commit blocks reading every committed document. The architecture requires projection to lint rather than reject human commits, so projection needs per-document error reporting or its own tree read; that contract belongs to the projection proposal and may reshape this scan interface.

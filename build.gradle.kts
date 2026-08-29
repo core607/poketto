@@ -20,9 +20,12 @@ val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
     .orElse("poketto-postgres:17.11-zhparser")
 
 dependencies {
+    implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
+    implementation("org.yaml:snakeyaml")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
+    implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.modulith:spring-modulith-core:$springModulithVersion")
     runtimeOnly("org.postgresql:postgresql")

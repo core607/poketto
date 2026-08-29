@@ -50,7 +50,7 @@ The default remains one instance, one workspace, one local content repository, l
 
 Cloud PostgreSQL uses the same JDBC contract and does not need a provider-specific driver abstraction. Kubernetes and object storage enter the repository only with a runnable implementation and automated verification; multi-workspace support does not depend on either.
 
-The [content repository foundation](../proposed/2026-08-26-content-foundation.md) and invitation-only membership may proceed in parallel from this boundary. Content writes, projection, search, MCP, and visitor Q&A build on `WorkspaceId` instead of implementing a single-workspace path first.
+The implemented [content repository foundation](2026-08-26-content-foundation.md) and proposed invitation-only membership build independently on this boundary. Content writes, projection, search, MCP, and visitor Q&A use `WorkspaceId` instead of implementing a single-workspace path first.
 
 This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
 

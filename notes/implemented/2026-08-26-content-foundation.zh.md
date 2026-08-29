@@ -1,17 +1,17 @@
 # 内容仓与文档基础
 
 Date: 2026-08-26
-Status: Proposed
+Status: Implemented
 
 [English](2026-08-26-content-foundation.md)
 
 ## 问题
 
-Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检索、渲染或 MCP 工具。[需求文档](../implemented/2026-08-25-requirements-and-architecture.zh.md)已经确定：独立的 git 仓库是真理之源，文档身份是全仓唯一的 UUID，revision 是内容 hash。已实现的[工作空间边界](../implemented/2026-08-27-workspace-tenancy.md)进一步规定每个工作空间拥有一个仓库。这些决定尚未规定仓库初始化契约、受管路径布局、frontmatter schema、机器写入的规范形式和 revision 编码。
+Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检索、渲染或 MCP 工具。[需求文档](2026-08-25-requirements-and-architecture.zh.md)已经确定：独立的 git 仓库是真理之源，文档身份是全仓唯一的 UUID，revision 是内容 hash。已实现的[工作空间边界](2026-08-27-workspace-tenancy.md)进一步规定每个工作空间拥有一个仓库。本决策定义仓库初始化契约、受管路径布局、frontmatter schema、机器写入的规范形式和 revision 编码。
 
 如果这些细节分别在后续功能中自行成形，同一份文档就会在 content、projection、web 和 MCP 模块中得到互不兼容的表示。
 
-## 提案
+## 决策
 
 ### 数据目录与仓库初始化
 
@@ -22,13 +22,13 @@ Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检
 - 非空目录如果不是 git 仓库，拒绝自动初始化。错误必须指出具体路径，并提示运维者改用空目录，或先显式初始化并提交已有内容。
 - 裸仓库、当前分支不是 `main` 的工作树或元数据不可读的仓库都会导致启动失败。修复仓库与切换分支仍由运维者操作。
 
-仓库校验与错误信息同时指出工作空间和解析后的路径，但不得泄露其他工作空间的目录。测试各自使用临时的绝对数据目录。实现本提案时还要更新本地运行说明，让 `bootRun` 提供或解释必需的配置。
+仓库校验与错误信息同时指出工作空间和解析后的路径，但不得泄露其他工作空间的目录。测试各自使用临时的绝对数据目录。本地运行说明解释这项必需配置。
 
 ### 受管文档布局
 
 - 内容仓中只有 `documents/` 下的 Markdown 受 Poketto 管理。仓库根目录可以保留说明或配置文件，而不会被当成用户文档。
 - 路径表示位置，不表示身份。文档可以移动到 `documents/` 下的任意位置，UUID 不随之改变。
-- 接受任意层级的 UTF-8 `.md` 文件。拒绝绝对路径、路径穿越、非 Markdown 扩展名，以及在 Unicode NFC 规范化和大小写折叠后发生的路径冲突，确保同一仓库在 Windows 与 Linux 上行为一致。
+- 接受任意层级的 UTF-8 `.md` 文件。拒绝绝对路径、路径穿越、非 Markdown 扩展名、Windows 无法存储的名称（保留设备名、`<>:"|?*` 与控制字符、以点或空格结尾的路径段、`.md` 前为空的文件名），以及在 Unicode NFC 规范化和大小写折叠后发生的路径冲突，确保同一仓库在 Windows 与 Linux 上行为一致。
 
 ### Frontmatter 与正文
 
@@ -66,9 +66,9 @@ Markdown 正文。
 - 不得根据解析后的字段或 commit SHA 生成 revision。格式或换行变化也是编辑，必须产生新的 revision。
 - 扫描 git tree 时检测重复的文档 UUID。仓库完整性错误必须列出所有冲突路径，绝不能擅自选择其中一份文档。
 
-### 第一轮实现范围
+### 已实现范围
 
-在[工作空间边界](../implemented/2026-08-27-workspace-tenancy.md)已经落地的基础上，本轮加入配置绑定、按工作空间的仓库初始化与校验、文档解析与规范序列化、值类型、git tree 扫描和针对性测试。不包含 create、update、delete、publish、投影、HTTP 或 MCP 入口；这些操作将在后续的短命变更中建立在此边界之上。
+content 模块绑定数据目录，初始化和校验各工作空间的仓库，解析并规范序列化文档，对外提供内容值类型，并扫描已提交的 `main` tree。当前不提供 create、update、delete、publish、投影、HTTP 或 MCP 入口；这些操作建立在本边界之上。
 
 ## 备选方案
 
@@ -86,14 +86,13 @@ Markdown 正文。
 
 允许任意 frontmatter 字段便于扩展，但拼写错误也会成为持久数据，各下游模块还可能自行推断出不同 schema。项目尚无兼容义务，schema 演进应当保持显式。
 
-## 验收条件
+## 验证
 
-- 仓库测试覆盖目录不存在、空目录、有效已有仓库、非空非仓库、裸仓库、不可读仓库、错误分支和尚无提交的 `main`；不得使用开发者的真实数据目录。两个工作空间可以使用相同相对路径和文档 UUID，而不会共享仓库或扫描结果。
-- 文档测试覆盖所有字段不变量、YAML 限制、规范字节输出、空正文与 Unicode 正文、路径校验、标签规范化、时间字段变更规则，以及可选 `published_at` 的往返解析。
-- revision 测试固定精确的字节 hash 行为，并证明正文、metadata、格式和换行变化会改变 token，而相同 blob 不会。
-- git tree 扫描测试检测重复 UUID 和跨平台路径冲突，错误必须列出所有冲突的仓库路径。
-- Spring Modulith 校验继续通过；content 模块契约必须接收 `WorkspaceId`，且不得暴露 JGit 或 YAML 实现类型。
-- `./gradlew test`、`./gradlew repoCheck` 与 `git diff --check` 通过。本轮实现不接触 PostgreSQL，因此不需要 Docker。
+- `ContentRepositoryBootstrapTests` 在临时数据目录中覆盖目录不存在、空目录、有效已有仓库、非空非仓库、裸仓库、不可读仓库、错误分支和尚无提交的 `main`。
+- `CanonicalDocumentCodecTests`、`DocumentValueTests` 与 `DocumentPathRulesTests` 覆盖字段不变量、YAML 限制、规范字节、空正文与 Unicode 正文、路径校验、标签规范化、时间变更、发布时间往返解析和精确字节 revision。
+- `ContentRepositoryScanTests` 验证工作空间隔离、已提交 tree 读取、重复 UUID 检测和跨平台路径冲突报告。
+- `ModularityTests` 验证 content 对外契约依赖 `WorkspaceId`，且不暴露 JGit 或 YAML 实现类型。
+- `./gradlew test`、`./gradlew integrationTest`、`./gradlew repoCheck` 与 `git diff --check` 覆盖本实现。集成测试验证工作空间 catalog 初始化与内容仓库引导能在 PostgreSQL 环境中共同完成。
 
 ## 风险
 
@@ -104,3 +103,5 @@ Markdown 正文。
 全仓扫描的复杂度与文档数量线性相关。这是最简单且正确的基础；后续可以增加内存 catalog 或派生索引，但不得改变 git 的权威地位。
 
 按工作空间拆仓会增加 Git 句柄和扫描数量。仓库资源必须为作用域操作打开并确定性关闭；第一轮不维护无限增长的常驻仓库缓存。
+
+任一受管文件无效都会让 `scan` 对整个仓库失败，一次带坏文档的 break-glass 提交就会阻塞读取所有已提交文档。架构要求投影对人工提交做 lint 标记而非拒收，因此投影需要按文档报告错误或自建 tree 读取；该契约归投影提案定义，届时可能重塑本扫描接口。

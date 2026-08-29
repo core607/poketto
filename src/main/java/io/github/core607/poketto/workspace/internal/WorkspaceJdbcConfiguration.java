@@ -4,6 +4,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -22,6 +23,7 @@ class WorkspaceJdbcConfiguration {
     }
 
     @Bean
+    @Order(0)
     ApplicationRunner defaultWorkspaceInitializer(JdbcWorkspaceCatalog catalog) {
         return arguments -> catalog.ensureDefaultWorkspace();
     }

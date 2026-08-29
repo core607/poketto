@@ -5,7 +5,7 @@ Status: Proposed
 
 ## Problem
 
-The [content repository foundation](2026-08-26-content-foundation.md) defines repository bootstrap, the managed document layout, the frontmatter schema, canonical serialization, and content-hash revisions, but no operation mutates a repository. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) define the write model — machine entrances validate strictly, serialize writes per repository, commit on the caller's behalf, record the caller's identity, acknowledge on successful commit, and return a conflict instead of overwriting on a revision mismatch — without an owning implementation contract.
+The [content repository foundation](../implemented/2026-08-26-content-foundation.md) defines repository bootstrap, the managed document layout, the frontmatter schema, canonical serialization, and content-hash revisions, but no operation mutates a repository. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) define the write model — machine entrances validate strictly, serialize writes per repository, commit on the caller's behalf, record the caller's identity, acknowledge on successful commit, and return a conflict instead of overwriting on a revision mismatch — without an owning implementation contract.
 
 MCP tools, the admin UI, and projection replay all need the same commit semantics. If each entrance implements its own, the acknowledgement point, conflict behavior, and audit attribution diverge.
 
@@ -40,7 +40,7 @@ These operations do not authorize. Entry points resolve an authorized workspace 
 
 ## Implementation scope and dependencies
 
-This proposal depends on the implemented workspace boundary and on the [content repository foundation](2026-08-26-content-foundation.md), whose canonical serialization and validation it reuses; the foundation is a serial prerequisite. The first implementation includes the four operations, per-repository locking, the clean-repository check, the intent journal and its crash recovery, validation, attribution, write results, and focused tests using temporary data directories. It excludes HTTP, MCP, and admin entry points, capability enforcement, projection and indexing, an unpublish operation, and replication.
+This proposal depends on the implemented workspace boundary and the implemented [content repository foundation](../implemented/2026-08-26-content-foundation.md), whose canonical serialization and validation it reuses. The first implementation includes the four operations, per-repository locking, the clean-repository check, the intent journal and its crash recovery, validation, attribution, write results, and focused tests using temporary data directories. It excludes HTTP, MCP, and admin entry points, capability enforcement, projection and indexing, an unpublish operation, and replication.
 
 ## Alternatives considered
 
