@@ -42,6 +42,8 @@ After migrations complete, an application runner opens a transaction, takes a ta
 
 The `workspace` Spring Modulith module owns the public value types, catalog contract, and path resolver. JDBC and initialization classes remain below `workspace.internal`.
 
+Setting `poketto.workspace.catalog.enabled=false` disables the catalog and its initializer. The switch exists only so the no-database application-context smoke test can start; it is not a supported deployment option.
+
 ### Default topology and implementation scope
 
 The default remains one instance, one workspace, one local content repository, local PostgreSQL, and a local blob directory. Multi-workspace isolation changes the data model; it does not require cloud services, Kubernetes, open registration, or multiple application replicas.
@@ -75,5 +77,5 @@ Application startup now requires a configured PostgreSQL data source. Flyway own
 - `WorkspaceIdTests` covers canonical parsing and rejects case variants and path-like input.
 - `WorkspacePathsTests` proves that two workspace IDs resolve to disjoint content directories below the configured absolute data directory.
 - `ModularityTests` verifies the `workspace` module together with the existing application modules.
-- `PostgresIntegrationIT` runs against the repository's PostgreSQL 17 + zhparser image. It verifies Flyway migration, one durable default workspace, catalog lookup, PostgreSQL 17, and Chinese token parsing.
+- `PostgresIntegrationIT` runs against the repository's PostgreSQL 17 + zhparser image. It verifies Flyway migration, creation of one default workspace that a rerun of initialization reuses, catalog lookup, PostgreSQL 17, and Chinese token parsing.
 - `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` pass.
