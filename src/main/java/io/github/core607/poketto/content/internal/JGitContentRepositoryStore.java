@@ -142,7 +142,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         }
     }
 
-    private static Repository openExisting(Path contentDirectory, WorkspaceId workspaceId) {
+    static Repository openExisting(Path contentDirectory, WorkspaceId workspaceId) {
         try {
             FileRepositoryBuilder builder = new FileRepositoryBuilder();
             builder.findGitDir(contentDirectory.toFile());

@@ -1,8 +1,10 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryStore;
+import io.github.core607.poketto.content.DocumentWriteService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
+import java.time.Clock;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,6 +30,12 @@ class ContentConfiguration {
     ContentRepositoryStore contentRepositoryStore(
             WorkspacePaths paths, CanonicalDocumentCodec codec) {
         return new JGitContentRepositoryStore(paths, codec);
+    }
+
+    @Bean
+    DocumentWriteService documentWriteService(
+            WorkspacePaths paths, CanonicalDocumentCodec codec, ContentRepositoryStore store) {
+        return new JGitDocumentWriteService(paths, codec, store, Clock.systemUTC());
     }
 
     @Bean
