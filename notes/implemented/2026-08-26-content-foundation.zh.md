@@ -52,7 +52,7 @@ Markdown 正文。
 - `title` 必填；去除首尾空白后不得为空，也不得包含控制字符。
 - `visibility` 只能是 `private` 或 `public`。
 - `tags` 必须是显式 YAML 序列。每项去除首尾空白后必须是非空字符串；经 Unicode 规范化和大小写折叠后重复的标签无效，但保留原始显示拼写。
-- `created_at` 与 `updated_at` 是必填的 RFC 3339 UTC 时间。机器写入必须保留 `created_at`；序列化后的文档发生变化时必须推进 `updated_at`。这条变更规则由本层的规范序列化持有；后续加入的写入口复用它，而不是各自重述。
+- `created_at` 与 `updated_at` 是必填的 RFC 3339 UTC 时间。机器写入必须保留 `created_at`；序列化后的文档发生变化时必须推进 `updated_at`。这条变更规则由本层的规范序列化持有；[文档写操作](2026-08-29-document-write-operations.md)复用它，而不是各自重述。
 - `published_at` 可选。第一次 publish 操作设置它；后续编辑或把 visibility 改回 private 都不得清除它。
 - 机器写入不得包含未知字段、重复 YAML key、alias、自定义 tag、多份 YAML 文档、错误的分隔符、无效 UTF-8 或字节顺序标记。
 - 正文可以为空。本层只把它作为文本保存，不负责渲染 Markdown、清理 HTML、抓取链接或解释其中的指令。
