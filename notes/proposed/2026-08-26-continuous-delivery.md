@@ -13,8 +13,8 @@ Poketto targets a self-hosted single machine. Its first delivery path needs only
 
 ### Verification and image publication
 
-- Keep the existing pull-request `check`. After the canonical repository's `main` passes `check`, the same workflow builds the application image and the PostgreSQL 17 + zhparser OCI image and publishes both to GHCR.
-- Images carry a source-commit tag and standard revision metadata. Deployment uses immutable digests returned by the registry; moving tags aid discovery but never select the production version.
+- Keep the existing pull-request `check`. After the canonical repository's `main` passes `check`, the same workflow builds the application image and publishes it to GHCR. Production Compose pins the official PostgreSQL 17 image because [repository-native retrieval](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) removes zhparser and the custom database image.
+- The application image carries a source-commit tag and standard revision metadata. Deployment pins both the application and upstream database images by immutable digest; moving tags aid discovery but never select the production version.
 - The publication job receives only `contents: read` and `packages: write`. Verification, pull-request, and deployment jobs do not inherit package-write authority. Every third-party Action is pinned to a full commit SHA.
 - Images contain no `.env`, API key, content repository, database volume, blob directory, or other runtime state.
 
@@ -42,9 +42,9 @@ Production automatic deployment remains disabled until the [off-host backup and 
 
 ## First implementation scope and dependencies
 
-The first implementation includes an application container, production Compose, an application health entrance, publication of both OCI images to GHCR, digest-pinned SSH deployment, a deployment lock, health confirmation, the restricted-network transfer script, and focused tests.
+The first implementation includes an application container, production Compose, an application health entrance, application-image publication to GHCR, digest-pinned application and database images, SSH deployment, a deployment lock, health confirmation, the restricted-network transfer script, and focused tests. It follows the repository-native retrieval decision before replacing the implemented custom database image with the official image.
 
-It excludes domains, TLS, reverse proxies, a logging platform, provenance attestation, deployment-manifest promotion, automatic rollback, blue-green stacks, an arbitrary-version selector, and a database migration framework. Image publication may build on the current development baseline independently. Automatic deployment waits for the off-host backup gate.
+It excludes domains, TLS, reverse proxies, a logging platform, provenance attestation, deployment-manifest promotion, automatic rollback, blue-green stacks, an arbitrary-version selector, and a database migration framework. Application-image publication may build on the current development baseline independently; replacing the custom database image waits for repository-native retrieval. Automatic deployment waits for the off-host backup gate.
 
 ## Alternatives considered
 
@@ -61,7 +61,7 @@ It excludes domains, TLS, reverse proxies, a logging platform, provenance attest
 ## Acceptance
 
 - A pull request runs complete `check` without production secrets or package-write authority. Unmerged code cannot publish or deploy.
-- After a `main` commit passes `check`, the application and PostgreSQL images appear in GHCR, and the source commit plus both immutable digests are available from the same workflow run.
+- After a `main` commit passes `check`, the application image appears in GHCR, and the source commit plus the immutable application and pinned upstream database digests are available from the same workflow run.
 - Publication succeeds and deployment is explicitly skipped when production is not configured. When deployment is enabled, missing variables or secrets fail with an actionable list.
 - On a disposable Linux host, registry pull and `docker save` over SSH can start the same Compose stack from identical digests and pass the real health entrance.
 - Adjacent deployments cannot mutate the host concurrently. Retry after interruption and redeployment of the same digest preserve persistent data.
@@ -78,4 +78,4 @@ A GitHub-hosted runner temporarily holds the secret needed to reach production. 
 
 Image rollback cannot undo a database or content-format change. Starting an old container with unknown compatibility may be more dangerous than downtime, so the first implementation does not roll back automatically.
 
-Building two images on every `main` update consumes Actions time and GHCR storage. Keep one traceable path first; if measured cost becomes material, reuse the unchanged database image by build context.
+Building an application image on every `main` update consumes Actions time and GHCR storage. Keep one traceable path first; if measured cost becomes material, add retention or build-cache policy without weakening digest selection.

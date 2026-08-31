@@ -22,7 +22,7 @@ The default self-contained topology keeps authoritative state on one machine, so
 ### Content repositories
 
 - [Git replication and write acknowledgement](2026-08-27-git-durability-modes.md) provides per-commit remote mirroring and lag status. The backup target also protects remote refs and reachable objects, forbids force pushes, and retains enough history to recover from an accidental deletion or incorrect ref update.
-- Restore creates and validates each workspace's local repository before restoring other authoritative stores. Content `main` determines the projection rebuild point. Remote-mirror state cannot overwrite a newer valid offline backup.
+- Restore creates and validates each workspace's local repository before restoring other authoritative stores. Content `main` is immediately available to repository-backed reads; remote-mirror state cannot overwrite a newer valid offline backup.
 
 ### Blobs
 
@@ -33,7 +33,7 @@ The default self-contained topology keeps authoritative state on one machine, so
 ### PostgreSQL
 
 - Accounts, memberships, invitations, API-key metadata, audits, budgets, and the workspace catalog are the non-derived data that must be recoverable. Secrets retain their hashed or encrypted storage contract.
-- The implementation may create a whole-database dump, but restore discards and rebuilds derived projections and their checkpoints from the content repositories. A stale projection cannot serve queries beside a newer content `main`.
+- The implementation may create a whole-database dump, but PostgreSQL contains no document or content-search projection under [Repository-native retrieval and sandboxed agent execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). Disposable read caches and execution snapshots are rebuilt from the restored content repositories rather than backed up.
 - A dump manifest records database schema version, creation time, and covered workspaces. Restore verifies schema, row-count invariants, and critical foreign keys in an isolated database before replacing production data.
 
 ## Implementation scope and dependencies
@@ -48,7 +48,7 @@ The first implementation provides backup commands, retention rules, machine-read
 
 **Run `rclone sync` over the whole data directory.** This is simple but copies temporary files, runtime locks, and derived state and may propagate deletions. Verifiable artifacts per medium make the recovery boundary explicit.
 
-**Restore a whole PostgreSQL dump and start immediately.** This can restore stale projections and checkpoints. Restoring authoritative rows and rebuilding projections re-establishes consistency with content.
+**Back up disposable read caches and execution snapshots.** This could reduce first-read latency after restore, but it copies private transient data and sandbox state without adding durability. Rebuilding both from restored repositories keeps recovery artifacts smaller and removes stale execution state.
 
 **Rely only on a manual restore guide.** Documentation cannot prove that current commands still read current formats. Disposable restore tests expose drift in schemas, manifests, and paths.
 
@@ -59,7 +59,7 @@ The first implementation provides backup commands, retention rules, machine-read
 - All three authoritative media can retain a versioned, checksummed recovery point off-host. A missing target fails explicitly and cannot report success.
 - Consecutive failures do not delete the latest successful recovery point. Status exposes the last success and current lag without revealing paths, content, or credentials.
 - A restore into an empty data directory produces content commits, blob hashes, and non-derived database constraints matching the backup manifest.
-- Restore discards stale projections and rebuilds them from each workspace content `main`; no checkpoint advances beyond the commit actually indexed.
+- Restore excludes disposable read caches and execution snapshots. The first repository-backed read resolves the restored workspace `main` without a database indexing prerequisite.
 - After a source deletion or ref move, at least one recovery point covered by retention remains retrievable.
 - Backup and restore tests use disposable repositories, object storage, and PostgreSQL and never read developer data.
 - `./gradlew repoCheck`, the relevant automated tests, and `git diff --check` pass.

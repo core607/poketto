@@ -7,7 +7,7 @@ Status: Proposed
 
 The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) select JTE, htmx, and Tailwind for a server-rendered public blog and its administration pages. The [development baseline](../implemented/2026-08-26-development-baseline.md) consequently defines one Spring Boot artifact with a `web` application module, although no user-facing route or JTE template has been implemented.
 
-Poketto needs two rendering modes. Public articles, tag and archive pages, RSS, and the sitemap need complete server-rendered output. Administration pages need longer-lived client state for content editing, membership, keys, projection status, and visitor-Q&A controls. Implementing both through server templates and fragment response contracts would split one interface across Java templates, browser scripts, and endpoint-specific HTML protocols.
+Poketto needs two rendering modes. Public articles, tag and archive pages, RSS, and the sitemap need complete server-rendered output. Administration pages need longer-lived client state for content editing, membership, keys, repository diagnostics, and visitor-Q&A controls. Implementing both through server templates and fragment response contracts would split one interface across Java templates, browser scripts, and endpoint-specific HTML protocols.
 
 The frontend needs one typed component model for public rendering and application-like interaction without moving content authority, authorization, or business operations out of Spring. Adding a JavaScript renderer must also have measured runtime costs rather than silently redefining deployment sizing.
 
@@ -17,7 +17,7 @@ The frontend needs one typed component model for public rendering and applicatio
 
 - Replace JTE and htmx with Next.js App Router, React, TypeScript, and Tailwind. Keep the frontend in a top-level `frontend/` workspace with a pinned active-LTS Node.js toolchain and a committed package-manager lockfile.
 - Run Next.js and Spring Boot as separate processes and OCI images. Next.js owns browser routes, HTML rendering, frontend assets, view state, and presentation-only resources such as RSS and sitemap responses.
-- Spring remains the only business backend. It owns workspace resolution, authentication, authorization, CSRF enforcement, content and Git operations, projection, search, Q&A, MCP, budgets, audit records, and persistence.
+- Spring remains the only business backend. It owns workspace resolution, authentication, authorization, CSRF enforcement, content and Git operations, repository-backed retrieval, sandboxed agent execution, Q&A, MCP, budgets, audit records, and persistence. The read and execution boundary follows [Repository-native retrieval and sandboxed agent execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md).
 - Next.js never reads a workspace repository, blob directory, or database directly. It obtains data through documented Spring HTTP contracts. The first implementation uses neither Server Actions nor Route Handlers for domain reads or mutations; browser mutations call Spring APIs directly.
 - The Spring `web` module owns HTTP API contracts and their mapping to application modules. It does not own HTML templates. The implementation updates the development baseline and both requirements documents when this boundary ships.
 
@@ -46,7 +46,7 @@ The Gradle `check` task remains the repository-wide verification entrance. It in
 
 ## Implementation scope and dependencies
 
-This proposal reverses only the frontend selection in the requirements. It retains Spring MVC for JSON, MCP, health, and other non-page HTTP entrances; Tailwind remains the styling foundation. The content, workspace, search, auth, and MCP module boundaries do not move.
+This proposal reverses only the frontend selection in the requirements. It retains Spring MVC for JSON, MCP, health, and other non-page HTTP entrances; Tailwind remains the styling foundation. The content, workspace, retrieval, execution, auth, and MCP boundaries do not move into Next.js.
 
 The implementation includes the `frontend/` workspace, reproducible Node and package-manager versions, Next.js production packaging, the same-origin routing contract, frontend verification in `check`, removal of JTE and htmx from the selected stack, focused contract tests, and the runtime memory exercise. It updates the English and Chinese requirements counterparts, the development baseline, command documentation, and the continuous-delivery proposal to describe the built artifact topology.
 

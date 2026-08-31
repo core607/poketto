@@ -22,6 +22,8 @@ MCP tools, the admin UI, and projection replay all need the same commit semantic
 - `delete` takes the document UUID and `expected_revision` and removes the document file.
 - `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. No operation returns a public document to `private`; reverting is a break-glass repository edit followed by explicit reindexing.
 
+`DocumentWriteService` accepts the revision as opaque input and does not define an agent read entrance. [Repository-native retrieval and sandboxed agent execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) defines the proposed structured `get_doc` handshake that supplies the document and revision from one committed snapshot before an agent invokes these writes.
+
 ### Concurrency and acknowledgement
 
 One in-JVM lock per workspace repository serializes these operations; locks, like repositories, are independent across workspaces. The application process is the only machine writer, and one process owns a data directory: running two application processes against the same data directory is outside the deployment contract, and no cross-process lock exists.
