@@ -112,7 +112,7 @@ final class ContentWorktree {
         } catch (GitAPIException exception) {
             throw new ContentRepositoryException("repository status cannot be read", exception);
         }
-        if (status.isClean()) {
+        if (status.isClean() && status.getIgnoredNotInIndex().isEmpty()) {
             return Optional.empty();
         }
         List<String> offending = new ArrayList<>();
@@ -122,6 +122,7 @@ final class ContentWorktree {
         describe(offending, "modified files", status.getModified());
         describe(offending, "missing files", status.getMissing());
         describe(offending, "untracked files", status.getUntracked());
+        describe(offending, "ignored files", status.getIgnoredNotInIndex());
         describe(offending, "conflicting files", status.getConflicting());
         return Optional.of(String.join("; ", offending));
     }

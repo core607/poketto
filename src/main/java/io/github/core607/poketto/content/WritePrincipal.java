@@ -4,9 +4,11 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
- * Caller a content write is attributed to, as an opaque identifier that is safe to publish in
- * commit history. Content repositories may be mirrored off-host, so the identifier admits no
- * display name, email address, credential, or session token.
+ * Caller a content write is attributed to, as a stable identifier that is safe to publish in
+ * commit history. Content repositories may be mirrored off-host, so entrances must map credentials
+ * and session tokens to durable identifiers before constructing this value. Its restricted syntax
+ * prevents display names, email addresses, and commit-trailer injection; syntax alone cannot
+ * determine whether an otherwise valid token is secret.
  */
 public record WritePrincipal(PrincipalType type, String identifier) {
 

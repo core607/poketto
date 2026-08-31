@@ -80,6 +80,22 @@ class DocumentWriteRecoveryTests {
     }
 
     @Test
+    void blocksAMachineWriteOnIgnoredOperatorFiles() throws Exception {
+        writes.create(workspace, OWNER, draft("documents/note.md"));
+        Path exclude = contentFile(".git/info/exclude");
+        Files.createDirectories(exclude.getParent());
+        Files.writeString(exclude, "documents/ignored.md\n");
+        Path ignored = contentFile("documents/ignored.md");
+        Files.writeString(ignored, "operator draft");
+
+        assertThatThrownBy(() -> writes.create(workspace, OWNER, draft("documents/ignored.md")))
+                .isInstanceOf(RepositoryNotCleanException.class)
+                .hasMessageContaining("ignored files")
+                .hasMessageContaining("documents/ignored.md");
+        assertThat(Files.readString(ignored)).isEqualTo("operator draft");
+    }
+
+    @Test
     void recoversJournaledPathsBeforeTheNextWrite() throws Exception {
         DocumentWriteResult created = writes.create(workspace, OWNER, draft("documents/note.md"));
         String committed = Files.readString(contentFile("documents/note.md"));
