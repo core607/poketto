@@ -33,8 +33,8 @@ The setting is an instance-level default. A future per-workspace override requir
 
 - In `local` mode, every commit wakes the single replication worker for its repository. Several consecutive commits may collapse into one push because the worker advances the remote to the latest local `main` observed when the push begins; it does not persist one queue item per commit.
 - Temporary network failures, authentication-service failures, and remote rate limits use bounded exponential backoff while remaining observable. Authentication failure, permission denial, a missing repository, and non-fast-forward rejection have distinct classifications. An endless retry loop must not hide a permanent failure.
-- Write outcomes expose `commit_sha` when known and the independently observed `committed`, `mirrored`, and `indexed` booleans. `committed` means local `main` contains the candidate, `mirrored` means the remote contains it, and `indexed` means the projection checkpoint covers it. These observations are not a three-stage state machine and do not change success under the selected acknowledgement policy.
-- Per-workspace operational state exposes `local_head`, `last_mirrored_commit`, `last_indexed_commit`, each lag in commits and duration, the last attempt time, and a sanitized failure category. Ordinary members cannot read remote addresses, credentials, or another workspace's state.
+- Write outcomes expose `commit_sha` when known and the independently observed `committed` and `mirrored` booleans. `committed` means local `main` contains the candidate, and `mirrored` means the remote contains it. These observations do not change success under the selected acknowledgement policy. Content reads resolve committed repository state directly under the [repository-native retrieval proposal](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), so there is no independent indexed state.
+- Per-workspace operational state exposes `local_head`, `last_mirrored_commit`, mirror lag in commits and duration, the last attempt time, and a sanitized failure category. Ordinary members cannot read remote addresses, credentials, or another workspace's state.
 - A commit is mirrored only when the remote contains it. Uploading objects, starting a push, or recording a successful task does not advance `last_mirrored_commit`.
 
 ### Relationship to backup
@@ -59,7 +59,7 @@ The first implementation includes configuration binding, startup consistency che
 
 ## Acceptance
 
-- Both requirements documents describe default local acknowledgement, optional `mirrored` acknowledgement, the remote-mirror boundary, and the independent `committed`, `mirrored`, and `indexed` result semantics.
+- Both requirements documents describe default local acknowledgement, optional `mirrored` acknowledgement, the remote-mirror boundary, and the independent `committed` and `mirrored` result semantics.
 - `local` acknowledges a write while the remote is unavailable and reports `mirrored=false`; the worker advances the remote to local HEAD after connectivity returns.
 - One push may mirror several consecutive local commits, and the checkpoint identifies a commit the remote actually contains.
 - A rejected `mirrored` push does not change local `main`; success leaves both local and remote refs containing the returned `commit_sha`.
@@ -70,6 +70,6 @@ The first implementation includes configuration binding, startup consistency che
 
 ## Risks
 
-`mirrored` makes remote availability part of the write success rate. Errors must distinguish an uncommitted write, a candidate stored remotely and awaiting local recovery, and a locally committed write awaiting indexing so callers do not retry blindly.
+`mirrored` makes remote availability part of the write success rate. Errors must distinguish an uncommitted write, a candidate stored remotely and awaiting local recovery, and a locally committed write awaiting mirroring so callers do not retry blindly.
 
 A Git remote generally provides repository-level ref semantics, not a Poketto business transaction. The implementation must prove durability through ref relationships and an actual remote read rather than treating an ambiguous successful command log as evidence.

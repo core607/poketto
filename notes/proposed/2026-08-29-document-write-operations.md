@@ -7,7 +7,7 @@ Status: Proposed
 
 The [content repository foundation](../implemented/2026-08-26-content-foundation.md) defines repository bootstrap, the managed document layout, the frontmatter schema, canonical serialization, and content-hash revisions, but no operation mutates a repository. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) define the write model — machine entrances validate strictly, serialize writes per repository, commit on the caller's behalf, record the caller's identity, acknowledge on successful commit, and return a conflict instead of overwriting on a revision mismatch — without an owning implementation contract.
 
-MCP tools, the admin UI, and projection replay all need the same commit semantics. If each entrance implements its own, the acknowledgement point, conflict behavior, and audit attribution diverge.
+MCP tools and the admin UI need the same commit semantics. If each entrance implements its own, the acknowledgement point, conflict behavior, and audit attribution diverge.
 
 ## Proposal
 
@@ -18,7 +18,7 @@ The content module exposes four workspace-scoped operations: `create`, `update`,
 - `create` takes a path below `documents/`, a title, tags, and a body. The service assigns the document UUID, sets `created_at` and `updated_at` to the current UTC instant, serializes canonically, and commits. Every created document is `private`; no create parameter selects `public`.
 - `update` takes the document UUID, `expected_revision`, and the full new title, tags, body, and path. It preserves `id`, `created_at`, `published_at`, and visibility. A path change is a move, and a move is an edit: any change to the bytes or the path advances `updated_at` and therefore produces a new revision, so a concurrent move surfaces as a conflict instead of being silently relocated back. An update that changes neither bytes nor path succeeds without a new commit.
 - `delete` takes the document UUID and `expected_revision` and removes the document file.
-- `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. No operation returns a public document to `private`; reverting is a break-glass repository edit followed by explicit reindexing.
+- `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. No operation returns a public document to `private`; reverting is a break-glass repository commit.
 
 ### Concurrency and acknowledgement
 
@@ -28,7 +28,7 @@ Under the lock, the operation first requires a clean repository: the worktree an
 
 Before mutating the worktree, the operation records the paths it will touch in an intent journal inside the repository's git directory. A failed stage or commit resets exactly those paths to `HEAD` and removes the journal before the lock releases. After a process crash mid-write, recovery — at startup or before the next write — resets the journaled paths and removes the journal, touching nothing else. Dirty state without a journal is operator activity and blocks machine writes until resolved.
 
-Write results share the document UUID, the commit SHA, and the `committed` observation. `create`, `update`, and `publish` add the resulting path and revision; `delete` reports the removed path and carries no revision, because no blob remains. The acknowledgement policy and the `mirrored` and `indexed` observations belong to [Git replication and write acknowledgement modes](2026-08-27-git-durability-modes.md); these operations are the machine write its policies wrap. A crash between commit and response loses only the acknowledgement — `main` either contains the whole commit or none of it.
+Write results share the document UUID, the commit SHA, and the `committed` observation. `create`, `update`, and `publish` add the resulting path and revision; `delete` reports the removed path and carries no revision, because no blob remains. The acknowledgement policy and the `mirrored` observation belong to [Git replication and write acknowledgement modes](2026-08-27-git-durability-modes.md); these operations are the machine write its policies wrap. Repository-backed readers resolve committed state directly as proposed by [Repository-native retrieval and sandboxed agent execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). A crash between commit and response loses only the acknowledgement — `main` either contains the whole commit or none of it.
 
 ### Attribution
 
@@ -40,7 +40,7 @@ These operations do not authorize. Entry points resolve an authorized workspace 
 
 ## Implementation scope and dependencies
 
-This proposal depends on the implemented workspace boundary and the implemented [content repository foundation](../implemented/2026-08-26-content-foundation.md), whose canonical serialization and validation it reuses. The first implementation includes the four operations, per-repository locking, the clean-repository check, the intent journal and its crash recovery, validation, attribution, write results, and focused tests using temporary data directories. It excludes HTTP, MCP, and admin entry points, capability enforcement, projection and indexing, an unpublish operation, and replication.
+This proposal depends on the implemented workspace boundary and the implemented [content repository foundation](../implemented/2026-08-26-content-foundation.md), whose canonical serialization and validation it reuses. The first implementation includes the four operations, per-repository locking, the clean-repository check, the intent journal and its crash recovery, validation, attribution, write results, and focused tests using temporary data directories. It excludes HTTP, MCP, and admin entry points, capability enforcement, repository read and execution entry points, an unpublish operation, and replication.
 
 ## Alternatives considered
 
