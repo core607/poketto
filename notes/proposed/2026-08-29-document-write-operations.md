@@ -20,6 +20,8 @@ The content module exposes four workspace-scoped operations: `create`, `update`,
 - `delete` takes the document UUID and `expected_revision` and removes the document file.
 - `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. No operation returns a public document to `private`; reverting is a break-glass repository commit.
 
+Agent-facing entrances pair these mutations with the structured `get_doc` read owned by [Repository-native retrieval and sandboxed agent execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). It returns the document and opaque revision from the same committed snapshot. An agent uses that revision as `expected_revision`; it does not derive a token from bytes read through `repo_exec`. When exploration and mutation belong to one snapshot, the agent passes the resolved commit from `repo_exec` to `get_doc`.
+
 ### Concurrency and acknowledgement
 
 One in-JVM lock per workspace repository serializes these operations; locks, like repositories, are independent across workspaces. The application process is the only machine writer, and one process owns a data directory: running two application processes against the same data directory is outside the deployment contract, and no cross-process lock exists in v1.
