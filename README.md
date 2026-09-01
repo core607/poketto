@@ -1,18 +1,18 @@
 # Poketto
 
-A repository-native personal knowledge service whose public face is a blog. Each workspace keeps its Markdown history in Git; the same content serves public publishing and, over MCP, the long-term memory of trusted AI agents. Poketto can run self-hosted, while its [hosted target architecture](notes/proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md) supports isolated consumer workspaces behind stateless application replicas.
+A repository-native personal knowledge service whose public face is a blog. Each workspace keeps its Markdown history in Git; the same content serves public publishing and, over MCP, the long-term memory of trusted AI agents. Poketto targets one cloud server first. A proposed [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) is intended to run the same application artifacts with configured external services.
 
 [中文说明](README.zh.md)
 
 ## Status
 
-Development. The executable baseline, workspace isolation, content repository foundation, and document writes are implemented. The current baseline runs as a self-hosted application with local workspace repositories. Consumer registration, stateless application replicas, remote repository authority, [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), rendering, and MCP entry points remain proposed. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline and existing product contracts; proposals identify the target decisions that have not shipped.
+Development. The executable baseline, workspace isolation, content repository foundation, and document writes are implemented. The current baseline runs on one cloud server with local workspace repositories. [Local blob storage](notes/proposed/2026-09-01-local-content-addressed-blob-storage.md), [consumer accounts and personal workspaces](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), rendering, and MCP entry points remain proposed. Serverless deployment also remains optional and waits for real external infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline and existing product contracts; proposals identify the target decisions that have not shipped.
 
 ## Who this is for
 
 - People who want their notes, clippings, and blog to remain Markdown with Git history while relational application state stays outside the content repository.
 - People who want their AI assistants to read and write that content over MCP with scoped API keys, instead of handing out shell access.
-- People who want the same workspace model to support a private self-hosted installation or an isolated workspace in a shared service.
+- People who want a small-server deployment to remain a first-class production path without closing the path to isolated workspaces in an optional shared service.
 - Anyone curious about a repository designed to be developed by agents — start with [AGENTS.md](AGENTS.md).
 
 ## Layout

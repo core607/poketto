@@ -1,4 +1,4 @@
-# Continuous Delivery for the Self-Hosted Profile
+# Continuous Delivery for a Single Host
 
 Date: 2026-08-26
 Status: Proposed
@@ -7,7 +7,7 @@ Status: Proposed
 
 The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require application images in GHCR and a fallback that transfers a `docker save` artifact over SSH when registry access is unreliable. The [development baseline](../implemented/2026-08-26-development-baseline.md) currently runs complete verification for pull requests and `main` pushes but builds no deployable image and provides no repeatable production Compose or deployment script.
 
-Poketto retains a self-hosted profile alongside the proposed [stateless hosted architecture](2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md). This proposal owns only the self-hosted delivery path: it turns a verified commit into immutable images and deploys them to a Linux Docker Compose host through a constrained SSH entrance. Hosted orchestration, tenant placement, and repository-authority deployment require separate implementation evidence. Automatic rollback, artifact promotion, and release attestation remain outside the first implementation until operating evidence justifies them.
+Poketto targets a self-hosted single machine. Its first delivery path needs only to turn a verified commit into immutable images and deploy them to a Linux Docker Compose host through a constrained SSH entrance. Automatic rollback, artifact promotion, and release attestation remain outside the first implementation until operating evidence justifies them.
 
 ## Proposal
 
@@ -56,7 +56,7 @@ It excludes domains, TLS, reverse proxies, a logging platform, provenance attest
 
 **Publish images without a deployment script.** Every operator would still improvise SSH, Compose, locking, and health checks. One generic script is the minimum maintainable delivery surface.
 
-**Use Kubernetes or blue-green deployment for the self-hosted profile.** This adds an orchestration surface and duplicate resident stack without simplifying the first operator-owned deployment. Runtime platform and data authority remain independent, so the hosted profile can consume the same image artifacts under its own scaling and persistence contract.
+**Use Kubernetes or blue-green deployment.** The default target is a two-core, 4 GB machine; another orchestration surface and duplicate resident stack do not fit that constraint. Runtime platform and data authority remain independent, so a future Kubernetes deployment can consume the same image artifacts.
 
 ## Acceptance
 

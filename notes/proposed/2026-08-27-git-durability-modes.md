@@ -1,10 +1,7 @@
 # Git Replication and Write Acknowledgement Modes
 
 Date: 2026-08-27
-Status: Rejected
-Rejected: 2026-09-01
-
-This proposal was rejected by the [consumer multitenancy, stateless application, and remote repository authority proposal](../proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md). Keeping local `main` authoritative would bind a workspace to one application node and preserve two acknowledgement modes. The candidate-commit, ref-precondition, ambiguous-outcome, and failure-classification analysis remains useful to the remote compare-and-swap adapter, but the remote ref is now the proposed authority and acknowledgement point.
+Status: Proposed
 
 ## Problem
 
@@ -36,13 +33,13 @@ The setting is an instance-level default. A future per-workspace override requir
 
 - In `local` mode, every commit wakes the single replication worker for its repository. Several consecutive commits may collapse into one push because the worker advances the remote to the latest local `main` observed when the push begins; it does not persist one queue item per commit.
 - Temporary network failures, authentication-service failures, and remote rate limits use bounded exponential backoff while remaining observable. Authentication failure, permission denial, a missing repository, and non-fast-forward rejection have distinct classifications. An endless retry loop must not hide a permanent failure.
-- Write outcomes expose `commit_sha` when known and the independently observed `committed` and `mirrored` booleans. `committed` means local `main` contains the candidate, and `mirrored` means the remote contains it. These observations do not change success under the selected acknowledgement policy. Content reads resolve committed repository state directly under the [repository-native retrieval proposal](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), so there is no independent indexed state.
+- Write outcomes expose `commit_sha` when known and the independently observed `committed` and `mirrored` booleans. `committed` means local `main` contains the candidate, and `mirrored` means the remote contains it. These observations do not change success under the selected acknowledgement policy. Content reads resolve committed repository state directly under the [repository-native retrieval proposal](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), so there is no independent indexed state.
 - Per-workspace operational state exposes `local_head`, `last_mirrored_commit`, mirror lag in commits and duration, the last attempt time, and a sanitized failure category. Ordinary members cannot read remote addresses, credentials, or another workspace's state.
 - A commit is mirrored only when the remote contains it. Uploading objects, starting a push, or recording a successful task does not advance `last_mirrored_commit`.
 
 ### Relationship to backup
 
-A remote mirror reduces the content recovery point after host loss but does not replace an independent backup policy. Credential compromise, accidental deletion, and repository corruption can propagate to the remote. The [off-host backup and restore proposal](../proposed/2026-08-27-off-host-backup-and-restore.md) owns retention, confidentiality boundaries, and recovery drills.
+A remote mirror reduces the content recovery point after host loss but does not replace an independent backup policy. Credential compromise, accidental deletion, and repository corruption can propagate to the remote. The [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) owns retention, confidentiality boundaries, and recovery drills.
 
 ## Implementation scope and dependencies
 

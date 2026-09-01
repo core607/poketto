@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 ## Scope of this record
 
-This implemented note records the executable single-host baseline and the product contracts selected for it. The proposed [consumer multitenancy, stateless application, and remote repository authority](../proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md) retains Git content authority and workspace isolation while replacing the long-term assumptions of closed registration, application-owned local repositories, and process-local coordination. Until that proposal is implemented, the mechanics below describe the current baseline; they are not constraints on the hosted target.
+This implemented note records the primary single-server baseline and the product contracts selected for it. The proposed [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md) extend provisioning without changing the tenant boundary. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) retains this primary topology while adding configuration-selected external adapters only when real infrastructure is available. Until those proposals are implemented, the mechanics below describe the executable baseline.
 
 ## Positioning
 

@@ -7,7 +7,7 @@ Status: Implemented
 
 Without an explicit tenant boundary, content repositories, projections, caches, authorization, and background work could form around an implicit default tenant. Adding independent knowledge spaces after those features existed would require isolation conditions to be threaded through every layer. Search, caches, and asynchronous work are the easiest paths to miss because they do not all appear in the primary request flow.
 
-Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the implemented default topology. The proposed [consumer multitenancy and stateless hosted architecture](../proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md) builds registration and SaaS operation on this boundary without making an account the tenant.
+Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the implemented default topology. The proposed [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md) build registration and personal provisioning on this boundary without making an account the tenant. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) changes deployment adapters without changing this boundary.
 
 ## Decision
 
@@ -54,7 +54,7 @@ The implemented [content repository foundation](2026-08-26-content-foundation.md
 
 This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
 
-The consumer multitenancy proposal reverses the default deployment and provisioning limits in this section while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. Until that proposal is implemented, this section describes the executable topology.
+The consumer-accounts proposal adds personal-workspace provisioning while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. The optional serverless profile changes storage and execution placement rather than workspace isolation. Until each proposal is implemented, this section describes the executable topology.
 
 ## Alternatives considered
 

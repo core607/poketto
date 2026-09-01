@@ -7,7 +7,7 @@ description: Use when maintaining English/Chinese document pairs (foo.md and foo
 
 ## Invocation boundary
 
-Run this full workflow only when the user invokes `translate-docs` by name. Routine edits to any existing pair follow one rule without loading the extended workflow: **when one side changes, make the smallest corresponding change to the other side in the same change**.
+Run this full workflow only when the user invokes `translate-docs` by name. Routine edits to the public README or requirements pair follow one rule without loading the extended workflow: **when one side changes, make the smallest corresponding change to the other side in the same change**.
 
 Agent instructions and project skills are English-only and outside this workflow.
 
