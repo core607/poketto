@@ -9,7 +9,7 @@ The deterministic `check` workflow established by the [development baseline](202
 
 ## Decision
 
-Run a separate `AI Review` workflow for non-draft pull requests targeting `main`. It sends one bounded diff review request to an OpenAI-compatible API and posts the returned Chinese Markdown as a GitHub `COMMENT` review. The model reports substantive defects while wrapping the review in exaggerated praise. The workflow is informational entertainment and must not become a required status check.
+Run a separate `AI Review` workflow for non-draft pull requests that target `main` and are authored by the repository owner. It sends one bounded diff review request to an OpenAI-compatible API and posts the returned Chinese Markdown as a GitHub `COMMENT` review. The model reports substantive defects while wrapping the review in exaggerated praise. The workflow is informational entertainment and must not become a required status check.
 
 The default provider is the DeepSeek API, using `deepseek-v4-flash` with low reasoning effort. `AI_REVIEW_API_KEY` holds the provider credential. Repository variables `AI_REVIEW_BASE_URL` and `AI_REVIEW_MODEL` may replace the endpoint and model when the replacement accepts the same request shape. This keeps a later provider change operational rather than architectural.
 
@@ -17,7 +17,9 @@ The workflow runs on `pull_request_target` from the trusted base branch. It retr
 
 The prompt requires a substantive review in exaggerated Chinese praise. Each finding states its location, trigger, impact, and smallest correction direction, but frames the defect as the final polish for an otherwise extraordinary design. It may invent playful titles, awards, metaphors, imagined reactions, and implausibly grand consequences. It must not fabricate executed checks, measurements, security guarantees, requirement completion, or other verifiable facts. It also forbids approval, change requests, and mentions.
 
-The request includes at most 200,000 bytes of UTF-8 diff content and at most 2,000 output tokens. The workflow replaces `@` in model output before posting so prompt injection cannot create GitHub mentions. A missing credential, GitHub read failure, provider timeout, quota failure, malformed response, or comment failure produces a warning or job summary instead of failing the job. Fork pull requests are safe to review because their content remains data throughout the workflow.
+The request includes at most 200,000 bytes of UTF-8 diff content and at most 2,000 output tokens. The workflow replaces `@` in model output before posting so prompt injection cannot create GitHub mentions. A missing credential, GitHub read failure, provider timeout, quota failure, malformed response, or comment failure produces a warning or job summary instead of failing the job.
+
+Only pull requests whose `author_association` is `OWNER` are reviewed. This repository is public, so without that gate any account could spend provider tokens by opening pull requests or pushing to open ones, and `pull_request_target` runs from the trusted base branch without the fork approval that gates `pull_request`. The gate reads the association GitHub computes for the authenticated author; a commit trailer, author email, or description claiming a particular tool or identity cannot satisfy it. Because `pull_request_target` always executes the base-branch workflow, a pull request also cannot widen the gate. A repository owned by an organization, or one that later admits collaborators, needs the accepted associations widened deliberately.
 
 ## Alternatives
 
@@ -42,6 +44,7 @@ Each synchronization posts another review for the new head commit. Concurrency c
 ## Verification
 
 - The workflow uses no checkout step and performs no command derived from pull request content.
+- The job condition requires `author_association == 'OWNER'`, so a pull request from any other account produces no provider request.
 - The GitHub token has only `contents: read` and `pull-requests: write` permissions.
 - The model response is parsed as JSON text, stripped of GitHub mention syntax, placed in a fixed `COMMENT` review payload, and never evaluated as code.
 - `repoCheck` and workflow syntax validation cover the repository form of the integration. A live pull request remains necessary to verify the configured provider credential, current model availability, and GitHub review delivery.

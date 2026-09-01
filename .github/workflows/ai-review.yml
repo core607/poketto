@@ -21,8 +21,12 @@ concurrency:
 jobs:
   review:
     # The trusted base-branch workflow reads the remote diff but never checks out or executes it.
+    # This is a public repository and every run spends provider tokens, so only the owner's pull
+    # requests are reviewed. GitHub computes author_association for the authenticated author, so a
+    # pull request cannot forge it through commit trailers, author email, or its description.
     if: >-
       github.event.pull_request.draft == false &&
+      github.event.pull_request.author_association == 'OWNER' &&
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
