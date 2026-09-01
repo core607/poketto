@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 ## 本文范围
 
-这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。拟议的[远程仓库权威](../proposed/2026-09-01-remote-repository-authority.md)、[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。在这些提案实现前，下文机制描述的是可执行基线。
+这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。[远程仓库权威](2026-09-01-remote-repository-authority.md)已经实现。拟议的[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。除非链接的提案明确描述未来变化，下文机制均为已交付行为。
 
 ## 定位
 
@@ -16,14 +16,14 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 - 开源：代码与项目文档采用 Apache-2.0；美术素材与站点发布的创作内容采用 CC BY-NC-SA 4.0。
 - 单实例，不开放注册。使用者是工作空间所有者、其信任的成员与这些人的 AI，通过已发放的身份或 API Key 在获授权的工作空间内行动。
 - 面向低配置单机设计（2 核 4G 级别可运行全套服务），组件选择以省资源为先。
-- 使用方式是 clone 自部署。代码仓与各工作空间的内容仓分离：服务在工作空间建成时自动 git init 对应内容仓，remote 备份可选。
+- 使用方式是 clone 自部署。代码仓与各工作空间的内容仓分离。运营者通过 secret 为默认工作空间提供预先建好的私有 HTTPS 仓库；远端 `main` 是权威，本地仓库存储只是一次性缓存。
 
 ## 核心架构决策
 
 1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库；PostgreSQL 只做内容的派生投影（search_documents 表），可随时全量重建。每个工作空间的投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
-2. 写入模型：每个工作空间内容仓的 main 分支即真理。机器入口（MCP、管理端）强校验 frontmatter、按仓库串行写入、由服务代为 commit，commit 记录调用者身份；人工 git push 由 git 原生 non-fast-forward 检查把关，投影对其内容做 lint 标记而非拒收。git commit 成功是写入的确认点；索引落后时如实返回 committed 与 indexed 两个状态，防止调用方重试重复建档。
+2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。机器入口（MCP、管理端）强校验 frontmatter，以解析出的旧提交构建候选 commit 并记录调用者身份；只有远端 ref 仍等于旧提交时才推进。竞争 push 返回冲突；回包丢失时重读远端 `main` 对账，绝不盲目重试 ref 更新。投影对仓库所有者直接 push 的内容做 lint 标记而非拒收。仓库确认与后续投影确认是两个独立状态。
 3. 检索以 agentic 方式为默认。服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
-4. 信任分层。工作空间所有者可直接操作该工作空间的文件（属 break-glass，改完需显式重索引）；成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
+4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 在下一次读取时观察新的远端 `main`，不会把缓存改动当作内容。成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
 5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间，不提供自助创建更多工作空间的入口。
 
 ## MCP 工具

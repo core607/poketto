@@ -15,7 +15,7 @@ The serverless request environment, object storage, shared relational service, r
 
 ### Profile boundary
 
-- Both profiles use [remote Git repository authority](2026-09-01-remote-repository-authority.md). There is no local Git authority profile.
+- Both profiles use [remote Git repository authority](../implemented/2026-09-01-remote-repository-authority.md). There is no local Git authority profile.
 - The primary single-server profile uses a local filesystem [ManagedBlobStore and disposable repository-image cache](2026-09-01-repository-asset-blob-store.md) plus a local SRT executor service under a dedicated low-privilege identity.
 - The optional serverless profile runs Spring and the frontend without required persistent application volumes. It uses OSS-compatible authoritative managed storage and derived repository-image caching, shared PostgreSQL, and remote SRT workers outside replaceable request instances.
 - Both profiles use the same application artifacts, domain modules, workspace model, authorization rules, content format, publishing policy, write preconditions, repository acknowledgement, and image-ownership semantics. Startup configuration selects explicit adapters; missing or invalid external configuration fails closed and never falls back to container disk, local Git authority, or direct command execution.

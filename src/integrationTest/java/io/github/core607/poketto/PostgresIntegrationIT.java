@@ -8,6 +8,7 @@ import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +17,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -26,6 +28,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
 @SpringBootTest
+@Import(io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class)
 class PostgresIntegrationIT {
 
     @TempDir
@@ -34,6 +37,17 @@ class PostgresIntegrationIT {
     @DynamicPropertySource
     static void contentProperties(DynamicPropertyRegistry registry) {
         registry.add("poketto.data-dir", () -> dataDirectory.toAbsolutePath().toString());
+        Path remote = dataDirectory.resolve("remote.git").toAbsolutePath();
+        try (Git ignored = Git.init()
+                .setBare(true)
+                .setInitialBranch("main")
+                .setDirectory(remote.toFile())
+                .call()) {
+            // A local bare repository gives the application a real remote protocol in CI.
+        } catch (Exception exception) {
+            throw new IllegalStateException("integration-test remote cannot be created", exception);
+        }
+        registry.add("poketto.test.repository-path", remote::toString);
     }
 
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName

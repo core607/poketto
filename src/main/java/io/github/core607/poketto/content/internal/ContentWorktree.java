@@ -7,17 +7,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.Status;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheEditor;
 import org.eclipse.jgit.dircache.DirCacheEntry;
@@ -98,38 +93,6 @@ final class ContentWorktree {
         } catch (IOException exception) {
             throw new ContentRepositoryException(
                     "repository index and worktree cannot be updated", exception);
-        }
-    }
-
-    /**
-     * Reports the index and worktree state that blocks a machine write, or empty when the
-     * repository equals {@code HEAD}.
-     */
-    static Optional<String> describeUncleanState(Repository repository) {
-        final Status status;
-        try {
-            status = Git.wrap(repository).status().call();
-        } catch (GitAPIException exception) {
-            throw new ContentRepositoryException("repository status cannot be read", exception);
-        }
-        if (status.isClean() && status.getIgnoredNotInIndex().isEmpty()) {
-            return Optional.empty();
-        }
-        List<String> offending = new ArrayList<>();
-        describe(offending, "staged additions", status.getAdded());
-        describe(offending, "staged changes", status.getChanged());
-        describe(offending, "staged removals", status.getRemoved());
-        describe(offending, "modified files", status.getModified());
-        describe(offending, "missing files", status.getMissing());
-        describe(offending, "untracked files", status.getUntracked());
-        describe(offending, "ignored files", status.getIgnoredNotInIndex());
-        describe(offending, "conflicting files", status.getConflicting());
-        return Optional.of(String.join("; ", offending));
-    }
-
-    private static void describe(List<String> offending, String label, Set<String> paths) {
-        if (!paths.isEmpty()) {
-            offending.add(label + " " + new TreeSet<>(paths));
         }
     }
 

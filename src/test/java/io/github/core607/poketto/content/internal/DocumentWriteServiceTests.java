@@ -38,16 +38,17 @@ class DocumentWriteServiceTests {
     Path dataDirectory;
 
     private WorkspacePaths paths;
+    private RemoteRepositoryFixture repositories;
     private ContentRepositoryStore store;
     private DocumentWriteService writes;
     private WorkspaceId workspace;
 
     @BeforeEach
     void setUp() {
-        paths = new WorkspacePaths(dataDirectory.toAbsolutePath());
-        CanonicalDocumentCodec codec = new CanonicalDocumentCodec();
-        store = new JGitContentRepositoryStore(paths, codec);
-        writes = new JGitDocumentWriteService(paths, codec, store, new TestClock());
+        repositories = new RemoteRepositoryFixture(dataDirectory);
+        paths = repositories.paths();
+        store = repositories.store();
+        writes = repositories.writes(new TestClock());
         workspace = WorkspaceId.random();
     }
 
@@ -361,12 +362,7 @@ class DocumentWriteServiceTests {
     }
 
     private RevCommit headCommit(WorkspaceId workspaceId) throws Exception {
-        Path directory = paths.contentDirectory(workspaceId);
-        assertThat(Files.isDirectory(directory)).isTrue();
-        try (Repository repository = new FileRepositoryBuilder()
-                        .setWorkTree(directory.toFile())
-                        .findGitDir(directory.toFile())
-                        .build();
+        try (Repository repository = repositories.openRemote(workspaceId);
                 RevWalk walk = new RevWalk(repository)) {
             return walk.parseCommit(repository.resolve("refs/heads/main"));
         }

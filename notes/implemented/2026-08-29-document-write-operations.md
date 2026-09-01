@@ -26,17 +26,17 @@ MCP tools, the admin UI, and projection replay all need the same commit semantic
 
 ### Concurrency and acknowledgement
 
-One in-JVM lock per workspace repository serializes these operations; locks, like repositories, are independent across workspaces. The application process is the only machine writer, and one process owns a data directory: running two application processes against the same data directory is outside the deployment contract, and no cross-process lock exists.
+One in-JVM lock per workspace cache prevents two local operations from mutating the same candidate worktree. Locks and caches are independent across workspaces. They are a local coordination optimization, not the correctness boundary: independent application processes use separate caches, and [remote repository authority](2026-09-01-remote-repository-authority.md) applies an exact expected-ref update so only one candidate can advance a shared base.
 
-Under the lock, the operation first requires a clean repository: the worktree and index must equal `HEAD`, because the owner may edit the worktree directly as break-glass. That requirement reads `HEAD` literally, so an untracked or ignored file inside the content directory blocks a machine write as well — the worktree then holds bytes the machine did not produce, and it cannot tell an unfinished document from debris. Any such state raises `RepositoryNotCleanException` naming what must be committed or reverted first.
+The cache is fully machine-owned. Before a write, the authority adapter fetches remote `main`, resets tracked state to that commit, and removes untracked and ignored files. Owners author by pushing the private remote; cache edits are disposable and never block or become content.
 
-The operation then reads the current `main` tree, verifies `expected_revision` against the committed blob hash, applies the change, and commits. A mismatch changes nothing and raises `DocumentConflictException` carrying the live revision so the caller re-reads instead of retrying blind. A missing document raises `DocumentNotFoundException`, distinct from a conflict: after a lost `delete` acknowledgement, a retry reads as already applied. `create` and a path-changing `update` verify that the target path is free after Unicode normalization and case folding, and `create` verifies document-UUID uniqueness, under the same lock. The first successful write on an unborn `main` creates the root commit.
+The operation reads the resolved remote `main` tree, verifies `expected_revision` against the committed blob hash, applies the change, and builds a candidate commit. A mismatch changes nothing and raises `DocumentConflictException` carrying the live revision so the caller re-reads instead of retrying blind. A missing document raises `DocumentNotFoundException`, distinct from a conflict: after a lost `delete` acknowledgement, a retry reads as already applied. `create` and a path-changing `update` verify that the target path is free after Unicode normalization and case folding, and `create` verifies document-UUID uniqueness, under the same local lock. The first successful write on an unborn remote `main` creates the root commit.
 
 A committed change always carries a later `updated_at`, and therefore a new revision. Canonical serialization advances it when the document's own fields change; the write service advances it for a move, and for a write that rewrites a hand-edited file whose fields already match into canonical form.
 
-Before mutating the worktree, the operation records the paths it will touch in an intent journal inside the repository's git directory. A failed stage or commit resets exactly those paths to `HEAD` and removes the journal before the lock releases. Recovery runs at the start of every write rather than at process startup, so a workspace recovers without the process having enumerated it: a journal left behind by a crash resets its paths and is removed, touching nothing else. Dirty state without a journal is operator activity and blocks machine writes until resolved.
+Before mutating the candidate worktree, the operation records the paths it will touch in an intent journal inside the cache's git directory. A failed stage or commit resets those paths to the resolved base and removes the journal before the lock releases. A process crash needs no durable local recovery contract: the next operation rematerializes the entire disposable cache from remote `main` before building another candidate.
 
-`DocumentWriteResult` shares the document UUID, the commit that holds the reported state, and the `committed` observation; an operation that finds the repository already in the requested state reports `committed` false and the unchanged commit. `create`, `update`, and `publish` add the resulting path and revision; `delete` reports the removed path and carries no revision, because no blob remains. In the implemented baseline, `committed` observes the local `main`: a crash between commit and response loses only the acknowledgement, and local `main` either contains the whole commit or none of it. [Remote repository authority](../proposed/2026-09-01-remote-repository-authority.md) proposes replacing this acknowledgement boundary with exact-ref remote compare-and-swap rather than adding a second `mirrored` success mode.
+`DocumentWriteResult` shares the document UUID, the commit that holds the reported state, and the `committed` observation; an operation that finds the repository already in the requested state reports `committed` false and the unchanged remote commit. `create`, `update`, and `publish` add the resulting path and revision; `delete` reports the removed path and carries no revision, because no blob remains. `committed` observes exact-ref remote acknowledgement. A lost response is reconciled by reading remote `main`: equality with the candidate succeeds, a competing commit conflicts, and an unreadable ref is explicitly ambiguous and must not be retried blindly.
 
 ### Attribution
 
@@ -50,7 +50,7 @@ These operations do not authorize. Entry points resolve an authorized workspace 
 
 ### Implemented scope
 
-The implementation covers the four operations, per-repository locking, the clean-repository check, the intent journal and its crash recovery, validation, attribution, and write results, reusing the foundation's canonical serialization and validation. It excludes HTTP, MCP, and admin entry points, capability enforcement, projection and indexing, an unpublish operation, and replication.
+The implementation covers the four operations, per-cache locking, candidate journaling and rollback, remote compare-and-swap acknowledgement, validation, attribution, and write results, reusing the foundation's canonical serialization and validation. It excludes HTTP, MCP, and admin entry points, capability enforcement, projection and indexing, and an unpublish operation.
 
 ## Alternatives
 
@@ -69,7 +69,7 @@ The implementation covers the four operations, per-repository locking, the clean
 ## Verification
 
 - `DocumentWriteServiceTests` covers the root commit on an unborn `main`, private creation, path validation before the repository is reached, revision and `updated_at` advance, the unchanged-update and republish no-ops, moves, conflicts carrying the live revision, not-found against conflict, occupied and normalization-colliding targets, single-publication time, workspace independence, and commit subject and trailer contents.
-- `DocumentWriteRecoveryTests` covers blocked writes for modified, untracked, and ignored worktree state, journal recovery for a path `HEAD` holds and one it never held, operator edits outside the journal surviving recovery and still blocking, rollback and journal removal after an injected apply failure, a lost acknowledgement applying exactly once, serialization of two writers on one repository, and independent progress across two workspaces.
+- `DocumentWriteRecoveryTests` covers disposable dirty-cache recovery, a lost successful push response applying exactly once, an unverifiable ambiguous result, and independent application caches advancing the same base with one success and one conflict.
 - `WritePrincipalTests` covers trailer rendering and the identifiers the value type refuses.
 - `ModularityTests` verifies that the write contracts live in the content module's API package while its JGit implementation stays internal.
 - The document-UUID uniqueness guard in `create` is unreachable through the service, which assigns a fresh random UUID, so it stands as a guard against a repository that already violates the foundation's uniqueness rule rather than a tested path.
@@ -79,10 +79,10 @@ The implementation covers the four operations, per-repository locking, the clean
 
 A lost create response can still produce duplicate documents, because create has no natural idempotency token. Honest `committed` reporting and AI-oriented error text are the current mitigations.
 
-The write lock is process-local. Deployment and operations documentation must keep one application process per data directory; a second process would bypass serialization and can corrupt the worktree mid-commit.
+The write lock is process-local, so application instances must not share one cache directory. Correctness across separate instance caches comes from remote compare-and-swap, not from distributed locking.
 
-Journal-driven recovery resets the journaled paths unconditionally, so a break-glass edit made to exactly those paths between a crash and recovery is discarded. The journal names only paths a machine write was already replacing, which keeps the window narrow.
+A definite remote conflict leaves the candidate unacknowledged even though its objects may already exist remotely. They are unreachable and can be collected by ordinary Git maintenance; no caller treats object transfer as commit success.
 
 A write needs a clock that has advanced past the document's `updated_at`. A backwards clock step fails the write rather than committing a document whose update time precedes the one it replaced.
 
-Requiring the worktree to equal `HEAD` means an untracked or ignored scratch file in the content directory stops every machine write until the owner removes or commits it. Refusing is safer than guessing which stray bytes are disposable, but it makes the failure visible to agents rather than to the person who created it.
+Remote unavailability now blocks current reads and writes. A populated cache avoids retransferring unchanged objects but never becomes an offline acknowledgement mode.

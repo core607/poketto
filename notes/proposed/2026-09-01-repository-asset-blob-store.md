@@ -52,7 +52,7 @@ The optional serverless profile implements the same managed contract with durabl
 
 ## Implementation scope and dependencies
 
-The first implementation depends on [remote repository authority](2026-09-01-remote-repository-authority.md). It adds the `ManagedBlobStore` port, local filesystem adapter, workspace-scoped managed catalog, immutable upload and delivery, retention-safe cleanup, and the repository-image materialization cache with focused storage, security, and isolation tests.
+The first implementation depends on [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md). It adds the `ManagedBlobStore` port, local filesystem adapter, workspace-scoped managed catalog, immutable upload and delivery, retention-safe cleanup, and the repository-image materialization cache with focused storage, security, and isolation tests.
 
 [Repository-native publishing and images](2026-09-01-repository-native-publishing-and-assets.md) owns relative-link resolution, folder galleries, public reachability, structured reads, and document-reference writes. The authoritative OSS adapter and shared repository-image cache remain inside [the optional serverless deployment profile](2026-09-01-optional-serverless-deployment-profile.md), where real external infrastructure can prove the contracts.
 

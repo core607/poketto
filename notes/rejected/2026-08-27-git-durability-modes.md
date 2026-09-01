@@ -6,7 +6,7 @@ Rejected: 2026-09-01
 
 ## Rejection
 
-[Remote repository authority](../proposed/2026-09-01-remote-repository-authority.md) selects remote `main` as the sole authority for both supported production profiles. A local-acknowledgement mode and a mirrored-acknowledgement mode would preserve two correctness, recovery, and deployment models, so Poketto will use a disposable local cache instead. The analysis below is retained to prevent local-first replication from being reintroduced as a harmless transport option.
+[Remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) selects remote `main` as the sole authority for both supported production profiles. A local-acknowledgement mode and a mirrored-acknowledgement mode would preserve two correctness, recovery, and deployment models, so Poketto uses a disposable local cache instead. The analysis below is retained to prevent local-first replication from being reintroduced as a harmless transport option.
 
 ## Problem
 

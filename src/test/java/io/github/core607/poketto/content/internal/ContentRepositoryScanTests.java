@@ -60,9 +60,9 @@ class ContentRepositoryScanTests {
 
     @Test
     void keepsRepositoriesAndDocumentIdsIndependentAcrossWorkspaces() throws Exception {
-        WorkspacePaths paths = new WorkspacePaths(dataDirectory.toAbsolutePath());
-        Fixture first = fixture(paths, WorkspaceId.random());
-        Fixture second = fixture(paths, WorkspaceId.random());
+        RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(dataDirectory);
+        Fixture first = fixture(repositories, WorkspaceId.random());
+        Fixture second = fixture(repositories, WorkspaceId.random());
         first.commit(Map.of("documents/same.md", document(ID, "First", "One")));
         second.commit(Map.of("documents/same.md", document(ID, "Second", "Two")));
 
@@ -113,14 +113,15 @@ class ContentRepositoryScanTests {
     }
 
     private Fixture fixture() {
-        return fixture(new WorkspacePaths(dataDirectory.toAbsolutePath()), WorkspaceId.random());
+        return fixture(new RemoteRepositoryFixture(dataDirectory), WorkspaceId.random());
     }
 
-    private static Fixture fixture(WorkspacePaths paths, WorkspaceId workspaceId) {
-        ContentRepositoryStore store = new JGitContentRepositoryStore(
-                paths, new CanonicalDocumentCodec());
+    private static Fixture fixture(
+            RemoteRepositoryFixture repositories, WorkspaceId workspaceId) {
+        ContentRepositoryStore store = repositories.store();
         store.ensureReady(workspaceId);
-        return new Fixture(store, workspaceId, paths.contentDirectory(workspaceId));
+        return new Fixture(
+                repositories, store, workspaceId, repositories.cache(workspaceId));
     }
 
     private static byte[] document(String id, String title, String body) {
@@ -139,47 +140,13 @@ class ContentRepositoryScanTests {
     }
 
     private record Fixture(
-            ContentRepositoryStore store, WorkspaceId workspaceId, Path contentDirectory) {
+            RemoteRepositoryFixture repositories,
+            ContentRepositoryStore store,
+            WorkspaceId workspaceId,
+            Path contentDirectory) {
 
         void commit(Map<String, byte[]> entries) throws Exception {
-            try (Repository repository = new FileRepositoryBuilder()
-                            .setWorkTree(contentDirectory.toFile())
-                            .findGitDir(contentDirectory.toFile())
-                            .build();
-                    ObjectInserter inserter = repository.newObjectInserter()) {
-                DirCache cache = DirCache.newInCore();
-                DirCacheBuilder tree = cache.builder();
-                Map<String, byte[]> sorted = new LinkedHashMap<>();
-                entries.entrySet().stream()
-                        .sorted(Map.Entry.comparingByKey())
-                        .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
-                for (Map.Entry<String, byte[]> entry : sorted.entrySet()) {
-                    DirCacheEntry treeEntry = new DirCacheEntry(entry.getKey());
-                    treeEntry.setFileMode(FileMode.REGULAR_FILE);
-                    treeEntry.setObjectId(inserter.insert(Constants.OBJ_BLOB, entry.getValue()));
-                    tree.add(treeEntry);
-                }
-                tree.finish();
-                ObjectId treeId = cache.writeTree(inserter);
-
-                PersonIdent identity = new PersonIdent(
-                        "Poketto Tests",
-                        "tests@invalid.example",
-                        Instant.parse("2026-08-26T09:00:00Z"),
-                        java.time.ZoneOffset.UTC);
-                CommitBuilder commit = new CommitBuilder();
-                commit.setTreeId(treeId);
-                commit.setAuthor(identity);
-                commit.setCommitter(identity);
-                commit.setMessage("fixture");
-                ObjectId commitId = inserter.insert(commit);
-                inserter.flush();
-
-                RefUpdate update = repository.updateRef(Constants.R_HEADS + "main");
-                update.setExpectedOldObjectId(ObjectId.zeroId());
-                update.setNewObjectId(commitId);
-                assertThat(update.update()).isEqualTo(RefUpdate.Result.NEW);
-            }
+            repositories.commitRemote(workspaceId, entries);
         }
     }
 }
