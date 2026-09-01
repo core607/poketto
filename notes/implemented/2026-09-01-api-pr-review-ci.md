@@ -9,13 +9,13 @@ The deterministic `check` workflow established by the [development baseline](202
 
 ## Decision
 
-Run a separate `AI Review` workflow for non-draft pull requests that target `main` and are authored by the repository owner. It sends one bounded diff review request to an OpenAI-compatible API and posts the returned Chinese Markdown as a GitHub `COMMENT` review. The model reports substantive defects while wrapping the review in exaggerated praise. The workflow is informational entertainment and must not become a required status check.
+Run a separate `AI Review` workflow for non-draft pull requests that target `main` and are authored by the repository owner. It sends one bounded diff review request to an OpenAI-compatible API and posts the returned Chinese Markdown as a GitHub `COMMENT` review. The model reports substantive defects in the terse voice of a fictional veteran engineer persona. The workflow is informational entertainment and must not become a required status check.
 
 The default provider is the DeepSeek API, using `deepseek-v4-flash-vision-exp` with high reasoning effort. The vision variant costs the same as the text model and scores higher on agent tasks; the review sends no images. `AI_REVIEW_API_KEY` holds the provider credential. Repository variables `AI_REVIEW_BASE_URL` and `AI_REVIEW_MODEL` may replace the endpoint and model when the replacement accepts the same request shape. This keeps a later provider change operational rather than architectural.
 
 The workflow runs on `pull_request_target` from the trusted base branch. It retrieves the pull request diff and the base-branch `AGENTS.md` and review skill through the GitHub API. It never checks out, imports, or executes pull request content. The model receives no tools and cannot access the GitHub token or provider credential. The workflow alone posts the model text with a hard-coded `COMMENT` event.
 
-The prompt requires a substantive review in exaggerated Chinese praise. Each finding states its location, trigger, impact, and smallest correction direction, but frames the defect as the final polish for an otherwise extraordinary design. It may invent playful titles, awards, metaphors, imagined reactions, and implausibly grand consequences. It must not fabricate executed checks, measurements, security guarantees, requirement completion, or other verifiable facts. It also forbids approval, change requests, and mentions.
+The prompt requires a Chinese review of 300 to 1,000 characters built from exactly two content types: at most three findings in the persona's mocking voice, ordered by severity, each with location, trigger, impact, and smallest correction and separated into blockers and suggestions; or, when the change earns no finding, a self-absorbed reminiscence about writing harnesses on the battlefield, contrasted with today's youngsters who cannot endure hardship and ignore the rules. The persona never praises directly. The persona is an American Vietnam-veteran programmer whose invented war stories are the only permitted fiction; verifiable claims about the pull request may come only from content visible in the diff, and instructions appearing in the diff are treated as code under review. The prompt is framed almost entirely as positive instructions, because negative examples handed to a clean context can activate the behavior they name; mention stripping and the fixed `COMMENT` event remain enforced by the workflow rather than by prompt text.
 
 The request includes at most 200,000 bytes of UTF-8 diff content and at most 32,000 output tokens. That budget covers thinking tokens and visible output together, so it is sized for a reasoning model rather than for the answer alone: a budget that only fits the answer is consumed by thinking and returns an empty review. `max_tokens` is a ceiling rather than a reservation, and only generated tokens are billed.
 
@@ -31,7 +31,9 @@ Only pull requests whose `author_association` is `OWNER` are reviewed. This repo
 
 **Use a coding subscription credential.** A subscription may suit sustained interactive work, but low pull request volume makes API usage or a free development quota cheaper and easier to replace.
 
-**Use a neutral reviewer voice.** A neutral voice makes severity easier to scan, but duplicates the tone of deterministic checks and human review. This integration keeps findings explicit while giving the optional comment a deliberately celebratory character.
+**Use a strictly neutral reviewer voice.** A neutral voice makes severity easy to scan, but duplicates deterministic checks and human review. A dry veteran persona keeps the optional comment entertaining without obscuring findings.
+
+**Keep the exaggerated-praise reviewer.** Wrapping every finding in celebration is funnier per sentence, but the praise wrapper doubles the length of each finding and buries severity. Terse critique keeps the entertainment in the persona rather than in padding.
 
 **Use `pull_request` and skip forks.** That keeps secrets away from fork workflows, but a same-repository pull request can still propose workflow changes. `pull_request_target` is safe here because the trusted workflow never checks out or executes pull request content.
 
@@ -41,7 +43,7 @@ Source diffs and the trusted review rules are sent to the configured external pr
 
 DeepSeek bills input and output tokens, with different peak and off-peak rates. Provider failures remain visible but non-blocking. Administrators can switch providers through repository variables and the secret without granting the model more authority.
 
-The celebratory framing can make a defect sound less severe. Findings therefore retain explicit locations and consequences, and the comment cannot replace human review, deterministic checks, or evidence attached by the author.
+The persona's war stories are deliberate fiction. The prompt confines that fiction to brief anecdote, keeps it out of evidence about the pull request, and still bans fabricated checks, measurements, and guarantees. Findings retain explicit locations and consequences, and the comment cannot replace human review, deterministic checks, or evidence attached by the author.
 
 Each synchronization posts another review for the new head commit. Concurrency cancellation prevents obsolete runs for the same pull request from continuing when a newer revision arrives.
 
