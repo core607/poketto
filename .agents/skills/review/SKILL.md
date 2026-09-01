@@ -35,7 +35,7 @@ One substantiated blocking finding beats a list of nitpicks. If nothing substant
 When the diff touches them, require direct evidence for these requirements rather than treating them as background prose:
 
 - Markdown files and the content repository's main branch remain the source of truth; PostgreSQL search data is rebuildable projection state.
-- Projection updates and checkpoint advancement commit atomically; a successful git commit and successful indexing are reported separately.
+- Projection updates and checkpoint advancement commit atomically; write results report `committed` and `mirrored` independently, and projection state is reported by the projection boundary, not by write results.
 - Machine writes are serialized, document UUIDs remain stable, and updates/deletes enforce `expected_revision` without overwriting conflicts.
 - Visitor Q&A can depend only on a public-content search interface that exposes no caller-supplied scope.
 - Publication is presented as practically irreversible; backup coverage includes non-derived state and image blobs, not rebuildable projection rows.
