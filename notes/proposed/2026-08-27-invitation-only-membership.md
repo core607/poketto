@@ -7,14 +7,14 @@ Status: Proposed
 
 A Poketto knowledge workspace needs to serve its owner, trusted members, and their AI agents. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) allow trusted members but define only issued API keys; they do not define how a human joins or leaves a workspace while retaining an independent audit identity.
 
-Sharing an owner account or long-lived API key obscures attribution and prevents independent revocation. Open registration would also change the trust boundary of a personal self-hosted product. A member must join a specific workspace through an invitation initiated by its owner.
+Sharing an owner account or long-lived API key obscures attribution and prevents independent revocation. Consumer registration may create an account and its personal workspace, but it must not grant access to an existing workspace. A member joins an existing workspace only through an invitation initiated by that workspace's owner.
 
 ## Proposal
 
 ### Accounts and memberships
 
 - A human account is an instance-level identity. A membership connects an account to one workspace with the `OWNER` or `MEMBER` role. One account may join several workspaces and have an independent role in each.
-- The first account uses a one-time instance initialization flow to become the instance administrator and `OWNER` of the default workspace. The entry point closes permanently after initialization and leaves no default password.
+- A self-hosted instance may use a one-time initialization flow to create its first account, instance administrator, and default-workspace `OWNER`. The entry point closes permanently after initialization and leaves no default password. The hosted registration and personal-workspace flow belongs to the [consumer multitenancy proposal](2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md).
 - A workspace always retains at least one active `OWNER`. Disabling a member, leaving a workspace, or transferring ownership cannot remove the last owner.
 - Human sessions, AI API keys, and system tasks are distinct principal types. Audit records preserve the acting principal and do not attribute a member's or AI's work to the owner.
 
@@ -32,13 +32,13 @@ This proposal defines the security contract for accounts, sessions, and invitati
 
 - An owner may disable a membership. Disabling it immediately blocks new workspace sessions and revokes every active API key that the member created or holds in that workspace. Memberships in other workspaces are unaffected.
 - An AI API key is bound to a workspace, creator, and capability set. `MANAGE_KEYS`, member invitations, and member suspension are owner-only by default. A member or its AI cannot elevate its own authority.
-- Open registration has no route, API, or configuration switch. Adding it requires a new proposal covering abuse, identity verification, compliance, and resource budgets.
+- This proposal does not define consumer registration or personal-workspace creation. An account created through the hosted registration flow still needs an invitation before it can join someone else's workspace.
 
 ## Implementation scope and dependencies
 
 The implemented [workspace and tenant boundary](../implemented/2026-08-27-workspace-tenancy.md) is this proposal's foundation. Membership does not depend on the implemented [content repository foundation](../implemented/2026-08-26-content-foundation.md), but human end-to-end acceptance also requires administration pages for initialization, login, invitations, and member management.
 
-The first implementation includes accounts, memberships, invitations, server-side sessions, owner initialization, password login, logout, invitation acceptance, membership suspension, authorization checks, audit attribution, and database integration tests. It excludes email delivery, OAuth, social login, passkeys, open registration, self-service workspace creation, and an instance-level operations console.
+The first implementation includes accounts, memberships, invitations, server-side sessions, self-hosted owner initialization, password login, logout, invitation acceptance, membership suspension, authorization checks, audit attribution, and database integration tests. It excludes email delivery, OAuth, social login, passkeys, hosted registration, personal-workspace provisioning, and an instance-level operations console.
 
 ## Alternatives considered
 
@@ -46,14 +46,14 @@ The first implementation includes accounts, memberships, invitations, server-sid
 
 **Issue API keys to humans.** API keys suit scripts and AI agents, not browser sessions, login protection, and member lifecycle. They remain the machine credential.
 
-**Allow open registration followed by owner approval.** This expands the anonymous attack surface and introduces spam registration and identity-verification concerns. Invitations directly express the current trust relationship.
+**Let any registered account discover a workspace and request admission.** This creates an enumeration and spam surface and makes the owner process unsolicited requests. An explicit invitation reveals only the workspace the owner chose to share.
 
 **Put a long-lived login credential in the invitation.** A leaked link would expose the account indefinitely. A short-lived one-time invitation establishes an account or membership, after which normal credentials and sessions take over.
 
 ## Acceptance
 
-- Both requirements documents include local accounts, workspace memberships, and the invitation-only member boundary while continuing to exclude open registration.
-- First-time initialization creates the single instance administrator and owner of the default workspace; the same entry point cannot be used again.
+- Both requirements documents distinguish account registration from invitation-only admission to an existing workspace.
+- Self-hosted first-time initialization creates the instance administrator and owner of the default workspace; the same entry point cannot be used again. Hosted registration does not expose or reopen that entrance.
 - Invitation tokens have sufficient entropy, appear once, exist only as hashes at rest, and become invalid after use, revocation, or expiry.
 - An invitation can establish only its bound workspace's `MEMBER` membership. Cross-workspace reuse, privilege escalation, and removal of the last owner are rejected.
 - Two members have independent page actions, API keys, and audit identities. Disabling one membership does not affect the account's authority in another workspace.

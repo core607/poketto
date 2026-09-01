@@ -7,7 +7,7 @@ Status: Implemented
 
 Without an explicit tenant boundary, content repositories, projections, caches, authorization, and background work could form around an implicit default tenant. Adding independent knowledge spaces after those features existed would require isolation conditions to be threaded through every layer. Search, caches, and asynchronous work are the easiest paths to miss because they do not all appear in the primary request flow.
 
-Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the default topology. Open registration, billing, and SaaS operation remain separate concerns.
+Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the implemented default topology. The proposed [consumer multitenancy and stateless hosted architecture](../proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md) builds registration and SaaS operation on this boundary without making an account the tenant.
 
 ## Decision
 
@@ -53,6 +53,8 @@ Cloud PostgreSQL uses the same JDBC contract and does not need a provider-specif
 The implemented [content repository foundation](2026-08-26-content-foundation.md) and proposed invitation-only membership build independently on this boundary. Content writes, projection, search, MCP, and visitor Q&A use `WorkspaceId` instead of implementing a single-workspace path first.
 
 This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
+
+The consumer multitenancy proposal reverses the default deployment and provisioning limits in this section while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. Until that proposal is implemented, this section describes the executable topology.
 
 ## Alternatives considered
 

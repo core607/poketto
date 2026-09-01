@@ -2,6 +2,10 @@
 
 Date: 2026-08-25
 
+## 本文范围
+
+这份 implemented 文档记录可执行的单机基线，以及为该基线确定的产品契约。拟议的 [C 端多租户、无状态应用与远程仓库权威](../proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md)保留 Git 内容权威与工作空间隔离，同时替换封闭注册、应用持有本地仓库和进程内协调这些长期假设。在该提案实现前，下文机制描述的是当前基线，而不是托管服务目标的限制条件。
+
 ## 定位
 
 Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown 内容，既支撑公开发布，也作为受控 AI 的长期记忆，通过 MCP 访问。

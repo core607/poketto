@@ -1,18 +1,18 @@
 # Poketto
 
-自托管的个人知识库，公开面是博客。同一份 Markdown 内容，既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。
+以仓库为核心的个人知识服务，公开面是博客。每个工作空间都在 Git 中保存 Markdown 与历史；同一份内容既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。Poketto 可以自托管，其[托管服务目标架构](notes/proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md)则让彼此隔离的 C 端工作空间运行在无状态应用副本之后。
 
 [English](README.md)
 
 ## 状态
 
-开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)）。可执行开发基线、工作空间隔离以及内容仓与文档基础已经实现；文档写入、投影、检索、渲染和 MCP 入口仍处于提案阶段。
+开发中。可执行开发基线、工作空间隔离、内容仓基础与文档写入已经实现。当前基线是使用本地工作空间仓库的自托管应用；C 端注册、无状态应用副本、远程仓库权威、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、渲染和 MCP 入口仍处于提案阶段。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线与现有产品契约，提案则标明尚未交付的目标决策。
 
 ## 适合谁
 
-- 希望笔记、剪藏和博客就是 git 仓库里的一份 Markdown、数据库只是可重建的检索投影的人。
+- 希望笔记、剪藏和博客始终是带 Git 历史的 Markdown，而关系型应用状态留在内容仓之外的人。
 - 希望自己的 AI 助手通过 MCP 和作用域 API Key 读写内容、而不是交出 shell 权限的人。
-- 用一台小服务器跑东西、组件宁少勿多的人。
+- 希望同一套工作空间模型既能私有自托管，也能作为共享服务中的隔离空间运行的人。
 - 对「为 agent 开发而设计的仓库」感兴趣的人——从 [AGENTS.md](AGENTS.md) 看起。
 
 ## 目录

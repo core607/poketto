@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Poketto: a self-hosted personal knowledge base whose public face is a blog. Files are the source of truth, PostgreSQL is a derived projection, and trusted AI agents connect over MCP. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns the product boundaries and architecture.
+Poketto is a repository-native personal knowledge service whose public face is a blog. The executable baseline is self-hosted and local-repository-backed; the proposed [hosted architecture](notes/proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md) adds consumer multitenancy, stateless application replicas, and remote repository authority. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted target decisions while they await implementation and must not be described as shipped.
 
 The public README and requirements note have .zh.md counterparts; edit both sides in the same change (see [translate-docs](.agents/skills/translate-docs/SKILL.md)). Agent instructions and skills are English-only.
 

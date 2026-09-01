@@ -2,6 +2,10 @@
 
 Date: 2026-08-25
 
+## Scope of this record
+
+This implemented note records the executable single-host baseline and the product contracts selected for it. The proposed [consumer multitenancy, stateless application, and remote repository authority](../proposed/2026-09-01-consumer-multitenancy-stateless-application-and-remote-repository-authority.md) retains Git content authority and workspace isolation while replacing the long-term assumptions of closed registration, application-owned local repositories, and process-local coordination. Until that proposal is implemented, the mechanics below describe the current baseline; they are not constraints on the hosted target.
+
 ## Positioning
 
 Poketto is a self-hosted personal knowledge base whose public face is a blog. The same Markdown content serves both public publishing and, over MCP, the long-term memory of trusted AI agents.
