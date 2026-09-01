@@ -26,8 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ContentRepositoryBootstrapTests {
 
-    private static final WritePrincipal OWNER =
-            new WritePrincipal(PrincipalType.ACCOUNT, "acct-test");
+    private static final WritePrincipal OWNER = new WritePrincipal(PrincipalType.ACCOUNT, "acct-test");
 
     @TempDir
     Path root;
@@ -53,10 +52,9 @@ class ContentRepositoryBootstrapTests {
     void deletingTheCacheAndReplacingTheAuthorityPreservesAcknowledgedContent() throws Exception {
         RemoteRepositoryFixture firstProcess = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
-        var created = firstProcess.writes(new TestClock()).create(
-                workspace,
-                OWNER,
-                new DocumentDraft("documents/note.md", "Note", List.of(), "Body"));
+        var created = firstProcess
+                .writes(new TestClock())
+                .create(workspace, OWNER, new DocumentDraft("documents/note.md", "Note", List.of(), "Body"));
         assertThat(created.committed()).isTrue();
         clearReadOnly(firstProcess.cache(workspace));
         org.springframework.util.FileSystemUtils.deleteRecursively(firstProcess.cache(workspace));
@@ -75,9 +73,9 @@ class ContentRepositoryBootstrapTests {
         repositories.store().ensureReady(workspace);
         Path localOnly = repositories.cache(workspace).resolve("local-only.txt");
         Files.writeString(localOnly, "not authority");
-        repositories.commitRemote(workspace, Map.of(
-                "documents/note.md",
-                document("550e8400-e29b-41d4-a716-446655440000", "Owner", "Remote")));
+        repositories.commitRemote(
+                workspace,
+                Map.of("documents/note.md", document("550e8400-e29b-41d4-a716-446655440000", "Owner", "Remote")));
 
         assertThat(repositories.store().scan(workspace))
                 .singleElement()
@@ -96,8 +94,7 @@ class ContentRepositoryBootstrapTests {
                 },
                 new JGitRemoteGitTransport(),
                 2);
-        ContentRepositoryStore store =
-                new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec());
+        ContentRepositoryStore store = new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec());
 
         assertThatThrownBy(() -> store.ensureReady(workspace))
                 .isInstanceOf(ContentRepositoryException.class)
@@ -109,8 +106,7 @@ class ContentRepositoryBootstrapTests {
     void transportFailuresDoNotExposeRemoteCoordinatesOrCredentials() throws Exception {
         String address = "https://secret-user:secret-token@127.0.0.1:1/private.git";
         RepositoryBinding binding = new RepositoryBinding(
-                new URIish(address),
-                new UsernamePasswordCredentialsProvider("secret-user", "secret-token"));
+                new URIish(address), new UsernamePasswordCredentialsProvider("secret-user", "secret-token"));
         WorkspaceId workspace = WorkspaceId.random();
         RepositoryAuthority authority = new JGitRemoteRepositoryAuthority(
                 new WorkspacePaths(root.resolve("data").toAbsolutePath()),
@@ -153,24 +149,29 @@ class ContentRepositoryBootstrapTests {
         byte[] image = new byte[256 * 1024];
         new java.util.Random(607).nextBytes(image);
         byte[] note = document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body");
-        repositories.commitRemote(workspace, Map.of(
-                "documents/nested/note.md", note,
-                "images/nested/image.png", image));
+        repositories.commitRemote(
+                workspace,
+                Map.of(
+                        "documents/nested/note.md", note,
+                        "images/nested/image.png", image));
         repositories.store().scan(workspace);
-        long coldObjectBytes = directoryBytes(
-                repositories.cache(workspace).resolve(".git/objects"));
+        long coldObjectBytes = directoryBytes(repositories.cache(workspace).resolve(".git/objects"));
 
-        repositories.commitRemote(workspace, Map.of(
-                "documents/nested/note.md", note,
-                "documents/second.md",
-                document("650e8400-e29b-41d4-a716-446655440111", "Second", "Tiny"),
-                "images/nested/image.png", image));
+        repositories.commitRemote(
+                workspace,
+                Map.of(
+                        "documents/nested/note.md",
+                        note,
+                        "documents/second.md",
+                        document("650e8400-e29b-41d4-a716-446655440111", "Second", "Tiny"),
+                        "images/nested/image.png",
+                        image));
         repositories.store().scan(workspace);
 
         // Fetch negotiation reports the cache's refs as haves, so an advanced remote sends the
         // new commit without resending the unchanged image or history.
-        long advanceObjectBytes = directoryBytes(
-                repositories.cache(workspace).resolve(".git/objects")) - coldObjectBytes;
+        long advanceObjectBytes =
+                directoryBytes(repositories.cache(workspace).resolve(".git/objects")) - coldObjectBytes;
         assertThat(advanceObjectBytes).isPositive();
         assertThat(advanceObjectBytes).isLessThan(image.length / 4);
     }
@@ -178,8 +179,10 @@ class ContentRepositoryBootstrapTests {
     @Test
     void ignoresForeignDirectoriesWhenBoundingTheCache() throws Exception {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root, 1);
-        Path foreign = root.resolve("data").resolve("workspaces")
-                .resolve("not-a-workspace-id").resolve("content");
+        Path foreign = root.resolve("data")
+                .resolve("workspaces")
+                .resolve("not-a-workspace-id")
+                .resolve("content");
         Files.createDirectories(foreign);
         WorkspaceId first = WorkspaceId.random();
         WorkspaceId second = WorkspaceId.random();
@@ -207,17 +210,18 @@ class ContentRepositoryBootstrapTests {
     }
 
     @Test
-    void recordsColdAndWarmTransferCharacteristicsForNestedTextAndImageContent()
-            throws Exception {
+    void recordsColdAndWarmTransferCharacteristicsForNestedTextAndImageContent() throws Exception {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
         byte[] image = new byte[256 * 1024];
         new java.util.Random(607).nextBytes(image);
-        repositories.commitRemote(workspace, Map.of(
-                "documents/nested/note.md",
-                document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body"),
-                "images/nested/image.png",
-                image));
+        repositories.commitRemote(
+                workspace,
+                Map.of(
+                        "documents/nested/note.md",
+                        document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body"),
+                        "images/nested/image.png",
+                        image));
         Runtime runtime = Runtime.getRuntime();
         long memoryBefore = runtime.totalMemory() - runtime.freeMemory();
         long coldStarted = System.nanoTime();
@@ -225,8 +229,7 @@ class ContentRepositoryBootstrapTests {
         repositories.store().scan(workspace);
 
         long coldMillis = (System.nanoTime() - coldStarted) / 1_000_000;
-        long coldObjectBytes = directoryBytes(
-                repositories.cache(workspace).resolve(".git/objects"));
+        long coldObjectBytes = directoryBytes(repositories.cache(workspace).resolve(".git/objects"));
         long cacheBytes = directoryBytes(repositories.cache(workspace));
         long memoryAfterCold = runtime.totalMemory() - runtime.freeMemory();
         long warmStarted = System.nanoTime();
@@ -234,8 +237,7 @@ class ContentRepositoryBootstrapTests {
         repositories.store().scan(workspace);
 
         long warmMillis = (System.nanoTime() - warmStarted) / 1_000_000;
-        long warmObjectBytes = directoryBytes(
-                repositories.cache(workspace).resolve(".git/objects"));
+        long warmObjectBytes = directoryBytes(repositories.cache(workspace).resolve(".git/objects"));
         long memoryAfterWarm = runtime.totalMemory() - runtime.freeMemory();
         System.out.printf(
                 "repository-fetch cold_ms=%d warm_ms=%d transferred_object_bytes=%d "

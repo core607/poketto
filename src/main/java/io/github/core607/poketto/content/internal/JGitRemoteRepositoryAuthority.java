@@ -62,21 +62,18 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     @Override
     public <T> T read(WorkspaceId workspaceId, SnapshotReader<T> reader) {
         Objects.requireNonNull(reader, "snapshot reader must not be null");
-        return inCache(workspaceId, (repository, binding, commit) -> reader.read(
-                snapshot(repository, commit)));
+        return inCache(workspaceId, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
     }
 
     @Override
     public <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer) {
         Objects.requireNonNull(writer, "candidate writer must not be null");
-        return inCache(workspaceId, (repository, binding, baseCommit) -> writer.write(
-                snapshot(repository, baseCommit),
-                candidateCommit -> advance(
-                        workspaceId,
-                        repository,
-                        binding,
-                        baseCommit,
-                        parseCommit(candidateCommit))));
+        return inCache(
+                workspaceId,
+                (repository, binding, baseCommit) -> writer.write(
+                        snapshot(repository, baseCommit),
+                        candidateCommit ->
+                                advance(workspaceId, repository, binding, baseCommit, parseCommit(candidateCommit))));
     }
 
     private <T> T inCache(WorkspaceId workspaceId, CacheAction<T> action) {
@@ -84,8 +81,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
         try {
-            RepositoryBinding binding = Objects.requireNonNull(
-                    bindings.bindingFor(workspaceId), "repository binding must not be null");
+            RepositoryBinding binding =
+                    Objects.requireNonNull(bindings.bindingFor(workspaceId), "repository binding must not be null");
             Path cache = paths.contentDirectory(workspaceId);
             Repository opened;
             cacheLifecycleLock.lock();
@@ -128,24 +125,19 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ObjectId candidateCommit) {
         Objects.requireNonNull(candidateCommit, "candidate commit must not be null");
         try {
-            RemoteGitTransport.PushStatus result =
-                    transport.pushMain(repository, binding, baseCommit, candidateCommit);
+            RemoteGitTransport.PushStatus result = transport.pushMain(repository, binding, baseCommit, candidateCommit);
             if (result == RemoteGitTransport.PushStatus.CONFLICT) {
                 restoreAfterConflict(repository, binding);
                 throw new RepositoryConflictException(
-                        "workspace " + workspaceId
-                                + " remote main changed while the write was being prepared");
+                        "workspace " + workspaceId + " remote main changed while the write was being prepared");
             }
         } catch (RemoteGitTransportException lostResponse) {
-            reconcileLostResponse(
-                    workspaceId, repository, binding, baseCommit, candidateCommit);
+            reconcileLostResponse(workspaceId, repository, binding, baseCommit, candidateCommit);
         }
     }
 
     private static Snapshot snapshot(Repository repository, ObjectId commit) {
-        Optional<String> commitId = commit.equals(ObjectId.zeroId())
-                ? Optional.empty()
-                : Optional.of(commit.name());
+        Optional<String> commitId = commit.equals(ObjectId.zeroId()) ? Optional.empty() : Optional.of(commit.name());
         return new Snapshot(repository.getWorkTree().toPath(), commitId);
     }
 
@@ -168,9 +160,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         try {
             remoteCommit = transport.fetchMain(repository, binding);
         } catch (RemoteGitTransportException unreadable) {
-            throw new RepositoryWriteAmbiguousException(
-                    "workspace " + workspaceId
-                            + " remote write response was lost and main cannot be verified; do not retry blindly");
+            throw new RepositoryWriteAmbiguousException("workspace " + workspaceId
+                    + " remote write response was lost and main cannot be verified; do not retry blindly");
         }
         if (remoteCommit.equals(candidateCommit)) {
             resetCache(repository, candidateCommit);
@@ -181,8 +172,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         }
         if (!remoteCommit.equals(baseCommit)) {
             throw new RepositoryConflictException(
-                    "workspace " + workspaceId
-                            + " remote main changed while the write was being prepared");
+                    "workspace " + workspaceId + " remote main changed while the write was being prepared");
         }
         throw failure(workspaceId, "remote write failed before main advanced");
     }
@@ -268,7 +258,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 throw new ContentRepositoryException("repository cache main cannot be updated");
             }
             Git git = Git.wrap(repository);
-            git.reset().setMode(ResetCommand.ResetType.HARD).setRef(commit.name()).call();
+            git.reset()
+                    .setMode(ResetCommand.ResetType.HARD)
+                    .setRef(commit.name())
+                    .call();
             git.clean()
                     .setCleanDirectories(true)
                     .setForce(true)
@@ -303,16 +296,13 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     private void ensureCacheCapacity(WorkspaceId current, Path currentCache) {
         List<Path> caches = existingCaches();
-        int allowedExisting = Files.isDirectory(currentCache)
-                ? maxCachedWorkspaces
-                : maxCachedWorkspaces - 1;
+        int allowedExisting = Files.isDirectory(currentCache) ? maxCachedWorkspaces : maxCachedWorkspaces - 1;
         while (caches.size() > allowedExisting) {
             Path victim = caches.stream()
                     .filter(path -> !path.equals(currentCache))
                     .filter(this::isIdle)
                     .min(Comparator.comparing(JGitRemoteRepositoryAuthority::lastModified))
-                    .orElseThrow(() -> failure(
-                            current, "repository cache capacity is occupied by active workspaces"));
+                    .orElseThrow(() -> failure(current, "repository cache capacity is occupied by active workspaces"));
             deleteTree(victim);
             caches.remove(victim);
         }
@@ -404,16 +394,14 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {
                 @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
-                        throws IOException {
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
                     clearReadOnly(file);
                     Files.delete(file);
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
-                public FileVisitResult postVisitDirectory(Path directory, IOException failure)
-                        throws IOException {
+                public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
                     if (failure != null) {
                         throw failure;
                     }
@@ -433,8 +421,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     private static ContentRepositoryException failure(WorkspaceId workspaceId, String detail) {
-        return new ContentRepositoryException(
-                "workspace " + workspaceId + " repository authority: " + detail);
+        return new ContentRepositoryException("workspace " + workspaceId + " repository authority: " + detail);
     }
 
     @FunctionalInterface

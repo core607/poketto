@@ -28,13 +28,11 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
 
     @Override
     public Workspace defaultWorkspace() {
-        List<Workspace> matches = jdbc.query(
-                "select " + SELECT_COLUMNS + " from workspaces where is_default",
-                WORKSPACE_ROW);
+        List<Workspace> matches =
+                jdbc.query("select " + SELECT_COLUMNS + " from workspaces where is_default", WORKSPACE_ROW);
         if (matches.size() != 1) {
             throw new IllegalStateException(
-                    "workspace catalog must contain exactly one default workspace, found "
-                            + matches.size());
+                    "workspace catalog must contain exactly one default workspace, found " + matches.size());
         }
         return matches.getFirst();
     }
@@ -53,12 +51,10 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
         return transactions.execute(status -> {
             // The table lock serializes first-start initialization across application processes.
             jdbc.execute("lock table workspaces in share row exclusive mode");
-            List<Workspace> existing = jdbc.query(
-                    "select " + SELECT_COLUMNS + " from workspaces where is_default",
-                    WORKSPACE_ROW);
+            List<Workspace> existing =
+                    jdbc.query("select " + SELECT_COLUMNS + " from workspaces where is_default", WORKSPACE_ROW);
             if (existing.size() > 1) {
-                throw new IllegalStateException(
-                        "workspace catalog contains more than one default workspace");
+                throw new IllegalStateException("workspace catalog contains more than one default workspace");
             }
             if (existing.size() == 1) {
                 return existing.getFirst();
@@ -66,8 +62,7 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
 
             Workspace created = new Workspace(WorkspaceId.random(), "Default workspace");
             jdbc.update(
-                    "insert into workspaces (workspace_id, display_name, is_default) "
-                            + "values (?, ?, true)",
+                    "insert into workspaces (workspace_id, display_name, is_default) " + "values (?, ?, true)",
                     created.id().value(),
                     created.displayName());
             return created;
@@ -76,7 +71,6 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
 
     private static Workspace readWorkspace(ResultSet resultSet, int rowNumber) throws SQLException {
         return new Workspace(
-                new WorkspaceId(resultSet.getObject("workspace_id", UUID.class)),
-                resultSet.getString("display_name"));
+                new WorkspaceId(resultSet.getObject("workspace_id", UUID.class)), resultSet.getString("display_name"));
     }
 }

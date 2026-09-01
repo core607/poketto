@@ -16,8 +16,8 @@ public final class DocumentConflictException extends RuntimeException {
 
     public DocumentConflictException(String message, DocumentRevision liveRevision) {
         super(message);
-        this.liveRevision = Optional.of(
-                Objects.requireNonNull(liveRevision, "live document revision must not be null"));
+        this.liveRevision =
+                Optional.of(Objects.requireNonNull(liveRevision, "live document revision must not be null"));
     }
 
     public DocumentConflictException(String message) {

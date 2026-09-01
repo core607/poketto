@@ -9,11 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("poketto.repository")
 record RepositoryProperties(
-        String remoteUri,
-        String username,
-        String password,
-        Integer cacheMaxWorkspaces,
-        Integer timeoutSeconds) {
+        String remoteUri, String username, String password, Integer cacheMaxWorkspaces, Integer timeoutSeconds) {
 
     private static final int DEFAULT_CACHE_MAX_WORKSPACES = 32;
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
@@ -22,17 +18,13 @@ record RepositoryProperties(
         remoteUri = blankToNull(remoteUri);
         username = blankToNull(username);
         password = blankToNull(password);
-        cacheMaxWorkspaces = cacheMaxWorkspaces == null
-                ? DEFAULT_CACHE_MAX_WORKSPACES
-                : cacheMaxWorkspaces;
+        cacheMaxWorkspaces = cacheMaxWorkspaces == null ? DEFAULT_CACHE_MAX_WORKSPACES : cacheMaxWorkspaces;
         timeoutSeconds = timeoutSeconds == null ? DEFAULT_TIMEOUT_SECONDS : timeoutSeconds;
         if (cacheMaxWorkspaces < 1) {
-            throw new IllegalArgumentException(
-                    "poketto.repository.cache-max-workspaces must be positive");
+            throw new IllegalArgumentException("poketto.repository.cache-max-workspaces must be positive");
         }
         if (timeoutSeconds < 1) {
-            throw new IllegalArgumentException(
-                    "poketto.repository.timeout-seconds must be positive");
+            throw new IllegalArgumentException("poketto.repository.timeout-seconds must be positive");
         }
         if ((username == null) != (password == null)) {
             throw new IllegalArgumentException(
@@ -54,8 +46,7 @@ record RepositoryProperties(
                 throw invalidRemote();
             }
             return new RepositoryBinding(
-                    new URIish(remoteUri),
-                    new UsernamePasswordCredentialsProvider(username, password));
+                    new URIish(remoteUri), new UsernamePasswordCredentialsProvider(username, password));
         } catch (URISyntaxException exception) {
             throw invalidRemote();
         }

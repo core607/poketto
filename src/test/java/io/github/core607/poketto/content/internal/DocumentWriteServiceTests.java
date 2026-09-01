@@ -18,21 +18,18 @@ import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class DocumentWriteServiceTests {
 
-    private static final WritePrincipal AGENT =
-            new WritePrincipal(PrincipalType.API_KEY, "key-01HQ8");
+    private static final WritePrincipal AGENT = new WritePrincipal(PrincipalType.API_KEY, "key-01HQ8");
 
     @TempDir
     Path dataDirectory;
@@ -75,8 +72,7 @@ class DocumentWriteServiceTests {
     void refusesACreateOnAPathTakenAfterNormalizationAndCaseFolding() {
         writes.create(workspace, AGENT, draft("documents/Café.md"));
 
-        assertThatThrownBy(() ->
-                        writes.create(workspace, AGENT, draft("documents/CAFÉ.md")))
+        assertThatThrownBy(() -> writes.create(workspace, AGENT, draft("documents/CAFÉ.md")))
                 .isInstanceOf(DocumentConflictException.class)
                 .hasMessageContaining("documents/CAFÉ.md")
                 .hasMessageContaining("documents/Café.md")
@@ -122,11 +118,7 @@ class DocumentWriteServiceTests {
         String rootCommit = headCommit(workspace).name();
 
         DocumentWriteResult repeated = writes.update(
-                workspace,
-                AGENT,
-                created.documentId(),
-                created.revision().orElseThrow(),
-                draft("documents/note.md"));
+                workspace, AGENT, created.documentId(), created.revision().orElseThrow(), draft("documents/note.md"));
 
         assertThat(repeated.committed()).isFalse();
         assertThat(repeated.commitId()).isEqualTo(rootCommit);
@@ -161,17 +153,13 @@ class DocumentWriteServiceTests {
     void returnsAConflictCarryingTheLiveRevisionAfterAConcurrentMove() throws Exception {
         DocumentWriteResult created = writes.create(workspace, AGENT, draft("documents/note.md"));
         DocumentRevision stale = created.revision().orElseThrow();
-        DocumentWriteResult moved = writes.update(
-                workspace, AGENT, created.documentId(), stale, draft("documents/moved.md"));
+        DocumentWriteResult moved =
+                writes.update(workspace, AGENT, created.documentId(), stale, draft("documents/moved.md"));
         String liveCommit = headCommit(workspace).name();
 
         assertThatExceptionOfType(DocumentConflictException.class)
-                .isThrownBy(() -> writes.update(
-                        workspace,
-                        AGENT,
-                        created.documentId(),
-                        stale,
-                        draft("documents/note.md")))
+                .isThrownBy(
+                        () -> writes.update(workspace, AGENT, created.documentId(), stale, draft("documents/note.md")))
                 .satisfies(conflict -> assertThat(conflict.liveRevision())
                         .contains(moved.revision().orElseThrow()));
         assertThat(headCommit(workspace).name()).isEqualTo(liveCommit);
@@ -184,11 +172,7 @@ class DocumentWriteServiceTests {
         DocumentId absent = DocumentId.random();
 
         assertThatThrownBy(() -> writes.update(
-                        workspace,
-                        AGENT,
-                        absent,
-                        created.revision().orElseThrow(),
-                        draft("documents/note.md")))
+                        workspace, AGENT, absent, created.revision().orElseThrow(), draft("documents/note.md")))
                 .isInstanceOf(DocumentNotFoundException.class)
                 .hasMessageContaining(absent.toString());
     }
@@ -229,8 +213,7 @@ class DocumentWriteServiceTests {
         DocumentRevision revision = created.revision().orElseThrow();
         writes.delete(workspace, AGENT, created.documentId(), revision);
 
-        assertThatThrownBy(
-                        () -> writes.delete(workspace, AGENT, created.documentId(), revision))
+        assertThatThrownBy(() -> writes.delete(workspace, AGENT, created.documentId(), revision))
                 .isInstanceOf(DocumentNotFoundException.class);
     }
 
@@ -243,8 +226,7 @@ class DocumentWriteServiceTests {
 
         StoredDocument afterPublish = only(workspace);
         assertThat(published.committed()).isTrue();
-        assertThat(afterPublish.content().metadata().visibility())
-                .isEqualTo(DocumentVisibility.PUBLIC);
+        assertThat(afterPublish.content().metadata().visibility()).isEqualTo(DocumentVisibility.PUBLIC);
         assertThat(afterPublish.content().metadata().publishedAt()).isPresent();
 
         DocumentWriteResult edited = writes.update(
@@ -258,8 +240,7 @@ class DocumentWriteServiceTests {
         assertThat(edited.committed()).isTrue();
         assertThat(afterEdit.content().metadata().publishedAt())
                 .isEqualTo(afterPublish.content().metadata().publishedAt());
-        assertThat(afterEdit.content().metadata().visibility())
-                .isEqualTo(DocumentVisibility.PUBLIC);
+        assertThat(afterEdit.content().metadata().visibility()).isEqualTo(DocumentVisibility.PUBLIC);
     }
 
     @Test
@@ -284,11 +265,9 @@ class DocumentWriteServiceTests {
         DocumentRevision prePublish = created.revision().orElseThrow();
         writes.publish(workspace, AGENT, created.documentId(), prePublish);
 
-        assertThatThrownBy(
-                        () -> writes.publish(workspace, AGENT, created.documentId(), prePublish))
+        assertThatThrownBy(() -> writes.publish(workspace, AGENT, created.documentId(), prePublish))
                 .isInstanceOf(DocumentConflictException.class);
-        assertThat(only(workspace).content().metadata().visibility())
-                .isEqualTo(DocumentVisibility.PUBLIC);
+        assertThat(only(workspace).content().metadata().visibility()).isEqualTo(DocumentVisibility.PUBLIC);
     }
 
     @Test
@@ -317,8 +296,7 @@ class DocumentWriteServiceTests {
         assertThat(commit.getAuthorIdent().getEmailAddress()).isEqualTo("poketto@invalid");
         assertThat(commit.getCommitterIdent().getName()).isEqualTo("Poketto");
         assertThat(commit.getFullMessage())
-                .isEqualTo("create " + created.documentId() + "\n\n"
-                        + "Poketto-Principal: api-key:key-01HQ8\n");
+                .isEqualTo("create " + created.documentId() + "\n\n" + "Poketto-Principal: api-key:key-01HQ8\n");
         assertThat(commit.getShortMessage()).isEqualTo("create " + created.documentId());
     }
 
@@ -327,12 +305,11 @@ class DocumentWriteServiceTests {
         DocumentWriteResult created = writes.create(workspace, AGENT, draft("documents/note.md"));
         DocumentWriteResult published = writes.publish(
                 workspace, AGENT, created.documentId(), created.revision().orElseThrow());
-        assertThat(headCommit(workspace).getShortMessage())
-                .isEqualTo("publish " + created.documentId());
+        assertThat(headCommit(workspace).getShortMessage()).isEqualTo("publish " + created.documentId());
 
-        writes.delete(workspace, AGENT, created.documentId(), published.revision().orElseThrow());
-        assertThat(headCommit(workspace).getShortMessage())
-                .isEqualTo("delete " + created.documentId());
+        writes.delete(
+                workspace, AGENT, created.documentId(), published.revision().orElseThrow());
+        assertThat(headCommit(workspace).getShortMessage()).isEqualTo("delete " + created.documentId());
     }
 
     @Test
@@ -341,8 +318,7 @@ class DocumentWriteServiceTests {
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> writes.create(workspace, null, draft("documents/note.md")))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> writes.create(workspace, AGENT, null))
-                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> writes.create(workspace, AGENT, null)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> writes.publish(workspace, AGENT, DocumentId.random(), null))
                 .isInstanceOf(NullPointerException.class);
     }

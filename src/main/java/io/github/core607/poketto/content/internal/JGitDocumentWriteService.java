@@ -62,8 +62,7 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     }
 
     @Override
-    public DocumentWriteResult create(
-            WorkspaceId workspaceId, WritePrincipal principal, DocumentDraft draft) {
+    public DocumentWriteResult create(WorkspaceId workspaceId, WritePrincipal principal, DocumentDraft draft) {
         requirePrincipal(principal);
         String path = validated(draft);
         Instant now = clock.instant();
@@ -83,14 +82,9 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         return inRepository(workspaceId, (repository, documents) -> {
             requirePathFree(documents, path, null);
             requireIdFree(documents, documentId);
-            ObjectId commit = commit(
-                    repository, principal, "create", documentId, now, Map.of(path, bytes), Set.of());
+            ObjectId commit = commit(repository, principal, "create", documentId, now, Map.of(path, bytes), Set.of());
             return new DocumentWriteResult(
-                    documentId,
-                    commit.name(),
-                    true,
-                    path,
-                    Optional.of(DocumentRevision.sha256(bytes)));
+                    documentId, commit.name(), true, path, Optional.of(DocumentRevision.sha256(bytes)));
         });
     }
 
@@ -133,14 +127,9 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             next = advanced(next, before.updatedAt(), now);
             byte[] bytes = codec.serialize(next);
             Set<String> removals = pathChanged ? Set.of(current.repositoryPath()) : Set.of();
-            ObjectId commit = commit(
-                    repository, principal, "update", documentId, now, Map.of(path, bytes), removals);
+            ObjectId commit = commit(repository, principal, "update", documentId, now, Map.of(path, bytes), removals);
             return new DocumentWriteResult(
-                    documentId,
-                    commit.name(),
-                    true,
-                    path,
-                    Optional.of(DocumentRevision.sha256(bytes)));
+                    documentId, commit.name(), true, path, Optional.of(DocumentRevision.sha256(bytes)));
         });
     }
 
@@ -159,10 +148,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             String path = current.repositoryPath();
-            ObjectId commit = commit(
-                    repository, principal, "delete", documentId, now, Map.of(), Set.of(path));
-            return new DocumentWriteResult(
-                    documentId, commit.name(), true, path, Optional.empty());
+            ObjectId commit = commit(repository, principal, "delete", documentId, now, Map.of(), Set.of(path));
+            return new DocumentWriteResult(documentId, commit.name(), true, path, Optional.empty());
         });
     }
 
@@ -200,27 +187,19 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             String path = current.repositoryPath();
             next = advanced(next, before.updatedAt(), now);
             byte[] bytes = codec.serialize(next);
-            ObjectId commit = commit(
-                    repository, principal, "publish", documentId, now, Map.of(path, bytes), Set.of());
+            ObjectId commit = commit(repository, principal, "publish", documentId, now, Map.of(path, bytes), Set.of());
             return new DocumentWriteResult(
-                    documentId,
-                    commit.name(),
-                    true,
-                    path,
-                    Optional.of(DocumentRevision.sha256(bytes)));
+                    documentId, commit.name(), true, path, Optional.of(DocumentRevision.sha256(bytes)));
         });
     }
 
     private DocumentWriteResult inRepository(WorkspaceId workspaceId, WriteAction action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         return authority.write(workspaceId, (snapshot, advancer) -> {
-            try (Repository repository =
-                    JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
-                ObjectId baseCommit = snapshot.commitId()
-                        .map(ObjectId::fromString)
-                        .orElseGet(ObjectId::zeroId);
-                DocumentWriteResult result =
-                        action.apply(repository, store.scan(repository, baseCommit, workspaceId));
+            try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+                ObjectId baseCommit =
+                        snapshot.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
+                DocumentWriteResult result = action.apply(repository, store.scan(repository, baseCommit, workspaceId));
                 if (result.committed()) {
                     advancer.advance(result.commitId());
                 }
@@ -242,15 +221,14 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         ContentWorktree.recordIntent(repository, touched);
         try {
             ContentWorktree.apply(repository, upserts, deletions);
-            PersonIdent author = new PersonIdent(
-                    SERVICE_AUTHOR_NAME, SERVICE_AUTHOR_EMAIL, now, ZoneOffset.UTC);
+            PersonIdent author = new PersonIdent(SERVICE_AUTHOR_NAME, SERVICE_AUTHOR_EMAIL, now, ZoneOffset.UTC);
             RevCommit commit = Git.wrap(repository)
                     .commit()
                     .setAuthor(author)
                     .setCommitter(author)
                     .setSign(false)
-                    .setMessage(operation + " " + documentId + "\n\n"
-                            + PRINCIPAL_TRAILER + ": " + principal.trailerValue() + "\n")
+                    .setMessage(operation + " " + documentId + "\n\n" + PRINCIPAL_TRAILER + ": "
+                            + principal.trailerValue() + "\n")
                     .call();
             ContentWorktree.clearIntent(repository);
             return commit.getId();
@@ -259,8 +237,7 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             if (exception instanceof RuntimeException runtimeException) {
                 throw runtimeException;
             }
-            throw new ContentRepositoryException(
-                    "document " + documentId + " cannot be committed", exception);
+            throw new ContentRepositoryException("document " + documentId + " cannot be committed", exception);
         }
     }
 
@@ -298,15 +275,13 @@ final class JGitDocumentWriteService implements DocumentWriteService {
      * Guarantees that a committed change carries a later {@code updated_at}, and therefore a new
      * revision, even when the change is a move or a canonical rewrite that leaves the fields alone.
      */
-    private static DocumentContent advanced(
-            DocumentContent next, Instant previousUpdatedAt, Instant now) {
+    private static DocumentContent advanced(DocumentContent next, Instant previousUpdatedAt, Instant now) {
         DocumentMetadata metadata = next.metadata();
         if (metadata.updatedAt().isAfter(previousUpdatedAt)) {
             return next;
         }
         if (!now.isAfter(previousUpdatedAt)) {
-            throw new IllegalArgumentException(
-                    "document updated_at must advance when serialized content changes");
+            throw new IllegalArgumentException("document updated_at must advance when serialized content changes");
         }
         return new DocumentContent(
                 new DocumentMetadata(
@@ -362,22 +337,19 @@ final class JGitDocumentWriteService implements DocumentWriteService {
                 .findFirst()
                 .ifPresent(existing -> {
                     throw new DocumentConflictException(
-                            "document id " + documentId + " already exists at "
-                                    + existing.repositoryPath());
+                            "document id " + documentId + " already exists at " + existing.repositoryPath());
                 });
     }
 
-    private static void requirePathFree(
-            List<StoredDocument> documents, String path, String ownPath) {
+    private static void requirePathFree(List<StoredDocument> documents, String path, String ownPath) {
         String key = DocumentPathRules.collisionKey(path);
         for (StoredDocument document : documents) {
             if (document.repositoryPath().equals(ownPath)) {
                 continue;
             }
             if (DocumentPathRules.collisionKey(document.repositoryPath()).equals(key)) {
-                throw new DocumentConflictException(
-                        "document path " + path + " collides with " + document.repositoryPath()
-                                + " after Unicode normalization and case folding");
+                throw new DocumentConflictException("document path " + path + " collides with "
+                        + document.repositoryPath() + " after Unicode normalization and case folding");
             }
         }
     }

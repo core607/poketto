@@ -9,40 +9,31 @@ class DocumentPathRulesTests {
 
     @Test
     void acceptsNestedMarkdownBelowTheManagedDirectory() {
-        assertThat(DocumentPathRules.validate("documents/notes/entry.md"))
-                .isEqualTo("documents/notes/entry.md");
+        assertThat(DocumentPathRules.validate("documents/notes/entry.md")).isEqualTo("documents/notes/entry.md");
     }
 
     @Test
     void rejectsPathsThatAreAbsoluteTraversingOrNotMarkdown() {
         for (String candidate : new String[] {
-                "/documents/note.md",
-                "documents/../note.md",
-                "documents\\note.md",
-                "other/note.md",
-                "documents/note.MD"
+            "/documents/note.md", "documents/../note.md", "documents\\note.md", "other/note.md", "documents/note.MD"
         }) {
-            assertThatIllegalArgumentException()
-                    .as(candidate)
-                    .isThrownBy(() -> DocumentPathRules.validate(candidate));
+            assertThatIllegalArgumentException().as(candidate).isThrownBy(() -> DocumentPathRules.validate(candidate));
         }
     }
 
     @Test
     void rejectsNamesWindowsCannotStore() {
         for (String candidate : new String[] {
-                "documents/a:b.md",
-                "documents/what?.md",
-                "documents/a\tb.md",
-                "documents/con.md",
-                "documents/COM1.md",
-                "documents/trailing./note.md",
-                "documents/trailing /note.md",
-                "documents/.md"
+            "documents/a:b.md",
+            "documents/what?.md",
+            "documents/a\tb.md",
+            "documents/con.md",
+            "documents/COM1.md",
+            "documents/trailing./note.md",
+            "documents/trailing /note.md",
+            "documents/.md"
         }) {
-            assertThatIllegalArgumentException()
-                    .as(candidate)
-                    .isThrownBy(() -> DocumentPathRules.validate(candidate));
+            assertThatIllegalArgumentException().as(candidate).isThrownBy(() -> DocumentPathRules.validate(candidate));
         }
     }
 

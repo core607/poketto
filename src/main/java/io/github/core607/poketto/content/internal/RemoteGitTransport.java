@@ -8,10 +8,7 @@ interface RemoteGitTransport {
     ObjectId fetchMain(Repository repository, RepositoryBinding binding);
 
     PushStatus pushMain(
-            Repository repository,
-            RepositoryBinding binding,
-            ObjectId expectedCommit,
-            ObjectId candidateCommit);
+            Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit);
 
     enum PushStatus {
         UPDATED,

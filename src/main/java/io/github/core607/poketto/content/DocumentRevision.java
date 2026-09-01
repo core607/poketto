@@ -16,8 +16,7 @@ public record DocumentRevision(String value) {
     public DocumentRevision {
         Objects.requireNonNull(value, "document revision must not be null");
         if (!TOKEN.matcher(value).matches()) {
-            throw new IllegalArgumentException(
-                    "document revision must use sha256:<lowercase-hex>: " + value);
+            throw new IllegalArgumentException("document revision must use sha256:<lowercase-hex>: " + value);
         }
     }
 

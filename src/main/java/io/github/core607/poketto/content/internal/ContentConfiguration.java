@@ -44,32 +44,25 @@ class ContentConfiguration {
             RepositoryBindingSource bindings,
             RemoteGitTransport transport,
             RepositoryProperties properties) {
-        return new JGitRemoteRepositoryAuthority(
-                paths, bindings, transport, properties.cacheMaxWorkspaces());
+        return new JGitRemoteRepositoryAuthority(paths, bindings, transport, properties.cacheMaxWorkspaces());
     }
 
     @Bean
-    JGitContentRepositoryStore contentRepositoryStore(
-            RepositoryAuthority authority, CanonicalDocumentCodec codec) {
+    JGitContentRepositoryStore contentRepositoryStore(RepositoryAuthority authority, CanonicalDocumentCodec codec) {
         return new JGitContentRepositoryStore(authority, codec);
     }
 
     @Bean
     DocumentWriteService documentWriteService(
-            RepositoryAuthority authority,
-            CanonicalDocumentCodec codec,
-            JGitContentRepositoryStore store) {
+            RepositoryAuthority authority, CanonicalDocumentCodec codec, JGitContentRepositoryStore store) {
         return new JGitDocumentWriteService(authority, codec, store, Clock.systemUTC());
     }
 
     @Bean
     @Order(100)
-    @ConditionalOnProperty(
-            name = "poketto.workspace.catalog.enabled",
-            havingValue = "true",
-            matchIfMissing = true)
-    ApplicationRunner contentRepositoryInitializer(
-            WorkspaceCatalog workspaces, ContentRepositoryStore repositories) {
-        return arguments -> repositories.ensureReady(workspaces.defaultWorkspace().id());
+    @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
+    ApplicationRunner contentRepositoryInitializer(WorkspaceCatalog workspaces, ContentRepositoryStore repositories) {
+        return arguments ->
+                repositories.ensureReady(workspaces.defaultWorkspace().id());
     }
 }

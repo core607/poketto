@@ -50,9 +50,8 @@ class PostgresIntegrationIT {
         registry.add("poketto.test.repository-path", remote::toString);
     }
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName
-            .parse(System.getProperty("poketto.postgres.image"))
-            .asCompatibleSubstituteFor("postgres");
+    private static final DockerImageName POSTGRES_IMAGE =
+            DockerImageName.parse(System.getProperty("poketto.postgres.image")).asCompatibleSubstituteFor("postgres");
 
     @Container
     @ServiceConnection
@@ -73,19 +72,16 @@ class PostgresIntegrationIT {
 
     @Test
     void providesPostgres17WithWorkingZhparser() {
-        Integer majorVersion = jdbc.queryForObject(
-                "select current_setting('server_version_num')::integer / 10000",
-                Integer.class);
+        Integer majorVersion =
+                jdbc.queryForObject("select current_setting('server_version_num')::integer / 10000", Integer.class);
         assertThat(majorVersion).isEqualTo(17);
 
         jdbc.execute("create extension zhparser");
         jdbc.execute("create text search configuration poketto_zh (parser = zhparser)");
-        jdbc.execute("alter text search configuration poketto_zh "
-                + "add mapping for n,v,a,i,e,l with simple");
+        jdbc.execute("alter text search configuration poketto_zh " + "add mapping for n,v,a,i,e,l with simple");
 
-        Integer tokenCount = jdbc.queryForObject(
-                "select count(*) from ts_parse('zhparser', '知识库支持中文搜索')",
-                Integer.class);
+        Integer tokenCount =
+                jdbc.queryForObject("select count(*) from ts_parse('zhparser', '知识库支持中文搜索')", Integer.class);
         assertThat(tokenCount).isPositive();
     }
 
@@ -97,9 +93,7 @@ class PostgresIntegrationIT {
         assertThatNullPointerException()
                 .isThrownBy(() -> workspaces.findById(null))
                 .withMessage("workspace id must not be null");
-        assertThat(jdbc.queryForObject(
-                        "select count(*) from workspaces",
-                        Integer.class))
+        assertThat(jdbc.queryForObject("select count(*) from workspaces", Integer.class))
                 .isOne();
         assertThat(Files.isDirectory(
                         workspacePaths.contentDirectory(defaultWorkspace.id()).resolve(".git")))
@@ -114,9 +108,7 @@ class PostgresIntegrationIT {
         defaultWorkspaceInitializer.run(new DefaultApplicationArguments());
 
         assertThat(workspaces.defaultWorkspace()).isEqualTo(before);
-        assertThat(jdbc.queryForObject(
-                        "select count(*) from workspaces",
-                        Integer.class))
+        assertThat(jdbc.queryForObject("select count(*) from workspaces", Integer.class))
                 .isOne();
     }
 }

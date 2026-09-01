@@ -5,8 +5,7 @@ import java.util.Objects;
 /**
  * One validated document from a committed repository tree.
  */
-public record StoredDocument(
-        String repositoryPath, DocumentContent content, DocumentRevision revision) {
+public record StoredDocument(String repositoryPath, DocumentContent content, DocumentRevision revision) {
 
     public StoredDocument {
         Objects.requireNonNull(repositoryPath, "document repository path must not be null");
