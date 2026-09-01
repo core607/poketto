@@ -38,7 +38,7 @@ Errors cross the HTTP boundary as stable problem responses. Next.js maps them to
 
 ### Resource and build boundary
 
-Frontend dependencies and production assets are built in CI. A production host runs the prebuilt Next.js output and never runs `next build`, TypeScript compilation, or package installation during deployment. Runtime image optimization is disabled unless measured evidence shows that its memory peaks fit the same budget; repository images use the immutable delivery path owned by the [repository asset BlobStore](2026-09-01-repository-asset-blob-store.md) instead.
+Frontend dependencies and production assets are built in CI. A production host runs the prebuilt Next.js output and never runs `next build`, TypeScript compilation, or package installation during deployment. Runtime image optimization is disabled unless measured evidence shows that its memory peaks fit the same budget; managed-only and Git-backed images use the immutable delivery path owned by [asset BlobStore and Git synchronization](2026-09-01-repository-asset-blob-store.md) instead.
 
 Deployment sizing is not set by this frontend decision. The implementation measures steady-state and peak resource use for the complete prebuilt runtime against the project's deployment criteria and records the evidence in the appropriate operational record.
 

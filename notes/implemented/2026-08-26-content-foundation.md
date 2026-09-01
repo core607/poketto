@@ -70,7 +70,7 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 The content module binds the data directory, bootstraps and validates per-workspace repositories, parses and canonically serializes documents, exposes the content value types, and scans committed `main` trees. It does not provide create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations build on this boundary.
 
-[Repository-native publishing and assets](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and external-image requirements with arbitrary nested Markdown, repository publishing policy, and sibling Git images. This note continues to describe the executable baseline until that proposal is implemented; the reversal does not retroactively describe the current parser or repository layout.
+[Repository-native publishing and assets](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, authoritative managed assets, and optional sibling Git sources. This note continues to describe the executable baseline until that proposal is implemented; the reversal does not retroactively describe the current parser or repository layout.
 
 ## Alternatives
 

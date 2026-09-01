@@ -5,9 +5,9 @@ Status: Proposed
 
 ## Problem
 
-Poketto's primary production topology is one operator-owned cloud server. It runs the application beside a local repository cache, local filesystem BlobStore, and local Sandbox Runtime executor while using remote Git as content authority. This remains a supported product profile, not a temporary development adapter.
+Poketto's primary production topology is one operator-owned cloud server. It runs the application beside a local repository cache, authoritative local filesystem BlobStore, and local Sandbox Runtime executor while using remote Git as repository authority. This remains a supported product profile, not a temporary development adapter.
 
-An operator may later want the request-serving application to run on a serverless or replicated platform without persistent application volumes. Remote Git already removes content authority from the request host, but replaceable instances still cannot own shared asset materialization, sessions, leases, budgets, or the Linux namespaces required by SRT.
+An operator may later want the request-serving application to run on a serverless or replicated platform without persistent application volumes. Remote Git removes repository authority from the request host, but replaceable instances still cannot own authoritative assets, sessions, leases, budgets, or the Linux namespaces required by SRT.
 
 The serverless request environment, object storage, shared relational service, remote executor compute, credentials, and network boundaries are external resources. Poketto will implement and accept them as one coordinated optional profile only when a production-like target is available.
 
@@ -16,16 +16,16 @@ The serverless request environment, object storage, shared relational service, r
 ### Profile boundary
 
 - Both profiles use [remote Git repository authority](2026-09-01-remote-repository-authority.md). There is no local Git authority profile.
-- The primary single-server profile uses a local filesystem [repository asset BlobStore](2026-09-01-repository-asset-blob-store.md) and a local SRT executor service under a dedicated low-privilege identity.
+- The primary single-server profile uses a local filesystem [asset BlobStore](2026-09-01-repository-asset-blob-store.md) and a local SRT executor service under a dedicated low-privilege identity.
 - The optional serverless profile runs Spring and the frontend without required persistent application volumes. It uses an OSS-compatible BlobStore, shared PostgreSQL, and remote SRT workers outside replaceable request instances.
-- Both profiles use the same application artifacts, domain modules, workspace model, authorization rules, content format, publishing policy, write preconditions, and remote acknowledgement semantics. Startup configuration selects explicit adapters; missing or invalid external configuration fails closed and never falls back to container disk, local Git authority, or direct command execution.
+- Both profiles use the same application artifacts, domain modules, workspace model, authorization rules, content format, publishing policy, write preconditions, repository acknowledgement, and asset synchronization semantics. Startup configuration selects explicit adapters; missing or invalid external configuration fails closed and never falls back to container disk, local Git authority, or direct command execution.
 - Business modules depend on Poketto-owned ports and contain no provider API, repository URL, bucket name, filesystem path, transport credential, or deployment-specific retry rule.
 
 ### Repository content and assets
 
-Request instances may keep bounded commit-keyed repository caches, but deleting an instance and its disk loses no acknowledged Markdown, image, publishing policy, or repository history. Remote `main` remains authoritative in both profiles.
+Request instances may keep bounded commit-keyed repository caches, but deleting an instance and its disk loses no acknowledged Markdown, publishing policy, repository history, or managed image because those authorities remain in remote Git, shared PostgreSQL, and OSS rather than ephemeral disk.
 
-Relative repository images remain Git blobs under [repository-native publishing and assets](2026-09-01-repository-native-publishing-and-assets.md). The serverless BlobStore materializes exact authorized Git bytes into OSS-compatible object storage and serves immutable workspace-scoped assets. It does not become image authority, and source Markdown is never rewritten to a provider URL. Losing the object namespace is an availability and warm-up event; requested assets can be rebuilt from remote Git.
+The serverless OSS-compatible [BlobStore](2026-09-01-repository-asset-blob-store.md) is the byte authority for managed images, including uploads with no Git source. A repository-relative image is imported and may remain synchronized to its Git binding, but remote Git is supplementary for that asset. Source Markdown is never rewritten to a provider URL. Losing the object namespace loses managed-only images and requires backup restoration; Git-backed assets may be reimported but do not make the complete namespace rebuildable.
 
 ### Sandbox execution
 
@@ -61,11 +61,11 @@ It does not implement consumer product flows, billing, a new sandbox runtime, a 
 
 **Make serverless the default.** This would force object storage, shared database, remote compute, and credentials on the primary single-server use case. The single-server profile already has remote content durability while keeping its operational footprint small.
 
-**Retain local Git authority on the single server.** That would make deployment selection change acknowledgement and recovery semantics. A disposable repository cache supplies local performance while remote Git remains the only authority.
+**Retain local Git authority on the single server.** That would make deployment selection change repository acknowledgement and recovery semantics. A disposable repository cache supplies local performance while remote Git remains the only repository authority.
 
-**Run the local BlobStore on ephemeral serverless disk.** A replaced instance would lose the shared warm asset set and concurrent instances would materialize unrelated copies. OSS supplies the shared derived store required by this profile.
+**Run the local BlobStore on ephemeral serverless disk.** A replaced instance would lose authoritative managed-only images and concurrent instances would disagree on active asset versions. OSS supplies the shared durable store required by this profile.
 
-**Make OSS authoritative for images.** This would split a repository folder's source of truth and require dual-authority backup and writes. OSS contains rebuildable copies of authoritative Git blobs only.
+**Use OSS only as a cache of Git images.** This would preserve repository portability but exclude uploads and generated images that have no Git path. The shared BlobStore keeps the write model independent from repository layout.
 
 **Mount one shared filesystem into every request instance.** This can host caches and sessions, but it restores filesystem coordination and a stateful platform dependency instead of exercising replaceable authority and lease contracts.
 
@@ -75,8 +75,8 @@ It does not implement consumer product flows, billing, a new sandbox runtime, a 
 
 - The same application artifacts start in the production single-server profile and optional serverless profile through configuration only. Business modules contain no profile branch or provider coordinate.
 - Both profiles resolve and write the same remote Git authority semantics. Neither starts with local Git authority or falls back to it when remote configuration is unavailable.
-- The single-server profile serves repository images through the local filesystem BlobStore and local SRT. It remains fully supported after serverless ships.
-- The serverless profile serves exact Git image bytes through a real isolated OSS-compatible namespace. Deleting request-instance disks changes neither acknowledged content nor the shared derived asset identity; deleting a derived object allows safe rematerialization from Git.
+- The single-server profile stores managed images in the authoritative local filesystem BlobStore and uses local SRT. It remains fully supported after serverless ships.
+- The serverless profile stores managed-only and Git-backed images in a real isolated OSS-compatible namespace. Deleting request-instance disks changes neither acknowledged assets nor synchronization state; deleting an authoritative object is detected as data loss and exercises restore rather than silent rematerialization.
 - Replacing or concurrently running request instances preserves session, authorization, provisioning, lease, budget, and rate-limit correctness through shared owners.
 - The remote SRT worker enforces the same command, filesystem, identity, network, timeout, output, process, and resource limits as the local executor. It receives no authority, object-store, or database credential.
 - Missing Git, OSS, PostgreSQL, SRT, credential, or lease configuration fails startup or the affected capability closed. No fallback writes to ephemeral disk or executes commands in the request process.
@@ -89,4 +89,4 @@ The serverless profile has more network boundaries and independent failure modes
 
 Remote SRT still needs ordinary Linux compute, so the request layer can scale independently but the entire system is not function-only. This is an honest hybrid boundary rather than a hidden host dependency.
 
-Object storage is derived but participates in asset availability. Git fallback and rematerialization protect correctness; capacity, egress, lifecycle, and service availability must still be measured against the selected provider.
+Object storage is authoritative production data. Capacity, egress, lifecycle, backup, restore, and service availability must be measured against the selected provider; a Git binding reduces some recovery cost but never weakens those requirements for managed-only assets.

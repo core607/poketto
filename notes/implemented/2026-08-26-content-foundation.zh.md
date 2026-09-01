@@ -70,7 +70,7 @@ Markdown 正文。
 
 content 模块绑定数据目录，初始化和校验各工作空间的仓库，解析并规范序列化文档，对外提供内容值类型，并扫描已提交的 `main` tree。当前不提供 create、update、delete、publish、投影、HTTP 或 MCP 入口；这些操作建立在本边界之上。
 
-[仓库原生发布与资源](../proposed/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仓外图片要求，改为任意层级 Markdown、仓库发布策略与同目录 Git 图片。在该提案实现之前，本文仍描述可执行基线；这项反转不会被倒写成当前解析器或仓库布局已经具备的行为。
+[仓库原生发布与资源](../proposed/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仅按 hash 引用图片的要求，改为任意层级 Markdown、仓库发布策略、权威受管资源与可选同目录 Git 图片源。在该提案实现之前，本文仍描述可执行基线；这项反转不会被倒写成当前解析器或仓库布局已经具备的行为。
 
 ## 备选方案
 
