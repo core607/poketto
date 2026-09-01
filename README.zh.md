@@ -1,18 +1,18 @@
 # Poketto
 
-自托管的个人知识库，公开面是博客。同一份 Markdown 内容，既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。
+以仓库为核心的个人知识服务，公开面是博客。已接受的目标让每个工作空间在远程 Git 中保存 Markdown、仓库自管图片与历史，把经 Poketto 上传的图片存入 ManagedBlobStore；两类图片共用安全渲染，但永不相互同步。同一份内容既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。Poketto 首先面向单台云服务器，同时保留由配置选择外部基础设施的[可选 serverless 部署 profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)。
 
 [English](README.md)
 
 ## 状态
 
-开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)）。可执行开发基线、工作空间隔离以及内容仓与文档基础已经实现；文档写入、投影、检索、渲染和 MCP 入口仍处于提案阶段。
+开发中。可执行开发基线、工作空间隔离、内容仓基础与文档写入已经实现；当前自托管基线使用本地工作空间仓库。已接受的目标仍以单机部署为主，但让所有生产工作空间使用[远程 Git 仓库权威](notes/proposed/2026-09-01-remote-repository-authority.md)，识别[仓库原生 Markdown 与只读同目录图片图库](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md)，并把经 Poketto 上传的图片存入权威[本地 ManagedBlobStore，同时把仓库图片副本当作可删除缓存](notes/proposed/2026-09-01-repository-asset-blob-store.md)。[C 端账号](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、渲染和 MCP 入口仍处于提案阶段。Serverless 仍是可选方案，需要等待真实的 OSS、共享数据库与远程 SRT 基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线，提案则标明尚未交付的目标决策。
 
 ## 适合谁
 
-- 希望笔记、剪藏和博客就是 git 仓库里的一份 Markdown、数据库只是可重建的检索投影的人。
+- 希望笔记、剪藏和博客始终是带 Git 历史的 Markdown，而关系型应用状态留在内容仓之外的人。
 - 希望自己的 AI 助手通过 MCP 和作用域 API Key 读写内容、而不是交出 shell 权限的人。
-- 用一台小服务器跑东西、组件宁少勿多的人。
+- 希望小型服务器部署始终是一等生产方案，同时保留将来在可选共享服务中提供隔离工作空间这条路的人。
 - 对「为 agent 开发而设计的仓库」感兴趣的人——从 [AGENTS.md](AGENTS.md) 看起。
 
 ## 目录

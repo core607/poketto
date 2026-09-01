@@ -2,6 +2,10 @@
 
 Date: 2026-08-25
 
+## Scope of this record
+
+This implemented note records the primary single-server baseline and the product contracts selected for it. The proposed [remote repository authority](../proposed/2026-09-01-remote-repository-authority.md), [managed assets and repository image materialization](../proposed/2026-09-01-repository-asset-blob-store.md), [repository-native publishing and images](../proposed/2026-09-01-repository-native-publishing-and-assets.md), [repository-native retrieval and sandboxed execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), and [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md) define accepted target changes without changing the workspace tenant boundary. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) keeps the single-server profile primary while selecting OSS, shared state, and remote SRT only when real infrastructure is available. Until those proposals are implemented, the mechanics below describe the executable baseline.
+
 ## Positioning
 
 Poketto is a self-hosted personal knowledge base whose public face is a blog. The same Markdown content serves both public publishing and, over MCP, the long-term memory of trusted AI agents.
