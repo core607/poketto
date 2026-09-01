@@ -137,12 +137,30 @@ class ContentRepositoryBootstrapTests {
 
         String uri = remote.toUri().toString();
         String nativePath = remote.toAbsolutePath().toString();
+        assertThat(repositories.cache(workspace).resolve(".git/FETCH_HEAD")).doesNotExist();
         try (var files = Files.walk(repositories.cache(workspace).resolve(".git"))) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String bytes = new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
                 assertThat(bytes).doesNotContain(uri).doesNotContain(nativePath);
             }
         }
+    }
+
+    @Test
+    void ignoresForeignDirectoriesWhenBoundingTheCache() throws Exception {
+        RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root, 1);
+        Path foreign = root.resolve("data").resolve("workspaces")
+                .resolve("not-a-workspace-id").resolve("content");
+        Files.createDirectories(foreign);
+        WorkspaceId first = WorkspaceId.random();
+        WorkspaceId second = WorkspaceId.random();
+
+        repositories.store().ensureReady(first);
+        repositories.store().ensureReady(second);
+
+        assertThat(repositories.cache(first)).doesNotExist();
+        assertThat(repositories.cache(second)).isDirectory();
+        assertThat(foreign).isDirectory();
     }
 
     @Test

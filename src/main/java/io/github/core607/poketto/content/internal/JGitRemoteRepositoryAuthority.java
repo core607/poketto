@@ -324,7 +324,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             return new java.util.ArrayList<>();
         }
         try (var workspaceDirectories = Files.list(root)) {
+            // Foreign directories are not caches this authority may evict, so counting them
+            // toward the bound would let them permanently exhaust the cache capacity.
             return new java.util.ArrayList<>(workspaceDirectories
+                    .filter(JGitRemoteRepositoryAuthority::isWorkspaceDirectory)
                     .map(path -> path.resolve("content"))
                     .filter(Files::isDirectory)
                     .toList());
@@ -333,19 +336,24 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         }
     }
 
+    private static boolean isWorkspaceDirectory(Path workspaceDirectory) {
+        try {
+            WorkspaceId.parse(workspaceDirectory.getFileName().toString());
+            return true;
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
     private boolean isIdle(Path cache) {
         Path workspaceDirectory = cache.getParent();
         if (workspaceDirectory == null) {
             return false;
         }
-        try {
-            WorkspaceId id = WorkspaceId.parse(workspaceDirectory.getFileName().toString());
-            synchronized (workspaceLocks) {
-                CacheLock lock = workspaceLocks.get(id);
-                return lock == null || lock.users == 0;
-            }
-        } catch (IllegalArgumentException exception) {
-            return false;
+        WorkspaceId id = WorkspaceId.parse(workspaceDirectory.getFileName().toString());
+        synchronized (workspaceLocks) {
+            CacheLock lock = workspaceLocks.get(id);
+            return lock == null || lock.users == 0;
         }
     }
 

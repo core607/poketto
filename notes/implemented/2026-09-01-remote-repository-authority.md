@@ -41,7 +41,7 @@ The first production binding attaches the database-created default workspace to 
 
 All three binding values are required when the workspace catalog is enabled. The address must be HTTPS and may not embed credentials, a query, or a fragment. Production configuration has no local-authority or file-transport switch; integration tests replace the binding source inside the test composition to use disposable bare remotes.
 
-The adapter does not persist a Git remote in cache configuration and removes JGit's `FETCH_HEAD`, which otherwise records the source URI. Binding and configuration string forms are redacted, and transport failures surface sanitized messages without their underlying address or credential. Consumer repository creation and per-workspace binding persistence remain owned by [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md).
+The adapter does not persist a Git remote in cache configuration and fetches over a direct transport connection that never writes JGit's `FETCH_HEAD`, which would otherwise record the source URI. Binding and configuration string forms are redacted, and transport failures surface sanitized messages without their underlying address or credential. Consumer repository creation and per-workspace binding persistence remain owned by [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md).
 
 ### Cache boundary
 
