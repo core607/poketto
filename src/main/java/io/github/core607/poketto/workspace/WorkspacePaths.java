@@ -30,4 +30,9 @@ public final class WorkspacePaths {
         }
         return resolved;
     }
+
+    /** Returns the root containing server-derived workspace state. */
+    public Path workspacesDirectory() {
+        return workspacesDirectory;
+    }
 }

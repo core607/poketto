@@ -7,9 +7,7 @@ import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,87 +16,57 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.RepositoryState;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 final class JGitContentRepositoryStore implements ContentRepositoryStore {
 
-    private static final String MAIN_BRANCH = "main";
-    private static final String MAIN = Constants.R_HEADS + MAIN_BRANCH;
-
-    private final WorkspacePaths paths;
+    private final RepositoryAuthority authority;
     private final CanonicalDocumentCodec codec;
 
-    JGitContentRepositoryStore(WorkspacePaths paths, CanonicalDocumentCodec codec) {
-        this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
+    JGitContentRepositoryStore(RepositoryAuthority authority, CanonicalDocumentCodec codec) {
+        this.authority = Objects.requireNonNull(authority, "repository authority must not be null");
         this.codec = Objects.requireNonNull(codec, "document codec must not be null");
     }
 
     @Override
-    public synchronized void ensureReady(WorkspaceId workspaceId) {
+    public void ensureReady(WorkspaceId workspaceId) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
-        Path contentDirectory = paths.contentDirectory(workspaceId);
-        try {
-            if (Files.notExists(contentDirectory)) {
-                initialize(contentDirectory, workspaceId);
-                return;
-            }
-            if (!Files.isDirectory(contentDirectory)) {
-                throw failure(
-                        workspaceId,
-                        contentDirectory,
-                        "content path exists but is not a directory",
-                        null);
-            }
-            if (isEmptyDirectory(contentDirectory)) {
-                initialize(contentDirectory, workspaceId);
-                return;
-            }
-            try (Repository repository = openExisting(contentDirectory, workspaceId)) {
-                validate(repository, contentDirectory, workspaceId);
-            }
-        } catch (ContentRepositoryException exception) {
-            throw exception;
-        } catch (IOException exception) {
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "repository metadata cannot be read",
-                    exception);
-        }
+        authority.ensureReady(workspaceId);
     }
 
     @Override
     public List<StoredDocument> scan(WorkspaceId workspaceId) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
-        ensureReady(workspaceId);
-        Path contentDirectory = paths.contentDirectory(workspaceId);
-        try (Repository repository = openExisting(contentDirectory, workspaceId)) {
-            ObjectId head = repository.resolve(MAIN);
-            if (head == null) {
-                return List.of();
-            }
+        return authority.read(workspaceId, snapshot -> scan(snapshot, workspaceId));
+    }
 
-            ObjectId tree = repository.resolve(MAIN + "^{tree}");
+    List<StoredDocument> scan(RepositoryAuthority.Snapshot snapshot, WorkspaceId workspaceId) {
+        try (Repository repository = openCache(snapshot.worktree(), workspaceId)) {
+            ObjectId commit = snapshot.commitId()
+                    .map(ObjectId::fromString)
+                    .orElseGet(ObjectId::zeroId);
+            return scan(repository, commit, workspaceId);
+        }
+    }
+
+    List<StoredDocument> scan(
+            Repository repository, ObjectId commit, WorkspaceId workspaceId) {
+        if (commit.equals(ObjectId.zeroId())) {
+            return List.of();
+        }
+        try {
+            ObjectId tree = repository.resolve(commit.name() + "^{tree}");
             if (tree == null) {
-                throw failure(
-                        workspaceId,
-                        contentDirectory,
-                        "main does not resolve to a commit tree",
-                        null);
+                throw failure(workspaceId, "resolved main does not name a commit tree", null);
             }
-
             List<TreeEntry> entries = readManagedEntries(repository, tree, workspaceId);
-            rejectPathCollisions(entries, workspaceId, contentDirectory);
+            rejectPathCollisions(entries, workspaceId);
 
             List<StoredDocument> documents = new ArrayList<>(entries.size());
             for (TreeEntry entry : entries) {
@@ -108,134 +76,31 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                 } catch (IllegalArgumentException exception) {
                     throw failure(
                             workspaceId,
-                            contentDirectory,
                             "invalid document " + entry.path() + ": " + exception.getMessage(),
                             exception);
                 }
                 documents.add(new StoredDocument(
                         entry.path(), content, DocumentRevision.sha256(entry.bytes())));
             }
-            rejectDuplicateIds(documents, workspaceId, contentDirectory);
+            rejectDuplicateIds(documents, workspaceId);
             return List.copyOf(documents);
         } catch (ContentRepositoryException exception) {
             throw exception;
         } catch (IOException exception) {
-            throw failure(workspaceId, contentDirectory, "repository cannot be scanned", exception);
+            throw failure(workspaceId, "resolved main cannot be scanned", exception);
         }
     }
 
-    private static void initialize(Path contentDirectory, WorkspaceId workspaceId) {
-        try {
-            Files.createDirectories(contentDirectory);
-            try (Git ignored = Git.init()
-                    .setDirectory(contentDirectory.toFile())
-                    .setInitialBranch(MAIN_BRANCH)
-                    .call()) {
-                // The first document write creates the root commit.
-            }
-        } catch (IOException | GitAPIException exception) {
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "empty content directory cannot be initialized as an unborn main repository",
-                    exception);
-        }
-    }
-
-    static Repository openExisting(Path contentDirectory, WorkspaceId workspaceId) {
+    static Repository openCache(Path worktree, WorkspaceId workspaceId) {
         try {
             FileRepositoryBuilder builder = new FileRepositoryBuilder();
-            builder.findGitDir(contentDirectory.toFile());
+            builder.findGitDir(worktree.toFile());
             if (builder.getGitDir() == null) {
-                if (Files.exists(contentDirectory.resolve(Constants.DOT_GIT))) {
-                    throw failure(
-                            workspaceId,
-                            contentDirectory,
-                            "repository metadata cannot be read",
-                            null);
-                }
-                throw failure(
-                        workspaceId,
-                        contentDirectory,
-                        "non-empty content directory is not a git repository; choose an empty "
-                                + "directory or initialize and commit its content explicitly",
-                        null);
+                throw failure(workspaceId, "materialized cache is not a Git worktree", null);
             }
             return builder.build();
-        } catch (RepositoryNotFoundException exception) {
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "non-empty content directory is not a valid git repository; choose an empty "
-                            + "directory or repair it explicitly",
-                    exception);
-        } catch (IOException | RuntimeException exception) {
-            if (exception instanceof ContentRepositoryException repositoryException) {
-                throw repositoryException;
-            }
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "repository metadata cannot be read",
-                    exception);
-        }
-    }
-
-    private static void validate(
-            Repository repository, Path contentDirectory, WorkspaceId workspaceId) {
-        if (repository.isBare()) {
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "bare repositories are not accepted; provide a non-bare main worktree",
-                    null);
-        }
-
-        Path workTree = repository.getWorkTree().toPath().toAbsolutePath().normalize();
-        Path expected = contentDirectory.toAbsolutePath().normalize();
-        if (!workTree.equals(expected)) {
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "non-empty content directory is not itself a git worktree; initialize and "
-                            + "commit it explicitly",
-                    null);
-        }
-
-        try {
-            String currentBranch = repository.getFullBranch();
-            if (!MAIN.equals(currentBranch)) {
-                throw failure(
-                        workspaceId,
-                        contentDirectory,
-                        "content repository must have main checked out; current HEAD is "
-                                + currentBranch,
-                        null);
-            }
-            RepositoryState state = repository.getRepositoryState();
-            if (state != RepositoryState.SAFE) {
-                throw failure(
-                        workspaceId,
-                        contentDirectory,
-                        "content repository must not have a git operation in progress; state is "
-                                + state,
-                        null);
-            }
-        } catch (IOException | RuntimeException exception) {
-            if (exception instanceof ContentRepositoryException repositoryException) {
-                throw repositoryException;
-            }
-            throw failure(
-                    workspaceId,
-                    contentDirectory,
-                    "repository metadata cannot be read",
-                    exception);
-        }
-    }
-
-    private static boolean isEmptyDirectory(Path directory) throws IOException {
-        try (var children = Files.list(directory)) {
-            return children.findAny().isEmpty();
+        } catch (IOException exception) {
+            throw failure(workspaceId, "materialized cache cannot be opened", exception);
         }
     }
 
@@ -273,7 +138,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     }
 
     private static void rejectPathCollisions(
-            List<TreeEntry> entries, WorkspaceId workspaceId, Path contentDirectory) {
+            List<TreeEntry> entries, WorkspaceId workspaceId) {
         Map<String, List<String>> byCollisionKey = entries.stream().collect(Collectors.groupingBy(
                 entry -> DocumentPathRules.collisionKey(entry.path()),
                 LinkedHashMap::new,
@@ -286,7 +151,6 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         if (!conflicts.isEmpty()) {
             throw failure(
                     workspaceId,
-                    contentDirectory,
                     "managed document paths collide after Unicode normalization and case folding: "
                             + conflicts,
                     null);
@@ -294,7 +158,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     }
 
     private static void rejectDuplicateIds(
-            List<StoredDocument> documents, WorkspaceId workspaceId, Path contentDirectory) {
+            List<StoredDocument> documents, WorkspaceId workspaceId) {
         Map<DocumentId, List<String>> byId = documents.stream().collect(Collectors.groupingBy(
                 document -> document.content().metadata().id(),
                 LinkedHashMap::new,
@@ -307,16 +171,14 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         if (!conflicts.isEmpty()) {
             throw failure(
                     workspaceId,
-                    contentDirectory,
                     "duplicate document ids appear at repository paths " + conflicts,
                     null);
         }
     }
 
     private static ContentRepositoryException failure(
-            WorkspaceId workspaceId, Path path, String detail, Throwable cause) {
-        String message = "workspace " + workspaceId + " content repository at " + path + ": "
-                + detail;
+            WorkspaceId workspaceId, String detail, Throwable cause) {
+        String message = "workspace " + workspaceId + " resolved repository snapshot: " + detail;
         return cause == null
                 ? new ContentRepositoryException(message)
                 : new ContentRepositoryException(message, cause);

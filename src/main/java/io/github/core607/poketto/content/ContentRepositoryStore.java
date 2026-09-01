@@ -4,19 +4,19 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.List;
 
 /**
- * Owns the git-backed content worktree for one workspace at a time.
+ * Reads committed content through the workspace's remote repository authority. Local worktrees
+ * are disposable caches and never become an acknowledgement boundary.
  */
 public interface ContentRepositoryStore {
 
     /**
-     * Creates an unborn {@code main} repository when the workspace directory is absent or empty,
-     * or validates an existing repository without changing it.
+     * Resolves authoritative remote {@code main} and materializes its disposable local cache.
      */
     void ensureReady(WorkspaceId workspaceId);
 
     /**
-     * Reads managed documents from the committed {@code main} tree. Working-tree changes are not
-     * visible until committed.
+     * Reads managed documents from one resolved remote {@code main} snapshot. Local cache changes
+     * are discarded and never visible as repository content.
      */
     List<StoredDocument> scan(WorkspaceId workspaceId);
 }

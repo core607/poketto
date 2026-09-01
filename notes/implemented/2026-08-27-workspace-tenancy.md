@@ -20,11 +20,11 @@ Poketto needs multiple workspaces in its core data model while retaining single-
 
 ### Data isolation
 
-- Each workspace owns a separate content repository at `<data-dir>/workspaces/<workspace-id>/content`. `WorkspacePaths` derives that path only from an absolute data directory and a validated `WorkspaceId`; it does not accept workspace names, slugs, or caller-supplied path fragments.
+- Each workspace owns a separate private remote content repository. `<data-dir>/workspaces/<workspace-id>/content` is only its disposable cache. `WorkspacePaths` derives that cache path only from an absolute data directory and a validated `WorkspaceId`; it does not accept workspace names, slugs, repository coordinates, or caller-supplied path fragments. The authority adapter resolves the remote binding from the same authorized workspace scope.
 - Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it. A projection checkpoint is keyed by its workspace, stores that workspace's last indexed commit, and is never shared across workspaces.
 - Blobs use a workspace namespace. Even when two workspaces upload identical bytes, external paths, queries, and errors must not reveal that another workspace has the same hash. Physical deduplication is outside this decision.
 - API keys, member permissions, visitor-Q&A budgets, audit records, cache keys, and background tasks belong to a workspace. Cross-workspace administration uses a distinct instance-level authority; a workspace owner is not implicitly an instance administrator.
-- Deleting a workspace destroys its content repository, blob namespace, authoritative database rows, and derived projection. No deletion operation may be implemented until a separate proposal defines its waiting period, backup boundary, and recovery behavior.
+- Deleting a workspace will destroy its remote repository binding and provider resource, blob namespace, authoritative database rows, and derived projection. No deletion operation may be implemented until a separate proposal defines its waiting period, ownership proof, backup boundary, and recovery behavior.
 
 ### Context propagation and authorization
 
@@ -46,7 +46,7 @@ Setting `poketto.workspace.catalog.enabled=false` disables the catalog and its i
 
 ### Default topology and implementation scope
 
-The default remains one instance, one workspace, one local content repository, local PostgreSQL, and a local blob directory. Multi-workspace isolation changes the data model; it does not require cloud services, Kubernetes, open registration, or multiple application replicas.
+The default remains one instance, one workspace, one operator-provisioned remote content repository, one disposable local repository cache, local PostgreSQL, and a future local blob directory. Multi-workspace isolation changes the data model; it does not require Kubernetes, open registration, or multiple application replicas.
 
 Cloud PostgreSQL uses the same JDBC contract and does not need a provider-specific driver abstraction. Kubernetes and object storage enter the repository only with a runnable implementation and automated verification; multi-workspace support does not depend on either.
 
@@ -54,7 +54,7 @@ The implemented [content repository foundation](2026-08-26-content-foundation.md
 
 This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
 
-The consumer-accounts proposal adds personal-workspace provisioning while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. [Remote repository authority](../proposed/2026-09-01-remote-repository-authority.md) moves every production workspace repository off the request host, and [managed assets and repository image materialization](../proposed/2026-09-01-repository-asset-blob-store.md) keep authoritative managed objects and disposable repository-image caches workspace-scoped. The optional serverless profile changes managed storage, derived caching, database, and SRT placement rather than workspace isolation. Until each proposal is implemented, this section describes the executable topology.
+The consumer-accounts proposal adds personal-workspace provisioning while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. [Remote repository authority](2026-09-01-remote-repository-authority.md) already keeps production repository truth off the request host. [Managed assets and repository image materialization](../proposed/2026-09-01-repository-asset-blob-store.md) will keep authoritative managed objects and disposable repository-image caches workspace-scoped. The optional serverless profile changes managed storage, derived caching, database, and SRT placement rather than workspace isolation.
 
 ## Alternatives considered
 

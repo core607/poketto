@@ -1,7 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentContent;
 import io.github.core607.poketto.content.DocumentDraft;
@@ -12,11 +11,9 @@ import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.DocumentVisibility;
 import io.github.core607.poketto.content.DocumentWriteResult;
 import io.github.core607.poketto.content.DocumentWriteService;
-import io.github.core607.poketto.content.RepositoryNotCleanException;
 import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
@@ -28,10 +25,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
@@ -52,18 +45,17 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     // no document keeps, so these stand in for a draft that has not reached a repository yet.
     private static final DocumentId PROBE_ID = new DocumentId(new UUID(0L, 0L));
 
-    private final WorkspacePaths paths;
+    private final RepositoryAuthority authority;
     private final CanonicalDocumentCodec codec;
-    private final ContentRepositoryStore store;
+    private final JGitContentRepositoryStore store;
     private final Clock clock;
-    private final ConcurrentMap<WorkspaceId, Lock> locks = new ConcurrentHashMap<>();
 
     JGitDocumentWriteService(
-            WorkspacePaths paths,
+            RepositoryAuthority authority,
             CanonicalDocumentCodec codec,
-            ContentRepositoryStore store,
+            JGitContentRepositoryStore store,
             Clock clock) {
-        this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
+        this.authority = Objects.requireNonNull(authority, "repository authority must not be null");
         this.codec = Objects.requireNonNull(codec, "document codec must not be null");
         this.store = Objects.requireNonNull(store, "content repository store must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
@@ -221,20 +213,20 @@ final class JGitDocumentWriteService implements DocumentWriteService {
 
     private DocumentWriteResult inRepository(WorkspaceId workspaceId, WriteAction action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
-        store.ensureReady(workspaceId);
-        Lock lock = locks.computeIfAbsent(workspaceId, id -> new ReentrantLock());
-        lock.lock();
-        try (Repository repository =
-                JGitContentRepositoryStore.openExisting(
-                        paths.contentDirectory(workspaceId), workspaceId)) {
-            // A journal left by an interrupted write is machine debris; dirty state without one is
-            // the owner's own editing and must block instead.
-            ContentWorktree.rollback(repository);
-            requireClean(repository, workspaceId);
-            return action.apply(repository, store.scan(workspaceId));
-        } finally {
-            lock.unlock();
-        }
+        return authority.write(workspaceId, (snapshot, advancer) -> {
+            try (Repository repository =
+                    JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+                ObjectId baseCommit = snapshot.commitId()
+                        .map(ObjectId::fromString)
+                        .orElseGet(ObjectId::zeroId);
+                DocumentWriteResult result =
+                        action.apply(repository, store.scan(repository, baseCommit, workspaceId));
+                if (result.committed()) {
+                    advancer.advance(result.commitId());
+                }
+                return result;
+            }
+        });
     }
 
     private ObjectId commit(
@@ -278,15 +270,6 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         } catch (RuntimeException rollbackFailure) {
             failure.addSuppressed(rollbackFailure);
         }
-    }
-
-    private void requireClean(Repository repository, WorkspaceId workspaceId) {
-        ContentWorktree.describeUncleanState(repository).ifPresent(state -> {
-            throw new RepositoryNotCleanException(
-                    "workspace " + workspaceId + " content repository at "
-                            + paths.contentDirectory(workspaceId)
-                            + " must equal HEAD before a machine write; commit or revert " + state);
-        });
     }
 
     private DocumentWriteResult unchanged(Repository repository, StoredDocument current) {

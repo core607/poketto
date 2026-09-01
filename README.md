@@ -6,7 +6,7 @@ A repository-native personal knowledge service whose public face is a blog. Its 
 
 ## Status
 
-Development. The executable baseline, workspace isolation, content repository foundation, and document writes are implemented. The current self-hosted baseline uses local workspace repositories. The accepted target keeps the single-server deployment primary but gives every production workspace [remote Git repository authority](notes/proposed/2026-09-01-remote-repository-authority.md), recognizes [repository-native Markdown and read-only sibling-image galleries](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md), and stores Poketto uploads in an authoritative [local ManagedBlobStore while treating repository-image copies as disposable](notes/proposed/2026-09-01-repository-asset-blob-store.md). [Consumer accounts](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), rendering, and MCP entry points remain proposed. Serverless stays optional and waits for real OSS, shared-database, and remote-SRT infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline; proposals identify target decisions that have not shipped.
+Development. The executable baseline, workspace isolation, content repository foundation, document writes, and [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md) are implemented. The primary single-server deployment keeps a disposable local Git cache while remote `main` is the only repository acknowledgement point. Accepted proposals add [repository-native Markdown and read-only sibling-image galleries](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md) and an authoritative [local ManagedBlobStore while treating repository-image copies as disposable](notes/proposed/2026-09-01-repository-asset-blob-store.md). [Consumer accounts](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), rendering, and MCP entry points remain proposed. Serverless stays optional and waits for real OSS, shared-database, and remote-SRT infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline; proposals identify target decisions that have not shipped.
 
 ## Who this is for
 
@@ -30,7 +30,7 @@ notes/               Decision records: proposed / implemented / rejected / archi
 
 Use Java 26 and the checked-in Gradle Wrapper. Docker is required for database integration tests and the complete check; the faster unit and repository checks do not require it.
 
-Application startup requires a PostgreSQL data source and an absolute `POKETTO_DATA_DIR`. Set `SPRING_DATASOURCE_URL`, any database credentials, and the data directory before `bootRun`. Flyway creates the workspace catalog; the application creates one durable default workspace and an unborn `main` content repository below `<data-dir>/workspaces/<workspace-id>/content` on first start.
+Application startup requires a PostgreSQL data source, an absolute `POKETTO_DATA_DIR`, and one pre-provisioned private HTTPS Git repository. Set `SPRING_DATASOURCE_URL`, database credentials, `POKETTO_REPOSITORY_REMOTE_URI`, `POKETTO_REPOSITORY_USERNAME`, and `POKETTO_REPOSITORY_PASSWORD` before `bootRun`. Flyway creates the default workspace; the application binds it to remote `main` and materializes only a disposable cache below `<data-dir>/workspaces/<workspace-id>/content`. `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` and `POKETTO_REPOSITORY_TIMEOUT_SECONDS` optionally change the defaults of 32 workspaces and 30 seconds.
 
 ```sh
 ./gradlew test repoCheck
@@ -38,7 +38,7 @@ Application startup requires a PostgreSQL data source and an absolute `POKETTO_D
 POKETTO_DATA_DIR=/srv/poketto ./gradlew bootRun
 ```
 
-On Windows, set `$env:POKETTO_DATA_DIR` to an absolute path and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
+On Windows, set the same names through `$env:...`, make `POKETTO_DATA_DIR` absolute, and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
 
 ## License
 

@@ -11,18 +11,20 @@ Poketto needs a durable content boundary before it can implement writes, project
 
 If those details emerge independently inside later features, the same document will acquire incompatible representations across the content, projection, web, and MCP modules.
 
+[Remote repository authority](2026-09-01-remote-repository-authority.md) supersedes this note's original local-bootstrap boundary and owns current materialization and acknowledgement behavior. The document format and revision decisions below remain in force.
+
 ## Decision
 
-### Data directory and repository bootstrap
+### Data directory and repository cache
 
 - Require an absolute `poketto.data-dir` configuration value. Do not default to a path inside the application checkout or container filesystem.
-- Own each workspace content worktree at `<data-dir>/workspaces/<workspace-id>/content`. Resolve the path only from a validated `WorkspaceId`; workspace names, slugs, and caller-supplied paths never select a directory. Other durable workspace data may gain sibling directories later, but it does not belong inside the content repository unless a decision explicitly says so.
-- When the content directory is absent or empty, create a non-bare repository whose initial branch is `main`. Leave it unborn: the first document write creates the root commit instead of adding a synthetic bootstrap commit.
-- When the directory already contains a repository, accept only a non-bare worktree on `main`, including an unborn `main`. Preserve its remotes and configuration.
-- Refuse to initialize a non-empty directory that is not already a git repository. The error must identify the path and tell the operator to choose an empty directory or initialize and commit the existing content explicitly.
-- Fail startup on a bare repository, a worktree whose current branch is not `main`, or a repository whose metadata cannot be read. Repository repair and branch switching remain operator actions.
+- Own each workspace's disposable content cache at `<data-dir>/workspaces/<workspace-id>/content`. Resolve the path only from a validated `WorkspaceId`; workspace names, slugs, repository coordinates, and caller-supplied paths never select a directory. Other workspace data may gain sibling directories later, but it does not belong inside the repository cache unless a decision explicitly says so.
+- Require a secret-backed remote binding. An absent or invalid binding fails closed before a local cache can be mistaken for authority.
+- When the cache is absent or empty, create a non-bare `main` worktree, fetch remote `main`, and materialize that exact commit. A pre-provisioned empty remote stays unborn; the first exact-ref document write creates its root commit.
+- Treat every cache file as machine-owned and disposable. Each read or write resets tracked state to the resolved commit and removes untracked or ignored files. Direct authoring happens through the private remote, never in the cache.
+- Refuse a non-directory, a non-empty path that is not the expected worktree, or unreadable repository metadata. A configured workspace bound limits resident caches and evicts only idle entries.
 
-Repository validation and failure messages identify both the workspace and resolved path without disclosing another workspace's directory. Tests provide their own temporary absolute data directories. The local run documentation explains the required setting.
+Repository and transport failures identify the workspace without exposing repository coordinates or credentials. Tests provide their own temporary absolute data directories and disposable bare remotes. The local run documentation explains the required settings.
 
 ### Managed document layout
 
@@ -68,7 +70,7 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 ### Implemented scope
 
-The content module binds the data directory, bootstraps and validates per-workspace repositories, parses and canonically serializes documents, exposes the content value types, and scans committed `main` trees. It does not provide create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations build on this boundary.
+The content module binds the data directory, resolves per-workspace remote authority into disposable caches, parses and canonically serializes documents, exposes the content value types, and scans commit-pinned `main` trees. Document writes now build on this boundary; projection, HTTP, and MCP entry points remain outside it.
 
 [Repository-native publishing and images](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. This note continues to describe the executable baseline until that proposal is implemented; the reversal does not retroactively describe the current parser or repository layout.
 
@@ -76,7 +78,7 @@ The content module binds the data directory, bootstraps and validates per-worksp
 
 Defaulting the data directory to `./data` would make a first run easier, but it can silently place durable content inside a source checkout or an ephemeral container layer. An explicit absolute path makes persistence an operator decision.
 
-Initializing any existing directory would ease imports, but it could silently adopt unreviewed files and create ambiguous first-commit ownership. Existing content must be initialized and committed explicitly before Poketto adopts it.
+Adopting an existing local directory would ease imports, but it would silently restore local authority and create ambiguous acknowledgement. Existing content must be committed and pushed to the configured private remote before Poketto adopts it.
 
 Treating every Markdown file in the repository as a document would avoid one directory level, but it prevents repository-local instructions and metadata from coexisting safely. `documents/` is the single managed subtree.
 
@@ -90,7 +92,7 @@ Allowing arbitrary frontmatter fields would make extensions easy, but misspellin
 
 ## Verification
 
-- `ContentRepositoryBootstrapTests` covers absent, empty, valid existing, non-empty non-repository, bare, unreadable, wrong-branch, and unborn-`main` cases in temporary data directories.
+- `ContentRepositoryBootstrapTests` covers missing binding, empty remote materialization, disposable-cache replacement, direct pushes, local edit removal, cache bounds, and secret non-disclosure in temporary data directories.
 - `CanonicalDocumentCodecTests`, `DocumentValueTests`, and `DocumentPathRulesTests` cover field invariants, YAML restrictions, canonical bytes, empty and Unicode bodies, path validation, tag normalization, timestamp transitions, publication round trips, and exact-byte revisions.
 - `ContentRepositoryScanTests` proves workspace isolation, committed-tree reads, duplicate UUID detection, and cross-platform path-collision reporting.
 - `ModularityTests` verifies that public content contracts depend on `WorkspaceId` without exposing JGit or YAML implementation types.
@@ -104,6 +106,6 @@ Exact-byte revisions make manual line-ending or formatting changes visible as co
 
 Repository-wide scanning is linear in document count. It is the simplest correct foundation; later work may add an in-memory catalog or derived index without changing git's authority.
 
-Per-workspace repositories increase the number of Git handles and scans. Repository resources must be opened for the scoped operation and closed deterministically; the first implementation does not keep an unbounded cache of open repositories.
+Per-workspace repositories increase the number of Git handles, caches, and scans. Repository resources open only for the scoped operation and close deterministically; the configured cache bound prevents unbounded materialized workspace growth.
 
 `scan` fails the whole repository when any managed file is invalid, so one malformed break-glass commit blocks reading every committed document. The architecture requires projection to lint rather than reject human commits, so projection needs per-document error reporting or its own tree read; that contract belongs to the projection proposal and may reshape this scan interface.

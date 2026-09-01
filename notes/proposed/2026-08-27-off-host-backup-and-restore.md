@@ -7,7 +7,7 @@ Status: Proposed
 
 The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, images, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running a second `git push`, copying object-storage keys, or invoking `pg_dump` does not prove that data survives provider loss and may propagate a deletion into the supposed backup. [Source-encrypted backup recovery](2026-09-01-source-encrypted-backup-recovery.md) reverses this proposal's original target-access-only confidentiality choice and owns the encryption and key-custody decision.
 
-Once [remote repository authority](2026-09-01-remote-repository-authority.md) is implemented, Markdown and repository-managed images will live off the application host. Local and OSS [ManagedBlobStores](2026-09-01-repository-asset-blob-store.md) are authoritative for images uploaded through Poketto. Backup must protect the remote repository, managed objects, and non-derived PostgreSQL state in independent recovery boundaries; disposable repository-image caches add no recovery source.
+[Remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) keeps Markdown and repository-managed images off the application host. Local and OSS [ManagedBlobStores](2026-09-01-repository-asset-blob-store.md) are authoritative for images uploaded through Poketto. Backup must protect the remote repository, managed objects, and non-derived PostgreSQL state in independent recovery boundaries; disposable repository-image caches add no recovery source.
 
 ## Proposal
 

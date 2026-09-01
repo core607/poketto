@@ -11,9 +11,11 @@ import io.github.core607.poketto.workspace.WorkspaceId;
  * capability first: mutating a private document requires {@code WRITE_PRIVATE}, while
  * {@link #publish} and every mutation of an already-public document require {@code PUBLISH}.
  *
- * <p>Every operation validates its input, serializes behind a per-repository lock, refuses to run
- * against a worktree that differs from {@code HEAD}, and acknowledges only after the commit
- * succeeds.
+ * <p>Every operation validates its input, builds against a resolved remote {@code main}, and
+ * acknowledges only after an exact expected-ref update succeeds or a lost response is reconciled
+ * to that candidate commit. A competing remote update raises {@link RepositoryConflictException};
+ * an unverifiable lost response raises {@link RepositoryWriteAmbiguousException} and must not be
+ * retried blindly.
  */
 public interface DocumentWriteService {
 

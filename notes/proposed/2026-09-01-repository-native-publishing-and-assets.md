@@ -45,7 +45,9 @@ The renderer resolves a managed reference through the workspace-scoped catalog a
 
 One page response pins the repository commit and every managed revision it emits. Revision-pinned managed references and commit-pinned repository paths identify exact bytes without a separate page-snapshot table.
 
-Delivery validates workspace, public reachability, path containment, file type, media signature, size, response bounds, and active-content policy. Managed-image reachability uses a bounded scan of the resolved current public tree with a workspace-and-commit-keyed in-memory cache; it creates no durable PostgreSQL content index. HTML rendering sanitizes active content and applies the public CSP. A document cannot expose a private managed image, excluded repository file, repository metadata, or arbitrary remote resource through an image link.
+Rendering also issues a short-lived, opaque delivery grant bound to the workspace, page commit, exact managed revision or repository commit-and-path, and the reachability decision made for that snapshot. Image delivery validates this grant instead of rescanning the current public tree. A later commit that withdraws the reference or path stops new pages from receiving a grant; grants already emitted remain usable only until their bounded expiry. Page and image cache headers never outlive that expiry. This keeps one rendered page internally coherent without turning an old publication decision into permanent authorization.
+
+Before issuing a grant, rendering validates workspace, snapshot-bound public reachability, path containment, file type, media signature, size, response bounds, and active-content policy. Managed-image reachability uses a bounded scan of the page's resolved public tree with a workspace-and-commit-keyed in-memory cache; it creates no durable PostgreSQL content index. Delivery then verifies the opaque grant and exact bytes without consulting a different commit. HTML rendering sanitizes active content and applies the public CSP. A document cannot expose a private managed image, excluded repository file, repository metadata, or arbitrary remote resource through an image link.
 
 ### Browser and agent authoring
 
@@ -63,7 +65,7 @@ Resource evidence covers a representative nested repository without identifying 
 
 ## Implementation scope and dependencies
 
-The first implementation depends on [remote repository authority](2026-09-01-remote-repository-authority.md) and [managed asset storage](2026-09-01-repository-asset-blob-store.md). It adds arbitrary nested Markdown discovery, the repository publishing policy, the built-in private tree, folder pages and bounded sibling galleries, safe relative-image resolution, managed-reference rendering, browser and structured-agent entrances, and the UTF-8 `repo_patch` bridge.
+The first implementation depends on [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) and [managed asset storage](2026-09-01-repository-asset-blob-store.md). It adds arbitrary nested Markdown discovery, the repository publishing policy, the built-in private tree, folder pages and bounded sibling galleries, safe relative-image resolution, managed-reference rendering, browser and structured-agent entrances, and the UTF-8 `repo_patch` bridge.
 
 It updates the requirements counterparts and frontend proposal. It reverses the target assumption that every content file lives below `documents/`, every publish is a per-document visibility mutation, every image reference is a managed hash, and repository sibling images require migration. The implemented content and write notes remain the executable baseline until this proposal ships.
 
@@ -91,6 +93,7 @@ The first implementation excludes arbitrary binary writes through `repo_exec` or
 - A repository image is read and materialized only after an eligible reference, gallery, preview, or structured read selects it. Poketto exposes no operation that changes or deletes the Git file.
 - A managed upload writes no Git binary and returns an immutable reference. A document patch can attach it with expected revisions; a patch conflict leaves the uploaded object unreferenced rather than claiming a document commit.
 - Removing a managed reference changes only Markdown. Repository images remain read-only, and managed physical cleanup remains delayed behind reachability, retention, and backup holds.
+- A page rendered from one commit continues to load its exact authorized images for the bounded delivery-grant lifetime even if remote `main` advances between HTML and image requests. A withdrawal prevents new grants immediately, and old grants plus page caches expire within the configured bound.
 - Public rendering rejects unsafe HTML, traversal, symlinks, submodules, ambiguous routes, unsupported or active media, oversized files, excessive galleries, and links into private or excluded paths.
 - `repo_exec` can discover mixed text-and-image folders. `get_asset` returns a bounded managed revision or exact repository blob without base64 command output or sandbox network access.
 - `repo_patch` can create or update UTF-8 Markdown with expected-blob and expected-ref protection. `WRITE_PRIVATE` without `PUBLISH` changes only paths that remain private or excluded; creating or changing public content, gallery reachability, references, or publishing policy requires `PUBLISH`. It cannot write binary files, escape allowed paths, or commit sandbox debris.
