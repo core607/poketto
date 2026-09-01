@@ -22,7 +22,7 @@ MCP tools, the admin UI, and projection replay all need the same commit semantic
 - `delete` takes the document UUID and `expected_revision` and removes the document file.
 - `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. No operation returns a public document to `private`; reverting is a break-glass repository edit followed by explicit reindexing.
 
-`DocumentWriteService` accepts the revision as opaque input and does not define an agent read entrance. [Repository-native publishing and assets](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes the broader `get_file` and `repo_patch` handshake that supplies opaque blob revisions from one committed snapshot before an agent writes repository-native Markdown.
+`DocumentWriteService` accepts the revision as opaque input and does not define an agent read entrance. [Repository-native publishing and images](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes the broader `get_file` and `repo_patch` handshake that supplies opaque blob revisions from one committed snapshot before an agent writes repository-native Markdown.
 
 ### Concurrency and acknowledgement
 

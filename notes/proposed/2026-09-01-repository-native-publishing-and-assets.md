@@ -1,98 +1,103 @@
-# Repository-Native Publishing and Assets
+# Repository-Native Publishing and Images
 
 Date: 2026-09-01
 Status: Proposed
 
 ## Problem
 
-The implemented [content foundation](../implemented/2026-08-26-content-foundation.md) recognizes only strict Poketto documents below `documents/`, and the [requirements](../implemented/2026-08-25-requirements-and-architecture.md) place every image outside Git behind a content hash. Those contracts suit content created through a structured editor, but they do not adopt an existing personal repository containing Markdown and related images in ordinary nested folders.
+The implemented [content foundation](../implemented/2026-08-26-content-foundation.md) recognizes only strict Poketto documents below `documents/`, and the [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require per-document publication metadata. Those contracts suit content created through a structured editor, but they do not adopt an existing personal repository containing Markdown and images in ordinary nested folders.
 
-A repository-native service should not require the owner to relocate every note, add Poketto frontmatter to every file, rewrite relative image links, or mark each article public individually. It needs a one-time repository publishing policy, commit-pinned repository text, revision-consistent managed assets, and agent writing that preserves the original file layout.
+A repository-native service should not require the owner to relocate every note, add Poketto frontmatter to every file, hand-write every sibling image reference, or mark each article public individually. It must also preserve the ownership difference between repository files and images uploaded through Poketto.
 
 ## Proposal
 
-### Repository corpus
+### Repository discovery
 
-- Every regular UTF-8 Markdown file outside reserved Poketto metadata and configured exclusions belongs to the workspace corpus, regardless of directory depth or frontmatter shape. Trusted repository execution may inspect other authorized files as bounded raw repository content.
-- A repository text file is addressed by canonical repository path and opaque blob revision at one resolved commit. It does not need a Poketto UUID or canonical frontmatter to be read, rendered, or patched.
-- Strict managed documents may coexist for structured APIs while they have consumers, but `documents/` is not the corpus or publishing boundary. Unknown frontmatter and noncanonical Markdown remain byte-preserved unless an authorized patch changes them.
-- A path move changes the default route. Stable aliases or redirects must be explicit repository metadata; Poketto does not infer identity from similar titles or content.
+Poketto scans regular UTF-8 Markdown files throughout an authorized committed tree except Git internals, reserved Poketto state, and excluded paths. The `documents/` directory is no longer special. Paths are canonical repository-relative values; symlinks, submodules, traversal, ambiguous normalized paths, and non-regular files are never content.
 
-### Publishing policy
+Optional frontmatter augments a file with title, date, tags, summary, route, and other structured fields. A file without frontmatter remains readable: its first heading or filename supplies a title, repository history supplies fallback dates where needed, and missing metadata produces diagnostics rather than rejection. Malformed frontmatter or an unsafe route excludes that file from structured public results without hiding unrelated valid content.
 
-An unconfigured repository is private. Publishing begins only after the owner commits a valid `.poketto/publishing.yaml` and explicitly enables its policy. The first policy mode is `public-by-default`: eligible Markdown and Git-bound asset sources are public unless a configured path exclusion matches them. A managed-only asset becomes publicly retrievable only while an eligible public document references its managed identity.
+A directory with an eligible `index.md` owns the folder route. Other Markdown files use deterministic path-derived routes unless valid metadata overrides them. Route collisions fail closed and appear in workspace diagnostics.
 
-Exclusions are repository-relative path globs evaluated by a bounded linear-time matcher. They are not regular expressions and do not accept request-time patterns. Reserved metadata, Git internals, symlinks, submodules, non-regular files, and paths that escape the repository are never public. Exclusion wins permanently for a resolved path; a public document cannot embed or link through an excluded asset.
+### Publishing policy and private paths
 
-The repository may keep private or draft material in one or more excluded folders instead of carrying a visibility flag in every file. A machine creation or move into the public set, a patch to an already-public file, and any publishing-policy change require `PUBLISH`. Private-only text changes require `WRITE_PRIVATE`. Direct owner commits remain break-glass publishing actions and are reflected after the new `main` resolves.
+An unconfigured repository is private. Publishing begins only after the owner commits a valid `.poketto/publishing.yaml` and explicitly enables its policy. The first policy mode is `public-by-default`: eligible Markdown and images reachable from it are public unless a path exclusion applies.
 
-### Folder pages and routes
+The repository-root `private/` tree is always private under this mode. Configured repository-relative exclusions may protect additional trees. Exclusions use bounded path globs rather than regular expressions, do not accept request-time patterns, and always win over a public document reference or folder gallery. Reserved metadata, Git internals, symlinks, submodules, non-regular files, and paths outside the repository are never public.
 
-- `index.md` is the page for its containing folder. A nested folder therefore becomes a text-and-image article without an administration UI.
-- A non-index Markdown file receives a path-derived article route. Route normalization and collision checks are deterministic across Windows and Linux; a collision excludes every conflicting page and reports a workspace diagnostic rather than selecting one.
-- Titles, dates, tags, summaries, and aliases may come from recognized optional frontmatter or repository metadata. Missing optional metadata does not make otherwise valid Markdown unreadable.
-- Tag, archive, RSS, and sitemap views derive only from the public file set at one resolved commit.
+Repository images do not become public merely because they exist somewhere in the tree. Public reachability requires an eligible Markdown relative reference or inclusion in the non-recursive folder gallery owned by an eligible public `index.md`. A managed image revision is public only while an eligible public document references it.
 
-### Managed assets and rendering
+### Folder pages and repository images
 
-Markdown may contain a managed asset identity or an ordinary relative image link. A managed identity resolves through `AssetCatalog`. The renderer resolves a relative link against the referring file's directory at the same commit, validates the Git source, and imports or finds its binding under [asset BlobStore and Git synchronization](2026-09-01-repository-asset-blob-store.md). Both forms produce a workspace-scoped immutable URL for the confirmed managed asset version. Poketto never writes a deployment hostname, local path, bucket URL, or signed provider URL into the repository.
+An eligible folder `index.md` renders its Markdown body followed by a gallery of eligible regular image files in the same directory. The gallery is non-recursive and uses deterministic filename order. An image already referenced explicitly by that `index.md` renders at the authored position and is not repeated in the gallery.
 
-A bounded `ManagedAssetResolver` accepts only an authorized managed identity or a regular Git file from the resolved commit. It validates path containment, size, media type, response bounds, asset revision, and public reachability. A Git-bound asset whose source path is excluded remains unavailable even when a document names its managed identity. Public responses use the managed asset version as an `ETag` and may be cached immutably. HTML rendering sanitizes active content and applies the public CSP; a Markdown link cannot turn an excluded file, private managed asset, repository metadata, or arbitrary remote resource into a public response.
+This convention lets a Git author publish a folder containing `index.md` and sibling images without writing one Markdown reference per image. It does not guess relationships for other Markdown files or images in child directories. Page-level image-count, individual-byte, cumulative-byte, and execution-time bounds apply before public rendering.
 
-BlobStore owns managed image bytes: local filesystem in the primary single-server profile and OSS-compatible object storage in the optional serverless profile. A Git image is an optional import source and synchronized copy. A pure upload needs no Git path, while an adopted repository keeps working with its existing relative links. Pending or conflicted Git synchronization never changes the last confirmed asset version silently.
+Repository images are owned by Git. Poketto may validate and materialize them through the derived cache defined by [managed assets and repository image materialization](2026-09-01-repository-asset-blob-store.md), but it never changes their paths or bytes. The browser presents them as repository-managed and provides no delete, move, replace, import, export, or synchronization control. Adding an image to an eligible public folder is a publication action; an owner who wants to remove or privatize it changes the repository or publishing exclusions through Git.
 
-One page response pins the resolved repository commit and every managed asset revision it emits. Replacing a managed asset may change a later page response without a Markdown commit; its immutable asset URL and `ETag` still identify the exact bytes. Historical rendering therefore requires both the repository commit and recorded asset revisions rather than pretending that Git alone contains the full page.
+### Managed images and rendering
 
-### Agent authoring and SRT
+A browser, API client, or trusted agent upload creates an immutable managed image revision in `ManagedBlobStore`. The caller receives an opaque managed identity and revision that a repository write can insert into Markdown. Poketto writes no binary into Git and establishes no relationship with a repository image.
 
-`repo_exec` discovers folder structure, reads text, inspects Git history, and runs bounded local image-processing tools inside the SRT workspace. It does not emit image bytes as base64 or write repository or asset authority.
+The renderer resolves a managed reference through the workspace-scoped catalog and ManagedBlobStore. It resolves a relative repository reference against the referring file's directory at the same commit and materializes the exact Git blob when needed. Both forms produce immutable workspace-scoped Poketto delivery URLs without writing a deployment hostname, local path, bucket URL, remote repository address, or signed provider URL into Markdown.
 
-A structured `get_asset` operation accepts a managed identity or an authorized commit and Git path. It returns the confirmed BlobStore version as bounded multimodal content together with its opaque asset revision and Git synchronization state. It verifies workspace, public or private scope, path and binding when present, media type, dimensions, and byte limits. SRT itself receives no authority credential and does not need network access to let the model see an image.
+One page response pins the repository commit and every managed revision it emits. Revision-pinned managed references and commit-pinned repository paths identify exact bytes without a separate page-snapshot table.
 
-An agent may draft `index.md` or another Markdown file inside its disposable execution workspace. A separate `repo_patch` operation applies bounded UTF-8 text changes to authority. It carries the resolved base commit and expected blob revision or expected absence for every affected path. The server validates path, size, publishing impact, capability, and candidate tree before asking `RepositoryAuthority` to advance `main`. A successful sandbox command never implies that its draft was committed.
+Delivery validates workspace, public reachability, path containment, file type, media signature, size, response bounds, and active-content policy. HTML rendering sanitizes active content and applies the public CSP. A document cannot expose a private managed image, excluded repository file, repository metadata, or arbitrary remote resource through an image link.
 
-Structured `put_asset`, `bind_asset`, `move_asset`, `inspect_asset_removal`, and `delete_asset` entrances invoke the asset service rather than writing through SRT. Public reference changes and Git source synchronization require `PUBLISH`; private managed-only changes require `WRITE_PRIVATE`. Move and delete operations expose the source classification and require the explicit Git disposition defined by the asset proposal. An agent cannot smuggle that choice through free-form confirmation text.
+### Browser and agent authoring
 
-The existing full-copy SRT workspace remains the first security boundary. Remote fetch and session materialization are measured separately on a representative repository containing nested text and images. Session reuse prevents twenty small commands from paying that copy repeatedly; a filtered snapshot requires a later decision only if measured local-copy cost is material and the filter preserves commit identity, isolation, and explicit missing-blob behavior.
+The browser editor offers managed upload and repository browsing as separate sources. Upload returns a managed reference that the editor inserts automatically. Repository browsing enumerates authorized image paths without copying them; preview materializes bounded original bytes on demand, and selecting an image makes the editor calculate and write the relative path. A user never has to type the repository path merely because Poketto preserves it.
+
+`repo_exec` discovers folder structure, reads text, inspects Git history, and runs bounded local analysis inside the SRT workspace. It never writes repository or asset authority. A structured `get_asset` accepts either an exact managed identity and revision or an authorized commit and repository path. It returns bounded multimodal content without giving SRT a repository-authority, ManagedBlobStore, or remote Git credential.
+
+`put_asset` creates a managed image and returns its immutable reference. A separate `repo_patch` applies bounded UTF-8 changes to repository authority with the resolved base commit and expected blob revision or expected absence for every affected path. An editor or agent may compose them to upload and attach an image, but a successful upload does not claim that a conflicting document patch committed. Binary repository writes and modification of repository images remain unavailable.
+
+### Directory shape and performance
+
+The first read of a cold repository fetches only the objects required for the resolved commit and selected content. Later reads reuse a bounded commit-keyed cache. Repository-image materialization is on demand, so connecting or scanning a repository does not copy every image. A folder gallery enumerates metadata first and materializes each image only when a bounded response or lazy client request needs it.
+
+Resource evidence covers a representative nested repository without identifying a private corpus. It records cold and warm repository reads, a folder gallery, managed image upload and delivery, Git-image materialization, and a reused SRT session. The measurements include network bytes, local bytes copied, latency, CPU, memory, and cache storage.
 
 ## Implementation scope and dependencies
 
-The first implementation depends on [remote repository authority](2026-09-01-remote-repository-authority.md), [asset BlobStore and Git synchronization](2026-09-01-repository-asset-blob-store.md), and the read boundary in [repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). It adds publishing-policy parsing, path and route resolution, arbitrary Markdown reads, managed and relative asset references, public-content contracts, structured asset entrances, text-file revision reads, `repo_patch`, diagnostics, and focused security, browser-contract, and Git integration tests.
+The first implementation depends on [remote repository authority](2026-09-01-remote-repository-authority.md) and [managed asset storage](2026-09-01-repository-asset-blob-store.md). It adds arbitrary nested Markdown discovery, the repository publishing policy, the built-in private tree, folder pages and bounded sibling galleries, safe relative-image resolution, managed-reference rendering, browser and structured-agent entrances, and the UTF-8 `repo_patch` bridge.
 
-It updates the requirements counterparts and frontend proposal. It reverses the target assumption that every content file lives below `documents/`, every publish is a per-document visibility mutation, every image reference is a managed hash, and Git cannot supply a synchronized image source. The implemented content and write notes remain the executable baseline until this proposal ships.
+It updates the requirements counterparts and frontend proposal. It reverses the target assumption that every content file lives below `documents/`, every publish is a per-document visibility mutation, every image reference is a managed hash, and repository sibling images require migration. The implemented content and write notes remain the executable baseline until this proposal ships.
 
-The first implementation excludes arbitrary binary writes through `repo_exec`, image editing, thumbnail generation, OCR as a service, automatic captions, CDN configuration, redirects inferred from history, submodule content, Git LFS integration, and a general-purpose arbitrary-file write API.
+The first implementation excludes arbitrary binary writes through `repo_exec` or `repo_patch`, repository-image mutation, managed-to-Git export, Git-to-managed import, image editing, thumbnail generation, OCR as a service, automatic captions, CDN configuration, redirects inferred from history, submodule content, and Git LFS integration.
 
 ## Alternatives considered
 
-**Require every article below `documents/`.** This keeps parsing predictable but turns adoption into a migration and makes the repository conform to Poketto instead of letting Poketto read the repository.
+**Require every repository author to write image links.** Standard Markdown remains available for precise inline placement, but it makes a simple `index.md` plus sibling-image folder unnecessarily laborious. The bounded folder gallery supplies a deterministic repository-native convention.
 
-**Publish only files carrying `visibility: public`.** This is conservative but requires repeated bookkeeping in a repository whose owner wants the blog to be its ordinary public face. A one-time public-by-default policy with excluded private folders makes the broad intent explicit.
+**Automatically associate every image in the repository.** A repository may contain drafts, private media, unrelated assets, and large binary trees. Only an eligible folder page owns its non-recursive sibling gallery.
 
-**Publish every connected repository immediately.** This removes setup but can disclose an existing private corpus before the owner sees the effective file set. An unconfigured repository stays private until its policy is committed and enabled.
+**Let Poketto delete repository images from the browser.** That would turn a read-only repository convention into binary write, path, conflict, and lifecycle behavior. Git authors remain responsible for files they add through Git.
 
-**Serve Git images outside the managed asset system.** This avoids synchronization state but gives relative and uploaded images different authorization, metadata, lifecycle, URLs, and serverless behavior.
+**Convert repository images into managed assets.** Conversion would create state for user-owned files and make later direct Git changes ambiguous. Exact commit-and-path reads need only a disposable delivery copy.
 
-**Require every managed image in Git.** This keeps a folder portable but forces uploads and generated images through one repository path and commit workflow. A Git binding remains optional instead.
+**Store every upload in Git.** This would make ordinary clones carry recurring binary history and force the structured upload path into repository layout. Managed storage keeps browser and agent uploads independent from Git binary history.
 
-**Let `repo_exec` push its workspace.** Sandbox mutations and generated files would bypass capability checks, publishing analysis, revision preconditions, and authority reconciliation. `repo_patch` is the only agent write bridge.
+**Generate a complete Git export of managed images.** A workspace export may later materialize managed references into a portable snapshot, but it is neither publishing nor synchronization and requires a separate product decision.
 
 ## Acceptance
 
-- A pre-existing repository with nested Markdown and sibling images becomes readable without moving files, adding UUIDs, canonicalizing frontmatter, or rewriting links.
-- Before a valid policy is enabled, every public route returns no repository content. After enabling public-by-default, eligible new Markdown is public automatically and every configured private-folder path remains unavailable to public pages, assets, lists, Q&A, errors, caches, and counts.
-- `folder/index.md` renders as the folder page. A relative image imports through its Git binding, a managed-only reference needs no Git file, and neither form exposes a remote URL, local path, credential, excluded file, or another workspace.
-- Rendering rejects unsafe HTML, path traversal, symlinks, submodules, ambiguous normalized routes, oversized files, unsupported media, and links from public Markdown into excluded paths.
-- `repo_exec` can discover mixed text-and-image folders. `get_asset` returns the confirmed managed version and synchronization state without base64 command output or sandbox network access.
-- Structured asset operations create managed-only images and synchronize optional Git sources. A Git-backed move or delete cannot proceed without an explicit source disposition, expected asset revision, and expected Git revisions.
-- `repo_patch` can create or update a Markdown draft with expected-blob and expected-ref protection. It cannot write binary files, escape allowed paths, expose private content without `PUBLISH`, modify publishing policy without `PUBLISH`, or commit sandbox debris.
-- Cold remote fetch, warm incremental fetch, first Git-asset import, managed-only upload, synchronized update, first SRT materialization, and a twenty-command reused session record network bytes, local bytes copied, latency, memory, and storage without identifying a private corpus.
+- A configured repository discovers eligible nested Markdown outside `documents/`; malformed or excluded files fail locally without hiding unrelated valid content.
+- An unconfigured repository is private. Enabling `public-by-default` never publishes the root `private/` tree or a configured exclusion, including through a cross-reference or folder gallery.
+- `folder/index.md` renders a bounded non-recursive gallery of eligible sibling images in deterministic order. Explicit inline images are not duplicated, and child-directory or private images are absent.
+- A repository image is read and materialized only after an eligible reference, gallery, preview, or structured read selects it. Poketto exposes no operation that changes or deletes the Git file.
+- A managed upload writes no Git binary and returns an immutable reference. A document patch can attach it with expected revisions; a patch conflict leaves the uploaded object unreferenced rather than claiming a document commit.
+- Removing a managed reference changes only Markdown. Repository images remain read-only, and managed physical cleanup remains delayed behind reachability, retention, and backup holds.
+- Public rendering rejects unsafe HTML, traversal, symlinks, submodules, ambiguous routes, unsupported or active media, oversized files, excessive galleries, and links into private or excluded paths.
+- `repo_exec` can discover mixed text-and-image folders. `get_asset` returns a bounded managed revision or exact repository blob without base64 command output or sandbox network access.
+- `repo_patch` can create or update UTF-8 Markdown with expected-blob and expected-ref protection. It cannot write binary files, escape allowed paths, expose private content without `PUBLISH`, modify publishing policy without `PUBLISH`, or commit sandbox debris.
 - Requirements, README counterparts, frontend and retrieval proposals, relevant automated tests, `./gradlew repoCheck`, and `git diff --check` pass.
 
 ## Risks
 
-Public-by-default makes path placement a publishing action. The initial private state, explicit enablement, exclusion diagnostics, and `PUBLISH` capability reduce accidental exposure, but owners using direct Git must understand that a commit outside excluded folders may become public immediately.
+Public-by-default folder galleries make repository placement meaningful: adding a sibling image to an eligible public folder publishes it. The built-in private tree, configured exclusions, bounded preview, and clear repository-managed labeling must make that consequence visible without pretending Poketto owns the file.
 
 Arbitrary Markdown has weaker uniform metadata than a canonical schema. Optional parsing and diagnostics preserve readable content, while features that require dates, tags, or stable aliases must define their fallback rather than rejecting the whole repository.
 
-Git repositories with binary history can be expensive on a cold cache and during isolated SRT workspace creation. Incremental fetch and session reuse avoid repeated network transfer; resource evidence decides whether a more complex filtered snapshot is justified.
+Large folders and repository binary history can make cold reads expensive. Non-recursive discovery, lazy materialization, page bounds, incremental fetch, and session reuse constrain the normal path; measured evidence decides whether thumbnailing or filtered transfer deserves a later proposal.

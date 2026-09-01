@@ -13,10 +13,10 @@ Poketto's target product is consumer-oriented and repository-native. A workspace
 
 ### One authority model
 
-- Every production workspace has one private remote Git repository whose `main` ref is the sole repository authority. Markdown, publishing policy, repository metadata, and optional asset source files are acknowledged as repository writes only when the remote ref contains them.
+- Every production workspace has one private remote Git repository whose `main` ref is the sole repository authority. Markdown, publishing policy, repository metadata, and repository-managed images are acknowledged as repository writes only when the remote ref contains them. Images uploaded through Poketto remain under the separate managed-asset authority.
 - The primary single-server profile and the optional serverless profile use the same `RepositoryAuthority` contract and remote acknowledgement semantics. Neither profile supports a local-authority configuration or silently falls back to local disk.
 - A local bare repository, object database, or worktree is a disposable cache or candidate workspace. Deleting it and restarting must not lose acknowledged content or change the resolved authoritative commit.
-- Direct owner pushes are break-glass repository changes. Poketto observes the new remote `main`, validates it, and fails closed for invalid public content rather than rewriting owner commits. A changed Git image is an asset-source change; [asset synchronization](2026-09-01-repository-asset-blob-store.md) decides whether it can advance the managed BlobStore version.
+- Direct owner pushes are repository-authoring changes. Poketto observes the new remote `main`, validates it, and fails closed for invalid public content rather than rewriting owner commits. Repository images remain owner-managed files: Poketto may materialize an exact blob for delivery but never converts, reconciles, or mutates it through managed-asset operations.
 
 ### Authority contract
 
@@ -59,9 +59,9 @@ The implementation updates the requirements counterparts, README counterparts, d
 ## Acceptance
 
 - Both production profiles require remote Git authority. Configuration with no remote authority fails closed and never creates a local authoritative repository.
-- After an acknowledged repository write, deleting every application-side repository cache and restarting resolves the same remote `main` and exact repository tree. Asset BlobStore recovery follows its separate authority and backup contract.
+- After an acknowledged repository write, deleting every application-side repository and repository-image cache and restarting resolves the same remote `main` and exact repository tree. Managed-asset recovery follows its separate authority and encrypted backup contract.
 - Concurrent writers advancing the same base produce one success and one conflict. Lost-response tests reconcile the remote ref without duplicate or blind writes.
-- A cold fetch and subsequent warm fetch of a representative nested Markdown-and-image repository record network bytes, local bytes, latency, memory, and cache size. Warm reads do not refetch unchanged image objects.
+- A cold fetch and subsequent warm fetch of a representative nested Markdown-and-image repository record network bytes, local bytes, latency, memory, and cache size. Warm reads do not refetch unchanged image objects, and deleting the derived image cache affects performance rather than correctness.
 - SRT, browser responses, diagnostics, logs, committed examples, and tests expose no remote repository address, provider identity, or credential.
 - Existing repository read and write tests exercise the port, `./gradlew repoCheck` passes, and `git diff --check` passes.
 

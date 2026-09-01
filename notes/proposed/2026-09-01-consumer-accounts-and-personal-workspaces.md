@@ -13,16 +13,16 @@ Poketto's consumer direction needs each registered person to receive a private w
 
 ### Account and workspace model
 
-- An `account` is a human identity. A `workspace` remains the tenant, remote repository, authoritative asset namespace, quota, audit, backup, and data-destruction boundary.
+- An `account` is a human identity. A `workspace` remains the tenant, remote repository, authoritative managed-asset namespace, repository-image cache scope, quota, audit, backup, and data-destruction boundary.
 - One account may own or join several workspaces. Roles belong to memberships, never globally to the account.
 - The consumer account-creation entrance requests one personal workspace and one `OWNER` membership through an idempotent provisioning operation. It does not grant access to an existing workspace; that remains invitation-only.
 - Workspace names, public slugs, and custom domains are presentation values. The immutable `WorkspaceId` scopes every repository, blob, row, credential, budget, job, cache, and audit operation.
 
 ### Provisioning and visibility
 
-Provisioning is a durable state machine because an account row, workspace catalog row, membership, remote repository, and asset namespace cannot be created in one storage transaction. Every step is idempotent and keyed by a recorded provisioning identifier and `WorkspaceId`. Duplicate delivery resumes the same operation; reuse of an idempotency key for different registration input fails.
+Provisioning is a durable state machine because an account row, workspace catalog row, membership, remote repository, and managed-object scope cannot be created in one storage transaction. Every step is idempotent and keyed by a recorded provisioning identifier and `WorkspaceId`. Duplicate delivery resumes the same operation; reuse of an idempotency key for different registration input fails.
 
-A workspace is not routable until its relational state, remote repository authority, and configured asset BlobStore namespace report ready. Failed provisioning remains visible only to the affected account and instance operator. Cleanup removes only resources created for that `WorkspaceId`; it never guesses ownership from provider names or paths. The asset namespace cannot initialize lazily because managed-only images are not rebuildable from Git.
+A workspace is not routable until its relational state, remote repository authority, and configured ManagedBlobStore scope report ready. Failed provisioning remains visible only to the affected account and instance operator. Cleanup removes only resources created for that `WorkspaceId`; it never guesses ownership from provider names or paths. Managed images are not rebuildable from Git, while a repository-image cache remains disposable and never participates in readiness.
 
 Registration, login identifiers, password handling, sessions, throttling, and account suspension reuse the security contract selected by the invitation-membership implementation. Public enablement must add explicit abuse prevention, recovery, and verification behavior before claiming internet-ready open registration; those controls do not change the account/workspace boundary fixed here.
 
@@ -34,9 +34,9 @@ Quotas and usage accounting attach to `WorkspaceId`. Billing may later aggregate
 
 ## Implementation scope and dependencies
 
-The first implementation depends on the account, session, and membership foundation from [invitation-only membership](2026-08-27-invitation-only-membership.md), the binding contract from [remote repository authority](2026-09-01-remote-repository-authority.md), and the local namespace contract from [asset BlobStore and Git synchronization](2026-09-01-repository-asset-blob-store.md). It adds the provider adapter that creates an isolated private repository, durable provisioning state, personal-workspace creation entrance, asset namespace, owner membership, retry and cleanup behavior, authorization, audit events, and focused failure-injection and isolation tests.
+The first implementation depends on the account, session, and membership foundation from [invitation-only membership](2026-08-27-invitation-only-membership.md), the binding contract from [remote repository authority](2026-09-01-remote-repository-authority.md), and the local managed-storage contract from [managed assets and repository image materialization](2026-09-01-repository-asset-blob-store.md). It adds the provider adapter that creates an isolated private repository, durable provisioning state, personal-workspace creation entrance, managed-object scope, owner membership, retry and cleanup behavior, authorization, audit events, and focused failure-injection and isolation tests.
 
-It targets the primary single-server profile first, but every personal workspace receives remote Git authority. Repository provisioning is therefore shared product infrastructure rather than a serverless adapter. Its start gate requires an isolated non-production provider account and narrowly scoped credentials capable of creating private repositories; without them the proposal remains pending rather than substituting local authority. The optional serverless profile later changes the asset BlobStore, database, and SRT deployment without changing consumer identity or repository ownership. Email or SMS delivery, OAuth, social login, passkeys, billing, custom domains, ownership transfer, account recovery, and destructive deletion remain outside this implementation.
+It targets the primary single-server profile first, but every personal workspace receives remote Git authority. Repository provisioning is therefore shared product infrastructure rather than a serverless adapter. Its start gate requires an isolated non-production provider account and narrowly scoped credentials capable of creating private repositories; without them the proposal remains pending rather than substituting local authority. The optional serverless profile later changes managed storage, derived image caching, database, and SRT deployment without changing consumer identity or repository ownership. Email or SMS delivery, OAuth, social login, passkeys, billing, custom domains, ownership transfer, account recovery, and destructive deletion remain outside this implementation.
 
 ## Alternatives considered
 
@@ -50,12 +50,12 @@ It targets the primary single-server profile first, but every personal workspace
 
 ## Acceptance
 
-- Duplicate and concurrent delivery creates exactly one account, personal workspace, `OWNER` membership, private remote repository, and asset namespace for one provisioning operation.
+- Duplicate and concurrent delivery creates exactly one account, personal workspace, `OWNER` membership, private remote repository, and managed-object scope for one provisioning operation.
 - No route, list, API key, background task, cache, log, metric, or error exposes the workspace before provisioning completes or reveals another consumer's failed provisioning.
 - A retry resumes recorded state after failure at every storage boundary. Cleanup touches only resources proven to belong to the recorded `WorkspaceId`.
 - One account may own or join several workspaces without an account-wide role or content scope. Joining someone else's workspace still requires an invitation.
 - Missing and unauthorized personal workspaces remain indistinguishable to other consumers. Workspace quotas, credentials, audits, and usage records carry `WorkspaceId`.
-- The implementation exercises an isolated provider repository fixture, the real local BlobStore adapter, and PostgreSQL under duplicate delivery, injected failure, ambiguous provider response, restart, and two-account isolation tests.
+- The implementation exercises an isolated provider repository fixture, the real local ManagedBlobStore adapter, and PostgreSQL under duplicate delivery, injected failure, ambiguous provider response, restart, and two-account isolation tests. Repository-image caches remain absent from provisioning state and can be deleted between assertions.
 - The relevant automated tests, `./gradlew repoCheck`, and `git diff --check` pass.
 
 ## Risks

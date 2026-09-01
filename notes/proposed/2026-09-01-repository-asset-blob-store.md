@@ -1,109 +1,91 @@
-# Asset BlobStore and Git Synchronization
+# Managed Asset BlobStore and Repository Image Materialization
 
 Date: 2026-09-01
 Status: Proposed
 
 ## Problem
 
-Poketto must accept images through more than one writing path. An owner may upload an image through an application entrance without adding it to Git, while an existing repository may already contain images beside Markdown. Requiring every image to originate in Git would make repository layout the only write model. Treating every Git image as an independent authority would instead create unresolved conflicts between repository bytes and uploaded bytes.
+Poketto must support two image-authoring paths without turning them into a synchronization system. An existing repository may contain ordinary image files beside Markdown. A browser, API client, or trusted agent must also be able to upload an image without adding binary history to Git.
 
-The primary single-server deployment needs durable local image storage. The optional serverless deployment needs durable OSS-compatible storage. Both need the same asset identity, rendering, synchronization, move, and deletion semantics even when a Git copy exists.
+Treating both paths as one mutable asset would require Git bindings, bidirectional synchronization, conflict states, and cross-store deletion rules. Treating every upload as a Git binary would instead make repository history the default media store and increase clone and sandbox costs. The product needs one rendering boundary while preserving the ownership of each source.
 
 ## Proposal
 
-### Asset authority and optional Git source
+### Two image types
 
-- `BlobStore` is the durable byte authority for managed images. The single-server adapter uses local filesystem storage; the optional serverless adapter uses OSS-compatible object storage.
-- An `AssetCatalog` record in PostgreSQL owns the workspace-scoped asset identity, active content hash, media metadata, lifecycle state, and optional Git binding. Blob bytes are immutable; replacing an image writes a new object and advances the catalog record with an expected asset revision.
-- A managed-only asset has no Git binding. A Git-backed asset records a canonical repository path, last synchronized Git blob revision, resolved commit, and last synchronized asset version. The Git file is an import source and optional synchronized copy, not the authority for the active managed bytes.
-- The same content hash may back several records inside one workspace, but authorization, references, lifecycle, errors, and provider keys remain workspace-scoped. No external contract exposes a filesystem path, bucket key, repository address, provider object, or signed storage URL.
+Poketto recognizes two disjoint image types:
 
-Git images become managed only after bounded validation and successful import into BlobStore. Discovering a repository file does not by itself acknowledge an asset write. Once a binding exists, rendering reads the active catalog version from BlobStore; repository synchronization state is reported separately.
+- A **managed image** is created through a Poketto browser, API, or agent entrance. `ManagedBlobStore` is the durable byte authority. A workspace-scoped PostgreSQL catalog records its identity, immutable revision, content hash, media metadata, and retention state.
+- A **repository image** is a regular file in the workspace's remote Git repository. The resolved commit, canonical path, and Git blob revision identify its bytes. Poketto treats the file as repository-owner-managed and may materialize a disposable delivery copy, but it never converts the file into a managed image or records a lifecycle for it.
 
-### References and repository discovery
+The types have no binding, synchronization pair, or automatic conversion. Poketto never creates, replaces, moves, or deletes a repository image. A repository owner who adds an image through Git continues to manage that file through Git.
 
-Markdown may refer to either a managed asset identity or an ordinary repository-relative image path.
+### Managed image references
 
-- A managed reference resolves directly through `AssetCatalog` and BlobStore. It works for assets uploaded without a Git copy.
-- A relative repository reference resolves the path at the document's commit. Poketto validates publishing scope, file type, size, and path safety, then finds or creates the Git binding and imports the exact blob into BlobStore. Later requests use the active managed asset rather than reading Git for every response.
-- The renderer emits one immutable workspace-scoped Poketto asset URL for the resolved asset version. Source Markdown never receives a deployment hostname, local path, bucket URL, or signed provider URL.
+Managed image bytes are immutable. Uploading changed bytes creates a new opaque revision; it never changes the bytes behind an existing revision. Markdown references the exact managed identity and revision, so a committed document snapshot selects one immutable object without a separate publication manifest.
 
-A direct owner push may add, change, move, or remove a bound Git source. Reconciliation compares the observed Git blob revision and active asset revision with their last synchronized pair. If only Git bytes changed, Poketto may import the new blob as the next asset version. If only the managed asset changed and synchronization was requested, Poketto may produce a candidate Git update. If both changed, it records a conflict and changes neither active version nor remote `main` automatically.
+`put_asset` accepts a bounded image stream, validates it, writes and verifies one immutable object, and returns its managed identity and revision. A workspace-scoped idempotency key makes a lost-response retry return the same revision; reusing that key with different bytes conflicts. The upload is acknowledged independently from a later document edit. A browser or agent then uses the repository write contract to insert the returned reference into Markdown. If that document write conflicts or is abandoned, the unreferenced object remains an ordinary retention candidate rather than a partially synchronized Git write.
 
-A missing Git source never deletes the managed asset automatically. It marks the binding `SOURCE_MISSING` and keeps the last confirmed BlobStore version until an owner detaches, retargets, or retires it. Finding the same Git blob at a new path may produce a move candidate, but Poketto does not infer a move from content equality because the owner may have copied the file intentionally.
+Removing a managed image from a page removes its Markdown reference through the repository write contract. It does not synchronously delete bytes. Physical cleanup waits until no current document reference, in-flight write, retention rule, or backup hold can reach the revision. The first implementation exposes no separate destructive asset-library operation.
 
-### Multi-write synchronization
+### Repository image materialization
 
-Asset mutations are explicit application operations rather than side effects of `repo_exec`:
+A repository image enters no catalog merely because a repository is connected or scanned. Poketto reads one only when an authorized document reference, folder gallery, or structured image read selects its exact commit and path.
 
-- `put_asset` creates a managed-only asset or replaces an existing asset version through bounded streaming. A caller may request synchronization to a canonical Git path. Replacing a Git-backed asset requires `SYNC_GIT`, `KEEP_GIT_SOURCE`, or `DETACH_GIT_SOURCE`; it never creates silent divergence.
-- `bind_asset` imports a Git path into a new or existing managed asset and records the synchronized pair.
-- `move_asset` changes a Git source binding; managed-only assets have no storage path to move. It detaches and rebinds or moves the Git source and updates known repository-relative references in the same candidate commit.
-- `inspect_asset_removal` returns whether the asset is managed-only or Git-backed, every known public or private reference, whether immutable bytes are shared, the allowed dispositions, and an opaque inspection revision.
-- `delete_asset` carries that inspection revision, current asset revision, required Git revisions, and an explicit disposition. A browser obtains the inspection and asks the owner to choose; an agent never guesses the choice from free-form confirmation text.
+The reader validates repository containment, publishing scope, file type, media signature, byte bounds, and response bounds before materializing a workspace-scoped cache entry keyed by the Git blob revision. The primary single-server profile uses a bounded local cache. The optional serverless profile may use an OSS-backed shared cache. Either cache is derived: eviction, process replacement, or loss of the entire cache changes no acknowledged content and triggers rematerialization from the authorized Git snapshot.
 
-A Git-backed delete supports these dispositions:
+Repository image caches carry no backup obligation. Cache keys, errors, metrics, and delivery URLs expose neither repository coordinates nor cross-workspace content equality. A changed, moved, or deleted Git file is simply a different repository snapshot; Poketto does not infer lifecycle intent or reconcile it with a managed object.
 
-- `KEEP_GIT_SOURCE` retires the managed asset and binding while leaving the Git file unchanged. An eligible repository reference may import it again later; the response must say so.
-- `DELETE_GIT_SOURCE` removes the bound Git path with expected-ref and expected-blob protection. The same candidate commit removes or rewrites known relative references, or validation rejects the operation as leaving a public broken reference.
-- `MOVE_GIT_SOURCE` moves the file to a validated target and rewrites known relative references in the same candidate commit. The binding advances only after remote Git confirms that commit.
+Repository images are read-only in Poketto's browser and agent asset operations. An eligible folder gallery may display an unreferenced sibling image under [repository-native publishing](2026-09-01-repository-native-publishing-and-assets.md), but Poketto offers no control that pretends to delete the underlying Git file. The owner moves, excludes, replaces, or deletes it through Git.
 
-`KEEP_GIT_SOURCE` on replacement keeps the binding and records that Git is behind the active managed version. `DETACH_GIT_SOURCE` removes the synchronization relationship without changing the file. Either state remains visible until another explicit operation changes it.
+### Delivery and safety
 
-Managed-only deletion retires the catalog record without touching Git. Physical object deletion occurs only after no live asset version, Markdown reference, Git synchronization operation, or retention rule can reach the bytes. A Git source deletion does not prove that BlobStore bytes are unreferenced, and a BlobStore deletion never implies a Git change.
+Both image types use a workspace-scoped immutable Poketto delivery URL. A managed URL identifies its opaque asset revision. A repository-image URL identifies the authorized Git snapshot and blob without exposing the remote address, local cache path, provider object key, or signed storage URL.
 
-### Cross-store acknowledgement and recovery
-
-PostgreSQL, BlobStore, and remote Git cannot share one transaction. Every multi-write mutation therefore has a durable workspace-scoped operation record with the requested disposition, expected asset revision, expected Git ref and blob revision when applicable, immutable candidate object identity, progress, and sanitized failure state.
-
-The operation writes and verifies immutable BlobStore bytes before exposing a new asset version. When Git synchronization is requested, it then builds and validates a candidate commit and advances remote `main` through `RepositoryAuthority` compare-and-swap. The catalog switches the active asset version and synchronized pair only after every required target is confirmed. A timeout after a remote update is reconciled by reading the ref; retry resumes the same operation and never performs a blind second write.
-
-A managed-only mutation is acknowledged after BlobStore verification and the catalog transaction. A Git-synchronized mutation is acknowledged only after BlobStore, remote Git, and the catalog agree on the recorded pair. Until then, reads use the previous confirmed asset version and diagnostics expose pending or conflicted synchronization without leaking paths to unauthorized callers.
+Delivery rechecks workspace and public reachability before returning bytes. It rejects traversal, symlinks, submodules, unsupported media, active content that the image policy does not safely serve, malformed identities, oversized files, and cross-workspace access. One invalid repository image fails that image and appears in workspace diagnostics; it does not publish the raw file or make the enclosing repository public.
 
 ### Deployment adapters
 
-The primary single-server profile stores authoritative BlobStore objects below an operator-configured data directory. The adapter uses bounded streaming, a private temporary file, verification, and atomic publication. Restart preserves assets; loss of this directory loses managed-only images and therefore requires backup and restore.
+The primary single-server profile stores authoritative managed objects below an operator-configured data directory. The adapter uses bounded streaming, a private temporary file, verification, and atomic publication. Restart preserves managed images; loss of this directory requires encrypted backup restoration.
 
-The optional serverless profile implements the same contract with durable OSS-compatible object storage. Request instances keep no required asset bytes on ephemeral disk. Provider bucket names, credentials, object keys, retry behavior, and lifecycle rules remain inside the adapter and deployment configuration.
+The optional serverless profile implements the same managed contract with durable OSS-compatible object storage. Request instances keep no required managed bytes on ephemeral disk. Any OSS namespace used for repository-image materialization remains a separately identifiable derived cache and is excluded from backup and restore.
 
 ## Implementation scope and dependencies
 
-The first implementation depends on [remote repository authority](2026-09-01-remote-repository-authority.md). It adds `AssetCatalog`, the `BlobStore` port, the local filesystem adapter, managed asset identity and revisions, Git bindings, import and reconciliation, durable multi-write operations, move and delete dispositions, immutable delivery, bounds, workspace isolation, recovery, and focused storage and Git integration tests.
+The first implementation depends on [remote repository authority](2026-09-01-remote-repository-authority.md). It adds the `ManagedBlobStore` port, local filesystem adapter, workspace-scoped managed catalog, immutable upload and delivery, retention-safe cleanup, and the repository-image materialization cache with focused storage, security, and isolation tests.
 
-[Repository-native publishing and assets](2026-09-01-repository-native-publishing-and-assets.md) consumes these contracts for relative-link resolution, public policy, and structured agent entrances. The OSS adapter remains inside [the optional serverless deployment profile](2026-09-01-optional-serverless-deployment-profile.md), where real external infrastructure can prove the same contract.
+[Repository-native publishing and images](2026-09-01-repository-native-publishing-and-assets.md) owns relative-link resolution, folder galleries, public reachability, structured reads, and document-reference writes. The authoritative OSS adapter and shared repository-image cache remain inside [the optional serverless deployment profile](2026-09-01-optional-serverless-deployment-profile.md), where real external infrastructure can prove the contracts.
 
-The first implementation excludes image transformation, thumbnails, OCR, automatic captions, CDN configuration, cross-workspace physical deduplication, Git LFS, and arbitrary binary writes through `repo_exec`.
+The first implementation excludes image transformation, thumbnails, OCR, automatic captions, CDN configuration, Git LFS, cross-workspace physical deduplication, asset import or export, binary repository writes, and modification or deletion of repository images.
 
 ## Alternatives considered
 
-**Make Git the image authority.** Existing repository images would be portable, but uploads, generated images, and administration writes would all need a Git path and commit. This recreates a single write model after repository-native scanning removed the need for one canonical file layout.
+**Synchronize managed and repository images.** A long-lived binding would require a winner for byte mismatches, deletion and move dispositions, and durable cross-store operations. The two image types instead retain separate ownership and meet only at rendering.
 
-**Make Git and BlobStore coequal authorities.** A byte mismatch would have no deterministic winner, and delete or move could silently discard one side. BlobStore owns the active managed bytes; a Git binding carries explicit synchronization state.
+**Store every Poketto upload as a regular Git blob.** The repository would be a complete byte archive, but recurring binary history would increase remote storage, cold clone, and SRT materialization costs for every workspace.
 
-**Keep Git images outside the asset catalog and stream them directly.** This avoids import state but gives repository and uploaded images different URLs, metadata, access checks, lifecycle operations, and serverless behavior.
+**Import every repository image into managed storage.** Connecting a repository would copy unused and private binaries, create lifecycle state the owner did not request, and make later Git changes ambiguous. Repository images remain exact Git inputs with disposable delivery copies.
 
-**Rewrite every relative Markdown link to a managed asset identity.** This simplifies later rendering but mutates adopted repositories merely to read them and breaks ordinary Git viewers. Relative links remain valid and resolve through a binding.
+**Use one mutable managed identity without revision-pinned Markdown.** Replacing an image could change an old document commit without changing the repository. Exact revision references keep one page snapshot reproducible without storing a separate publication manifest.
 
-**Hide cross-store writes behind best-effort background copying.** This makes a successful response ambiguous and lets Git and the catalog drift silently. Durable operations expose pending, conflict, and failure states and define the acknowledgement point.
+**Delete repository files through Poketto.** A browser control would cross the ownership boundary and require path mutation, reference rewriting, and conflict behavior for files the owner chose to manage through Git. Poketto keeps repository images read-only.
 
 ## Acceptance
 
-- A bounded upload creates and renders a managed-only asset without writing Git. A repository-relative image imports exact bytes, records its Git binding, and thereafter renders the confirmed BlobStore version.
-- Replacing a managed-only asset advances its opaque asset revision and immutable URL. Stale expected revisions conflict without changing the active version.
-- A one-sided direct Git change imports safely. Concurrent Git and managed changes produce a visible conflict and preserve the last confirmed version on both sides.
-- A direct Git deletion preserves the managed asset as `SOURCE_MISSING`. Content-equal files at new paths appear only as move candidates and never rebind automatically.
-- Git-synchronized create, replace, move, and delete survive failure after each storage boundary. Retry resumes one durable operation; an ambiguous remote response is reconciled without duplicate commits or blind ref updates.
-- Deleting a managed-only asset never changes Git. Deleting a Git-backed asset requires a fresh removal inspection plus `KEEP_GIT_SOURCE`, `DELETE_GIT_SOURCE`, or `MOVE_GIT_SOURCE`; tests prove each disposition, reference rewrite, capability check, stale-inspection conflict, and repository conflict path.
-- Physical deletion refuses bytes still reachable by a live version, repository reference, pending operation, or retention rule. Shared immutable bytes are never removed for one record while another still uses them.
-- Public delivery rejects private or excluded assets, traversal, symlinks, submodules, unsupported media, oversized files, malformed identities, stale revisions, and cross-workspace access.
-- Deleting the single-server BlobStore demonstrates that managed-only images require restore. Git-backed assets may be reimported, but their recoverability never weakens backup requirements for the complete asset set.
-- The optional serverless profile passes the same behavioral suite against a real isolated OSS-compatible namespace before that adapter is described as implemented.
+- A bounded upload creates an immutable managed revision without writing a Git binary. A lost-response retry with the same idempotency key returns that revision, while different bytes under the same key conflict. An authorized document write can reference the exact result, and a stale repository revision conflicts without changing confirmed state.
+- Removing a managed reference changes only the document commit. Bytes remain while another current reference, in-flight write, retention rule, or backup hold reaches them, then become eligible for delayed cleanup.
+- Connecting or scanning a repository copies no image. An explicit relative reference, eligible folder gallery, or authorized structured read materializes the exact Git blob on demand.
+- Deleting every repository-image cache and restarting rematerializes the same bytes from the same authorized commit. The cache is absent from backup artifacts and authoritative PostgreSQL state.
+- Poketto exposes no operation that creates, replaces, moves, deletes, imports, exports, or synchronizes a repository image. Direct Git changes appear only through a later resolved repository snapshot.
+- Public delivery rejects private or excluded paths, traversal, symlinks, submodules, unsupported or active media, oversized files, malformed identities, stale revisions, and cross-workspace access.
+- Deleting the single-server managed BlobStore demonstrates that managed images require restore, while deleting the repository-image cache demonstrates loss of performance only.
+- The optional serverless profile passes the managed storage and derived-cache behavioral suites against a real isolated OSS-compatible namespace before those adapters are described as implemented.
 - `./gradlew repoCheck` and `git diff --check` pass.
 
 ## Risks
 
-Multi-write synchronization adds durable state and reconciliation to a previously single-authority write path. Keeping immutable objects, exact revisions, and an explicit last synchronized pair prevents guesswork but does not remove operational failures; pending and conflict states must be visible.
+The two image types intentionally have different ownership. Browser copy and diagnostics must identify repository images as read-only without exposing repository coordinates, while ordinary rendering should not make authors understand storage adapters.
 
-Repository moves and Markdown rewrites can touch several paths in one commit. Bounds on affected files, total bytes, and operation duration are required so one asset action cannot become an unbounded repository rewrite.
+Repository folders with large binary histories can still make cold fetches expensive. Bounds, commit-keyed caching, and measured transfer protect normal reads; the owner remains responsible for binaries deliberately committed to Git.
 
-Managed-only assets are not recoverable from Git. Local and OSS BlobStores are authoritative production data and require independent backup, retention, and restore drills.
+Managed images are not recoverable from Git. Local and OSS managed BlobStores are authoritative production data and require encrypted backup, retention, and restore drills.

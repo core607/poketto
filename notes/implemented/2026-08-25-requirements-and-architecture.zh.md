@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 ## 本文范围
 
-这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。拟议的[远程仓库权威](../proposed/2026-09-01-remote-repository-authority.md)、[资源 BlobStore 与 Git 同步](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与资源](../proposed/2026-09-01-repository-native-publishing-and-assets.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。在这些提案实现前，下文机制描述的是可执行基线。
+这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。拟议的[远程仓库权威](../proposed/2026-09-01-remote-repository-authority.md)、[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。在这些提案实现前，下文机制描述的是可执行基线。
 
 ## 定位
 
