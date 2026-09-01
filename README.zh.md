@@ -35,7 +35,11 @@ notes/               决策记录：proposed / implemented / rejected / archived
 ```sh
 ./gradlew test repoCheck
 ./gradlew check
-POKETTO_DATA_DIR=/srv/poketto ./gradlew bootRun
+POKETTO_DATA_DIR=/srv/poketto \
+POKETTO_REPOSITORY_REMOTE_URI=https://git.example.com/owner/private-content.git \
+POKETTO_REPOSITORY_USERNAME=operator \
+POKETTO_REPOSITORY_PASSWORD=... \
+./gradlew bootRun
 ```
 
 Windows 下用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。

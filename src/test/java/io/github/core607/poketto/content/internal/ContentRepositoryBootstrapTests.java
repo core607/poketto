@@ -147,6 +147,35 @@ class ContentRepositoryBootstrapTests {
     }
 
     @Test
+    void warmReadAfterARemoteAdvanceTransfersOnlyTheNewObjects() throws Exception {
+        RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
+        WorkspaceId workspace = WorkspaceId.random();
+        byte[] image = new byte[256 * 1024];
+        new java.util.Random(607).nextBytes(image);
+        byte[] note = document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body");
+        repositories.commitRemote(workspace, Map.of(
+                "documents/nested/note.md", note,
+                "images/nested/image.png", image));
+        repositories.store().scan(workspace);
+        long coldObjectBytes = directoryBytes(
+                repositories.cache(workspace).resolve(".git/objects"));
+
+        repositories.commitRemote(workspace, Map.of(
+                "documents/nested/note.md", note,
+                "documents/second.md",
+                document("650e8400-e29b-41d4-a716-446655440111", "Second", "Tiny"),
+                "images/nested/image.png", image));
+        repositories.store().scan(workspace);
+
+        // Fetch negotiation reports the cache's refs as haves, so an advanced remote sends the
+        // new commit without resending the unchanged image or history.
+        long advanceObjectBytes = directoryBytes(
+                repositories.cache(workspace).resolve(".git/objects")) - coldObjectBytes;
+        assertThat(advanceObjectBytes).isPositive();
+        assertThat(advanceObjectBytes).isLessThan(image.length / 4);
+    }
+
+    @Test
     void ignoresForeignDirectoriesWhenBoundingTheCache() throws Exception {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root, 1);
         Path foreign = root.resolve("data").resolve("workspaces")

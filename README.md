@@ -35,7 +35,11 @@ Application startup requires a PostgreSQL data source, an absolute `POKETTO_DATA
 ```sh
 ./gradlew test repoCheck
 ./gradlew check
-POKETTO_DATA_DIR=/srv/poketto ./gradlew bootRun
+POKETTO_DATA_DIR=/srv/poketto \
+POKETTO_REPOSITORY_REMOTE_URI=https://git.example.com/owner/private-content.git \
+POKETTO_REPOSITORY_USERNAME=operator \
+POKETTO_REPOSITORY_PASSWORD=... \
+./gradlew bootRun
 ```
 
 On Windows, set the same names through `$env:...`, make `POKETTO_DATA_DIR` absolute, and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
