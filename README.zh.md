@@ -1,12 +1,12 @@
 # Poketto
 
-以仓库为核心的个人知识服务，公开面是博客。每个工作空间都在 Git 中保存 Markdown 与历史；同一份内容既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。Poketto 首先面向单台云服务器。拟议的[可选 serverless 部署 profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)计划让同一份应用产物通过配置外部服务运行。
+以仓库为核心的个人知识服务，公开面是博客。已接受的目标让每个工作空间都在 Git 中保存 Markdown、图片与历史；同一份内容既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。Poketto 首先面向单台云服务器，同时保留由配置选择外部基础设施的[可选 serverless 部署 profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)。
 
 [English](README.md)
 
 ## 状态
 
-开发中。可执行开发基线、工作空间隔离、内容仓基础与文档写入已经实现。当前基线运行于单台云服务器，并使用本地工作空间仓库。[本地 Blob 存储](notes/proposed/2026-09-01-local-content-addressed-blob-storage.md)、[C 端账号与个人工作空间](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、渲染和 MCP 入口仍处于提案阶段。Serverless 部署同样是可选方案，需要等待真实的外部基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线与现有产品契约，提案则标明尚未交付的目标决策。
+开发中。可执行开发基线、工作空间隔离、内容仓基础与文档写入已经实现；当前基线运行于单台云服务器，并使用本地工作空间仓库。已接受的目标仍以单机部署为主，但让所有生产工作空间使用[远程 Git 权威](notes/proposed/2026-09-01-remote-repository-authority.md)，识别[仓库原生 Markdown 与同目录图片](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md)，并通过[本地资源 BlobStore](notes/proposed/2026-09-01-repository-asset-blob-store.md)提供派生图片。[C 端账号](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、渲染和 MCP 入口仍处于提案阶段。Serverless 仍是可选方案，需要等待真实的 OSS、共享数据库与远程 SRT 基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线，提案则标明尚未交付的目标决策。
 
 ## 适合谁
 

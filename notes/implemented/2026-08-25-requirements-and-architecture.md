@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 ## Scope of this record
 
-This implemented note records the primary single-server baseline and the product contracts selected for it. The proposed [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md) extend provisioning without changing the tenant boundary. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) retains this primary topology while adding configuration-selected external adapters only when real infrastructure is available. Until those proposals are implemented, the mechanics below describe the executable baseline.
+This implemented note records the primary single-server baseline and the product contracts selected for it. The proposed [remote repository authority](../proposed/2026-09-01-remote-repository-authority.md), [repository-native publishing and assets](../proposed/2026-09-01-repository-native-publishing-and-assets.md), and [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md) define accepted target changes without changing the workspace tenant boundary. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) keeps the single-server profile primary while selecting OSS, shared state, and remote SRT only when real infrastructure is available. Until those proposals are implemented, the mechanics below describe the executable baseline.
 
 ## Positioning
 

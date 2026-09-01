@@ -18,7 +18,7 @@ The frontend needs one typed component model for public rendering and applicatio
 - Replace JTE and htmx with Next.js App Router, React, TypeScript, and Tailwind. Keep the frontend in a top-level `frontend/` workspace with a pinned active-LTS Node.js toolchain and a committed package-manager lockfile.
 - Run Next.js and Spring Boot as separate processes and OCI images. Next.js owns browser routes, HTML rendering, frontend assets, view state, and presentation-only resources such as RSS and sitemap responses.
 - Spring remains the only business backend. It owns workspace resolution, authentication, authorization, CSRF enforcement, content and Git operations, repository-backed retrieval, sandboxed agent execution, Q&A, MCP, budgets, audit records, and persistence. The read and execution boundary follows [Repository-native retrieval and sandboxed agent execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md).
-- Next.js never reads a workspace repository, blob directory, or database directly. It obtains data through documented Spring HTTP contracts. The first implementation uses neither Server Actions nor Route Handlers for domain reads or mutations; browser mutations call Spring APIs directly.
+- Next.js never reads a workspace repository cache, asset BlobStore, or database directly. It obtains data through documented Spring HTTP contracts. The first implementation uses neither Server Actions nor Route Handlers for domain reads or mutations; browser mutations call Spring APIs directly.
 - The Spring `web` module owns HTTP API contracts and their mapping to application modules. It does not own HTML templates. The implementation updates the development baseline and both requirements documents when this boundary ships.
 
 ### Routing and trust boundary
@@ -38,7 +38,7 @@ Errors cross the HTTP boundary as stable problem responses. Next.js maps them to
 
 ### Resource and build boundary
 
-Frontend dependencies and production assets are built in CI. A production host runs the prebuilt Next.js output and never runs `next build`, TypeScript compilation, or package installation during deployment. Runtime image optimization is disabled unless measured evidence shows that its memory peaks fit the same budget; stored images use the product's blob delivery path instead.
+Frontend dependencies and production assets are built in CI. A production host runs the prebuilt Next.js output and never runs `next build`, TypeScript compilation, or package installation during deployment. Runtime image optimization is disabled unless measured evidence shows that its memory peaks fit the same budget; repository images use the immutable delivery path owned by the [repository asset BlobStore](2026-09-01-repository-asset-blob-store.md) instead.
 
 Deployment sizing is not set by this frontend decision. The implementation measures steady-state and peak resource use for the complete prebuilt runtime against the project's deployment criteria and records the evidence in the appropriate operational record.
 

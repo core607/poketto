@@ -5,30 +5,30 @@ Status: Proposed
 
 ## Problem
 
-The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, image blobs, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running `git push`, `rclone sync`, or `pg_dump` does not prove that data survives host loss and may propagate a deletion into the supposed backup.
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, images, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running a second `git push`, copying object-storage keys, or invoking `pg_dump` does not prove that data survives provider loss and may propagate a deletion into the supposed backup.
 
-The default self-contained topology keeps authoritative state on one machine, so production automatic deployment requires a verified off-host recovery path. Backup provides disaster recovery and does not participate in normal request consistency.
+Under [remote repository authority](2026-09-01-remote-repository-authority.md), Markdown and repository images already live off the application host, while local and OSS [BlobStores](2026-09-01-repository-asset-blob-store.md) hold only derived image copies. Backup must protect the authoritative remote repository independently from its serving provider and protect non-derived PostgreSQL state without treating a disposable cache as recovery data.
 
 ## Proposal
 
 ### Common rules
 
-- Production configuration names at least one off-host target for content repositories, blobs, and non-derived PostgreSQL data. A target may be a self-hosted service or operator-selected third-party object storage. Normal application operation does not require continuous target availability.
+- Production configuration names at least one recovery target independent from the authoritative Git provider for repository history and one off-host target for non-derived PostgreSQL data. A target may be a self-hosted service or operator-selected third-party storage. Normal application operation does not require continuous backup-target availability.
 - Backups are not encrypted in v1. Confidentiality relies on the operator choosing private, access-controlled targets; a public or shared-tenant target is a configuration error. Remote credentials and recovery material never enter the code repository, content repositories, backup bundles, logs, or metrics.
 - Each medium records the last successful time, covered workspaces, source checkpoint, target identifier, byte count, and sanitized failure category. A new failure cannot erase the latest successful recovery point.
 - Backups retain versions for a defined period. The default flow does not immediately propagate a source deletion into every off-host copy; cleanup is a separate delayed and auditable retention task.
 - Documentation starts a restore from an empty data directory. Automated checks or scheduled drills for each medium prove that artifacts are readable, checksums match, and the application can reach the declared checkpoint.
 
-### Content repositories
+### Remote content repositories
 
-- [Git replication and write acknowledgement](2026-08-27-git-durability-modes.md) provides per-commit remote mirroring and lag status. The backup target also protects remote refs and reachable objects, forbids force pushes, and retains enough history to recover from an accidental deletion or incorrect ref update.
-- Restore creates and validates each workspace's local repository before restoring other authoritative stores. Content `main` is immediately available to repository-backed reads; remote-mirror state cannot overwrite a newer valid offline backup.
+- The backup job reads the authoritative remote repository and copies all required refs and reachable objects into an independent retention boundary. The target forbids routine force pushes and retains enough history to recover from repository deletion, credential compromise, or an incorrect ref update.
+- Restore creates or selects a replacement private remote repository, verifies its objects and refs, and atomically binds the workspace authority to it through an operator-controlled recovery procedure. No application cache is promoted into authority by guessing that it is newer.
+- Repository images are covered with the commits that refer to them. A recovery point is invalid if reachable image blobs are missing.
 
-### Blobs
+### Derived asset BlobStores
 
-- Blobs remain SHA-256 content-addressed inside a workspace namespace. Backup uploads immutable objects and a verifiable manifest containing workspace, hash, size, and media type.
-- Transfer may use an object store supported by `rclone`, but the default uses append or copy semantics with target-side version retention. A bare `sync` that immediately deletes target objects cannot be the only backup.
-- Restore verifies every file hash. Missing or corrupt blobs are reported explicitly; an empty file, placeholder image, or re-encoded byte sequence cannot stand in for the original object.
+- The single-server local BlobStore and serverless OSS BlobStore are rebuildable materializations of authoritative Git blobs. They are not backup media and are not copied into recovery artifacts.
+- Restore starts with an empty BlobStore and rematerializes images on demand from the restored remote Git authority. Missing or corrupt authoritative image blobs fail the repository recovery check rather than producing placeholders.
 
 ### PostgreSQL
 
@@ -38,13 +38,13 @@ The default self-contained topology keeps authoritative state on one machine, so
 
 ## Implementation scope and dependencies
 
-Content backup depends on Git replication, blob backup depends on [local blob storage](2026-09-01-local-content-addressed-blob-storage.md), and database backup depends on the first non-derived tables and schema-management mechanism. These media have no common implementation prerequisite and therefore become separate tasks behind their own dependencies. Production automatic deployment may check a recent verified backup only after all three exist and pass one combined restore drill.
+Content backup depends on implemented remote repository authority, and database backup depends on the first non-derived tables and schema-management mechanism. These media have no common implementation prerequisite and therefore become separate tasks behind their own dependencies. Production automatic deployment may check a recent verified backup only after both exist and pass one combined restore drill. Derived repository caches and BlobStores add no backup task.
 
 The first implementation provides backup commands, retention rules, machine-readable state, restore commands, and restore tests in disposable environments for the available media. It excludes multi-region hot standby, automatic failover, continuous database archiving, and a zero recovery-point objective.
 
 ## Alternatives considered
 
-**Treat the Git remote as the complete backup.** Git protects content text and history but contains neither blobs nor authoritative PostgreSQL rows. A mistaken or malicious ref update can also damage the mirror.
+**Treat the authoritative Git provider as the backup.** Git contains repository text, images, and history, but provider deletion, credential compromise, or a mistaken ref update can damage the same authority. It also contains no authoritative PostgreSQL rows.
 
 **Run `rclone sync` over the whole data directory.** This is simple but copies temporary files, runtime locks, and derived state and may propagate deletions. Verifiable artifacts per medium make the recovery boundary explicit.
 
@@ -56,10 +56,10 @@ The first implementation provides backup commands, retention rules, machine-read
 
 ## Acceptance
 
-- All three authoritative media can retain a versioned, checksummed recovery point off-host. A missing target fails explicitly and cannot report success.
+- Remote repository authority and non-derived PostgreSQL data can retain versioned, verified recovery points in independent failure domains. A missing target fails explicitly and cannot report success.
 - Consecutive failures do not delete the latest successful recovery point. Status exposes the last success and current lag without revealing paths, content, or credentials.
-- A restore into an empty data directory produces content commits, blob hashes, and non-derived database constraints matching the backup manifest.
-- Restore excludes disposable read caches and execution snapshots. The first repository-backed read resolves the restored workspace `main` without a database indexing prerequisite.
+- A restore into an empty application data directory produces a replacement remote repository whose commits and reachable image blobs match the backup manifest, plus non-derived database constraints matching their manifest.
+- Restore excludes disposable repository caches, asset BlobStores, read caches, and execution snapshots. The first repository-backed read resolves restored remote `main`, and the first image request rematerializes exact Git bytes without a database indexing prerequisite.
 - After a source deletion or ref move, at least one recovery point covered by retention remains retrievable.
 - Backup and restore tests use disposable repositories, object storage, and PostgreSQL and never read developer data.
 - `./gradlew repoCheck`, the relevant automated tests, and `git diff --check` pass.
