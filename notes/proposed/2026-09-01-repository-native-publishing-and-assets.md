@@ -27,6 +27,8 @@ The repository-root `private/` tree is always private under this mode. Configure
 
 Repository images do not become public merely because they exist somewhere in the tree. Public reachability requires an eligible Markdown relative reference or inclusion in the non-recursive folder gallery owned by an eligible public `index.md`. A managed image revision is public only while an eligible public document references it.
 
+A later valid commit may remove a document or image from current publication by moving it into the built-in private tree, adding an exclusion, removing its public reference, or deleting the repository file through Git. Public delivery then denies the no-longer-reachable path or managed revision. This cannot recall copies already delivered to browsers, feeds, crawlers, archives, or third-party caches, so the product still presents publication as practically irreversible.
+
 ### Folder pages and repository images
 
 An eligible folder `index.md` renders its Markdown body followed by a gallery of eligible regular image files in the same directory. The gallery is non-recursive and uses deterministic filename order. An image already referenced explicitly by that `index.md` renders at the authored position and is not repeated in the gallery.
@@ -43,7 +45,7 @@ The renderer resolves a managed reference through the workspace-scoped catalog a
 
 One page response pins the repository commit and every managed revision it emits. Revision-pinned managed references and commit-pinned repository paths identify exact bytes without a separate page-snapshot table.
 
-Delivery validates workspace, public reachability, path containment, file type, media signature, size, response bounds, and active-content policy. HTML rendering sanitizes active content and applies the public CSP. A document cannot expose a private managed image, excluded repository file, repository metadata, or arbitrary remote resource through an image link.
+Delivery validates workspace, public reachability, path containment, file type, media signature, size, response bounds, and active-content policy. Managed-image reachability uses a bounded scan of the resolved current public tree with a workspace-and-commit-keyed in-memory cache; it creates no durable PostgreSQL content index. HTML rendering sanitizes active content and applies the public CSP. A document cannot expose a private managed image, excluded repository file, repository metadata, or arbitrary remote resource through an image link.
 
 ### Browser and agent authoring
 
@@ -51,7 +53,7 @@ The browser editor offers managed upload and repository browsing as separate sou
 
 `repo_exec` discovers folder structure, reads text, inspects Git history, and runs bounded local analysis inside the SRT workspace. It never writes repository or asset authority. A structured `get_asset` accepts either an exact managed identity and revision or an authorized commit and repository path. It returns bounded multimodal content without giving SRT a repository-authority, ManagedBlobStore, or remote Git credential.
 
-`put_asset` creates a managed image and returns its immutable reference. A separate `repo_patch` applies bounded UTF-8 changes to repository authority with the resolved base commit and expected blob revision or expected absence for every affected path. An editor or agent may compose them to upload and attach an image, but a successful upload does not claim that a conflicting document patch committed. Binary repository writes and modification of repository images remain unavailable.
+`put_asset` creates a managed image and returns its immutable reference. A separate `repo_patch` applies bounded UTF-8 changes to repository authority with the resolved base commit and expected blob revision or expected absence for every affected path. It requires `WRITE_PRIVATE`; it also requires `PUBLISH` whenever the resulting commit creates or changes currently or newly public content, changes public reachability through an `index.md` gallery or reference, or changes publishing policy. Without `PUBLISH`, every affected path must remain excluded or private before and after the patch. An editor or agent may compose upload and patch operations, but a successful upload does not claim that a conflicting document patch committed. Binary repository writes and modification of repository images remain unavailable.
 
 ### Directory shape and performance
 
@@ -91,7 +93,7 @@ The first implementation excludes arbitrary binary writes through `repo_exec` or
 - Removing a managed reference changes only Markdown. Repository images remain read-only, and managed physical cleanup remains delayed behind reachability, retention, and backup holds.
 - Public rendering rejects unsafe HTML, traversal, symlinks, submodules, ambiguous routes, unsupported or active media, oversized files, excessive galleries, and links into private or excluded paths.
 - `repo_exec` can discover mixed text-and-image folders. `get_asset` returns a bounded managed revision or exact repository blob without base64 command output or sandbox network access.
-- `repo_patch` can create or update UTF-8 Markdown with expected-blob and expected-ref protection. It cannot write binary files, escape allowed paths, expose private content without `PUBLISH`, modify publishing policy without `PUBLISH`, or commit sandbox debris.
+- `repo_patch` can create or update UTF-8 Markdown with expected-blob and expected-ref protection. `WRITE_PRIVATE` without `PUBLISH` changes only paths that remain private or excluded; creating or changing public content, gallery reachability, references, or publishing policy requires `PUBLISH`. It cannot write binary files, escape allowed paths, or commit sandbox debris.
 - Requirements, README counterparts, frontend and retrieval proposals, relevant automated tests, `./gradlew repoCheck`, and `git diff --check` pass.
 
 ## Risks
