@@ -17,6 +17,10 @@ spotless {
     }
 }
 
+tasks.named("check") {
+    dependsOn("spotlessCheck")
+}
+
 group = "io.github.core607"
 version = "0.1.0-SNAPSHOT"
 
