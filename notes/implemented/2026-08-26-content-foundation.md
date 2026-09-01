@@ -70,6 +70,8 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 The content module binds the data directory, bootstraps and validates per-workspace repositories, parses and canonically serializes documents, exposes the content value types, and scans committed `main` trees. It does not provide create, update, delete, publish, projection, HTTP, or MCP entry points. Those operations build on this boundary.
 
+[Repository-native publishing and images](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. This note continues to describe the executable baseline until that proposal is implemented; the reversal does not retroactively describe the current parser or repository layout.
+
 ## Alternatives
 
 Defaulting the data directory to `./data` would make a first run easier, but it can silently place durable content inside a source checkout or an ephemeral container layer. An explicit absolute path makes persistence an operator decision.
