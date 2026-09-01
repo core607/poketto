@@ -66,6 +66,6 @@ The first implementation provides backup commands, retention rules, machine-read
 
 ## Risks
 
-Unencrypted backups place private content inside each target's trust domain. A compromised target account discloses content as well as history, so target credentials are secrets and target selection is a privacy decision; operations documentation must say both.
+Encryption at rest does not remove the backup target from the trust boundary. A compromised target account or recovery key can disclose private content and history, so target credentials and recovery material are secrets; operations documentation must define their custody and restore use.
 
 Backup freshness does not prove data correctness. Only a restore drill validates formats, keys, and dependencies together. An automatic-deployment gate must inspect the latest verified backup rather than only the exit code of the latest upload command.
