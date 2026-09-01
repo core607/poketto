@@ -10,14 +10,16 @@ import java.util.Optional;
  * reports whether this operation produced it. An operation that finds the repository already in
  * the requested state succeeds with {@code committed} false and the unchanged commit.
  *
- * <p>{@code revision} is absent only for a delete, because no blob remains to hash. The
- * {@code mirrored} and {@code indexed} observations belong to replication and projection, not to
- * this contract.
+ * <p>{@code mirrored} reports whether the named commit has been verified on the configured remote
+ * and recorded in the local replication checkpoint. {@code revision} is absent only for a delete,
+ * because no blob remains to hash. Projection observations belong to the projection contract, not
+ * to this result.
  */
 public record DocumentWriteResult(
         DocumentId documentId,
         String commitId,
         boolean committed,
+        boolean mirrored,
         String repositoryPath,
         Optional<DocumentRevision> revision) {
 

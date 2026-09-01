@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(ContentProperties.class)
+@EnableConfigurationProperties({ContentProperties.class, GitReplicationProperties.class})
 class ContentConfiguration {
 
     @Bean
@@ -32,10 +32,27 @@ class ContentConfiguration {
         return new JGitContentRepositoryStore(paths, codec);
     }
 
+    @Bean(destroyMethod = "close")
+    GitReplicationCoordinator gitReplicationCoordinator(
+            WorkspacePaths paths,
+            ContentRepositoryStore store,
+            GitReplicationProperties properties) {
+        return new GitReplicationCoordinator(paths, store, properties, Clock.systemUTC());
+    }
+
     @Bean
     DocumentWriteService documentWriteService(
-            WorkspacePaths paths, CanonicalDocumentCodec codec, ContentRepositoryStore store) {
-        return new JGitDocumentWriteService(paths, codec, store, Clock.systemUTC());
+            WorkspacePaths paths,
+            CanonicalDocumentCodec codec,
+            ContentRepositoryStore store,
+            GitReplicationCoordinator replication) {
+        return new JGitDocumentWriteService(
+                paths,
+                codec,
+                store,
+                replication,
+                replication.repositoryLocks(),
+                Clock.systemUTC());
     }
 
     @Bean
@@ -47,5 +64,16 @@ class ContentConfiguration {
     ApplicationRunner contentRepositoryInitializer(
             WorkspaceCatalog workspaces, ContentRepositoryStore repositories) {
         return arguments -> repositories.ensureReady(workspaces.defaultWorkspace().id());
+    }
+
+    @Bean
+    @Order(110)
+    @ConditionalOnProperty(
+            name = "poketto.workspace.catalog.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    ApplicationRunner gitReplicationInitializer(
+            WorkspaceCatalog workspaces, GitReplicationCoordinator replication) {
+        return arguments -> replication.start(workspaces.defaultWorkspace().id());
     }
 }

@@ -6,7 +6,7 @@
 
 ## 状态
 
-开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)）。可执行开发基线、工作空间隔离以及内容仓与文档基础已经实现；文档写入、投影、检索、渲染和 MCP 入口仍处于提案阶段。
+开发中。需求与架构已定（[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)）。可执行开发基线、工作空间隔离、内容仓、文档写入和 Git 镜像模式已经实现；投影、检索、渲染和 MCP 入口仍处于提案阶段。
 
 ## 适合谁
 
@@ -31,6 +31,8 @@ notes/               决策记录：proposed / implemented / rejected / archived
 使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。
 
 应用启动需要 PostgreSQL 数据源和绝对路径形式的 `POKETTO_DATA_DIR`。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库所需的认证信息和数据目录。Flyway 会创建工作空间目录表；应用首次启动时会创建一个持久的默认工作空间，并在 `<data-dir>/workspaces/<workspace-id>/content` 创建尚无提交的 `main` 内容仓。
+
+Git 写入默认使用 `POKETTO_GIT_ACKNOWLEDGEMENT=local`：本地 `main` 成功即确认写入，已配置的 `origin` 在后台异步镜像。把它设为 `mirrored` 后，写入必须先获得远端确认。严格模式要求工作空间内容仓的 `origin` 在启动时可访问，并与本地 `main` 处于同一历史；Poketto 不会创建、合并或强推该远端。
 
 ```sh
 ./gradlew test repoCheck

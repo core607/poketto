@@ -89,6 +89,10 @@ final class ContentWorktree {
         }
     }
 
+    static boolean hasIntent(Repository repository) {
+        return Files.exists(intentJournal(repository));
+    }
+
     /**
      * Writes the given documents and removes the given paths from both the index and the worktree.
      */

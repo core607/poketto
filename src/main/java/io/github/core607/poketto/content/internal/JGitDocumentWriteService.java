@@ -28,17 +28,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.RevCommit;
 
 final class JGitDocumentWriteService implements DocumentWriteService {
 
@@ -55,17 +49,37 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     private final WorkspacePaths paths;
     private final CanonicalDocumentCodec codec;
     private final ContentRepositoryStore store;
+    private final GitWriteDurability durability;
+    private final ContentRepositoryLocks repositoryLocks;
     private final Clock clock;
-    private final ConcurrentMap<WorkspaceId, Lock> locks = new ConcurrentHashMap<>();
 
     JGitDocumentWriteService(
             WorkspacePaths paths,
             CanonicalDocumentCodec codec,
             ContentRepositoryStore store,
             Clock clock) {
+        this(
+                paths,
+                codec,
+                store,
+                new LocalGitWriteDurability(),
+                new ContentRepositoryLocks(),
+                clock);
+    }
+
+    JGitDocumentWriteService(
+            WorkspacePaths paths,
+            CanonicalDocumentCodec codec,
+            ContentRepositoryStore store,
+            GitWriteDurability durability,
+            ContentRepositoryLocks repositoryLocks,
+            Clock clock) {
         this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
         this.codec = Objects.requireNonNull(codec, "document codec must not be null");
         this.store = Objects.requireNonNull(store, "content repository store must not be null");
+        this.durability = Objects.requireNonNull(durability, "write durability must not be null");
+        this.repositoryLocks =
+                Objects.requireNonNull(repositoryLocks, "repository locks must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -91,12 +105,20 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         return inRepository(workspaceId, (repository, documents) -> {
             requirePathFree(documents, path, null);
             requireIdFree(documents, documentId);
-            ObjectId commit = commit(
-                    repository, principal, "create", documentId, now, Map.of(path, bytes), Set.of());
+            GitCommitOutcome commit = commit(
+                    workspaceId,
+                    repository,
+                    principal,
+                    "create",
+                    documentId,
+                    now,
+                    Map.of(path, bytes),
+                    Set.of());
             return new DocumentWriteResult(
                     documentId,
-                    commit.name(),
+                    commit.commit().name(),
                     true,
+                    commit.mirrored(),
                     path,
                     Optional.of(DocumentRevision.sha256(bytes)));
         });
@@ -141,12 +163,20 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             next = advanced(next, before.updatedAt(), now);
             byte[] bytes = codec.serialize(next);
             Set<String> removals = pathChanged ? Set.of(current.repositoryPath()) : Set.of();
-            ObjectId commit = commit(
-                    repository, principal, "update", documentId, now, Map.of(path, bytes), removals);
+            GitCommitOutcome commit = commit(
+                    workspaceId,
+                    repository,
+                    principal,
+                    "update",
+                    documentId,
+                    now,
+                    Map.of(path, bytes),
+                    removals);
             return new DocumentWriteResult(
                     documentId,
-                    commit.name(),
+                    commit.commit().name(),
                     true,
+                    commit.mirrored(),
                     path,
                     Optional.of(DocumentRevision.sha256(bytes)));
         });
@@ -167,10 +197,22 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             String path = current.repositoryPath();
-            ObjectId commit = commit(
-                    repository, principal, "delete", documentId, now, Map.of(), Set.of(path));
+            GitCommitOutcome commit = commit(
+                    workspaceId,
+                    repository,
+                    principal,
+                    "delete",
+                    documentId,
+                    now,
+                    Map.of(),
+                    Set.of(path));
             return new DocumentWriteResult(
-                    documentId, commit.name(), true, path, Optional.empty());
+                    documentId,
+                    commit.commit().name(),
+                    true,
+                    commit.mirrored(),
+                    path,
+                    Optional.empty());
         });
     }
 
@@ -208,12 +250,20 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             String path = current.repositoryPath();
             next = advanced(next, before.updatedAt(), now);
             byte[] bytes = codec.serialize(next);
-            ObjectId commit = commit(
-                    repository, principal, "publish", documentId, now, Map.of(path, bytes), Set.of());
+            GitCommitOutcome commit = commit(
+                    workspaceId,
+                    repository,
+                    principal,
+                    "publish",
+                    documentId,
+                    now,
+                    Map.of(path, bytes),
+                    Set.of());
             return new DocumentWriteResult(
                     documentId,
-                    commit.name(),
+                    commit.commit().name(),
                     true,
+                    commit.mirrored(),
                     path,
                     Optional.of(DocumentRevision.sha256(bytes)));
         });
@@ -222,13 +272,14 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     private DocumentWriteResult inRepository(WorkspaceId workspaceId, WriteAction action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         store.ensureReady(workspaceId);
-        Lock lock = locks.computeIfAbsent(workspaceId, id -> new ReentrantLock());
+        Lock lock = repositoryLocks.forWorkspace(workspaceId);
         lock.lock();
         try (Repository repository =
                 JGitContentRepositoryStore.openExisting(
                         paths.contentDirectory(workspaceId), workspaceId)) {
             // A journal left by an interrupted write is machine debris; dirty state without one is
             // the owner's own editing and must block instead.
+            durability.beforeWrite(workspaceId, repository);
             ContentWorktree.rollback(repository);
             requireClean(repository, workspaceId);
             return action.apply(repository, store.scan(workspaceId));
@@ -237,7 +288,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         }
     }
 
-    private ObjectId commit(
+    private GitCommitOutcome commit(
+            WorkspaceId workspaceId,
             Repository repository,
             WritePrincipal principal,
             String operation,
@@ -252,23 +304,17 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             ContentWorktree.apply(repository, upserts, deletions);
             PersonIdent author = new PersonIdent(
                     SERVICE_AUTHOR_NAME, SERVICE_AUTHOR_EMAIL, now, ZoneOffset.UTC);
-            RevCommit commit = Git.wrap(repository)
-                    .commit()
-                    .setAuthor(author)
-                    .setCommitter(author)
-                    .setSign(false)
-                    .setMessage(operation + " " + documentId + "\n\n"
-                            + PRINCIPAL_TRAILER + ": " + principal.trailerValue() + "\n")
-                    .call();
+            GitCommitOutcome commit = durability.commit(
+                    workspaceId,
+                    repository,
+                    author,
+                    operation + " " + documentId + "\n\n"
+                            + PRINCIPAL_TRAILER + ": " + principal.trailerValue() + "\n");
             ContentWorktree.clearIntent(repository);
-            return commit.getId();
-        } catch (GitAPIException | RuntimeException exception) {
+            return commit;
+        } catch (RuntimeException exception) {
             rollbackQuietly(repository, exception);
-            if (exception instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new ContentRepositoryException(
-                    "document " + documentId + " cannot be committed", exception);
+            throw exception;
         }
     }
 
@@ -303,6 +349,7 @@ final class JGitDocumentWriteService implements DocumentWriteService {
                 current.content().metadata().id(),
                 head.name(),
                 false,
+                durability.isMirrored(repository, head),
                 current.repositoryPath(),
                 Optional.of(current.revision()));
     }

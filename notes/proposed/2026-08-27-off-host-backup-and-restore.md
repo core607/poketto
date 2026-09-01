@@ -21,7 +21,7 @@ The default self-contained topology keeps authoritative state on one machine, so
 
 ### Content repositories
 
-- [Git replication and write acknowledgement](2026-08-27-git-durability-modes.md) provides per-commit remote mirroring and lag status. The backup target also protects remote refs and reachable objects, forbids force pushes, and retains enough history to recover from an accidental deletion or incorrect ref update.
+- [Git replication and write acknowledgement](../implemented/2026-08-27-git-durability-modes.md) provides per-commit remote mirroring and lag status. The backup target also protects remote refs and reachable objects, forbids force pushes, and retains enough history to recover from an accidental deletion or incorrect ref update.
 - Restore creates and validates each workspace's local repository before restoring other authoritative stores. Content `main` is immediately available to repository-backed reads; remote-mirror state cannot overwrite a newer valid offline backup.
 
 ### Blobs

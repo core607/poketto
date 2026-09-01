@@ -56,6 +56,7 @@ class DocumentWriteServiceTests {
         DocumentWriteResult result = writes.create(workspace, AGENT, draft("documents/note.md"));
 
         assertThat(result.committed()).isTrue();
+        assertThat(result.mirrored()).isFalse();
         assertThat(result.repositoryPath()).isEqualTo("documents/note.md");
         assertThat(result.revision()).isPresent();
         assertThat(headCommit(workspace).getParentCount()).isZero();

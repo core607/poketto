@@ -6,7 +6,7 @@ A self-hosted personal knowledge base whose public face is a blog. The same Mark
 
 ## Status
 
-Development. Requirements and architecture are settled ([requirements](notes/implemented/2026-08-25-requirements-and-architecture.md)). The executable baseline, workspace isolation, and content repository and document foundation are implemented. Document writes, projection, search, rendering, and MCP entry points remain proposed.
+Development. Requirements and architecture are settled ([requirements](notes/implemented/2026-08-25-requirements-and-architecture.md)). The executable baseline, workspace isolation, content repository, document writes, and Git replication modes are implemented. Projection, search, rendering, and MCP entry points remain proposed.
 
 ## Who this is for
 
@@ -31,6 +31,8 @@ notes/               Decision records: proposed / implemented / rejected / archi
 Use Java 26 and the checked-in Gradle Wrapper. Docker is required for database integration tests and the complete check; the faster unit and repository checks do not require it.
 
 Application startup requires a PostgreSQL data source and an absolute `POKETTO_DATA_DIR`. Set `SPRING_DATASOURCE_URL`, any database credentials, and the data directory before `bootRun`. Flyway creates the workspace catalog; the application creates one durable default workspace and an unborn `main` content repository below `<data-dir>/workspaces/<workspace-id>/content` on first start.
+
+Git writes default to `POKETTO_GIT_ACKNOWLEDGEMENT=local`: local `main` acknowledges the write, and a configured `origin` is mirrored asynchronously. Set the value to `mirrored` to require the remote before acknowledging writes. Strict mode requires the workspace repository's `origin` to be reachable and at the same `main` history on startup; Poketto never creates, merges, or force-pushes that remote.
 
 ```sh
 ./gradlew test repoCheck

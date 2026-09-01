@@ -12,12 +12,12 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 - 开源：代码与项目文档采用 Apache-2.0；美术素材与站点发布的创作内容采用 CC BY-NC-SA 4.0。
 - 单实例，不开放注册。使用者是工作空间所有者、其信任的成员与这些人的 AI，通过已发放的身份或 API Key 在获授权的工作空间内行动。
 - 面向低配置单机设计（2 核 4G 级别可运行全套服务），组件选择以省资源为先。
-- 使用方式是 clone 自部署。代码仓与各工作空间的内容仓分离：服务在工作空间建成时自动 git init 对应内容仓，remote 备份可选。
+- 使用方式是 clone 自部署。代码仓与各工作空间的内容仓分离：服务在工作空间建成时自动 git init 对应内容仓，可选配置只出不进的镜像 remote。
 
 ## 核心架构决策
 
 1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库；PostgreSQL 只做内容的派生投影（search_documents 表），可随时全量重建。每个工作空间的投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
-2. 写入模型：每个工作空间内容仓的 main 分支即真理。机器入口（MCP、管理端）强校验 frontmatter、按仓库串行写入、由服务代为 commit，commit 记录调用者身份；人工 git push 由 git 原生 non-fast-forward 检查把关，投影对其内容做 lint 标记而非拒收。git commit 成功是写入的确认点；索引落后时如实返回 committed 与 indexed 两个状态，防止调用方重试重复建档。
+2. 写入模型：每个工作空间内容仓的本地 main 分支即真理。机器入口（MCP、管理端）强校验 frontmatter、按仓库串行写入、由服务代为 commit，commit 记录调用者身份。所有者可在服务器 worktree 直接编辑并提交，作为 break-glass 路径；v1 不接受外部 push 进入 main。配置的 remote main 只作输出镜像，不得有其他写入方。默认的 `poketto.git.acknowledgement=local` 在本地 commit 后确认写入，再异步镜像；`mirrored` 先在远端 ref 前置条件下发布未挂分支的候选 commit，远端接受后才推进本地 main。写入结果独立报告 `committed` 与 `mirrored`，避免调用方盲目重试已经持久化的写入；投影延迟由投影边界另行报告，不改变这两个状态。
 3. 检索以 agentic 方式为默认。服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
 4. 信任分层。工作空间所有者可直接操作该工作空间的文件（属 break-glass，改完需显式重索引）；成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
 5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间，不提供自助创建更多工作空间的入口。
@@ -35,7 +35,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 备份
 
-每个工作空间的文档文本与历史靠所属内容仓的 git remote；图片 blob 与数据库非派生表（工作空间目录、key、审计、预算）各走 off-host 定时备份；投影表不备份，可重建。
+每个工作空间的 Git remote 会镜像文档文本与历史，但它本身不是独立备份。内容仓、图片 blob 与数据库非派生表（工作空间目录、key、审计、预算）都需要 off-host 备份与恢复验证；投影表不备份，可重建。
 
 ## 图片
 
