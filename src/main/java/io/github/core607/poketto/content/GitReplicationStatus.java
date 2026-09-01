@@ -5,8 +5,13 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Current local-to-remote replication state for one workspace. */
+/**
+ * Current local-to-remote replication state for one workspace. A workspace whose repository names
+ * no remote reports {@code remoteConfigured} false with zero lag and no failure: replication is
+ * off, not broken.
+ */
 public record GitReplicationStatus(
+        boolean remoteConfigured,
         Optional<String> localHead,
         Optional<String> lastMirroredCommit,
         int lagCommits,

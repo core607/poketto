@@ -2,7 +2,11 @@ package io.github.core607.poketto.content;
 
 import java.util.Objects;
 
-/** A replication failure whose message is safe to expose without remote credentials. */
+/**
+ * A replication failure whose message is safe to expose without remote credentials. The cause
+ * keeps the underlying transport detail for server-side diagnosis and may name the remote, so
+ * entrances expose the message and category, never the cause chain.
+ */
 public final class GitReplicationException extends RuntimeException {
 
     private final GitReplicationFailure failure;

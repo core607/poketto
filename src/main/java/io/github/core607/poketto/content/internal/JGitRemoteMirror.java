@@ -94,12 +94,17 @@ final class JGitRemoteMirror implements GitRemoteMirror {
         }
     }
 
-    private void requireConfigured(Repository repository) {
+    @Override
+    public boolean configured(Repository repository) {
         String url = repository.getConfig().getString("remote", remote, "pushurl");
         if (url == null) {
             url = repository.getConfig().getString("remote", remote, "url");
         }
-        if (url == null || url.isBlank()) {
+        return url != null && !url.isBlank();
+    }
+
+    private void requireConfigured(Repository repository) {
+        if (!configured(repository)) {
             throw failure(
                     GitReplicationFailure.MISSING_REMOTE,
                     false,
@@ -112,14 +117,16 @@ final class JGitRemoteMirror implements GitRemoteMirror {
             return failure(
                     GitReplicationFailure.MISSING_REMOTE,
                     false,
-                    "configured Git remote is missing");
+                    "configured Git remote is missing",
+                    exception);
         }
         String message = String.valueOf(exception.getMessage()).toLowerCase(Locale.ROOT);
         if (message.contains("auth") || message.contains("credential")) {
             return failure(
                     GitReplicationFailure.AUTHENTICATION,
                     false,
-                    operation + " because authentication failed");
+                    operation + " because authentication failed",
+                    exception);
         }
         if (message.contains("not authorized")
                 || message.contains("permission")
@@ -127,26 +134,40 @@ final class JGitRemoteMirror implements GitRemoteMirror {
             return failure(
                     GitReplicationFailure.PERMISSION_DENIED,
                     false,
-                    operation + " because permission was denied");
+                    operation + " because permission was denied",
+                    exception);
         }
         if (message.contains("not found") || message.contains("does not exist")) {
             return failure(
                     GitReplicationFailure.REMOTE_REPOSITORY_MISSING,
                     false,
-                    operation + " because the remote repository is missing");
+                    operation + " because the remote repository is missing",
+                    exception);
         }
         if (message.contains("timed out") || message.contains("timeout")) {
             return failure(
-                    GitReplicationFailure.TIMEOUT, true, operation + " before the timeout");
+                    GitReplicationFailure.TIMEOUT,
+                    true,
+                    operation + " before the timeout",
+                    exception);
         }
         return failure(
                 GitReplicationFailure.NETWORK,
                 true,
-                operation + " because the remote transport failed");
+                operation + " because the remote transport failed",
+                exception);
     }
 
     private static GitReplicationException failure(
             GitReplicationFailure category, boolean transientFailure, String message) {
         return new GitReplicationException(category, transientFailure, message);
+    }
+
+    private static GitReplicationException failure(
+            GitReplicationFailure category,
+            boolean transientFailure,
+            String message,
+            Throwable cause) {
+        return new GitReplicationException(category, transientFailure, message, cause);
     }
 }

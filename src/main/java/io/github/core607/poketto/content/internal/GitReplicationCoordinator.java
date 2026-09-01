@@ -163,14 +163,18 @@ final class GitReplicationCoordinator
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         store.ensureReady(workspaceId);
         try (Repository repository = open(workspaceId)) {
+            boolean configured = remote.configured(repository);
             Optional<ObjectId> local = resolve(repository, MAIN);
             Optional<ObjectId> mirrored = resolve(repository, MIRRORED_MAIN);
-            Lag lag = lag(repository, local, mirrored);
+            Lag lag = configured
+                    ? lag(repository, local, mirrored)
+                    : new Lag(0, Optional.empty());
             WorkerState worker = workers.get(workspaceId);
             WorkerSnapshot snapshot = worker == null
                     ? new WorkerSnapshot(null, null)
                     : snapshot(worker);
             return new GitReplicationStatus(
+                    configured,
                     local.map(ObjectId::name),
                     mirrored.map(ObjectId::name),
                     lag.commits(),
@@ -242,8 +246,13 @@ final class GitReplicationCoordinator
     }
 
     private void replicateOnce(WorkspaceId workspaceId) {
-        recordAttempt(workspaceId);
         try (Repository repository = open(workspaceId)) {
+            if (!remote.configured(repository)) {
+                // No remote means replication is off for this workspace, not failing.
+                clearFailure(workspaceId);
+                return;
+            }
+            recordAttempt(workspaceId);
             Optional<ObjectId> local = resolve(repository, MAIN);
             Optional<ObjectId> remoteMain = remote.main(repository);
             if (local.isEmpty()) {
@@ -360,7 +369,8 @@ final class GitReplicationCoordinator
             }
         }
         try (Repository repository = open(workspaceId)) {
-            return !resolve(repository, MAIN).equals(resolve(repository, MIRRORED_MAIN));
+            return remote.configured(repository)
+                    && !resolve(repository, MAIN).equals(resolve(repository, MIRRORED_MAIN));
         } catch (RuntimeException exception) {
             return false;
         }

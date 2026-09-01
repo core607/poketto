@@ -28,6 +28,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -93,6 +94,7 @@ class GitReplicationTests {
         assertThat(unchanged.mirrored()).isTrue();
         assertThat(unchanged.commitId()).isEqualTo(latest.commitId());
         assertThat(replication.status(workspace)).satisfies(status -> {
+            assertThat(status.remoteConfigured()).isTrue();
             assertThat(status.localHead()).contains(latest.commitId());
             assertThat(status.lastMirroredCommit()).contains(latest.commitId());
             assertThat(status.lagCommits()).isZero();
@@ -234,7 +236,7 @@ class GitReplicationTests {
         WorkspaceId other = WorkspaceId.random();
         Path firstRemote = bareRemote("first.git");
         configureRemote(workspace, firstRemote);
-        store.ensureReady(other);
+        configureRemote(other, temporaryDirectory.resolve("gone.git"));
         GitReplicationCoordinator replication = coordinator(GitAcknowledgementMode.LOCAL);
 
         DocumentWriteResult first = writes(replication)
@@ -250,10 +252,31 @@ class GitReplicationTests {
         assertThatThrownBy(() -> replication.replicateNow(other))
                 .isInstanceOf(GitReplicationException.class)
                 .extracting(exception -> ((GitReplicationException) exception).failure())
-                .isEqualTo(GitReplicationFailure.MISSING_REMOTE);
+                .isEqualTo(GitReplicationFailure.REMOTE_REPOSITORY_MISSING);
         assertThat(replication.status(other).failure())
-                .contains(GitReplicationFailure.MISSING_REMOTE);
+                .contains(GitReplicationFailure.REMOTE_REPOSITORY_MISSING);
         assertThat(replication.status(workspace).failure()).isEmpty();
+    }
+
+    @Test
+    void treatsAWorkspaceWithoutARemoteAsReplicationOffRatherThanFailing() throws Exception {
+        GitReplicationCoordinator replication = coordinator(GitAcknowledgementMode.LOCAL);
+        DocumentWriteResult result = writes(replication)
+                .create(workspace, AGENT, draft("documents/unmirrored.md"));
+
+        replication.replicateNow(workspace);
+
+        assertThat(result.committed()).isTrue();
+        assertThat(result.mirrored()).isFalse();
+        assertThat(replication.status(workspace)).satisfies(status -> {
+            assertThat(status.remoteConfigured()).isFalse();
+            assertThat(status.localHead()).contains(result.commitId());
+            assertThat(status.lastMirroredCommit()).isEmpty();
+            assertThat(status.lagCommits()).isZero();
+            assertThat(status.lagDuration()).isEmpty();
+            assertThat(status.lastAttemptAt()).isEmpty();
+            assertThat(status.failure()).isEmpty();
+        });
     }
 
     @Test
@@ -362,6 +385,7 @@ class GitReplicationTests {
 
         assertThatThrownBy(() -> replication.replicateNow(workspace))
                 .isInstanceOf(GitReplicationException.class)
+                .hasCauseInstanceOf(GitAPIException.class)
                 .extracting(exception -> ((GitReplicationException) exception).failure())
                 .isEqualTo(GitReplicationFailure.REMOTE_REPOSITORY_MISSING);
     }
