@@ -37,7 +37,7 @@ jobs:
         env:
           AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
           AI_REVIEW_BASE_URL: ${{ vars.AI_REVIEW_BASE_URL || 'https://api.deepseek.com' }}
-          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || 'deepseek-v4-flash' }}
+          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || 'deepseek-v4-flash-vision-exp' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -104,8 +104,8 @@ jobs:
             --rawfile diff "$review_tmp/pull-request.diff" \
             '{
               model: $model,
-              reasoning_effort: "low",
-              max_tokens: 2000,
+              reasoning_effort: "high",
+              max_tokens: 32000,
               messages: [
                 {
                   role: "system",
@@ -158,8 +158,40 @@ jobs:
             gsub("@"; "＠")
           ' \
             "$review_tmp/model-response.json" > "$review_tmp/review.md"; then
+            # Shape only. Model text and reasoning stay out of the log, and the credential
+            # travels in a request header that no response echoes.
+            echo "::notice title=AI review response shape::$(
+              jq -c '{
+                fields: (keys? // []),
+                finish_reason: (.choices[0].finish_reason? // null),
+                content_type: (.choices[0].message.content? | type),
+                usage: (.usage? // null),
+                error_type: (.error.type? // null)
+              }' "$review_tmp/model-response.json" 2>/dev/null || echo '"unparsable response"'
+            )"
             skip_review "The configured model returned no review text."
           fi
+
+          # Thinking tokens and visible output share max_tokens, so an exhausted budget returns
+          # a partial review rather than a failure. Say so instead of posting a silent fragment.
+          truncated_note=""
+          if [ "$(jq -r '.choices[0].finish_reason // ""' \
+            "$review_tmp/model-response.json")" = "length" ]; then
+            truncated_note="；本次评审在输出上限处被截断"
+            echo "::warning title=AI review truncated::The model reached max_tokens before finishing."
+          fi
+
+          # A GitHub review body is capped well below what 32000 output tokens can produce.
+          python3 - "$review_tmp/review.md" <<'PY'
+          from pathlib import Path
+          import sys
+
+          limit = 60_000
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+          if len(text) > limit:
+              path.write_text(text[:limit] + "\n\n_（评审正文超出 GitHub 评论上限，已截断。）_\n", encoding="utf-8")
+          PY
 
           {
             echo "## AI review"
@@ -167,7 +199,7 @@ jobs:
             cat "$review_tmp/review.md"
             echo
             echo "---"
-            echo "_模型：\`$AI_REVIEW_MODEL\`；diff：$diff_state；提交：\`$HEAD_SHA\`。_"
+            echo "_模型：\`$AI_REVIEW_MODEL\`；diff：$diff_state；提交：\`$HEAD_SHA\`${truncated_note}。_"
           } > "$review_tmp/review-body.md"
 
           jq -n \
