@@ -11,9 +11,12 @@ import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -52,6 +55,33 @@ class DocumentWriteRecoveryTests {
         assertThat(Files.readString(committed)).doesNotContain("local edit");
         assertThat(untracked).doesNotExist();
         assertThat(repositories.store().scan(workspace)).hasSize(2);
+    }
+
+    @Test
+    void discardsResidueOfAWriteInterruptedBeforeTheRootCommit() throws Exception {
+        RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
+        WorkspaceId workspace = WorkspaceId.random();
+        DocumentWriteService writes = repositories.writes(new TestClock());
+        repositories.store().ensureReady(workspace);
+        try (Repository cache = JGitContentRepositoryStore.openCache(
+                repositories.cache(workspace), workspace)) {
+            // A crash between staging and the root commit leaves a journal, a staged index
+            // entry, and worktree bytes behind while both refs are still unborn.
+            ContentWorktree.recordIntent(cache, Set.of("documents/residue.md"));
+            ContentWorktree.apply(
+                    cache,
+                    Map.of("documents/residue.md", "residue".getBytes(StandardCharsets.UTF_8)),
+                    Set.of());
+        }
+
+        DocumentWriteResult next = writes.create(workspace, OWNER, draft("documents/note.md"));
+
+        assertThat(next.committed()).isTrue();
+        assertThat(repositories.store().scan(workspace))
+                .singleElement()
+                .satisfies(document ->
+                        assertThat(document.repositoryPath()).isEqualTo("documents/note.md"));
+        assertThat(repositories.cache(workspace).resolve("documents/residue.md")).doesNotExist();
     }
 
     @Test

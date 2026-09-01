@@ -70,7 +70,7 @@ The application owns disposable cache directories completely. Direct authoring h
 ## Verification
 
 - `ContentRepositoryBootstrapTests` covers missing binding, empty remote materialization, cache deletion plus process replacement, direct owner pushes, local-cache discard, cache eviction, address and credential redaction, and the absence of the remote address from cache metadata.
-- `DocumentWriteRecoveryTests` uses real disposable bare remotes to cover lost-success response reconciliation, an unverifiable ambiguous result, and two independent application caches advancing the same base with one success and one conflict.
+- `DocumentWriteRecoveryTests` uses real disposable bare remotes to cover lost-success response reconciliation, an unverifiable ambiguous result, residue of a write interrupted before the root commit staying out of the next candidate, and two independent application caches advancing the same base with one success and one conflict.
 - `ContentRepositoryScanTests` and `DocumentWriteServiceTests` run the existing read, revision, validation, attribution, and workspace-isolation contract through the remote-authority port.
 - A representative nested Markdown plus 256 KiB image fixture records cold and warm latency, object bytes, cache bytes, and heap deltas. The local reference run recorded 264073 cold object bytes and zero additional warm object bytes; timing and heap observations remain environment-specific test output rather than product thresholds.
 - `PostgresIntegrationIT` replaces only the binding source with a disposable file-transport remote and exercises default-workspace initialization through the remaining production Spring composition. The production properties accept HTTPS only.

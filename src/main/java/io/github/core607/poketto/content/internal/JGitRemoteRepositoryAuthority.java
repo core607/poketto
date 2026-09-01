@@ -22,6 +22,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
@@ -243,6 +244,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private static void resetCache(Repository repository, ObjectId commit) {
         try {
             if (commit.equals(ObjectId.zeroId())) {
+                // No commit exists to reset --hard to, and clean skips staged files, so a write
+                // interrupted before its root commit would leak its residue into the next
+                // candidate. Empty the index first; clean then removes the leftover files.
+                clearIndex(repository);
                 Git git = Git.wrap(repository);
                 git.clean()
                         .setCleanDirectories(true)
@@ -272,6 +277,19 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ContentWorktree.clearIntent(repository);
         } catch (IOException | GitAPIException exception) {
             throw new ContentRepositoryException("repository cache cannot be materialized");
+        }
+    }
+
+    private static void clearIndex(Repository repository) throws IOException {
+        DirCache index = repository.lockDirCache();
+        try {
+            index.clear();
+            index.write();
+            if (!index.commit()) {
+                throw new ContentRepositoryException("repository cache index cannot be cleared");
+            }
+        } finally {
+            index.unlock();
         }
     }
 
