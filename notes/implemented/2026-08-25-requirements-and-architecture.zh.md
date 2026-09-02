@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 ## 本文范围
 
-这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。[远程仓库权威](2026-09-01-remote-repository-authority.md)已经实现。拟议的[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。除非链接的提案明确描述未来变化，下文机制均为已交付行为。
+这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。[远程仓库权威](2026-09-01-remote-repository-authority.md)与 [HTTP 入口基线](2026-09-03-http-entrance-baseline.md)（健康检查、problem 响应与只读的公开文档 API）已经实现。[Next.js 前端提案](../proposed/2026-08-30-nextjs-frontend.md)取代下文的 JTE 与 htmx 选型，仓库原生检索提案取代核心架构决策 1 与 3 中的 PostgreSQL 投影和搜索；投影、搜索、渲染、问答、MCP 与认证均未实现。拟议的[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。除非链接的提案明确描述未来变化，下文机制均为已交付行为。
 
 ## 定位
 
@@ -47,7 +47,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 技术栈
 
-JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：workspace / content / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、JTE + htmx + Tailwind。
+JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：workspace / content / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、Tailwind 搭配[拟议的 Next.js 前端](../proposed/2026-08-30-nextjs-frontend.md)，取代最初选定的 JTE + htmx。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。另提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随所用 SDK 的已验证版本固定；v1 用静态 API Key 是有意识的简化，不宣称实现 MCP 标准 OAuth 流程；Streamable HTTP 校验 Origin 白名单。
 
