@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -126,11 +127,31 @@ class PublicDocumentControllerTests {
     }
 
     @Test
+    void hidesUnexpectedFailuresBehindAnInternalServerErrorProblem() throws Exception {
+        store.failure = new IllegalStateException("private server diagnostic");
+
+        String problem = problemBody("/api/public/documents", 500);
+
+        assertThat(problem)
+                .contains("\"title\":\"Internal server error\"")
+                .contains("\"detail\":\"an unexpected error occurred\"")
+                .doesNotContain("private server diagnostic");
+    }
+
+    @Test
     void unknownRoutesRenderAsProblems() throws Exception {
         mvc.perform(get("/api/public/nothing"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void springMvcFailuresKeepTheirSpecificStatus() throws Exception {
+        mvc.perform(post("/api/public/documents"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(405));
     }
 
     private String problemBody(String path, int expectedStatus) throws Exception {

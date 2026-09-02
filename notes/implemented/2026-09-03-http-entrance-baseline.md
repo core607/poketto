@@ -26,8 +26,9 @@ Every error leaves the HTTP boundary as an RFC 9457 `application/problem+json` d
 | `RepositoryConflictException` | 409 | Conflict | fixed text |
 | `RepositoryWriteAmbiguousException` | 503 | Write outcome unknown | fixed text telling the caller to re-read before retrying |
 | `ContentRepositoryException` | 503 | Repository unavailable | fixed text |
+| any other exception | 500 | Internal server error | fixed text |
 
-Repository failures keep their diagnostic in the server log at `WARN` and never in the response, because their messages name workspaces and repository state.
+Repository failures keep their diagnostic in the server log at `WARN` and never in the response, because their messages name workspaces and repository state. Unexpected exceptions are logged at `ERROR` with their stack trace and leave the boundary through a fixed, sanitized 500 problem. Spring MVC failures retain their specific status instead of falling through to that generic response.
 
 ### Public document API
 
@@ -61,7 +62,7 @@ With no authentication, the only routes are public-content-only by construction.
 
 ## Verification
 
-- `PublicDocumentControllerTests` covers public-only listing and ordering, body retrieval, indistinguishable not-found responses, sanitized repository and ambiguous-write problems, and problem rendering for unknown routes.
+- `PublicDocumentControllerTests` covers public-only listing and ordering, body retrieval, indistinguishable not-found responses, sanitized repository, ambiguous-write and unexpected-failure problems, and specific problem rendering for Spring MVC failures.
 - `PokettoApplicationTests` covers health without details, both probes, and the absence of other management endpoints in a context without a database.
 - `PostgresIntegrationIT` covers health with the database and a create, publish, and read sequence through the real remote authority, including a private document staying hidden.
 - `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` pass.

@@ -11,18 +11,19 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
- * Maps domain failures to RFC 9457 problem responses. Spring MVC's own failures (unknown route,
- * unsupported method, unreadable body) already render as problems through
- * {@code spring.mvc.problemdetails.enabled}.
+ * Maps domain and unexpected failures to RFC 9457 problem responses. Spring MVC's own failures
+ * (unknown route, unsupported method, unreadable body) retain their specific problem mappings
+ * through {@link ResponseEntityExceptionHandler}.
  *
  * <p>Repository failures keep their diagnostic in the server log and leave the boundary with a
  * fixed detail, because their messages name workspaces and repository state that a public caller
  * must not learn.
  */
 @RestControllerAdvice
-class ProblemResponses {
+class ProblemResponses extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ProblemResponses.class);
 
@@ -57,6 +58,12 @@ class ProblemResponses {
         log.warn("content repository unavailable: {}", exception.getMessage());
         return problem(
                 HttpStatus.SERVICE_UNAVAILABLE, "Repository unavailable", "the content repository is unavailable");
+    }
+
+    @ExceptionHandler(Exception.class)
+    ProblemDetail unexpectedFailure(Exception exception) {
+        log.error("unhandled request failure", exception);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", "an unexpected error occurred");
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
