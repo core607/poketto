@@ -2,12 +2,20 @@ package io.github.core607.poketto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.content.DocumentDraft;
+import io.github.core607.poketto.content.DocumentWriteResult;
+import io.github.core607.poketto.content.DocumentWriteService;
+import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,10 +25,12 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -28,6 +38,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
 @SpringBootTest
+@AutoConfigureMockMvc
 @Import(io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class)
 class PostgresIntegrationIT {
 
@@ -65,6 +76,12 @@ class PostgresIntegrationIT {
 
     @Autowired
     private WorkspacePaths workspacePaths;
+
+    @Autowired
+    private DocumentWriteService writes;
+
+    @Autowired
+    private MockMvc mvc;
 
     @Autowired
     @Qualifier("defaultWorkspaceInitializer")
@@ -110,5 +127,46 @@ class PostgresIntegrationIT {
         assertThat(workspaces.defaultWorkspace()).isEqualTo(before);
         assertThat(jdbc.queryForObject("select count(*) from workspaces", Integer.class))
                 .isOne();
+    }
+
+    @Test
+    void reportsHealthWithTheDatabaseAndRepositoryReady() throws Exception {
+        mvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+        mvc.perform(get("/actuator/health/readiness")).andExpect(status().isOk());
+    }
+
+    @Test
+    void servesOnlyPublishedDocumentsThroughThePublicEntrance() throws Exception {
+        Workspace workspace = workspaces.defaultWorkspace();
+        DocumentWriteResult secret = writes.create(
+                workspace.id(),
+                WritePrincipal.SYSTEM,
+                new DocumentDraft("documents/it/secret.md", "Secret", List.of(), "private body"));
+        DocumentWriteResult draft = writes.create(
+                workspace.id(),
+                WritePrincipal.SYSTEM,
+                new DocumentDraft("documents/it/hello.md", "Hello", List.of("intro"), "# Hello\n\nPublic body"));
+
+        mvc.perform(get("/api/public/documents/" + draft.documentId())).andExpect(status().isNotFound());
+
+        writes.publish(
+                workspace.id(),
+                WritePrincipal.SYSTEM,
+                draft.documentId(),
+                draft.revision().orElseThrow());
+
+        mvc.perform(get("/api/public/documents"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(draft.documentId().toString()));
+        mvc.perform(get("/api/public/documents/" + draft.documentId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Hello"))
+                .andExpect(jsonPath("$.tags[0]").value("intro"))
+                .andExpect(jsonPath("$.publishedAt").isNotEmpty())
+                .andExpect(jsonPath("$.body").value("# Hello\n\nPublic body"));
+        mvc.perform(get("/api/public/documents/" + secret.documentId())).andExpect(status().isNotFound());
     }
 }

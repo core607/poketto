@@ -39,6 +39,7 @@ dependencies {
     implementation("org.yaml:snakeyaml")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
     implementation("org.flywaydb:flyway-database-postgresql")
@@ -46,6 +47,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test:$springModulithVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
