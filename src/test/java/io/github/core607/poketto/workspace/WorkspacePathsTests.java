@@ -22,12 +22,19 @@ class WorkspacePathsTests {
         Path secondContent = paths.contentDirectory(second);
 
         assertThat(firstContent)
-                .isEqualTo(dataDirectory.resolve("workspaces").resolve(first.toString()).resolve("content"));
+                .isEqualTo(dataDirectory
+                        .resolve("workspaces")
+                        .resolve(first.toString())
+                        .resolve("content"));
         assertThat(secondContent)
-                .isEqualTo(dataDirectory.resolve("workspaces").resolve(second.toString()).resolve("content"));
+                .isEqualTo(dataDirectory
+                        .resolve("workspaces")
+                        .resolve(second.toString())
+                        .resolve("content"));
         assertThat(firstContent).isNotEqualTo(secondContent);
         assertThat(firstContent.startsWith(dataDirectory.resolve("workspaces"))).isTrue();
-        assertThat(secondContent.startsWith(dataDirectory.resolve("workspaces"))).isTrue();
+        assertThat(secondContent.startsWith(dataDirectory.resolve("workspaces")))
+                .isTrue();
     }
 
     @Test

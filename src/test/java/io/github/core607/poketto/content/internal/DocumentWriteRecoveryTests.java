@@ -31,8 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class DocumentWriteRecoveryTests {
 
-    private static final WritePrincipal OWNER =
-            new WritePrincipal(PrincipalType.ACCOUNT, "acct-7");
+    private static final WritePrincipal OWNER = new WritePrincipal(PrincipalType.ACCOUNT, "acct-7");
 
     @TempDir
     Path root;
@@ -48,8 +47,7 @@ class DocumentWriteRecoveryTests {
         Files.writeString(committed, "local edit");
         Files.writeString(untracked, "local draft");
 
-        DocumentWriteResult next =
-                writes.create(workspace, OWNER, draft("documents/second.md"));
+        DocumentWriteResult next = writes.create(workspace, OWNER, draft("documents/second.md"));
 
         assertThat(next.committed()).isTrue();
         assertThat(Files.readString(committed)).doesNotContain("local edit");
@@ -63,15 +61,12 @@ class DocumentWriteRecoveryTests {
         WorkspaceId workspace = WorkspaceId.random();
         DocumentWriteService writes = repositories.writes(new TestClock());
         repositories.store().ensureReady(workspace);
-        try (Repository cache = JGitContentRepositoryStore.openCache(
-                repositories.cache(workspace), workspace)) {
+        try (Repository cache = JGitContentRepositoryStore.openCache(repositories.cache(workspace), workspace)) {
             // A crash between staging and the root commit leaves a journal, a staged index
             // entry, and worktree bytes behind while both refs are still unborn.
             ContentWorktree.recordIntent(cache, Set.of("documents/residue.md"));
             ContentWorktree.apply(
-                    cache,
-                    Map.of("documents/residue.md", "residue".getBytes(StandardCharsets.UTF_8)),
-                    Set.of());
+                    cache, Map.of("documents/residue.md", "residue".getBytes(StandardCharsets.UTF_8)), Set.of());
         }
 
         DocumentWriteResult next = writes.create(workspace, OWNER, draft("documents/note.md"));
@@ -79,9 +74,9 @@ class DocumentWriteRecoveryTests {
         assertThat(next.committed()).isTrue();
         assertThat(repositories.store().scan(workspace))
                 .singleElement()
-                .satisfies(document ->
-                        assertThat(document.repositoryPath()).isEqualTo("documents/note.md"));
-        assertThat(repositories.cache(workspace).resolve("documents/residue.md")).doesNotExist();
+                .satisfies(document -> assertThat(document.repositoryPath()).isEqualTo("documents/note.md"));
+        assertThat(repositories.cache(workspace).resolve("documents/residue.md"))
+                .doesNotExist();
     }
 
     @Test
@@ -90,8 +85,8 @@ class DocumentWriteRecoveryTests {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root, transport);
         WorkspaceId workspace = WorkspaceId.random();
 
-        DocumentWriteResult result = repositories.writes(new TestClock()).create(
-                workspace, OWNER, draft("documents/note.md"));
+        DocumentWriteResult result =
+                repositories.writes(new TestClock()).create(workspace, OWNER, draft("documents/note.md"));
 
         assertThat(result.committed()).isTrue();
         assertThat(repositories.remoteHead(workspace).name()).isEqualTo(result.commitId());
@@ -104,21 +99,18 @@ class DocumentWriteRecoveryTests {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root, transport);
         WorkspaceId workspace = WorkspaceId.random();
 
-        assertThatThrownBy(() -> repositories.writes(new TestClock()).create(
-                        workspace, OWNER, draft("documents/note.md")))
+        assertThatThrownBy(
+                        () -> repositories.writes(new TestClock()).create(workspace, OWNER, draft("documents/note.md")))
                 .isInstanceOf(RepositoryWriteAmbiguousException.class)
                 .hasMessageContaining("do not retry blindly");
     }
 
     @Test
-    void concurrentProcessesAdvancingTheSameBaseProduceOneSuccessAndOneConflict()
-            throws Exception {
+    void concurrentProcessesAdvancingTheSameBaseProduceOneSuccessAndOneConflict() throws Exception {
         CountDownLatch bothPushing = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
-        RemoteGitTransport firstTransport =
-                new ParkPush(new JGitRemoteGitTransport(), bothPushing, release);
-        RemoteGitTransport secondTransport =
-                new ParkPush(new JGitRemoteGitTransport(), bothPushing, release);
+        RemoteGitTransport firstTransport = new ParkPush(new JGitRemoteGitTransport(), bothPushing, release);
+        RemoteGitTransport secondTransport = new ParkPush(new JGitRemoteGitTransport(), bothPushing, release);
         Path sharedRemotes = root.resolve("remotes");
         RemoteRepositoryFixture first =
                 new RemoteRepositoryFixture(root.resolve("first-data"), sharedRemotes, firstTransport);
@@ -129,10 +121,10 @@ class DocumentWriteRecoveryTests {
 
         ExecutorService threads = Executors.newFixedThreadPool(2);
         try {
-            Future<DocumentWriteResult> one = threads.submit(() -> first.writes(new TestClock()).create(
-                    workspace, OWNER, draft("documents/one.md")));
-            Future<DocumentWriteResult> two = threads.submit(() -> second.writes(new TestClock()).create(
-                    workspace, OWNER, draft("documents/two.md")));
+            Future<DocumentWriteResult> one = threads.submit(
+                    () -> first.writes(new TestClock()).create(workspace, OWNER, draft("documents/one.md")));
+            Future<DocumentWriteResult> two = threads.submit(
+                    () -> second.writes(new TestClock()).create(workspace, OWNER, draft("documents/two.md")));
             assertThat(bothPushing.await(10, TimeUnit.SECONDS)).isTrue();
             release.countDown();
 
@@ -177,12 +169,8 @@ class DocumentWriteRecoveryTests {
 
         @Override
         public PushStatus pushMain(
-                Repository repository,
-                RepositoryBinding binding,
-                ObjectId expectedCommit,
-                ObjectId candidateCommit) {
-            PushStatus status =
-                    delegate.pushMain(repository, binding, expectedCommit, candidateCommit);
+                Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit) {
+            PushStatus status = delegate.pushMain(repository, binding, expectedCommit, candidateCommit);
             if (first) {
                 first = false;
                 throw new RemoteGitTransportException("ref update");
@@ -210,10 +198,7 @@ class DocumentWriteRecoveryTests {
 
         @Override
         public PushStatus pushMain(
-                Repository repository,
-                RepositoryBinding binding,
-                ObjectId expectedCommit,
-                ObjectId candidateCommit) {
+                Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit) {
             throw new RemoteGitTransportException("ref update");
         }
     }
@@ -224,8 +209,7 @@ class DocumentWriteRecoveryTests {
         private final CountDownLatch entered;
         private final CountDownLatch release;
 
-        private ParkPush(
-                RemoteGitTransport delegate, CountDownLatch entered, CountDownLatch release) {
+        private ParkPush(RemoteGitTransport delegate, CountDownLatch entered, CountDownLatch release) {
             this.delegate = delegate;
             this.entered = entered;
             this.release = release;
@@ -238,10 +222,7 @@ class DocumentWriteRecoveryTests {
 
         @Override
         public PushStatus pushMain(
-                Repository repository,
-                RepositoryBinding binding,
-                ObjectId expectedCommit,
-                ObjectId candidateCommit) {
+                Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit) {
             entered.countDown();
             try {
                 if (!release.await(10, TimeUnit.SECONDS)) {

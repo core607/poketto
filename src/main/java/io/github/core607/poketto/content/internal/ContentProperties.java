@@ -8,12 +8,10 @@ record ContentProperties(Path dataDir) {
 
     ContentProperties {
         if (dataDir == null) {
-            throw new IllegalArgumentException(
-                    "poketto.data-dir must be configured as an absolute path");
+            throw new IllegalArgumentException("poketto.data-dir must be configured as an absolute path");
         }
         if (!dataDir.isAbsolute()) {
-            throw new IllegalArgumentException(
-                    "poketto.data-dir must be absolute: " + dataDir);
+            throw new IllegalArgumentException("poketto.data-dir must be absolute: " + dataDir);
         }
         dataDir = dataDir.normalize();
     }

@@ -30,8 +30,8 @@ class DocumentValueTests {
     void revisionPinsTheExactBlobBytes() {
         DocumentRevision hello = DocumentRevision.sha256("hello".getBytes(StandardCharsets.UTF_8));
 
-        assertThat(hello.toString()).isEqualTo(
-                "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assertThat(hello.toString())
+                .isEqualTo("sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
         assertThat(DocumentRevision.sha256("line\n".getBytes(StandardCharsets.UTF_8)))
                 .isNotEqualTo(DocumentRevision.sha256("line\r\n".getBytes(StandardCharsets.UTF_8)));
         assertThat(DocumentRevision.sha256("line\n".getBytes(StandardCharsets.UTF_8)))

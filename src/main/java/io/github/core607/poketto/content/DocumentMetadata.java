@@ -44,12 +44,10 @@ public record DocumentMetadata(
         }
         publishedAt.ifPresent(published -> {
             if (published.isBefore(createdAt)) {
-                throw new IllegalArgumentException(
-                        "document published time must not precede creation");
+                throw new IllegalArgumentException("document published time must not precede creation");
             }
             if (published.isAfter(updatedAt)) {
-                throw new IllegalArgumentException(
-                        "document published time must not follow the last update");
+                throw new IllegalArgumentException("document published time must not follow the last update");
             }
         });
     }
@@ -66,8 +64,7 @@ public record DocumentMetadata(
             String collisionKey = normalizedCollisionKey(display);
             if (!collisionKeys.add(collisionKey)) {
                 throw new IllegalArgumentException(
-                        "document tags must be unique after Unicode normalization and case folding: "
-                                + display);
+                        "document tags must be unique after Unicode normalization and case folding: " + display);
             }
             normalized.add(display);
         }

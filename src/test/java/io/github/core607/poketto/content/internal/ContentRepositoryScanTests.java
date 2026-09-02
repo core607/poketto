@@ -7,26 +7,11 @@ import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.eclipse.jgit.dircache.DirCache;
-import org.eclipse.jgit.dircache.DirCacheBuilder;
-import org.eclipse.jgit.dircache.DirCacheEntry;
-import org.eclipse.jgit.lib.CommitBuilder;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.FileMode;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.ObjectInserter;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.RefUpdate;
-import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,8 +27,10 @@ class ContentRepositoryScanTests {
         Fixture fixture = fixture();
         byte[] committed = document(ID, "Committed", "Body");
         fixture.commit(Map.of(
-                "README.md", "repository notes".getBytes(StandardCharsets.UTF_8),
-                "documents/nested/note.md", committed));
+                "README.md",
+                "repository notes".getBytes(StandardCharsets.UTF_8),
+                "documents/nested/note.md",
+                committed));
         Path uncommitted = fixture.contentDirectory().resolve("documents/nested/note.md");
         Files.createDirectories(uncommitted.getParent());
         Files.writeString(uncommitted, "uncommitted working tree bytes");
@@ -93,8 +80,7 @@ class ContentRepositoryScanTests {
         Fixture fixture = fixture();
         fixture.commit(Map.of(
                 "documents/Café.md", document(ID, "First", "One"),
-                "documents/CAFE\u0301.md", document(
-                        "6ba7b810-9dad-41d1-80b4-00c04fd430c8", "Second", "Two")));
+                "documents/CAFE\u0301.md", document("6ba7b810-9dad-41d1-80b4-00c04fd430c8", "Second", "Two")));
 
         assertThatThrownBy(() -> fixture.store().scan(fixture.workspaceId()))
                 .hasMessageContaining("collide after Unicode normalization and case folding")
@@ -116,12 +102,10 @@ class ContentRepositoryScanTests {
         return fixture(new RemoteRepositoryFixture(dataDirectory), WorkspaceId.random());
     }
 
-    private static Fixture fixture(
-            RemoteRepositoryFixture repositories, WorkspaceId workspaceId) {
+    private static Fixture fixture(RemoteRepositoryFixture repositories, WorkspaceId workspaceId) {
         ContentRepositoryStore store = repositories.store();
         store.ensureReady(workspaceId);
-        return new Fixture(
-                repositories, store, workspaceId, repositories.cache(workspaceId));
+        return new Fixture(repositories, store, workspaceId, repositories.cache(workspaceId));
     }
 
     private static byte[] document(String id, String title, String body) {

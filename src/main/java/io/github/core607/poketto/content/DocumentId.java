@@ -32,9 +32,7 @@ public record DocumentId(UUID value) {
     }
 
     private static IllegalArgumentException invalid(String candidate, Exception cause) {
-        return new IllegalArgumentException(
-                "document id must be a canonical lowercase UUID: " + candidate,
-                cause);
+        return new IllegalArgumentException("document id must be a canonical lowercase UUID: " + candidate, cause);
     }
 
     @Override

@@ -25,8 +25,7 @@ public interface DocumentWriteService {
      * @throws DocumentConflictException if the path is taken after Unicode normalization and case
      *     folding, or if the assigned id already exists
      */
-    DocumentWriteResult create(
-            WorkspaceId workspaceId, WritePrincipal principal, DocumentDraft draft);
+    DocumentWriteResult create(WorkspaceId workspaceId, WritePrincipal principal, DocumentDraft draft);
 
     /**
      * Replaces the document's title, tags, body, and path, preserving its id, creation time,

@@ -11,8 +11,7 @@ final class ConfiguredRepositoryBindingSource implements RepositoryBindingSource
     private final RepositoryProperties properties;
     private final ObjectProvider<WorkspaceCatalog> workspaces;
 
-    ConfiguredRepositoryBindingSource(
-            RepositoryProperties properties, ObjectProvider<WorkspaceCatalog> workspaces) {
+    ConfiguredRepositoryBindingSource(RepositoryProperties properties, ObjectProvider<WorkspaceCatalog> workspaces) {
         this.properties = Objects.requireNonNull(properties, "repository properties must not be null");
         this.workspaces = Objects.requireNonNull(workspaces, "workspace catalog provider must not be null");
     }

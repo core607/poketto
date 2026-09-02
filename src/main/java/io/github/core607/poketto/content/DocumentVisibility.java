@@ -17,8 +17,9 @@ public enum DocumentVisibility {
         return switch (candidate) {
             case "private" -> PRIVATE;
             case "public" -> PUBLIC;
-            default -> throw new IllegalArgumentException(
-                    "document visibility must be exactly private or public: " + candidate);
+            default ->
+                throw new IllegalArgumentException(
+                        "document visibility must be exactly private or public: " + candidate);
         };
     }
 

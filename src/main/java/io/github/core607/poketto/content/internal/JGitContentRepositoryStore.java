@@ -48,15 +48,12 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
 
     List<StoredDocument> scan(RepositoryAuthority.Snapshot snapshot, WorkspaceId workspaceId) {
         try (Repository repository = openCache(snapshot.worktree(), workspaceId)) {
-            ObjectId commit = snapshot.commitId()
-                    .map(ObjectId::fromString)
-                    .orElseGet(ObjectId::zeroId);
+            ObjectId commit = snapshot.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
             return scan(repository, commit, workspaceId);
         }
     }
 
-    List<StoredDocument> scan(
-            Repository repository, ObjectId commit, WorkspaceId workspaceId) {
+    List<StoredDocument> scan(Repository repository, ObjectId commit, WorkspaceId workspaceId) {
         if (commit.equals(ObjectId.zeroId())) {
             return List.of();
         }
@@ -75,12 +72,9 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                     content = codec.parse(entry.bytes());
                 } catch (IllegalArgumentException exception) {
                     throw failure(
-                            workspaceId,
-                            "invalid document " + entry.path() + ": " + exception.getMessage(),
-                            exception);
+                            workspaceId, "invalid document " + entry.path() + ": " + exception.getMessage(), exception);
                 }
-                documents.add(new StoredDocument(
-                        entry.path(), content, DocumentRevision.sha256(entry.bytes())));
+                documents.add(new StoredDocument(entry.path(), content, DocumentRevision.sha256(entry.bytes())));
             }
             rejectDuplicateIds(documents, workspaceId);
             return List.copyOf(documents);
@@ -104,8 +98,8 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         }
     }
 
-    private static List<TreeEntry> readManagedEntries(
-            Repository repository, ObjectId tree, WorkspaceId workspaceId) throws IOException {
+    private static List<TreeEntry> readManagedEntries(Repository repository, ObjectId tree, WorkspaceId workspaceId)
+            throws IOException {
         List<TreeEntry> entries = new ArrayList<>();
         try (TreeWalk walk = new TreeWalk(repository)) {
             walk.addTree(tree);
@@ -118,15 +112,14 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                 if (!(FileMode.REGULAR_FILE.equals(walk.getFileMode(0))
                         || FileMode.EXECUTABLE_FILE.equals(walk.getFileMode(0)))) {
                     throw new ContentRepositoryException(
-                            "workspace " + workspaceId + " has a non-file managed document at "
-                                    + path);
+                            "workspace " + workspaceId + " has a non-file managed document at " + path);
                 }
                 try {
                     DocumentPathRules.validate(path);
                 } catch (IllegalArgumentException exception) {
                     throw new ContentRepositoryException(
-                            "workspace " + workspaceId + " has an invalid managed path " + path
-                                    + ": " + exception.getMessage(),
+                            "workspace " + workspaceId + " has an invalid managed path " + path + ": "
+                                    + exception.getMessage(),
                             exception);
                 }
                 ObjectLoader loader = repository.open(walk.getObjectId(0), Constants.OBJ_BLOB);
@@ -137,12 +130,12 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         return entries;
     }
 
-    private static void rejectPathCollisions(
-            List<TreeEntry> entries, WorkspaceId workspaceId) {
-        Map<String, List<String>> byCollisionKey = entries.stream().collect(Collectors.groupingBy(
-                entry -> DocumentPathRules.collisionKey(entry.path()),
-                LinkedHashMap::new,
-                Collectors.mapping(TreeEntry::path, Collectors.toList())));
+    private static void rejectPathCollisions(List<TreeEntry> entries, WorkspaceId workspaceId) {
+        Map<String, List<String>> byCollisionKey = entries.stream()
+                .collect(Collectors.groupingBy(
+                        entry -> DocumentPathRules.collisionKey(entry.path()),
+                        LinkedHashMap::new,
+                        Collectors.mapping(TreeEntry::path, Collectors.toList())));
         List<String> conflicts = byCollisionKey.values().stream()
                 .filter(paths -> paths.size() > 1)
                 .flatMap(List::stream)
@@ -151,39 +144,31 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         if (!conflicts.isEmpty()) {
             throw failure(
                     workspaceId,
-                    "managed document paths collide after Unicode normalization and case folding: "
-                            + conflicts,
+                    "managed document paths collide after Unicode normalization and case folding: " + conflicts,
                     null);
         }
     }
 
-    private static void rejectDuplicateIds(
-            List<StoredDocument> documents, WorkspaceId workspaceId) {
-        Map<DocumentId, List<String>> byId = documents.stream().collect(Collectors.groupingBy(
-                document -> document.content().metadata().id(),
-                LinkedHashMap::new,
-                Collectors.mapping(StoredDocument::repositoryPath, Collectors.toList())));
+    private static void rejectDuplicateIds(List<StoredDocument> documents, WorkspaceId workspaceId) {
+        Map<DocumentId, List<String>> byId = documents.stream()
+                .collect(Collectors.groupingBy(
+                        document -> document.content().metadata().id(),
+                        LinkedHashMap::new,
+                        Collectors.mapping(StoredDocument::repositoryPath, Collectors.toList())));
         List<String> conflicts = byId.values().stream()
                 .filter(paths -> paths.size() > 1)
                 .flatMap(List::stream)
                 .sorted()
                 .toList();
         if (!conflicts.isEmpty()) {
-            throw failure(
-                    workspaceId,
-                    "duplicate document ids appear at repository paths " + conflicts,
-                    null);
+            throw failure(workspaceId, "duplicate document ids appear at repository paths " + conflicts, null);
         }
     }
 
-    private static ContentRepositoryException failure(
-            WorkspaceId workspaceId, String detail, Throwable cause) {
+    private static ContentRepositoryException failure(WorkspaceId workspaceId, String detail, Throwable cause) {
         String message = "workspace " + workspaceId + " resolved repository snapshot: " + detail;
-        return cause == null
-                ? new ContentRepositoryException(message)
-                : new ContentRepositoryException(message, cause);
+        return cause == null ? new ContentRepositoryException(message) : new ContentRepositoryException(message, cause);
     }
 
-    private record TreeEntry(String path, byte[] bytes) {
-    }
+    private record TreeEntry(String path, byte[] bytes) {}
 }

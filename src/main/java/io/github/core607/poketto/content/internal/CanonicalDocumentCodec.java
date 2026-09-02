@@ -34,14 +34,8 @@ import tools.jackson.dataformat.yaml.YAMLFactory;
 final class CanonicalDocumentCodec {
 
     private static final byte[] UTF_8_BOM = {(byte) 0xef, (byte) 0xbb, (byte) 0xbf};
-    private static final Set<String> FIELDS = Set.of(
-            "id",
-            "title",
-            "visibility",
-            "tags",
-            "created_at",
-            "updated_at",
-            "published_at");
+    private static final Set<String> FIELDS =
+            Set.of("id", "title", "visibility", "tags", "created_at", "updated_at", "published_at");
     private static final ObjectMapper YAML = new ObjectMapper(YAMLFactory.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .build());
@@ -61,8 +55,7 @@ final class CanonicalDocumentCodec {
             root = YAML.readTree(sections.frontmatter());
         } catch (JacksonException exception) {
             throw new IllegalArgumentException(
-                    "document frontmatter is invalid YAML: " + exception.getOriginalMessage(),
-                    exception);
+                    "document frontmatter is invalid YAML: " + exception.getOriginalMessage(), exception);
         }
         if (root == null || !root.isObject()) {
             throw new IllegalArgumentException("document frontmatter must be a YAML mapping");
@@ -75,8 +68,7 @@ final class CanonicalDocumentCodec {
             }
         });
         if (!unknownFields.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "document frontmatter contains unknown fields: " + unknownFields);
+            throw new IllegalArgumentException("document frontmatter contains unknown fields: " + unknownFields);
         }
 
         DocumentId id = DocumentId.parse(requiredText(root, "id"));
@@ -88,9 +80,7 @@ final class CanonicalDocumentCodec {
         Optional<Instant> publishedAt = optionalUtcInstant(root, "published_at");
 
         return new DocumentContent(
-                new DocumentMetadata(
-                        id, title, visibility, tags, createdAt, updatedAt, publishedAt),
-                sections.body());
+                new DocumentMetadata(id, title, visibility, tags, createdAt, updatedAt, publishedAt), sections.body());
     }
 
     byte[] serialize(DocumentContent document) {
@@ -105,17 +95,14 @@ final class CanonicalDocumentCodec {
             canonical.append("tags: []\n");
         } else {
             canonical.append("tags:\n");
-            metadata.tags().forEach(tag -> canonical
-                    .append("  - ")
-                    .append(quoted(tag))
-                    .append('\n'));
+            metadata.tags()
+                    .forEach(tag -> canonical.append("  - ").append(quoted(tag)).append('\n'));
         }
         canonical.append("created_at: ").append(metadata.createdAt()).append('\n');
         canonical.append("updated_at: ").append(metadata.updatedAt()).append('\n');
-        metadata.publishedAt().ifPresent(publishedAt -> canonical
-                .append("published_at: ")
-                .append(publishedAt)
-                .append('\n'));
+        metadata.publishedAt()
+                .ifPresent(publishedAt ->
+                        canonical.append("published_at: ").append(publishedAt).append('\n'));
         canonical.append("---\n\n");
 
         String body = normalizeLineEndings(document.body());
@@ -129,8 +116,7 @@ final class CanonicalDocumentCodec {
         return canonical.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    DocumentContent update(
-            DocumentContent current, DocumentContent candidate, Instant changedAt) {
+    DocumentContent update(DocumentContent current, DocumentContent candidate, Instant changedAt) {
         Objects.requireNonNull(current, "current document must not be null");
         Objects.requireNonNull(candidate, "candidate document must not be null");
         Objects.requireNonNull(changedAt, "document change time must not be null");
@@ -143,12 +129,12 @@ final class CanonicalDocumentCodec {
         if (!before.createdAt().equals(requested.createdAt())) {
             throw new IllegalArgumentException("document created_at is immutable after creation");
         }
-        if (before.publishedAt().isPresent()
-                && !before.publishedAt().equals(requested.publishedAt())) {
+        if (before.publishedAt().isPresent() && !before.publishedAt().equals(requested.publishedAt())) {
             throw new IllegalArgumentException("document published_at cannot be changed or erased");
         }
 
-        Instant comparableUpdatedAt = requested.publishedAt()
+        Instant comparableUpdatedAt = requested
+                .publishedAt()
                 .filter(publishedAt -> publishedAt.isAfter(before.updatedAt()))
                 .orElse(before.updatedAt());
         DocumentContent comparable = new DocumentContent(
@@ -165,8 +151,7 @@ final class CanonicalDocumentCodec {
             return current;
         }
         if (!changedAt.isAfter(before.updatedAt())) {
-            throw new IllegalArgumentException(
-                    "document updated_at must advance when serialized content changes");
+            throw new IllegalArgumentException("document updated_at must advance when serialized content changes");
         }
         return new DocumentContent(
                 new DocumentMetadata(
@@ -198,8 +183,7 @@ final class CanonicalDocumentCodec {
     private static String requiredText(JsonNode root, String field) {
         JsonNode value = root.get(field);
         if (value == null || !value.isString()) {
-            throw new IllegalArgumentException(
-                    "document frontmatter field " + field + " must be a string");
+            throw new IllegalArgumentException("document frontmatter field " + field + " must be a string");
         }
         return value.stringValue();
     }
@@ -214,8 +198,7 @@ final class CanonicalDocumentCodec {
             return Optional.empty();
         }
         if (!value.isString()) {
-            throw new IllegalArgumentException(
-                    "document frontmatter field " + field + " must be a string");
+            throw new IllegalArgumentException("document frontmatter field " + field + " must be a string");
         }
         return Optional.of(parseUtcInstant(value.stringValue(), field));
     }
@@ -230,9 +213,7 @@ final class CanonicalDocumentCodec {
             return parsed.toInstant();
         } catch (DateTimeException exception) {
             throw new IllegalArgumentException(
-                    "document frontmatter field " + field + " must be an RFC 3339 UTC instant: "
-                            + value,
-                    exception);
+                    "document frontmatter field " + field + " must be an RFC 3339 UTC instant: " + value, exception);
         }
     }
 
@@ -243,18 +224,13 @@ final class CanonicalDocumentCodec {
                 Token token = scanner.peekToken();
                 Token.ID id = token.getTokenId();
                 if (id == Token.ID.Alias || id == Token.ID.Anchor) {
-                    throw new IllegalArgumentException(
-                            "document frontmatter must not contain YAML aliases or anchors");
+                    throw new IllegalArgumentException("document frontmatter must not contain YAML aliases or anchors");
                 }
-                if (id == Token.ID.Directive
-                        || id == Token.ID.DocumentStart
-                        || id == Token.ID.DocumentEnd) {
-                    throw new IllegalArgumentException(
-                            "document frontmatter must contain exactly one YAML document");
+                if (id == Token.ID.Directive || id == Token.ID.DocumentStart || id == Token.ID.DocumentEnd) {
+                    throw new IllegalArgumentException("document frontmatter must contain exactly one YAML document");
                 }
                 if (token instanceof TagToken tag && isCustomTag(tag.getValue())) {
-                    throw new IllegalArgumentException(
-                            "document frontmatter must not contain custom YAML tags");
+                    throw new IllegalArgumentException("document frontmatter must not contain custom YAML tags");
                 }
                 if (id == Token.ID.StreamEnd) {
                     return;
@@ -270,8 +246,7 @@ final class CanonicalDocumentCodec {
 
     private static boolean isCustomTag(TagTuple tag) {
         return !("!!".equals(tag.getHandle())
-                || (tag.getHandle() == null
-                        && tag.getSuffix().startsWith("tag:yaml.org,2002:")));
+                || (tag.getHandle() == null && tag.getSuffix().startsWith("tag:yaml.org,2002:")));
     }
 
     private static String decodeUtf8(byte[] bytes) {
@@ -289,9 +264,10 @@ final class CanonicalDocumentCodec {
 
     private static Sections splitSections(String source) {
         Line opening = lineAt(source, 0);
-        if (opening == null || !opening.content().equals("---") || opening.ending().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "document must begin with a YAML frontmatter delimiter");
+        if (opening == null
+                || !opening.content().equals("---")
+                || opening.ending().isEmpty()) {
+            throw new IllegalArgumentException("document must begin with a YAML frontmatter delimiter");
         }
 
         int cursor = opening.nextOffset();
@@ -308,8 +284,7 @@ final class CanonicalDocumentCodec {
             cursor = line.nextOffset();
         }
         if (closing == null || closing.ending().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "document frontmatter must end with a delimiter line");
+            throw new IllegalArgumentException("document frontmatter must end with a delimiter line");
         }
 
         String frontmatter = source.substring(opening.nextOffset(), closing.startOffset());
@@ -336,15 +311,9 @@ final class CanonicalDocumentCodec {
         for (int index = start; index < source.length(); index++) {
             char current = source.charAt(index);
             if (current == '\n') {
-                int contentEnd = index > start && source.charAt(index - 1) == '\r'
-                        ? index - 1
-                        : index;
+                int contentEnd = index > start && source.charAt(index - 1) == '\r' ? index - 1 : index;
                 String ending = contentEnd == index ? "\n" : "\r\n";
-                return new Line(
-                        start,
-                        source.substring(start, contentEnd),
-                        ending,
-                        index + 1);
+                return new Line(start, source.substring(start, contentEnd), ending, index + 1);
             }
             if (current == '\r') {
                 return new Line(start, source.substring(start, index), "\r", index + 1);
@@ -383,9 +352,7 @@ final class CanonicalDocumentCodec {
                 default -> {
                     // YAML 1.1 readers treat U+2028 and U+2029 as line breaks and fold them
                     // inside quoted scalars, so they must never appear raw.
-                    if (Character.isISOControl(codePoint)
-                            || codePoint == '\u2028'
-                            || codePoint == '\u2029') {
+                    if (Character.isISOControl(codePoint) || codePoint == '\u2028' || codePoint == '\u2029') {
                         quoted.append(String.format("\\u%04x", codePoint));
                     } else {
                         quoted.appendCodePoint(codePoint);
@@ -396,9 +363,7 @@ final class CanonicalDocumentCodec {
         return quoted.append('"').toString();
     }
 
-    private record Sections(String frontmatter, String body) {
-    }
+    private record Sections(String frontmatter, String body) {}
 
-    private record Line(int startOffset, String content, String ending, int nextOffset) {
-    }
+    private record Line(int startOffset, String content, String ending, int nextOffset) {}
 }

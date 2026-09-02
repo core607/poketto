@@ -11,7 +11,8 @@ class ContentPropertiesTests {
 
     @Test
     void requiresAnExplicitAbsoluteDataDirectory() {
-        Path absolute = Path.of(System.getProperty("java.io.tmpdir"), "poketto-data").toAbsolutePath();
+        Path absolute =
+                Path.of(System.getProperty("java.io.tmpdir"), "poketto-data").toAbsolutePath();
 
         assertThat(new ContentProperties(absolute).dataDir()).isEqualTo(absolute.normalize());
         assertThatIllegalArgumentException()
@@ -24,31 +25,19 @@ class ContentPropertiesTests {
 
     @Test
     void repositoryConfigurationFailsClosedAndRedactsSecrets() {
-        RepositoryProperties missing =
-                new RepositoryProperties(null, null, null, null, null);
-        RepositoryProperties configured = new RepositoryProperties(
-                "https://git.example.invalid/private.git",
-                "operator",
-                "secret-token",
-                4,
-                30);
+        RepositoryProperties missing = new RepositoryProperties(null, null, null, null, null);
+        RepositoryProperties configured =
+                new RepositoryProperties("https://git.example.invalid/private.git", "operator", "secret-token", 4, 30);
 
-        assertThatThrownBy(missing::requiredBinding)
-                .hasMessageContaining("requires poketto.repository.remote-uri");
-        assertThat(configured.requiredBinding().toString())
-                .isEqualTo("RepositoryBinding[redacted]");
-        assertThat(configured.toString())
-                .doesNotContain("git.example.invalid", "operator", "secret-token");
+        assertThatThrownBy(missing::requiredBinding).hasMessageContaining("requires poketto.repository.remote-uri");
+        assertThat(configured.requiredBinding().toString()).isEqualTo("RepositoryBinding[redacted]");
+        assertThat(configured.toString()).doesNotContain("git.example.invalid", "operator", "secret-token");
     }
 
     @Test
     void rejectsCredentialsInTheAddressAndFileTransportOutsideTests() {
         RepositoryProperties embedded = new RepositoryProperties(
-                "https://user:token@git.example.invalid/private.git",
-                "operator",
-                "secret-token",
-                4,
-                30);
+                "https://user:token@git.example.invalid/private.git", "operator", "secret-token", 4, 30);
         RepositoryProperties file = new RepositoryProperties(
                 Path.of(System.getProperty("java.io.tmpdir"), "remote.git")
                         .toUri()
@@ -65,11 +54,7 @@ class ContentPropertiesTests {
         assertThatThrownBy(file::requiredBinding).hasMessageContaining("HTTPS URI");
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new RepositoryProperties(
-                        "https://git.example.invalid/private.git",
-                        "operator",
-                        "secret-token",
-                        4,
-                        0))
+                        "https://git.example.invalid/private.git", "operator", "secret-token", 4, 0))
                 .withMessageContaining("timeout-seconds must be positive");
     }
 }

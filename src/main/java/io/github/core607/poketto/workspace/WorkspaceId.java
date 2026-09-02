@@ -32,9 +32,7 @@ public record WorkspaceId(UUID value) {
     }
 
     private static IllegalArgumentException invalid(String candidate, Exception cause) {
-        return new IllegalArgumentException(
-                "workspace id must be a canonical lowercase UUID: " + candidate,
-                cause);
+        return new IllegalArgumentException("workspace id must be a canonical lowercase UUID: " + candidate, cause);
     }
 
     @Override

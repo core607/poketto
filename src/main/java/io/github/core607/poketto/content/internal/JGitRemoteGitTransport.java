@@ -54,18 +54,10 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
 
     @Override
     public PushStatus pushMain(
-            Repository repository,
-            RepositoryBinding binding,
-            ObjectId expectedCommit,
-            ObjectId candidateCommit) {
+            Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit) {
         try {
-            RemoteRefUpdate update = new RemoteRefUpdate(
-                    repository,
-                    candidateCommit.name(),
-                    MAIN,
-                    false,
-                    null,
-                    expectedCommit);
+            RemoteRefUpdate update =
+                    new RemoteRefUpdate(repository, candidateCommit.name(), MAIN, false, null, expectedCommit);
             try (Transport transport = Transport.open(repository, binding.location())) {
                 transport.setCredentialsProvider(binding.credentials());
                 transport.setTimeout(timeoutSeconds);

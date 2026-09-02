@@ -25,8 +25,7 @@ public final class WorkspacePaths {
                 .resolve("content")
                 .normalize();
         if (!resolved.startsWith(workspacesDirectory)) {
-            throw new IllegalStateException(
-                    "workspace content path escaped the configured data directory");
+            throw new IllegalStateException("workspace content path escaped the configured data directory");
         }
         return resolved;
     }

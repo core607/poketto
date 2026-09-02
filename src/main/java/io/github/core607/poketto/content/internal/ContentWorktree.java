@@ -32,8 +32,7 @@ final class ContentWorktree {
     private static final String INTENT_JOURNAL = "poketto-write-intent";
     private static final String MAIN_TREE = Constants.R_HEADS + "main^{tree}";
 
-    private ContentWorktree() {
-    }
+    private ContentWorktree() {}
 
     /**
      * Records the paths a write is about to replace. Recovery resets exactly these paths, so a
@@ -54,8 +53,7 @@ final class ContentWorktree {
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.SYNC);
         } catch (IOException exception) {
-            throw new ContentRepositoryException(
-                    "write intent journal cannot be recorded", exception);
+            throw new ContentRepositoryException("write intent journal cannot be recorded", exception);
         }
     }
 
@@ -79,8 +77,7 @@ final class ContentWorktree {
         try {
             Files.deleteIfExists(intentJournal(repository));
         } catch (IOException exception) {
-            throw new ContentRepositoryException(
-                    "write intent journal cannot be removed", exception);
+            throw new ContentRepositoryException("write intent journal cannot be removed", exception);
         }
     }
 
@@ -91,8 +88,7 @@ final class ContentWorktree {
         try {
             stage(repository, upserts, deletions);
         } catch (IOException exception) {
-            throw new ContentRepositoryException(
-                    "repository index and worktree cannot be updated", exception);
+            throw new ContentRepositoryException("repository index and worktree cannot be updated", exception);
         }
     }
 
@@ -102,30 +98,26 @@ final class ContentWorktree {
         try {
             ObjectId tree = repository.resolve(MAIN_TREE);
             for (String path : paths) {
-                Optional<byte[]> committed =
-                        tree == null ? Optional.empty() : blobAt(repository, tree, path);
-                committed.ifPresentOrElse(
-                        bytes -> upserts.put(path, bytes), () -> deletions.add(path));
+                Optional<byte[]> committed = tree == null ? Optional.empty() : blobAt(repository, tree, path);
+                committed.ifPresentOrElse(bytes -> upserts.put(path, bytes), () -> deletions.add(path));
             }
             stage(repository, upserts, deletions);
         } catch (IOException exception) {
-            throw new ContentRepositoryException(
-                    "journaled paths cannot be restored from main", exception);
+            throw new ContentRepositoryException("journaled paths cannot be restored from main", exception);
         }
     }
 
-    private static Optional<byte[]> blobAt(Repository repository, ObjectId tree, String path)
-            throws IOException {
+    private static Optional<byte[]> blobAt(Repository repository, ObjectId tree, String path) throws IOException {
         try (TreeWalk walk = TreeWalk.forPath(repository, path, tree)) {
             if (walk == null || !FileMode.REGULAR_FILE.equals(walk.getFileMode(0))) {
                 return Optional.empty();
             }
-            return Optional.of(repository.open(walk.getObjectId(0), Constants.OBJ_BLOB).getBytes());
+            return Optional.of(
+                    repository.open(walk.getObjectId(0), Constants.OBJ_BLOB).getBytes());
         }
     }
 
-    private static void stage(
-            Repository repository, Map<String, byte[]> upserts, Set<String> deletions)
+    private static void stage(Repository repository, Map<String, byte[]> upserts, Set<String> deletions)
             throws IOException {
         Map<String, ObjectId> blobs = new LinkedHashMap<>();
         try (ObjectInserter inserter = repository.newObjectInserter()) {
@@ -137,9 +129,7 @@ final class ContentWorktree {
 
         Map<String, Instant> writtenAt = new LinkedHashMap<>();
         for (Map.Entry<String, byte[]> upsert : upserts.entrySet()) {
-            writtenAt.put(
-                    upsert.getKey(),
-                    writeWorkTreeFile(repository, upsert.getKey(), upsert.getValue()));
+            writtenAt.put(upsert.getKey(), writeWorkTreeFile(repository, upsert.getKey(), upsert.getValue()));
         }
         for (String path : deletions) {
             deleteWorkTreeFile(repository, path);
@@ -168,8 +158,7 @@ final class ContentWorktree {
         }
     }
 
-    private static Instant writeWorkTreeFile(Repository repository, String path, byte[] bytes)
-            throws IOException {
+    private static Instant writeWorkTreeFile(Repository repository, String path, byte[] bytes) throws IOException {
         Path file = repository.getWorkTree().toPath().resolve(path);
         Files.createDirectories(file.getParent());
         Files.write(file, bytes);
@@ -206,8 +195,7 @@ final class ContentWorktree {
             return Optional.empty();
         }
         try {
-            Set<String> paths =
-                    new LinkedHashSet<>(Files.readAllLines(journal, StandardCharsets.UTF_8));
+            Set<String> paths = new LinkedHashSet<>(Files.readAllLines(journal, StandardCharsets.UTF_8));
             paths.removeIf(String::isBlank);
             return Optional.of(paths);
         } catch (IOException exception) {

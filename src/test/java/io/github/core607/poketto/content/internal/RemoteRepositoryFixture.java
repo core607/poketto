@@ -56,25 +56,19 @@ final class RemoteRepositoryFixture {
         this(dataRoot, remoteRoot, transport, 32);
     }
 
-    RemoteRepositoryFixture(
-            Path dataRoot,
-            Path remoteRoot,
-            RemoteGitTransport transport,
-            int maxCachedWorkspaces) {
+    RemoteRepositoryFixture(Path dataRoot, Path remoteRoot, RemoteGitTransport transport, int maxCachedWorkspaces) {
         remotes = remoteRoot.toAbsolutePath();
         paths = new WorkspacePaths(dataRoot.toAbsolutePath());
         bindings = workspaceId -> {
             try {
                 Path remote = provision(workspaceId);
                 return new RepositoryBinding(
-                        new URIish(remote.toUri().toString()),
-                        new UsernamePasswordCredentialsProvider("test", "test"));
+                        new URIish(remote.toUri().toString()), new UsernamePasswordCredentialsProvider("test", "test"));
             } catch (Exception exception) {
                 throw new IllegalStateException("test remote cannot be bound", exception);
             }
         };
-        authority = new JGitRemoteRepositoryAuthority(
-                paths, bindings, transport, maxCachedWorkspaces);
+        authority = new JGitRemoteRepositoryAuthority(paths, bindings, transport, maxCachedWorkspaces);
         store = new JGitContentRepositoryStore(authority, codec);
     }
 
@@ -158,10 +152,7 @@ final class RemoteRepositoryFixture {
             ObjectId treeId = cache.writeTree(inserter);
             ObjectId before = repository.resolve(Constants.R_HEADS + "main");
             PersonIdent identity = new PersonIdent(
-                    "Repository Owner",
-                    "owner@invalid",
-                    Instant.parse("2026-09-01T09:00:00Z"),
-                    ZoneOffset.UTC);
+                    "Repository Owner", "owner@invalid", Instant.parse("2026-09-01T09:00:00Z"), ZoneOffset.UTC);
             CommitBuilder commit = new CommitBuilder();
             commit.setTreeId(treeId);
             if (before != null) {
@@ -177,10 +168,7 @@ final class RemoteRepositoryFixture {
             update.setExpectedOldObjectId(before == null ? ObjectId.zeroId() : before);
             update.setNewObjectId(commitId);
             RefUpdate.Result result = update.update();
-            assertThat(result).isIn(
-                    RefUpdate.Result.NEW,
-                    RefUpdate.Result.FAST_FORWARD,
-                    RefUpdate.Result.FORCED);
+            assertThat(result).isIn(RefUpdate.Result.NEW, RefUpdate.Result.FAST_FORWARD, RefUpdate.Result.FORCED);
             return commitId;
         }
     }

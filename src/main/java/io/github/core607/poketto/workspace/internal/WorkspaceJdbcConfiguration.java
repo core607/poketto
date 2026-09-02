@@ -10,15 +10,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(
-        name = "poketto.workspace.catalog.enabled",
-        havingValue = "true",
-        matchIfMissing = true)
+@ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class WorkspaceJdbcConfiguration {
 
     @Bean
-    JdbcWorkspaceCatalog workspaceCatalog(
-            JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
+    JdbcWorkspaceCatalog workspaceCatalog(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         return new JdbcWorkspaceCatalog(jdbc, new TransactionTemplate(transactionManager));
     }
 

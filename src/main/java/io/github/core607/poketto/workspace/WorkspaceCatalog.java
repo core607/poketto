@@ -11,5 +11,4 @@ public interface WorkspaceCatalog {
     Workspace defaultWorkspace();
 
     Optional<Workspace> findById(WorkspaceId workspaceId);
-
 }

@@ -15,8 +15,7 @@ final class DocumentPathRules {
             Pattern.compile("(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?");
     private static final Pattern WINDOWS_INVALID_CHARACTER = Pattern.compile("[<>:\"|?*\\x00-\\x1f\\x7f]");
 
-    private DocumentPathRules() {
-    }
+    private DocumentPathRules() {}
 
     static String validate(String candidate) {
         Objects.requireNonNull(candidate, "document path must not be null");
@@ -37,18 +36,15 @@ final class DocumentPathRules {
                     || segment.endsWith(".")
                     || segment.endsWith(" ")) {
                 throw new IllegalArgumentException(
-                        "managed document path contains a name Windows cannot store: "
-                                + candidate);
+                        "managed document path contains a name Windows cannot store: " + candidate);
             }
         }
         String fileName = segments[segments.length - 1];
         if (!fileName.endsWith(".md")) {
-            throw new IllegalArgumentException(
-                    "managed document path must end with lowercase .md: " + candidate);
+            throw new IllegalArgumentException("managed document path must end with lowercase .md: " + candidate);
         }
         if (fileName.length() == ".md".length()) {
-            throw new IllegalArgumentException(
-                    "managed document file name must not be empty before .md: " + candidate);
+            throw new IllegalArgumentException("managed document file name must not be empty before .md: " + candidate);
         }
         return candidate;
     }

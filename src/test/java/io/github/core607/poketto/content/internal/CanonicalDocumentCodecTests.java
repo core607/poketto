@@ -52,8 +52,7 @@ class CanonicalDocumentCodecTests {
         assertThat(canonical).doesNotContain("\r");
         DocumentContent parsed = codec.parse(codec.serialize(document));
         assertThat(parsed.body()).isEqualTo("Line one\n中文");
-        assertThat(parsed.metadata().publishedAt())
-                .contains(Instant.parse("2026-08-27T09:00:00Z"));
+        assertThat(parsed.metadata().publishedAt()).contains(Instant.parse("2026-08-27T09:00:00Z"));
     }
 
     @Test
@@ -81,20 +80,16 @@ class CanonicalDocumentCodecTests {
 
     @Test
     void rejectsUnsupportedYamlFeaturesAndSchemaViolations() {
-        assertInvalid(validSource().replace("title: Example", "title: Example\ntitle: Again"),
-                "Duplicate");
-        assertInvalid(validSource().replace("tags:\n  - example", "tags: &items [example]"),
-                "aliases or anchors");
-        assertInvalid(validSource().replace("title: Example", "title: !private Example"),
-                "custom YAML tags");
-        assertInvalid(validSource().replace("title: Example", "title: Example\n...\nextra: value"),
+        assertInvalid(validSource().replace("title: Example", "title: Example\ntitle: Again"), "Duplicate");
+        assertInvalid(validSource().replace("tags:\n  - example", "tags: &items [example]"), "aliases or anchors");
+        assertInvalid(validSource().replace("title: Example", "title: !private Example"), "custom YAML tags");
+        assertInvalid(
+                validSource().replace("title: Example", "title: Example\n...\nextra: value"),
                 "exactly one YAML document");
-        assertInvalid(validSource().replace("title: Example", "title: Example\nsummary: unknown"),
-                "unknown fields");
-        assertInvalid(validSource().replace("tags:\n  - example", "tags: example"),
-                "YAML sequence");
-        assertInvalid(validSource().replace("created_at: 2026-08-26T09:00:00Z",
-                        "created_at: 2026-08-26T10:00:00+01:00"),
+        assertInvalid(validSource().replace("title: Example", "title: Example\nsummary: unknown"), "unknown fields");
+        assertInvalid(validSource().replace("tags:\n  - example", "tags: example"), "YAML sequence");
+        assertInvalid(
+                validSource().replace("created_at: 2026-08-26T09:00:00Z", "created_at: 2026-08-26T10:00:00+01:00"),
                 "UTC offset");
     }
 
@@ -141,10 +136,7 @@ class CanonicalDocumentCodecTests {
                         current.metadata().publishedAt()),
                 current.body());
 
-        assertThat(codec.update(
-                        current,
-                        unchangedWithInventedTimestamp,
-                        Instant.parse("2026-08-27T00:00:00Z")))
+        assertThat(codec.update(current, unchangedWithInventedTimestamp, Instant.parse("2026-08-27T00:00:00Z")))
                 .isSameAs(current);
 
         DocumentContent changed = new DocumentContent(
@@ -157,13 +149,11 @@ class CanonicalDocumentCodecTests {
                         Instant.parse("2026-08-27T00:00:00Z"),
                         Optional.of(Instant.parse("2026-08-27T00:00:00Z"))),
                 current.body());
-        DocumentContent updated = codec.update(
-                current, changed, Instant.parse("2026-08-27T00:00:01Z"));
+        DocumentContent updated = codec.update(current, changed, Instant.parse("2026-08-27T00:00:01Z"));
 
         assertThat(updated.metadata().createdAt()).isEqualTo(current.metadata().createdAt());
         assertThat(updated.metadata().updatedAt()).isEqualTo(Instant.parse("2026-08-27T00:00:01Z"));
-        assertThat(updated.metadata().publishedAt())
-                .contains(Instant.parse("2026-08-27T00:00:00Z"));
+        assertThat(updated.metadata().publishedAt()).contains(Instant.parse("2026-08-27T00:00:00Z"));
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> codec.update(
                         updated,

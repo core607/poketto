@@ -19,15 +19,16 @@ class WritePrincipalTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-        "alice@example.com",
-        "Alice Smith",
-        "-leading-hyphen",
-        "has/slash",
-        "has:colon",
-        "has\nnewline",
-        ""
-    })
+    @ValueSource(
+            strings = {
+                "alice@example.com",
+                "Alice Smith",
+                "-leading-hyphen",
+                "has/slash",
+                "has:colon",
+                "has\nnewline",
+                ""
+            })
     void refusesAnIdentifierThatCouldCarryPersonalDataOrBreakTheTrailer(String identifier) {
         assertThatThrownBy(() -> new WritePrincipal(PrincipalType.ACCOUNT, identifier))
                 .isInstanceOf(IllegalArgumentException.class)
