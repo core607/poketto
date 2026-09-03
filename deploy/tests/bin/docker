@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Fake docker for the deployment script tests. State lives below $FAKE_STATE:
+#   images      one image reference per line that "exists" locally
+#   revisions   "<reference> <revision>" lines answering the revision label
+#   health      health statuses returned by successive container inspections; the last sticks
+#   pull-fails  present when every pull must fail
+# Every invocation is appended to $FAKE_STATE/docker.log.
+set -u
+mkdir -p "$FAKE_STATE"
+printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
+
+present() { grep -qxF -- "$1" "$FAKE_STATE/images" 2>/dev/null; }
+revision_of() { grep -- "^$1 " "$FAKE_STATE/revisions" 2>/dev/null | head -1 | cut -d ' ' -f 2-; }
+
+case "${1:-}" in
+    info) exit 0 ;;
+    image)
+        [ "${2:-}" = inspect ] || exit 1
+        shift 2
+        format=""
+        if [ "${1:-}" = --format ]; then format="$2"; shift 2; fi
+        present "$1" || exit 1
+        [ -n "$format" ] && revision_of "$1"
+        exit 0 ;;
+    pull)
+        [ -f "$FAKE_STATE/pull-fails" ] && exit 1
+        echo "$2" >> "$FAKE_STATE/images"
+        [ -f "$FAKE_STATE/pull-revision" ] && echo "$2 $(cat "$FAKE_STATE/pull-revision")" >> "$FAKE_STATE/revisions"
+        exit 0 ;;
+    tag)
+        echo "$3" >> "$FAKE_STATE/images"
+        echo "$3 $(revision_of "$2")" >> "$FAKE_STATE/revisions"
+        exit 0 ;;
+    save)
+        [ -f "$FAKE_STATE/save-fails" ] && exit 1
+        echo "fake image archive for $2"
+        exit 0 ;;
+    load) cat > /dev/null; exit 0 ;;
+    inspect)
+        status="$(head -1 "$FAKE_STATE/health" 2>/dev/null || echo healthy)"
+        if [ "$(wc -l < "$FAKE_STATE/health" 2>/dev/null || echo 0)" -gt 1 ]; then
+            tail -n +2 "$FAKE_STATE/health" > "$FAKE_STATE/health.next" && mv "$FAKE_STATE/health.next" "$FAKE_STATE/health"
+        fi
+        echo "$status"
+        exit 0 ;;
+    compose)
+        shift
+        while [ "${1:-}" = --project-directory ] || [ "${1:-}" = -f ]; do shift 2; done
+        case "${1:-}" in
+            version) exit 0 ;;
+            config) exit "${FAKE_COMPOSE_CONFIG_EXIT:-0}" ;;
+            up) echo "$*" >> "$FAKE_STATE/up.log"; exit 0 ;;
+            ps) if [ "${2:-}" = --quiet ]; then echo fake-app-container; else echo "NAME STATUS"; fi; exit 0 ;;
+            logs) echo "fake app log line"; exit 0 ;;
+            down|rm) echo "fake docker: destructive compose command $1" >&2; exit 99 ;;
+            *) exit 0 ;;
+        esac ;;
+    *) exit 0 ;;
+esac

@@ -9,9 +9,11 @@ on:
 permissions:
   contents: read
 
+# Pull-request runs may be superseded; a main run carries publication and deployment, which
+# must finish once started.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
@@ -46,3 +48,162 @@ jobs:
             build/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Only a verified main commit of the canonical repository becomes an image. This is the only
+  # job with package-write authority.
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.summary.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Describe image
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=raw,value=main
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: POKETTO_REVISION=${{ github.sha }}
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record publication
+        id: summary
+        run: |
+          image="ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          db_image="$(grep '^POKETTO_DB_IMAGE=' deploy/.env.example | cut -d = -f 2-)"
+          {
+            echo "## Published image"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Source commit | \`${{ github.sha }}\` |"
+            echo "| Application image | \`$image\` |"
+            echo "| Database image | \`$db_image\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Production deployment runs only when the repository variable POKETTO_DEPLOY_ENABLED is
+  # "true" and the production environment supplies the target. Consecutive main pushes queue
+  # behind one another; an in-progress deployment is never cancelled. The content-repository
+  # credential travels to the host's .env over the entrance's standard input, never as an
+  # argument.
+  deploy:
+    needs: publish
+    if: vars.POKETTO_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Check deployment configuration
+        env:
+          DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
+          DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
+          DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
+          SSH_PRIVATE_KEY: ${{ secrets.POKETTO_DEPLOY_SSH_KEY }}
+          SSH_HOST_KEY: ${{ secrets.POKETTO_DEPLOY_HOST_KEY }}
+        run: |
+          missing=()
+          [ -n "$DEPLOY_TARGET" ] || missing+=("secret POKETTO_DEPLOY_TARGET (user@host)")
+          [ -n "$DEPLOY_ROOT" ] || missing+=("variable POKETTO_DEPLOY_ROOT (absolute deployment root)")
+          [ -n "$SSH_PRIVATE_KEY" ] || missing+=("secret POKETTO_DEPLOY_SSH_KEY")
+          [ -n "$SSH_HOST_KEY" ] || missing+=("secret POKETTO_DEPLOY_HOST_KEY (known_hosts line)")
+          case "${DEPLOY_MODE:-pull}" in pull|transfer) ;; *) missing+=("variable POKETTO_DEPLOY_MODE must be pull or transfer") ;; esac
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "deployment is enabled but not configured:"
+            printf -- '- %s\n' "${missing[@]}"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Log in to GHCR
+        if: vars.POKETTO_DEPLOY_MODE == 'transfer'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy
+        env:
+          DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
+          DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
+          DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
+          IMAGE: ${{ needs.publish.outputs.image }}
+          REVISION: ${{ github.sha }}
+          REPOSITORY_PASSWORD: ${{ secrets.POKETTO_REPOSITORY_PASSWORD }}
+          POKETTO_SSH: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes
+        run: |
+          settings=""
+          [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
+          if [ "${DEPLOY_MODE:-pull}" = transfer ]; then
+            printf '%s\n' "$settings" | bash deploy/transfer.sh \
+              --target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" \
+              --image "$IMAGE" --revision "$REVISION" --sync --set-stdin
+          else
+            printf '%s\n' "$settings" | $POKETTO_SSH "$DEPLOY_TARGET" \
+              "'$DEPLOY_ROOT/deploy.sh' --set-stdin --app-image '$IMAGE' --app-revision '$REVISION'"
+          fi
+
+      - name: Record deployment
+        if: always()
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+        run: |
+          {
+            echo "## Production deployment"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Source commit | \`${{ github.sha }}\` |"
+            echo "| Application image | \`$IMAGE\` |"
+            echo "| Mode | \`${{ vars.POKETTO_DEPLOY_MODE || 'pull' }}\` |"
+            echo "| Result | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
