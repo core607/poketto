@@ -38,3 +38,30 @@ setup_root
 run_deploy --app-image "$DIGEST_IMAGE"
 assert_status 1
 assert_contains "$ERR" "given together"
+
+# Values are literal data: shell metacharacters survive unchanged and command substitutions never
+# execute. The exported values take precedence over Compose's disabled automatic .env parser.
+setup_root
+have_image "$DIGEST_IMAGE"
+set +e
+OUT="$(printf '%s\n' \
+    'POKETTO_REPOSITORY_REMOTE_URI=https://git.example.invalid/content.git?token=x&expiry=y' \
+    'POKETTO_REPOSITORY_PASSWORD=$(touch env-was-executed)' \
+    | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+[ ! -e "$PWD/env-was-executed" ] || { echo "an .env value executed as shell code"; exit 1; }
+assert_contains "$(cat "$FAKE_STATE/repository-uri")" "?token=x&expiry=y"
+assert_contains "$(cat "$FAKE_STATE/repository-password")" '$(touch env-was-executed)'
+grep -qFx 'POKETTO_REPOSITORY_PASSWORD=$(touch env-was-executed)' "$ROOT/.env" \
+    || { echo "the literal password was not recorded"; exit 1; }
+
+# Unknown keys cannot alter the deployment process environment.
+setup_root
+printf '%s\n' 'PATH=/tmp/untrusted' >> "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "unsupported configuration key"
+assert_contains "$ERR" "PATH"

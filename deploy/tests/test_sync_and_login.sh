@@ -7,15 +7,11 @@ have_image "$DIGEST_IMAGE"
 mkdir -p "$ROOT/.incoming"
 { cat "$DEPLOY_DIR/compose.yaml"; echo "# synced"; } > "$ROOT/.incoming/compose.yaml"
 { cat "$DEPLOY_DIR/deploy.sh"; echo "# synced"; } > "$ROOT/.incoming/deploy.sh"
-sleep 30 &
-holder=$!
-mkdir "$ROOT/.deploy.lock"
-echo "$holder" > "$ROOT/.deploy.lock/pid"
+hold_deploy_lock
 run_deploy --sync-from "$ROOT/.incoming"
-kill "$holder"
 assert_status 75
 grep -q "# synced" "$ROOT/compose.yaml" && { echo "compose.yaml was replaced while the lock was held"; exit 1; }
-rm -rf "$ROOT/.deploy.lock"
+release_deploy_lock
 run_deploy --sync-from "$ROOT/.incoming"
 assert_status 0
 grep -q "# synced" "$ROOT/compose.yaml" || { echo "compose.yaml was not replaced"; exit 1; }

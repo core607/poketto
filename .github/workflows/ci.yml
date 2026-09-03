@@ -145,6 +145,7 @@ jobs:
           DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
           SSH_PRIVATE_KEY: ${{ secrets.POKETTO_DEPLOY_SSH_KEY }}
           SSH_HOST_KEY: ${{ secrets.POKETTO_DEPLOY_HOST_KEY }}
+          SSH_DIR: ${{ runner.temp }}/poketto-ssh
         run: |
           missing=()
           [ -n "$DEPLOY_TARGET" ] || missing+=("secret POKETTO_DEPLOY_TARGET (user@host)")
@@ -157,11 +158,11 @@ jobs:
             printf -- '- %s\n' "${missing[@]}"
             exit 1
           fi
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          mkdir -p "$SSH_DIR"
+          chmod 700 "$SSH_DIR"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$SSH_DIR/deploy_key"
+          printf '%s\n' "$SSH_HOST_KEY" > "$SSH_DIR/known_hosts"
+          chmod 600 "$SSH_DIR/deploy_key" "$SSH_DIR/known_hosts"
 
       - name: Log in to GHCR
         if: vars.POKETTO_DEPLOY_MODE == 'transfer'
@@ -181,7 +182,7 @@ jobs:
           REPOSITORY_PASSWORD: ${{ secrets.POKETTO_REPOSITORY_PASSWORD }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POKETTO_SSH: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes
+          POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"

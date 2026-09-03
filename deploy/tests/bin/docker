@@ -8,6 +8,10 @@
 set -u
 mkdir -p "$FAKE_STATE"
 printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
+if [ "${POKETTO_CAPTURE_ENV:-0}" = 1 ]; then
+    printf '%s' "${POKETTO_REPOSITORY_REMOTE_URI:-}" > "$FAKE_STATE/repository-uri"
+    printf '%s' "${POKETTO_REPOSITORY_PASSWORD:-}" > "$FAKE_STATE/repository-password"
+fi
 
 present() { grep -qxF -- "$1" "$FAKE_STATE/images" 2>/dev/null; }
 revision_of() { grep -- "^$1 " "$FAKE_STATE/revisions" 2>/dev/null | head -1 | cut -d ' ' -f 2-; }
@@ -46,7 +50,7 @@ case "${1:-}" in
         exit 0 ;;
     compose)
         shift
-        while [ "${1:-}" = --project-directory ] || [ "${1:-}" = -f ]; do shift 2; done
+        while [ "${1:-}" = --env-file ] || [ "${1:-}" = --project-directory ] || [ "${1:-}" = -f ]; do shift 2; done
         case "${1:-}" in
             version) exit 0 ;;
             config) exit "${FAKE_COMPOSE_CONFIG_EXIT:-0}" ;;

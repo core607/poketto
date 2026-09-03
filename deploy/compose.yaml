@@ -1,7 +1,8 @@
 # Production Compose stack for one host. deploy.sh verifies both images before `up`: the database
 # reference must carry a registry digest, and the application image must carry the revision label
 # of the commit being deployed. Every value comes from the .env file beside this file; nothing
-# host-specific lives here.
+# host-specific lives here. deploy.sh parses the file as literal data, exports the values, and
+# disables Compose's automatic .env parser.
 name: poketto
 
 services:

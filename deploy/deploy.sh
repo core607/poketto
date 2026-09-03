@@ -28,6 +28,16 @@ SYNC_FROM=""
 REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
 LOGGED_IN_REGISTRY=""
+LOCK_KIND=""
+
+CONFIG_KEYS=(
+    POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE
+    POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
+    POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME POKETTO_REPOSITORY_PASSWORD
+    POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST
+    POKETTO_HTTP_BIND POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
+    POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
+)
 
 usage() {
     sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -57,36 +67,46 @@ fi
 
 ENV_FILE="$ROOT/.env"
 COMPOSE_FILE="$ROOT/compose.yaml"
-LOCK_DIR="$ROOT/.deploy.lock"
+LOCK_FILE="$ROOT/.deploy.lock"
+LOCK_DIR="$ROOT/.deploy.lock.d"
 
 compose() {
-    "$DOCKER" compose --project-directory "$ROOT" -f "$COMPOSE_FILE" "$@"
+    "$DOCKER" compose --env-file /dev/null --project-directory "$ROOT" -f "$COMPOSE_FILE" "$@"
 }
 
 cleanup() {
     [ -z "$LOGGED_IN_REGISTRY" ] || "$DOCKER" logout "$LOGGED_IN_REGISTRY" >/dev/null 2>&1 || true
-    rm -rf "$LOCK_DIR"
+    [ "$LOCK_KIND" != directory ] || rm -rf "$LOCK_DIR"
 }
 
 # ---- lock ------------------------------------------------------------------------------------
 
 acquire_lock() {
-    local attempt holder
-    for attempt in 1 2; do
-        if mkdir "$LOCK_DIR" 2>/dev/null; then
-            echo "$$" > "$LOCK_DIR/pid"
-            trap cleanup EXIT
-            return 0
-        fi
-        holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
-        if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
-            echo "deploy: another deployment (pid $holder) holds $LOCK_DIR" >&2
+    local holder
+    if command -v flock >/dev/null 2>&1; then
+        exec {LOCK_FD}<>"$LOCK_FILE"
+        if ! flock -n "$LOCK_FD"; then
+            holder="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+            echo "deploy: another deployment${holder:+ (pid $holder)} holds $LOCK_FILE" >&2
             exit 75
         fi
-        # The recorded process is gone, so the lock is residue of an interrupted run.
-        rm -rf "$LOCK_DIR"
-    done
-    fail "cannot acquire $LOCK_DIR"
+        printf '%s\n' "$$" > "$LOCK_FILE"
+        LOCK_KIND=flock
+        trap cleanup EXIT
+        return 0
+    fi
+
+    # Git for Windows has no flock. Its safe fallback never reclaims an existing directory:
+    # an interrupted lock may need manual removal, but it cannot open a second deployment.
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCK_DIR/pid"
+        LOCK_KIND=directory
+        trap cleanup EXIT
+        return 0
+    fi
+    holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+    echo "deploy: another deployment${holder:+ (pid $holder)} or an interrupted run holds $LOCK_DIR" >&2
+    exit 75
 }
 
 # ---- staged files ----------------------------------------------------------------------------
@@ -107,17 +127,49 @@ apply_sync() {
 
 # ---- configuration ---------------------------------------------------------------------------
 
+is_config_key() {
+    local candidate="$1" key
+    for key in "${CONFIG_KEYS[@]}"; do
+        [ "$candidate" != "$key" ] || return 0
+    done
+    return 1
+}
+
 set_env_value() {
-    local key="$1" value="$2" tmp
+    local key="$1" value="$2" tmp line found=0
+    is_config_key "$key" || fail "unsupported configuration key: $key"
+    [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] \
+        || fail "$key must be a single-line value"
     tmp="$(mktemp "$ROOT/.env.XXXXXX")"
-    if grep -q "^${key}=" "$ENV_FILE"; then
-        awk -v k="$key" -v v="$value" 'index($0, k "=") == 1 { print k "=" v; next } { print }' "$ENV_FILE" > "$tmp"
-    else
-        cat "$ENV_FILE" > "$tmp"
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        if [[ "$line" == "$key="* ]]; then
+            printf '%s=%s\n' "$key" "$value" >> "$tmp"
+            found=1
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < "$ENV_FILE"
+    if [ "$found" = 0 ]; then
         printf '%s=%s\n' "$key" "$value" >> "$tmp"
     fi
     chmod 600 "$tmp"
     mv "$tmp" "$ENV_FILE"
+}
+
+load_env_file() {
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        [[ "$line" =~ ^[[:space:]]*$ || "$line" =~ ^[[:space:]]*# ]] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && [ "$key" != "$line" ] \
+            || fail "$ENV_FILE expects literal KEY=VALUE lines with an uppercase key"
+        is_config_key "$key" || fail "unsupported configuration key in $ENV_FILE: $key"
+        printf -v "$key" '%s' "$value"
+        export "$key"
+    done < "$ENV_FILE"
 }
 
 load_configuration() {
@@ -144,10 +196,7 @@ load_configuration() {
         done
     fi
 
-    set -a
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-    set +a
+    load_env_file
 
     for key in POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POSTGRES_DB POSTGRES_USER \
             POSTGRES_PASSWORD POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME \

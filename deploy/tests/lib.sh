@@ -68,3 +68,29 @@ assert_not_contains() {
 docker_log() { cat "$FAKE_STATE/docker.log" 2>/dev/null || true; }
 ssh_log() { cat "$FAKE_STATE/ssh.log" 2>/dev/null || true; }
 up_count() { wc -l < "$FAKE_STATE/up.log" 2>/dev/null | tr -d ' ' || echo 0; }
+
+hold_deploy_lock() {
+    if command -v flock >/dev/null 2>&1; then
+        exec {TEST_LOCK_FD}<>"$ROOT/.deploy.lock"
+        flock -n "$TEST_LOCK_FD"
+        TEST_LOCK_HOLDER="$BASHPID"
+        printf '%s\n' "$TEST_LOCK_HOLDER" > "$ROOT/.deploy.lock"
+        TEST_LOCK_KIND=flock
+    else
+        sleep 30 &
+        TEST_LOCK_HOLDER=$!
+        mkdir "$ROOT/.deploy.lock.d"
+        printf '%s\n' "$TEST_LOCK_HOLDER" > "$ROOT/.deploy.lock.d/pid"
+        TEST_LOCK_KIND=directory
+    fi
+}
+
+release_deploy_lock() {
+    if [ "$TEST_LOCK_KIND" = flock ]; then
+        flock -u "$TEST_LOCK_FD"
+        exec {TEST_LOCK_FD}>&-
+    else
+        kill "$TEST_LOCK_HOLDER" 2>/dev/null || true
+        rm -rf "$ROOT/.deploy.lock.d"
+    fi
+}
