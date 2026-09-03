@@ -6,7 +6,7 @@ A repository-native personal knowledge service whose public face is a blog. Its 
 
 ## Status
 
-Development. The executable baseline, workspace isolation, content repository foundation, document writes, and [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md) are implemented. An [HTTP entrance](notes/implemented/2026-09-03-http-entrance-baseline.md) exposes health, RFC 9457 problem responses, and a read-only public document API over the default workspace. The primary single-server deployment keeps a disposable local Git cache while remote `main` is the only repository acknowledgement point. Accepted proposals add [repository-native Markdown and read-only sibling-image galleries](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md) and an authoritative [local ManagedBlobStore while treating repository-image copies as disposable](notes/proposed/2026-09-01-repository-asset-blob-store.md). [Consumer accounts](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), the [Next.js frontend](notes/proposed/2026-08-30-nextjs-frontend.md), and MCP entry points remain proposed. Serverless stays optional and waits for real OSS, shared-database, and remote-SRT infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline; proposals identify target decisions that have not shipped.
+Development. The executable baseline, workspace isolation, content repository foundation, document writes, and [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md) are implemented. [Continuous delivery](notes/implemented/2026-09-03-continuous-delivery.md) publishes a verified `main` commit to GHCR and deploys it to one Docker Compose host over SSH. An [HTTP entrance](notes/implemented/2026-09-03-http-entrance-baseline.md) exposes health, RFC 9457 problem responses, and a read-only public document API over the default workspace. The primary single-server deployment keeps a disposable local Git cache while remote `main` is the only repository acknowledgement point. Accepted proposals add [repository-native Markdown and read-only sibling-image galleries](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md) and an authoritative [local ManagedBlobStore while treating repository-image copies as disposable](notes/proposed/2026-09-01-repository-asset-blob-store.md). [Consumer accounts](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), the [Next.js frontend](notes/proposed/2026-08-30-nextjs-frontend.md), and MCP entry points remain proposed. Serverless stays optional and waits for real OSS, shared-database, and remote-SRT infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline; proposals identify target decisions that have not shipped.
 
 ## Who this is for
 
@@ -21,6 +21,8 @@ Development. The executable baseline, workspace isolation, content repository fo
 AGENTS.md            Rules for agents working in this repository (start here)
 .agents/skills/      Reusable workflows: prose, review, checks, notes lifecycle
 build.gradle.kts     Gradle build and verification entry points
+Dockerfile           Application image: Gradle build stage, JRE runtime stage
+deploy/              Production Compose, deployment entrance, transfer script, script tests
 src/                 Application modules and their tests
 infra/postgres/      Reproducible PostgreSQL 17 + zhparser test image
 notes/               Decision records: proposed / implemented / rejected / archived
@@ -43,6 +45,10 @@ POKETTO_REPOSITORY_PASSWORD=... \
 ```
 
 On Windows, set the same names through `$env:...`, make `POKETTO_DATA_DIR` absolute, and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
+
+## Deployment
+
+Every verified `main` commit publishes `ghcr.io/core607/poketto` tagged `sha-<commit>`. On the host, copy `deploy/compose.yaml`, `deploy/deploy.sh`, and a filled-in copy of `deploy/.env.example` into one deployment root, then run `deploy.sh --app-image <image> --app-revision <commit>`; a later `deploy.sh` without options redeploys the recorded pins. The script validates configuration, pins, directories, and disk space, verifies the image revision label, and succeeds only after `/actuator/health` answers `UP`. Where the host cannot reach GHCR, `deploy/transfer.sh` streams the image over SSH and invokes the same entrance. Automatic deployment from GitHub Actions stays off until the repository variable `POKETTO_DEPLOY_ENABLED` and a `production` environment are configured; see the [continuous-delivery note](notes/implemented/2026-09-03-continuous-delivery.md).
 
 ## License
 

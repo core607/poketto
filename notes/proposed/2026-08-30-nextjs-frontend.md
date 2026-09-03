@@ -42,7 +42,7 @@ Frontend dependencies and production assets are built in CI. A production host r
 
 Deployment sizing is not set by this frontend decision. The implementation measures steady-state and peak resource use for the complete prebuilt runtime against the project's deployment criteria and records the evidence in the appropriate operational record.
 
-The Gradle `check` task remains the repository-wide verification entrance. It invokes lockfile-based frontend formatting or linting, type checking, tests, and production build in addition to the existing Java and repository checks. The implementation updates the [continuous-delivery proposal](2026-08-26-continuous-delivery.md) to account for the frontend artifact without duplicating environment-specific deployment details here.
+The Gradle `check` task remains the repository-wide verification entrance. It invokes lockfile-based frontend formatting or linting, type checking, tests, and production build in addition to the existing Java and repository checks. The implementation updates the [continuous-delivery proposal](../implemented/2026-09-03-continuous-delivery.md) to account for the frontend artifact without duplicating environment-specific deployment details here.
 
 ## Implementation scope and dependencies
 

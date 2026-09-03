@@ -1,81 +1,76 @@
 # Continuous Delivery for a Single Host
 
-Date: 2026-08-26
-Status: Proposed
+Date: 2026-09-03
+Status: Implemented
 
 ## Problem
 
-The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require application images in GHCR and a fallback that transfers a `docker save` artifact over SSH when registry access is unreliable. The [development baseline](../implemented/2026-08-26-development-baseline.md) currently runs complete verification for pull requests and `main` pushes but builds no deployable image and provides no repeatable production Compose or deployment script.
+The [requirements](2026-08-25-requirements-and-architecture.md) require application images in GHCR and a fallback that transfers a `docker save` artifact over SSH when registry access is unreliable. The [development baseline](2026-08-26-development-baseline.md) verified every commit but built no deployable image and provided no repeatable production Compose or deployment script.
 
-Poketto targets a self-hosted single machine. Its first delivery path needs only to turn a verified commit into immutable images and deploy them to a Linux Docker Compose host through a constrained SSH entrance. Automatic rollback, artifact promotion, and release attestation remain outside the first implementation until operating evidence justifies them.
+Poketto targets a self-hosted single machine. Its delivery path needs only to turn a verified commit into an immutable image and deploy it to a Linux Docker Compose host through a constrained SSH entrance. Automatic rollback, artifact promotion, and release attestation stay outside until operating evidence justifies them.
 
-## Proposal
+## Decision
 
 ### Verification and image publication
 
-- Keep the existing pull-request `check`. After the canonical repository's `main` passes `check`, the same workflow builds the application image and publishes it to GHCR. Production Compose pins the official PostgreSQL 17 image because [repository-native retrieval](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) removes zhparser and the custom database image.
-- The application image carries a source-commit tag and standard revision metadata. Deployment pins both the application and upstream database images by immutable digest; moving tags aid discovery but never select the production version.
-- The publication job receives only `contents: read` and `packages: write`. Verification, pull-request, and deployment jobs do not inherit package-write authority. Every third-party Action is pinned to a full commit SHA.
-- Images contain no `.env`, API key, content repository, database volume, blob directory, or other runtime state.
+The `CI` workflow keeps the pull-request `check`. After a `main` push of the canonical repository passes `check`, the `publish` job builds the application image with Buildx and pushes it to `ghcr.io/core607/poketto` tagged `sha-<commit>` and `main`. The moving tag aids discovery only; deployment selects an image by its registry digest or by the per-commit tag carried in a transferred archive, and always verifies the `org.opencontainers.image.revision` label against the commit being deployed. Provenance attestations are disabled so the published digest names one `linux/amd64` manifest.
+
+The publish job alone holds `contents: read` and `packages: write`. Verification, pull-request, and deployment jobs hold no package-write authority. Every third-party action is pinned to a full commit SHA. The workflow summary records the source commit, the application digest, and the database pin.
+
+The [Dockerfile](../../Dockerfile) builds the boot jar on the pinned Temurin 26 JDK image, extracts Spring Boot layers, and runs them on the pinned Temurin 26 JRE image as the non-root user `poketto` (uid 10001) with `curl` for the health check. The image contains no `.env`, credential, content repository, database volume, or data directory.
+
+Production pins the official `postgres:17` image by digest in `deploy/.env.example`; the deployment script refuses a database reference without a digest. The custom zhparser image remains an integration-test concern until [repository-native retrieval](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) removes it.
 
 ### Optional automatic deployment
 
-- Without a configured production target, the workflow succeeds after publication. Production deployment runs only when a repository variable explicitly enables it and a GitHub `production` environment exists. Open-source CI must not depend on a maintainer's private server.
-- The deployment job uses a fixed concurrency group and does not cancel an in-progress deployment. Consecutive `main` pushes cannot mutate the same host concurrently.
-- The `production` environment stores the SSH private key, pinned host key, and required registry credentials. The workflow uses neither a personal SSH key, `StrictHostKeyChecking=no`, nor a self-hosted Actions runner on the production host.
-- The GitHub Actions summary records the source commit, image digests, target environment, and health result without printing secrets, remote environment files, or sensitive command arguments.
+Without a configured target the workflow succeeds after publication. The `deploy` job runs only when the repository variable `POKETTO_DEPLOY_ENABLED` is `true`; it uses the GitHub `production` environment, a fixed `production-deploy` concurrency group that never cancels an in-progress deployment, and workflow-level cancellation only for pull requests. Open-source CI never depends on a maintainer's private server.
+
+The environment supplies the variables `POKETTO_DEPLOY_ROOT` and optional `POKETTO_DEPLOY_MODE` (`pull` by default, or `transfer`) and the secrets `POKETTO_DEPLOY_TARGET` (`user@host`, a secret because it names the private host), `POKETTO_DEPLOY_SSH_KEY`, `POKETTO_DEPLOY_HOST_KEY` holding the pinned `known_hosts` line, and optionally `POKETTO_REPOSITORY_PASSWORD`. Missing configuration fails with the list of what is absent. The job uses `StrictHostKeyChecking=yes` and `BatchMode`, never a personal key, and never a self-hosted runner on the production host. When the repository credential secret is set, the job streams it to the entrance's standard input, which records it into the host's `.env`; it never appears as a command-line argument or in the summary. The summary records the commit, image, mode, and result.
 
 ### Compose and SSH scripts
 
-- The repository provides a generic production Compose file and non-interactive deployment script. Hostname, port, domain, persistent paths, and secrets exist only in the operator environment or GitHub environment.
-- A dedicated Poketto deployment account has only the authority needed to invoke the deployment entrance. The remote script obtains a deployment lock and validates Compose, the environment file, persistent directories, and available disk space before replacing containers. It never deletes, recreates, or rolls back data volumes.
-- By default the production host pulls exact digests from GHCR. The restricted-network path lets an operator or GitHub-hosted runner pull those same digests, transfer `docker save` output over SSH, run `docker load`, and invoke the same remote deployment entrance.
-- The application and database both expose Compose health checks. Deployment succeeds only after the real service health entrance passes; a successful `docker compose up` exit code is insufficient.
-- A failed deployment returns failure and preserves diagnostics but does not guess which old image is safe. The operator may rerun the same script with a previously recorded digest. The first implementation has no candidate manifest, automatic promotion, or rollback state machine.
-- Repeating the script with the same digests is idempotent. A retry after interruption derives its next action from actual host image and container state rather than prose recorded by the previous workflow.
+[deploy/compose.yaml](../../deploy/compose.yaml) is the generic production stack: the application bound to the loopback interface by default with a real `/actuator/health` check, and PostgreSQL with `pg_isready`. Both services carry memory limits sized for a two-core, 4 GB host. Hostname, port, persistent paths, image pins, and secrets live only in the operator's `.env` beside it; [deploy/.env.example](../../deploy/.env.example) lists every value.
+
+[deploy/deploy.sh](../../deploy/deploy.sh) is the deployment entrance on the host. It takes a lock, records any `--app-image`, `--app-revision`, and `--db-image` options into `.env`, validates every required value, requires the database pin to be a digest, confirms the Docker daemon and Compose plugin, creates the persistent directories and checks that the data directory belongs to uid 10001, requires free disk space, and validates the Compose configuration. It pulls a digest-pinned application image when absent, accepts a tag only when the transferred archive already loaded it, verifies the revision label, runs `compose up` with pulls disabled, waits for the container health check, and finally requests the health entrance from the host. A failure prints the container state and the last application log lines and exits without guessing an older image. It never issues `down`, removes a volume, or recreates data. Rerunning with the same pins is idempotent, and a rerun without options derives its action from the recorded `.env` and the host's actual image and container state.
+
+[deploy/transfer.sh](../../deploy/transfer.sh) is the restricted-network path. It pulls the digest-pinned image locally when needed, verifies its revision label, retags it `sha-<commit>` because a digest does not survive `docker save` on every image store, streams a gzip archive over SSH, verifies the archive checksum on the host before `docker load`, optionally syncs `compose.yaml` and `deploy.sh`, and invokes the same entrance with the tag and commit. The database image is always pulled by digest on the host.
+
+The deployment account on the host is a dedicated user that belongs to the `docker` group and owns the deployment root. Docker group membership is root-equivalent on that host, so the account is reachable only through its own SSH key, which is the boundary this first implementation offers.
 
 ### Persistence boundary
 
-Container deployment changes only images and Compose-managed processes. It neither restores nor migrates content repositories, blobs, or authoritative PostgreSQL tables. A feature proposal that makes an incompatible persistent change must define its own migration, failure recovery, and old-version behavior; the deployment script cannot infer compatibility from file differences.
+Deployment changes only images and Compose-managed processes. It neither restores nor migrates content repositories, blobs, or authoritative PostgreSQL tables. A feature that makes an incompatible persistent change must define its own migration, failure recovery, and old-version behavior; the deployment script cannot infer compatibility from file differences.
 
-Production automatic deployment remains disabled until the [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) supplies a machine-readable freshness signal. Image publication and manual deployment do not depend on that proposal, but an operator must explicitly accept the absence of an automated backup gate.
-
-## First implementation scope and dependencies
-
-The first implementation includes an application container, production Compose, an application health entrance, application-image publication to GHCR, digest-pinned application and database images, SSH deployment, a deployment lock, health confirmation, the restricted-network transfer script, and focused tests. It follows the repository-native retrieval decision before replacing the implemented custom database image with the official image.
-
-It excludes domains, TLS, reverse proxies, a logging platform, provenance attestation, deployment-manifest promotion, automatic rollback, blue-green stacks, an arbitrary-version selector, and a database migration framework. Application-image publication may build on the current development baseline independently; replacing the custom database image waits for repository-native retrieval. Automatic deployment waits for the off-host backup gate.
+Production automatic deployment stays disabled until the [off-host backup and restore proposal](../proposed/2026-08-27-off-host-backup-and-restore.md) supplies a machine-readable freshness signal. Publication and manual deployment do not depend on it, and an operator who enables automatic deployment before it exists accepts the absence of a backup gate explicitly.
 
 ## Alternatives considered
 
 **Run a self-hosted GitHub Actions runner on the production host.** It provides direct Docker access but gives repository workflows an execution surface close to host root. A constrained SSH account is easier to audit and revoke.
 
-**Let Watchtower poll a moving tag.** This is easy to configure, but a deployment decision no longer maps reliably to the commit that passed CI. The workflow passes immutable digests instead.
+**Let Watchtower poll a moving tag.** Easy to configure, but a deployment decision no longer maps reliably to the commit that passed CI. The workflow passes immutable digests instead.
 
-**Add candidate manifests, automatic promotion, and automatic rollback.** These mechanisms can improve unattended recovery but require persistent-compatibility rules and additional state. The first implementation stops on failure and reruns a known digest; later operating evidence may justify a separate proposal.
+**Select images by image ID instead of by digest and label.** An image ID is store-dependent: Docker's classic store reports the config digest while the containerd store reports the manifest digest, so one recorded identity cannot be verified on every host. The registry digest verifies the pull path, the archive checksum verifies the transfer path, and the revision label verifies both.
+
+**Add candidate manifests, automatic promotion, and automatic rollback.** These can improve unattended recovery but require persistent-compatibility rules and additional state. The first implementation stops on failure and reruns a known pin; later operating evidence may justify a separate proposal.
 
 **Publish images without a deployment script.** Every operator would still improvise SSH, Compose, locking, and health checks. One generic script is the minimum maintainable delivery surface.
 
-**Use Kubernetes or blue-green deployment.** The default target is a two-core, 4 GB machine; another orchestration surface and duplicate resident stack do not fit that constraint. Runtime platform and data authority remain independent, so a future Kubernetes deployment can consume the same image artifacts.
+**Use Kubernetes or blue-green deployment.** The default target is a two-core, 4 GB machine; another orchestration surface and a duplicate resident stack do not fit. Runtime platform and data authority remain independent, so a future Kubernetes deployment can consume the same image artifacts.
 
-## Acceptance
+## Consequences
 
-- A pull request runs complete `check` without production secrets or package-write authority. Unmerged code cannot publish or deploy.
-- After a `main` commit passes `check`, the application image appears in GHCR, and the source commit plus the immutable application and pinned upstream database digests are available from the same workflow run.
-- Publication succeeds and deployment is explicitly skipped when production is not configured. When deployment is enabled, missing variables or secrets fail with an actionable list.
-- On a disposable Linux host, registry pull and `docker save` over SSH can start the same Compose stack from identical digests and pass the real health entrance.
-- Adjacent deployments cannot mutate the host concurrently. Retry after interruption and redeployment of the same digest preserve persistent data.
-- A failed health check fails the workflow and is not hidden by successful setup logs. Rerunning the same script with a previous digest can restore an older image; automatic rollback is not part of acceptance.
-- SSH host keys, deployment private keys, registry credentials, and remote environment files appear in neither the repository, artifacts, Actions summary, nor test logs.
-- Automated tests cover digest validation, locking, idempotency, missing configuration, transfer failure, and health timeout. One disposable-host drill covers the real Compose entrance.
-- `./gradlew check` and `git diff --check` pass. Implementation does not modify remote required checks or environment settings.
+Automatic deployment from `main` moves a semantically defective change into production faster after CI passes. Health checks prove that the service runs, not that its behavior is correct. The enable switch and manual redeployment of a recorded pin are the controls.
 
-## Risks
+A GitHub-hosted runner temporarily holds the key that reaches production. A dedicated account, pinned host key, minimum permissions, and exclusion from pull-request workflows reduce the surface, but the trusted `main` workflow remains part of the security root.
 
-Automatic deployment from `main` moves a semantically defective change into production faster after CI passes. Health checks prove that the service runs, not that its behavior is correct. The enable switch and manual restoration of a precise digest are the first controls.
+Image rollback cannot undo a database or content-format change. Starting an old container with unknown compatibility may be more dangerous than downtime, so nothing rolls back automatically.
 
-A GitHub-hosted runner temporarily holds the secret needed to reach production. A dedicated account, pinned host key, minimum permissions, and exclusion from pull-request workflows reduce the surface, but the trusted `main` workflow remains part of the security root.
+Every `main` update builds an image and consumes Actions time and GHCR storage. If measured cost becomes material, add retention or build-cache policy without weakening digest selection.
 
-Image rollback cannot undo a database or content-format change. Starting an old container with unknown compatibility may be more dangerous than downtime, so the first implementation does not roll back automatically.
+Domains, TLS, reverse proxies, a logging platform, provenance attestation, deployment-manifest promotion, automatic rollback, blue-green stacks, an arbitrary-version selector, and a database migration framework remain outside this implementation.
 
-Building an application image on every `main` update consumes Actions time and GHCR storage. Keep one traceable path first; if measured cost becomes material, add retention or build-cache policy without weakening digest selection.
+## Verification
+
+- `deploy/tests/run.sh`, wired into `check` as `./gradlew deployScriptTests`, runs the scripts against fake `docker`, `curl`, and `ssh` commands. It covers the missing-configuration list, digest and revision validation, a live and a stale lock, the registry pull path, the transfer-only tag path, revision mismatch, pull failure, health timeout, an unhealthy container, an unanswering or non-UP entrance, pin recording with an idempotent rerun, archive transfer with checksum and sync, a remote load failure, and a local image with the wrong revision. The fakes refuse every destructive Compose command.
+- A drill ran the transfer path against a real Ubuntu 22.04 host with Docker 27: the locally built image streamed over SSH, its checksum verified on the host, `docker load` succeeded, `compose.yaml` and `deploy.sh` synced, and the entrance recorded the pins and then refused with the list of values still missing from `.env`. The same host received a different image ID than the building machine reported for the same archive, which is the store-dependent behavior the revision label exists to absorb.
+- `./gradlew check` and `git diff --check` pass. The implementation changes no remote required checks or environment settings.
