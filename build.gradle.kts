@@ -111,7 +111,7 @@ val integrationTest = tasks.register<Test>("integrationTest") {
 }
 
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.
-// A non-login Git Bash does not put its own /usr/bin on PATH, so the task adds it explicitly.
+// Invoke Git Bash as a login shell so its own /usr/bin tools are available to the test scripts.
 fun gitBash(): File? {
     System.getenv("POKETTO_BASH")?.takeIf { it.isNotBlank() }?.let { return File(it) }
     if (!System.getProperty("os.name").startsWith("Windows")) {
@@ -134,16 +134,9 @@ val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
     inputs.dir(layout.projectDirectory.dir("deploy"))
     outputs.upToDateWhen { false }
     val bash = gitBash()
-    if (bash != null) {
-        val unixTools = File(bash.parentFile.parentFile, "usr/bin")
-        environment(
-            "PATH",
-            listOf(bash.parentFile, unixTools).filter(File::isDirectory).joinToString(File.pathSeparator) +
-                File.pathSeparator + System.getenv("PATH").orEmpty(),
-        )
-    }
     commandLine(
         bash?.absolutePath ?: "bash",
+        *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
         layout.projectDirectory.file("deploy/tests/run.sh").asFile.absolutePath.replace('\\', '/'),
     )
 }
