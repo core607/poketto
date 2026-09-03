@@ -9,6 +9,8 @@ command="${*: -1}"
 printf '%s\n' "$*" >> "$FAKE_STATE/ssh.log"
 case "$command" in
     *"image inspect"*) [ -f "$FAKE_STATE/remote-has-image" ] ;;
+    *"[ -e "*) [ -f "$FAKE_STATE/remote-has-entrance" ] ;;
+    *"mv -f"*) echo "$command" >> "$FAKE_STATE/sync.log"; exit 0 ;;
     *"docker load"*)
         cat > "$FAKE_STATE/received.archive"
         [ -f "$FAKE_STATE/remote-load-fails" ] && exit 1

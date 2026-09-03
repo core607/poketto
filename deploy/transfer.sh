@@ -60,9 +60,23 @@ local_revision="$("$DOCKER" image inspect --format '{{ index .Config.Labels "org
 TAG="ghcr.io/core607/poketto:sha-$REVISION"
 "$DOCKER" tag "$IMAGE" "$TAG"
 
+SYNC_ARGS=""
 if [ "$SYNC" = 1 ]; then
-    remote "mkdir -p '$ROOT' && cat > '$ROOT/compose.yaml'" < "$HERE/compose.yaml" || fail "cannot sync compose.yaml"
-    remote "cat > '$ROOT/deploy.sh' && chmod 755 '$ROOT/deploy.sh'" < "$HERE/deploy.sh" || fail "cannot sync deploy.sh"
+    # Files are staged beside the root and verified there; the entrance moves them into place
+    # under its own lock, so a broken transfer or a concurrent deployment never sees a
+    # half-written compose.yaml or deploy.sh.
+    incoming="$ROOT/.incoming"
+    remote "mkdir -p '$incoming'" < /dev/null || fail "cannot create $incoming on $TARGET"
+    for file in compose.yaml deploy.sh; do
+        checksum="$(sha256sum "$HERE/$file" | cut -d ' ' -f 1)"
+        remote "set -e; cat > '$incoming/$file.tmp';             echo '$checksum' '$incoming/$file.tmp' | sha256sum --check --status                 || { rm -f '$incoming/$file.tmp'; echo 'sync checksum mismatch' >&2; exit 1; };             mv -f '$incoming/$file.tmp' '$incoming/$file'" < "$HERE/$file"             || fail "cannot sync $file to $TARGET"
+    done
+    if remote "[ -e '$ROOT/deploy.sh' ]" < /dev/null; then
+        SYNC_ARGS="--sync-from '$incoming'"
+    else
+        # No entrance exists yet, so there is no lock to respect; install the first copy directly.
+        remote "set -e; mv -f '$incoming/compose.yaml' '$ROOT/compose.yaml';             mv -f '$incoming/deploy.sh' '$ROOT/deploy.sh'; chmod 755 '$ROOT/deploy.sh'; rmdir '$incoming'" < /dev/null             || fail "cannot install the entrance on $TARGET"
+    fi
 fi
 
 if remote "docker image inspect '$TAG' >/dev/null 2>&1"; then
@@ -81,7 +95,8 @@ else
 fi
 
 if [ "$SET_STDIN" = 1 ]; then
-    printf '%s\n' "$SETTINGS" | remote "'$ROOT/deploy.sh' --set-stdin --app-image '$TAG' --app-revision '$REVISION'"
+    printf '%s\n' "$SETTINGS" \
+        | remote "'$ROOT/deploy.sh' $SYNC_ARGS --set-stdin --app-image '$TAG' --app-revision '$REVISION'"
 else
-    remote "'$ROOT/deploy.sh' --app-image '$TAG' --app-revision '$REVISION'" < /dev/null
+    remote "'$ROOT/deploy.sh' $SYNC_ARGS --app-image '$TAG' --app-revision '$REVISION'" < /dev/null
 fi

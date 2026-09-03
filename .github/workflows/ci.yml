@@ -179,6 +179,8 @@ jobs:
           IMAGE: ${{ needs.publish.outputs.image }}
           REVISION: ${{ github.sha }}
           REPOSITORY_PASSWORD: ${{ secrets.POKETTO_REPOSITORY_PASSWORD }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           settings=""
@@ -188,8 +190,11 @@ jobs:
               --target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" \
               --image "$IMAGE" --revision "$REVISION" --sync --set-stdin
           else
-            printf '%s\n' "$settings" | $POKETTO_SSH "$DEPLOY_TARGET" \
-              "'$DEPLOY_ROOT/deploy.sh' --set-stdin --app-image '$IMAGE' --app-revision '$REVISION'"
+            # The host logs in to GHCR with this run's token for one pull; the entrance never
+            # records registry credentials.
+            printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
+              | $POKETTO_SSH "$DEPLOY_TARGET" \
+                "'$DEPLOY_ROOT/deploy.sh' --set-stdin --app-image '$IMAGE' --app-revision '$REVISION'"
           fi
 
       - name: Record deployment

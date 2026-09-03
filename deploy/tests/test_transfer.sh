@@ -18,10 +18,25 @@ assert_status 0
 assert_contains "$(docker_log)" "tag $DIGEST_IMAGE $TAG_IMAGE"
 assert_contains "$(docker_log)" "save $TAG_IMAGE"
 assert_contains "$OUT" "sending $TAG_IMAGE"
-assert_contains "$(cat "$FAKE_STATE/sync.log")" "/srv/poketto/compose.yaml"
-assert_contains "$(cat "$FAKE_STATE/sync.log")" "/srv/poketto/deploy.sh"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/compose.yaml.tmp'"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/deploy.sh.tmp'"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "sha256sum --check"
+assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/deploy.sh'"
+# No entrance exists remotely yet, so the staged copies are installed directly.
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "mv -f '/srv/poketto/.incoming/deploy.sh' '/srv/poketto/deploy.sh'"
 [ -s "$FAKE_STATE/received.archive" ] || { echo "no archive reached the remote"; exit 1; }
-assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "/srv/poketto/deploy.sh' --app-image '$TAG_IMAGE' --app-revision '$REVISION'"
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "'/srv/poketto/deploy.sh'"
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--app-image '$TAG_IMAGE' --app-revision '$REVISION'"
+assert_not_contains "$(cat "$FAKE_STATE/deploy-calls")" "--sync-from"
+
+# With an entrance already installed, the staged files are handed to it for the locked swap.
+rm -f "$FAKE_STATE/sync.log" "$FAKE_STATE/deploy-calls"
+touch "$FAKE_STATE/remote-has-entrance" "$FAKE_STATE/remote-has-image"
+run_transfer --target ops@host --root /srv/poketto --image "$DIGEST_IMAGE" --revision "$REVISION" --sync
+assert_status 0
+assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "mv -f '/srv/poketto/.incoming/deploy.sh' '/srv/poketto/deploy.sh'"
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--sync-from '/srv/poketto/.incoming'"
+rm -f "$FAKE_STATE/remote-has-entrance" "$FAKE_STATE/remote-has-image"
 assert_contains "$(ssh_log)" "sha256sum --check"
 
 # The remote already holds the tag: no archive is sent, the entrance still runs.

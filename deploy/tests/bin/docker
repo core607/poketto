@@ -13,7 +13,8 @@ present() { grep -qxF -- "$1" "$FAKE_STATE/images" 2>/dev/null; }
 revision_of() { grep -- "^$1 " "$FAKE_STATE/revisions" 2>/dev/null | head -1 | cut -d ' ' -f 2-; }
 
 case "${1:-}" in
-    info) exit 0 ;;
+    info|logout) exit 0 ;;
+    login) cat > "$FAKE_STATE/login-stdin"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
     image)
         [ "${2:-}" = inspect ] || exit 1
         shift 2

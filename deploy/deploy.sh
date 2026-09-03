@@ -4,10 +4,14 @@
 # images, directories, and disk space, and it succeeds only when the real health entrance passes.
 # It never removes, recreates, or rolls back a data volume, and it never guesses an older image.
 #
-# Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT] [--db-image REF] [--set-stdin]
+# Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT] [--db-image REF]
+#                  [--set-stdin] [--sync-from DIR]
 #   Options record their values into .env before deploying, so a rerun without options
 #   redeploys the recorded pins. --set-stdin reads KEY=VALUE lines from standard input and
-#   records them the same way, which keeps a secret out of the command line and process list.
+#   records them the same way, which keeps a secret out of the command line and process list;
+#   REGISTRY_USERNAME and REGISTRY_PASSWORD lines are used for one registry login during this
+#   run and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh from DIR
+#   into the root under the deployment lock.
 # Exit codes: 0 deployed and healthy, 1 validation or deployment failure, 75 another
 #   deployment holds the lock.
 
@@ -20,9 +24,13 @@ APP_IMAGE_ARG=""
 APP_REVISION_ARG=""
 DB_IMAGE_ARG=""
 SET_STDIN=0
+SYNC_FROM=""
+REGISTRY_USERNAME=""
+REGISTRY_PASSWORD=""
+LOGGED_IN_REGISTRY=""
 
 usage() {
-    sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 fail() {
@@ -37,6 +45,7 @@ while [ $# -gt 0 ]; do
         --app-revision) APP_REVISION_ARG="$2"; shift 2 ;;
         --db-image) DB_IMAGE_ARG="$2"; shift 2 ;;
         --set-stdin) SET_STDIN=1; shift ;;
+        --sync-from) SYNC_FROM="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) fail "unknown argument: $1" ;;
     esac
@@ -54,6 +63,11 @@ compose() {
     "$DOCKER" compose --project-directory "$ROOT" -f "$COMPOSE_FILE" "$@"
 }
 
+cleanup() {
+    [ -z "$LOGGED_IN_REGISTRY" ] || "$DOCKER" logout "$LOGGED_IN_REGISTRY" >/dev/null 2>&1 || true
+    rm -rf "$LOCK_DIR"
+}
+
 # ---- lock ------------------------------------------------------------------------------------
 
 acquire_lock() {
@@ -61,7 +75,7 @@ acquire_lock() {
     for attempt in 1 2; do
         if mkdir "$LOCK_DIR" 2>/dev/null; then
             echo "$$" > "$LOCK_DIR/pid"
-            trap 'rm -rf "$LOCK_DIR"' EXIT
+            trap cleanup EXIT
             return 0
         fi
         holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
@@ -73,6 +87,22 @@ acquire_lock() {
         rm -rf "$LOCK_DIR"
     done
     fail "cannot acquire $LOCK_DIR"
+}
+
+# ---- staged files ----------------------------------------------------------------------------
+
+# A rename replaces each file atomically, and the running copy of this script is unaffected
+# because bash keeps the old inode open; the new entrance takes effect on the next run.
+apply_sync() {
+    [ -n "$SYNC_FROM" ] || return 0
+    [ -d "$SYNC_FROM" ] || fail "--sync-from directory does not exist: $SYNC_FROM"
+    local file
+    for file in compose.yaml deploy.sh; do
+        [ -f "$SYNC_FROM/$file" ] || continue
+        mv -f "$SYNC_FROM/$file" "$ROOT/$file"
+    done
+    [ ! -f "$ROOT/deploy.sh" ] || chmod 755 "$ROOT/deploy.sh"
+    rmdir "$SYNC_FROM" 2>/dev/null || true
 }
 
 # ---- configuration ---------------------------------------------------------------------------
@@ -106,7 +136,11 @@ load_configuration() {
             value="${line#*=}"
             [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && [ "$key" != "$line" ] \
                 || fail "--set-stdin expects KEY=VALUE lines with an uppercase key"
-            set_env_value "$key" "$value"
+            case "$key" in
+                REGISTRY_USERNAME) REGISTRY_USERNAME="$value" ;;
+                REGISTRY_PASSWORD) REGISTRY_PASSWORD="$value" ;;
+                *) set_env_value "$key" "$value" ;;
+            esac
         done
     fi
 
@@ -176,7 +210,25 @@ image_revision() {
     "$DOCKER" image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$1"
 }
 
+# The registry is the first path component of the application reference when it names a host;
+# otherwise Docker Hub. A private GHCR package needs this login on the pull path.
+registry_login() {
+    [ -n "$REGISTRY_PASSWORD" ] || return 0
+    [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
+    local first="${POKETTO_APP_IMAGE%%/*}" registry
+    if [[ "$POKETTO_APP_IMAGE" == */* ]] && [[ "$first" == *.* || "$first" == *:* ]]; then
+        registry="$first"
+    else
+        registry="docker.io"
+    fi
+    printf '%s' "$REGISTRY_PASSWORD" \
+        | "$DOCKER" login "$registry" --username "$REGISTRY_USERNAME" --password-stdin >/dev/null \
+        || fail "registry login to $registry failed"
+    LOGGED_IN_REGISTRY="$registry"
+}
+
 acquire_images() {
+    registry_login
     if ! image_present "$POKETTO_DB_IMAGE"; then
         "$DOCKER" pull "$POKETTO_DB_IMAGE" >/dev/null || fail "cannot pull $POKETTO_DB_IMAGE"
     fi
@@ -242,6 +294,7 @@ report_failure() {
 
 main() {
     acquire_lock
+    apply_sync
     load_configuration
     check_host
     acquire_images

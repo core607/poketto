@@ -111,20 +111,21 @@ val integrationTest = tasks.register<Test>("integrationTest") {
 }
 
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.
-fun bashExecutable(): String {
-    System.getenv("POKETTO_BASH")?.takeIf { it.isNotBlank() }?.let { return it }
+// A non-login Git Bash does not put its own /usr/bin on PATH, so the task adds it explicitly.
+fun gitBash(): File? {
+    System.getenv("POKETTO_BASH")?.takeIf { it.isNotBlank() }?.let { return File(it) }
     if (!System.getProperty("os.name").startsWith("Windows")) {
-        return "bash"
+        return null
     }
     for (directory in System.getenv("PATH").orEmpty().split(';')) {
         val git = File(directory, "git.exe")
         if (!git.isFile) continue
         for (candidate in listOf("usr/bin/bash.exe", "bin/bash.exe")) {
             val bash = File(git.parentFile.parentFile, candidate)
-            if (bash.isFile) return bash.absolutePath
+            if (bash.isFile) return bash
         }
     }
-    return "bash"
+    return null
 }
 
 val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
@@ -132,8 +133,17 @@ val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
     description = "Runs the deployment script tests against fake docker, curl, and ssh commands."
     inputs.dir(layout.projectDirectory.dir("deploy"))
     outputs.upToDateWhen { false }
+    val bash = gitBash()
+    if (bash != null) {
+        val unixTools = File(bash.parentFile.parentFile, "usr/bin")
+        environment(
+            "PATH",
+            listOf(bash.parentFile, unixTools).filter(File::isDirectory).joinToString(File.pathSeparator) +
+                File.pathSeparator + System.getenv("PATH").orEmpty(),
+        )
+    }
     commandLine(
-        bashExecutable(),
+        bash?.absolutePath ?: "bash",
         layout.projectDirectory.file("deploy/tests/run.sh").asFile.absolutePath.replace('\\', '/'),
     )
 }
