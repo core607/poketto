@@ -14,7 +14,8 @@
 #   way, which keeps a secret out of the command line and process list; REGISTRY_USERNAME and
 #   REGISTRY_PASSWORD lines log in once inside a temporary Docker configuration that this run
 #   deletes, and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh
-#   from DIR into the root under the deployment lock.
+#   from DIR into the root under the deployment lock; a changed deploy.sh re-executes itself
+#   before reading standard input, so one run never pairs an old entrance with a new stack.
 # Exit codes: 0 deployed and healthy, 1 validation or deployment failure, 75 another
 #   deployment holds the lock.
 
@@ -23,6 +24,7 @@ set -euo pipefail
 DOCKER="${POKETTO_DOCKER:-docker}"
 CURL="${POKETTO_CURL:-curl}"
 ROOT="${POKETTO_DEPLOY_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+ORIGINAL_ARGS=("$@")
 APP_IMAGE_ARG=""
 APP_REVISION_ARG=""
 DB_IMAGE_ARG=""
@@ -32,6 +34,7 @@ REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
 DOCKER_CONFIG_DIR=""
 LOCK_KIND=""
+LOCK_FD=""
 PENDING_KEYS=()
 PENDING_VALUES=()
 
@@ -46,7 +49,7 @@ CONFIG_KEYS=(
 PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE)
 
 usage() {
-    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 fail() {
@@ -116,8 +119,30 @@ cleanup() {
 
 # ---- lock ------------------------------------------------------------------------------------
 
+# A process re-executed by apply_sync inherits the lock it already holds: the flock lives on the
+# inherited descriptor named by POKETTO_DEPLOY_LOCK_FD, and the directory lock is marked by
+# POKETTO_DEPLOY_LOCK_HELD. Acquiring again would deadlock against itself.
 acquire_lock() {
     local holder
+    if [ -n "${POKETTO_DEPLOY_LOCK_FD:-}" ]; then
+        LOCK_FD="$POKETTO_DEPLOY_LOCK_FD"
+        unset POKETTO_DEPLOY_LOCK_FD
+        [[ "$LOCK_FD" =~ ^[0-9]+$ ]] && { true >&"$LOCK_FD"; } 2>/dev/null \
+            || fail "POKETTO_DEPLOY_LOCK_FD does not name an open descriptor"
+        printf '%s\n' "$$" > "$LOCK_FILE"
+        LOCK_KIND=flock
+        trap cleanup EXIT
+        return 0
+    fi
+    if [ "${POKETTO_DEPLOY_LOCK_HELD:-}" = 1 ]; then
+        unset POKETTO_DEPLOY_LOCK_HELD
+        [ -d "$LOCK_DIR" ] || fail "POKETTO_DEPLOY_LOCK_HELD is set but $LOCK_DIR does not exist"
+        printf '%s\n' "$$" > "$LOCK_DIR/pid"
+        LOCK_KIND=directory
+        trap cleanup EXIT
+        return 0
+    fi
+
     if command -v flock >/dev/null 2>&1; then
         exec {LOCK_FD}<>"$LOCK_FILE"
         if ! flock -n "$LOCK_FD"; then
@@ -146,18 +171,38 @@ acquire_lock() {
 
 # ---- staged files ----------------------------------------------------------------------------
 
-# A rename replaces each file atomically, and the running copy of this script is unaffected
-# because bash keeps the old inode open; the new entrance takes effect on the next run.
+# A rename replaces each file atomically. The running copy of this script keeps its old inode,
+# so when the staged deploy.sh differs it re-executes the installed one with the same
+# arguments minus --sync-from, passing the held lock along; this happens before --set-stdin
+# reads standard input, so the settings reach the new entrance intact.
 apply_sync() {
     [ -n "$SYNC_FROM" ] || return 0
     [ -d "$SYNC_FROM" ] || fail "--sync-from directory does not exist: $SYNC_FROM"
-    local file
+    local file reexec=0 args=()
+    if [ -f "$SYNC_FROM/deploy.sh" ] && ! cmp -s "$SYNC_FROM/deploy.sh" "${BASH_SOURCE[0]}"; then
+        reexec=1
+    fi
     for file in compose.yaml deploy.sh; do
         [ -f "$SYNC_FROM/$file" ] || continue
         mv -f "$SYNC_FROM/$file" "$ROOT/$file"
     done
     [ ! -f "$ROOT/deploy.sh" ] || chmod 755 "$ROOT/deploy.sh"
     rmdir "$SYNC_FROM" 2>/dev/null || true
+    [ "$reexec" = 1 ] || return 0
+
+    set -- "${ORIGINAL_ARGS[@]}"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --sync-from) shift 2 ;;
+            *) args+=("$1"); shift ;;
+        esac
+    done
+    if [ "$LOCK_KIND" = flock ]; then
+        export POKETTO_DEPLOY_LOCK_FD="$LOCK_FD"
+    else
+        export POKETTO_DEPLOY_LOCK_HELD=1
+    fi
+    exec "$BASH" "$ROOT/deploy.sh" "${args[@]}"
 }
 
 # ---- configuration ---------------------------------------------------------------------------

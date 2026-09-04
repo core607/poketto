@@ -1,23 +1,50 @@
 #!/usr/bin/env bash
 . "$DEPLOY_DIR/tests/lib.sh"
 
-# Staged files replace the root copies only inside the lock, and the staged directory is gone.
+# Staged files replace the root copies only inside the lock. The staging directory of this
+# revision is gone afterwards; another revision staged beside it is untouched.
 setup_root
 have_image "$DIGEST_IMAGE"
-mkdir -p "$ROOT/.incoming"
-{ cat "$DEPLOY_DIR/compose.yaml"; echo "# synced"; } > "$ROOT/.incoming/compose.yaml"
-{ cat "$DEPLOY_DIR/deploy.sh"; echo "# synced"; } > "$ROOT/.incoming/deploy.sh"
+staged="$ROOT/.incoming/$REVISION"
+other="$ROOT/.incoming/89abcdef0123456789abcdef0123456789abcdef"
+mkdir -p "$staged" "$other"
+{ cat "$DEPLOY_DIR/compose.yaml"; echo "# synced"; } > "$staged/compose.yaml"
+cp "$DEPLOY_DIR/deploy.sh" "$staged/deploy.sh"
+echo "# other revision" > "$other/compose.yaml"
 hold_deploy_lock
-run_deploy --sync-from "$ROOT/.incoming"
+run_deploy --sync-from "$staged"
 assert_status 75
 grep -q "# synced" "$ROOT/compose.yaml" && { echo "compose.yaml was replaced while the lock was held"; exit 1; }
 release_deploy_lock
-run_deploy --sync-from "$ROOT/.incoming"
+run_deploy --sync-from "$staged"
 assert_status 0
 grep -q "# synced" "$ROOT/compose.yaml" || { echo "compose.yaml was not replaced"; exit 1; }
-grep -q "# synced" "$ROOT/deploy.sh" || { echo "deploy.sh was not replaced"; exit 1; }
-[ ! -d "$ROOT/.incoming" ] || { echo "staging directory remained"; exit 1; }
+[ ! -d "$staged" ] || { echo "staging directory remained"; exit 1; }
+grep -q "# other revision" "$other/compose.yaml" || { echo "another revision's staged files were touched"; exit 1; }
 [ -x "$ROOT/deploy.sh" ] || { echo "deploy.sh lost its executable bit"; exit 1; }
+
+# A staged deploy.sh that differs from the running script is installed and then re-executed
+# with the same arguments minus --sync-from, under the lock the run already holds and before
+# standard input is read, so the settings reach the new entrance and are recorded after health.
+setup_root
+have_image "$DIGEST_IMAGE"
+mkdir -p "$staged"
+{ cat "$DEPLOY_DIR/deploy.sh"; echo 'echo "deploy: synced entrance ran"'; } > "$staged/deploy.sh"
+set +e
+OUT="$(printf 'POKETTO_HTTP_PORT=8081\n' | bash "$ROOT/deploy.sh" --sync-from "$staged" --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+assert_contains "$OUT" "synced entrance ran"
+grep -q "synced entrance ran" "$ROOT/deploy.sh" || { echo "deploy.sh was not replaced"; exit 1; }
+[ ! -d "$staged" ] || { echo "staging directory remained"; exit 1; }
+assert_contains "$(cat "$FAKE_STATE/curl.log")" ":8081/"
+grep -qx "POKETTO_HTTP_PORT=8081" "$ROOT/.env" || { echo "the setting did not reach the re-executed entrance"; exit 1; }
+[ "$(up_count)" = 1 ] || { echo "the stack was started more than once"; exit 1; }
+[ ! -d "$ROOT/.deploy.lock.d" ] || { echo "the lock was not released"; exit 1; }
+run_deploy
+assert_status 0
 
 # A missing staging directory is an error before anything else happens.
 run_deploy --sync-from "$ROOT/nowhere"
