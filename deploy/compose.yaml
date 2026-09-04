@@ -1,0 +1,52 @@
+# Production Compose stack for one host. deploy.sh verifies both images before `up`: the database
+# reference must carry a registry digest, and the application image must carry the revision label
+# of the commit being deployed. Every value comes from the .env file beside this file; nothing
+# host-specific lives here. deploy.sh parses the file as literal data, exports the values, and
+# disables Compose's automatic .env parser.
+name: poketto
+
+services:
+  app:
+    image: "${POKETTO_APP_IMAGE:?POKETTO_APP_IMAGE must name the verified application image}"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://db:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
+      SPRING_DATASOURCE_USERNAME: "${POSTGRES_USER:?POSTGRES_USER is required}"
+      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POKETTO_DATA_DIR: /var/lib/poketto
+      POKETTO_REPOSITORY_REMOTE_URI: "${POKETTO_REPOSITORY_REMOTE_URI:?POKETTO_REPOSITORY_REMOTE_URI is required}"
+      POKETTO_REPOSITORY_USERNAME: "${POKETTO_REPOSITORY_USERNAME:?POKETTO_REPOSITORY_USERNAME is required}"
+      POKETTO_REPOSITORY_PASSWORD: "${POKETTO_REPOSITORY_PASSWORD:?POKETTO_REPOSITORY_PASSWORD is required}"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError"
+    ports:
+      - "${POKETTO_HTTP_BIND:-127.0.0.1}:${POKETTO_HTTP_PORT:-8080}:8080"
+    volumes:
+      - "${POKETTO_DATA_DIR_HOST:?POKETTO_DATA_DIR_HOST is required}:/var/lib/poketto"
+    mem_limit: "${POKETTO_APP_MEMORY:-1536m}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+
+  db:
+    image: "${POKETTO_DB_IMAGE:?POKETTO_DB_IMAGE must name the pinned database image}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER is required}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+    volumes:
+      - "${POKETTO_DB_DIR_HOST:?POKETTO_DB_DIR_HOST is required}:/var/lib/postgresql/data"
+    mem_limit: "${POKETTO_DB_MEMORY:-512m}"
+    shm_size: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s

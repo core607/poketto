@@ -110,6 +110,37 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     systemProperty("poketto.postgres.image", postgresTestImage.get())
 }
 
+// Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.
+// Invoke Git Bash as a login shell so its own /usr/bin tools are available to the test scripts.
+fun gitBash(): File? {
+    System.getenv("POKETTO_BASH")?.takeIf { it.isNotBlank() }?.let { return File(it) }
+    if (!System.getProperty("os.name").startsWith("Windows")) {
+        return null
+    }
+    for (directory in System.getenv("PATH").orEmpty().split(';')) {
+        val git = File(directory, "git.exe")
+        if (!git.isFile) continue
+        for (candidate in listOf("usr/bin/bash.exe", "bin/bash.exe")) {
+            val bash = File(git.parentFile.parentFile, candidate)
+            if (bash.isFile) return bash
+        }
+    }
+    return null
+}
+
+val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
+    group = "verification"
+    description = "Runs the deployment script tests against fake docker, curl, and ssh commands."
+    inputs.dir(layout.projectDirectory.dir("deploy"))
+    outputs.upToDateWhen { false }
+    val bash = gitBash()
+    commandLine(
+        bash?.absolutePath ?: "bash",
+        *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
+        layout.projectDirectory.file("deploy/tests/run.sh").asFile.absolutePath.replace('\\', '/'),
+    )
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 26
@@ -128,4 +159,5 @@ apply(from = "gradle/repository-checks.gradle.kts")
 tasks.check {
     dependsOn(integrationTest)
     dependsOn("repoCheck")
+    dependsOn(deployScriptTests)
 }

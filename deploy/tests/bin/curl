@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Fake curl: answers the health entrance. $FAKE_STATE/curl-fails makes it fail; curl-body
+# replaces the default UP body.
+set -u
+mkdir -p "$FAKE_STATE"
+printf '%s\n' "$*" >> "$FAKE_STATE/curl.log"
+[ -f "$FAKE_STATE/curl-fails" ] && exit 22
+cat "$FAKE_STATE/curl-body" 2>/dev/null || echo '{"status":"UP"}'

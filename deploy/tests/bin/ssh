@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Fake ssh for the transfer script tests. The remote command is the last argument.
+#   remote-has-image    present when the remote already holds the transferred tag
+#   remote-load-fails   present when the remote load must fail
+# Commands are appended to $FAKE_STATE/ssh.log; received archives go to received.*.
+set -u
+mkdir -p "$FAKE_STATE"
+command="${*: -1}"
+printf '%s\n' "$*" >> "$FAKE_STATE/ssh.log"
+case "$command" in
+    *"image inspect"*) [ -f "$FAKE_STATE/remote-has-image" ] ;;
+    *"[ -e "*) [ -f "$FAKE_STATE/remote-has-entrance" ] ;;
+    *"mv -f"*) echo "$command" >> "$FAKE_STATE/sync.log"; exit 0 ;;
+    *"docker load"*)
+        cat > "$FAKE_STATE/received.archive"
+        [ -f "$FAKE_STATE/remote-load-fails" ] && exit 1
+        exit 0 ;;
+    *"cat >"*) cat > /dev/null; echo "$command" >> "$FAKE_STATE/sync.log"; exit 0 ;;
+    *"deploy.sh"*)
+        echo "$command" >> "$FAKE_STATE/deploy-calls"
+        cat > "$FAKE_STATE/deploy-stdin"
+        exit "${FAKE_REMOTE_DEPLOY_EXIT:-0}" ;;
+    *) exit 0 ;;
+esac

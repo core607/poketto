@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Problem
 
-Every accepted proposal assumes a Spring HTTP surface: the [Next.js frontend](../proposed/2026-08-30-nextjs-frontend.md) routes `/api/**` to Spring and expects stable problem responses, [continuous delivery](../proposed/2026-08-26-continuous-delivery.md) succeeds only after a real health entrance passes, [managed assets](../proposed/2026-09-01-repository-asset-blob-store.md) need a delivery URL, and [invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) needs sessions and CSRF on real endpoints. The `web` module owned none of that: no health endpoint, no error contract, and no route over the implemented content module.
+Every accepted proposal assumes a Spring HTTP surface: the [Next.js frontend](../proposed/2026-08-30-nextjs-frontend.md) routes `/api/**` to Spring and expects stable problem responses, [continuous delivery](2026-09-03-continuous-delivery.md) succeeds only after a real health entrance passes, [managed assets](../proposed/2026-09-01-repository-asset-blob-store.md) need a delivery URL, and [invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) needs sessions and CSRF on real endpoints. The `web` module owned none of that: no health endpoint, no error contract, and no route over the implemented content module.
 
 ## Decision
 

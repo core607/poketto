@@ -6,7 +6,7 @@
 
 ## 状态
 
-开发中。可执行开发基线、工作空间隔离、内容仓基础、文档写入与[远程 Git 仓库权威](notes/implemented/2026-09-01-remote-repository-authority.md)已经实现。[HTTP 入口](notes/implemented/2026-09-03-http-entrance-baseline.md)提供健康检查、RFC 9457 problem 响应，以及默认工作空间的只读公开文档 API。主要的单机部署保留一次性本地 Git 缓存，只有远端 `main` 才是仓库写入的确认点。已接受的提案将识别[仓库原生 Markdown 与只读同目录图片图库](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md)，并把经 Poketto 上传的图片存入权威[本地 ManagedBlobStore，同时把仓库图片副本当作可删除缓存](notes/proposed/2026-09-01-repository-asset-blob-store.md)。[C 端账号](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、[Next.js 前端](notes/proposed/2026-08-30-nextjs-frontend.md)和 MCP 入口仍处于提案阶段。Serverless 仍是可选方案，需要等待真实的 OSS、共享数据库与远程 SRT 基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线，提案则标明尚未交付的目标决策。
+开发中。可执行开发基线、工作空间隔离、内容仓基础、文档写入与[远程 Git 仓库权威](notes/implemented/2026-09-01-remote-repository-authority.md)已经实现。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过校验的 `main` 提交发布到 GHCR，并经 SSH 部署到一台 Docker Compose 主机。[HTTP 入口](notes/implemented/2026-09-03-http-entrance-baseline.md)提供健康检查、RFC 9457 problem 响应，以及默认工作空间的只读公开文档 API。主要的单机部署保留一次性本地 Git 缓存，只有远端 `main` 才是仓库写入的确认点。已接受的提案将识别[仓库原生 Markdown 与只读同目录图片图库](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md)，并把经 Poketto 上传的图片存入权威[本地 ManagedBlobStore，同时把仓库图片副本当作可删除缓存](notes/proposed/2026-09-01-repository-asset-blob-store.md)。[C 端账号](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、[Next.js 前端](notes/proposed/2026-08-30-nextjs-frontend.md)和 MCP 入口仍处于提案阶段。Serverless 仍是可选方案，需要等待真实的 OSS、共享数据库与远程 SRT 基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线，提案则标明尚未交付的目标决策。
 
 ## 适合谁
 
@@ -21,6 +21,8 @@
 AGENTS.md            本仓库的 agent 工作规则（从这里开始）
 .agents/skills/      可复用工序：文风、评审、检查、笔记生命周期
 build.gradle.kts     Gradle 构建与校验入口
+Dockerfile           应用镜像：Gradle 构建阶段 + JRE 运行阶段
+deploy/              生产 Compose、部署入口、传输脚本与脚本测试
 src/                 应用模块及其测试
 infra/postgres/      可复现的 PostgreSQL 17 + zhparser 测试镜像
 notes/               决策记录：proposed / implemented / rejected / archived
@@ -43,6 +45,10 @@ POKETTO_REPOSITORY_PASSWORD=... \
 ```
 
 Windows 下用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。
+
+## 部署
+
+每个通过校验的 `main` 提交都会发布 `ghcr.io/core607/poketto`，标签为 `sha-<commit>`。在主机上把 `deploy/compose.yaml`、`deploy/deploy.sh` 和填好的 `deploy/.env.example` 副本放进同一个部署目录，然后运行 `deploy.sh --app-image <镜像> --app-revision <提交>`；之后不带参数运行 `deploy.sh` 会按记录的固定版本重新部署。脚本会校验配置、版本固定、目录与磁盘空间，核对镜像的 revision 标签，只有 `/actuator/health` 回答 `UP` 才算成功。走这条路主机得能拉到镜像：私有的 GHCR 包需要先用只读 token 在主机上 `docker login ghcr.io`，或者把包设为公开。主机完全连不上 GHCR 时，`deploy/transfer.sh` 把镜像经 SSH 传过去并调用同一个入口。GitHub Actions 的自动部署默认关闭，直到配置了仓库变量 `POKETTO_DEPLOY_ENABLED` 和 `production` 环境；详见[持续交付笔记](notes/implemented/2026-09-03-continuous-delivery.md)。
 
 ## 授权
 
