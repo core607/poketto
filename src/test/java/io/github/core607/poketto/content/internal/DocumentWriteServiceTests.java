@@ -19,6 +19,8 @@ import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -321,6 +323,27 @@ class DocumentWriteServiceTests {
         assertThatThrownBy(() -> writes.create(workspace, AGENT, null)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> writes.publish(workspace, AGENT, DocumentId.random(), null))
                 .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void aClockBehindTheStoredUpdateTimeStillAdvancesTheDocument() {
+        DocumentWriteResult created = writes.create(workspace, AGENT, draft("documents/note.md"));
+        StoredDocument before = only(workspace);
+        DocumentWriteService behind = repositories.writes(
+                Clock.fixed(before.content().metadata().updatedAt().minusSeconds(3600), ZoneOffset.UTC));
+
+        DocumentWriteResult updated = behind.update(
+                workspace,
+                AGENT,
+                created.documentId(),
+                created.revision().orElseThrow(),
+                new DocumentDraft("documents/note.md", "Renamed", List.of(), "Body text"));
+
+        assertThat(updated.committed()).isTrue();
+        assertThat(only(workspace).content().metadata().updatedAt())
+                .isEqualTo(before.content().metadata().updatedAt().plusMillis(1));
+        assertThat(repositories.store().snapshot(workspace).orElseThrow().commitId())
+                .contains(updated.commitId());
     }
 
     private static DocumentDraft draft(String path) {

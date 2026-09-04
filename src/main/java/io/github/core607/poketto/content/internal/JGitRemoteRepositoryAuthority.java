@@ -66,6 +66,41 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     @Override
+    public <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader) {
+        Objects.requireNonNull(reader, "snapshot reader must not be null");
+        Objects.requireNonNull(workspaceId, "workspace id must not be null");
+        CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
+        workspaceLock.lock.lock();
+        try {
+            Path cache = paths.contentDirectory(workspaceId);
+            Repository opened;
+            cacheLifecycleLock.lock();
+            try {
+                // An offline read serves what an earlier fetch left behind and never creates a
+                // cache, so an unbound or never-fetched workspace fails without a footprint.
+                if (!Files.isDirectory(cache) || isEmpty(cache)) {
+                    throw failure(workspaceId, "no repository cache exists");
+                }
+                opened = openOrInitialize(cache, workspaceId);
+            } catch (IOException exception) {
+                throw failure(workspaceId, "repository cache cannot be opened");
+            } finally {
+                cacheLifecycleLock.unlock();
+            }
+            try (Repository repository = opened) {
+                ObjectId commit = repository.resolve(MAIN);
+                touch(cache);
+                return reader.read(snapshot(repository, commit == null ? ObjectId.zeroId() : commit));
+            } catch (IOException exception) {
+                throw failure(workspaceId, "repository cache main cannot be resolved");
+            }
+        } finally {
+            workspaceLock.lock.unlock();
+            releaseWorkspaceLock(workspaceId, workspaceLock);
+        }
+    }
+
+    @Override
     public <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer) {
         Objects.requireNonNull(writer, "candidate writer must not be null");
         return inCache(
@@ -131,9 +166,39 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 throw new RepositoryConflictException(
                         "workspace " + workspaceId + " remote main changed while the write was being prepared");
             }
+        } catch (RemoteGitRejectedException rejected) {
+            reconcileRejection(workspaceId, repository, binding, baseCommit, rejected);
         } catch (RemoteGitTransportException lostResponse) {
             reconcileLostResponse(workspaceId, repository, binding, baseCommit, candidateCommit);
         }
+    }
+
+    /**
+     * A refusal is definite: the candidate did not land. The remote refuses both for a competing
+     * advance it could not classify as non-fast-forward (a ref lock held by another writer) and
+     * for a policy such as permissions or branch protection; only remote {@code main} tells
+     * them apart, and an unreadable remote still leaves the outcome definite.
+     */
+    private void reconcileRejection(
+            WorkspaceId workspaceId,
+            Repository repository,
+            RepositoryBinding binding,
+            ObjectId baseCommit,
+            RemoteGitRejectedException rejected) {
+        final ObjectId remoteCommit;
+        try {
+            remoteCommit = transport.fetchMain(repository, binding);
+        } catch (RemoteGitTransportException unreadable) {
+            throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
+        }
+        if (!remoteCommit.equals(ObjectId.zeroId())) {
+            resetCache(repository, remoteCommit);
+        }
+        if (!remoteCommit.equals(baseCommit)) {
+            throw new RepositoryConflictException(
+                    "workspace " + workspaceId + " remote main changed while the write was being prepared");
+        }
+        throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
     }
 
     private static Snapshot snapshot(Repository repository, ObjectId commit) {
@@ -181,7 +246,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         try {
             resetCache(repository, transport.fetchMain(repository, binding));
         } catch (RemoteGitTransportException ignored) {
-            // The conflict is already definite. A later operation rebuilds the disposable cache.
+            // The outcome is already definite. A later operation rebuilds the disposable cache.
         }
     }
 

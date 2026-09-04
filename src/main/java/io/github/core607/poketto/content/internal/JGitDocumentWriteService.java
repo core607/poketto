@@ -65,21 +65,21 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     public DocumentWriteResult create(WorkspaceId workspaceId, WritePrincipal principal, DocumentDraft draft) {
         requirePrincipal(principal);
         String path = validated(draft);
-        Instant now = clock.instant();
-        DocumentId documentId = DocumentId.random();
-        DocumentContent content = new DocumentContent(
-                new DocumentMetadata(
-                        documentId,
-                        draft.title(),
-                        DocumentVisibility.PRIVATE,
-                        draft.tags(),
-                        now,
-                        now,
-                        Optional.empty()),
-                draft.body());
-        byte[] bytes = codec.serialize(content);
 
         return inRepository(workspaceId, (repository, documents) -> {
+            Instant now = clock.instant();
+            DocumentId documentId = DocumentId.random();
+            DocumentContent content = new DocumentContent(
+                    new DocumentMetadata(
+                            documentId,
+                            draft.title(),
+                            DocumentVisibility.PRIVATE,
+                            draft.tags(),
+                            now,
+                            now,
+                            Optional.empty()),
+                    draft.body());
+            byte[] bytes = codec.serialize(content);
             requirePathFree(documents, path, null);
             requireIdFree(documents, documentId);
             ObjectId commit = commit(repository, principal, "create", documentId, now, Map.of(path, bytes), Set.of());
@@ -99,12 +99,12 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         Objects.requireNonNull(documentId, "document id must not be null");
         Objects.requireNonNull(expectedRevision, "expected document revision must not be null");
         String path = validated(draft);
-        Instant now = clock.instant();
 
         return inRepository(workspaceId, (repository, documents) -> {
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             DocumentMetadata before = current.content().metadata();
+            Instant now = changeTime(before);
             DocumentContent candidate = new DocumentContent(
                     new DocumentMetadata(
                             before.id(),
@@ -142,13 +142,13 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         requirePrincipal(principal);
         Objects.requireNonNull(documentId, "document id must not be null");
         Objects.requireNonNull(expectedRevision, "expected document revision must not be null");
-        Instant now = clock.instant();
 
         return inRepository(workspaceId, (repository, documents) -> {
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             String path = current.repositoryPath();
-            ObjectId commit = commit(repository, principal, "delete", documentId, now, Map.of(), Set.of(path));
+            ObjectId commit =
+                    commit(repository, principal, "delete", documentId, clock.instant(), Map.of(), Set.of(path));
             return new DocumentWriteResult(documentId, commit.name(), true, path, Optional.empty());
         });
     }
@@ -162,12 +162,12 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         requirePrincipal(principal);
         Objects.requireNonNull(documentId, "document id must not be null");
         Objects.requireNonNull(expectedRevision, "expected document revision must not be null");
-        Instant now = clock.instant();
 
         return inRepository(workspaceId, (repository, documents) -> {
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             DocumentMetadata before = current.content().metadata();
+            Instant now = changeTime(before);
             Instant publishedAt = before.publishedAt().orElse(now);
             DocumentContent candidate = new DocumentContent(
                     new DocumentMetadata(
@@ -202,6 +202,13 @@ final class JGitDocumentWriteService implements DocumentWriteService {
                 DocumentWriteResult result = action.apply(repository, store.scan(repository, baseCommit, workspaceId));
                 if (result.committed()) {
                     advancer.advance(result.commitId());
+                    // Remote main now equals the candidate, and the workspace lock is still
+                    // held, so the acknowledged commit becomes the served snapshot at once.
+                    ObjectId committed = ObjectId.fromString(result.commitId());
+                    store.install(
+                            workspaceId,
+                            new RepositoryAuthority.Snapshot(snapshot.worktree(), Optional.of(result.commitId())),
+                            store.scan(repository, committed, workspaceId));
                 }
                 return result;
             }
@@ -272,6 +279,17 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     }
 
     /**
+     * The instant a change to an existing document is recorded at. It is read under the
+     * repository lock and always follows the stored {@code updated_at}, so a stepped-back host
+     * clock or a direct push stamped in the future cannot make a legitimate write fail.
+     */
+    private Instant changeTime(DocumentMetadata before) {
+        Instant now = clock.instant();
+        Instant earliest = before.updatedAt().plusMillis(1);
+        return now.isAfter(earliest) ? now : earliest;
+    }
+
+    /**
      * Guarantees that a committed change carries a later {@code updated_at}, and therefore a new
      * revision, even when the change is a move or a canonical rewrite that leaves the fields alone.
      */
@@ -279,9 +297,6 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         DocumentMetadata metadata = next.metadata();
         if (metadata.updatedAt().isAfter(previousUpdatedAt)) {
             return next;
-        }
-        if (!now.isAfter(previousUpdatedAt)) {
-            throw new IllegalArgumentException("document updated_at must advance when serialized content changes");
         }
         return new DocumentContent(
                 new DocumentMetadata(

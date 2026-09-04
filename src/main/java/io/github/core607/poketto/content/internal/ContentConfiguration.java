@@ -5,6 +5,8 @@ import io.github.core607.poketto.content.DocumentWriteService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.time.Clock;
+import java.time.Duration;
+import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -49,7 +51,7 @@ class ContentConfiguration {
 
     @Bean
     JGitContentRepositoryStore contentRepositoryStore(RepositoryAuthority authority, CanonicalDocumentCodec codec) {
-        return new JGitContentRepositoryStore(authority, codec);
+        return new JGitContentRepositoryStore(authority, codec, Clock.systemUTC());
     }
 
     @Bean
@@ -58,11 +60,36 @@ class ContentConfiguration {
         return new JGitDocumentWriteService(authority, codec, store, Clock.systemUTC());
     }
 
+    @Bean(destroyMethod = "close")
+    @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
+    ContentSnapshotRefresher contentSnapshotRefresher(
+            ContentRepositoryStore store, WorkspaceCatalog workspaces, RepositoryProperties properties) {
+        return new ContentSnapshotRefresher(
+                store,
+                () -> List.of(workspaces.defaultWorkspace().id()),
+                Duration.ofSeconds(properties.refreshSeconds()));
+    }
+
+    @Bean(name = "contentSnapshot")
+    @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
+    ContentSnapshotHealthIndicator contentSnapshotHealthIndicator(
+            ContentRepositoryStore store, WorkspaceCatalog workspaces, RepositoryProperties properties) {
+        return new ContentSnapshotHealthIndicator(
+                store, workspaces, Duration.ofSeconds(properties.staleAfterSeconds()), Clock.systemUTC());
+    }
+
+    /**
+     * Startup fails without a validated snapshot for the default workspace, so a deployment
+     * never reports healthy while its content cannot be served.
+     */
     @Bean
     @Order(100)
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
-    ApplicationRunner contentRepositoryInitializer(WorkspaceCatalog workspaces, ContentRepositoryStore repositories) {
-        return arguments ->
-                repositories.ensureReady(workspaces.defaultWorkspace().id());
+    ApplicationRunner contentRepositoryInitializer(
+            WorkspaceCatalog workspaces, ContentRepositoryStore repositories, ContentSnapshotRefresher refresher) {
+        return arguments -> {
+            repositories.ensureReady(workspaces.defaultWorkspace().id());
+            refresher.start();
+        };
     }
 }

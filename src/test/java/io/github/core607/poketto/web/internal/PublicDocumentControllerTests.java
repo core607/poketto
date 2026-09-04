@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.ContentRepositoryStore;
+import io.github.core607.poketto.content.ContentSnapshot;
 import io.github.core607.poketto.content.DocumentContent;
 import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.content.DocumentMetadata;
@@ -58,7 +59,20 @@ class PublicDocumentControllerTests {
                 document(
                         NEWER, "Newer", DocumentVisibility.PUBLIC, Optional.of(Instant.parse("2026-09-02T00:00:00Z"))));
         store.failure = null;
+        store.snapshotMissing = false;
         store.scannedWorkspaces.clear();
+    }
+
+    @Test
+    void reportsAMissingSnapshotAsRepositoryUnavailable() throws Exception {
+        store.snapshotMissing = true;
+
+        String problem = problemBody("/api/public/documents", 503);
+
+        assertThat(problem)
+                .contains("\"title\":\"Repository unavailable\"")
+                .doesNotContain(DEFAULT_WORKSPACE.id().toString());
+        assertThat(problemBody("/api/public/documents/" + OLDER, 503)).contains("\"title\":\"Repository unavailable\"");
     }
 
     @Test
@@ -180,17 +194,32 @@ class PublicDocumentControllerTests {
         private final List<WorkspaceId> scannedWorkspaces = new java.util.ArrayList<>();
         private List<StoredDocument> documents = List.of();
         private RuntimeException failure;
+        private boolean snapshotMissing;
 
         @Override
         public void ensureReady(WorkspaceId workspaceId) {}
 
         @Override
-        public List<StoredDocument> scan(WorkspaceId workspaceId) {
+        public ContentSnapshot refresh(WorkspaceId workspaceId) {
+            throw new UnsupportedOperationException("the entrance never refreshes");
+        }
+
+        @Override
+        public Optional<ContentSnapshot> snapshot(WorkspaceId workspaceId) {
             scannedWorkspaces.add(workspaceId);
             if (failure != null) {
                 throw failure;
             }
-            return documents;
+            if (snapshotMissing) {
+                return Optional.empty();
+            }
+            return Optional.of(new ContentSnapshot(
+                    workspaceId, Optional.of("0".repeat(40)), documents, Instant.parse("2026-09-03T00:00:00Z")));
+        }
+
+        @Override
+        public List<StoredDocument> scan(WorkspaceId workspaceId) {
+            throw new UnsupportedOperationException("the entrance never scans the remote");
         }
     }
 

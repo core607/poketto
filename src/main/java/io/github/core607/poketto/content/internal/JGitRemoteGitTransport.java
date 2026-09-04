@@ -66,6 +66,9 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
             return switch (update.getStatus()) {
                 case OK, UP_TO_DATE -> PushStatus.UPDATED;
                 case REJECTED_NONFASTFORWARD, REJECTED_REMOTE_CHANGED -> PushStatus.CONFLICT;
+                // The remote reported its refusal (permissions, a protected branch), so the ref
+                // is known not to have moved. Any other status leaves the outcome unknown.
+                case REJECTED_OTHER_REASON, REJECTED_NODELETE -> throw new RemoteGitRejectedException("ref update");
                 default -> throw new RemoteGitTransportException("ref update");
             };
         } catch (RemoteGitTransportException exception) {

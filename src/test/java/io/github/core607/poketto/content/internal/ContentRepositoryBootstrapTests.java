@@ -94,7 +94,8 @@ class ContentRepositoryBootstrapTests {
                 },
                 new JGitRemoteGitTransport(),
                 2);
-        ContentRepositoryStore store = new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec());
+        ContentRepositoryStore store =
+                new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec(), java.time.Clock.systemUTC());
 
         assertThatThrownBy(() -> store.ensureReady(workspace))
                 .isInstanceOf(ContentRepositoryException.class)
