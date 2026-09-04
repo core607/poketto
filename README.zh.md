@@ -24,7 +24,6 @@ build.gradle.kts     Gradle 构建与校验入口
 Dockerfile           应用镜像：Gradle 构建阶段 + JRE 运行阶段
 deploy/              生产 Compose、部署入口、传输脚本与脚本测试
 src/                 应用模块及其测试
-infra/postgres/      可复现的 PostgreSQL 17 + zhparser 测试镜像
 notes/               决策记录：proposed / implemented / rejected / archived
 ```
 

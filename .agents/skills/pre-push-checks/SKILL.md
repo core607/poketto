@@ -27,7 +27,7 @@ git status --short --branch
 | Code | Run focused owning tests with `./gradlew test --tests '<class-or-pattern>'`, then `./gradlew test`; use `./gradlew check` when build wiring or several runtime surfaces changed |
 | MCP tools and model-visible output | Real entry-path tests and replayable snapshots — command table to be filled when snapshot replay lands |
 | Web UI | Owning behavior tests plus [ui-evidence](../ui-evidence/SKILL.md) from the exact changed tree — command table to be filled when the web runtime lands |
-| Database and projection | Run `./gradlew integrationTest` for the database image and zhparser smoke path; transaction, replay, crash-recovery, rebuild, and concurrency commands remain to be filled when persistence lands |
+| Database and storage | Run `./gradlew integrationTest` against pinned official PostgreSQL for Flyway, workspace persistence, initialization, and real application entry paths; add transaction and concurrency coverage when their owning persistence behavior lands |
 
 Test selection and coverage selection are separate. A focused test is useful only when it exercises the changed source and would fail for the intended regression. Add adjacent tests for a shared contract; do not narrow coverage merely to hide affected files.
 

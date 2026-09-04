@@ -3,6 +3,8 @@
 Date: 2026-09-03
 Status: Implemented
 
+The [phase-one delivery boundary](../proposed/2026-09-05-phase-one-daily-use.md) explicitly excludes backup prerequisites. Its installation may enable deployment without the backup freshness gate described below; backup and recovery work remains a separate proposal.
+
 ## Problem
 
 The [requirements](2026-08-25-requirements-and-architecture.md) require application images in GHCR and a fallback that transfers a `docker save` artifact over SSH when registry access is unreliable. The [development baseline](2026-08-26-development-baseline.md) verified every commit but built no deployable image and provided no repeatable production Compose or deployment script.
@@ -21,7 +23,7 @@ The [Dockerfile](../../Dockerfile) builds the boot jar on the pinned Temurin 26 
 
 On the pull path the host must be able to pull the application image: GHCR publishes a new package as private, so the automatic deployment streams the run's `GITHUB_TOKEN` to the entrance as `REGISTRY_USERNAME` and `REGISTRY_PASSWORD` lines, which log in for that pull inside a Docker configuration directory that exists only for that run and are never recorded, and a manual pull-path deployment needs either a public package or a prior `docker login ghcr.io` on the host with a read-only token. The transfer path needs no registry access on the host.
 
-Production pins the official `postgres:17` image by digest in `deploy/.env.example`; the deployment script refuses a database reference without a digest. The custom zhparser image remains an integration-test concern until [repository-native retrieval](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) removes it.
+Production and integration tests select the same [official PostgreSQL 17 image](2026-09-05-stock-postgresql.md) by digest. The deployment script refuses a database reference without a digest.
 
 ### Optional automatic deployment
 

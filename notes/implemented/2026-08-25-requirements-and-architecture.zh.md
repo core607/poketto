@@ -2,6 +2,8 @@
 
 Date: 2026-08-25
 
+[第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及五个仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
+
 ## 本文范围
 
 这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)（健康检查、problem 响应与只读的公开文档 API），以及为公开读取提供服务并限定内容边界的[已验证内容快照](2026-09-04-validated-content-snapshot.md)已经实现。[Next.js 前端提案](../proposed/2026-08-30-nextjs-frontend.md)取代下文的 JTE 与 htmx 选型，仓库原生检索提案取代核心架构决策 1 与 3 中的 PostgreSQL 投影和搜索；投影、搜索、渲染、问答、MCP 与认证均未实现。拟议的[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。除非链接的提案明确描述未来变化，下文机制均为已交付行为。
@@ -20,9 +22,9 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 ## 核心架构决策
 
-1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库；PostgreSQL 只做内容的派生投影（search_documents 表），可随时全量重建。每个工作空间的投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
-2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。机器入口（MCP、管理端）强校验 frontmatter，以解析出的旧提交构建候选 commit 并记录调用者身份；只有远端 ref 仍等于旧提交时才推进。竞争 push 返回冲突；回包丢失时重读远端 `main` 对账，绝不盲目重试 ref 更新。投影对仓库所有者直接 push 的内容做 lint 标记而非拒收。仓库确认与后续投影确认是两个独立状态。
-3. 检索以 agentic 方式为默认。服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
+1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的远端 Git 仓库。[官方 PostgreSQL](2026-09-05-stock-postgresql.md)存储关系型应用状态，不存在内容投影、checkpoint 或搜索表。提交树检索由仓库原生检索提案定义。
+2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。机器入口（MCP、管理端）强校验 frontmatter，以解析出的旧提交构建候选 commit 并记录调用者身份；只有远端 ref 仍等于旧提交时才推进。竞争 push 返回冲突；回包丢失时重读远端 `main` 对账，绝不盲目重试 ref 更新。直接 push 由当前快照校验约束；第一阶段提案将整提交拒绝改为文件级诊断。仓库确认与下游观察是独立状态。
+3. 拟议的仓库原生检索入口提供有界提交树文本匹配、标签与日期过滤，以及隔离的代理探索。搜索 API 尚未交付；第一阶段不包含持久化全文或向量索引。
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 在下一次读取时观察新的远端 `main`，不会把缓存改动当作内容。成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
 5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间，不提供自助创建更多工作空间的入口。
 
@@ -39,7 +41,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 备份
 
-每个工作空间的文档文本与历史靠所属内容仓的 git remote；图片 blob 与数据库非派生表（工作空间目录、key、审计、预算）各走 off-host 定时备份；投影表不备份，可重建。
+每个工作空间的文档文本与历史靠所属内容仓的 git remote；图片 blob 与数据库非派生表（工作空间目录、key、审计、预算）各走 off-host 定时备份；不存在需要备份的内容投影。
 
 ## 图片
 
@@ -47,7 +49,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 技术栈
 
-JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：workspace / content / projection / search / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、PostgreSQL 17 + zhparser（需自建镜像，非纯官方镜像）、Caffeine、Tailwind 搭配[拟议的 Next.js 前端](../proposed/2026-08-30-nextjs-frontend.md)，取代最初选定的 JTE + htmx。
+JDK 26（回退位 25 LTS）、Spring Boot 4、Spring Modulith（模块：workspace / content / web / qa / mcp / auth）、Spring AI（MCP Server 与 tool-calling）、JGit、commonmark-java + Jackson YAML、[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)、Caffeine、Tailwind 搭配[拟议的 Next.js 前端](../proposed/2026-08-30-nextjs-frontend.md)，取代最初选定的 JTE + htmx。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。另提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随所用 SDK 的已验证版本固定；v1 用静态 API Key 是有意识的简化，不宣称实现 MCP 标准 OAuth 流程；Streamable HTTP 校验 Origin 白名单。
 

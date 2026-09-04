@@ -3,6 +3,8 @@
 Date: 2026-08-27
 Status: Implemented
 
+[Stock PostgreSQL](2026-09-05-stock-postgresql.md) replaces the custom integration image and its tokenizer smoke test with a pinned official image and UTF-8 verification. The build and workspace ownership decisions in this record remain applicable.
+
 ## Problem
 
 Without an explicit tenant boundary, content repositories, projections, caches, authorization, and background work could form around an implicit default tenant. Adding independent knowledge spaces after those features existed would require isolation conditions to be threaded through every layer. Search, caches, and asynchronous work are the easiest paths to miss because they do not all appear in the primary request flow.
@@ -79,5 +81,5 @@ Application startup now requires a configured PostgreSQL data source. Flyway own
 - `WorkspaceIdTests` covers canonical parsing and rejects case variants and path-like input.
 - `WorkspacePathsTests` proves that two workspace IDs resolve to disjoint content directories below the configured absolute data directory.
 - `ModularityTests` verifies the `workspace` module together with the existing application modules.
-- `PostgresIntegrationIT` runs against the repository's PostgreSQL 17 + zhparser image. It verifies Flyway migration, creation of one default workspace that a rerun of initialization reuses, catalog lookup, PostgreSQL 17, and Chinese token parsing.
+- `PostgresIntegrationIT` runs against pinned official PostgreSQL 17. It verifies Flyway migration, creation of one default workspace that a rerun of initialization reuses, catalog lookup, PostgreSQL 17, and UTF-8 text support.
 - `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` pass.

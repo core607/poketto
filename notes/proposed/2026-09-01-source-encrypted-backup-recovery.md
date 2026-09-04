@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+This remains future work. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) excludes backups and restore drills and retains all acknowledged managed originals without claiming off-host recovery.
+
 ## Problem
 
 The [off-host backup and restore proposal](2026-08-27-off-host-backup-and-restore.md) originally left backup payloads unencrypted in v1 and trusted private target access control. That makes every recovery provider an additional plaintext trust domain for remote repository history, managed images, and relational account data. A consumer service needs a confidentiality boundary that survives disclosure of backup-target credentials without pretending that lost encryption keys are harmless.

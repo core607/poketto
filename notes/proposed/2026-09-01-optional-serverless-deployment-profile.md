@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+This remains an independent future profile. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) targets the primary single-host profile with local managed originals, derived image caches, and local SRT.
+
 ## Problem
 
 Poketto's primary production topology is one operator-owned cloud server. It runs the application beside a local repository cache, authoritative local filesystem ManagedBlobStore, disposable repository-image cache, and local Sandbox Runtime executor while using remote Git as repository authority. This remains a supported product profile, not a temporary development adapter.

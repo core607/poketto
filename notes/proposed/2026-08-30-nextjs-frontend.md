@@ -3,6 +3,8 @@
 Date: 2026-08-30
 Status: Proposed
 
+[Phase-one delivery](2026-09-05-phase-one-daily-use.md) includes the public blog and Markdown administration interface with real-browser evidence. Visitor-Q&A controls are excluded from that delivery.
+
 ## Problem
 
 The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) select JTE, htmx, and Tailwind for a server-rendered public blog and its administration pages. The [development baseline](../implemented/2026-08-26-development-baseline.md) consequently defines one Spring Boot artifact with a `web` application module, although no user-facing route or JTE template has been implemented.

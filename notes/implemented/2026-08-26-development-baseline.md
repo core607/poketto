@@ -3,6 +3,8 @@
 Date: 2026-08-26
 Status: Implemented
 
+[Stock PostgreSQL](2026-09-05-stock-postgresql.md) replaces the custom integration image and its tokenizer smoke test with a pinned official image and UTF-8 verification. The build and workspace ownership decisions in this record remain applicable.
+
 ## Problem
 
 Poketto had settled product boundaries but no executable build, module enforcement, database test environment, repository checks, or continuous integration. The baseline needed to establish those capabilities without implementing product behavior.
@@ -43,6 +45,6 @@ Gradle permits arbitrary build logic. Repository checks stay in one small script
 
 - `./gradlew test` runs the application-context and Spring Modulith boundary tests.
 - `./gradlew integrationTestClasses` compiles the database integration suite without requiring Docker.
-- `./gradlew integrationTest` builds the database image and verifies PostgreSQL 17, the zhparser extension, and Chinese token parsing.
+- `./gradlew integrationTest` uses [pinned official PostgreSQL](2026-09-05-stock-postgresql.md) and verifies PostgreSQL 17, UTF-8 text support, workspace initialization, and application entry paths.
 - `./gradlew repoCheck` validates Markdown links, required bilingual pairs, English-only agent surfaces, skill metadata and inventory, the translate-docs invocation policy, and credential-ignore rules.
 - `./gradlew check` aggregates all required local and CI evidence.

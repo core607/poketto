@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+[Phase-one delivery](2026-09-05-phase-one-daily-use.md) fixes the initial delivery boundary, snapshot expiry, and maximum public image grant lifetime. This proposal remains unimplemented until its corresponding behavior and acceptance evidence ship.
+
 ## Problem
 
 The implemented [content foundation](../implemented/2026-08-26-content-foundation.md) recognizes only strict Poketto documents below `documents/`, and the [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require per-document publication metadata. Those contracts suit content created through a structured editor, but they do not adopt an existing personal repository containing Markdown and images in ordinary nested folders.
