@@ -65,3 +65,32 @@ run_deploy
 assert_status 1
 assert_contains "$ERR" "unsupported configuration key"
 assert_contains "$ERR" "PATH"
+
+# Persistent directories are compared as canonical paths: they must differ, must not nest, and
+# must not be or contain the deployment root.
+setup_root
+sed -i.bak "s#^POKETTO_DB_DIR_HOST=.*#POKETTO_DB_DIR_HOST=$ROOT/db/../data#" "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "must be different directories"
+setup_root
+sed -i.bak "s#^POKETTO_DB_DIR_HOST=.*#POKETTO_DB_DIR_HOST=$ROOT/data/db#" "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "lies inside POKETTO_DATA_DIR_HOST"
+setup_root
+sed -i.bak "s#^POKETTO_DATA_DIR_HOST=.*#POKETTO_DATA_DIR_HOST=$ROOT/db/blobs#" "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "lies inside POKETTO_DB_DIR_HOST"
+setup_root
+sed -i.bak -e "s#^POKETTO_DATA_DIR_HOST=.*#POKETTO_DATA_DIR_HOST=$ROOT#" -e "s#^POKETTO_DB_DIR_HOST=.*#POKETTO_DB_DIR_HOST=$PWD/db#" "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "is or contains the deployment root"
+setup_root
+sed -i.bak -e "s#^POKETTO_DATA_DIR_HOST=.*#POKETTO_DATA_DIR_HOST=$PWD/../outside-data#" -e "s#^POKETTO_DB_DIR_HOST=.*#POKETTO_DB_DIR_HOST=$PWD#" "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "is or contains the deployment root"
+[ "$(up_count)" = 0 ] || { echo "the stack started with invalid directories"; exit 1; }

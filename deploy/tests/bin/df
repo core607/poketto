@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Fake df: reports 1000000 MB free below every path, or 0 MB below the path named in
+# $FAKE_STATE/df-low. A real filesystem cannot be filled on demand in a test.
+set -u
+path="${*: -1}"
+free=1000000
+if [ -f "$FAKE_STATE/df-low" ] && [ "$path" = "$(cat "$FAKE_STATE/df-low")" ]; then
+    free=0
+fi
+printf 'Filesystem 1M-blocks Used Available Capacity Mounted on\nfake 1000000 0 %s 0%% /\n' "$free"

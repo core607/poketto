@@ -6,12 +6,16 @@
 #
 # Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT] [--db-image REF]
 #                  [--set-stdin] [--sync-from DIR]
-#   Options record their values into .env before deploying, so a rerun without options
-#   redeploys the recorded pins. --set-stdin reads KEY=VALUE lines from standard input and
-#   records them the same way, which keeps a secret out of the command line and process list;
-#   REGISTRY_USERNAME and REGISTRY_PASSWORD lines are used for one registry login during this
-#   run and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh from DIR
-#   into the root under the deployment lock.
+#   Option values are candidates: they are validated and used for this run, and recorded into
+#   .env only after the health check passes, so a failed deployment leaves .env unchanged and a
+#   rerun without options redeploys the confirmed pins. When a confirmed pin changes, the
+#   previous pins are saved to .env.previous first; pass them as options to redeploy that
+#   version. --set-stdin reads KEY=VALUE lines from standard input and records them the same
+#   way, which keeps a secret out of the command line and process list; REGISTRY_USERNAME and
+#   REGISTRY_PASSWORD lines log in once inside a temporary Docker configuration that this run
+#   deletes, and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh
+#   from DIR into the root under the deployment lock; a changed deploy.sh re-executes itself
+#   before reading standard input, so one run never pairs an old entrance with a new stack.
 # Exit codes: 0 deployed and healthy, 1 validation or deployment failure, 75 another
 #   deployment holds the lock.
 
@@ -20,6 +24,7 @@ set -euo pipefail
 DOCKER="${POKETTO_DOCKER:-docker}"
 CURL="${POKETTO_CURL:-curl}"
 ROOT="${POKETTO_DEPLOY_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+ORIGINAL_ARGS=("$@")
 APP_IMAGE_ARG=""
 APP_REVISION_ARG=""
 DB_IMAGE_ARG=""
@@ -27,8 +32,12 @@ SET_STDIN=0
 SYNC_FROM=""
 REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
-LOGGED_IN_REGISTRY=""
+DOCKER_CONFIG_DIR=""
+REGISTRY_CONTEXT=""
 LOCK_KIND=""
+LOCK_FD=""
+PENDING_KEYS=()
+PENDING_VALUES=()
 
 CONFIG_KEYS=(
     POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE
@@ -38,14 +47,40 @@ CONFIG_KEYS=(
     POKETTO_HTTP_BIND POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
 )
+PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE)
 
 usage() {
-    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 fail() {
     echo "deploy: $*" >&2
     exit 1
+}
+
+is_config_key() {
+    local candidate="$1" key
+    for key in "${CONFIG_KEYS[@]}"; do
+        [ "$candidate" != "$key" ] || return 0
+    done
+    return 1
+}
+
+# A candidate value is held in memory for this run and reaches .env only after the deployment
+# is healthy.
+stage_value() {
+    local key="$1" value="$2" i
+    is_config_key "$key" || fail "unsupported configuration key: $key"
+    [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] \
+        || fail "$key must be a single-line value"
+    for i in "${!PENDING_KEYS[@]}"; do
+        if [ "${PENDING_KEYS[$i]}" = "$key" ]; then
+            PENDING_VALUES[$i]="$value"
+            return 0
+        fi
+    done
+    PENDING_KEYS+=("$key")
+    PENDING_VALUES+=("$value")
 }
 
 while [ $# -gt 0 ]; do
@@ -64,8 +99,12 @@ done
 if { [ -n "$APP_IMAGE_ARG" ] && [ -z "$APP_REVISION_ARG" ]; } || { [ -z "$APP_IMAGE_ARG" ] && [ -n "$APP_REVISION_ARG" ]; }; then
     fail "--app-image and --app-revision must be given together"
 fi
+[ -z "$APP_IMAGE_ARG" ] || stage_value POKETTO_APP_IMAGE "$APP_IMAGE_ARG"
+[ -z "$APP_REVISION_ARG" ] || stage_value POKETTO_APP_REVISION "$APP_REVISION_ARG"
+[ -z "$DB_IMAGE_ARG" ] || stage_value POKETTO_DB_IMAGE "$DB_IMAGE_ARG"
 
 ENV_FILE="$ROOT/.env"
+PREVIOUS_ENV_FILE="$ROOT/.env.previous"
 COMPOSE_FILE="$ROOT/compose.yaml"
 LOCK_FILE="$ROOT/.deploy.lock"
 LOCK_DIR="$ROOT/.deploy.lock.d"
@@ -75,14 +114,36 @@ compose() {
 }
 
 cleanup() {
-    [ -z "$LOGGED_IN_REGISTRY" ] || "$DOCKER" logout "$LOGGED_IN_REGISTRY" >/dev/null 2>&1 || true
+    [ -z "$DOCKER_CONFIG_DIR" ] || rm -rf "$DOCKER_CONFIG_DIR"
     [ "$LOCK_KIND" != directory ] || rm -rf "$LOCK_DIR"
 }
 
 # ---- lock ------------------------------------------------------------------------------------
 
+# A process re-executed by apply_sync inherits the lock it already holds: the flock lives on the
+# inherited descriptor named by POKETTO_DEPLOY_LOCK_FD, and the directory lock is marked by
+# POKETTO_DEPLOY_LOCK_HELD. Acquiring again would deadlock against itself.
 acquire_lock() {
     local holder
+    if [ -n "${POKETTO_DEPLOY_LOCK_FD:-}" ]; then
+        LOCK_FD="$POKETTO_DEPLOY_LOCK_FD"
+        unset POKETTO_DEPLOY_LOCK_FD
+        [[ "$LOCK_FD" =~ ^[0-9]+$ ]] && { true >&"$LOCK_FD"; } 2>/dev/null \
+            || fail "POKETTO_DEPLOY_LOCK_FD does not name an open descriptor"
+        printf '%s\n' "$$" > "$LOCK_FILE"
+        LOCK_KIND=flock
+        trap cleanup EXIT
+        return 0
+    fi
+    if [ "${POKETTO_DEPLOY_LOCK_HELD:-}" = 1 ]; then
+        unset POKETTO_DEPLOY_LOCK_HELD
+        [ -d "$LOCK_DIR" ] || fail "POKETTO_DEPLOY_LOCK_HELD is set but $LOCK_DIR does not exist"
+        printf '%s\n' "$$" > "$LOCK_DIR/pid"
+        LOCK_KIND=directory
+        trap cleanup EXIT
+        return 0
+    fi
+
     if command -v flock >/dev/null 2>&1; then
         exec {LOCK_FD}<>"$LOCK_FILE"
         if ! flock -n "$LOCK_FD"; then
@@ -111,50 +172,56 @@ acquire_lock() {
 
 # ---- staged files ----------------------------------------------------------------------------
 
-# A rename replaces each file atomically, and the running copy of this script is unaffected
-# because bash keeps the old inode open; the new entrance takes effect on the next run.
+# A rename replaces each file atomically. The running copy of this script keeps its old inode,
+# so when the staged deploy.sh differs it re-executes the installed one with the same
+# arguments minus --sync-from, passing the held lock along; this happens before --set-stdin
+# reads standard input, so the settings reach the new entrance intact.
 apply_sync() {
     [ -n "$SYNC_FROM" ] || return 0
     [ -d "$SYNC_FROM" ] || fail "--sync-from directory does not exist: $SYNC_FROM"
-    local file
+    local file reexec=0 args=()
+    if [ -f "$SYNC_FROM/deploy.sh" ] && ! cmp -s "$SYNC_FROM/deploy.sh" "${BASH_SOURCE[0]}"; then
+        reexec=1
+    fi
     for file in compose.yaml deploy.sh; do
         [ -f "$SYNC_FROM/$file" ] || continue
         mv -f "$SYNC_FROM/$file" "$ROOT/$file"
     done
     [ ! -f "$ROOT/deploy.sh" ] || chmod 755 "$ROOT/deploy.sh"
     rmdir "$SYNC_FROM" 2>/dev/null || true
+    [ "$reexec" = 1 ] || return 0
+
+    set -- "${ORIGINAL_ARGS[@]}"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --sync-from) shift 2 ;;
+            *) args+=("$1"); shift ;;
+        esac
+    done
+    if [ "$LOCK_KIND" = flock ]; then
+        export POKETTO_DEPLOY_LOCK_FD="$LOCK_FD"
+    else
+        export POKETTO_DEPLOY_LOCK_HELD=1
+    fi
+    exec "$BASH" "$ROOT/deploy.sh" "${args[@]}"
 }
 
 # ---- configuration ---------------------------------------------------------------------------
 
-is_config_key() {
-    local candidate="$1" key
-    for key in "${CONFIG_KEYS[@]}"; do
-        [ "$candidate" != "$key" ] || return 0
-    done
-    return 1
-}
-
-set_env_value() {
-    local key="$1" value="$2" tmp line found=0
-    is_config_key "$key" || fail "unsupported configuration key: $key"
-    [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] \
-        || fail "$key must be a single-line value"
-    tmp="$(mktemp "$ROOT/.env.XXXXXX")"
+read_stdin_settings() {
+    local line key value
     while IFS= read -r line || [ -n "$line" ]; do
-        line="${line%$'\r'}"
-        if [[ "$line" == "$key="* ]]; then
-            printf '%s=%s\n' "$key" "$value" >> "$tmp"
-            found=1
-        else
-            printf '%s\n' "$line" >> "$tmp"
-        fi
-    done < "$ENV_FILE"
-    if [ "$found" = 0 ]; then
-        printf '%s=%s\n' "$key" "$value" >> "$tmp"
-    fi
-    chmod 600 "$tmp"
-    mv "$tmp" "$ENV_FILE"
+        [ -n "$line" ] || continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && [ "$key" != "$line" ] \
+            || fail "--set-stdin expects KEY=VALUE lines with an uppercase key"
+        case "$key" in
+            REGISTRY_USERNAME) REGISTRY_USERNAME="$value" ;;
+            REGISTRY_PASSWORD) REGISTRY_PASSWORD="$value" ;;
+            *) stage_value "$key" "$value" ;;
+        esac
+    done
 }
 
 load_env_file() {
@@ -172,31 +239,52 @@ load_env_file() {
     done < "$ENV_FILE"
 }
 
+canonical_path() {
+    realpath -m -- "$1" 2>/dev/null || fail "cannot resolve the path $1"
+}
+
+# True when $1 equals $2 or lies below it; both must be canonical absolute paths.
+path_within() {
+    local child="$1" parent="${2%/}"
+    [ "$child" = "${parent:-/}" ] || [[ "$child" == "$parent"/* ]]
+}
+
+check_directories() {
+    local root
+    [[ "$POKETTO_DATA_DIR_HOST" = /* ]] || fail "POKETTO_DATA_DIR_HOST must be absolute"
+    [[ "$POKETTO_DB_DIR_HOST" = /* ]] || fail "POKETTO_DB_DIR_HOST must be absolute"
+    DATA_DIR="$(canonical_path "$POKETTO_DATA_DIR_HOST")"
+    DB_DIR="$(canonical_path "$POKETTO_DB_DIR_HOST")"
+    root="$(canonical_path "$ROOT")"
+    [ "$DATA_DIR" != "$DB_DIR" ] \
+        || fail "POKETTO_DATA_DIR_HOST and POKETTO_DB_DIR_HOST must be different directories, both resolve to $DATA_DIR"
+    ! path_within "$DATA_DIR" "$DB_DIR" \
+        || fail "POKETTO_DATA_DIR_HOST $DATA_DIR lies inside POKETTO_DB_DIR_HOST $DB_DIR"
+    ! path_within "$DB_DIR" "$DATA_DIR" \
+        || fail "POKETTO_DB_DIR_HOST $DB_DIR lies inside POKETTO_DATA_DIR_HOST $DATA_DIR"
+    ! path_within "$root" "$DATA_DIR" \
+        || fail "POKETTO_DATA_DIR_HOST $DATA_DIR is or contains the deployment root $root"
+    ! path_within "$root" "$DB_DIR" \
+        || fail "POKETTO_DB_DIR_HOST $DB_DIR is or contains the deployment root $root"
+}
+
 load_configuration() {
-    local missing=() key
+    local missing=() key i
     [ -f "$COMPOSE_FILE" ] || fail "missing $COMPOSE_FILE"
     [ -f "$ENV_FILE" ] || fail "missing $ENV_FILE; copy .env.example beside compose.yaml and fill it in"
-
-    [ -n "$APP_IMAGE_ARG" ] && set_env_value POKETTO_APP_IMAGE "$APP_IMAGE_ARG"
-    [ -n "$APP_REVISION_ARG" ] && set_env_value POKETTO_APP_REVISION "$APP_REVISION_ARG"
-    [ -n "$DB_IMAGE_ARG" ] && set_env_value POKETTO_DB_IMAGE "$DB_IMAGE_ARG"
     if [ "$SET_STDIN" = 1 ]; then
-        local line key value
-        while IFS= read -r line || [ -n "$line" ]; do
-            [ -n "$line" ] || continue
-            key="${line%%=*}"
-            value="${line#*=}"
-            [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && [ "$key" != "$line" ] \
-                || fail "--set-stdin expects KEY=VALUE lines with an uppercase key"
-            case "$key" in
-                REGISTRY_USERNAME) REGISTRY_USERNAME="$value" ;;
-                REGISTRY_PASSWORD) REGISTRY_PASSWORD="$value" ;;
-                *) set_env_value "$key" "$value" ;;
-            esac
-        done
+        read_stdin_settings
     fi
 
     load_env_file
+    PREVIOUS_PINS=()
+    for key in "${PIN_KEYS[@]}"; do
+        PREVIOUS_PINS+=("${!key:-}")
+    done
+    for i in "${!PENDING_KEYS[@]}"; do
+        printf -v "${PENDING_KEYS[$i]}" '%s' "${PENDING_VALUES[$i]}"
+        export "${PENDING_KEYS[$i]}"
+    done
 
     for key in POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POSTGRES_DB POSTGRES_USER \
             POSTGRES_PASSWORD POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME \
@@ -211,8 +299,7 @@ load_configuration() {
         || fail "POKETTO_APP_IMAGE must be one image reference"
     [[ "$POKETTO_DB_IMAGE" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] \
         || fail "POKETTO_DB_IMAGE must be pinned as <image>@sha256:<digest>"
-    [[ "$POKETTO_DATA_DIR_HOST" = /* ]] || fail "POKETTO_DATA_DIR_HOST must be absolute"
-    [[ "$POKETTO_DB_DIR_HOST" = /* ]] || fail "POKETTO_DB_DIR_HOST must be absolute"
+    check_directories
 
     HTTP_BIND="${POKETTO_HTTP_BIND:-127.0.0.1}"
     HTTP_PORT="${POKETTO_HTTP_PORT:-8080}"
@@ -222,10 +309,104 @@ load_configuration() {
     APP_UID="${POKETTO_APP_UID:-10001}"
 }
 
+# Rewrites .env with the pending values in one pass; the temporary file is renamed into place so
+# a reader never sees a partial file.
+write_env_file() {
+    local tmp line key i written=()
+    tmp="$(mktemp "$ROOT/.env.XXXXXX")"
+    for i in "${!PENDING_KEYS[@]}"; do
+        written[$i]=0
+    done
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        key="${line%%=*}"
+        for i in "${!PENDING_KEYS[@]}"; do
+            if [ "$key" != "$line" ] && [ "$key" = "${PENDING_KEYS[$i]}" ]; then
+                line="$key=${PENDING_VALUES[$i]}"
+                written[$i]=1
+                break
+            fi
+        done
+        printf '%s\n' "$line" >> "$tmp"
+    done < "$ENV_FILE"
+    for i in "${!PENDING_KEYS[@]}"; do
+        [ "${written[$i]}" = 1 ] || printf '%s=%s\n' "${PENDING_KEYS[$i]}" "${PENDING_VALUES[$i]}" >> "$tmp"
+    done
+    chmod 600 "$tmp"
+    mv "$tmp" "$ENV_FILE"
+}
+
+write_previous_pins() {
+    local tmp i
+    tmp="$(mktemp "$ROOT/.env.previous.XXXXXX")"
+    for i in "${!PIN_KEYS[@]}"; do
+        printf '%s=%s\n' "${PIN_KEYS[$i]}" "${PREVIOUS_PINS[$i]}" >> "$tmp"
+    done
+    chmod 600 "$tmp"
+    mv "$tmp" "$PREVIOUS_ENV_FILE"
+}
+
+# Runs only after the health check: .env holds confirmed values, never a failed candidate.
+# .env.previous is written when a confirmed application pin is replaced; a first deployment
+# has no healthy version to return to and writes none.
+record_configuration() {
+    [ ${#PENDING_KEYS[@]} -gt 0 ] || return 0
+    local i key changed=0
+    for i in "${!PIN_KEYS[@]}"; do
+        key="${PIN_KEYS[$i]}"
+        [ "${!key}" = "${PREVIOUS_PINS[$i]}" ] || changed=1
+    done
+    if [ "$changed" = 1 ] && [ -n "${PREVIOUS_PINS[0]}" ] && [ -n "${PREVIOUS_PINS[1]}" ]; then
+        write_previous_pins
+    fi
+    write_env_file
+}
+
 # ---- host checks -----------------------------------------------------------------------------
 
 owner_uid() {
     stat -c %u "$1" 2>/dev/null || stat -f %u "$1"
+}
+
+# Only registry login and pulls from that registry use this configuration. Other Docker
+# commands retain the user's plugins, proxies, and credentials. Copying credsStore or credHelpers
+# would send the temporary login to the user's external keychain even from a different directory.
+prepare_docker_config() {
+    [ -n "$REGISTRY_PASSWORD" ] || return 0
+    [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
+    local source="${DOCKER_CONFIG:-$HOME/.docker}"
+    REGISTRY_CONTEXT="$("$DOCKER" context show)" || fail "cannot resolve the Docker context"
+    DOCKER_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/poketto-docker.XXXXXX")"
+    # A nonempty auth map suppresses Docker's automatic native-helper discovery. This empty
+    # Docker Hub entry carries no credential; login stores the requested registry only here.
+    printf '%s\n' '{"auths":{"https://index.docker.io/v1/":{}}}' > "$DOCKER_CONFIG_DIR/config.json"
+    if [ -d "$source/contexts" ]; then
+        ln -s "$(canonical_path "$source/contexts")" "$DOCKER_CONFIG_DIR/contexts" 2>/dev/null \
+            || cp -R "$source/contexts" "$DOCKER_CONFIG_DIR/contexts"
+    fi
+}
+
+registry_docker() {
+    if [ -n "$DOCKER_CONFIG_DIR" ]; then
+        DOCKER_CONFIG="$DOCKER_CONFIG_DIR" DOCKER_CONTEXT="$REGISTRY_CONTEXT" "$DOCKER" "$@"
+    else
+        "$DOCKER" "$@"
+    fi
+}
+
+pull_image() {
+    if [ -n "$DOCKER_CONFIG_DIR" ] && [ "$(image_registry "$1")" = "$(image_registry "$POKETTO_APP_IMAGE")" ]; then
+        registry_docker pull "$1"
+    else
+        "$DOCKER" pull "$1"
+    fi
+}
+
+check_free_space() {
+    local path="$1" free_mb
+    free_mb="$(df -Pm -- "$path" | awk 'NR == 2 { print $4 }')"
+    [ "${free_mb:-0}" -ge "$MIN_FREE_MB" ] \
+        || fail "only ${free_mb:-0} MB free below $path; at least $MIN_FREE_MB MB is required"
 }
 
 check_host() {
@@ -241,10 +422,15 @@ check_host() {
         fi
     fi
 
-    local free_mb
-    free_mb="$(df -Pm "$ROOT" | awk 'NR == 2 { print $4 }')"
-    [ "${free_mb:-0}" -ge "$MIN_FREE_MB" ] \
-        || fail "only ${free_mb:-0} MB free below $ROOT; at least $MIN_FREE_MB MB is required"
+    # Images and container layers land below the daemon's data root, which may be a different
+    # filesystem than any directory this script manages.
+    local docker_root
+    check_free_space "$ROOT"
+    check_free_space "$DATA_DIR"
+    check_free_space "$DB_DIR"
+    if docker_root="$("$DOCKER" info --format '{{ .DockerRootDir }}' 2>/dev/null)" && [ -d "$docker_root" ]; then
+        check_free_space "$docker_root"
+    fi
 
     compose config --quiet || fail "compose configuration is invalid"
 }
@@ -261,30 +447,33 @@ image_revision() {
 
 # The registry is the first path component of the application reference when it names a host;
 # otherwise Docker Hub. A private GHCR package needs this login on the pull path.
+image_registry() {
+    local first="${1%%/*}"
+    if [[ "$1" == */* ]] && [[ "$first" == *.* || "$first" == *:* || "$first" = localhost ]]; then
+        printf '%s\n' "$first"
+    else
+        printf '%s\n' docker.io
+    fi
+}
+
 registry_login() {
     [ -n "$REGISTRY_PASSWORD" ] || return 0
-    [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
-    local first="${POKETTO_APP_IMAGE%%/*}" registry
-    if [[ "$POKETTO_APP_IMAGE" == */* ]] && [[ "$first" == *.* || "$first" == *:* ]]; then
-        registry="$first"
-    else
-        registry="docker.io"
-    fi
+    local registry
+    registry="$(image_registry "$POKETTO_APP_IMAGE")"
     printf '%s' "$REGISTRY_PASSWORD" \
-        | "$DOCKER" login "$registry" --username "$REGISTRY_USERNAME" --password-stdin >/dev/null \
+        | registry_docker login "$registry" --username "$REGISTRY_USERNAME" --password-stdin >/dev/null \
         || fail "registry login to $registry failed"
-    LOGGED_IN_REGISTRY="$registry"
 }
 
 acquire_images() {
     registry_login
     if ! image_present "$POKETTO_DB_IMAGE"; then
-        "$DOCKER" pull "$POKETTO_DB_IMAGE" >/dev/null || fail "cannot pull $POKETTO_DB_IMAGE"
+        pull_image "$POKETTO_DB_IMAGE" >/dev/null || fail "cannot pull $POKETTO_DB_IMAGE"
     fi
 
     if [[ "$POKETTO_APP_IMAGE" == *@sha256:* ]]; then
         if ! image_present "$POKETTO_APP_IMAGE"; then
-            "$DOCKER" pull "$POKETTO_APP_IMAGE" >/dev/null || fail "cannot pull $POKETTO_APP_IMAGE"
+            pull_image "$POKETTO_APP_IMAGE" >/dev/null || fail "cannot pull $POKETTO_APP_IMAGE"
         fi
     else
         # A tag is movable, so it is accepted only when the archive that carries it was already
@@ -345,10 +534,12 @@ main() {
     acquire_lock
     apply_sync
     load_configuration
+    prepare_docker_config
     check_host
     acquire_images
     deploy
     wait_for_health
+    record_configuration
     echo "deploy: healthy; app=$POKETTO_APP_IMAGE revision=$POKETTO_APP_REVISION db=$POKETTO_DB_IMAGE"
 }
 
