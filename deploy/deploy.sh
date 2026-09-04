@@ -33,6 +33,7 @@ SYNC_FROM=""
 REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
 DOCKER_CONFIG_DIR=""
+REGISTRY_CONTEXT=""
 LOCK_KIND=""
 LOCK_FD=""
 PENDING_KEYS=()
@@ -367,22 +368,38 @@ owner_uid() {
     stat -c %u "$1" 2>/dev/null || stat -f %u "$1"
 }
 
-# Registry credentials are added to a Docker configuration directory that exists only for this
-# run. It starts as a copy of the deployment user's config.json, with the cli-plugins and
-# contexts directories linked in, so the run keeps the user's context, plugins, proxies, and
-# credential store while the login writes only the copy; the original is never modified.
+# Only registry login and pulls from that registry use this configuration. Other Docker
+# commands retain the user's plugins, proxies, and credentials. Copying credsStore or credHelpers
+# would send the temporary login to the user's external keychain even from a different directory.
 prepare_docker_config() {
     [ -n "$REGISTRY_PASSWORD" ] || return 0
     [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
-    local source="${DOCKER_CONFIG:-$HOME/.docker}" entry
+    local source="${DOCKER_CONFIG:-$HOME/.docker}"
+    REGISTRY_CONTEXT="$("$DOCKER" context show)" || fail "cannot resolve the Docker context"
     DOCKER_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/poketto-docker.XXXXXX")"
-    [ ! -f "$source/config.json" ] || cp "$source/config.json" "$DOCKER_CONFIG_DIR/config.json"
-    for entry in cli-plugins contexts; do
-        [ -d "$source/$entry" ] || continue
-        ln -s "$source/$entry" "$DOCKER_CONFIG_DIR/$entry" 2>/dev/null \
-            || cp -R "$source/$entry" "$DOCKER_CONFIG_DIR/$entry"
-    done
-    export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
+    # A nonempty auth map suppresses Docker's automatic native-helper discovery. This empty
+    # Docker Hub entry carries no credential; login stores the requested registry only here.
+    printf '%s\n' '{"auths":{"https://index.docker.io/v1/":{}}}' > "$DOCKER_CONFIG_DIR/config.json"
+    if [ -d "$source/contexts" ]; then
+        ln -s "$(canonical_path "$source/contexts")" "$DOCKER_CONFIG_DIR/contexts" 2>/dev/null \
+            || cp -R "$source/contexts" "$DOCKER_CONFIG_DIR/contexts"
+    fi
+}
+
+registry_docker() {
+    if [ -n "$DOCKER_CONFIG_DIR" ]; then
+        DOCKER_CONFIG="$DOCKER_CONFIG_DIR" DOCKER_CONTEXT="$REGISTRY_CONTEXT" "$DOCKER" "$@"
+    else
+        "$DOCKER" "$@"
+    fi
+}
+
+pull_image() {
+    if [ -n "$DOCKER_CONFIG_DIR" ] && [ "$(image_registry "$1")" = "$(image_registry "$POKETTO_APP_IMAGE")" ]; then
+        registry_docker pull "$1"
+    else
+        "$DOCKER" pull "$1"
+    fi
 }
 
 check_free_space() {
@@ -430,28 +447,33 @@ image_revision() {
 
 # The registry is the first path component of the application reference when it names a host;
 # otherwise Docker Hub. A private GHCR package needs this login on the pull path.
+image_registry() {
+    local first="${1%%/*}"
+    if [[ "$1" == */* ]] && [[ "$first" == *.* || "$first" == *:* || "$first" = localhost ]]; then
+        printf '%s\n' "$first"
+    else
+        printf '%s\n' docker.io
+    fi
+}
+
 registry_login() {
     [ -n "$REGISTRY_PASSWORD" ] || return 0
-    local first="${POKETTO_APP_IMAGE%%/*}" registry
-    if [[ "$POKETTO_APP_IMAGE" == */* ]] && [[ "$first" == *.* || "$first" == *:* ]]; then
-        registry="$first"
-    else
-        registry="docker.io"
-    fi
+    local registry
+    registry="$(image_registry "$POKETTO_APP_IMAGE")"
     printf '%s' "$REGISTRY_PASSWORD" \
-        | "$DOCKER" login "$registry" --username "$REGISTRY_USERNAME" --password-stdin >/dev/null \
+        | registry_docker login "$registry" --username "$REGISTRY_USERNAME" --password-stdin >/dev/null \
         || fail "registry login to $registry failed"
 }
 
 acquire_images() {
     registry_login
     if ! image_present "$POKETTO_DB_IMAGE"; then
-        "$DOCKER" pull "$POKETTO_DB_IMAGE" >/dev/null || fail "cannot pull $POKETTO_DB_IMAGE"
+        pull_image "$POKETTO_DB_IMAGE" >/dev/null || fail "cannot pull $POKETTO_DB_IMAGE"
     fi
 
     if [[ "$POKETTO_APP_IMAGE" == *@sha256:* ]]; then
         if ! image_present "$POKETTO_APP_IMAGE"; then
-            "$DOCKER" pull "$POKETTO_APP_IMAGE" >/dev/null || fail "cannot pull $POKETTO_APP_IMAGE"
+            pull_image "$POKETTO_APP_IMAGE" >/dev/null || fail "cannot pull $POKETTO_APP_IMAGE"
         fi
     else
         # A tag is movable, so it is accepted only when the archive that carries it was already
