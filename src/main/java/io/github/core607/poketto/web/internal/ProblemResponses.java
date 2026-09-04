@@ -50,7 +50,7 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         return problem(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "Write outcome unknown",
-                "the repository did not confirm the write; re-read before retrying");
+                "write completion could not be confirmed; re-read remote main before retrying");
     }
 
     @ExceptionHandler(ContentRepositoryException.class)

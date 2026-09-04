@@ -34,7 +34,8 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/auth/") || path.startsWith("/api/admin/")) {
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Referrer-Policy", "no-referrer");
-            if (request.getContentLengthLong() > MAX_AUTH_BODY) {
+            int limit = bodyLimit(path);
+            if (request.getContentLengthLong() > limit) {
                 AuthHttpErrors.write(response, 413);
                 return;
             }
@@ -49,9 +50,17 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
                                 @Override
                                 public int read() throws IOException {
                                     int value = input.read();
-                                    if (value >= 0 && ++bytes > MAX_AUTH_BODY)
-                                        throw new IOException("authentication request exceeds its byte limit");
+                                    if (value >= 0 && ++bytes > limit)
+                                        throw new IOException("request exceeds its byte limit");
                                     return value;
+                                }
+
+                                @Override
+                                public int read(byte[] buffer, int offset, int length) throws IOException {
+                                    int count = input.read(buffer, offset, Math.min(length, limit - bytes + 1));
+                                    if (count > 0 && (bytes += count) > limit)
+                                        throw new IOException("request exceeds its byte limit");
+                                    return count;
                                 }
 
                                 @Override
@@ -75,5 +84,13 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    private static int bodyLimit(String path) {
+        return switch (path) {
+            case "/api/admin/repository/patch", "/api/admin/repository/preview" -> 6 * 1024 * 1024;
+            case "/api/admin/assets" -> 17 * 1024 * 1024;
+            default -> MAX_AUTH_BODY;
+        };
     }
 }
