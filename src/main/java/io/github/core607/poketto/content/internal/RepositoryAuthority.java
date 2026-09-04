@@ -16,9 +16,12 @@ interface RepositoryAuthority {
     /** Resolves current remote {@code main}, materializes it in the cache, and reads it. */
     <T> T read(WorkspaceId workspaceId, SnapshotReader<T> reader);
 
+    /** Fetches remote main under the workspace lock without checking files out or validating a content format. */
+    <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader);
+
     /**
-     * Reads the cache as it stands without contacting the remote. The snapshot commit is the one
-     * the cache was last materialized at, which may lag or differ from remote {@code main}.
+     * Reads the cache as it stands without contacting the remote. The snapshot commit is the last
+     * locally recorded main, which may lag or differ from remote main and need not be checked out.
      */
     <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader);
 

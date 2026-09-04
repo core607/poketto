@@ -133,6 +133,16 @@ final class RemoteRepositoryFixture {
     }
 
     ObjectId commitRemote(WorkspaceId workspaceId, Map<String, byte[]> entries) throws Exception {
+        return commitRemote(workspaceId, entries, Map.of());
+    }
+
+    ObjectId commitRemote(WorkspaceId workspaceId, Map<String, byte[]> entries, Map<String, FileMode> modes)
+            throws Exception {
+        return commitRemote(workspaceId, entries, modes, Instant.parse("2026-09-01T09:00:00Z"));
+    }
+
+    ObjectId commitRemote(WorkspaceId workspaceId, Map<String, byte[]> entries, Map<String, FileMode> modes, Instant at)
+            throws Exception {
         try (Repository repository = openRemote(workspaceId);
                 ObjectInserter inserter = repository.newObjectInserter()) {
             DirCache cache = DirCache.newInCore();
@@ -143,7 +153,7 @@ final class RemoteRepositoryFixture {
                     .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
             for (Map.Entry<String, byte[]> entry : sorted.entrySet()) {
                 DirCacheEntry treeEntry = new DirCacheEntry(entry.getKey());
-                treeEntry.setFileMode(FileMode.REGULAR_FILE);
+                treeEntry.setFileMode(modes.getOrDefault(entry.getKey(), FileMode.REGULAR_FILE));
                 treeEntry.setObjectId(inserter.insert(Constants.OBJ_BLOB, entry.getValue()));
                 tree.add(treeEntry);
             }
@@ -151,8 +161,7 @@ final class RemoteRepositoryFixture {
 
             ObjectId treeId = cache.writeTree(inserter);
             ObjectId before = repository.resolve(Constants.R_HEADS + "main");
-            PersonIdent identity = new PersonIdent(
-                    "Repository Owner", "owner@invalid", Instant.parse("2026-09-01T09:00:00Z"), ZoneOffset.UTC);
+            PersonIdent identity = new PersonIdent("Repository Owner", "owner@invalid", at, ZoneOffset.UTC);
             CommitBuilder commit = new CommitBuilder();
             commit.setTreeId(treeId);
             if (before != null) {

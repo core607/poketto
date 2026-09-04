@@ -2,6 +2,7 @@ package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.DocumentWriteService;
+import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
@@ -55,6 +56,11 @@ class ContentConfiguration {
     @Bean
     JGitContentRepositoryStore contentRepositoryStore(RepositoryAuthority authority, CanonicalDocumentCodec codec) {
         return new JGitContentRepositoryStore(authority, codec, Clock.systemUTC());
+    }
+
+    @Bean
+    RepositoryContentReader repositoryContentReader(RepositoryAuthority authority) {
+        return new JGitRepositoryContentReader(authority);
     }
 
     @Bean

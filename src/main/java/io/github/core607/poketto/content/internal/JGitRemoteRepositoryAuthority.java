@@ -66,6 +66,12 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     @Override
+    public <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader) {
+        Objects.requireNonNull(reader, "snapshot reader must not be null");
+        return inCache(workspaceId, false, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
+    }
+
+    @Override
     public <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader) {
         Objects.requireNonNull(reader, "snapshot reader must not be null");
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
@@ -112,6 +118,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     private <T> T inCache(WorkspaceId workspaceId, CacheAction<T> action) {
+        return inCache(workspaceId, true, action);
+    }
+
+    private <T> T inCache(WorkspaceId workspaceId, boolean materialize, CacheAction<T> action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
@@ -135,7 +145,11 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     deleteTree(cache);
                     opened = openOrInitialize(cache, workspaceId);
                 }
-                resetCache(opened, commit);
+                if (materialize) {
+                    resetCache(opened, commit);
+                } else if (!commit.equals(ObjectId.zeroId())) {
+                    updateObjectRef(opened, commit);
+                }
             } catch (RuntimeException exception) {
                 opened.close();
                 throw exception;
@@ -347,6 +361,23 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ContentWorktree.clearIntent(repository);
         } catch (IOException | GitAPIException exception) {
             throw new ContentRepositoryException("repository cache cannot be materialized");
+        }
+    }
+
+    private static void updateObjectRef(Repository repository, ObjectId commit) {
+        try {
+            RefUpdate update = repository.updateRef(MAIN);
+            update.setNewObjectId(commit);
+            update.setForceUpdate(true);
+            RefUpdate.Result result = update.forceUpdate();
+            if (!(result == RefUpdate.Result.NEW
+                    || result == RefUpdate.Result.FORCED
+                    || result == RefUpdate.Result.FAST_FORWARD
+                    || result == RefUpdate.Result.NO_CHANGE)) {
+                throw new ContentRepositoryException("repository object cache main cannot be updated");
+            }
+        } catch (IOException exception) {
+            throw new ContentRepositoryException("repository object cache main cannot be updated", exception);
         }
     }
 
