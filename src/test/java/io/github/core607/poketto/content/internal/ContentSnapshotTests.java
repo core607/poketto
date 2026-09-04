@@ -98,14 +98,16 @@ class ContentSnapshotTests {
         WorkspaceId workspace = WorkspaceId.random();
         ObjectId validated = first.commitRemote(workspace, Map.of("documents/note.md", document(FIRST_ID, "Note")));
         first.store().ensureReady(workspace);
-        // A push that lands after the last validation must not be served unvalidated.
+        // The newer push fails validation, so the cache is materialized at a commit that was
+        // never served; the restart must fall back to the recorded commit, not the cache head.
         first.commitRemote(
                 workspace,
                 Map.of(
                         "documents/note.md",
                         document(FIRST_ID, "Note"),
                         "documents/second.md",
-                        document(SECOND_ID, "Second")));
+                        "not a document".getBytes(StandardCharsets.UTF_8)));
+        assertThatThrownBy(() -> first.store().refresh(workspace)).isInstanceOf(ContentRepositoryException.class);
 
         SwitchableTransport offline = new SwitchableTransport();
         offline.offline = true;
@@ -118,6 +120,13 @@ class ContentSnapshotTests {
         assertThat(served.documents()).hasSize(1);
 
         offline.offline = false;
+        first.commitRemote(
+                workspace,
+                Map.of(
+                        "documents/note.md",
+                        document(FIRST_ID, "Note"),
+                        "documents/second.md",
+                        document(SECOND_ID, "Second")));
         assertThat(replacement.store().refresh(workspace).documents()).hasSize(2);
     }
 
@@ -159,7 +168,7 @@ class ContentSnapshotTests {
     }
 
     @Test
-    void rejectsAnOversizedDocumentBeforeReadingIt() throws Exception {
+    void rejectsAnOversizedDocumentWithoutServingIt() throws Exception {
         RemoteRepositoryFixture repositories = fixture("data", new SwitchableTransport());
         WorkspaceId workspace = WorkspaceId.random();
         byte[] oversized = Arrays.copyOf(document(FIRST_ID, "Large"), ContentLimits.MAX_DOCUMENT_BYTES + 1);

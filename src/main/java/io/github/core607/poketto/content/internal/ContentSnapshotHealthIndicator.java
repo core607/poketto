@@ -2,11 +2,12 @@ package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.ContentSnapshot;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 
@@ -18,22 +19,21 @@ import org.springframework.boot.health.contributor.HealthIndicator;
 final class ContentSnapshotHealthIndicator implements HealthIndicator {
 
     private final ContentRepositoryStore store;
-    private final WorkspaceCatalog workspaces;
+    private final Supplier<WorkspaceId> defaultWorkspace;
     private final Duration staleAfter;
     private final Clock clock;
 
     ContentSnapshotHealthIndicator(
-            ContentRepositoryStore store, WorkspaceCatalog workspaces, Duration staleAfter, Clock clock) {
+            ContentRepositoryStore store, Supplier<WorkspaceId> defaultWorkspace, Duration staleAfter, Clock clock) {
         this.store = Objects.requireNonNull(store, "content repository store must not be null");
-        this.workspaces = Objects.requireNonNull(workspaces, "workspace catalog must not be null");
+        this.defaultWorkspace = Objects.requireNonNull(defaultWorkspace, "default workspace must not be null");
         this.staleAfter = Objects.requireNonNull(staleAfter, "stale bound must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
     @Override
     public Health health() {
-        Optional<ContentSnapshot> snapshot =
-                store.snapshot(workspaces.defaultWorkspace().id());
+        Optional<ContentSnapshot> snapshot = store.snapshot(defaultWorkspace.get());
         if (snapshot.isEmpty()) {
             return Health.down()
                     .withDetail("reason", "no validated content snapshot")

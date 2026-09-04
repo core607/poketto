@@ -28,6 +28,7 @@ final class ContentSnapshotRefresher implements AutoCloseable {
     private final Supplier<List<WorkspaceId>> servedWorkspaces;
     private final Duration interval;
     private final Set<WorkspaceId> failing = ConcurrentHashMap.newKeySet();
+    private volatile boolean listingFailing;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "content-snapshot-refresh");
         thread.setDaemon(true);
@@ -54,8 +55,15 @@ final class ContentSnapshotRefresher implements AutoCloseable {
         try {
             workspaces = servedWorkspaces.get();
         } catch (RuntimeException exception) {
-            log.warn("content snapshot refresh cannot list served workspaces", exception);
+            if (!listingFailing) {
+                listingFailing = true;
+                log.warn("content snapshot refresh cannot list served workspaces", exception);
+            }
             return;
+        }
+        if (listingFailing) {
+            listingFailing = false;
+            log.info("content snapshot refresh lists served workspaces again");
         }
         for (WorkspaceId workspaceId : workspaces) {
             refresh(workspaceId);

@@ -3,10 +3,13 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.DocumentWriteService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -60,22 +63,38 @@ class ContentConfiguration {
         return new JGitDocumentWriteService(authority, codec, store, Clock.systemUTC());
     }
 
+    /**
+     * The default workspace is created once by the database migration and never changes, so the
+     * refresher and the health probe resolve it once instead of querying on every call.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
+    Supplier<WorkspaceId> defaultWorkspaceId(WorkspaceCatalog workspaces) {
+        AtomicReference<WorkspaceId> resolved = new AtomicReference<>();
+        return () -> {
+            WorkspaceId id = resolved.get();
+            if (id == null) {
+                id = workspaces.defaultWorkspace().id();
+                resolved.compareAndSet(null, id);
+            }
+            return id;
+        };
+    }
+
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ContentSnapshotRefresher contentSnapshotRefresher(
-            ContentRepositoryStore store, WorkspaceCatalog workspaces, RepositoryProperties properties) {
+            ContentRepositoryStore store, Supplier<WorkspaceId> defaultWorkspaceId, RepositoryProperties properties) {
         return new ContentSnapshotRefresher(
-                store,
-                () -> List.of(workspaces.defaultWorkspace().id()),
-                Duration.ofSeconds(properties.refreshSeconds()));
+                store, () -> List.of(defaultWorkspaceId.get()), Duration.ofSeconds(properties.refreshSeconds()));
     }
 
     @Bean(name = "contentSnapshot")
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ContentSnapshotHealthIndicator contentSnapshotHealthIndicator(
-            ContentRepositoryStore store, WorkspaceCatalog workspaces, RepositoryProperties properties) {
+            ContentRepositoryStore store, Supplier<WorkspaceId> defaultWorkspaceId, RepositoryProperties properties) {
         return new ContentSnapshotHealthIndicator(
-                store, workspaces, Duration.ofSeconds(properties.staleAfterSeconds()), Clock.systemUTC());
+                store, defaultWorkspaceId, Duration.ofSeconds(properties.staleAfterSeconds()), Clock.systemUTC());
     }
 
     /**
@@ -86,9 +105,11 @@ class ContentConfiguration {
     @Order(100)
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ApplicationRunner contentRepositoryInitializer(
-            WorkspaceCatalog workspaces, ContentRepositoryStore repositories, ContentSnapshotRefresher refresher) {
+            Supplier<WorkspaceId> defaultWorkspaceId,
+            ContentRepositoryStore repositories,
+            ContentSnapshotRefresher refresher) {
         return arguments -> {
-            repositories.ensureReady(workspaces.defaultWorkspace().id());
+            repositories.ensureReady(defaultWorkspaceId.get());
             refresher.start();
         };
     }

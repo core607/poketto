@@ -6,7 +6,6 @@ import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.ContentSnapshot;
 import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.workspace.Workspace;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
 import java.time.Duration;
@@ -24,8 +23,8 @@ class ContentSnapshotHealthIndicatorTests {
     private static final Instant NOW = Instant.parse("2026-09-04T12:00:00Z");
 
     private final SnapshotStore store = new SnapshotStore();
-    private final ContentSnapshotHealthIndicator indicator =
-            new ContentSnapshotHealthIndicator(store, catalog(), Duration.ofHours(1), Clock.fixed(NOW, ZoneOffset.UTC));
+    private final ContentSnapshotHealthIndicator indicator = new ContentSnapshotHealthIndicator(
+            store, DEFAULT::id, Duration.ofHours(1), Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
     void isDownWithoutAValidatedSnapshot() {
@@ -55,20 +54,6 @@ class ContentSnapshotHealthIndicatorTests {
 
         assertThat(health.getStatus()).isEqualTo(Status.OUT_OF_SERVICE);
         assertThat(health.getDetails()).containsEntry("commit", "unborn");
-    }
-
-    private static WorkspaceCatalog catalog() {
-        return new WorkspaceCatalog() {
-            @Override
-            public Workspace defaultWorkspace() {
-                return DEFAULT;
-            }
-
-            @Override
-            public Optional<Workspace> findById(WorkspaceId workspaceId) {
-                return DEFAULT.id().equals(workspaceId) ? Optional.of(DEFAULT) : Optional.empty();
-            }
-        };
     }
 
     private static final class SnapshotStore implements ContentRepositoryStore {

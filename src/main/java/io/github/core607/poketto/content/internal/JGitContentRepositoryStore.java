@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.DateTimeException;
@@ -79,7 +80,14 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     @Override
     public ContentSnapshot refresh(WorkspaceId workspaceId) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
-        return authority.read(workspaceId, snapshot -> install(workspaceId, snapshot, scan(snapshot, workspaceId)));
+        return authority.read(workspaceId, snapshot -> {
+            ContentSnapshot served = snapshots.get(workspaceId);
+            if (served != null && served.commitId().equals(snapshot.commitId())) {
+                // The served commit already passed validation; only its validation time moves.
+                return install(workspaceId, snapshot, served.documents());
+            }
+            return install(workspaceId, snapshot, scan(snapshot, workspaceId));
+        });
     }
 
     @Override
@@ -109,7 +117,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     }
 
     private ContentSnapshot restoreLastValidated(WorkspaceId workspaceId) {
-        ContentSnapshot restored = authority.readCache(workspaceId, cache -> {
+        return authority.readCache(workspaceId, cache -> {
             ValidatedMarker marker = readValidated(cache.worktree(), workspaceId);
             try (Repository repository = openCache(cache.worktree(), workspaceId)) {
                 ObjectId commit = marker.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
@@ -117,14 +125,14 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                         && !repository.getObjectDatabase().has(commit)) {
                     throw failure(workspaceId, "last validated commit is no longer in the cache", null);
                 }
-                return new ContentSnapshot(
+                ContentSnapshot restored = new ContentSnapshot(
                         workspaceId, marker.commitId(), scan(repository, commit, workspaceId), marker.validatedAt());
+                snapshots.put(workspaceId, restored);
+                return restored;
             } catch (IOException exception) {
                 throw failure(workspaceId, "last validated commit cannot be checked", exception);
             }
         });
-        snapshots.put(workspaceId, restored);
-        return restored;
     }
 
     List<StoredDocument> scan(RepositoryAuthority.Snapshot snapshot, WorkspaceId workspaceId) {
@@ -135,8 +143,13 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     }
 
     List<StoredDocument> scan(Repository repository, ObjectId commit, WorkspaceId workspaceId) {
+        return scanTree(repository, commit, workspaceId).documents();
+    }
+
+    /** The validated documents at one commit together with their exact byte total. */
+    ScannedTree scanTree(Repository repository, ObjectId commit, WorkspaceId workspaceId) {
         if (commit.equals(ObjectId.zeroId())) {
-            return List.of();
+            return new ScannedTree(List.of(), 0);
         }
         try {
             ObjectId tree = repository.resolve(commit.name() + "^{tree}");
@@ -147,7 +160,9 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
             rejectPathCollisions(entries, workspaceId);
 
             List<StoredDocument> documents = new ArrayList<>(entries.size());
+            long totalBytes = 0;
             for (TreeEntry entry : entries) {
+                totalBytes += entry.bytes().length;
                 final DocumentContent content;
                 try {
                     content = codec.parse(entry.bytes());
@@ -158,7 +173,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                 documents.add(new StoredDocument(entry.path(), content, DocumentRevision.sha256(entry.bytes())));
             }
             rejectDuplicateIds(documents, workspaceId);
-            return List.copyOf(documents);
+            return new ScannedTree(List.copyOf(documents), totalBytes);
         } catch (ContentRepositoryException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -210,10 +225,9 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                             "managed documents exceed " + ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE + " at " + path,
                             null);
                 }
-                // The size is known before the blob is loaded, so an oversized document is
-                // rejected without ever being read into memory.
-                ObjectLoader loader = repository.open(walk.getObjectId(0), Constants.OBJ_BLOB);
-                long size = loader.getSize();
+                // The object header carries the size, so an oversized document is rejected
+                // before its bytes are inflated.
+                long size = walk.getObjectReader().getObjectSize(walk.getObjectId(0), Constants.OBJ_BLOB);
                 if (size > ContentLimits.MAX_DOCUMENT_BYTES) {
                     throw failure(
                             workspaceId,
@@ -228,6 +242,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                             "managed documents exceed " + ContentLimits.MAX_WORKSPACE_BYTES + " bytes at " + path,
                             null);
                 }
+                ObjectLoader loader = repository.open(walk.getObjectId(0), Constants.OBJ_BLOB);
                 entries.add(new TreeEntry(path, loader.getBytes()));
             }
         }
@@ -273,14 +288,19 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     private static void recordValidated(
             Path worktree, WorkspaceId workspaceId, Optional<String> commitId, Instant validatedAt) {
         try (Repository repository = openCache(worktree, workspaceId)) {
+            // The marker is replaced atomically so an interrupted write leaves the previous
+            // record readable instead of a torn one.
+            Path marker = markerPath(repository);
+            Path staged = marker.resolveSibling(VALIDATED_MARKER + ".tmp");
             Files.writeString(
-                    markerPath(repository),
+                    staged,
                     commitId.orElse(UNBORN) + " " + validatedAt + "\n",
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.WRITE,
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.SYNC);
+            Files.move(staged, marker, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException exception) {
             throw failure(workspaceId, "validated commit cannot be recorded in the cache", exception);
         }
@@ -314,6 +334,8 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         String message = "workspace " + workspaceId + " resolved repository snapshot: " + detail;
         return cause == null ? new ContentRepositoryException(message) : new ContentRepositoryException(message, cause);
     }
+
+    record ScannedTree(List<StoredDocument> documents, long totalBytes) {}
 
     private record TreeEntry(String path, byte[] bytes) {}
 

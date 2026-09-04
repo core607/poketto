@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentContent;
@@ -15,6 +16,7 @@ import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -32,9 +34,12 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 final class JGitDocumentWriteService implements DocumentWriteService {
 
+    private static final Logger log = LoggerFactory.getLogger(JGitDocumentWriteService.class);
     private static final String MAIN = Constants.R_HEADS + "main";
     private static final String PRINCIPAL_TRAILER = "Poketto-Principal";
     // Git requires an author, so the service commits under a fixed non-person identity and keeps
@@ -66,7 +71,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         requirePrincipal(principal);
         String path = validated(draft);
 
-        return inRepository(workspaceId, (repository, documents) -> {
+        return inRepository(workspaceId, (repository, base) -> {
+            List<StoredDocument> documents = base.documents();
             Instant now = clock.instant();
             DocumentId documentId = DocumentId.random();
             DocumentContent content = new DocumentContent(
@@ -82,7 +88,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             byte[] bytes = codec.serialize(content);
             requirePathFree(documents, path, null);
             requireIdFree(documents, documentId);
-            ObjectId commit = commit(repository, principal, "create", documentId, now, Map.of(path, bytes), Set.of());
+            ObjectId commit =
+                    commit(repository, base, principal, "create", documentId, now, Map.of(path, bytes), Set.of());
             return new DocumentWriteResult(
                     documentId, commit.name(), true, path, Optional.of(DocumentRevision.sha256(bytes)));
         });
@@ -100,7 +107,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         Objects.requireNonNull(expectedRevision, "expected document revision must not be null");
         String path = validated(draft);
 
-        return inRepository(workspaceId, (repository, documents) -> {
+        return inRepository(workspaceId, (repository, base) -> {
+            List<StoredDocument> documents = base.documents();
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             DocumentMetadata before = current.content().metadata();
@@ -127,7 +135,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             next = advanced(next, before.updatedAt(), now);
             byte[] bytes = codec.serialize(next);
             Set<String> removals = pathChanged ? Set.of(current.repositoryPath()) : Set.of();
-            ObjectId commit = commit(repository, principal, "update", documentId, now, Map.of(path, bytes), removals);
+            ObjectId commit =
+                    commit(repository, base, principal, "update", documentId, now, Map.of(path, bytes), removals);
             return new DocumentWriteResult(
                     documentId, commit.name(), true, path, Optional.of(DocumentRevision.sha256(bytes)));
         });
@@ -143,12 +152,13 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         Objects.requireNonNull(documentId, "document id must not be null");
         Objects.requireNonNull(expectedRevision, "expected document revision must not be null");
 
-        return inRepository(workspaceId, (repository, documents) -> {
+        return inRepository(workspaceId, (repository, base) -> {
+            List<StoredDocument> documents = base.documents();
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             String path = current.repositoryPath();
             ObjectId commit =
-                    commit(repository, principal, "delete", documentId, clock.instant(), Map.of(), Set.of(path));
+                    commit(repository, base, principal, "delete", documentId, clock.instant(), Map.of(), Set.of(path));
             return new DocumentWriteResult(documentId, commit.name(), true, path, Optional.empty());
         });
     }
@@ -163,7 +173,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
         Objects.requireNonNull(documentId, "document id must not be null");
         Objects.requireNonNull(expectedRevision, "expected document revision must not be null");
 
-        return inRepository(workspaceId, (repository, documents) -> {
+        return inRepository(workspaceId, (repository, base) -> {
+            List<StoredDocument> documents = base.documents();
             StoredDocument current = require(documents, documentId);
             requireRevision(current, expectedRevision);
             DocumentMetadata before = current.content().metadata();
@@ -187,7 +198,8 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             String path = current.repositoryPath();
             next = advanced(next, before.updatedAt(), now);
             byte[] bytes = codec.serialize(next);
-            ObjectId commit = commit(repository, principal, "publish", documentId, now, Map.of(path, bytes), Set.of());
+            ObjectId commit =
+                    commit(repository, base, principal, "publish", documentId, now, Map.of(path, bytes), Set.of());
             return new DocumentWriteResult(
                     documentId, commit.name(), true, path, Optional.of(DocumentRevision.sha256(bytes)));
         });
@@ -199,30 +211,47 @@ final class JGitDocumentWriteService implements DocumentWriteService {
             try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
                 ObjectId baseCommit =
                         snapshot.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
-                DocumentWriteResult result = action.apply(repository, store.scan(repository, baseCommit, workspaceId));
+                DocumentWriteResult result =
+                        action.apply(repository, store.scanTree(repository, baseCommit, workspaceId));
                 if (result.committed()) {
                     advancer.advance(result.commitId());
-                    // Remote main now equals the candidate, and the workspace lock is still
-                    // held, so the acknowledged commit becomes the served snapshot at once.
-                    ObjectId committed = ObjectId.fromString(result.commitId());
-                    store.install(
-                            workspaceId,
-                            new RepositoryAuthority.Snapshot(snapshot.worktree(), Optional.of(result.commitId())),
-                            store.scan(repository, committed, workspaceId));
+                    serve(workspaceId, repository, snapshot.worktree(), result.commitId());
                 }
                 return result;
             }
         });
     }
 
+    /**
+     * Remote {@code main} equals the acknowledged commit and the workspace lock is still held,
+     * so the commit becomes the served snapshot at once. The write is acknowledged even when
+     * that fails: the next refresh installs the commit, or keeps reporting why it cannot.
+     */
+    private void serve(WorkspaceId workspaceId, Repository repository, Path worktree, String commitId) {
+        try {
+            store.install(
+                    workspaceId,
+                    new RepositoryAuthority.Snapshot(worktree, Optional.of(commitId)),
+                    store.scan(repository, ObjectId.fromString(commitId), workspaceId));
+        } catch (ContentRepositoryException exception) {
+            log.warn(
+                    "workspace {} acknowledged commit {} but the served snapshot could not be replaced: {}",
+                    workspaceId,
+                    commitId,
+                    exception.getMessage());
+        }
+    }
+
     private ObjectId commit(
             Repository repository,
+            JGitContentRepositoryStore.ScannedTree base,
             WritePrincipal principal,
             String operation,
             DocumentId documentId,
             Instant now,
             Map<String, byte[]> upserts,
             Set<String> deletions) {
+        requireWorkspaceCapacity(base, upserts, deletions);
         Set<String> touched = new LinkedHashSet<>(upserts.keySet());
         touched.addAll(deletions);
         ContentWorktree.recordIntent(repository, touched);
@@ -245,6 +274,40 @@ final class JGitDocumentWriteService implements DocumentWriteService {
                 throw runtimeException;
             }
             throw new ContentRepositoryException("document " + documentId + " cannot be committed", exception);
+        }
+    }
+
+    /**
+     * Refuses a commit that would push the workspace past its document or byte bound, so the
+     * remote never receives a tree the scan would reject. Replaced bytes are not credited back,
+     * which errs on the side of refusing at the very edge of the byte bound.
+     */
+    private static void requireWorkspaceCapacity(
+            JGitContentRepositoryStore.ScannedTree base, Map<String, byte[]> upserts, Set<String> deletions) {
+        Set<String> present = new LinkedHashSet<>();
+        for (StoredDocument document : base.documents()) {
+            present.add(document.repositoryPath());
+        }
+        long count = base.documents().size();
+        for (String path : deletions) {
+            if (present.contains(path) && !upserts.containsKey(path)) {
+                count--;
+            }
+        }
+        long added = 0;
+        for (Map.Entry<String, byte[]> upsert : upserts.entrySet()) {
+            if (!present.contains(upsert.getKey())) {
+                count++;
+            }
+            added += upsert.getValue().length;
+        }
+        if (count > ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) {
+            throw new IllegalArgumentException(
+                    "workspace must not hold more than " + ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE + " documents");
+        }
+        if (base.totalBytes() + added > ContentLimits.MAX_WORKSPACE_BYTES) {
+            throw new IllegalArgumentException(
+                    "workspace documents must not exceed " + ContentLimits.MAX_WORKSPACE_BYTES + " bytes");
         }
     }
 
@@ -376,6 +439,6 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     @FunctionalInterface
     private interface WriteAction {
 
-        DocumentWriteResult apply(Repository repository, List<StoredDocument> documents);
+        DocumentWriteResult apply(Repository repository, JGitContentRepositoryStore.ScannedTree base);
     }
 }
