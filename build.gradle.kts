@@ -31,7 +31,7 @@ java {
 }
 
 val springModulithVersion = "2.1.0"
-// PostgreSQL 17.11-bookworm. Testcontainers requires digest references without a tag.
+// Immutable official PostgreSQL 17.11-bookworm manifest.
 val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
     .orElse("postgres@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0")
 
