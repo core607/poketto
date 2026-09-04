@@ -3,6 +3,8 @@
 Date: 2026-08-27
 Status: Proposed
 
+The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
+
 [Phase-one delivery](2026-09-05-phase-one-daily-use.md) selects the self-hosted initialization, invitation, membership, and key lifecycle for the first daily-use installation. Consumer provisioning remains outside that delivery.
 
 ## Problem

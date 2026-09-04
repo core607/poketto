@@ -2,11 +2,13 @@
 
 Date: 2026-08-25
 
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、关系型身份和本地托管存储。浏览器认证、渲染、图片授权与 MCP 交付仍需集成；下文的目标契约不代表这些入口已经可用。
+
 [第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及五个仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
 
 ## 本文范围
 
-这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)（健康检查、problem 响应与只读的公开文档 API），以及为公开读取提供服务并限定内容边界的[已验证内容快照](2026-09-04-validated-content-snapshot.md)已经实现。[Next.js 前端提案](../proposed/2026-08-30-nextjs-frontend.md)取代下文的 JTE 与 htmx 选型，仓库原生检索提案取代核心架构决策 1 与 3 中的 PostgreSQL 投影和搜索；投影、搜索、渲染、问答、MCP 与认证均未实现。拟议的[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。除非链接的提案明确描述未来变化，下文机制均为已交付行为。
+这份 implemented 文档记录主要的单服务器基线，以及为该基线确定的产品契约。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)（健康检查、problem 响应与只读的公开文档 API），以及为公开读取提供服务并限定内容边界的[已验证内容快照](2026-09-04-validated-content-snapshot.md)已经实现。[Next.js 前端提案](../proposed/2026-08-30-nextjs-frontend.md)取代下文的 JTE 与 htmx 选型，仓库原生检索提案取代核心架构决策 1 与 3 中的 PostgreSQL 投影和搜索；渲染、访客问答与 MCP 尚未实现；新的基础记录定义已交付的搜索、关系型身份和浏览器认证。拟议的[受管资源与仓库图片物化](../proposed/2026-09-01-repository-asset-blob-store.md)、[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)、[仓库原生检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)和 [C 端账号与个人工作空间](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)定义已接受的目标变更，但不改变工作空间租户边界。[可选的 serverless 部署 profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍以单机 profile 为主，只在真实基础设施可用时选择 OSS、共享状态和远程 SRT。除非链接的提案明确描述未来变化，下文机制均为已交付行为。
 
 ## 定位
 
