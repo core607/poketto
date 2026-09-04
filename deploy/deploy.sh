@@ -6,12 +6,15 @@
 #
 # Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT] [--db-image REF]
 #                  [--set-stdin] [--sync-from DIR]
-#   Options record their values into .env before deploying, so a rerun without options
-#   redeploys the recorded pins. --set-stdin reads KEY=VALUE lines from standard input and
-#   records them the same way, which keeps a secret out of the command line and process list;
-#   REGISTRY_USERNAME and REGISTRY_PASSWORD lines are used for one registry login during this
-#   run and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh from DIR
-#   into the root under the deployment lock.
+#   Option values are candidates: they are validated and used for this run, and recorded into
+#   .env only after the health check passes, so a failed deployment leaves .env unchanged and a
+#   rerun without options redeploys the confirmed pins. When a confirmed pin changes, the
+#   previous pins are saved to .env.previous first; pass them as options to redeploy that
+#   version. --set-stdin reads KEY=VALUE lines from standard input and records them the same
+#   way, which keeps a secret out of the command line and process list; REGISTRY_USERNAME and
+#   REGISTRY_PASSWORD lines are used for one registry login during this run and are never
+#   recorded. --sync-from moves a staged compose.yaml and deploy.sh
+#   from DIR into the root under the deployment lock.
 # Exit codes: 0 deployed and healthy, 1 validation or deployment failure, 75 another
 #   deployment holds the lock.
 
@@ -29,6 +32,8 @@ REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
 LOGGED_IN_REGISTRY=""
 LOCK_KIND=""
+PENDING_KEYS=()
+PENDING_VALUES=()
 
 CONFIG_KEYS=(
     POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE
@@ -38,14 +43,40 @@ CONFIG_KEYS=(
     POKETTO_HTTP_BIND POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
 )
+PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE)
 
 usage() {
-    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 fail() {
     echo "deploy: $*" >&2
     exit 1
+}
+
+is_config_key() {
+    local candidate="$1" key
+    for key in "${CONFIG_KEYS[@]}"; do
+        [ "$candidate" != "$key" ] || return 0
+    done
+    return 1
+}
+
+# A candidate value is held in memory for this run and reaches .env only after the deployment
+# is healthy.
+stage_value() {
+    local key="$1" value="$2" i
+    is_config_key "$key" || fail "unsupported configuration key: $key"
+    [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] \
+        || fail "$key must be a single-line value"
+    for i in "${!PENDING_KEYS[@]}"; do
+        if [ "${PENDING_KEYS[$i]}" = "$key" ]; then
+            PENDING_VALUES[$i]="$value"
+            return 0
+        fi
+    done
+    PENDING_KEYS+=("$key")
+    PENDING_VALUES+=("$value")
 }
 
 while [ $# -gt 0 ]; do
@@ -64,8 +95,12 @@ done
 if { [ -n "$APP_IMAGE_ARG" ] && [ -z "$APP_REVISION_ARG" ]; } || { [ -z "$APP_IMAGE_ARG" ] && [ -n "$APP_REVISION_ARG" ]; }; then
     fail "--app-image and --app-revision must be given together"
 fi
+[ -z "$APP_IMAGE_ARG" ] || stage_value POKETTO_APP_IMAGE "$APP_IMAGE_ARG"
+[ -z "$APP_REVISION_ARG" ] || stage_value POKETTO_APP_REVISION "$APP_REVISION_ARG"
+[ -z "$DB_IMAGE_ARG" ] || stage_value POKETTO_DB_IMAGE "$DB_IMAGE_ARG"
 
 ENV_FILE="$ROOT/.env"
+PREVIOUS_ENV_FILE="$ROOT/.env.previous"
 COMPOSE_FILE="$ROOT/compose.yaml"
 LOCK_FILE="$ROOT/.deploy.lock"
 LOCK_DIR="$ROOT/.deploy.lock.d"
@@ -127,34 +162,20 @@ apply_sync() {
 
 # ---- configuration ---------------------------------------------------------------------------
 
-is_config_key() {
-    local candidate="$1" key
-    for key in "${CONFIG_KEYS[@]}"; do
-        [ "$candidate" != "$key" ] || return 0
-    done
-    return 1
-}
-
-set_env_value() {
-    local key="$1" value="$2" tmp line found=0
-    is_config_key "$key" || fail "unsupported configuration key: $key"
-    [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] \
-        || fail "$key must be a single-line value"
-    tmp="$(mktemp "$ROOT/.env.XXXXXX")"
+read_stdin_settings() {
+    local line key value
     while IFS= read -r line || [ -n "$line" ]; do
-        line="${line%$'\r'}"
-        if [[ "$line" == "$key="* ]]; then
-            printf '%s=%s\n' "$key" "$value" >> "$tmp"
-            found=1
-        else
-            printf '%s\n' "$line" >> "$tmp"
-        fi
-    done < "$ENV_FILE"
-    if [ "$found" = 0 ]; then
-        printf '%s=%s\n' "$key" "$value" >> "$tmp"
-    fi
-    chmod 600 "$tmp"
-    mv "$tmp" "$ENV_FILE"
+        [ -n "$line" ] || continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && [ "$key" != "$line" ] \
+            || fail "--set-stdin expects KEY=VALUE lines with an uppercase key"
+        case "$key" in
+            REGISTRY_USERNAME) REGISTRY_USERNAME="$value" ;;
+            REGISTRY_PASSWORD) REGISTRY_PASSWORD="$value" ;;
+            *) stage_value "$key" "$value" ;;
+        esac
+    done
 }
 
 load_env_file() {
@@ -173,30 +194,22 @@ load_env_file() {
 }
 
 load_configuration() {
-    local missing=() key
+    local missing=() key i
     [ -f "$COMPOSE_FILE" ] || fail "missing $COMPOSE_FILE"
     [ -f "$ENV_FILE" ] || fail "missing $ENV_FILE; copy .env.example beside compose.yaml and fill it in"
-
-    [ -n "$APP_IMAGE_ARG" ] && set_env_value POKETTO_APP_IMAGE "$APP_IMAGE_ARG"
-    [ -n "$APP_REVISION_ARG" ] && set_env_value POKETTO_APP_REVISION "$APP_REVISION_ARG"
-    [ -n "$DB_IMAGE_ARG" ] && set_env_value POKETTO_DB_IMAGE "$DB_IMAGE_ARG"
     if [ "$SET_STDIN" = 1 ]; then
-        local line key value
-        while IFS= read -r line || [ -n "$line" ]; do
-            [ -n "$line" ] || continue
-            key="${line%%=*}"
-            value="${line#*=}"
-            [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && [ "$key" != "$line" ] \
-                || fail "--set-stdin expects KEY=VALUE lines with an uppercase key"
-            case "$key" in
-                REGISTRY_USERNAME) REGISTRY_USERNAME="$value" ;;
-                REGISTRY_PASSWORD) REGISTRY_PASSWORD="$value" ;;
-                *) set_env_value "$key" "$value" ;;
-            esac
-        done
+        read_stdin_settings
     fi
 
     load_env_file
+    PREVIOUS_PINS=()
+    for key in "${PIN_KEYS[@]}"; do
+        PREVIOUS_PINS+=("${!key:-}")
+    done
+    for i in "${!PENDING_KEYS[@]}"; do
+        printf -v "${PENDING_KEYS[$i]}" '%s' "${PENDING_VALUES[$i]}"
+        export "${PENDING_KEYS[$i]}"
+    done
 
     for key in POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POSTGRES_DB POSTGRES_USER \
             POSTGRES_PASSWORD POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME \
@@ -220,6 +233,59 @@ load_configuration() {
     HEALTH_INTERVAL="${POKETTO_HEALTH_INTERVAL:-5}"
     MIN_FREE_MB="${POKETTO_MIN_FREE_MB:-2048}"
     APP_UID="${POKETTO_APP_UID:-10001}"
+}
+
+# Rewrites .env with the pending values in one pass; the temporary file is renamed into place so
+# a reader never sees a partial file.
+write_env_file() {
+    local tmp line key i written=()
+    tmp="$(mktemp "$ROOT/.env.XXXXXX")"
+    for i in "${!PENDING_KEYS[@]}"; do
+        written[$i]=0
+    done
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        key="${line%%=*}"
+        for i in "${!PENDING_KEYS[@]}"; do
+            if [ "$key" != "$line" ] && [ "$key" = "${PENDING_KEYS[$i]}" ]; then
+                line="$key=${PENDING_VALUES[$i]}"
+                written[$i]=1
+                break
+            fi
+        done
+        printf '%s\n' "$line" >> "$tmp"
+    done < "$ENV_FILE"
+    for i in "${!PENDING_KEYS[@]}"; do
+        [ "${written[$i]}" = 1 ] || printf '%s=%s\n' "${PENDING_KEYS[$i]}" "${PENDING_VALUES[$i]}" >> "$tmp"
+    done
+    chmod 600 "$tmp"
+    mv "$tmp" "$ENV_FILE"
+}
+
+write_previous_pins() {
+    local tmp i
+    tmp="$(mktemp "$ROOT/.env.previous.XXXXXX")"
+    for i in "${!PIN_KEYS[@]}"; do
+        printf '%s=%s\n' "${PIN_KEYS[$i]}" "${PREVIOUS_PINS[$i]}" >> "$tmp"
+    done
+    chmod 600 "$tmp"
+    mv "$tmp" "$PREVIOUS_ENV_FILE"
+}
+
+# Runs only after the health check: .env holds confirmed values, never a failed candidate.
+# .env.previous is written when a confirmed application pin is replaced; a first deployment
+# has no healthy version to return to and writes none.
+record_configuration() {
+    [ ${#PENDING_KEYS[@]} -gt 0 ] || return 0
+    local i key changed=0
+    for i in "${!PIN_KEYS[@]}"; do
+        key="${PIN_KEYS[$i]}"
+        [ "${!key}" = "${PREVIOUS_PINS[$i]}" ] || changed=1
+    done
+    if [ "$changed" = 1 ] && [ -n "${PREVIOUS_PINS[0]}" ] && [ -n "${PREVIOUS_PINS[1]}" ]; then
+        write_previous_pins
+    fi
+    write_env_file
 }
 
 # ---- host checks -----------------------------------------------------------------------------
@@ -349,6 +415,7 @@ main() {
     acquire_images
     deploy
     wait_for_health
+    record_configuration
     echo "deploy: healthy; app=$POKETTO_APP_IMAGE revision=$POKETTO_APP_REVISION db=$POKETTO_DB_IMAGE"
 }
 
