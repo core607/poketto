@@ -27,6 +27,11 @@ interface RepositoryAuthority {
 
     <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer);
 
+    /** Writes Git objects and advances the exact remote ref without checking out repository files. */
+    default <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer) {
+        throw new UnsupportedOperationException("object-only repository writes are unavailable");
+    }
+
     @FunctionalInterface
     interface SnapshotReader<T> {
 
