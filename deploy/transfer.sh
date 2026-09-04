@@ -95,9 +95,18 @@ else
         || fail "archive transfer or load failed on $TARGET"
 fi
 
+status=0
 if [ "$SET_STDIN" = 1 ]; then
     printf '%s\n' "$SETTINGS" \
-        | remote "'$ROOT/deploy.sh' $SYNC_ARGS --set-stdin --app-image '$TAG' --app-revision '$REVISION'"
+        | remote "'$ROOT/deploy.sh' $SYNC_ARGS --set-stdin --app-image '$TAG' --app-revision '$REVISION'" \
+        || status=$?
 else
-    remote "'$ROOT/deploy.sh' $SYNC_ARGS --app-image '$TAG' --app-revision '$REVISION'" < /dev/null
+    remote "'$ROOT/deploy.sh' $SYNC_ARGS --app-image '$TAG' --app-revision '$REVISION'" < /dev/null \
+        || status=$?
 fi
+if [ "$status" != 0 ] && [ -n "$SYNC_ARGS" ]; then
+    # An entrance that never reached the staged files (for example, exit 75 while another
+    # deployment holds the lock) leaves them behind; a retry stages afresh.
+    remote "rm -rf '$incoming'" < /dev/null || true
+fi
+exit "$status"

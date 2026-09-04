@@ -49,6 +49,13 @@ assert_status 0
 assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/$second_revision/deploy.sh.tmp'"
 assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "/.incoming/$REVISION/"
 assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--sync-from '/srv/poketto/.incoming/$second_revision'"
+# An entrance that fails after staging (here: another deployment holds the lock) leaves no
+# orphaned staging directory behind; a successful run issues no removal.
+assert_not_contains "$(ssh_log)" "rm -rf"
+rm -f "$FAKE_STATE/ssh.log" "$FAKE_STATE/deploy-calls"
+FAKE_REMOTE_DEPLOY_EXIT=75 run_transfer --target ops@host --root /srv/poketto --image "$second_image" --revision "$second_revision" --sync
+assert_status 75
+assert_contains "$(ssh_log)" "rm -rf '/srv/poketto/.incoming/$second_revision'"
 rm -f "$FAKE_STATE/remote-has-entrance" "$FAKE_STATE/remote-has-image"
 
 # The remote already holds the tag: no archive is sent, the entrance still runs.
