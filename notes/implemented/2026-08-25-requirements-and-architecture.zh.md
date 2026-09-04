@@ -24,9 +24,9 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 ## 核心架构决策
 
-1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的远端 Git 仓库。[官方 PostgreSQL](2026-09-05-stock-postgresql.md)存储关系型应用状态，不存在内容投影、checkpoint 或搜索表。提交树检索由仓库原生检索提案定义。
+1. 初始选型，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库；PostgreSQL 只做内容的派生投影（search_documents 表），可随时全量重建。每个工作空间的投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
 2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。机器入口（MCP、管理端）强校验 frontmatter，以解析出的旧提交构建候选 commit 并记录调用者身份；只有远端 ref 仍等于旧提交时才推进。竞争 push 返回冲突；回包丢失时重读远端 `main` 对账，绝不盲目重试 ref 更新。直接 push 由当前快照校验约束；第一阶段提案将整提交拒绝改为文件级诊断。仓库确认与下游观察是独立状态。
-3. 拟议的仓库原生检索入口提供有界提交树文本匹配、标签与日期过滤，以及隔离的代理探索。搜索 API 尚未交付；第一阶段不包含持久化全文或向量索引。
+3. 初始选型，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：检索以 agentic 方式为默认。服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 在下一次读取时观察新的远端 `main`，不会把缓存改动当作内容。成员 AI 走 MCP + scoped API Key，capability 分为 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS，AI 的 key 默认没有后两项；访客只读渲染后的公开页，问答服务在代码层只注入公开内容检索器，参数中不存在 scope。
 5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间，不提供自助创建更多工作空间的入口。
 
