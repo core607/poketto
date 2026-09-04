@@ -26,7 +26,9 @@ services:
     volumes:
       - "${POKETTO_DATA_DIR_HOST:?POKETTO_DATA_DIR_HOST is required}:/var/lib/poketto"
     mem_limit: "${POKETTO_APP_MEMORY:-1536m}"
-    pids_limit: 256
+    # JVM baseline of roughly 40 to 60 threads plus Tomcat's 200 request threads; a native-thread
+    # failure would exit the container through -XX:+ExitOnOutOfMemoryError.
+    pids_limit: 512
     security_opt:
       - no-new-privileges:true
     cap_drop:
