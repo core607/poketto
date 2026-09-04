@@ -4,10 +4,12 @@
 #   revisions   "<reference> <revision>" lines answering the revision label
 #   health      health statuses returned by successive container inspections; the last sticks
 #   pull-fails  present when every pull must fail
-# Every invocation is appended to $FAKE_STATE/docker.log.
+# Every invocation is appended to $FAKE_STATE/docker.log, and the DOCKER_CONFIG it ran with to
+# $FAKE_STATE/docker-config.log. A login writes config.json where the real client would.
 set -u
 mkdir -p "$FAKE_STATE"
 printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
+printf '%s\n' "$1 ${DOCKER_CONFIG:-}" >> "$FAKE_STATE/docker-config.log"
 if [ "${POKETTO_CAPTURE_ENV:-0}" = 1 ]; then
     printf '%s' "${POKETTO_REPOSITORY_REMOTE_URI:-}" > "$FAKE_STATE/repository-uri"
     printf '%s' "${POKETTO_REPOSITORY_PASSWORD:-}" > "$FAKE_STATE/repository-password"
@@ -18,7 +20,11 @@ revision_of() { grep -- "^$1 " "$FAKE_STATE/revisions" 2>/dev/null | head -1 | c
 
 case "${1:-}" in
     info|logout) exit 0 ;;
-    login) cat > "$FAKE_STATE/login-stdin"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
+    login)
+        cat > "$FAKE_STATE/login-stdin"
+        config="${DOCKER_CONFIG:-$HOME/.docker}"
+        mkdir -p "$config" && echo '{"auths":{}}' > "$config/config.json"
+        exit "${FAKE_LOGIN_EXIT:-0}" ;;
     image)
         [ "${2:-}" = inspect ] || exit 1
         shift 2

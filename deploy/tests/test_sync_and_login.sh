@@ -24,12 +24,14 @@ run_deploy --sync-from "$ROOT/nowhere"
 assert_status 1
 assert_contains "$ERR" "does not exist"
 
-# Registry credentials on standard input log in for the pull, are never recorded, and the
-# session is logged out again.
+# Registry credentials on standard input log in inside a Docker configuration directory that
+# exists only for this run: every later docker command uses it, it is deleted at exit, the
+# deployment user's own configuration is never written, and nothing is recorded.
 setup_root
 echo "$REVISION" > "$FAKE_STATE/pull-revision"
+mkdir -p "$PWD/home"
 set +e
-OUT="$(printf 'REGISTRY_USERNAME=bot\nREGISTRY_PASSWORD=ghs_token\n' | bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+OUT="$(printf 'REGISTRY_USERNAME=bot\nREGISTRY_PASSWORD=ghs_token\n' | HOME="$PWD/home" bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
 STATUS=$?
 set -e
 ERR="$(cat "$PWD/stderr")"
@@ -37,9 +39,21 @@ assert_status 0
 assert_contains "$(docker_log)" "login ghcr.io --username bot --password-stdin"
 assert_contains "$(cat "$FAKE_STATE/login-stdin")" "ghs_token"
 assert_not_contains "$(docker_log)" "ghs_token"
-assert_contains "$(docker_log)" "logout ghcr.io"
+[ ! -e "$PWD/home/.docker/config.json" ] || { echo "the user's Docker configuration was written"; exit 1; }
+config="$(grep '^login ' "$FAKE_STATE/docker-config.log" | cut -d ' ' -f 2-)"
+[ -n "$config" ] || { echo "the login ran without a temporary DOCKER_CONFIG"; exit 1; }
+grep -qx "pull $config" "$FAKE_STATE/docker-config.log" || { echo "the pull did not use the login's DOCKER_CONFIG"; exit 1; }
+grep -qx "compose $config" "$FAKE_STATE/docker-config.log" || { echo "compose did not use the login's DOCKER_CONFIG"; exit 1; }
+[ ! -d "$config" ] || { echo "the temporary Docker configuration remained"; exit 1; }
 grep -q "REGISTRY" "$ROOT/.env" && { echo "registry credentials were recorded"; exit 1; }
 assert_contains "$(docker_log)" "pull $DIGEST_IMAGE"
+
+# Without streamed credentials the deployment user's own Docker configuration stays in effect.
+setup_root
+have_image "$DIGEST_IMAGE"
+run_deploy
+assert_status 0
+grep -q '^compose [^ ]' "$FAKE_STATE/docker-config.log" && { echo "DOCKER_CONFIG was redirected without a login"; exit 1; }
 
 # A password without a user name is refused; a failed login stops before any pull.
 setup_root

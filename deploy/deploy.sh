@@ -12,8 +12,8 @@
 #   previous pins are saved to .env.previous first; pass them as options to redeploy that
 #   version. --set-stdin reads KEY=VALUE lines from standard input and records them the same
 #   way, which keeps a secret out of the command line and process list; REGISTRY_USERNAME and
-#   REGISTRY_PASSWORD lines are used for one registry login during this run and are never
-#   recorded. --sync-from moves a staged compose.yaml and deploy.sh
+#   REGISTRY_PASSWORD lines log in once inside a temporary Docker configuration that this run
+#   deletes, and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh
 #   from DIR into the root under the deployment lock.
 # Exit codes: 0 deployed and healthy, 1 validation or deployment failure, 75 another
 #   deployment holds the lock.
@@ -30,7 +30,7 @@ SET_STDIN=0
 SYNC_FROM=""
 REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
-LOGGED_IN_REGISTRY=""
+DOCKER_CONFIG_DIR=""
 LOCK_KIND=""
 PENDING_KEYS=()
 PENDING_VALUES=()
@@ -110,7 +110,7 @@ compose() {
 }
 
 cleanup() {
-    [ -z "$LOGGED_IN_REGISTRY" ] || "$DOCKER" logout "$LOGGED_IN_REGISTRY" >/dev/null 2>&1 || true
+    [ -z "$DOCKER_CONFIG_DIR" ] || rm -rf "$DOCKER_CONFIG_DIR"
     [ "$LOCK_KIND" != directory ] || rm -rf "$LOCK_DIR"
 }
 
@@ -294,6 +294,15 @@ owner_uid() {
     stat -c %u "$1" 2>/dev/null || stat -f %u "$1"
 }
 
+# Registry credentials live in a Docker configuration directory that exists only for this run,
+# so the deployment user's own credential store is neither read nor written by the login.
+prepare_docker_config() {
+    [ -n "$REGISTRY_PASSWORD" ] || return 0
+    [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
+    DOCKER_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/poketto-docker.XXXXXX")"
+    export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
+}
+
 check_host() {
     "$DOCKER" info >/dev/null 2>&1 || fail "docker daemon is not reachable by $(id -un)"
     compose version >/dev/null 2>&1 || fail "docker compose plugin is not installed"
@@ -329,7 +338,6 @@ image_revision() {
 # otherwise Docker Hub. A private GHCR package needs this login on the pull path.
 registry_login() {
     [ -n "$REGISTRY_PASSWORD" ] || return 0
-    [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
     local first="${POKETTO_APP_IMAGE%%/*}" registry
     if [[ "$POKETTO_APP_IMAGE" == */* ]] && [[ "$first" == *.* || "$first" == *:* ]]; then
         registry="$first"
@@ -339,7 +347,6 @@ registry_login() {
     printf '%s' "$REGISTRY_PASSWORD" \
         | "$DOCKER" login "$registry" --username "$REGISTRY_USERNAME" --password-stdin >/dev/null \
         || fail "registry login to $registry failed"
-    LOGGED_IN_REGISTRY="$registry"
 }
 
 acquire_images() {
@@ -411,6 +418,7 @@ main() {
     acquire_lock
     apply_sync
     load_configuration
+    prepare_docker_config
     check_host
     acquire_images
     deploy
