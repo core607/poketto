@@ -17,7 +17,7 @@ Every production workspace has one private remote Git repository. Its `main` ref
 
 The primary single-server profile and the proposed serverless profile use the same internal `RepositoryAuthority` port. Neither supports local Git authority or falls back to local disk. `<data-dir>/workspaces/<workspace-id>/content` is a disposable workspace-scoped cache selected only from a validated `WorkspaceId`.
 
-Each read fetches and resolves remote `main`, resets the cache to that exact commit, removes local untracked and ignored files, and reads the pinned tree. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next read or write; local cache edits are not content.
+Each read fetches and resolves remote `main`, resets the cache to that exact commit, removes local untracked and ignored files, and reads the pinned tree. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next read or write; local cache edits are not content. Public requests no longer perform this read themselves: the [validated content snapshot](2026-09-04-validated-content-snapshot.md) performs it on a refresh schedule and serves the last commit that passed validation.
 
 ### Writes and failure semantics
 
@@ -38,6 +38,7 @@ The first production binding attaches the database-created default workspace to 
 - `poketto.repository.password`
 - `poketto.repository.cache-max-workspaces`, default `32`
 - `poketto.repository.timeout-seconds`, default `30`
+- `poketto.repository.refresh-seconds`, default `30`, and `poketto.repository.stale-after-seconds`, default `3600`, owned by the [validated content snapshot](2026-09-04-validated-content-snapshot.md)
 
 All three binding values are required when the workspace catalog is enabled. The address must be HTTPS and may not embed credentials, a query, or a fragment. Production configuration has no local-authority or file-transport switch; integration tests replace the binding source inside the test composition to use disposable bare remotes.
 
