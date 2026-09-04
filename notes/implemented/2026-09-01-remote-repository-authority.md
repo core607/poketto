@@ -17,7 +17,7 @@ Every production workspace has one private remote Git repository. Its `main` ref
 
 The primary single-server profile and the proposed serverless profile use the same internal `RepositoryAuthority` port. Neither supports local Git authority or falls back to local disk. `<data-dir>/workspaces/<workspace-id>/content` is a disposable workspace-scoped cache selected only from a validated `WorkspaceId`.
 
-Each read fetches and resolves remote `main`, resets the cache to that exact commit, removes local untracked and ignored files, and reads the pinned tree. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next read or write; local cache edits are not content. Public requests no longer perform this read themselves: the [validated content snapshot](2026-09-04-validated-content-snapshot.md) performs it on a refresh schedule and serves the last commit that passed validation.
+Each read fetches and resolves remote `main`, resets the cache to that exact commit, removes local untracked and ignored files, and reads the pinned tree. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next read or write; local cache edits are not content. Public requests do not perform this read: the [validated content snapshot](2026-09-04-validated-content-snapshot.md) performs it on a refresh schedule and serves the last commit that passed validation.
 
 ### Writes and failure semantics
 

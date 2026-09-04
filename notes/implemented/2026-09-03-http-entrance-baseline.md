@@ -13,7 +13,7 @@ Every accepted proposal assumes a Spring HTTP surface: the [Next.js frontend](..
 
 Spring Boot Actuator serves `/actuator/health`, and it is the only management endpoint on the web surface. Details are never shown, and the liveness and readiness probes are enabled at `/actuator/health/liveness` and `/actuator/health/readiness`. Database health participates automatically when a data source exists. The public reverse proxy never forwards `/actuator`; deployment checks reach it on the application port.
 
-Health reports that the process and the database respond. It does not contact the remote repository, so a provider outage surfaces as a problem response on content routes rather than as a failing probe that restarts a healthy process. The [validated content snapshot](2026-09-04-validated-content-snapshot.md) later added a `contentSnapshot` indicator that reports whether served content exists and how stale it is, still without contacting the remote.
+Health reports that the process and the database respond, and whether served content exists and is within its stale bound through the `contentSnapshot` indicator owned by the [validated content snapshot](2026-09-04-validated-content-snapshot.md). No indicator contacts the remote repository, so a provider outage does not fail the probe until the served content outlives its stale bound.
 
 ### Problem responses
 
@@ -34,7 +34,7 @@ Repository failures keep their diagnostic in the server log at `WARN` and never 
 
 `GET /api/public/documents` lists the default workspace's public documents, newest publication first, as id, title, tags, `publishedAt`, and `updatedAt`. `GET /api/public/documents/{id}` adds `createdAt` and the uninterpreted Markdown body. `publishedAt` is null only for a document an owner made public through a direct push without recording a publication time. Rendering to HTML, sanitization, and CSP belong to the presentation layer and are not implemented.
 
-`PublicDocuments` is constructed over the content store without a visibility parameter, so no entrance built on it can widen the scope. A malformed, unknown, or private id produces byte-identical not-found problems apart from the echoed id. Every request resolved current remote `main` with no cross-request cache; the [validated content snapshot](2026-09-04-validated-content-snapshot.md) replaced that with a snapshot that a write updates immediately and a background refresh re-validates.
+`PublicDocuments` is constructed over the content store without a visibility parameter, so no entrance built on it can widen the scope. A malformed, unknown, or private id produces byte-identical not-found problems apart from the echoed id. Every request reads the [validated content snapshot](2026-09-04-validated-content-snapshot.md), which a write updates immediately and a background refresh re-validates; no request contacts the remote.
 
 The default workspace is the only routable workspace, resolved through the workspace catalog. The route beans share the `poketto.workspace.catalog.enabled` condition with the content initializer, so a context without a database also has no content route.
 
@@ -54,7 +54,7 @@ Authentication, sessions, CSRF, write routes, tag and archive listings, RSS, sit
 
 ## Consequences
 
-A public request initially cost one remote fetch and cache reset; the validated content snapshot removed the remote from the request path under an explicit freshness contract.
+A public request costs a lookup in the served snapshot; the remote is off the request path under the freshness contract that the validated content snapshot states.
 
 Problem titles and details are visible behavior. Changing one changes what clients and agents branch on.
 
