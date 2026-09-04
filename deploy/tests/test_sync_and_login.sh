@@ -52,11 +52,15 @@ assert_status 1
 assert_contains "$ERR" "does not exist"
 
 # Registry credentials on standard input log in inside a Docker configuration directory that
-# exists only for this run: every later docker command uses it, it is deleted at exit, the
-# deployment user's own configuration is never written, and nothing is recorded.
+# exists only for this run. It starts as a copy of the user's config.json with the cli-plugins
+# directory linked in, every later docker command uses it, it is deleted at exit, the user's
+# own configuration stays byte-identical, and nothing is recorded.
 setup_root
 echo "$REVISION" > "$FAKE_STATE/pull-revision"
-mkdir -p "$PWD/home"
+mkdir -p "$PWD/home/.docker/cli-plugins"
+echo '{"currentContext":"remote","proxies":{"default":{"httpProxy":"http://proxy.example.invalid:3128"}}}' > "$PWD/home/.docker/config.json"
+touch "$PWD/home/.docker/cli-plugins/docker-compose"
+cp "$PWD/home/.docker/config.json" "$PWD/config.before"
 set +e
 OUT="$(printf 'REGISTRY_USERNAME=bot\nREGISTRY_PASSWORD=ghs_token\n' | HOME="$PWD/home" bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
 STATUS=$?
@@ -66,7 +70,9 @@ assert_status 0
 assert_contains "$(docker_log)" "login ghcr.io --username bot --password-stdin"
 assert_contains "$(cat "$FAKE_STATE/login-stdin")" "ghs_token"
 assert_not_contains "$(docker_log)" "ghs_token"
-[ ! -e "$PWD/home/.docker/config.json" ] || { echo "the user's Docker configuration was written"; exit 1; }
+cmp -s "$PWD/home/.docker/config.json" "$PWD/config.before" || { echo "the user's Docker configuration was modified"; exit 1; }
+cmp -s "$FAKE_STATE/login-config-before" "$PWD/config.before" || { echo "the login did not start from a copy of the user's configuration"; exit 1; }
+[ -e "$FAKE_STATE/login-saw-plugins" ] || { echo "the user's cli-plugins were not available to the run"; exit 1; }
 config="$(grep '^login ' "$FAKE_STATE/docker-config.log" | cut -d ' ' -f 2-)"
 [ -n "$config" ] || { echo "the login ran without a temporary DOCKER_CONFIG"; exit 1; }
 grep -qx "pull $config" "$FAKE_STATE/docker-config.log" || { echo "the pull did not use the login's DOCKER_CONFIG"; exit 1; }

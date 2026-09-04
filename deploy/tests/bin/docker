@@ -6,7 +6,9 @@
 #   pull-fails  present when every pull must fail
 #   docker-root the data root answered by `info --format`; docker-root-fails makes it fail
 # Every invocation is appended to $FAKE_STATE/docker.log, and the DOCKER_CONFIG it ran with to
-# $FAKE_STATE/docker-config.log. A login writes config.json where the real client would.
+# $FAKE_STATE/docker-config.log. A login writes config.json where the real client would, after
+# saving the file it found there to login-config-before and noting a cli-plugins/docker-compose
+# entry in login-saw-plugins.
 set -u
 mkdir -p "$FAKE_STATE"
 printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
@@ -34,6 +36,8 @@ case "${1:-}" in
     login)
         cat > "$FAKE_STATE/login-stdin"
         config="${DOCKER_CONFIG:-$HOME/.docker}"
+        [ ! -f "$config/config.json" ] || cp "$config/config.json" "$FAKE_STATE/login-config-before"
+        [ ! -e "$config/cli-plugins/docker-compose" ] || touch "$FAKE_STATE/login-saw-plugins"
         mkdir -p "$config" && echo '{"auths":{}}' > "$config/config.json"
         exit "${FAKE_LOGIN_EXIT:-0}" ;;
     image)

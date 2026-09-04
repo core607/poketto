@@ -367,12 +367,21 @@ owner_uid() {
     stat -c %u "$1" 2>/dev/null || stat -f %u "$1"
 }
 
-# Registry credentials live in a Docker configuration directory that exists only for this run,
-# so the deployment user's own credential store is neither read nor written by the login.
+# Registry credentials are added to a Docker configuration directory that exists only for this
+# run. It starts as a copy of the deployment user's config.json, with the cli-plugins and
+# contexts directories linked in, so the run keeps the user's context, plugins, proxies, and
+# credential store while the login writes only the copy; the original is never modified.
 prepare_docker_config() {
     [ -n "$REGISTRY_PASSWORD" ] || return 0
     [ -n "$REGISTRY_USERNAME" ] || fail "REGISTRY_PASSWORD requires REGISTRY_USERNAME"
+    local source="${DOCKER_CONFIG:-$HOME/.docker}" entry
     DOCKER_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/poketto-docker.XXXXXX")"
+    [ ! -f "$source/config.json" ] || cp "$source/config.json" "$DOCKER_CONFIG_DIR/config.json"
+    for entry in cli-plugins contexts; do
+        [ -d "$source/$entry" ] || continue
+        ln -s "$source/$entry" "$DOCKER_CONFIG_DIR/$entry" 2>/dev/null \
+            || cp -R "$source/$entry" "$DOCKER_CONFIG_DIR/$entry"
+    done
     export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
 }
 
