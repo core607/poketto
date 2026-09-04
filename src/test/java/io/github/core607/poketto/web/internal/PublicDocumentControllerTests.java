@@ -60,7 +60,7 @@ class PublicDocumentControllerTests {
                         NEWER, "Newer", DocumentVisibility.PUBLIC, Optional.of(Instant.parse("2026-09-02T00:00:00Z"))));
         store.failure = null;
         store.snapshotMissing = false;
-        store.scannedWorkspaces.clear();
+        store.snapshotWorkspaces.clear();
     }
 
     @Test
@@ -88,7 +88,7 @@ class PublicDocumentControllerTests {
                 .andExpect(jsonPath("$[1].title").value("Older"))
                 .andExpect(jsonPath("$[0].body").doesNotExist());
 
-        assertThat(store.scannedWorkspaces).containsExactly(DEFAULT_WORKSPACE.id());
+        assertThat(store.snapshotWorkspaces).containsExactly(DEFAULT_WORKSPACE.id());
     }
 
     @Test
@@ -191,7 +191,7 @@ class PublicDocumentControllerTests {
 
     static final class FakeStore implements ContentRepositoryStore {
 
-        private final List<WorkspaceId> scannedWorkspaces = new java.util.ArrayList<>();
+        private final List<WorkspaceId> snapshotWorkspaces = new java.util.ArrayList<>();
         private List<StoredDocument> documents = List.of();
         private RuntimeException failure;
         private boolean snapshotMissing;
@@ -206,7 +206,7 @@ class PublicDocumentControllerTests {
 
         @Override
         public Optional<ContentSnapshot> snapshot(WorkspaceId workspaceId) {
-            scannedWorkspaces.add(workspaceId);
+            snapshotWorkspaces.add(workspaceId);
             if (failure != null) {
                 throw failure;
             }

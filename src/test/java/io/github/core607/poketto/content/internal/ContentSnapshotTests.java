@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.ContentSnapshot;
+import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Map;
@@ -37,8 +39,7 @@ class ContentSnapshotTests {
         ContentSnapshot snapshot = repositories.store().snapshot(workspace).orElseThrow();
         assertThat(snapshot.commitId()).contains(commit.name());
         assertThat(snapshot.documents()).hasSize(1);
-        assertThat(snapshot.find(io.github.core607.poketto.content.DocumentId.parse(FIRST_ID)))
-                .isPresent();
+        assertThat(snapshot.find(DocumentId.parse(FIRST_ID))).isPresent();
         assertThatThrownBy(() -> repositories.store().scan(workspace)).isInstanceOf(ContentRepositoryException.class);
     }
 
@@ -144,7 +145,7 @@ class ContentSnapshotTests {
         first.commitRemote(workspace, Map.of("documents/note.md", document(FIRST_ID, "Note")));
         first.store().ensureReady(workspace);
         try (Repository cache = JGitContentRepositoryStore.openCache(first.cache(workspace), workspace)) {
-            java.nio.file.Files.writeString(
+            Files.writeString(
                     cache.getDirectory().toPath().resolve("poketto-validated-main"),
                     "0123456789012345678901234567890123456789 2026-09-01T00:00:00Z\n");
         }

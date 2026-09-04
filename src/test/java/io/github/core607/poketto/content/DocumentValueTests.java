@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class DocumentValueTests {
@@ -76,7 +78,7 @@ class DocumentValueTests {
     void metadataBoundsTitleAndTagSizes() {
         String longestTitle = "t".repeat(ContentLimits.MAX_TITLE_LENGTH);
         String longestTag = "g".repeat(ContentLimits.MAX_TAG_LENGTH);
-        List<String> mostTags = java.util.stream.IntStream.range(0, ContentLimits.MAX_TAGS)
+        List<String> mostTags = IntStream.range(0, ContentLimits.MAX_TAGS)
                 .mapToObj(index -> "tag" + index)
                 .toList();
 
@@ -88,12 +90,10 @@ class DocumentValueTests {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> metadata("Title", List.of(longestTag + "g")))
                 .withMessageContaining("tag must not exceed");
+        List<String> oneTooMany =
+                Stream.concat(mostTags.stream(), Stream.of("one-too-many")).toList();
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata("Title", new java.util.ArrayList<>(mostTags) {
-                    {
-                        add("one-too-many");
-                    }
-                }))
+                .isThrownBy(() -> metadata("Title", oneTooMany))
                 .withMessageContaining("more than " + ContentLimits.MAX_TAGS + " tags");
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> metadata("Title", List.of("tab\there")))
