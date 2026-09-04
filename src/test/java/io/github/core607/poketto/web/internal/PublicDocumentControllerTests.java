@@ -4,23 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.ContentRepositoryStore;
-import io.github.core607.poketto.content.ContentSnapshot;
-import io.github.core607.poketto.content.DocumentContent;
-import io.github.core607.poketto.content.DocumentId;
-import io.github.core607.poketto.content.DocumentMetadata;
-import io.github.core607.poketto.content.DocumentRevision;
-import io.github.core607.poketto.content.DocumentVisibility;
-import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
-import io.github.core607.poketto.content.StoredDocument;
+import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicContentSnapshot;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -33,202 +27,173 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
 @WebMvcTest(PublicDocumentController.class)
 @Import(PublicDocumentControllerTests.Fakes.class)
 class PublicDocumentControllerTests {
-
-    private static final Workspace DEFAULT_WORKSPACE = new Workspace(WorkspaceId.random(), "Default workspace");
-    private static final DocumentId OLDER = DocumentId.parse("11111111-1111-4111-8111-111111111111");
-    private static final DocumentId NEWER = DocumentId.parse("22222222-2222-4222-8222-222222222222");
-    private static final DocumentId PRIVATE = DocumentId.parse("33333333-3333-4333-8333-333333333333");
-    private static final DocumentId UNKNOWN = DocumentId.parse("44444444-4444-4444-8444-444444444444");
+    private static final Workspace DEFAULT = new Workspace(WorkspaceId.random(), "Default");
+    private static final Instant VERIFIED = Instant.parse("2026-09-05T00:00:00Z");
 
     @Autowired
-    private MockMvc mvc;
+    MockMvc mvc;
 
     @Autowired
-    private FakeStore store;
+    FakeSnapshots snapshots;
 
     @BeforeEach
-    void resetStore() {
-        store.documents = List.of(
-                document(OLDER, "Older", DocumentVisibility.PUBLIC, Optional.of(Instant.parse("2026-09-01T00:00:00Z"))),
-                document(PRIVATE, "Private", DocumentVisibility.PRIVATE, Optional.empty()),
-                document(
-                        NEWER, "Newer", DocumentVisibility.PUBLIC, Optional.of(Instant.parse("2026-09-02T00:00:00Z"))));
-        store.failure = null;
-        store.snapshotMissing = false;
-        store.snapshotWorkspaces.clear();
+    void reset() {
+        snapshots.failure = null;
+        snapshots.calls = 0;
     }
 
     @Test
-    void reportsAMissingSnapshotAsRepositoryUnavailable() throws Exception {
-        store.snapshotMissing = true;
-
-        String problem = problemBody("/api/public/documents", 503);
-
-        assertThat(problem)
-                .contains("\"title\":\"Repository unavailable\"")
-                .doesNotContain(DEFAULT_WORKSPACE.id().toString());
-        assertThat(problemBody("/api/public/documents/" + OLDER, 503)).contains("\"title\":\"Repository unavailable\"");
-    }
-
-    @Test
-    void listsOnlyPublicDocumentsNewestPublicationFirst() throws Exception {
-        mvc.perform(get("/api/public/documents"))
+    void listsPublicSummariesWithSnapshotIdentityAndNoRawMetadata() throws Exception {
+        String body = mvc.perform(get("/api/public/documents"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].id").value(NEWER.toString()))
-                .andExpect(jsonPath("$[0].publishedAt").value("2026-09-02T00:00:00Z"))
-                .andExpect(jsonPath("$[1].id").value(OLDER.toString()))
-                .andExpect(jsonPath("$[0].title").value("Newer"))
-                .andExpect(jsonPath("$[1].title").value("Older"))
-                .andExpect(jsonPath("$[0].body").doesNotExist());
-
-        assertThat(store.snapshotWorkspaces).containsExactly(DEFAULT_WORKSPACE.id());
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].route").value("/城市/雨"))
+                .andExpect(jsonPath("$.commit").value("a".repeat(40)))
+                .andExpect(jsonPath("$.verifiedAt").value(VERIFIED.toString()))
+                .andExpect(
+                        jsonPath("$.expiresAt").value(VERIFIED.plusSeconds(3600).toString()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(body)
+                .doesNotContain("repositoryPath", "source", "diagnostics", "workspaceId", "revision", "frontmatter");
+        assertThat(snapshots.calls).isOne();
     }
 
     @Test
-    void returnsThePublicDocumentBody() throws Exception {
-        mvc.perform(get("/api/public/documents/" + OLDER))
+    void servesUnicodeRouteAndUninterpretedPublicBody() throws Exception {
+        mvc.perform(get("/api/public/document").param("route", "/城市/雨"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(OLDER.toString()))
-                .andExpect(jsonPath("$.title").value("Older"))
-                .andExpect(jsonPath("$.tags.length()").value(1))
+                .andExpect(jsonPath("$.title").value("Rain"))
+                .andExpect(jsonPath("$.body").value("# Rain\n\nLiteral [.*] 知识"))
+                .andExpect(jsonPath("$.source").doesNotExist());
+    }
+
+    @Test
+    void missingPrivateMalformedAndOldIdsRevealNoResourceDetails() throws Exception {
+        for (String route : List.of("/private/secret", "/missing", "../private/secret")) {
+            String body = mvc.perform(get("/api/public/document").param("route", route))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.detail").value("public document not found"))
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            assertThat(body).doesNotContain(route, "secret");
+        }
+        mvc.perform(get("/api/public/documents/11111111-1111-4111-8111-111111111111"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void searchesLiteralTextAndCombinesTagDateAndPaginationBounds() throws Exception {
+        mvc.perform(get("/api/public/documents")
+                        .param("query", "[.*]")
+                        .param("tag", "notes")
+                        .param("from", "2026-09-01T00:00:00Z")
+                        .param("to", "2026-09-04T00:00:00Z")
+                        .param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].route").value("/城市/雨"));
+        mvc.perform(get("/api/public/documents").param("query", ".*"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1));
+        mvc.perform(get("/api/public/documents").param("offset", "1").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].route").value("/older"));
+        for (String limit : List.of("0", "101", "-1"))
+            mvc.perform(get("/api/public/documents").param("limit", limit)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/public/documents").param("query", "a".repeat(201)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void tagsComeFromTheSamePublicSnapshot() throws Exception {
+        mvc.perform(get("/api/public/tags"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tags.length()").value(2))
                 .andExpect(jsonPath("$.tags[0]").value("notes"))
-                .andExpect(jsonPath("$.body").value("Body of Older"));
+                .andExpect(jsonPath("$.tags[1]").value("知识"));
+        assertThat(snapshots.calls).isOne();
     }
 
     @Test
-    void privateUnknownAndMalformedIdsAreIndistinguishable() throws Exception {
-        String privateProblem = problemBody("/api/public/documents/" + PRIVATE, 404);
-        String unknownProblem = problemBody("/api/public/documents/" + UNKNOWN, 404);
-        String malformedProblem = problemBody("/api/public/documents/not-a-uuid", 404);
-
-        assertThat(privateProblem).contains("\"title\":\"Not found\"").doesNotContain("Private");
-        assertThat(privateProblem.replace(PRIVATE.toString(), "ID"))
-                .isEqualTo(unknownProblem.replace(UNKNOWN.toString(), "ID"))
-                .isEqualTo(malformedProblem.replace("not-a-uuid", "ID"));
+    void expiredOrInvalidSnapshotsReturnGenericServiceUnavailableEverywhere() throws Exception {
+        snapshots.failure = new ContentRepositoryException("private workspace or policy diagnostic");
+        for (String path : List.of("/api/public/documents", "/api/public/tags", "/api/public/document?route=/城市/雨")) {
+            String body = mvc.perform(get(path))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            assertThat(body).doesNotContain("private workspace", "policy diagnostic");
+        }
     }
 
     @Test
-    void hidesRepositoryDiagnosticsBehindAServiceUnavailableProblem() throws Exception {
-        store.failure = new ContentRepositoryException(
-                "workspace " + DEFAULT_WORKSPACE.id() + " repository authority: remote unreachable");
-
-        String problem = problemBody("/api/public/documents", 503);
-
-        assertThat(problem)
-                .contains("\"title\":\"Repository unavailable\"")
-                .contains("\"detail\":\"the content repository is unavailable\"")
-                .doesNotContain(DEFAULT_WORKSPACE.id().toString())
-                .doesNotContain("unreachable");
+    void frameworkFailuresRetainTheirHttpStatus() throws Exception {
+        mvc.perform(post("/api/public/documents")).andExpect(status().isMethodNotAllowed());
+        mvc.perform(get("/api/public/unknown")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/document")).andExpect(status().isBadRequest());
     }
 
-    @Test
-    void reportsAnUnverifiedWriteWithoutInvitingABlindRetry() throws Exception {
-        store.failure = new RepositoryWriteAmbiguousException("workspace x remote write response was lost");
-
-        String problem = problemBody("/api/public/documents", 503);
-
-        assertThat(problem)
-                .contains("\"title\":\"Write outcome unknown\"")
-                .contains("re-read before retrying")
-                .doesNotContain("workspace x");
-    }
-
-    @Test
-    void hidesUnexpectedFailuresBehindAnInternalServerErrorProblem() throws Exception {
-        store.failure = new IllegalStateException("private server diagnostic");
-
-        String problem = problemBody("/api/public/documents", 500);
-
-        assertThat(problem)
-                .contains("\"title\":\"Internal server error\"")
-                .contains("\"detail\":\"an unexpected error occurred\"")
-                .doesNotContain("private server diagnostic");
-    }
-
-    @Test
-    void unknownRoutesRenderAsProblems() throws Exception {
-        mvc.perform(get("/api/public/nothing"))
-                .andExpect(status().isNotFound())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(404));
-    }
-
-    @Test
-    void springMvcFailuresKeepTheirSpecificStatus() throws Exception {
-        mvc.perform(post("/api/public/documents"))
-                .andExpect(status().isMethodNotAllowed())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(405));
-    }
-
-    private String problemBody(String path, int expectedStatus) throws Exception {
-        MvcResult result = mvc.perform(get(path))
-                .andExpect(status().is(expectedStatus))
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(expectedStatus))
-                .andReturn();
-        return result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-    }
-
-    private static StoredDocument document(
-            DocumentId id, String title, DocumentVisibility visibility, Optional<Instant> publishedAt) {
-        Instant created = Instant.parse("2026-08-30T00:00:00Z");
-        DocumentMetadata metadata = new DocumentMetadata(
-                id, title, visibility, List.of("notes"), created, publishedAt.orElse(created), publishedAt);
-        byte[] bytes = ("Body of " + title).getBytes(StandardCharsets.UTF_8);
-        return new StoredDocument(
-                "documents/" + title.toLowerCase() + ".md",
-                new DocumentContent(metadata, "Body of " + title),
-                DocumentRevision.sha256(bytes));
-    }
-
-    static final class FakeStore implements ContentRepositoryStore {
-
-        private final List<WorkspaceId> snapshotWorkspaces = new java.util.ArrayList<>();
-        private List<StoredDocument> documents = List.of();
-        private RuntimeException failure;
-        private boolean snapshotMissing;
+    static class FakeSnapshots implements PublicContentSnapshots {
+        RuntimeException failure;
+        int calls;
 
         @Override
-        public void ensureReady(WorkspaceId workspaceId) {}
-
-        @Override
-        public ContentSnapshot refresh(WorkspaceId workspaceId) {
-            throw new UnsupportedOperationException("the entrance never refreshes");
+        public void ensureReady(WorkspaceId workspace) {
+            throw new UnsupportedOperationException();
         }
 
         @Override
-        public Optional<ContentSnapshot> snapshot(WorkspaceId workspaceId) {
-            snapshotWorkspaces.add(workspaceId);
-            if (failure != null) {
-                throw failure;
-            }
-            if (snapshotMissing) {
-                return Optional.empty();
-            }
-            return Optional.of(new ContentSnapshot(
-                    workspaceId, Optional.of("0".repeat(40)), documents, Instant.parse("2026-09-03T00:00:00Z")));
+        public PublicContentSnapshot refresh(WorkspaceId workspace) {
+            throw new UnsupportedOperationException("public requests must not fetch");
         }
 
         @Override
-        public List<StoredDocument> scan(WorkspaceId workspaceId) {
-            throw new UnsupportedOperationException("the entrance never scans the remote");
+        public PublicContentSnapshot current(WorkspaceId workspace) {
+            assertThat(workspace).isEqualTo(DEFAULT.id());
+            calls++;
+            if (failure != null) throw failure;
+            return new PublicContentSnapshot(
+                    workspace,
+                    Optional.of("a".repeat(40)),
+                    VERIFIED,
+                    VERIFIED.plusSeconds(3600),
+                    List.of(
+                            new PublicArticle(
+                                    "城市/雨.md",
+                                    "/城市/雨",
+                                    "Rain",
+                                    "# Rain\n\nLiteral [.*] 知识",
+                                    List.of("notes", "知识"),
+                                    Instant.parse("2026-09-03T00:00:00Z"),
+                                    VERIFIED,
+                                    false),
+                            new PublicArticle(
+                                    "older.md",
+                                    "/older",
+                                    "Older",
+                                    "Older body",
+                                    List.of("notes"),
+                                    Instant.parse("2026-09-01T00:00:00Z"),
+                                    VERIFIED,
+                                    false)));
         }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class Fakes {
-
         @Bean
-        FakeStore fakeStore() {
-            return new FakeStore();
+        FakeSnapshots snapshots() {
+            return new FakeSnapshots();
         }
 
         @Bean
@@ -236,21 +201,19 @@ class PublicDocumentControllerTests {
             return new WorkspaceCatalog() {
                 @Override
                 public Workspace defaultWorkspace() {
-                    return DEFAULT_WORKSPACE;
+                    return DEFAULT;
                 }
 
                 @Override
-                public Optional<Workspace> findById(WorkspaceId workspaceId) {
-                    return DEFAULT_WORKSPACE.id().equals(workspaceId)
-                            ? Optional.of(DEFAULT_WORKSPACE)
-                            : Optional.empty();
+                public Optional<Workspace> findById(WorkspaceId id) {
+                    return id.equals(DEFAULT.id()) ? Optional.of(DEFAULT) : Optional.empty();
                 }
             };
         }
 
         @Bean
-        PublicDocuments publicDocuments(FakeStore store, WorkspaceCatalog workspaces) {
-            return new PublicDocuments(store, workspaces);
+        PublicDocuments publicDocuments(FakeSnapshots snapshots, WorkspaceCatalog workspaces) {
+            return new PublicDocuments(snapshots, workspaces);
         }
     }
 }

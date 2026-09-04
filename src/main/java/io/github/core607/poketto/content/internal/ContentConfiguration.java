@@ -1,7 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
-import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.DocumentWriteService;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -64,6 +64,12 @@ class ContentConfiguration {
     }
 
     @Bean
+    JGitPublicContentSnapshots publicContentSnapshots(RepositoryAuthority authority, RepositoryProperties properties) {
+        return new JGitPublicContentSnapshots(
+                authority, Clock.systemUTC(), Duration.ofSeconds(properties.staleAfterSeconds()));
+    }
+
+    @Bean
     DocumentWriteService documentWriteService(
             RepositoryAuthority authority, CanonicalDocumentCodec codec, JGitContentRepositoryStore store) {
         return new JGitDocumentWriteService(authority, codec, store, Clock.systemUTC());
@@ -90,32 +96,38 @@ class ContentConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ContentSnapshotRefresher contentSnapshotRefresher(
-            ContentRepositoryStore store, Supplier<WorkspaceId> defaultWorkspaceId, RepositoryProperties properties) {
+            PublicContentSnapshots store, Supplier<WorkspaceId> defaultWorkspaceId, RepositoryProperties properties) {
         return new ContentSnapshotRefresher(
-                store, () -> List.of(defaultWorkspaceId.get()), Duration.ofSeconds(properties.refreshSeconds()));
+                store::refresh,
+                () -> List.of(defaultWorkspaceId.get()),
+                Duration.ofSeconds(properties.refreshSeconds()));
     }
 
     @Bean(name = "contentSnapshot")
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
-    ContentSnapshotHealthIndicator contentSnapshotHealthIndicator(
-            ContentRepositoryStore store, Supplier<WorkspaceId> defaultWorkspaceId, RepositoryProperties properties) {
-        return new ContentSnapshotHealthIndicator(
-                store, defaultWorkspaceId, Duration.ofSeconds(properties.staleAfterSeconds()), Clock.systemUTC());
+    PublicSnapshotHealthIndicator contentSnapshotHealthIndicator(
+            PublicContentSnapshots store, Supplier<WorkspaceId> defaultWorkspaceId) {
+        return new PublicSnapshotHealthIndicator(store, defaultWorkspaceId);
     }
 
     /**
-     * Startup fails without a validated snapshot for the default workspace, so a deployment
-     * never reports healthy while its content cannot be served.
+     * Public readiness stays unavailable when initialization fails. The application and refresher
+     * still start so authenticated administration can diagnose and repair repository configuration.
      */
     @Bean
     @Order(100)
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ApplicationRunner contentRepositoryInitializer(
             Supplier<WorkspaceId> defaultWorkspaceId,
-            ContentRepositoryStore repositories,
+            PublicContentSnapshots repositories,
             ContentSnapshotRefresher refresher) {
         return arguments -> {
-            repositories.ensureReady(defaultWorkspaceId.get());
+            try {
+                repositories.ensureReady(defaultWorkspaceId.get());
+            } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
+                org.slf4j.LoggerFactory.getLogger(ContentConfiguration.class)
+                        .warn("public content initialization is unavailable; background refresh will retry");
+            }
             refresher.start();
         };
     }

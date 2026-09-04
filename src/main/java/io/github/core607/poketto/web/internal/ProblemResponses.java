@@ -71,4 +71,12 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         problem.setTitle(title);
         return problem;
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail invalidArgument(IllegalArgumentException exception) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "Invalid request",
+                "a request parameter is outside its allowed format or bounds");
+    }
 }

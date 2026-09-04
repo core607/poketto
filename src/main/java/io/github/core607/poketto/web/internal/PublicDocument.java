@@ -1,32 +1,33 @@
 package io.github.core607.poketto.web.internal;
 
-import io.github.core607.poketto.content.DocumentMetadata;
-import io.github.core607.poketto.content.StoredDocument;
+import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicContentSnapshot;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * One public document with its uninterpreted Markdown body. Rendering to HTML, including
- * sanitization, happens in the presentation layer, not here.
- */
+/** Public Markdown body only; private frontmatter and raw source never cross this mapper. */
 record PublicDocument(
-        String id,
+        String commit,
+        Instant verifiedAt,
+        Instant expiresAt,
+        String route,
         String title,
         List<String> tags,
         Instant createdAt,
         Instant updatedAt,
-        Instant publishedAt,
+        boolean folderPage,
         String body) {
-
-    static PublicDocument of(StoredDocument document) {
-        DocumentMetadata metadata = document.content().metadata();
+    static PublicDocument of(PublicArticle article, PublicContentSnapshot snapshot) {
         return new PublicDocument(
-                metadata.id().toString(),
-                metadata.title(),
-                metadata.tags(),
-                metadata.createdAt(),
-                metadata.updatedAt(),
-                metadata.publishedAt().orElse(null),
-                document.content().body());
+                snapshot.commit().orElse(null),
+                snapshot.verifiedAt(),
+                snapshot.expiresAt(),
+                article.route(),
+                article.title(),
+                article.tags(),
+                article.createdAt(),
+                article.updatedAt(),
+                article.folderPage(),
+                article.body());
     }
 }

@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -43,85 +44,105 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
 
     @Override
     public RepositoryTree readTree(WorkspaceId workspaceId, Optional<String> commit) {
-        return resolve(workspaceId, commit, (repository, resolved) -> {
-            if (resolved.isEmpty()) return new RepositoryTree(workspaceId, resolved, List.of(), List.of());
-            List<RepositoryDocument> documents = new ArrayList<>();
-            List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
-            List<String> paths = new ArrayList<>();
-            long total = 0;
-            long historyVisits = 0;
-            int historySize = historySize(repository, resolved.orElseThrow());
-            int entries = 0;
-            try (RevWalk revisions = new RevWalk(repository);
-                    TreeWalk tree = new TreeWalk(repository)) {
-                tree.addTree(revisions
-                        .parseCommit(ObjectId.fromString(resolved.orElseThrow()))
-                        .getTree());
-                tree.setRecursive(true);
-                while (tree.next()) {
-                    if (++entries > MAX_TREE_ENTRIES)
-                        throw new ContentRepositoryException("repository tree entry limit exceeded");
-                    String path = tree.getPathString();
-                    if (!RepositoryPathRules.markdown(path) || RepositoryPathRules.reserved(path)) continue;
-                    if (paths.size() >= ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE)
-                        throw new ContentRepositoryException("repository Markdown count limit exceeded");
-                    paths.add(path);
-                    FileMode mode = tree.getFileMode(0);
-                    if (FileMode.REGULAR_FILE.equals(mode) || FileMode.EXECUTABLE_FILE.equals(mode)) {
-                        long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
-                        if (size <= ContentLimits.MAX_DOCUMENT_BYTES) {
-                            total += size;
-                            if (total > ContentLimits.MAX_WORKSPACE_BYTES)
-                                throw new ContentRepositoryException("repository text byte limit exceeded");
-                        }
-                    }
-                    RepositoryFile file = readFile(repository, workspaceId, resolved, path);
-                    diagnostics.addAll(file.diagnostics());
-                    if (file.source().isEmpty()) continue;
-                    if (!file.diagnostics().isEmpty()) continue;
-                    try {
-                        var metadata = parser.parse(path, file.source().orElseThrow());
-                        History dates;
-                        if (metadata.createdAt().isPresent()
-                                && metadata.updatedAt().isPresent()) {
-                            dates = new History(
-                                    metadata.createdAt().orElseThrow(),
-                                    metadata.updatedAt().orElseThrow());
-                        } else {
-                            // A path-filtered walk can visit commits that it never returns. Charge the
-                            // complete reachable history before starting each walk to bound that work.
-                            historyVisits += historySize;
-                            if (historyVisits > MAX_HISTORY_PATH_VISITS)
-                                throw new ContentRepositoryException("repository date lookup work limit exceeded");
-                            dates = history(repository, resolved.orElseThrow(), path);
-                        }
-                        Instant createdAt = metadata.createdAt().orElse(dates.createdAt());
-                        Instant updatedAt = metadata.updatedAt().orElse(dates.updatedAt());
-                        if (metadata.inferredMetadata())
-                            diagnostics.add(
-                                    diagnostic(path, "INFERRED_METADATA", "title and dates use repository fallbacks"));
-                        documents.add(new RepositoryDocument(
-                                file,
-                                metadata.title(),
-                                metadata.body(),
-                                metadata.tags(),
-                                createdAt,
-                                updatedAt,
-                                metadata.route(),
-                                RepositoryPathRules.folderPage(path),
-                                RepositoryPathRules.privatePath(path)));
-                    } catch (IllegalArgumentException exception) {
-                        diagnostics.add(diagnostic(path, "INVALID_MARKDOWN", exception.getMessage()));
+        return resolve(
+                workspaceId,
+                commit,
+                (repository, resolved) -> readTreeObjects(workspaceId, repository, resolved, path -> true));
+    }
+
+    /** Caller holds the authority lock and supplies a server-resolved snapshot. Does not fetch. */
+    RepositoryTree readSnapshot(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
+        return readSnapshot(workspaceId, snapshot, path -> true);
+    }
+
+    RepositoryTree readSnapshot(
+            WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Predicate<String> eligible) {
+        try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+            return readTreeObjects(workspaceId, repository, snapshot.commitId(), eligible);
+        } catch (IOException exception) {
+            throw new ContentRepositoryException("repository snapshot objects cannot be read", exception);
+        }
+    }
+
+    private RepositoryTree readTreeObjects(
+            WorkspaceId workspaceId, Repository repository, Optional<String> resolved, Predicate<String> eligible)
+            throws IOException {
+        if (resolved.isEmpty()) return new RepositoryTree(workspaceId, resolved, List.of(), List.of());
+        List<RepositoryDocument> documents = new ArrayList<>();
+        List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
+        List<String> paths = new ArrayList<>();
+        long total = 0;
+        long historyVisits = 0;
+        int historySize = historySize(repository, resolved.orElseThrow());
+        int entries = 0;
+        try (RevWalk revisions = new RevWalk(repository);
+                TreeWalk tree = new TreeWalk(repository)) {
+            tree.addTree(revisions
+                    .parseCommit(ObjectId.fromString(resolved.orElseThrow()))
+                    .getTree());
+            tree.setRecursive(true);
+            while (tree.next()) {
+                if (++entries > MAX_TREE_ENTRIES)
+                    throw new ContentRepositoryException("repository tree entry limit exceeded");
+                String path = tree.getPathString();
+                if (!RepositoryPathRules.markdown(path) || RepositoryPathRules.reserved(path) || !eligible.test(path))
+                    continue;
+                if (paths.size() >= ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE)
+                    throw new ContentRepositoryException("repository Markdown count limit exceeded");
+                paths.add(path);
+                FileMode mode = tree.getFileMode(0);
+                if (FileMode.REGULAR_FILE.equals(mode) || FileMode.EXECUTABLE_FILE.equals(mode)) {
+                    long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
+                    if (size <= ContentLimits.MAX_DOCUMENT_BYTES) {
+                        total += size;
+                        if (total > ContentLimits.MAX_WORKSPACE_BYTES)
+                            throw new ContentRepositoryException("repository text byte limit exceeded");
                     }
                 }
+                RepositoryFile file = readFile(repository, workspaceId, resolved, path);
+                diagnostics.addAll(file.diagnostics());
+                if (file.source().isEmpty()) continue;
+                if (!file.diagnostics().isEmpty()) continue;
+                try {
+                    var metadata = parser.parse(path, file.source().orElseThrow());
+                    History dates;
+                    if (metadata.createdAt().isPresent() && metadata.updatedAt().isPresent()) {
+                        dates = new History(
+                                metadata.createdAt().orElseThrow(),
+                                metadata.updatedAt().orElseThrow());
+                    } else {
+                        // A path-filtered walk can visit commits that it never returns. Charge the
+                        // complete reachable history before starting each walk to bound that work.
+                        historyVisits += historySize;
+                        if (historyVisits > MAX_HISTORY_PATH_VISITS)
+                            throw new ContentRepositoryException("repository date lookup work limit exceeded");
+                        dates = history(repository, resolved.orElseThrow(), path);
+                    }
+                    Instant createdAt = metadata.createdAt().orElse(dates.createdAt());
+                    Instant updatedAt = metadata.updatedAt().orElse(dates.updatedAt());
+                    if (metadata.inferredMetadata())
+                        diagnostics.add(
+                                diagnostic(path, "INFERRED_METADATA", "title and dates use repository fallbacks"));
+                    documents.add(new RepositoryDocument(
+                            file,
+                            metadata.title(),
+                            metadata.body(),
+                            metadata.tags(),
+                            createdAt,
+                            updatedAt,
+                            metadata.route(),
+                            RepositoryPathRules.folderPage(path),
+                            RepositoryPathRules.privatePath(path)));
+                } catch (IllegalArgumentException exception) {
+                    diagnostics.add(diagnostic(path, "INVALID_MARKDOWN", exception.getMessage()));
+                }
             }
-            Set<String> excluded = collisions(paths, documents, diagnostics);
-            documents.removeIf(document -> excluded.contains(document.file().path()));
-            documents.sort(Comparator.comparing(document -> document.file().path()));
-            diagnostics.sort(
-                    Comparator.comparing(RepositoryDiagnostic::path).thenComparing(RepositoryDiagnostic::code));
-            return new RepositoryTree(workspaceId, resolved, documents, diagnostics);
-        });
+        }
+        Set<String> excluded = collisions(paths, documents, diagnostics);
+        documents.removeIf(document -> excluded.contains(document.file().path()));
+        documents.sort(Comparator.comparing(document -> document.file().path()));
+        diagnostics.sort(Comparator.comparing(RepositoryDiagnostic::path).thenComparing(RepositoryDiagnostic::code));
+        return new RepositoryTree(workspaceId, resolved, documents, diagnostics);
     }
 
     @Override
