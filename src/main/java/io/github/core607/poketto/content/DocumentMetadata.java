@@ -38,6 +38,10 @@ public record DocumentMetadata(
         if (title.codePoints().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("document title must not contain control characters");
         }
+        if (title.codePointCount(0, title.length()) > ContentLimits.MAX_TITLE_LENGTH) {
+            throw new IllegalArgumentException(
+                    "document title must not exceed " + ContentLimits.MAX_TITLE_LENGTH + " characters");
+        }
         tags = normalizeTags(tags);
         if (updatedAt.isBefore(createdAt)) {
             throw new IllegalArgumentException("document updated time must not precede creation");
@@ -53,6 +57,9 @@ public record DocumentMetadata(
     }
 
     private static List<String> normalizeTags(List<String> candidates) {
+        if (candidates.size() > ContentLimits.MAX_TAGS) {
+            throw new IllegalArgumentException("document must not carry more than " + ContentLimits.MAX_TAGS + " tags");
+        }
         List<String> normalized = new ArrayList<>(candidates.size());
         Set<String> collisionKeys = new HashSet<>();
         for (String candidate : candidates) {
@@ -60,6 +67,13 @@ public record DocumentMetadata(
             String display = candidate.strip();
             if (display.isEmpty()) {
                 throw new IllegalArgumentException("document tag must not be empty");
+            }
+            if (display.codePoints().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("document tag must not contain control characters: " + display);
+            }
+            if (display.codePointCount(0, display.length()) > ContentLimits.MAX_TAG_LENGTH) {
+                throw new IllegalArgumentException(
+                        "document tag must not exceed " + ContentLimits.MAX_TAG_LENGTH + " characters: " + display);
             }
             String collisionKey = normalizedCollisionKey(display);
             if (!collisionKeys.add(collisionKey)) {

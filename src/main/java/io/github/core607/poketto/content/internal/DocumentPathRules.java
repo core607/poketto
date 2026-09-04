@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ContentLimits;
 import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.Locale;
@@ -24,6 +25,10 @@ final class DocumentPathRules {
                 || candidate.indexOf('\\') >= 0
                 || !candidate.startsWith(MANAGED_PREFIX)) {
             throw invalid(candidate);
+        }
+        if (candidate.length() > ContentLimits.MAX_PATH_LENGTH) {
+            throw new IllegalArgumentException(
+                    "managed document path must not exceed " + ContentLimits.MAX_PATH_LENGTH + " characters");
         }
 
         String[] segments = candidate.split("/", -1);

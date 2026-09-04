@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.DocumentContent;
 import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.content.DocumentMetadata;
@@ -169,6 +170,24 @@ class CanonicalDocumentCodecTests {
                                 updated.body()),
                         Instant.parse("2026-08-28T00:00:00Z")))
                 .withMessageContaining("published_at cannot be changed or erased");
+    }
+
+    @Test
+    void boundsDocumentAndFrontmatterBytes() {
+        String source = validSource();
+        String largestBody =
+                source + "x".repeat(ContentLimits.MAX_DOCUMENT_BYTES - source.getBytes(StandardCharsets.UTF_8).length);
+
+        assertThat(codec.parse(largestBody.getBytes(StandardCharsets.UTF_8)).body())
+                .endsWith("xxx");
+        assertInvalid(largestBody + "x", "document must not exceed " + ContentLimits.MAX_DOCUMENT_BYTES + " bytes");
+        assertInvalid(
+                source.replace("  - example\n", "  - example\n" + "# padding\n".repeat(2000)),
+                "frontmatter must not exceed " + ContentLimits.MAX_FRONTMATTER_BYTES + " bytes");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() ->
+                        codec.serialize(document("Title", List.of(), "x".repeat(ContentLimits.MAX_DOCUMENT_BYTES))))
+                .withMessageContaining("document must not exceed");
     }
 
     private void assertInvalid(String source, String message) {

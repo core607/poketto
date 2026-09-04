@@ -72,6 +72,34 @@ class DocumentValueTests {
                 .withMessageContaining("must not follow the last update");
     }
 
+    @Test
+    void metadataBoundsTitleAndTagSizes() {
+        String longestTitle = "t".repeat(ContentLimits.MAX_TITLE_LENGTH);
+        String longestTag = "g".repeat(ContentLimits.MAX_TAG_LENGTH);
+        List<String> mostTags = java.util.stream.IntStream.range(0, ContentLimits.MAX_TAGS)
+                .mapToObj(index -> "tag" + index)
+                .toList();
+
+        assertThat(metadata(longestTitle, mostTags).tags()).hasSize(ContentLimits.MAX_TAGS);
+        assertThat(metadata("Title", List.of(longestTag)).tags()).containsExactly(longestTag);
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata(longestTitle + "t", List.of()))
+                .withMessageContaining("title must not exceed");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata("Title", List.of(longestTag + "g")))
+                .withMessageContaining("tag must not exceed");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata("Title", new java.util.ArrayList<>(mostTags) {
+                    {
+                        add("one-too-many");
+                    }
+                }))
+                .withMessageContaining("more than " + ContentLimits.MAX_TAGS + " tags");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata("Title", List.of("tab\there")))
+                .withMessageContaining("tag must not contain control characters");
+    }
+
     private static DocumentMetadata metadata(String title, List<String> tags) {
         return new DocumentMetadata(
                 DocumentId.parse("550e8400-e29b-41d4-a716-446655440000"),

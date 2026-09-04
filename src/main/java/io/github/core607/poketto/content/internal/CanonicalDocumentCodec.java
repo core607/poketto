@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.DocumentContent;
 import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.content.DocumentMetadata;
@@ -42,12 +43,21 @@ final class CanonicalDocumentCodec {
 
     DocumentContent parse(byte[] bytes) {
         Objects.requireNonNull(bytes, "document bytes must not be null");
+        if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES) {
+            throw new IllegalArgumentException(
+                    "document must not exceed " + ContentLimits.MAX_DOCUMENT_BYTES + " bytes: " + bytes.length);
+        }
         if (startsWith(bytes, UTF_8_BOM)) {
             throw new IllegalArgumentException("document must not contain a UTF-8 byte-order mark");
         }
 
         String source = decodeUtf8(bytes);
         Sections sections = splitSections(source);
+        int frontmatterBytes = sections.frontmatter().getBytes(StandardCharsets.UTF_8).length;
+        if (frontmatterBytes > ContentLimits.MAX_FRONTMATTER_BYTES) {
+            throw new IllegalArgumentException("document frontmatter must not exceed "
+                    + ContentLimits.MAX_FRONTMATTER_BYTES + " bytes: " + frontmatterBytes);
+        }
         rejectForbiddenYamlSyntax(sections.frontmatter());
 
         final JsonNode root;
@@ -113,7 +123,12 @@ final class CanonicalDocumentCodec {
         if (bodyEnd > 0) {
             canonical.append(body, 0, bodyEnd).append('\n');
         }
-        return canonical.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = canonical.toString().getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES) {
+            throw new IllegalArgumentException(
+                    "document must not exceed " + ContentLimits.MAX_DOCUMENT_BYTES + " bytes: " + bytes.length);
+        }
+        return bytes;
     }
 
     DocumentContent update(DocumentContent current, DocumentContent candidate, Instant changedAt) {
