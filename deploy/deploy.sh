@@ -193,6 +193,35 @@ load_env_file() {
     done < "$ENV_FILE"
 }
 
+canonical_path() {
+    realpath -m -- "$1" 2>/dev/null || fail "cannot resolve the path $1"
+}
+
+# True when $1 equals $2 or lies below it; both must be canonical absolute paths.
+path_within() {
+    local child="$1" parent="${2%/}"
+    [ "$child" = "${parent:-/}" ] || [[ "$child" == "$parent"/* ]]
+}
+
+check_directories() {
+    local root
+    [[ "$POKETTO_DATA_DIR_HOST" = /* ]] || fail "POKETTO_DATA_DIR_HOST must be absolute"
+    [[ "$POKETTO_DB_DIR_HOST" = /* ]] || fail "POKETTO_DB_DIR_HOST must be absolute"
+    DATA_DIR="$(canonical_path "$POKETTO_DATA_DIR_HOST")"
+    DB_DIR="$(canonical_path "$POKETTO_DB_DIR_HOST")"
+    root="$(canonical_path "$ROOT")"
+    [ "$DATA_DIR" != "$DB_DIR" ] \
+        || fail "POKETTO_DATA_DIR_HOST and POKETTO_DB_DIR_HOST must be different directories, both resolve to $DATA_DIR"
+    ! path_within "$DATA_DIR" "$DB_DIR" \
+        || fail "POKETTO_DATA_DIR_HOST $DATA_DIR lies inside POKETTO_DB_DIR_HOST $DB_DIR"
+    ! path_within "$DB_DIR" "$DATA_DIR" \
+        || fail "POKETTO_DB_DIR_HOST $DB_DIR lies inside POKETTO_DATA_DIR_HOST $DATA_DIR"
+    ! path_within "$root" "$DATA_DIR" \
+        || fail "POKETTO_DATA_DIR_HOST $DATA_DIR is or contains the deployment root $root"
+    ! path_within "$root" "$DB_DIR" \
+        || fail "POKETTO_DB_DIR_HOST $DB_DIR is or contains the deployment root $root"
+}
+
 load_configuration() {
     local missing=() key i
     [ -f "$COMPOSE_FILE" ] || fail "missing $COMPOSE_FILE"
@@ -224,8 +253,7 @@ load_configuration() {
         || fail "POKETTO_APP_IMAGE must be one image reference"
     [[ "$POKETTO_DB_IMAGE" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] \
         || fail "POKETTO_DB_IMAGE must be pinned as <image>@sha256:<digest>"
-    [[ "$POKETTO_DATA_DIR_HOST" = /* ]] || fail "POKETTO_DATA_DIR_HOST must be absolute"
-    [[ "$POKETTO_DB_DIR_HOST" = /* ]] || fail "POKETTO_DB_DIR_HOST must be absolute"
+    check_directories
 
     HTTP_BIND="${POKETTO_HTTP_BIND:-127.0.0.1}"
     HTTP_PORT="${POKETTO_HTTP_PORT:-8080}"
@@ -303,6 +331,13 @@ prepare_docker_config() {
     export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
 }
 
+check_free_space() {
+    local path="$1" free_mb
+    free_mb="$(df -Pm -- "$path" | awk 'NR == 2 { print $4 }')"
+    [ "${free_mb:-0}" -ge "$MIN_FREE_MB" ] \
+        || fail "only ${free_mb:-0} MB free below $path; at least $MIN_FREE_MB MB is required"
+}
+
 check_host() {
     "$DOCKER" info >/dev/null 2>&1 || fail "docker daemon is not reachable by $(id -un)"
     compose version >/dev/null 2>&1 || fail "docker compose plugin is not installed"
@@ -316,10 +351,15 @@ check_host() {
         fi
     fi
 
-    local free_mb
-    free_mb="$(df -Pm "$ROOT" | awk 'NR == 2 { print $4 }')"
-    [ "${free_mb:-0}" -ge "$MIN_FREE_MB" ] \
-        || fail "only ${free_mb:-0} MB free below $ROOT; at least $MIN_FREE_MB MB is required"
+    # Images and container layers land below the daemon's data root, which may be a different
+    # filesystem than any directory this script manages.
+    local docker_root
+    check_free_space "$ROOT"
+    check_free_space "$DATA_DIR"
+    check_free_space "$DB_DIR"
+    if docker_root="$("$DOCKER" info --format '{{ .DockerRootDir }}' 2>/dev/null)" && [ -d "$docker_root" ]; then
+        check_free_space "$docker_root"
+    fi
 
     compose config --quiet || fail "compose configuration is invalid"
 }

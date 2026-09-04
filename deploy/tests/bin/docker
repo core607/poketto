@@ -4,6 +4,7 @@
 #   revisions   "<reference> <revision>" lines answering the revision label
 #   health      health statuses returned by successive container inspections; the last sticks
 #   pull-fails  present when every pull must fail
+#   docker-root the data root answered by `info --format`; docker-root-fails makes it fail
 # Every invocation is appended to $FAKE_STATE/docker.log, and the DOCKER_CONFIG it ran with to
 # $FAKE_STATE/docker-config.log. A login writes config.json where the real client would.
 set -u
@@ -19,7 +20,17 @@ present() { grep -qxF -- "$1" "$FAKE_STATE/images" 2>/dev/null; }
 revision_of() { grep -- "^$1 " "$FAKE_STATE/revisions" 2>/dev/null | head -1 | cut -d ' ' -f 2-; }
 
 case "${1:-}" in
-    info|logout) exit 0 ;;
+    info)
+        if [ "${2:-}" = --format ]; then
+            [ -f "$FAKE_STATE/docker-root-fails" ] && exit 1
+            if [ -f "$FAKE_STATE/docker-root" ]; then
+                cat "$FAKE_STATE/docker-root"
+            else
+                mkdir -p "$FAKE_STATE/docker-root-dir" && echo "$FAKE_STATE/docker-root-dir"
+            fi
+        fi
+        exit 0 ;;
+    logout) exit 0 ;;
     login)
         cat > "$FAKE_STATE/login-stdin"
         config="${DOCKER_CONFIG:-$HOME/.docker}"
