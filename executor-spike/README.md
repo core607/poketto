@@ -40,6 +40,11 @@ proxy on host loopback. The source clone is copied with `git clone --no-local`,
 has no remote or alternates, and shares no source object inode. Destroying its
 object database must leave every source byte unchanged.
 
+The PID namespace must differ from the host supervisor's namespace. The real
+host supervisor PID and its open canary descriptor must be invisible; reading
+the canary through `/proc/1/root`, `/proc/self/root`, or `/proc/thread-self/root`
+must fail. Readable process environments must not contain a host-only marker.
+
 The supervisor applies memory, process-count and wall-time limits through
 systemd/cgroup v2, bounded tmpfs storage, and a bounded output reader. These are
 adversarial test limits, not production sizing recommendations. Timeout,

@@ -48,6 +48,8 @@ def main():
     units = []
     sentinel_socket = None
     sentinel_tcp = None
+    canary_fd = None
+    host_control = None
     started = time.monotonic()
     try:
         command(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', username])
@@ -63,6 +65,13 @@ def main():
                  'user.email=synthetic@example.invalid', 'commit', '-qm', 'Synthetic fixture'])
         source_before = digest_tree(source)
         (root / 'host-canary').write_text('synthetic-host-secret')
+        canary_fd = os.open(root / 'host-canary', os.O_RDONLY)
+        host_pid = os.getpid()
+        host_pid_namespace = os.readlink('/proc/self/ns/pid')
+        host_control = subprocess.Popen(['/bin/sleep', '120'], stdin=canary_fd,
+                                        env={'POKETTO_SPIKE_HOST_ONLY': 'synthetic-supervisor-environment'})
+        assert b'POKETTO_SPIKE_HOST_ONLY' in Path(f'/proc/{host_control.pid}/environ').read_bytes()
+        assert Path(f'/proc/{host_control.pid}/fd/0').read_text() == 'synthetic-host-secret'
         other = root / 'other-workspace'
         other.mkdir()
         (other / 'private.md').write_text('synthetic-other-workspace-secret')
@@ -178,6 +187,23 @@ def main():
             'else: raise RuntimeError("outside write succeeded")\n'
             'print("filesystem denied")'))
         assert denied['exit'] == 0 and 'filesystem denied' in denied['output']
+        proc_denied = run('proc-root-and-fd-denials', python(
+            'import os\nfrom pathlib import Path\n'
+            f'assert os.readlink("/proc/self/ns/pid") != {host_pid_namespace!r}\n'
+            f'assert not Path("/proc/{host_pid}").exists(), "host supervisor PID visible"\n'
+            f'assert not Path("/proc/{host_control.pid}").exists(), "host control PID visible"\n'
+            f'paths={[f"/proc/{name}/root{root}/host-canary" for name in ("1", "self", "thread-self")] + [f"/proc/{host_pid}/root{root}/host-canary", f"/proc/{host_pid}/fd/{canary_fd}", f"/proc/{host_control.pid}/fd/0", f"/proc/{host_control.pid}/environ"]!r}\n'
+            'for name in paths:\n'
+            ' try: Path(name).read_bytes()\n'
+            ' except OSError: pass\n'
+            ' else: raise RuntimeError("proc path exposed host data")\n'
+            'for name in ("/proc/1/environ","/proc/self/environ"):\n'
+            ' try: data=Path(name).read_bytes()\n'
+            ' except OSError: continue\n'
+            ' assert b"POKETTO_SPIKE_HOST_ONLY" not in data, "host environment exposed"\n'
+            ' assert b"synthetic-supervisor-environment" not in data\n'
+            'print("separate PID namespace; host PID, root, fd and environment denied")'))
+        assert proc_denied['exit'] == 0 and 'separate PID namespace' in proc_denied['output']
         network = run('network-denials', python(
             'import errno, socket, urllib.request\n'
             f'for address, expected in [(("1.1.1.1",443),errno.ENETUNREACH),(("127.0.0.1",{host_port}),errno.ECONNREFUSED)]:\n'
@@ -256,6 +282,11 @@ def main():
             sentinel_socket.close()
         if sentinel_tcp is not None:
             sentinel_tcp.close()
+        if host_control is not None:
+            host_control.terminate()
+            host_control.wait(timeout=5)
+        if canary_fd is not None:
+            os.close(canary_fd)
         if mounted:
             command(['umount', str(root / 'session')])
         if created_user:
