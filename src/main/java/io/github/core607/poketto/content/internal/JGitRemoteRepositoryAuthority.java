@@ -191,12 +191,13 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         } catch (RemoteGitTransportException unreadable) {
             throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
         }
-        if (!remoteCommit.equals(ObjectId.zeroId())) {
-            resetCache(repository, remoteCommit);
-        }
         if (!remoteCommit.equals(baseCommit)) {
+            resetAfterConflict(repository, remoteCommit);
             throw new RepositoryConflictException(
                     "workspace " + workspaceId + " remote main changed while the write was being prepared");
+        }
+        if (!remoteCommit.equals(ObjectId.zeroId())) {
+            resetCache(repository, remoteCommit);
         }
         throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
     }
@@ -232,21 +233,31 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             resetCache(repository, candidateCommit);
             return;
         }
-        if (!remoteCommit.equals(ObjectId.zeroId())) {
-            resetCache(repository, remoteCommit);
-        }
         if (!remoteCommit.equals(baseCommit)) {
+            resetAfterConflict(repository, remoteCommit);
             throw new RepositoryConflictException(
                     "workspace " + workspaceId + " remote main changed while the write was being prepared");
+        }
+        if (!remoteCommit.equals(ObjectId.zeroId())) {
+            resetCache(repository, remoteCommit);
         }
         throw failure(workspaceId, "remote write failed before main advanced");
     }
 
     private void restoreAfterConflict(Repository repository, RepositoryBinding binding) {
         try {
-            resetCache(repository, transport.fetchMain(repository, binding));
+            resetAfterConflict(repository, transport.fetchMain(repository, binding));
         } catch (RemoteGitTransportException ignored) {
             // The outcome is already definite. A later operation rebuilds the disposable cache.
+        }
+    }
+
+    private static void resetAfterConflict(Repository repository, ObjectId commit) {
+        try {
+            resetCache(repository, commit);
+        } catch (ContentRepositoryException ignored) {
+            // A competing owner's invalid tree must neither expand into the cache nor hide the
+            // already established conflict. A later operation retries cache materialization.
         }
     }
 
@@ -297,6 +308,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     private static void resetCache(Repository repository, ObjectId commit) {
+        ManagedDocumentBounds.check(repository, commit);
         try {
             if (commit.equals(ObjectId.zeroId())) {
                 // No commit exists to reset --hard to, and clean skips staged files, so a write

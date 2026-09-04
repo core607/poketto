@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentDraft;
@@ -18,10 +19,12 @@ import io.github.core607.poketto.content.StoredDocument;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -344,6 +347,42 @@ class DocumentWriteServiceTests {
                 .isEqualTo(before.content().metadata().updatedAt().plusMillis(1));
         assertThat(repositories.store().snapshot(workspace).orElseThrow().commitId())
                 .contains(updated.commitId());
+    }
+
+    @Test
+    void shrinksAnExactLimitOwnerDocumentWhoseCanonicalFormWouldExceedTheLimit() throws Exception {
+        String header = """
+                ---
+                id: 550e8400-e29b-41d4-a716-446655440000
+                title: Note
+                visibility: private
+                tags: []
+                created_at: 2026-08-26T09:00:00Z
+                updated_at: 2026-08-26T09:00:00Z
+                ---
+
+                """;
+        byte[] original = (header + "x".repeat(ContentLimits.MAX_DOCUMENT_BYTES - header.length()))
+                .getBytes(StandardCharsets.UTF_8);
+        repositories.commitRemote(workspace, Map.of("documents/note.md", original));
+        StoredDocument before = store.refresh(workspace).documents().getFirst();
+
+        DocumentWriteResult result = writes.update(
+                workspace,
+                AGENT,
+                before.content().metadata().id(),
+                before.revision(),
+                new DocumentDraft("documents/note.md", "Note", List.of(), "short"));
+
+        assertThat(result.committed()).isTrue();
+        assertThat(repositories.remoteHead(workspace).name()).isEqualTo(result.commitId());
+        assertThat(store.snapshot(workspace)
+                        .orElseThrow()
+                        .documents()
+                        .getFirst()
+                        .content()
+                        .body())
+                .isEqualTo("short");
     }
 
     private static DocumentDraft draft(String path) {

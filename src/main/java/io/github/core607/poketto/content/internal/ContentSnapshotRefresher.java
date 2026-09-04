@@ -93,5 +93,8 @@ final class ContentSnapshotRefresher implements AutoCloseable {
     @Override
     public void close() {
         executor.shutdownNow();
+        // Interrupting a transport does not prove it stopped using the cache. Do not hand the
+        // workspace back to the owner until the running refresh has released its resources.
+        executor.close();
     }
 }

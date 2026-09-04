@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
@@ -148,6 +149,55 @@ class ContentSnapshotTests {
     }
 
     @Test
+    void rejectsWorkspaceBoundsBeforeMaterializingAnyManagedFile() throws Exception {
+        RemoteRepositoryFixture repositories = fixture("data", new SwitchableTransport());
+        WorkspaceId tooMany = WorkspaceId.random();
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        for (int index = 0; index <= ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE; index++) {
+            entries.put("documents/note-" + index + ".md", document(FIRST_ID, "Note"));
+        }
+        repositories.commitRemote(tooMany, entries);
+
+        assertThatThrownBy(() -> repositories.store().refresh(tooMany))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("managed documents exceed " + ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE);
+        assertThat(repositories.cache(tooMany).resolve("documents")).doesNotExist();
+
+        WorkspaceId tooLarge = WorkspaceId.random();
+        byte[] bytes = new byte[ContentLimits.MAX_DOCUMENT_BYTES];
+        Arrays.fill(bytes, (byte) 'x');
+        entries.clear();
+        for (int index = 0; index <= ContentLimits.MAX_WORKSPACE_BYTES / bytes.length; index++) {
+            entries.put("documents/note-" + index + ".md", bytes);
+        }
+        repositories.commitRemote(tooLarge, entries);
+
+        assertThatThrownBy(() -> repositories.store().refresh(tooLarge))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("managed documents exceed " + ContentLimits.MAX_WORKSPACE_BYTES + " bytes");
+        assertThat(repositories.cache(tooLarge).resolve("documents")).doesNotExist();
+    }
+
+    @Test
+    void startupRestoresTheRecordedSnapshotWhenCurrentFrontmatterIsTooLarge() throws Exception {
+        RemoteRepositoryFixture repositories = fixture("data", new SwitchableTransport());
+        WorkspaceId workspace = WorkspaceId.random();
+        ObjectId good = repositories.commitRemote(workspace, Map.of("documents/note.md", document(FIRST_ID, "Note")));
+        repositories.store().ensureReady(workspace);
+        String invalid = new String(document(FIRST_ID, "Note"), StandardCharsets.UTF_8)
+                .replace("tags: []", "tags: []\n" + "# padding\n".repeat(2000));
+        repositories.commitRemote(workspace, Map.of("documents/note.md", invalid.getBytes(StandardCharsets.UTF_8)));
+
+        assertThatThrownBy(() -> repositories.store().refresh(workspace))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("frontmatter must not exceed");
+        RemoteRepositoryFixture replacement = fixture("data", new SwitchableTransport());
+        replacement.store().ensureReady(workspace);
+        assertThat(replacement.store().snapshot(workspace).orElseThrow().commitId())
+                .contains(good.name());
+    }
+
+    @Test
     void aValidatedCommitEvictedFromTheCacheIsNotServed() throws Exception {
         RemoteRepositoryFixture first = fixture("data", new SwitchableTransport());
         WorkspaceId workspace = WorkspaceId.random();
@@ -180,6 +230,7 @@ class ContentSnapshotTests {
                 .hasMessageContaining("documents/large.md")
                 .hasMessageContaining("must not exceed " + ContentLimits.MAX_DOCUMENT_BYTES + " bytes");
         assertThat(repositories.store().snapshot(workspace)).isEmpty();
+        assertThat(repositories.cache(workspace).resolve("documents/large.md")).doesNotExist();
     }
 
     private RemoteRepositoryFixture fixture(String dataDirectory, RemoteGitTransport transport) {

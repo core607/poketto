@@ -56,6 +56,13 @@ class ContentSnapshotHealthIndicatorTests {
         assertThat(health.getDetails()).containsEntry("commit", "unborn");
     }
 
+    @Test
+    void isOutOfServiceAtTheExactStaleDeadline() {
+        store.snapshot = new ContentSnapshot(DEFAULT.id(), Optional.empty(), List.of(), NOW.minus(Duration.ofHours(1)));
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.OUT_OF_SERVICE);
+    }
+
     private static final class SnapshotStore implements ContentRepositoryStore {
 
         private ContentSnapshot snapshot;

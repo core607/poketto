@@ -1,6 +1,9 @@
 package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.ContentRepositoryStore;
@@ -13,10 +16,56 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class ContentSnapshotRefresherTests {
+
+    @Test
+    void closeWaitsForAnInterruptedRefreshToFinishUsingTheCache() throws Exception {
+        WorkspaceId workspace = WorkspaceId.random();
+        ContentRepositoryStore store = mock(ContentRepositoryStore.class);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        when(store.refresh(workspace)).thenAnswer(invocation -> {
+            started.countDown();
+            boolean waiting = true;
+            while (waiting) {
+                try {
+                    release.await();
+                    waiting = false;
+                } catch (InterruptedException ignored) {
+                    // A transport can defer cancellation until its current operation completes.
+                    interrupted.countDown();
+                }
+            }
+            finished.countDown();
+            return new ContentSnapshot(workspace, Optional.empty(), List.of(), Instant.EPOCH);
+        });
+        ContentSnapshotRefresher refresher =
+                new ContentSnapshotRefresher(store, () -> List.of(workspace), Duration.ofMillis(1));
+        try (var closer = Executors.newSingleThreadExecutor()) {
+            refresher.start();
+            try {
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                var closed = closer.submit(refresher::close);
+                assertThat(interrupted.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> closed.get(100, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                release.countDown();
+                closed.get(5, TimeUnit.SECONDS);
+                assertThat(finished.getCount()).isZero();
+            } finally {
+                release.countDown();
+                refresher.close();
+            }
+        }
+    }
 
     @Test
     void refreshesEveryServedWorkspaceAndSurvivesAFailingOne() {

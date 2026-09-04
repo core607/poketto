@@ -151,6 +151,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
         if (commit.equals(ObjectId.zeroId())) {
             return new ScannedTree(List.of(), 0);
         }
+        ManagedDocumentBounds.check(repository, commit);
         try {
             ObjectId tree = repository.resolve(commit.name() + "^{tree}");
             if (tree == null) {
@@ -197,7 +198,6 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     private static List<TreeEntry> readManagedEntries(Repository repository, ObjectId tree, WorkspaceId workspaceId)
             throws IOException {
         List<TreeEntry> entries = new ArrayList<>();
-        long totalBytes = 0;
         try (TreeWalk walk = new TreeWalk(repository)) {
             walk.addTree(tree);
             walk.setRecursive(true);
@@ -219,31 +219,8 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
                                     + exception.getMessage(),
                             exception);
                 }
-                if (entries.size() == ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) {
-                    throw failure(
-                            workspaceId,
-                            "managed documents exceed " + ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE + " at " + path,
-                            null);
-                }
-                // The object header carries the size, so an oversized document is rejected
-                // before its bytes are inflated.
-                long size = walk.getObjectReader().getObjectSize(walk.getObjectId(0), Constants.OBJ_BLOB);
-                if (size > ContentLimits.MAX_DOCUMENT_BYTES) {
-                    throw failure(
-                            workspaceId,
-                            "invalid document " + path + ": document must not exceed "
-                                    + ContentLimits.MAX_DOCUMENT_BYTES + " bytes: " + size,
-                            null);
-                }
-                totalBytes += size;
-                if (totalBytes > ContentLimits.MAX_WORKSPACE_BYTES) {
-                    throw failure(
-                            workspaceId,
-                            "managed documents exceed " + ContentLimits.MAX_WORKSPACE_BYTES + " bytes at " + path,
-                            null);
-                }
                 ObjectLoader loader = repository.open(walk.getObjectId(0), Constants.OBJ_BLOB);
-                entries.add(new TreeEntry(path, loader.getBytes()));
+                entries.add(new TreeEntry(path, loader.getBytes(ContentLimits.MAX_DOCUMENT_BYTES)));
             }
         }
         entries.sort(Comparator.comparing(TreeEntry::path));

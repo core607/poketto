@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentDraft;
 import io.github.core607.poketto.content.DocumentWriteResult;
@@ -173,7 +174,7 @@ class DocumentWriteRecoveryTests {
         RejectPush transport = new RejectPush(new JGitRemoteGitTransport(), () -> {
             try {
                 repositories.commitRemote(
-                        workspace, Map.of("documents/owner.md", "owner bytes".getBytes(StandardCharsets.UTF_8)));
+                        workspace, Map.of("documents/owner.md", new byte[ContentLimits.MAX_DOCUMENT_BYTES + 1]));
             } catch (Exception exception) {
                 throw new IllegalStateException(exception);
             }
@@ -183,6 +184,7 @@ class DocumentWriteRecoveryTests {
 
         assertThatThrownBy(() -> racing.writes(new TestClock()).create(workspace, OWNER, draft("documents/note.md")))
                 .isInstanceOf(RepositoryConflictException.class);
+        assertThat(racing.cache(workspace).resolve("documents/owner.md")).doesNotExist();
     }
 
     private static DocumentDraft draft(String path) {

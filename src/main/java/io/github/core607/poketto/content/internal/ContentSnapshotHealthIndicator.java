@@ -40,7 +40,7 @@ final class ContentSnapshotHealthIndicator implements HealthIndicator {
                     .build();
         }
         Duration age = Duration.between(snapshot.get().validatedAt(), clock.instant());
-        Health.Builder health = age.compareTo(staleAfter) > 0 ? Health.outOfService() : Health.up();
+        Health.Builder health = age.compareTo(staleAfter) >= 0 ? Health.outOfService() : Health.up();
         return health.withDetail("commit", snapshot.get().commitId().orElse("unborn"))
                 .withDetail("validatedAt", snapshot.get().validatedAt().toString())
                 .withDetail("documents", snapshot.get().documents().size())

@@ -94,6 +94,15 @@ final class CanonicalDocumentCodec {
     }
 
     byte[] serialize(DocumentContent document) {
+        byte[] bytes = canonicalBytes(document);
+        if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES) {
+            throw new IllegalArgumentException(
+                    "document must not exceed " + ContentLimits.MAX_DOCUMENT_BYTES + " bytes: " + bytes.length);
+        }
+        return bytes;
+    }
+
+    private byte[] canonicalBytes(DocumentContent document) {
         Objects.requireNonNull(document, "document must not be null");
         DocumentMetadata metadata = document.metadata();
         StringBuilder canonical = new StringBuilder();
@@ -123,12 +132,7 @@ final class CanonicalDocumentCodec {
         if (bodyEnd > 0) {
             canonical.append(body, 0, bodyEnd).append('\n');
         }
-        byte[] bytes = canonical.toString().getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES) {
-            throw new IllegalArgumentException(
-                    "document must not exceed " + ContentLimits.MAX_DOCUMENT_BYTES + " bytes: " + bytes.length);
-        }
-        return bytes;
+        return canonical.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     DocumentContent update(DocumentContent current, DocumentContent candidate, Instant changedAt) {
@@ -162,7 +166,9 @@ final class CanonicalDocumentCodec {
                         comparableUpdatedAt,
                         requested.publishedAt()),
                 candidate.body());
-        if (Arrays.equals(serialize(current), serialize(comparable))) {
+        // The original blob passed the read bound, but canonical quoting can make its comparison
+        // bytes larger. Only the proposed replacement must fit the write bound.
+        if (Arrays.equals(canonicalBytes(current), serialize(comparable))) {
             return current;
         }
         if (!changedAt.isAfter(before.updatedAt())) {

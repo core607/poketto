@@ -18,7 +18,7 @@ The [HTTP entrance baseline](2026-09-03-http-entrance-baseline.md) resolved remo
 
 Startup calls `ensureReady`, which refreshes and, when the remote cannot be resolved or its commit fails validation, falls back to the last validated commit recorded in the cache. Startup fails when neither exists, so a deployment cannot report healthy without content it can serve.
 
-`ContentSnapshotRefresher` refreshes each served workspace on a fixed delay of `poketto.repository.refresh-seconds`, default 30. A refresh that finds the served commit unchanged only renews its validation time. The freshness contract is therefore: a write through Poketto is visible immediately; a valid direct owner push is visible one refresh interval plus one fetch and scan after it lands. A failed refresh keeps the current snapshot and is logged once per outage.
+`ContentSnapshotRefresher` refreshes each served workspace on a fixed delay of `poketto.repository.refresh-seconds`, default 30. A refresh that finds the served commit unchanged only renews its validation time. The freshness contract is therefore: a write through Poketto is visible immediately; a valid direct owner push is visible one refresh interval plus one fetch and scan after it lands. A failed refresh keeps the current snapshot and is logged once per outage. Closing the refresher interrupts pending work and waits for the running refresh to release its cache resources.
 
 ### Last validated commit
 
@@ -45,11 +45,13 @@ A commit is valid only when every managed document is valid. There is no per-doc
 | Managed documents per workspace | 10 000 |
 | Managed document bytes per workspace | 256 MiB |
 
-Titles and tags reject control characters. The scan reads each blob's size from its object header before inflating it, so an oversized document is rejected before its bytes are loaded, and it stops at the document-count and total-byte bounds. `CanonicalDocumentCodec` applies the document and frontmatter bounds when parsing and the document bound when serializing, and a write refuses a commit that would push the workspace past its document or byte bound, so the remote never receives a tree the scan would reject. The byte check does not credit replaced bytes back, so it can refuse a replacement at the very edge of the bound.
+Titles and tags reject control characters. The authority checks managed blob headers, document count, and total bytes before materializing a fetched tree. The snapshot scan applies the same check before loading blobs, including offline restoration. An over-limit tree therefore cannot expand into the worktree. Fetching Git objects and unmanaged repository assets remains outside these managed-document bounds.
+
+`CanonicalDocumentCodec` applies the document and frontmatter bounds when parsing and the document bound to serialized replacements. Comparing an existing document does not impose that bound on its canonical form, so a valid owner-authored blob at the size limit can still be shortened. A write refuses a commit that would push the workspace past its document or byte bound, so the remote never receives a tree the scan would reject. The byte check does not credit replaced bytes back, so it can refuse a replacement at the very edge of the bound.
 
 ### Readiness
 
-The `contentSnapshot` health indicator reports `DOWN` without a validated snapshot for the default workspace, `OUT_OF_SERVICE` when the snapshot has not been re-validated within `poketto.repository.stale-after-seconds` (default 3600, never shorter than the refresh interval), and `UP` otherwise. It never contacts the remote. It participates in the aggregate `/actuator/health` that the Compose health check and the deployment entrance read, so a deployment passes only when content is served. A failed validation does not renew the validation time: a remote that stays unreachable, or an invalid push that stays unrepaired, past the stale bound makes the process stop reporting healthy while it keeps serving the last validated snapshot, and a deployment during that time fails until the cause is repaired. Health details remain hidden.
+The `contentSnapshot` health indicator reports `DOWN` without a validated snapshot for the default workspace, `OUT_OF_SERVICE` when its age reaches `poketto.repository.stale-after-seconds` (default 3600, never shorter than the refresh interval), and `UP` otherwise. It never contacts the remote. It participates in the aggregate `/actuator/health` that the Compose health check and the deployment entrance read, so a deployment passes only when content is served. A failed validation does not renew the validation time: a remote that stays unreachable, or an invalid push that stays unrepaired, past the stale bound makes the process stop reporting healthy while it keeps serving the last validated snapshot, and a deployment during that time fails until the cause is repaired. Health details remain hidden.
 
 ### Definite rejections
 
@@ -83,9 +85,9 @@ Public reads do not perform the per-request resolution that the [HTTP entrance b
 
 ## Verification
 
-- `ContentSnapshotTests` covers serving without the remote, an invalid commit leaving the served snapshot in place, a direct push becoming visible on refresh, a replacement process serving the recorded commit rather than a newer invalid cache head while the remote is unreachable, failing closed without a recorded commit, refusing a recorded commit that left the cache, and rejecting an oversized document without serving it.
-- `ContentSnapshotHealthIndicatorTests` and `ContentSnapshotRefresherTests` cover the three health states and a failing workspace not stopping the others.
-- `DocumentWriteRecoveryTests` covers a definite refusal leaving `main` untouched and a refusal during a competing advance reporting a conflict; `DocumentWriteServiceTests` covers a clock behind the stored update time and the acknowledged write appearing in the snapshot.
+- `ContentSnapshotTests` covers serving without the remote, an invalid commit leaving the served snapshot in place, a direct push becoming visible on refresh, a replacement process serving the recorded commit rather than a newer invalid cache head while the remote is unreachable, failing closed without a recorded commit, refusing a recorded commit that left the cache, and rejecting document, count, and workspace-byte overflows before materializing any managed file. It also covers frontmatter overflow falling back to the recorded snapshot during startup.
+- `ContentSnapshotHealthIndicatorTests` and `ContentSnapshotRefresherTests` cover the three health states, the exact stale deadline, a failing workspace not stopping the others, and shutdown waiting for an interrupted refresh to finish.
+- `DocumentWriteRecoveryTests` covers a definite refusal leaving `main` untouched and a refusal during a competing advance reporting a conflict; `DocumentWriteServiceTests` covers a clock behind the stored update time, the acknowledged write appearing in the snapshot, and shrinking a valid exact-limit owner document whose canonical form exceeds the write bound.
 - `DocumentValueTests`, `CanonicalDocumentCodecTests`, and `DocumentPathRulesTests` cover each bound at and beyond its limit; `PublicDocumentControllerTests` covers a missing snapshot as a sanitized 503.
 - `./gradlew test`, `./gradlew repoCheck`, and `git diff --check` pass; `PostgresIntegrationIT` exercises startup, health, and the public entrance through the real composition in CI.
 
