@@ -69,7 +69,7 @@ final class RemoteRepositoryFixture {
             }
         };
         authority = new JGitRemoteRepositoryAuthority(paths, bindings, transport, maxCachedWorkspaces);
-        store = new JGitContentRepositoryStore(authority, codec);
+        store = new JGitContentRepositoryStore(authority, codec, Clock.systemUTC());
     }
 
     WorkspacePaths paths() {

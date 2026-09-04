@@ -1,6 +1,8 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.ContentRepositoryStore;
+import io.github.core607.poketto.content.ContentSnapshot;
 import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.content.DocumentVisibility;
 import io.github.core607.poketto.content.StoredDocument;
@@ -16,8 +18,9 @@ import java.util.Optional;
  * Public-content-only read surface over the default workspace. The interface carries no visibility
  * parameter, so no entrance built on it can widen the scope to private documents.
  *
- * <p>Every read resolves current remote {@code main}; there is no cross-request cache, so a
- * successful publish is visible on the next request.
+ * <p>Every read serves the workspace's current validated snapshot and never contacts the remote.
+ * A write acknowledged by this service is visible on the next request; a direct owner push is
+ * visible after the next successful background refresh.
  */
 final class PublicDocuments {
 
@@ -36,17 +39,25 @@ final class PublicDocuments {
     }
 
     List<StoredDocument> list() {
-        WorkspaceId workspaceId = workspaces.defaultWorkspace().id();
-        return store.scan(workspaceId).stream()
-                .filter(document -> document.content().metadata().visibility() == DocumentVisibility.PUBLIC)
+        return snapshot().documents().stream()
+                .filter(PublicDocuments::isPublic)
                 .sorted(NEWEST_PUBLICATION_FIRST)
                 .toList();
     }
 
     Optional<StoredDocument> find(DocumentId documentId) {
         Objects.requireNonNull(documentId, "document id must not be null");
-        return list().stream()
-                .filter(document -> document.content().metadata().id().equals(documentId))
-                .findFirst();
+        return snapshot().find(documentId).filter(PublicDocuments::isPublic);
+    }
+
+    private ContentSnapshot snapshot() {
+        WorkspaceId workspaceId = workspaces.defaultWorkspace().id();
+        return store.snapshot(workspaceId)
+                .orElseThrow(() ->
+                        new ContentRepositoryException("workspace " + workspaceId + " has no validated snapshot"));
+    }
+
+    private static boolean isPublic(StoredDocument document) {
+        return document.content().metadata().visibility() == DocumentVisibility.PUBLIC;
     }
 }

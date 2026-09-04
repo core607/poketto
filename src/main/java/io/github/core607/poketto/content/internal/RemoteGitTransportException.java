@@ -1,9 +1,16 @@
 package io.github.core607.poketto.content.internal;
 
-/** Internal marker whose message is safe to surface because it contains no transport details. */
-final class RemoteGitTransportException extends RuntimeException {
+/**
+ * The remote operation ended without a usable answer, so its outcome is unknown. The message is
+ * safe to surface because it contains no transport details.
+ */
+class RemoteGitTransportException extends RuntimeException {
 
     RemoteGitTransportException(String operation) {
-        super("remote repository " + operation + " failed");
+        this(operation, "failed");
+    }
+
+    RemoteGitTransportException(String operation, String outcome) {
+        super("remote repository " + operation + " " + outcome);
     }
 }

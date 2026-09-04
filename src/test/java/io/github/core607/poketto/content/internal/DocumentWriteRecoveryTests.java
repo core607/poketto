@@ -3,6 +3,8 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.ContentLimits;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentDraft;
 import io.github.core607.poketto.content.DocumentWriteResult;
 import io.github.core607.poketto.content.DocumentWriteService;
@@ -149,8 +151,67 @@ class DocumentWriteRecoveryTests {
         assertThat(first.store().scan(workspace)).hasSize(1);
     }
 
+    @Test
+    void aRemoteRefusalIsDefiniteAndLeavesMainUntouched() throws Exception {
+        RejectPush transport = new RejectPush(new JGitRemoteGitTransport(), () -> {});
+        RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root, transport);
+        WorkspaceId workspace = WorkspaceId.random();
+        DocumentWriteService writes = repositories.writes(new TestClock());
+
+        assertThatThrownBy(() -> writes.create(workspace, OWNER, draft("documents/note.md")))
+                .isInstanceOf(ContentRepositoryException.class)
+                .isNotInstanceOf(RepositoryWriteAmbiguousException.class)
+                .hasMessageContaining("rejected by the remote")
+                .hasMessageContaining("main did not advance");
+        assertThat(repositories.remoteHead(workspace)).isEqualTo(ObjectId.zeroId());
+        assertThat(repositories.store().scan(workspace)).isEmpty();
+    }
+
+    @Test
+    void aRefusalDuringACompetingAdvanceIsReportedAsAConflict() throws Exception {
+        RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
+        WorkspaceId workspace = WorkspaceId.random();
+        RejectPush transport = new RejectPush(new JGitRemoteGitTransport(), () -> {
+            try {
+                repositories.commitRemote(
+                        workspace, Map.of("documents/owner.md", new byte[ContentLimits.MAX_DOCUMENT_BYTES + 1]));
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
+        });
+        RemoteRepositoryFixture racing =
+                new RemoteRepositoryFixture(root.resolve("racing"), root.resolve("remotes"), transport);
+
+        assertThatThrownBy(() -> racing.writes(new TestClock()).create(workspace, OWNER, draft("documents/note.md")))
+                .isInstanceOf(RepositoryConflictException.class);
+        assertThat(racing.cache(workspace).resolve("documents/owner.md")).doesNotExist();
+    }
+
     private static DocumentDraft draft(String path) {
         return new DocumentDraft(path, "Note", List.of(), "Body text");
+    }
+
+    private static final class RejectPush implements RemoteGitTransport {
+
+        private final RemoteGitTransport delegate;
+        private final Runnable beforeRefusal;
+
+        private RejectPush(RemoteGitTransport delegate, Runnable beforeRefusal) {
+            this.delegate = delegate;
+            this.beforeRefusal = beforeRefusal;
+        }
+
+        @Override
+        public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+            return delegate.fetchMain(repository, binding);
+        }
+
+        @Override
+        public PushStatus pushMain(
+                Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit) {
+            beforeRefusal.run();
+            throw new RemoteGitRejectedException("ref update");
+        }
     }
 
     private static final class LoseFirstPushResponse implements RemoteGitTransport {

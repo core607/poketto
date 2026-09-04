@@ -9,10 +9,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("poketto.repository")
 record RepositoryProperties(
-        String remoteUri, String username, String password, Integer cacheMaxWorkspaces, Integer timeoutSeconds) {
+        String remoteUri,
+        String username,
+        String password,
+        Integer cacheMaxWorkspaces,
+        Integer timeoutSeconds,
+        Integer refreshSeconds,
+        Integer staleAfterSeconds) {
 
     private static final int DEFAULT_CACHE_MAX_WORKSPACES = 32;
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+    private static final int DEFAULT_REFRESH_SECONDS = 30;
+    private static final int DEFAULT_STALE_AFTER_SECONDS = 3600;
 
     RepositoryProperties {
         remoteUri = blankToNull(remoteUri);
@@ -20,11 +28,20 @@ record RepositoryProperties(
         password = blankToNull(password);
         cacheMaxWorkspaces = cacheMaxWorkspaces == null ? DEFAULT_CACHE_MAX_WORKSPACES : cacheMaxWorkspaces;
         timeoutSeconds = timeoutSeconds == null ? DEFAULT_TIMEOUT_SECONDS : timeoutSeconds;
+        refreshSeconds = refreshSeconds == null ? DEFAULT_REFRESH_SECONDS : refreshSeconds;
+        staleAfterSeconds = staleAfterSeconds == null ? DEFAULT_STALE_AFTER_SECONDS : staleAfterSeconds;
         if (cacheMaxWorkspaces < 1) {
             throw new IllegalArgumentException("poketto.repository.cache-max-workspaces must be positive");
         }
         if (timeoutSeconds < 1) {
             throw new IllegalArgumentException("poketto.repository.timeout-seconds must be positive");
+        }
+        if (refreshSeconds < 1) {
+            throw new IllegalArgumentException("poketto.repository.refresh-seconds must be positive");
+        }
+        if (staleAfterSeconds < refreshSeconds) {
+            throw new IllegalArgumentException(
+                    "poketto.repository.stale-after-seconds must not be shorter than refresh-seconds");
         }
         if ((username == null) != (password == null)) {
             throw new IllegalArgumentException(
@@ -56,7 +73,9 @@ record RepositoryProperties(
     public String toString() {
         return "RepositoryProperties[remoteUri=redacted, username=redacted, password=redacted, "
                 + "cacheMaxWorkspaces=" + cacheMaxWorkspaces
-                + ", timeoutSeconds=" + timeoutSeconds + "]";
+                + ", timeoutSeconds=" + timeoutSeconds
+                + ", refreshSeconds=" + refreshSeconds
+                + ", staleAfterSeconds=" + staleAfterSeconds + "]";
     }
 
     private static ContentRepositoryException invalidRemote() {
