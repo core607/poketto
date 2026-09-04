@@ -1,6 +1,5 @@
 package io.github.core607.poketto.content.internal;
 
-import io.github.core607.poketto.content.ContentLimits;
 import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -111,7 +110,7 @@ final class RepositoryPublishingPolicy {
             return false;
         }
         String[] segments = path.split("/", -1);
-        if (segments[0].equals("private")) {
+        if (RepositoryPathRules.privatePath(path)) {
             return false;
         }
         for (String segment : segments) {
@@ -132,18 +131,15 @@ final class RepositoryPublishingPolicy {
     }
 
     private static boolean validPath(String value) {
-        if (value == null || value.isEmpty() || value.length() > ContentLimits.MAX_PATH_LENGTH) {
+        if (value == null) {
             return false;
         }
-        if (value.codePoints().anyMatch(c -> Character.isISOControl(c) || c == '\\' || c == ':')) {
+        try {
+            RepositoryPathRules.validate(value);
+            return true;
+        } catch (IllegalArgumentException exception) {
             return false;
         }
-        for (String segment : value.split("/", -1)) {
-            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static boolean validPattern(String value) {

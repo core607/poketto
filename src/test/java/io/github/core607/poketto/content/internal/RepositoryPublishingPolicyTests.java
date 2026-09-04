@@ -25,6 +25,7 @@ class RepositoryPublishingPolicyTests {
         assertThat(policy.state()).isEqualTo(RepositoryPublishingPolicy.State.ENABLED);
         assertThat(policy.permitsPath("中文/旅行.md")).isTrue();
         assertThat(policy.permitsPath("private/secret.md")).isFalse();
+        assertThat(policy.permitsPath("PRIVATE/secret.md")).isFalse();
         assertThat(policy.permitsPath("private/photo.png")).isFalse();
         assertThat(policy.permitsPath(".poketto/publishing.yaml")).isFalse();
         assertThat(policy.permitsPath("nested/.git/config")).isFalse();
