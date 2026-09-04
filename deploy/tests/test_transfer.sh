@@ -18,12 +18,12 @@ assert_status 0
 assert_contains "$(docker_log)" "tag $DIGEST_IMAGE $TAG_IMAGE"
 assert_contains "$(docker_log)" "save $TAG_IMAGE"
 assert_contains "$OUT" "sending $TAG_IMAGE"
-assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/compose.yaml.tmp'"
-assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/deploy.sh.tmp'"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/$REVISION/compose.yaml.tmp'"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/$REVISION/deploy.sh.tmp'"
 assert_contains "$(cat "$FAKE_STATE/sync.log")" "sha256sum --check"
 assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/deploy.sh'"
 # No entrance exists remotely yet, so the staged copies are installed directly.
-assert_contains "$(cat "$FAKE_STATE/sync.log")" "mv -f '/srv/poketto/.incoming/deploy.sh' '/srv/poketto/deploy.sh'"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "mv -f '/srv/poketto/.incoming/$REVISION/deploy.sh' '/srv/poketto/deploy.sh'"
 [ -s "$FAKE_STATE/received.archive" ] || { echo "no archive reached the remote"; exit 1; }
 assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "'/srv/poketto/deploy.sh'"
 assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--app-image '$TAG_IMAGE' --app-revision '$REVISION'"
@@ -34,10 +34,22 @@ rm -f "$FAKE_STATE/sync.log" "$FAKE_STATE/deploy-calls"
 touch "$FAKE_STATE/remote-has-entrance" "$FAKE_STATE/remote-has-image"
 run_transfer --target ops@host --root /srv/poketto --image "$DIGEST_IMAGE" --revision "$REVISION" --sync
 assert_status 0
-assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "mv -f '/srv/poketto/.incoming/deploy.sh' '/srv/poketto/deploy.sh'"
-assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--sync-from '/srv/poketto/.incoming'"
-rm -f "$FAKE_STATE/remote-has-entrance" "$FAKE_STATE/remote-has-image"
+assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "mv -f '/srv/poketto/.incoming/$REVISION/deploy.sh' '/srv/poketto/deploy.sh'"
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--sync-from '/srv/poketto/.incoming/$REVISION'"
 assert_contains "$(ssh_log)" "sha256sum --check"
+
+# A transfer of another commit stages below its own directory, so two transfers running at the
+# same time never overwrite each other's staged files.
+second_revision="89abcdef0123456789abcdef0123456789abcdef"
+second_image="ghcr.io/core607/poketto@sha256:3333333333333333333333333333333333333333333333333333333333333333"
+have_image "$second_image" "$second_revision"
+rm -f "$FAKE_STATE/sync.log" "$FAKE_STATE/deploy-calls"
+run_transfer --target ops@host --root /srv/poketto --image "$second_image" --revision "$second_revision" --sync
+assert_status 0
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "cat > '/srv/poketto/.incoming/$second_revision/deploy.sh.tmp'"
+assert_not_contains "$(cat "$FAKE_STATE/sync.log")" "/.incoming/$REVISION/"
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--sync-from '/srv/poketto/.incoming/$second_revision'"
+rm -f "$FAKE_STATE/remote-has-entrance" "$FAKE_STATE/remote-has-image"
 
 # The remote already holds the tag: no archive is sent, the entrance still runs.
 rm -f "$FAKE_STATE/docker.log" "$FAKE_STATE/ssh.log" "$FAKE_STATE/received.archive" "$FAKE_STATE/deploy-calls"

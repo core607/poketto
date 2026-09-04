@@ -62,10 +62,11 @@ TAG="ghcr.io/core607/poketto:sha-$REVISION"
 
 SYNC_ARGS=""
 if [ "$SYNC" = 1 ]; then
-    # Files are staged beside the root and verified there; the entrance moves them into place
-    # under its own lock, so a broken transfer or a concurrent deployment never sees a
-    # half-written compose.yaml or deploy.sh.
-    incoming="$ROOT/.incoming"
+    # Files are staged below the root in a directory named after the commit and verified there;
+    # the entrance moves them into place under its own lock, so a broken transfer, a concurrent
+    # transfer of another commit, or a concurrent deployment never sees a half-written
+    # compose.yaml or deploy.sh.
+    incoming="$ROOT/.incoming/$REVISION"
     remote "mkdir -p '$incoming'" < /dev/null || fail "cannot create $incoming on $TARGET"
     for file in compose.yaml deploy.sh; do
         checksum="$(sha256sum "$HERE/$file" | cut -d ' ' -f 1)"
