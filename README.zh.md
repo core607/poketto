@@ -6,7 +6,7 @@
 
 ## 状态
 
-开发中。可执行开发基线、工作空间隔离、内容仓基础、文档写入与[远程 Git 仓库权威](notes/implemented/2026-09-01-remote-repository-authority.md)已经实现。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过校验的 `main` 提交发布到 GHCR，并经 SSH 部署到一台 Docker Compose 主机。[HTTP 入口](notes/implemented/2026-09-03-http-entrance-baseline.md)提供健康检查、RFC 9457 problem 响应，以及默认工作空间的只读公开文档 API。主要的单机部署保留一次性本地 Git 缓存，只有远端 `main` 才是仓库写入的确认点。已接受的提案将识别[仓库原生 Markdown 与只读同目录图片图库](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md)，并把经 Poketto 上传的图片存入权威[本地 ManagedBlobStore，同时把仓库图片副本当作可删除缓存](notes/proposed/2026-09-01-repository-asset-blob-store.md)。[C 端账号](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、[Next.js 前端](notes/proposed/2026-08-30-nextjs-frontend.md)和 MCP 入口仍处于提案阶段。Serverless 仍是可选方案，需要等待真实的 OSS、共享数据库与远程 SRT 基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线，提案则标明尚未交付的目标决策。
+开发中。可执行开发基线、工作空间隔离、内容仓基础、文档写入与[远程 Git 仓库权威](notes/implemented/2026-09-01-remote-repository-authority.md)已经实现。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过校验的 `main` 提交发布到 GHCR，并经 SSH 部署到一台 Docker Compose 主机。[HTTP 入口](notes/implemented/2026-09-03-http-entrance-baseline.md)提供健康检查、RFC 9457 problem 响应，以及默认工作空间的只读公开文档 API；公开读取来自[已验证内容快照](notes/implemented/2026-09-04-validated-content-snapshot.md)，远端从不出现在请求路径上。主要的单机部署保留一次性本地 Git 缓存，只有远端 `main` 才是仓库写入的确认点。已接受的提案将识别[仓库原生 Markdown 与只读同目录图片图库](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md)，并把经 Poketto 上传的图片存入权威[本地 ManagedBlobStore，同时把仓库图片副本当作可删除缓存](notes/proposed/2026-09-01-repository-asset-blob-store.md)。[C 端账号](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)、[仓库原生检索](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)、[Next.js 前端](notes/proposed/2026-08-30-nextjs-frontend.md)和 MCP 入口仍处于提案阶段。Serverless 仍是可选方案，需要等待真实的 OSS、共享数据库与远程 SRT 基础设施。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)记录已实现基线，提案则标明尚未交付的目标决策。
 
 ## 适合谁
 
@@ -32,7 +32,7 @@ notes/               决策记录：proposed / implemented / rejected / archived
 
 使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。
 
-应用启动需要 PostgreSQL 数据源、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。Flyway 会创建默认工作空间；应用将它绑定到远端 `main`，只在 `<data-dir>/workspaces/<workspace-id>/content` 物化一次性缓存。`POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` 与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS` 可以调整默认值为 32 个工作空间和 30 秒的限制。运行中的实例通过 `GET /actuator/health` 回应部署检查，并在 `GET /api/public/documents` 提供默认工作空间的公开文档。
+应用启动需要 PostgreSQL 数据源、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。Flyway 会创建默认工作空间；应用将它绑定到远端 `main`，只在 `<data-dir>/workspaces/<workspace-id>/content` 物化一次性缓存。`POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` 与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS` 可以调整默认值为 32 个工作空间和 30 秒的限制；`POKETTO_REPOSITORY_REFRESH_SECONDS` 决定所服务内容多久对照远端 `main` 重新校验一次（默认 30 秒），`POKETTO_REPOSITORY_STALE_AFTER_SECONDS` 决定所服务内容最多多久没有成功重新校验，健康检查就会把它报告为停止服务（默认 3600 秒）。没有可服务的内容时应用启动失败。运行中的实例通过 `GET /actuator/health` 回应部署检查，并在 `GET /api/public/documents` 提供默认工作空间的公开文档；经 Poketto 的写入立即可见，合法的直接推送在下一次刷新后可见。
 
 ```sh
 ./gradlew test repoCheck

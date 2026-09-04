@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class DocumentValueTests {
@@ -70,6 +72,32 @@ class DocumentValueTests {
                         Instant.parse("2026-08-27T00:00:00Z"),
                         Optional.of(Instant.parse("2026-08-28T00:00:00Z"))))
                 .withMessageContaining("must not follow the last update");
+    }
+
+    @Test
+    void metadataBoundsTitleAndTagSizes() {
+        String longestTitle = "t".repeat(ContentLimits.MAX_TITLE_LENGTH);
+        String longestTag = "g".repeat(ContentLimits.MAX_TAG_LENGTH);
+        List<String> mostTags = IntStream.range(0, ContentLimits.MAX_TAGS)
+                .mapToObj(index -> "tag" + index)
+                .toList();
+
+        assertThat(metadata(longestTitle, mostTags).tags()).hasSize(ContentLimits.MAX_TAGS);
+        assertThat(metadata("Title", List.of(longestTag)).tags()).containsExactly(longestTag);
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata(longestTitle + "t", List.of()))
+                .withMessageContaining("title must not exceed");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata("Title", List.of(longestTag + "g")))
+                .withMessageContaining("tag must not exceed");
+        List<String> oneTooMany =
+                Stream.concat(mostTags.stream(), Stream.of("one-too-many")).toList();
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata("Title", oneTooMany))
+                .withMessageContaining("more than " + ContentLimits.MAX_TAGS + " tags");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> metadata("Title", List.of("tab\there")))
+                .withMessageContaining("tag must not contain control characters");
     }
 
     private static DocumentMetadata metadata(String title, List<String> tags) {
