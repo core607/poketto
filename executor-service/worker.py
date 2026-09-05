@@ -348,6 +348,16 @@ class SystemdBackend:
                  f"size={self.c['diskBytes']},nr_inodes={self.c['diskInodes']},mode=0750,nosuid,nodev",
                  'tmpfs', str(target)])
         os.chown(target, 0, self.user.pw_gid)
+        bootstrap = target / 'bootstrap'
+        bootstrap.mkdir(mode=0o555)
+        # SRT 0.0.75 binds deny markers at these paths. Supply inert root-owned targets
+        # so bwrap never needs to write its own startup directory.
+        for name in ('.gitconfig', '.gitmodules', '.bashrc', '.bash_profile', '.zshrc',
+                     '.zprofile', '.profile', '.ripgreprc', '.mcp.json'):
+            marker = bootstrap / name
+            marker.touch(mode=0o444)
+        for name in ('.vscode', '.idea', '.claude', '.claude/commands', '.claude/agents'):
+            (bootstrap / name).mkdir(mode=0o555)
         # The untrusted account can replace only children, never the root mountpoint or records.
         for name in ('work', 'home', 'tmp'):
             path = target / name

@@ -15,10 +15,10 @@ def main():
     srt = tools / 'node_modules/@anthropic-ai/sandbox-runtime/dist/cli.js'
     if json.loads((srt.parent.parent / 'package.json').read_bytes())['version'] != '0.0.75':
         raise SystemExit('SRT version mismatch')
-    # Commands may replace their checkout. Never resolve a caller-created symlink before SRT.
+    # Third-party SRT startup must not inspect a command-mutated working directory.
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    work_fd = os.open('work', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
-    os.fchdir(work_fd)
+    bootstrap_fd = os.open('bootstrap', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+    os.fchdir(bootstrap_fd)
     os.close(root_fd)
     env = {'HOME': str(root / 'home'), 'TMPDIR': '/tmp',
            'PATH': f'{tools}:{tools}/extracted/usr/bin:/usr/bin:/bin',
@@ -34,13 +34,12 @@ def main():
             'test -z "$(git -C "$1/work/repository" remote)"',
             'initialize', str(root), record['commit']]
     elif record['mode'] == 'execute':
-        repository_fd = os.open('repository', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=work_fd)
-        os.fchdir(repository_fd)
-        os.close(repository_fd)
-        command = ['/bin/bash', '-c', record['command']]
+        command = ['/bin/bash', '--noprofile', '--norc', '-c',
+                   'cd -- "$1" || exit; exec /bin/bash --noprofile --norc -c "$2"',
+                   'execute', str(root / 'work/repository'), record['command']]
     else:
         raise SystemExit('Invalid execution mode')
-    os.close(work_fd)
+    os.close(bootstrap_fd)
     os.execve(str(tools / 'node'), [str(tools / 'node'), str(srt), '--settings', record['settings'], '--', *command], env)
 
 

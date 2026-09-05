@@ -183,6 +183,45 @@ def main():
             f'for p in ["/proc/1/root{host_canary}","/proc/self/root{host_canary}","/proc/thread-self/root{host_canary}"]:\n try: Path(p).read_bytes()\n except OSError: pass\n else: raise RuntimeError("host root visible")\nprint("denied")'))
         assert result['exitCode'] == 0 and 'denied' in result['stdout'], result
         passed('host-pid-and-proc-root-denied')
+        with socket.socket() as startup_sentinel:
+            startup_sentinel.bind(('127.0.0.1', 0))
+            startup_sentinel.listen(4)
+            startup_port = startup_sentinel.getsockname()[1]
+            run(['runuser', '-u', user, '--', 'python3', '-c',
+                 f'import socket; socket.create_connection(("127.0.0.1",{startup_port}),timeout=1).close()'])
+            connection, _ = startup_sentinel.accept()
+            connection.close()
+            payload = ('import socket\nfrom pathlib import Path\n'
+                'Path("startup-marker").write_text("ran")\n'
+                f'try: socket.create_connection(("127.0.0.1",{startup_port}),timeout=1)\n'
+                'except OSError: Path("startup-network-denied").write_text("denied")\n')
+            malicious_shell = '#!/bin/sh\n' + python(payload) + '\n'
+            prepare = ('from pathlib import Path\nimport json,os\n'
+                f'payload={malicious_shell!r}\n'
+                'p=Path("malicious-startup.sh"); p.write_text(payload); p.chmod(0o755)\n'
+                'with Path(".git/config").open("a") as f:\n'
+                ' f.write("\\n[core]\\n fsmonitor = "+str(p.resolve())+"\\n pager = "+str(p.resolve())+"\\n[include]\\n path = "+str(Path("malicious-include").resolve())+"\\n")\n'
+                'Path("malicious-include").write_text("[core]\\n pager = "+str(p.resolve())+"\\n")\n'
+                'Path(".srt-settings.json").write_text(json.dumps({"network":{"allowedDomains":["*"]},"filesystem":{"allowRead":["/"],"allowWrite":["/"]}}))\n'
+                'for name in (".bashrc",".bash_profile",".profile"):\n'
+                ' Path(name).write_text(payload)\n Path(os.environ["HOME"],name).write_text(payload)\n')
+            result = execute(second, python(prepare))
+            assert result['exitCode'] == 0, result
+            result = execute(second, 'test ! -e startup-marker; test ! -e startup-network-denied; printf trusted-startup')
+            assert result['exitCode'] == 0 and result['stdout'] == 'trusted-startup', result
+            result = execute(second, 'git status --short >/dev/null; test -e startup-marker; test -e startup-network-denied')
+            assert result['exitCode'] == 0, result
+            startup_sentinel.settimeout(.2)
+            try:
+                connection, _ = startup_sentinel.accept()
+            except TimeoutError:
+                pass
+            else:
+                connection.close()
+                raise AssertionError('Git or environment configuration escaped SRT')
+            result = execute(second, 'rm -f startup-marker startup-network-denied .srt-settings.json; git -c core.fsmonitor=false config --unset-all core.fsmonitor')
+            assert result['exitCode'] == 0, result
+        passed('untrusted-git-and-shell-config-reuse-stays-inside-srt')
         result = execute(second, python('import errno\ntry:\n f=open("fill","wb")\n for i in range(64): f.write(b"x"*1048576)\nexcept OSError as e:\n assert e.errno==errno.ENOSPC\n print("disk denied")\nfinally:\n f.close()\n import os; os.unlink("fill")'))
         assert 'disk denied' in result['stdout'], result
         passed('tmpfs-disk-limit')

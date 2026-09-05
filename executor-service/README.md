@@ -32,6 +32,9 @@ The root supervisor only verifies requests, copies bounded exports, mounts
 private tmpfs volumes, and controls fixed systemd units. Git initialization and
 commands run as `execUser`, always through the pinned SRT launcher. Each
 invocation has a fresh process tree; session files persist until closure.
+SRT starts in a root-owned bootstrap directory containing only inert deny-marker
+targets. The launcher enters the command-modified repository only after SRT has
+installed its boundary; Git and shell configuration cannot influence startup.
 Memory, swap, CPU, process count, wall time, and private temporary storage are
 bounded by systemd. A session tmpfs bounds working-tree and history storage.
 The worker captures at most 64 KiB of combined stdout/stderr bytes and stops
