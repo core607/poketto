@@ -30,6 +30,12 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        // Streamable HTTP completes through an async dispatch with no stored security context.
+        return !bearer;
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws IOException, ServletException {
         try {

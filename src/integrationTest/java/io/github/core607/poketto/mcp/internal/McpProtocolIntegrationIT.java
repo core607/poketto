@@ -9,6 +9,7 @@ import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -23,6 +24,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.transport.RefSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,8 +61,14 @@ class McpProtocolIntegrationIT {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        try {
+            // JUnit may receive a Windows short-name temp path; production storage rejects aliases.
+            directory = directory.toRealPath();
+        } catch (IOException exception) {
+            throw new IllegalStateException(exception);
+        }
         Path remote = directory.resolve("remote.git");
-        try (Git ignored = Git.init()
+        try (Git remoteGit = Git.init()
                         .setBare(true)
                         .setInitialBranch("main")
                         .setDirectory(remote.toFile())
@@ -69,6 +77,8 @@ class McpProtocolIntegrationIT {
                         .setURI(remote.toUri().toString())
                         .setDirectory(directory.resolve("seed").toFile())
                         .call()) {
+            // An empty remote has no advertised branch for clone to select.
+            seed.getRepository().updateRef("HEAD").link("refs/heads/main");
             Path tree = seed.getRepository().getWorkTree().toPath();
             Files.createDirectories(tree.resolve("private"));
             Files.writeString(tree.resolve("private/original.md"), "# Original\n");
@@ -78,7 +88,12 @@ class McpProtocolIntegrationIT {
                     .setMessage("Synthetic MCP fixture")
                     .setAuthor("Test", "test@invalid")
                     .call();
-            seed.push().setRemote("origin").call();
+            seed.push()
+                    .setRemote("origin")
+                    .setRefSpecs(new RefSpec("refs/heads/main:refs/heads/main"))
+                    .call();
+            assertThat(remoteGit.getRepository().resolve("refs/heads/main"))
+                    .isEqualTo(seed.getRepository().resolve("HEAD"));
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
@@ -133,7 +148,9 @@ class McpProtocolIntegrationIT {
                 .doesNotContain("repo_exec");
         JsonNode original = result(call(key.token(), first, "get_file", Map.of("path", "private/original.md")));
         String base = original.path("commit").stringValue();
-        assertThat(original.path("source").stringValue()).isEqualTo("# Original\n");
+        assertThat(original.path("source").stringValue())
+                .withFailMessage("Authoritative file response: %s", original)
+                .isEqualTo("# Original\n");
         assertThat(original.path("revision").stringValue()).startsWith("sha256:");
         assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/missing.md")))
                         .path("expectedAbsence")
@@ -165,7 +182,9 @@ class McpProtocolIntegrationIT {
                 first,
                 "get_asset",
                 Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png", "commit", base)));
-        assertThat(image.path("isError").booleanValue()).isFalse();
+        assertThat(image.path("isError").booleanValue())
+                .withFailMessage("Exact image response: %s", image)
+                .isFalse();
         assertThat(image.path("content").get(1).path("type").stringValue()).isEqualTo("image");
         assertThat(Base64.getDecoder()
                         .decode(image.path("content").get(1).path("data").stringValue()))
@@ -176,8 +195,10 @@ class McpProtocolIntegrationIT {
                         "put_asset",
                         Map.of("operationKey", UUID.randomUUID().toString(), "base64", "AA=="))))
                 .isEqualTo("DENIED");
-        assertThat(error(call(key.token(), first, "repo_patch", Map.of("changes", List.of()))))
-                .isEqualTo("INVALID_INPUT");
+        JsonNode malformed = call(key.token(), first, "repo_patch", Map.of("changes", List.of()));
+        // SDK schema validation runs before the business callback and returns its own error text.
+        assertThat(malformed.path("isError").booleanValue()).isTrue();
+        assertThat(malformed.path("content").get(0).path("text").stringValue()).contains("baseCommit");
         var delete = HttpRequest.newBuilder(endpoint())
                 .header("Authorization", "Bearer " + key.token())
                 .header("Mcp-Session-Id", second)
