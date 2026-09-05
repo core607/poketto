@@ -19,7 +19,7 @@ val frontendInstall = tasks.register<Exec>("frontendInstall") {
     dependsOn(frontendRuntimeCheck)
     workingDir(frontendDirectory)
     environment("NEXT_TELEMETRY_DISABLED", "1")
-    inputs.files(frontendDirectory.file("package.json"), frontendDirectory.file("package-lock.json"))
+    inputs.files(frontendDirectory.file("package.json"), frontendDirectory.file("package-lock.json"), frontendDirectory.file(".npmrc"))
     outputs.dir(frontendDirectory.dir("node_modules"))
     commandLine(npmCommand + listOf("ci", "--ignore-scripts"))
 }

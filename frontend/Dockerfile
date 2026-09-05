@@ -3,7 +3,7 @@ FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733cee
 WORKDIR /src
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm install --global npm@12.0.2
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 COPY frontend/ ./
 RUN npm run build
