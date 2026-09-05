@@ -1,0 +1,72 @@
+name: poketto-acceptance
+
+services:
+  db:
+    image: postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+    environment:
+      POSTGRES_DB: acceptance
+      POSTGRES_USER: acceptance
+      POSTGRES_PASSWORD: "${POKETTO_ACCEPTANCE_PASSWORD:?Set a disposable acceptance password}"
+    volumes:
+      - database:/var/lib/postgresql/data
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U acceptance -d acceptance"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  app:
+    image: eclipse-temurin:26-jdk-noble@sha256:091b6640864939942cd9d7ddd16576f31112d5a56a595b566ce561d1c0e07c6b
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    pids_limit: 256
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/acceptance
+      SPRING_DATASOURCE_USERNAME: acceptance
+      SPRING_DATASOURCE_PASSWORD: "${POKETTO_ACCEPTANCE_PASSWORD}"
+      POKETTO_ACCEPTANCE_ROOT: /tmp/poketto-acceptance
+      POKETTO_ACCEPTANCE_PASSWORD: "${POKETTO_ACCEPTANCE_PASSWORD}"
+      POKETTO_ACCEPTANCE_ORIGIN: "${POKETTO_ACCEPTANCE_ORIGIN:-http://127.0.0.1:38180}"
+    volumes:
+      - ../build/acceptance/runtime:/runtime:ro
+      - application:/tmp
+    command: [java, -Xmx512m, -Djava.awt.headless=true, -cp, "/runtime/classes:/runtime/jars/*", io.github.core607.poketto.acceptance.AcceptanceApplication]
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        POKETTO_REVISION: "${POKETTO_ACCEPTANCE_REVISION:?Set the source revision}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    pids_limit: 128
+    tmpfs: [/tmp:size=32m]
+    environment:
+      POKETTO_API_BASE_URL: http://app:8080
+      POKETTO_PUBLIC_URL: "${POKETTO_ACCEPTANCE_ORIGIN:-http://127.0.0.1:38180}"
+
+  gateway:
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    ports:
+      - "127.0.0.1:${POKETTO_ACCEPTANCE_PORT:-38180}:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    tmpfs: [/tmp:size=16m, /config:size=16m, /data:size=16m]
+
+volumes:
+  database:
+  application:
