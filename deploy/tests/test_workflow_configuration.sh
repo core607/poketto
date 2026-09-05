@@ -20,5 +20,6 @@ grep -Fq 'FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}' "$workflo
 grep -Fq -- '--frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin' "$workflow"
 grep -Fq 'bash deploy/transfer.sh "${args[@]}" --pull' "$workflow"
 
-grep -Fq 'run: bash deploy/tests/validate_gateway.sh' "$workflow"
+grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
+grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'python-version: "3.12.14"' "$workflow"

@@ -21,7 +21,7 @@ There are no external users during development: rename and refactor freely; writ
 
 ## Commands
 
-Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon.
+Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. `check` requires the pinned frontend runtime; Linux executor tests additionally require Python 3.10+ with venv and pip support.
 
 | Command | Purpose |
 |---|---|
@@ -31,6 +31,8 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew linuxStorageTest` | On Windows, run required storage tests on a native Linux disk volume in Docker |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
 | `./gradlew deployScriptTests` | Run the deployment script tests against fake docker, curl, and ssh |
+| `./gradlew gatewayConfigCheck` | Validate the Caddy configuration using its pinned real container |
+| `./gradlew executorServiceTests` | Run required executor protocol and lifecycle tests on Linux; Windows uses Docker |
 | `./gradlew spotlessApply` | Rewrite Java sources into the canonical format |
 | `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |
 | `./gradlew check` | Run the complete local and CI verification suite |

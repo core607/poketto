@@ -50,9 +50,6 @@ jobs:
         with:
           python-version: "3.12.14"
 
-      - name: Validate pinned gateway configuration
-        run: bash deploy/tests/validate_gateway.sh
-
       - name: Verify
         run: ./gradlew check --no-daemon
 

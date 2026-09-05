@@ -171,6 +171,19 @@ val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
     )
 }
 
+val gatewayConfigCheck = tasks.register<Exec>("gatewayConfigCheck") {
+    group = "verification"
+    description = "Validates the deployed Caddy configuration using its pinned Docker image."
+    inputs.files("deploy/Caddyfile", "deploy/.env.example", "deploy/tests/validate_gateway.sh")
+    outputs.upToDateWhen { false }
+    val bash = gitBash()
+    commandLine(
+        bash?.absolutePath ?: "bash",
+        *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
+        layout.projectDirectory.file("deploy/tests/validate_gateway.sh").asFile.absolutePath.replace('\\', '/'),
+    )
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 26
@@ -186,10 +199,12 @@ tasks.withType<Test>().configureEach {
 
 apply(from = "gradle/repository-checks.gradle.kts")
 apply(from = "gradle/frontend.gradle.kts")
+apply(from = "gradle/executor-service.gradle.kts")
 
 tasks.check {
     dependsOn(integrationTest)
     dependsOn("repoCheck")
     dependsOn(deployScriptTests)
     dependsOn(linuxStorageTest)
+    dependsOn(gatewayConfigCheck)
 }
