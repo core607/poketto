@@ -61,7 +61,9 @@ exclude:
 设置私有的 `POKETTO_AUTH_INITIALIZATION_TOKEN` 以一次性创建 owner。浏览器在初始化或登录前读取 `/api/auth/csrf`，登录或退出后重新获取令牌。通过 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置精确的站点 origin。会话默认使用安全 Cookie；本地 HTTP 开发需显式设置 `POKETTO_SESSION_COOKIE_SECURE=false`。`/api/admin/repository` 下的认证入口提供文件树、文件读取、搜索和原子补丁。补丁携带基准提交，以及每个路径的 revision 或明确的不存在前置条件；冲突或结果不明确时必须重新读取后再决定是否重试。
 ## 部署
 
-每个通过校验的 `main` 提交都会发布 `ghcr.io/core607/poketto`，标签为 `sha-<commit>`。在主机上把 `deploy/compose.yaml`、`deploy/deploy.sh` 和填好的 `deploy/.env.example` 副本放进同一个部署目录，然后运行 `deploy.sh --app-image <镜像> --app-revision <提交>`；之后不带参数运行 `deploy.sh` 会按记录的固定版本重新部署。脚本会校验配置、版本固定、目录与磁盘空间，核对镜像的 revision 标签，只有 `/actuator/health` 回答 `UP` 才算成功。走这条路主机得能拉到镜像：私有的 GHCR 包需要先用只读 token 在主机上 `docker login ghcr.io`，或者把包设为公开。主机完全连不上 GHCR 时，`deploy/transfer.sh` 把镜像经 SSH 传过去并调用同一个入口。GitHub Actions 的自动部署默认关闭，直到配置了仓库变量 `POKETTO_DEPLOY_ENABLED` 和 `production` 环境；详见[持续交付笔记](notes/implemented/2026-09-03-continuous-delivery.md)。
+每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
+
+Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](notes/implemented/2026-09-05-blog-stack-delivery.md)。
 
 ## 授权
 
