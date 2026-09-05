@@ -21,6 +21,7 @@ export function Admin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("content");
+  const activeTab = identity?.role === "OWNER" ? tab : "content";
   const [dirty, setDirty] = useState(false);
   async function refresh() {
     setLoading(true);
@@ -43,6 +44,8 @@ export function Admin() {
     try {
       await api("/api/auth/logout", { method: "POST" });
       setIdentity(null);
+      setTab("content");
+      setDirty(false);
     } catch (error) {
       setError(message(error));
     }
@@ -82,7 +85,7 @@ export function Admin() {
       )}
       <nav className="admin-tabs" aria-label="管理功能">
         <button
-          aria-pressed={tab === "content"}
+          aria-pressed={activeTab === "content"}
           onClick={() => setTab("content")}
         >
           内容
@@ -90,13 +93,13 @@ export function Admin() {
         {identity.role === "OWNER" && (
           <>
             <button
-              aria-pressed={tab === "members"}
+              aria-pressed={activeTab === "members"}
               onClick={() => setTab("members")}
             >
               成员与邀请
             </button>
             <button
-              aria-pressed={tab === "keys"}
+              aria-pressed={activeTab === "keys"}
               onClick={() => setTab("keys")}
             >
               访问密钥
@@ -104,11 +107,11 @@ export function Admin() {
           </>
         )}
       </nav>
-      <div hidden={tab !== "content"}>
+      <div hidden={activeTab !== "content"}>
         <Editor identity={identity} onDirtyChange={setDirty} />
       </div>
-      {tab === "members" && <Members />}
-      {tab === "keys" && <Keys identity={identity} />}
+      {activeTab === "members" && <Members />}
+      {activeTab === "keys" && <Keys identity={identity} />}
     </div>
   );
 }
