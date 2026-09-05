@@ -50,7 +50,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 
 - Agent instructions and skills are English-only. The requirements note and public README retain .zh.md counterparts; other notes are English by default and do not require a Chinese counterpart.
 - Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
-- Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report the uncovered claim and block only the action that requires it; continue independent authorized work without claiming the check passed.
+- Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report it and block actions and completion claims that depend on it; continue only authorized work whose outcome does not depend on that check, without claiming the check passed.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
 - Treat main as protected and never push directly; changes go through short-lived branches and PRs. Restore platform enforcement before the repository becomes public.
 - No credentials in the repository, ever. `.env` is the first line of .gitignore.
