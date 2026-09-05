@@ -6,7 +6,9 @@ ROOT="$PWD/root"
 REVISION="0123456789abcdef0123456789abcdef01234567"
 DIGEST_IMAGE="ghcr.io/core607/poketto@sha256:1111111111111111111111111111111111111111111111111111111111111111"
 TAG_IMAGE="ghcr.io/core607/poketto:sha-$REVISION"
-DB_IMAGE="postgres:17@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+# Exercise the database reference operators receive, including its full tag and digest.
+DB_IMAGE="$(sed -n 's/^POKETTO_DB_IMAGE=//p' "$DEPLOY_DIR/.env.example" | tr -d '\r')"
+[ -n "$DB_IMAGE" ] || { echo "deployment example has no database image"; exit 1; }
 
 export POKETTO_DOCKER=docker POKETTO_CURL=curl POKETTO_SSH=ssh
 export POKETTO_HEALTH_INTERVAL=0 POKETTO_MIN_FREE_MB=1 POKETTO_APP_UID="$(id -u)"
