@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/browser-api";
-import type { PatchResult, RepositoryFile, RepositoryTree } from "../lib/types";
+import type { RepositoryFile, RepositoryTree } from "../lib/types";
+import { saveRepositoryFile } from "../lib/repository-write";
 import { Markdown } from "./markdown";
 import { message, type Identity } from "./admin";
 import { AssetPicker } from "./asset-picker";
@@ -139,33 +140,7 @@ export function Editor({
     setError("");
     setConflict(false);
     try {
-      const changes = [
-        {
-          path: file.path,
-          expectedAbsence: file.expectedAbsence,
-          expectedRevision: file.revision,
-          content: remove || target !== file.path ? null : source,
-        },
-      ];
-      if (target !== file.path) {
-        const destination = await api<RepositoryFile>(
-          "/api/admin/repository/file?" + new URLSearchParams({ path: target }),
-        );
-        if (!destination.expectedAbsence)
-          throw new ApiError(409, "目标路径已经存在，请换一个名字。");
-        changes.push({
-          path: target,
-          expectedAbsence: true,
-          expectedRevision: null,
-          content: source,
-        });
-      }
-      const result = await api<PatchResult>("/api/admin/repository/patch", {
-        method: "POST",
-        body: { baseCommit: file.commit, changes },
-      });
-      if (!result.committed)
-        throw new ApiError(503, "仓库没有确认保存，请重新读取后核对。");
+      const result = await saveRepositoryFile(file, target, source, remove);
       if (remove) {
         setFile(null);
         setSource("");
@@ -182,11 +157,13 @@ export function Editor({
         setPath(target);
       }
       setNotice(
-        result.snapshotUpdated
-          ? remove
-            ? "文件已删除。"
-            : "已保存。"
-          : "文件已保存，公开页面暂时无法更新。请稍后查看。",
+        !result.committed
+          ? "内容没有变化，无需创建新版本。"
+          : result.snapshotUpdated
+            ? remove
+              ? "文件已删除。"
+              : "已保存。"
+            : "文件已保存，公开页面暂时无法更新。请稍后查看。",
       );
       try {
         await reloadTree();
@@ -438,7 +415,7 @@ export function Editor({
                           event.key === "s"
                         ) {
                           event.preventDefault();
-                          if (writable && !busy) void save(path);
+                          if (writable && !busy && dirty) void save(path);
                         }
                       }}
                       spellCheck={false}
