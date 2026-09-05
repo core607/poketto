@@ -24,7 +24,24 @@ export default async function Article({
   params: Promise<{ slug?: string[] }>;
 }) {
   const { slug = [] } = await params;
-  const route = "/" + slug.join("/");
+  // Next's page catch-all segments are URI-encoded; metadata params are decoded.
+  let segments: string[];
+  try {
+    segments = slug.map(decodeURIComponent);
+  } catch {
+    notFound();
+  }
+  if (
+    segments.some(
+      (segment) =>
+        !segment ||
+        segment === "." ||
+        segment === ".." ||
+        /[/\\\u0000-\u001f\u007f]/.test(segment),
+    )
+  )
+    notFound();
+  const route = "/" + segments.join("/");
   const value = await article(route).catch((error) => {
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
