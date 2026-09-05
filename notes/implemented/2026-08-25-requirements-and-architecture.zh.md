@@ -2,7 +2,7 @@
 
 Date: 2026-08-25
 
-[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、关系型身份和本地托管存储。源码还包含浏览器认证、Next.js 博客与管理端、精确版本图片交付及 Spring AI MCP 入口。[隔离验收入口](../../acceptance/README.md)与[真实客户端流程](../../acceptance/clients/README.md)区分了这些实现与尚未完成的浏览器、数据库集成和最终安装验收。代码存在不代表已经可以日常使用。
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、关系型身份和本地托管存储。源码还包含浏览器认证、Next.js 博客与管理端、精确版本图片交付及 Spring AI MCP 入口。[隔离验收入口](../../acceptance/README.md)与[真实客户端流程](../../acceptance/clients/README.md)分别定义了可复现的本地检查，以及完整浏览器流程、五工具客户端流程和最终 HTTPS 安装验收。代码存在不代表已经可以日常使用。
 
 [第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及五个仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
 
