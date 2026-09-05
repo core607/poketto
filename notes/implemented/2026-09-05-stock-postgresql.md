@@ -29,4 +29,6 @@ The same-topic audit retains the [development baseline](2026-08-26-development-b
 
 The implementation slice passed `spotlessApply check --max-workers=1`: 105 unit/module tests, five real PostgreSQL integration tests, deployment script suites, repository validation, and formatting. `git diff --check` passed. The image digest was checked against Docker's official PostgreSQL image metadata and registry manifest.
 
+The [CI verification log for b456974](https://github.com/core607/poketto/actions/runs/33934425237/job/101219454286) independently records `test`, `integrationTest`, and `deployScriptTests` within the successful `check` run. Local reproduction requires Java 26 and Docker, then `./gradlew check`; the deployment fixtures read the database pin directly from `deploy/.env.example`.
+
 A cold test run pulls a prebuilt official image rather than compiling SCWS and zhparser. A later persistent search design would require a new decision and evidence; this change does not reserve a database projection or tokenizer for it.
