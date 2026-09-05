@@ -298,12 +298,225 @@ class WorkerSocketTests {
         return principal;
     }
 
+    @Test
+    void workerLeaseAndLifecycleReasonsMapToExplicitPortResults() throws Exception {
+        try (var peer = new Peer();
+                var executor = executor(mock(AuthService.class), exports(), peer)) {
+            for (String reason : List.of("session_closed", "client_shutdown", "lease_expired")) {
+                peer.terminationReason = reason;
+                var result = executor.execute(
+                        principal(),
+                        WORKSPACE,
+                        reason,
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(1),
+                        new Cancellation());
+                assertThat(result.terminationReason())
+                        .isEqualTo(
+                                reason.equals("lease_expired")
+                                        ? io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason
+                                                .SANDBOX_FAILURE
+                                        : io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason.CANCELLED);
+            }
+            assertThat(peer.operations("CLOSE")).hasSize(3);
+        }
+    }
+
+    @Test
+    void confirmedCloseReleasesAdmissionButOldSessionCannotReopenWithoutDelete() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(AuthService.class),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1))) {
+            peer.terminationReason = "cancelled";
+            executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "closed-A",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            peer.terminationReason = "normal";
+            assertThat(executor.execute(
+                                    principal,
+                                    WORKSPACE,
+                                    "fresh-B",
+                                    Optional.empty(),
+                                    "pwd",
+                                    Duration.ofSeconds(1),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "closed-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(2);
+        }
+    }
+
+    @Test
+    void failureBeforeOpenReleasesAdmissionForAnotherClient() throws Exception {
+        var exports = exports();
+        when(exports.create(any(), any(), any()))
+                .thenThrow(new IllegalStateException("synthetic export failure"))
+                .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(AuthService.class),
+                        exports,
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1))) {
+            assertThatThrownBy(() -> executor.execute(
+                            principal(),
+                            WORKSPACE,
+                            "failed-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(executor.execute(
+                                    principal(),
+                                    WORKSPACE,
+                                    "fresh-B",
+                                    Optional.empty(),
+                                    "pwd",
+                                    Duration.ofSeconds(1),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThat(peer.operations("OPEN")).hasSize(1);
+        }
+    }
+
+    @Test
+    void unconfirmedClosingAndDeleteRetainWorkerAdmission() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(AuthService.class),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
+            executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "closing-A",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            peer.closeForever = true;
+            assertThatThrownBy(() -> executor.closed(new io.github.core607.poketto.mcp.McpSessionClosed(
+                            WORKSPACE,
+                            principal.subjectId(),
+                            "closing-A",
+                            io.github.core607.poketto.mcp.McpSessionClosed.Reason.CLIENT_DELETE)))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "fresh-B",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(1);
+        }
+    }
+
+    @Test
+    void missingCloseReplyDoesNotReleaseAdmissionEvenAfterClientDelete() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(AuthService.class),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
+            peer.terminationReason = "cancelled";
+            peer.dropClose = true;
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "unknown-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> executor.closed(new io.github.core607.poketto.mcp.McpSessionClosed(
+                            WORKSPACE,
+                            principal.subjectId(),
+                            "unknown-A",
+                            io.github.core607.poketto.mcp.McpSessionClosed.Reason.CLIENT_DELETE)))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "fresh-B",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(1);
+        }
+    }
+
     private static RepositorySnapshotExports exports() {
         var exports = mock(RepositorySnapshotExports.class);
         when(exports.create(any(), any(), any()))
                 .thenAnswer(
                         call -> new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
         return exports;
+    }
+
+    @Test
+    void replacementDecodedOutputRetainsTheFullBoundedWorkerResult() throws Exception {
+        try (var peer = new Peer();
+                var executor = executor(mock(AuthService.class), exports(), peer)) {
+            peer.stdout = "\uFFFD".repeat(65536);
+            var result = executor.execute(
+                    principal(),
+                    WORKSPACE,
+                    "replacement",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            assertThat(result.stdout()).isEqualTo(peer.stdout);
+            peer.stdout += "\uFFFD";
+            assertThatThrownBy(() -> executor.execute(
+                            principal(),
+                            WORKSPACE,
+                            "too-large",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
     }
 
     private static final class Cancellation implements ExecutionCancellation {
@@ -358,10 +571,14 @@ class WorkerSocketTests {
         private final CountDownLatch renewEntered = new CountDownLatch(1);
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
+        private volatile boolean closeForever;
+        private volatile boolean dropClose;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
+        private volatile String terminationReason = "normal";
+        private volatile String stdout = "fixture result";
 
         Peer() throws Exception {
             Path directory = Path.of(".gradle", "uds").toAbsolutePath();
@@ -482,7 +699,7 @@ class WorkerSocketTests {
                                     "exitCode",
                                     0,
                                     "stdout",
-                                    "fixture result",
+                                    stdout,
                                     "stderr",
                                     "",
                                     "stdoutTruncated",
@@ -492,13 +709,15 @@ class WorkerSocketTests {
                                     "timedOut",
                                     false,
                                     "terminationReason",
-                                    "normal"));
+                                    terminationReason));
                 }
                 case "CLOSE" -> {
-                    String state =
-                            closeNeedsPolling && !states.getOrDefault(lease, "").equals("CLOSING")
-                                    ? "CLOSING"
-                                    : "CLOSED";
+                    if (dropClose) return null;
+                    String state = closeForever
+                                    || closeNeedsPolling
+                                            && !states.getOrDefault(lease, "").equals("CLOSING")
+                            ? "CLOSING"
+                            : "CLOSED";
                     states.put(lease, state);
                     response.put("state", state);
                     if (state.equals("CLOSED")) openRelease.countDown();

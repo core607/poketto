@@ -28,7 +28,7 @@ class ExecutorConfiguration {
             ObjectMapper json,
             @Value("${poketto.executor.socket}") Path socket,
             @Value("${poketto.executor.signing-key}") Path key,
-            @Value("${poketto.executor.max-sessions:8}") int maxSessions,
+            @Value("${poketto.executor.max-sessions:2}") int maxSessions,
             @Value("${poketto.executor.open-timeout-seconds:60}") long openSeconds,
             @Value("${poketto.executor.close-timeout-seconds:15}") long closeSeconds) {
         if (!System.getProperty("os.name").equalsIgnoreCase("Linux"))

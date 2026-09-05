@@ -102,7 +102,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (closed) throw new WorkerUnavailableException();
                 session = sessions.get(key);
                 if (session == null) {
-                    if (sessions.size() >= maxSessions) throw new WorkerUnavailableException();
+                    if (sessions.size() >= 1024
+                            || sessions.values().stream()
+                                            .filter(value -> !value.capacityReleased)
+                                            .count()
+                                    >= maxSessions) throw new WorkerUnavailableException();
                     session = new Session(key, principal);
                     sessions.put(key, session);
                 }
@@ -268,6 +272,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         synchronized (session) {
             if (!session.stopping.compareAndSet(false, true)) return session.stopped;
             if (!session.openAttempted) {
+                releaseCapacity(session);
                 session.stopped.complete(null);
                 return session.stopped;
             }
@@ -276,6 +281,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             controls.execute(() -> {
                 try {
                     closeWorker(session, reason);
+                    releaseCapacity(session);
                     session.stopped.complete(null);
                 } catch (RuntimeException exception) {
                     session.stopped.completeExceptionally(exception);
@@ -297,6 +303,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    private synchronized void releaseCapacity(Session session) {
+        session.capacityReleased = true;
+        if (session.detached) sessions.remove(session.key, session);
+    }
+
     private void closeWorker(Session session, String reason) {
         long deadline = System.nanoTime() + closeTimeout.toNanos();
         while (System.nanoTime() < deadline) {
@@ -316,7 +327,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         SessionKey key = new SessionKey(event.keyId(), event.workspaceId(), hash(event.sessionId()));
         Session session;
         synchronized (this) {
-            session = sessions.remove(key);
+            session = sessions.get(key);
+            if (session != null) {
+                session.detached = true;
+                if (session.capacityReleased) sessions.remove(key, session);
+            }
         }
         if (session != null) stopAndAwait(session, "session_closed");
     }
@@ -383,6 +398,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private static void requireOk(JsonNode response, Session session) {
+        if (!response.path("ok").booleanValue()) {
+            String code = response.path("code").asString("INVALID_RESPONSE");
+            log.warn(
+                    "Isolated worker rejected an operation: {}",
+                    code.matches("[A-Z_]{1,64}") ? code : "INVALID_RESPONSE");
+        }
         if (!response.path("ok").booleanValue()
                 || !response.path("leaseId").asString("").equals(session.leaseId.toString())
                 || (response.hasNonNull("commit")
@@ -398,13 +419,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || stdout == null
                     || stderr == null
                     || stdout.getBytes(StandardCharsets.UTF_8).length + stderr.getBytes(StandardCharsets.UTF_8).length
-                            > 128 * 1024
+                            > 3 * 64 * 1024
                     || !result.path("exitCode").isIntegralNumber()
                     || !result.path("stdoutTruncated").isBoolean()
                     || !result.path("stderrTruncated").isBoolean()
                     || !result.path("timedOut").isBoolean()) throw new WorkerUnavailableException();
-            TerminationReason reason = TerminationReason.valueOf(
-                    result.path("terminationReason").stringValue().toUpperCase(Locale.ROOT));
+            TerminationReason reason =
+                    switch (result.path("terminationReason").stringValue()) {
+                        case "session_closed", "client_shutdown" -> TerminationReason.CANCELLED;
+                        case "lease_expired" -> TerminationReason.SANDBOX_FAILURE;
+                        default ->
+                            TerminationReason.valueOf(result.path("terminationReason")
+                                    .stringValue()
+                                    .toUpperCase(Locale.ROOT));
+                    };
             boolean timedOut = result.path("timedOut").booleanValue();
             if (timedOut != (reason == TerminationReason.TIMEOUT)) throw new WorkerUnavailableException();
             return new ExecutionResult(
@@ -453,6 +481,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile String commit;
         private volatile boolean openAttempted;
         private volatile boolean ready;
+        private volatile boolean capacityReleased;
+        private volatile boolean detached;
         private volatile long nextRenew;
 
         private Session(SessionKey key, AuthPrincipal principal) {
