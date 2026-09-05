@@ -173,6 +173,7 @@ tasks.withType<Test>().configureEach {
 }
 
 apply(from = "gradle/repository-checks.gradle.kts")
+apply(from = "gradle/frontend.gradle.kts")
 
 tasks.check {
     dependsOn(integrationTest)
