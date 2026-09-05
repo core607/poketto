@@ -1,7 +1,10 @@
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import ReactMarkdown from "react-markdown";
+import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { articleHref, safeImage, safeLink } from "../lib/format";
+
+const HEADING_PREFIX = "poketto-heading-";
 
 export function Markdown({
   source,
@@ -31,14 +34,28 @@ export function Markdown({
       <ReactMarkdown
         skipHtml
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeSlug, { prefix: HEADING_PREFIX }]]}
         urlTransform={(value) => value}
         components={{
-          a({ href = "", children }) {
+          a({ href = "", children, node }) {
+            const footnote =
+              node?.properties.dataFootnoteRef !== undefined ||
+              node?.properties.dataFootnoteBackref !== undefined;
+            const footnoteId =
+              footnote &&
+              typeof node?.properties.id === "string" &&
+              node.properties.id.startsWith("user-content-")
+                ? node.properties.id
+                : undefined;
             const target = resolvedLinks.has(href)
               ? resolvedLinks.get(href)
-              : safeLink(href);
+              : safeLink(
+                  href.startsWith("#") && !footnote
+                    ? headingFragment(href)
+                    : href,
+                );
             return target ? (
-              <a href={target} rel="noreferrer noopener">
+              <a href={target} id={footnoteId} rel="noreferrer noopener">
                 {children}
               </a>
             ) : (
@@ -72,8 +89,15 @@ export function Markdown({
 }
 
 function resolvedLink(authored: string, target: string, preview: boolean) {
-  if (target.startsWith("#") || (preview && target.startsWith("/admin?")))
-    return safeLink(normalizeUri(target));
+  if (target.startsWith("#")) return safeLink(headingFragment(target));
+  if (preview && target.startsWith("/admin?")) {
+    const hash = target.indexOf("#");
+    return safeLink(
+      hash < 0
+        ? target
+        : target.slice(0, hash) + headingFragment(target.slice(hash)),
+    );
+  }
   if (!target.startsWith("/") || target.startsWith("//")) return undefined;
   // Only an authored fragment is separate from the raw repository route. A file
   // name can itself contain a hash or percent sign and must still be encoded.
@@ -84,6 +108,12 @@ function resolvedLink(authored: string, target: string, preview: boolean) {
       ? target.slice(0, -fragment.length)
       : target;
   return safeLink(
-    articleHref(route) + (route !== target ? normalizeUri(fragment) : ""),
+    articleHref(route) + (route !== target ? headingFragment(fragment) : ""),
   );
+}
+
+function headingFragment(fragment: string) {
+  return fragment === "#"
+    ? fragment
+    : "#" + HEADING_PREFIX + normalizeUri(fragment.slice(1));
 }

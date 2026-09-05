@@ -15,7 +15,7 @@ test("raw HTML and script links cannot enter rendered Markdown", () => {
       }
     />,
   );
-  assert.match(html, /<h1>标题<\/h1>/);
+  assert.match(html, /<h1 id="poketto-heading-标题">标题<\/h1>/);
   assert.doesNotMatch(html, /<script|onerror|href="javascript:/);
   assert.match(html, /href="https:\/\/example.test"/);
 });
@@ -148,15 +148,19 @@ test("Chinese and encoded document links preserve route bytes and authored fragm
     ["中文.md", "/中文", "/read/%E4%B8%AD%E6%96%87"],
     ["file one.md", "/file one", "/read/file%20one"],
     ["file%20one.md", "/file one", "/read/file%20one"],
-    ["#section", "#section", "#section"],
-    ["#正文", "#正文", "#%E6%AD%A3%E6%96%87"],
-    ["other.md#section", "/other#section", "/read/other#section"],
+    ["#section", "#section", "#poketto-heading-section"],
+    ["#正文", "#正文", "#poketto-heading-%E6%AD%A3%E6%96%87"],
+    [
+      "other.md#section",
+      "/other#section",
+      "/read/other#poketto-heading-section",
+    ],
     [
       "中文.md#正文",
       "/中文#正文",
-      "/read/%E4%B8%AD%E6%96%87#%E6%AD%A3%E6%96%87",
+      "/read/%E4%B8%AD%E6%96%87#poketto-heading-%E6%AD%A3%E6%96%87",
     ],
-    ["a%23b.md#part", "/a#b#part", "/read/a%23b#part"],
+    ["a%23b.md#part", "/a#b#part", "/read/a%23b#poketto-heading-part"],
     ["a%23b.md", "/a#b", "/read/a%23b"],
     ["100%25.md", "/100%", "/read/100%25"],
   ]) {
@@ -182,7 +186,7 @@ test("normalized private previews still require the authenticated image and edit
   assert.match(html, /src="\/api\/admin\/assets\/images\/verified"/);
   assert.match(
     html,
-    /href="\/admin\?path=private%2F%E7%A7%81%E6%9C%89.md#%E6%AD%A3%E6%96%87"/,
+    /href="\/admin\?path=private%2F%E7%A7%81%E6%9C%89.md#poketto-heading-%E6%AD%A3%E6%96%87"/,
   );
   assert.doesNotMatch(
     renderToStaticMarkup(<Markdown source={source} images={images} />),
@@ -202,4 +206,72 @@ test("normalizing destinations does not admit unsafe schemes or unresolved image
     />,
   );
   assert.doesNotMatch(unsafeMapping, /href=/);
+});
+
+test("heading IDs match same-page fragments including Chinese and repeated headings", () => {
+  const source =
+    "# A **small** note\n\n## 中文标题\n\n## 中文标题\n\n[one](#a-small-note) [two](#中文标题) [three](#中文标题-1)";
+  const links = {
+    "#a-small-note": "#a-small-note",
+    "#中文标题": "#中文标题",
+    "#中文标题-1": "#中文标题-1",
+  };
+  for (const preview of [false, true]) {
+    const html = renderToStaticMarkup(
+      <Markdown source={source} links={links} preview={preview} />,
+    );
+    const ids = [...html.matchAll(/<h[1-6] id="([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    const anchors = [...html.matchAll(/href="#([^"]+)"/g)].map((match) =>
+      decodeURIComponent(match[1]),
+    );
+    assert.deepEqual(ids, [
+      "poketto-heading-a-small-note",
+      "poketto-heading-中文标题",
+      "poketto-heading-中文标题-1",
+    ]);
+    assert.deepEqual(anchors, ids);
+    assert.equal(new Set(ids).size, ids.length);
+  }
+});
+
+test("cross-page fragment points at the destination heading without changing external fragments", () => {
+  const destination = renderToStaticMarkup(<Markdown source="## 中文标题" />);
+  const source = renderToStaticMarkup(
+    <Markdown
+      source="[next](文档.md#中文标题) [external](https://example.test/#中文标题)"
+      links={{ "文档.md#中文标题": "/文档#中文标题" }}
+    />,
+  );
+  const internal = source.match(/href="(\/read\/[^"]+)"/)![1];
+  const destinationId = destination.match(/id="([^"]+)"/)![1];
+  assert.equal(decodeURIComponent(internal.split("#")[1]), destinationId);
+  assert.match(
+    source,
+    /href="https:\/\/example.test\/#%E4%B8%AD%E6%96%87%E6%A0%87%E9%A2%98"/,
+  );
+});
+
+test("generated heading IDs cannot shadow platform names and raw HTML remains disabled", () => {
+  const html = renderToStaticMarkup(
+    <Markdown
+      source={
+        '# location\n\n# __proto__\n\n# constructor\n\n<div id="location">raw</div>\n\n[heading](#location)'
+      }
+    />,
+  );
+  assert.doesNotMatch(html, /id="(?:location|__proto__|constructor)"|<div id=/);
+  assert.match(html, /id="poketto-heading-location"/);
+  assert.match(html, /href="#poketto-heading-location"/);
+});
+
+test("GFM generated footnote targets keep their own namespace", () => {
+  const html = renderToStaticMarkup(
+    <Markdown source={"A note[^1].\n\n[^1]: Footnote."} />,
+  );
+  assert.match(html, /href="#user-content-fn-1"/);
+  assert.match(html, /id="user-content-fnref-1"/);
+  assert.match(html, /href="#user-content-fnref-1"/);
+  assert.doesNotMatch(html, /href="#poketto-heading-user-content-fn/);
 });
