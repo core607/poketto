@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -11,10 +12,12 @@ import java.util.List;
 final class PublicDocuments {
     private final PublicContentSnapshots snapshots;
     private final WorkspaceCatalog workspaces;
+    private final AssetService assets;
 
-    PublicDocuments(PublicContentSnapshots snapshots, WorkspaceCatalog workspaces) {
+    PublicDocuments(PublicContentSnapshots snapshots, WorkspaceCatalog workspaces, AssetService assets) {
         this.snapshots = snapshots;
         this.workspaces = workspaces;
+        this.assets = assets;
     }
 
     PublicContentSnapshot snapshot() {
@@ -55,12 +58,9 @@ final class PublicDocuments {
     }
 
     PublicDocument find(String route) {
-        PublicContentSnapshot snapshot = snapshot();
         if (route.length() > 256 || !route.startsWith("/")) throw notFound();
-        return snapshot.articles().stream()
-                .filter(article -> article.route().equals(route))
-                .findFirst()
-                .map(article -> PublicDocument.of(article, snapshot))
+        return assets.publicDocument(workspaces.defaultWorkspace().id(), route)
+                .map(value -> PublicDocument.of(value.article(), value.snapshot(), value.media()))
                 .orElseThrow(PublicDocuments::notFound);
     }
 

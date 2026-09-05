@@ -37,6 +37,7 @@ val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.commonmark:commonmark:0.30.0")
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
     implementation("org.yaml:snakeyaml")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")

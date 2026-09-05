@@ -8,4 +8,7 @@ public interface PublicContentSnapshots {
     PublicContentSnapshot refresh(WorkspaceId workspaceId);
     /** Never fetches. Throws ContentRepositoryException when absent, expired, or publication is invalid. */
     PublicContentSnapshot current(WorkspaceId workspaceId);
+
+    /** Executes against current publication while holding the same workspace lock as installation. Never fetches. */
+    <T> T withCurrent(WorkspaceId workspaceId, java.util.function.Function<PublicContentSnapshot, T> action);
 }

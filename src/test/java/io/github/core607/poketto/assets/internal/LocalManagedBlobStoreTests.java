@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
@@ -45,6 +46,26 @@ class LocalManagedBlobStoreTests {
             assertThat(restarted.read(workspace, asset.reference()).bytes()).isEqualTo(original);
             assertThat(asset.reference().toString()).startsWith("managed:").doesNotContain(temp.toString());
         }
+    }
+
+    @Test
+    void listsOnlyAcknowledgedUploadsWithStableBoundedPagination() throws Exception {
+        Path root = temp.resolve("originals");
+        var store = ManagedBlobStore.local(root);
+        var workspace = WorkspaceId.random();
+        var first = store.upload(workspace, KEY, new ByteArrayInputStream(image("png")));
+        var second = store.upload(workspace, KEY + "-second", new ByteArrayInputStream(image("gif")));
+        store.upload(workspace, KEY, new ByteArrayInputStream(image("png")));
+        Files.createDirectory(root.resolve(workspace.toString())
+                .resolve("objects")
+                .resolve(UUID.randomUUID().toString()));
+        var all = store.list(workspace, 0, 100);
+        assertThat(all.total()).isEqualTo(2);
+        assertThat(all.items()).containsExactlyInAnyOrder(first, second);
+        assertThat(store.list(workspace, 1, 1).items())
+                .containsExactly(all.items().get(1));
+        assertThat(store.list(WorkspaceId.random(), 0, 100).items()).isEmpty();
+        assertThatThrownBy(() -> store.list(workspace, 0, 101)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

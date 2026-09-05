@@ -92,6 +92,11 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         return snapshot;
     }
 
+    @Override
+    public <T> T withCurrent(WorkspaceId workspaceId, java.util.function.Function<PublicContentSnapshot, T> action) {
+        return authority.readCache(workspaceId, ignored -> action.apply(current(workspaceId)));
+    }
+
     private PublicContentSnapshot restore(WorkspaceId workspaceId, RepositoryAuthority.Snapshot cache) {
         try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspaceId)) {
             Path marker = repository.getDirectory().toPath().resolve(MARKER);

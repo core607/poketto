@@ -6,6 +6,7 @@ import static java.nio.file.StandardOpenOption.*;
 
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ManagedAsset;
+import io.github.core607.poketto.assets.ManagedAssetPage;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.assets.ManagedImage;
@@ -166,6 +167,35 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                     || !hash(bytes).equals(reference.revision())
                     || !ImagePolicy.validate(bytes).equals(asset.mediaType())) throw unavailable();
             return new ManagedImage(asset, bytes);
+        } catch (IOException exception) {
+            throw unavailable();
+        }
+    }
+
+    @Override
+    public ManagedAssetPage list(WorkspaceId workspace, int offset, int limit) {
+        Objects.requireNonNull(workspace, "workspace is required");
+        if (offset < 0 || offset > 10_000 || limit < 1 || limit > 100)
+            throw new IllegalArgumentException("asset page exceeds its bounds");
+        Path operations = root.resolve(workspace.toString()).resolve("operations");
+        try {
+            checkDirectory(root);
+            if (!Files.exists(operations, NOFOLLOW_LINKS))
+                return new ManagedAssetPage(java.util.List.of(), 0, offset, limit);
+            checkDirectory(operations);
+            java.util.List<ManagedAsset> assets = new java.util.ArrayList<>();
+            int visited = 0;
+            try (var entries = Files.newDirectoryStream(operations)) {
+                for (Path entry : entries) {
+                    if (++visited > 10_000) throw unavailable();
+                    if (!entry.getFileName().toString().matches("[0-9a-f]{64}")) continue;
+                    assets.add(metadata(entry));
+                }
+            }
+            assets.sort(
+                    java.util.Comparator.comparing(asset -> asset.reference().assetId()));
+            return new ManagedAssetPage(
+                    assets.stream().skip(offset).limit(limit).toList(), assets.size(), offset, limit);
         } catch (IOException exception) {
             throw unavailable();
         }

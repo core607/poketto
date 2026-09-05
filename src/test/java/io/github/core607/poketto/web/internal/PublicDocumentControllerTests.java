@@ -187,6 +187,11 @@ class PublicDocumentControllerTests {
                                     VERIFIED,
                                     false)));
         }
+
+        @Override
+        public <T> T withCurrent(WorkspaceId workspace, java.util.function.Function<PublicContentSnapshot, T> action) {
+            return action.apply(current(workspace));
+        }
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -213,7 +218,21 @@ class PublicDocumentControllerTests {
 
         @Bean
         PublicDocuments publicDocuments(FakeSnapshots snapshots, WorkspaceCatalog workspaces) {
-            return new PublicDocuments(snapshots, workspaces);
+            var assets = new io.github.core607.poketto.assets.AssetService(
+                    org.mockito.Mockito.mock(io.github.core607.poketto.auth.AuthService.class),
+                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryContentReader.class),
+                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryBlobReader.class),
+                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMarkdownInspector.class),
+                    snapshots,
+                    () -> {
+                        throw new IllegalStateException("no managed fixture");
+                    },
+                    java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "unused-public-images")
+                            .toAbsolutePath(),
+                    16L * 1024 * 1024,
+                    128,
+                    java.time.Clock.fixed(VERIFIED, java.time.ZoneOffset.UTC));
+            return new PublicDocuments(snapshots, workspaces, assets);
         }
     }
 }

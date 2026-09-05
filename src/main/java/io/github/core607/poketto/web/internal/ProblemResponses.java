@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentNotFoundException;
@@ -26,6 +27,19 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 class ProblemResponses extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ProblemResponses.class);
+
+    @ExceptionHandler(AssetStorageException.class)
+    ProblemDetail assetFailure(AssetStorageException exception) {
+        HttpStatus status =
+                switch (exception.reason()) {
+                    case NOT_FOUND -> HttpStatus.NOT_FOUND;
+                    case IDEMPOTENCY_CONFLICT -> HttpStatus.CONFLICT;
+                    case TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
+                    case INVALID_IMAGE -> HttpStatus.BAD_REQUEST;
+                    case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+                };
+        return problem(status, "Image unavailable", exception.getMessage());
+    }
 
     @ExceptionHandler({PublicResourceNotFoundException.class, DocumentNotFoundException.class})
     ProblemDetail notFound(RuntimeException exception) {

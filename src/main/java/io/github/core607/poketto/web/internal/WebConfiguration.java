@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -11,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 class WebConfiguration {
 
     @Bean
-    PublicDocuments publicDocuments(PublicContentSnapshots store, WorkspaceCatalog workspaces) {
-        return new PublicDocuments(store, workspaces);
+    PublicDocuments publicDocuments(PublicContentSnapshots store, WorkspaceCatalog workspaces, AssetService assets) {
+        return new PublicDocuments(store, workspaces, assets);
     }
 }

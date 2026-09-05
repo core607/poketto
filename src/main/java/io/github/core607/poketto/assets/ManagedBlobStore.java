@@ -26,4 +26,7 @@ public interface ManagedBlobStore {
 
     /** Reads a bounded exact revision. Wrong workspace, identity, or revision returns NOT_FOUND. */
     ManagedImage read(WorkspaceId workspace, ManagedAssetReference reference);
+
+    /** Lists only acknowledged uploads; scans at most 10,000 operation records and returns at most 100 items. */
+    ManagedAssetPage list(WorkspaceId workspace, int offset, int limit);
 }
