@@ -17,7 +17,7 @@ services:
       retries: 30
 
   app:
-    image: eclipse-temurin:26-jdk-noble@sha256:091b6640864939942cd9d7ddd16576f31112d5a56a595b566ce561d1c0e07c6b
+    image: eclipse-temurin:26-jdk@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc
     user: "65534:65534"
     read_only: true
     cap_drop: [ALL]
