@@ -196,7 +196,10 @@ class Service:
                 for s in closing:
                     self.cancel(s, 'revoked')
                 return {'ok': True, 'state': 'CLOSING' if any(s.state != 'CLOSED' for s in closing) else 'CLOSED', 'closedCount': len(closing)}
-            self.authorized(p)
+            # A signed identity-matched release never grants execution authority. Revocation
+            # must not prevent the application from confirming that cleanup reached CLOSED.
+            if op != 'CLOSE':
+                self.authorized(p)
             s = self.sessions.get(p['leaseId'])
             if op == 'OPEN':
                 if p['leaseId'] in self.closed_leases:
@@ -281,7 +284,8 @@ class Service:
     def cancel(self, s, reason):
         if s.state == 'CLOSED':
             return
-        s.reason = reason
+        if not s.cancelled.is_set():
+            s.reason = reason
         s.state = 'CLOSING'
         s.cancelled.set()
         # The executor loop observes cancellation. No unmount can race initialization.
@@ -411,9 +415,12 @@ class SystemdBackend:
         operation = str(uuid.uuid4())
         record = self.records / (operation + '.json')
         settings = self.records / (operation + '.srt.json')
+        read_paths = ['/usr', '/bin', '/lib', '/lib64', '/dev', '/proc',
+                      '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap')]
+        if payload['mode'] == 'initialize':
+            read_paths.append(str(target / 'snapshot.bundle'))
         settings.write_text(json.dumps({'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
-            'filesystem': {'denyRead': ['/'], 'allowRead': ['/usr', '/bin', '/lib', '/lib64', '/dev', '/proc',
-            '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target)],
+            'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
             'allowWrite': [str(target / 'work'), str(target / 'home'), '/tmp'], 'denyWrite': []},
             'enableWeakerNestedSandbox': False}))
         record.write_text(json.dumps({**payload, 'root': str(target), 'tools': self.c['toolsRoot'], 'settings': str(settings)}))

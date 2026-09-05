@@ -30,7 +30,9 @@ class Backend:
 
     def execute(self, session, data):
         self.executed.append(data)
-        return {'exitCode': 0}
+        if self.wait:
+            self.wait.wait(3)
+        return {'exitCode': 0, 'terminationReason': session.reason}
 
     def close(self, session):
         self.closed.append(session.id)
@@ -118,6 +120,10 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual('AUTH_REVOKED', self.send(self.execution())['code'])
         self.assertEqual('AUTH_REVOKED', self.send(self.payload('RENEW'))['code'])
         self.assertEqual([self.identity['leaseId']], self.backend.closed)
+        self.assertEqual('CLOSED', self.send(self.payload('CLOSE'))['state'])
+        p = self.payload('CLOSE')
+        p['principalId'] = uid()
+        self.assertEqual('SESSION_NOT_FOUND', self.send(p)['code'])
 
     def test_initializer_can_renew_and_cancel(self):
         self.backend.wait = threading.Event()
@@ -138,6 +144,25 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual('SESSION_CLOSED', result[0]['code'])
         self.assertEqual([self.identity['leaseId']], self.backend.closed)
+
+    def test_close_poll_preserves_active_revocation_reason(self):
+        self.opened()
+        self.backend.wait = threading.Event()
+        results = []
+        thread = threading.Thread(target=lambda: results.append(self.send(self.execution())))
+        thread.start()
+        for _ in range(10000):
+            if self.backend.executed:
+                break
+            threading.Event().wait(.001)
+        revoked = self.send(self.payload('REVOKE', {'keyIds': [self.identity['principalId']], 'accountIds': []}))
+        self.assertEqual('CLOSING', revoked['state'])
+        self.assertEqual('CLOSING', self.send(self.payload('CLOSE'))['state'])
+        self.backend.wait.set()
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual('revoked', results[0]['result']['terminationReason'])
+        self.assertEqual('CLOSED', self.send(self.payload('CLOSE'))['state'])
 
     def test_expired_lease_is_cleaned(self):
         self.opened()

@@ -10,6 +10,7 @@ from pathlib import Path
 import pwd
 import shlex
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -37,6 +38,8 @@ def main():
     assert os.geteuid() == 0
     root = args.root.resolve(strict=True)
     token = uuid.uuid4().hex[:8]
+    runtime = Path('/run') / ('poketto-executor-probe-' + token)
+    assert not runtime.exists(), 'Probe runtime directory must be new'
     user = 'pkt-exec-' + token
     supervisor = 'poketto-probe-' + token
     unit_prefix = 'poketto-exec-' + token + '-'
@@ -51,8 +54,8 @@ def main():
     host_canary = root / 'host-canary'
     host_canary.write_text('synthetic-host-secret')
     (root / 'public.pem').write_bytes(key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
-    config = {'runtimeRoot': str(root / 'runtime'), 'exportRoot': str(exports),
-        'socketPath': str(root / 'runtime/control.sock'), 'publicKey': str(root / 'public.pem'),
+    config = {'runtimeRoot': str(runtime), 'exportRoot': str(exports),
+        'socketPath': str(runtime / 'control.sock'), 'publicKey': str(root / 'public.pem'),
         'toolsRoot': str(root / 'tools'), 'launcher': str(root / 'launcher.py'),
         'execUser': user, 'appUid': 0, 'appGid': 0, 'unitPrefix': unit_prefix,
         'supervisorUnit': supervisor + '.service', 'leaseSeconds': 15, 'renewAfterSeconds': 5,
@@ -145,7 +148,7 @@ def main():
         started = time.monotonic()
         first, first_stop = new_session()
         source_inodes = {(p.stat().st_dev, p.stat().st_ino) for p in (source / '.git/objects').rglob('*') if p.is_file()}
-        copied_objects = root / 'runtime/sessions' / first['leaseId'] / 'work/repository/.git/objects'
+        copied_objects = runtime / 'sessions' / first['leaseId'] / 'work/repository/.git/objects'
         assert all((p.stat().st_dev, p.stat().st_ino) not in source_inodes for p in copied_objects.rglob('*') if p.is_file())
         passed('initial-signed-bundle-copy', milliseconds=round((time.monotonic() - started) * 1000, 2),
                bundleBytes=bundle.stat().st_size, supervisorUmask=supervisor_umask)
@@ -162,7 +165,7 @@ def main():
         assert result['exitCode'] == 0
         passed('same-key-independent-client-directories')
         denied_paths = [str(host_canary), str(source / 'article.md'),
-            str(root / 'runtime/control.sock'), str(root / 'runtime/sessions' / first['leaseId'] / 'work/repository/article.md'), '/etc/shadow']
+            str(runtime / 'control.sock'), str(runtime / 'sessions' / first['leaseId'] / 'work/repository/article.md'), '/etc/shadow']
         result = execute(second, python('from pathlib import Path\n' +
             f'for name in {denied_paths!r}:\n try: Path(name).read_bytes()\n except OSError: pass\n else: raise RuntimeError("outside read succeeded")\nprint("denied")'))
         assert result['exitCode'] == 0 and 'denied' in result['stdout'], result
@@ -263,6 +266,8 @@ def main():
             assert answer['ok'], answer
             result = future.result(timeout=10)
             assert result['terminationReason'] == ('cancelled' if operation == 'CLOSE' else 'revoked'), result
+            closed = send(identity, 'CLOSE')
+            assert closed.get('ok') and closed['state'] == 'CLOSED', closed
             stop.set()
             passed(operation.lower() + '-interrupts-active-process-tree')
         identity, stop = new_session()
@@ -281,9 +286,9 @@ def main():
         except Exception:
             pass
         deadline = time.monotonic() + 15
-        while time.monotonic() < deadline and list((root / 'runtime/sessions').iterdir()):
+        while time.monotonic() < deadline and list((runtime / 'sessions').iterdir()):
             time.sleep(.1)
-        assert not list((root / 'runtime/sessions').iterdir())
+        assert not list((runtime / 'sessions').iterdir())
         # Empty mounts can precede completion of ExecStopPost and transient-unit collection.
         run(['systemctl', 'stop', supervisor])
         run(['systemctl', 'reset-failed', supervisor])
@@ -292,6 +297,7 @@ def main():
         assert boot != previous_boot
         passed('supervisor-sigkill-cleans-and-invalidates-leases')
         print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'source': 'synthetic-only',
+            'runtimeParent': '/run', 'supervisorUmask': supervisor_umask,
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
@@ -302,10 +308,19 @@ def main():
         subprocess.run(['systemctl', 'reset-failed', supervisor], capture_output=True, timeout=10)
         subprocess.run([sys.executable, str(root / 'worker.py'), '--config', config_path, '--cleanup'], check=True, timeout=30)
         pool.shutdown(wait=True, cancel_futures=True)
-        assert not list((root / 'runtime/sessions').iterdir())
+        assert not list((runtime / 'sessions').iterdir())
         if created_user:
             assert subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)], capture_output=True).returncode == 1
             run(['userdel', user])
+        for name in ('control.sock', '.supervisor.lock'):
+            file = runtime / name
+            if file.exists():
+                assert not file.is_symlink()
+                assert stat.S_ISSOCK(file.stat().st_mode) if name == 'control.sock' else file.is_file()
+                file.unlink()
+        (runtime / 'sessions').rmdir()
+        (runtime / 'records').rmdir()
+        runtime.rmdir()
         print(json.dumps({'cleanup': 'PASS'}), flush=True)
 
 

@@ -40,9 +40,24 @@ A worker restart invalidates all prior signatures. Service dependencies and
 root-owned cleanup recover from supervisor SIGKILL; cleanup stops known units,
 verifies empty cgroups, unmounts only generated session mountpoints, and removes
 empty mount directories without traversing caller-controlled files.
+The worker publishes a new boot ID through HELLO only after acquiring its
+exclusive lock and completing startup cleanup. The application may use a
+different authenticated boot ID to retire unresolved leases from the earlier
+worker, but cannot infer cleanup from a failed connection or an unchanged ID.
 
 The [worker reference](../../executor-service/README.md) owns the exact wire
 schema, state transitions, operational requirements, and executable tests.
+
+SRT's Linux mount ordering requires disjoint read-only and writable grants.
+The worker grants read access to the trusted bootstrap directory and, during
+initialization only, the bundle file; working and home directories receive
+their own write grants. A read grant for the whole session parent can install
+a later read-only bind over the writable children. Keeping test runtime state
+under `/tmp` can conceal that error because the invocation's temporary-write
+grant also covers it. The native probe therefore places runtime state under
+`/run`, with the production supervisor umask, while synthetic source and tools
+remain in a separate disposable directory. No special relaxation for `/run`
+or broader grant to the session parent is part of this decision.
 
 ## Alternatives and consequences
 

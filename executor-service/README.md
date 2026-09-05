@@ -64,6 +64,10 @@ The only unsigned request is:
 It returns `ok`, `version`, `workerBootId` (UUID), `maxFrameBytes`, `leaseSeconds`,
 and `renewAfterSeconds`. The boot ID changes after every worker restart. No
 path or key material appears in HELLO.
+The worker acquires its exclusive supervisor lock and completes startup cleanup
+before creating a boot ID or serving HELLO. A new boot at the same authenticated
+socket therefore confirms that prior worker leases were cleaned up. A failed
+HELLO or the same boot ID supplies no such confirmation.
 
 All other requests use this envelope:
 
@@ -109,6 +113,9 @@ replacement command.
 REVOKE returns `ok`, `requestId`, `state` (CLOSING or CLOSED), and `closedCount`.
 Poll CLOSE or REVOKE with fresh request IDs until CLOSED. Reusing a request ID
 returns its cached response and therefore does not observe a state transition.
+A signed CLOSE matching the session identity remains available after revocation
+so the application can confirm cleanup. It grants no new execution or renewal.
+Repeated close requests preserve the first cancellation reason.
 
 Errors contain `ok: false`, a fixed `code`, and `requestId` when verified. They
 do not contain exception strings, source paths, or command text. Codes include
@@ -137,7 +144,10 @@ python -m unittest discover -s executor-service -v
 The root-only [native probe](native_probe.py) creates synthetic history, a
 temporary account, transient units, and bounded tmpfs mounts. It verifies the
 actual signed socket entry point and cleans units, mounts, and the account in
-`finally`. Use a new disposable root directory containing worker.py,
+`finally`. Its runtime uses a new root-owned directory under `/run` and the
+production `UMask=0077`; this prevents the private `/tmp` write grant from
+concealing a production filesystem-mount error. Use a new disposable root
+directory containing worker.py,
 launcher.py, native_probe.py, and a prepared `tools` directory. Install the
 pinned Python dependencies into `tools/python`; the probe's supervisor uses
 that directory. `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike` creates
