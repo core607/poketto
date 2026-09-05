@@ -35,7 +35,7 @@ public final class AcceptanceApplication {
                 "poketto.test.repository-path", remote.toString(),
                 "poketto.auth.initialization-token", initialization,
                 "poketto.security.allowed-origins", required("POKETTO_ACCEPTANCE_ORIGIN"),
-                "server.servlet.session.cookie.secure", false));
+                "POKETTO_SESSION_COOKIE_SECURE", false));
         var context = app.run(args);
         context.getBean(AuthService.class).initializeOwner(initialization, "owner", password);
         System.out.println("Synthetic acceptance services are ready; production repositories are not used.");
