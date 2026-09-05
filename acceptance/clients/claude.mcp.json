@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "poketto": {
+      "type": "http",
+      "url": "${POKETTO_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${POKETTO_MCP_TOKEN}"
+      }
+    }
+  }
+}
