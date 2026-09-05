@@ -5,7 +5,7 @@ description: Use when reviewing a PR or asked to "look over this change". Applie
 
 # Reviewing a Poketto Change
 
-This skill is guidance, not a complete checklist. Review is a reporting task: **output findings only; do not fix things as you go**. Fixing is a separate task that must be explicitly requested.
+This skill is guidance, not a complete checklist. For a review-only request, **output findings only; do not fix things as you go**. If the user also explicitly requests fixes, complete the review and then apply fixes within that scope; do not request the same authorization again.
 
 ## Establish the review scope
 
@@ -45,4 +45,4 @@ When the diff touches them, require direct evidence for these requirements rathe
 
 For each finding, state the defect, tightest location, impact, and evidence. Separate blockers from suggestions. Do not report an issue already guaranteed by a green, relevant gate unless the gate itself is incomplete or bypassed.
 
-If no substantive finding remains, say so and name residual risks or checks not run. Never convert a review into an edit without new authorization.
+If no substantive finding remains, say so and name residual risks or checks not run. Do not edit unless fixes are explicitly authorized; authorization already given for this scope remains valid.
