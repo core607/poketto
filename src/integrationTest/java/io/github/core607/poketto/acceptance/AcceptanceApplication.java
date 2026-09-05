@@ -59,12 +59,12 @@ public final class AcceptanceApplication {
             write(
                     directory,
                     "随记/雨后.md",
-                    "---\ntitle: 雨停之后，留一页给散步\ntags: [日常, 观察]\ncreatedAt: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
+                    "---\ntitle: 雨停之后，留一页给散步\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
             write(directory, "手册/index.md", "# 使用手册\n\n文件夹页面附带同目录的图片画廊。\n");
             write(
                     directory,
                     "手册/写作.md",
-                    "---\ntags: [手册]\ncreatedAt: 2026-08-30T08:00:00Z\n---\n# 从一段 Markdown 开始\n\n正文无需补齐元数据即可读取。修改时保留未改动的内容。\n");
+                    "---\ntags: [手册]\ncreated_at: 2026-08-30T08:00:00Z\n---\n# 从一段 Markdown 开始\n\n正文无需补齐元数据即可读取。修改时保留未改动的内容。\n");
             write(directory, "private/日记.md", "# 私有验收样例\n\nPRIVATE_ACCEPTANCE_SENTINEL\n\n![私有图片](hidden.png)\n");
             write(directory, "drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
             BufferedImage image = new BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB);
