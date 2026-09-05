@@ -1,0 +1,19 @@
+{"test": "initial-signed-bundle-copy", "result": "PASS", "milliseconds": 753.6, "bundleBytes": 323}
+{"test": "twenty-directory-reuses", "result": "PASS", "count": 20, "meanMillis": 691.15}
+{"test": "same-key-independent-client-directories", "result": "PASS"}
+{"test": "host-other-session-and-control-path-denied", "result": "PASS"}
+{"test": "network-and-host-proxy-denied", "result": "PASS"}
+{"test": "cpu-quota-enforced", "result": "PASS", "processCpuSeconds": 0.9966518380000001}
+{"test": "host-pid-and-proc-root-denied", "result": "PASS"}
+{"test": "tmpfs-disk-limit", "result": "PASS"}
+{"test": "process-limit", "result": "PASS"}
+{"test": "source-object-and-content-immutability", "result": "PASS"}
+{"test": "timeout-kills-detached-descendants", "result": "PASS"}
+{"test": "memory-oom-limit", "result": "PASS"}
+{"test": "bounded-output-stops-command", "result": "PASS"}
+{"test": "close-interrupts-active-process-tree", "result": "PASS"}
+{"test": "revoke-interrupts-active-process-tree", "result": "PASS"}
+{"test": "abandoned-client-lease-expires", "result": "PASS"}
+{"test": "supervisor-sigkill-cleans-and-invalidates-leases", "result": "PASS"}
+{"summary": "PASS", "tests": 17, "source": "synthetic-only", "workerSha256": "feb435a14f799c2257f22d7bf942577ff4cfb2acd06ca1df5d06b2b90243e693", "launcherSha256": "9fdf38ce1295aa8fdca1240626d18218d2f251dcbff68bf27b61e22a56b92232"}
+{"cleanup": "PASS"}

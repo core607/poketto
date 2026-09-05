@@ -1,0 +1,17 @@
+[Unit]
+Description=Poketto isolated execution resource supervisor
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+UMask=0077
+ExecStart=/opt/poketto-executor/venv/bin/python /opt/poketto-executor/worker.py --config /etc/poketto-executor/config.json
+ExecStopPost=/opt/poketto-executor/venv/bin/python /opt/poketto-executor/worker.py --config /etc/poketto-executor/config.json --cleanup
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
