@@ -11,7 +11,7 @@ Current phase: development. The executable baseline is established; product capa
 An agent arriving for the first time:
 
 1. Read this file, then the requirements note. Read the [development baseline](notes/implemented/2026-08-26-development-baseline.md) when changing the build, module boundaries, database test image, or CI.
-2. In your first reply, confirm your understanding of the project and current task before changing it. Do not infer a product task from the roadmap or implement ideas still under discussion.
+2. In your first reply, state your understanding of the project and current task; continue when the task is already assigned and settled. Do not infer a product task from the roadmap or implement ideas still under discussion.
 3. Work on a short-lived branch. Keep product code inside the owning application module and add evidence that exercises the changed behavior.
 4. Never push or create a pull request without the user's explicit authorization; never push directly to main.
 
@@ -50,12 +50,14 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 
 - Agent instructions and skills are English-only. The requirements note and public README retain .zh.md counterparts; other notes are English by default and do not require a Chinese counterpart.
 - Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
-- Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, stop and report it.
+- Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report the uncovered claim and block only the action that requires it; continue independent authorized work without claiming the check passed.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
 - Treat main as protected and never push directly; changes go through short-lived branches and PRs. Restore platform enforcement before the repository becomes public.
 - No credentials in the repository, ever. `.env` is the first line of .gitignore.
 
 ## Skills (.agents/skills/)
+
+Explicit user instructions take precedence over general skill guidance within higher-priority constraints. Carry forward authorization already given for the same action and scope; a skill does not authorize unrelated work, a push, or PR creation. If a skill blocks requested work, cite the exact file and instruction and distinguish its requirement from your interpretation.
 
 Skills own reusable workflows and specialized decision standards. Keep each entrypoint concise, but preserve every rule that changes a decision, permission, stopping condition, or required evidence. Mark infrastructure-dependent commands "to be filled" until the owning tool exists. Strengthen an existing owner before adding a new skill; add one when a distinct workflow repeatedly fails.
 
@@ -66,8 +68,8 @@ Skills own reusable workflows and specialized decision standards. Keep each entr
 | [prose-standard](.agents/skills/prose-standard/SKILL.md) | Prose baseline; read before writing any document |
 | [trim-cot-leakage](.agents/skills/trim-cot-leakage/SKILL.md) | Remove references only the authoring session could resolve |
 | [doc-standards](.agents/skills/doc-standards/SKILL.md) | Where content belongs + the document audit checklist |
-| [review](.agents/skills/review/SKILL.md) | Semantic review of a change: correctness, lifecycle, security, evidence; report only |
-| [find-simplifications](.agents/skills/find-simplifications/SKILL.md) | Find simplification candidates; propose, never delete directly |
+| [review](.agents/skills/review/SKILL.md) | Semantic review of a change: correctness, lifecycle, security, evidence; report only unless fixes are explicitly requested |
+| [find-simplifications](.agents/skills/find-simplifications/SKILL.md) | Find simplification candidates; propose unless a specific cleanup is already authorized |
 | [pre-push-checks](.agents/skills/pre-push-checks/SKILL.md) | Choose the smallest set of checks covering the outgoing change |
 | [archive-notes](.agents/skills/archive-notes/SKILL.md) | Workflow for the four-state notes lifecycle |
 | [translate-docs](.agents/skills/translate-docs/SKILL.md) | Bilingual document maintenance; user-invoked only |
