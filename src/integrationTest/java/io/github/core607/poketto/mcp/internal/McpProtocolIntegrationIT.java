@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +43,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 @Testcontainers
 @RecordApplicationEvents
@@ -174,6 +176,57 @@ class McpProtocolIntegrationIT {
                         .booleanValue())
                 .isTrue();
         assertThat(error(call(key.token(), first, "repo_patch", patch))).isEqualTo("CONFLICT");
+        Map<String, Object> deletion = new LinkedHashMap<>();
+        deletion.put("path", "private/中文.md");
+        deletion.put("expectedAbsence", false);
+        deletion.put(
+                "expectedRevision",
+                written.path("revisions").path("private/中文.md").stringValue());
+        deletion.put("content", null);
+        Map<String, Object> missingContent = new LinkedHashMap<>(deletion);
+        missingContent.remove("content");
+        JsonNode rejected = call(
+                key.token(),
+                first,
+                "repo_patch",
+                Map.of("baseCommit", written.path("commit").stringValue(), "changes", List.of(missingContent)));
+        assertThat(rejected.path("isError").booleanValue()).isTrue();
+        assertThat(rejected.path("content").get(0).path("text").stringValue()).contains("content");
+        var move = Map.of(
+                "baseCommit",
+                written.path("commit").stringValue(),
+                "changes",
+                List.of(deletion, Map.of("path", "private/moved.md", "expectedAbsence", true, "content", source)));
+        JsonNode moved = result(call(key.token(), first, "repo_patch", move));
+        assertThat(moved.path("committed").booleanValue()).isTrue();
+        assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/中文.md")))
+                        .path("expectedAbsence")
+                        .booleanValue())
+                .isTrue();
+        JsonNode movedFile = result(call(key.token(), first, "get_file", Map.of("path", "private/moved.md")));
+        assertThat(movedFile.path("source").stringValue()).isEqualTo(source);
+        deletion.put("path", "private/moved.md");
+        deletion.put("expectedRevision", movedFile.path("revision").stringValue());
+        Map<String, Object> nullBase = new LinkedHashMap<>();
+        nullBase.put("baseCommit", null);
+        nullBase.put("changes", List.of(deletion));
+        assertThat(error(call(key.token(), first, "repo_patch", nullBase))).isEqualTo("CONFLICT");
+        assertThat(result(call(
+                                key.token(),
+                                first,
+                                "repo_patch",
+                                Map.of(
+                                        "baseCommit",
+                                        movedFile.path("commit").stringValue(),
+                                        "changes",
+                                        List.of(deletion))))
+                        .path("committed")
+                        .booleanValue())
+                .isTrue();
+        assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/moved.md")))
+                        .path("expectedAbsence")
+                        .booleanValue())
+                .isTrue();
         String deniedSession = initialize(denied.token());
         assertThat(error(call(denied.token(), deniedSession, "get_file", Map.of("path", "private/original.md"))))
                 .isEqualTo("DENIED");
@@ -268,7 +321,7 @@ class McpProtocolIntegrationIT {
                 .timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
-                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
+                .POST(HttpRequest.BodyPublishers.ofString(JsonMapper.shared().writeValueAsString(body)));
         if (token != null) request.header("Authorization", "Bearer " + token);
         if (session != null) request.header("Mcp-Session-Id", session).header("MCP-Protocol-Version", "2025-11-25");
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());

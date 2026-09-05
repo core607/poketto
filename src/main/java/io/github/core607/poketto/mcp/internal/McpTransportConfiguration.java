@@ -1,5 +1,6 @@
 package io.github.core607.poketto.mcp.internal;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -47,7 +48,11 @@ class McpTransportConfiguration {
             @Value("${poketto.mcp.session-idle-seconds:1800}") long idleSeconds,
             @Value("${poketto.mcp.max-sessions:128}") int maxSessions) {
         return WebMvcStreamableServerTransportProvider.builder()
-                .jsonMapper(new JacksonMcpJsonMapper(mapper))
+                // Map nulls are protocol values: repo_patch distinguishes deletion from a missing field.
+                .jsonMapper(new JacksonMcpJsonMapper(mapper.rebuild()
+                        .changeDefaultPropertyInclusion(
+                                inclusion -> inclusion.withContentInclusion(JsonInclude.Include.ALWAYS))
+                        .build()))
                 .mcpEndpoint("/mcp")
                 .maxSessions(maxSessions)
                 .sessionIdleTimeout(Duration.ofSeconds(idleSeconds))
