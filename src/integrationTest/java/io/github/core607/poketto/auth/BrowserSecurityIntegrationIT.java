@@ -275,6 +275,14 @@ class BrowserSecurityIntegrationIT {
                         .param("password", password))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "300"));
+        for (String variant : java.util.List.of(" throttled-user", "throttled-user ", "\tTHROTTLED-USER\t")) {
+            mvc.perform(post("/api/auth/login")
+                            .session(session.session())
+                            .header(session.header(), session.token())
+                            .param("username", variant)
+                            .param("password", password))
+                    .andExpect(status().isTooManyRequests());
+        }
     }
 
     private Csrf login(String login, String password) throws Exception {

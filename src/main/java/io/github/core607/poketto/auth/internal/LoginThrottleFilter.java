@@ -50,6 +50,8 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
     }
 
     synchronized boolean take(String address, String login) {
+        // Match UsernamePasswordAuthenticationFilter before choosing an account bucket.
+        if (login != null) login = login.trim();
         long now = clock.millis();
         attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt() <= now);
         String ipKey = "ip:" + (address == null || address.length() > 128 ? "unknown" : address);
