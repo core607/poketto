@@ -8,7 +8,7 @@
 
 开发中。[仓库创作基础](notes/implemented/2026-09-05-repository-authoring-foundations.md)已经实现任意目录 Markdown 发现、文件级诊断、有界公开与私有搜索、发布策略、原子文本补丁、浏览器登录、邀请、作用域密钥及可靠的本地图片存储端口。远端 `main` 仍是权威，本地 Git 缓存可丢弃。公开请求读取经过验证的快照，不访问远端。
 
-[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)负责尚待完成的博客与后台渲染、图片交付、MCP 工具、生产沙箱和真实安装验收；相关完整提案在全部完成前仍保留 proposed 状态。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)将通过验证的 `main` 提交发布到 GHCR，自动部署另行启用。C 端供应、备份、访客问答与 serverless 不属于本次交付。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分当前行为、历史选型和提案。
+源码包含 Next.js 博客与后台、精确版本图片交付及四个 MCP 工具；`repo_exec` 仅通过独立的 [Linux 执行服务](executor-service/README.md)启用。[隔离验收栈](acceptance/README.md)与[真实 MCP 客户端流程](acceptance/clients/README.md)提供可复现入口；最终浏览器、数据库集成、两个客户端及 HTTPS 安装验收仍未完成。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与相关完整提案，在满足全部标准之前仍保留 proposed 状态。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)将通过验证的 `main` 提交发布到 GHCR，自动部署另行启用。C 端供应、备份、访客问答与 serverless 不属于本次交付。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分当前行为、历史选型和提案。
 
 ## 适合谁
 
