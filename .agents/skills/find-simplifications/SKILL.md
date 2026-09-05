@@ -5,7 +5,7 @@ description: Use when asked to find simplification opportunities, clean up code,
 
 # Finding Simplifications
 
-This skill is guidance, not a checklist. The output is **well-evidenced proposals** (notes or inline TODOs), not direct deletions — removals go through the normal change process.
+This skill is guidance, not a checklist. Discovery produces **well-evidenced proposals** (notes or inline TODOs). An explicitly requested, specific cleanup may proceed through the normal change process once the evidence below supports it; propose unresolved behavior or architecture decisions before implementing them.
 
 Read [AGENTS.md](../../../AGENTS.md), the [requirements note](../../../notes/implemented/2026-08-25-requirements-and-architecture.md), and any decision record that owns the area before calling a structure unnecessary. A recorded decision is evidence to understand, not immunity from reconsideration.
 
@@ -64,4 +64,4 @@ Prefer a platform primitive or maintained dependency only when it covers the exa
 - Use a named `TODO`, `FIXME`, or `XXX` only for a small local action whose desired change is already decided. State the reason and action; do not park an unresolved design decision in a comment.
 - Report "no strong candidate" when evidence does not clear the bar. Do not pad the result.
 
-For the handoff, name areas surveyed, exclusions, candidates accepted or rejected, and representative evidence. Implementation begins only after the proposal is accepted.
+For the handoff, name areas surveyed, exclusions, candidates accepted or rejected, and representative evidence. Implement only when the proposed change is accepted or the same specific cleanup is already authorized; do not treat a broad request to find opportunities as approval to remove them.

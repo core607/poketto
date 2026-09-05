@@ -9,7 +9,7 @@ A PR that changes user-visible interface must attach evidence produced by a **re
 
 ## Stage the run
 
-1. Require a clean worktree and record the exact commit SHA or, before commit, the exact diff state being demonstrated.
+1. Isolate unrelated changes without discarding user work, then record the exact state being demonstrated: a clean worktree at a commit SHA, or the base SHA plus staged and unstaged diffs and relevant untracked files before commit. Keep that recorded state unchanged during the run.
 2. Build and start the real application through its shipped entry path. Use fresh application, browser, and test data state so an earlier run cannot create the result.
 3. Use real downstream components for the behavior being claimed. Mock only an external or nondeterministic boundary when the PR explicitly claims that mocked mode, and state the limitation.
 4. If the real server, required credential, or browser control is unavailable, report the blocker. Do not substitute a static mockup or unrelated old run.
