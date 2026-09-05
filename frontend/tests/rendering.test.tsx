@@ -123,3 +123,83 @@ test("article stream contains readable titles and links in initial server HTML",
   assert.match(html, /href="\/read\/note"/);
   assert.doesNotMatch(html, /<script/);
 });
+
+test("backend destinations match URI-normalized Chinese spaces and encoded image names", () => {
+  for (const authored of [
+    "图片.png",
+    "photo one.png",
+    "%E5%9B%BE%E7%89%87.png",
+    "photo%20one.png",
+    "100%25.png",
+  ]) {
+    const html = renderToStaticMarkup(
+      <Markdown
+        source={`![图](<${authored}>)`}
+        images={{ [authored]: "/api/public/assets/verified" }}
+      />,
+    );
+    assert.match(html, /src="\/api\/public\/assets\/verified"/);
+    assert.doesNotMatch(html, /暂无可用预览/);
+  }
+});
+
+test("Chinese and encoded document links preserve route bytes and authored fragments", () => {
+  for (const [authored, route, expected] of [
+    ["中文.md", "/中文", "/read/%E4%B8%AD%E6%96%87"],
+    ["file one.md", "/file one", "/read/file%20one"],
+    ["file%20one.md", "/file one", "/read/file%20one"],
+    ["#section", "#section", "#section"],
+    ["#正文", "#正文", "#%E6%AD%A3%E6%96%87"],
+    ["other.md#section", "/other#section", "/read/other#section"],
+    [
+      "中文.md#正文",
+      "/中文#正文",
+      "/read/%E4%B8%AD%E6%96%87#%E6%AD%A3%E6%96%87",
+    ],
+    ["a%23b.md#part", "/a#b#part", "/read/a%23b#part"],
+    ["a%23b.md", "/a#b", "/read/a%23b"],
+    ["100%25.md", "/100%", "/read/100%25"],
+  ]) {
+    const html = renderToStaticMarkup(
+      <Markdown
+        source={`[正文](<${authored}>)`}
+        links={{ [authored]: route }}
+      />,
+    );
+    assert.ok(html.includes(`href="${expected}"`), html);
+  }
+});
+
+test("normalized private previews still require the authenticated image and editor entrances", () => {
+  const source = "![图](<私有 图.png>)\n\n[笔记](私有.md#正文)";
+  const images = { "私有 图.png": "/api/admin/assets/images/verified" };
+  const links = {
+    "私有.md#正文": "/admin?path=private%2F%E7%A7%81%E6%9C%89.md#正文",
+  };
+  const html = renderToStaticMarkup(
+    <Markdown source={source} images={images} links={links} preview />,
+  );
+  assert.match(html, /src="\/api\/admin\/assets\/images\/verified"/);
+  assert.match(
+    html,
+    /href="\/admin\?path=private%2F%E7%A7%81%E6%9C%89.md#%E6%AD%A3%E6%96%87"/,
+  );
+  assert.doesNotMatch(
+    renderToStaticMarkup(<Markdown source={source} images={images} />),
+    /<img/,
+  );
+});
+
+test("normalizing destinations does not admit unsafe schemes or unresolved image sources", () => {
+  const html = renderToStaticMarkup(
+    <Markdown source="[bad](javascript:alert%281%29)\n\n![bad](data:image/svg+xml,x)\n\n[bad](vbscript:test)" />,
+  );
+  assert.doesNotMatch(html, /<img|href=/);
+  const unsafeMapping = renderToStaticMarkup(
+    <Markdown
+      source="[note](中文.md)"
+      links={{ "中文.md": "javascript:alert(1)" }}
+    />,
+  );
+  assert.doesNotMatch(unsafeMapping, /href=/);
+});
