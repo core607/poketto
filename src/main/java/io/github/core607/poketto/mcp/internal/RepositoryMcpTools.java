@@ -362,8 +362,15 @@ final class RepositoryMcpTools {
                         exchange.sessionId(),
                         optionalText(input, "commit", 40),
                         requiredText(input, "command", 16384),
-                        Duration.ofSeconds(timeout));
+                        Duration.ofSeconds(timeout),
+                        cancellation(exchange));
         return textResult(result);
+    }
+
+    private static McpCancellation cancellation(McpSyncServerExchange exchange) {
+        if (!(exchange.transportContext().get(McpCancellation.CONTEXT_KEY) instanceof McpCancellation cancellation))
+            throw new SecurityException("Server execution cancellation context required");
+        return cancellation;
     }
 
     private McpSchema.CallToolResult textResult(Object value) {

@@ -12,15 +12,28 @@ import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.SequenceInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import tools.jackson.databind.ObjectMapper;
 
-/** Limits the real request stream, including chunked bodies, before the SDK materializes JSON. */
+/** Bounds request streams and reserves separate admission for small SDK lifecycle notifications. */
 final class McpBodyLimitFilter implements Filter {
     static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;
     static final int MAX_INITIALIZE_BYTES = 16 * 1024;
     private final Semaphore activePosts = new Semaphore(4);
+    private final Semaphore activeControls = new Semaphore(4);
+    private final Semaphore readingPrefixes = new Semaphore(8);
+    private final ObjectMapper json;
+
+    McpBodyLimitFilter(ObjectMapper json) {
+        this.json = json;
+    }
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -36,13 +49,31 @@ final class McpBodyLimitFilter implements Filter {
             reject(output, 413);
             return;
         }
-        if (!activePosts.tryAcquire()) {
+        if (!readingPrefixes.tryAcquire()) {
+            reject(output, 429);
+            return;
+        }
+        ServletInputStream original;
+        byte[] prefix;
+        try {
+            original = http.getInputStream();
+            prefix = original.readNBytes(MAX_INITIALIZE_BYTES + 1);
+        } finally {
+            readingPrefixes.release();
+        }
+        if (prefix.length > limit) {
+            reject(output, 413);
+            return;
+        }
+        Semaphore admission =
+                http.getHeader("Mcp-Session-Id") != null && control(prefix) ? activeControls : activePosts;
+        if (!admission.tryAcquire()) {
             reject(output, 429);
             return;
         }
         AtomicBoolean released = new AtomicBoolean();
         Runnable release = () -> {
-            if (released.compareAndSet(false, true)) activePosts.release();
+            if (released.compareAndSet(false, true)) admission.release();
         };
         try {
             chain.doFilter(
@@ -52,7 +83,7 @@ final class McpBodyLimitFilter implements Filter {
                         @Override
                         public ServletInputStream getInputStream() throws IOException {
                             if (bounded != null) return bounded;
-                            ServletInputStream source = super.getInputStream();
+                            var source = new SequenceInputStream(new ByteArrayInputStream(prefix), original);
                             bounded = new ServletInputStream() {
                                 private int count;
 
@@ -74,20 +105,29 @@ final class McpBodyLimitFilter implements Filter {
 
                                 @Override
                                 public boolean isFinished() {
-                                    return source.isFinished();
+                                    try {
+                                        return source.available() == 0 && original.isFinished();
+                                    } catch (IOException exception) {
+                                        return false;
+                                    }
                                 }
 
                                 @Override
                                 public boolean isReady() {
-                                    return source.isReady();
+                                    return original.isReady();
                                 }
 
                                 @Override
                                 public void setReadListener(ReadListener listener) {
-                                    source.setReadListener(listener);
+                                    original.setReadListener(listener);
                                 }
                             };
                             return bounded;
+                        }
+
+                        @Override
+                        public BufferedReader getReader() throws IOException {
+                            return new BufferedReader(new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
                         }
                     },
                     response);
@@ -119,6 +159,19 @@ final class McpBodyLimitFilter implements Filter {
                     release.run();
                 }
             } else release.run();
+        }
+    }
+
+    private boolean control(byte[] body) {
+        if (body.length > MAX_INITIALIZE_BYTES) return false;
+        try {
+            var message = json.readTree(body);
+            String method = message.path("method").asString("");
+            return !message.has("id")
+                    && message.path("jsonrpc").asString("").equals("2.0")
+                    && (method.equals("notifications/cancelled") || method.equals("notifications/initialized"));
+        } catch (RuntimeException exception) {
+            return false;
         }
     }
 

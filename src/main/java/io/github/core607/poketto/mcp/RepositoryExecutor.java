@@ -11,6 +11,8 @@ public interface RepositoryExecutor {
      * The session id comes from the server SDK, after principal/workspace binding validation.
      * Omitted commits retain this execution session's pinned commit. Implementations own command,
      * output, process-tree, filesystem, network, cancellation, and lease limits.
+     * Worker lifecycle synchronization must prevent process creation after cancellation and make
+     * every registered termination callback stop the complete command process tree.
      */
     ExecutionResult execute(
             AuthPrincipal principal,
@@ -18,7 +20,8 @@ public interface RepositoryExecutor {
             String serverSessionId,
             Optional<String> commit,
             String command,
-            Duration timeout);
+            Duration timeout,
+            ExecutionCancellation cancellation);
 
     record ExecutionResult(
             String commit,
@@ -27,5 +30,16 @@ public interface RepositoryExecutor {
             String stderr,
             boolean stdoutTruncated,
             boolean stderrTruncated,
-            boolean timedOut) {}
+            boolean timedOut,
+            TerminationReason terminationReason) {}
+
+    enum TerminationReason {
+        NORMAL,
+        TIMEOUT,
+        OUTPUT_LIMIT,
+        RESOURCE_LIMIT,
+        CANCELLED,
+        REVOKED,
+        SANDBOX_FAILURE
+    }
 }

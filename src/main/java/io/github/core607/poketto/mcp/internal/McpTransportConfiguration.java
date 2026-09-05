@@ -89,8 +89,8 @@ class McpTransportConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter() {
-        var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter());
+    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(tools.jackson.databind.ObjectMapper json) {
+        var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json));
         registration.setUrlPatterns(java.util.List.of("/mcp"));
         registration.setOrder(-99);
         registration.setAsyncSupported(true);

@@ -9,8 +9,6 @@ import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
-import jakarta.servlet.http.HttpServletRequest;
-import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -58,7 +56,7 @@ class McpBoundsTests {
 
     @Test
     void bodyLimitEnforcesDeclaredAndChunkedBytesAndDoesNotResetOnRepeatedStreamAccess() throws Exception {
-        var filter = new McpBodyLimitFilter();
+        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
         var declared = new MockHttpServletRequest("POST", "/mcp");
         declared.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
         var response = new MockHttpServletResponse();
@@ -76,14 +74,10 @@ class McpBoundsTests {
             }
         };
         chunked.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
-        assertThatThrownBy(() -> filter.doFilter(chunked, new MockHttpServletResponse(), (request, output) -> {
-                    var bounded = (HttpServletRequest) request;
-                    assertThat(bounded.getInputStream().readNBytes(McpBodyLimitFilter.MAX_INITIALIZE_BYTES))
-                            .hasSize(McpBodyLimitFilter.MAX_INITIALIZE_BYTES);
-                    bounded.getInputStream().read();
-                }))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("byte limit");
+        var chunkedResponse = new MockHttpServletResponse();
+        filter.doFilter(
+                chunked, chunkedResponse, (request, output) -> fail("oversized chunked initialization reached SDK"));
+        assertThat(chunkedResponse.getStatus()).isEqualTo(413);
         var valid = new MockHttpServletRequest("POST", "/mcp");
         valid.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES]);
         for (int i = 0; i < 5; i++) {
@@ -92,6 +86,49 @@ class McpBoundsTests {
                     new MockHttpServletResponse(),
                     (request, output) -> request.getInputStream().readAllBytes());
         }
+    }
+
+    @Test
+    void cancellationHasBoundedReservedAdmissionWhenAllDataPostsAreActive() throws Exception {
+        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var held = new ArrayList<MockHttpServletRequest>();
+        try {
+            for (int i = 0; i < 4; i++) {
+                var request = post("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\"}");
+                filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> input.startAsync());
+                held.add(request);
+            }
+            var rejected = new MockHttpServletResponse();
+            filter.doFilter(post("{}"), rejected, (input, output) -> fail("fifth data POST reached SDK"));
+            assertThat(rejected.getStatus()).isEqualTo(429);
+            for (int i = 0; i < 4; i++) {
+                var request = post(
+                        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}");
+                filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> input.startAsync());
+                held.add(request);
+                assertThat(request.isAsyncStarted()).isTrue();
+            }
+            var excessControl = new MockHttpServletResponse();
+            filter.doFilter(
+                    post("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\"}"),
+                    excessControl,
+                    (input, output) -> fail("fifth control POST reached SDK"));
+            assertThat(excessControl.getStatus()).isEqualTo(429);
+        } finally {
+            held.forEach(request -> request.getAsyncContext().complete());
+        }
+        var admitted = new MockHttpServletResponse();
+        filter.doFilter(
+                post("{}"), admitted, (input, output) -> output.getWriter().write("released"));
+        assertThat(admitted.getContentAsString()).isEqualTo("released");
+    }
+
+    private static MockHttpServletRequest post(String body) {
+        var request = new MockHttpServletRequest("POST", "/mcp");
+        request.setAsyncSupported(true);
+        request.addHeader("Mcp-Session-Id", "server-session");
+        request.setContent(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return request;
     }
 
     private static McpSessions.Identity identity(WorkspaceId workspace) {

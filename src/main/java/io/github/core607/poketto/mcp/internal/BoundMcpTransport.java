@@ -22,9 +22,10 @@ final class BoundMcpTransport implements McpStreamableServerTransportProvider {
         delegate.setSessionFactory(request -> {
             var identity = sessions.currentIdentity();
             var initialized = factory.startSession(request);
-            sessions.bind(initialized.session(), identity);
+            var cancellable = new CancellableMcpSession(initialized.session(), request);
+            sessions.bind(cancellable, identity);
             return new McpStreamableServerSession.McpStreamableServerSessionInit(
-                    initialized.session(),
+                    cancellable,
                     initialized
                             .initResult()
                             .doOnError(error -> sessions.remove(
