@@ -1,0 +1,32 @@
+# Applied only after deploy.sh verifies the independently installed host executor prerequisites.
+services:
+  app:
+    environment:
+      POKETTO_EXECUTOR_ENABLED: "true"
+      POKETTO_EXECUTOR_SOCKET: /run/poketto-executor/control.sock
+      POKETTO_EXECUTOR_SIGNING_KEY: /run/poketto-secrets/executor-private.pem
+      POKETTO_EXECUTOR_STAGING_DIRECTORY: /var/lib/poketto-executor-exports
+      POKETTO_EXECUTOR_MAX_SESSIONS: "${POKETTO_EXECUTOR_MAX_SESSIONS:-8}"
+      POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS: "${POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS:-60}"
+      POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS: "${POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS:-15}"
+      POKETTO_EXECUTOR_MAX_BUNDLE_BYTES: "${POKETTO_EXECUTOR_MAX_BUNDLE_BYTES:-536870912}"
+      POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS: "${POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS:-30}"
+    volumes:
+      # Mount the parent, so worker restarts can replace the socket inode.
+      - type: bind
+        source: "${POKETTO_EXECUTOR_RUNTIME_DIR_HOST:?executor runtime directory is required}"
+        target: /run/poketto-executor
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${POKETTO_EXECUTOR_STAGING_DIR_HOST:?executor export directory is required}"
+        target: /var/lib/poketto-executor-exports
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${POKETTO_EXECUTOR_SIGNING_KEY_HOST:?executor signing key is required}"
+        target: /run/poketto-secrets/executor-private.pem
+        read_only: true
+        bind:
+          create_host_path: false

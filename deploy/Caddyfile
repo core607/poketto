@@ -1,0 +1,24 @@
+{
+    admin off
+}
+
+{$POKETTO_PUBLIC_DOMAIN} {
+    @management path /actuator /actuator/*
+    handle @management {
+        respond 404
+    }
+    @business path /api /api/* /mcp /mcp/*
+    handle @business {
+        reverse_proxy app:8080 {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+
+http://:8081 {
+    bind 127.0.0.1
+    respond /healthz 200
+}
