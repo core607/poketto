@@ -81,8 +81,12 @@ public final class ExecutorNativeProbe {
     }
 
     private IsolatedRepositoryExecutor adapter(Path socket) {
+        return adapter(socket, 8);
+    }
+
+    private IsolatedRepositoryExecutor adapter(Path socket, int maxSessions) {
         return new ExecutorConfiguration()
-                .isolatedRepositoryExecutor(auth, exports, JSON, socket, path("privateKey"), 8, 45, 8);
+                .isolatedRepositoryExecutor(auth, exports, JSON, socket, path("privateKey"), maxSessions, 45, 8);
     }
 
     private void run() throws Exception {
@@ -159,7 +163,7 @@ public final class ExecutorNativeProbe {
 
         // A different synthetic key avoids reusing the deliberately revoked key's worker tombstone.
         var secondPrincipal = principal();
-        try (var executor = adapter(path("socket"))) {
+        try (var executor = adapter(path("socket"), 1)) {
             var active = CompletableFuture.supplyAsync(() -> executor.execute(
                     secondPrincipal,
                     workspace,
@@ -192,7 +196,16 @@ public final class ExecutorNativeProbe {
                                     new Cancellation())
                             .exitCode())
                     .isZero();
-            passed("worker-restart-invalidates-old-lease-and-allows-new-session");
+            assertThatThrownBy(() -> executor.execute(
+                            secondPrincipal,
+                            workspace,
+                            "restart",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            passed("worker-restart-recovers-full-single-session-capacity-and-rejects-old-client");
         }
         control("assert-no-processes");
         assertThat(released.get()).isGreaterThanOrEqualTo(6);

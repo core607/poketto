@@ -98,6 +98,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         boolean ownsCommand = false;
         try {
             SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
+            recoverRestartedLeases(key);
             synchronized (this) {
                 if (closed) throw new WorkerUnavailableException();
                 session = sessions.get(key);
@@ -160,6 +161,34 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } finally {
             if (session != null && ownsCommand) session.busy.set(false);
             executions.release();
+        }
+    }
+
+    private void recoverRestartedLeases(SessionKey requested) {
+        List<Session> candidates;
+        synchronized (this) {
+            if (closed
+                    || sessions.containsKey(requested)
+                    || sessions.values().stream()
+                                    .filter(value -> !value.capacityReleased)
+                                    .count()
+                            < maxSessions) return;
+            candidates = sessions.values().stream()
+                    .filter(value -> !value.capacityReleased && value.openAttempted)
+                    .toList();
+        }
+        if (candidates.isEmpty()) return;
+        WorkerClient.Hello current = worker.hello();
+        // The root worker serves HELLO only after exclusive startup cleanup has stopped all old units.
+        // Only candidates captured before this probe can be retired by its boot identity.
+        for (Session candidate : candidates) {
+            synchronized (candidate) {
+                if (!candidate.hello.workerBootId().equals(current.workerBootId())) {
+                    candidate.stopping.set(true);
+                    releaseCapacity(candidate);
+                    candidate.stopped.complete(null);
+                }
+            }
         }
     }
 
@@ -270,6 +299,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private CompletableFuture<Void> stop(Session session, String reason) {
         synchronized (session) {
+            if (session.capacityReleased) return CompletableFuture.completedFuture(null);
             if (!session.stopping.compareAndSet(false, true)) return session.stopped;
             if (!session.openAttempted) {
                 releaseCapacity(session);

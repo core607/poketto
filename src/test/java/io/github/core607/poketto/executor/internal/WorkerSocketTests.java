@@ -484,6 +484,101 @@ class WorkerSocketTests {
         }
     }
 
+    @Test
+    void aNewWorkerBootRecoversSaturatedAdmissionWithoutReopeningTheOldClient() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(AuthService.class),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
+            executor.execute(
+                    principal, WORKSPACE, "old-A", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
+            peer.boot = UUID.randomUUID();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "old-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            peer.dropHello = true;
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "new-B",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            peer.dropHello = false;
+            assertThat(executor.execute(
+                                    principal,
+                                    WORKSPACE,
+                                    "new-B",
+                                    Optional.empty(),
+                                    "pwd",
+                                    Duration.ofSeconds(1),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "old-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(2);
+        }
+    }
+
+    @Test
+    void aNewWorkerBootRetiresAnOccupiedLeaseBeforeItsOldClientSendsAnotherRequest() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(AuthService.class),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
+            executor.execute(
+                    principal, WORKSPACE, "old-A", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
+            peer.boot = UUID.randomUUID();
+            assertThat(executor.execute(
+                                    principal,
+                                    WORKSPACE,
+                                    "new-B",
+                                    Optional.empty(),
+                                    "pwd",
+                                    Duration.ofSeconds(1),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "old-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(2);
+        }
+    }
+
     private static RepositorySnapshotExports exports() {
         var exports = mock(RepositorySnapshotExports.class);
         when(exports.create(any(), any(), any()))
@@ -558,7 +653,7 @@ class WorkerSocketTests {
     private static final class Peer implements AutoCloseable {
         private final ObjectMapper json = new ObjectMapper();
         private final KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
-        private final UUID boot = UUID.randomUUID();
+        private volatile UUID boot = UUID.randomUUID();
         private final Path path;
         private final ServerSocketChannel server;
         private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
@@ -573,6 +668,7 @@ class WorkerSocketTests {
         private volatile boolean closeNeedsPolling;
         private volatile boolean closeForever;
         private volatile boolean dropClose;
+        private volatile boolean dropHello;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
         private volatile boolean wrongRequestId;
@@ -616,6 +712,7 @@ class WorkerSocketTests {
                 JsonNode envelope = json.readTree(input.readNBytes(length));
                 Object response;
                 if (envelope.path("operation").asString("").equals("HELLO")) {
+                    if (dropHello) return;
                     if (oversizedHello) {
                         output.writeInt(WorkerClient.MAX_FRAME + 1);
                         output.flush();
@@ -645,12 +742,19 @@ class WorkerSocketTests {
                             .isTrue();
                     JsonNode request = json.readTree(payload);
                     requests.add(request);
-                    assertThat(request.path("workerBootId").stringValue()).isEqualTo(boot.toString());
                     assertThat(request.path("serverSessionHash").stringValue()).matches("[0-9a-f]{64}");
                     assertThat(request.path("expiresAt").longValue()
                                     - request.path("issuedAt").longValue())
                             .isEqualTo(10);
-                    response = handle(request);
+                    response = request.path("workerBootId").asString("").equals(boot.toString())
+                            ? handle(request)
+                            : Map.of(
+                                    "ok",
+                                    false,
+                                    "code",
+                                    "WORKER_RESTARTED",
+                                    "requestId",
+                                    request.path("requestId").stringValue());
                     if (response == null) return;
                 }
                 byte[] bytes = json.writeValueAsBytes(response);

@@ -42,7 +42,8 @@ its own transient worker unit.
 
 The probe checks twenty fixed-commit reuses, independent client directories,
 source immutability, cancellation and revocation through the actual adapter,
-worker restart, and lease expiry after abrupt Java process loss. A test-only
+worker restart with its sole Java session slot occupied, and lease expiry after
+abrupt Java process loss. A test-only
 observer records failed synthetic initialization output without changing worker
 results. The supervisor uses production `UMask=0077`.
 
@@ -67,3 +68,7 @@ machine-readable results and hashes for both `/run` and `/var/lib`. These timing
 describe the fixture, not production sizing. Restart tests deliberately report
 unconfirmed old leases; the test requires the old session to stay unusable and a
 new session to connect successfully after a real HELLO readiness check.
+Saturated admission can retire old leases only when a protected root peer returns
+a different boot identity. The worker completes exclusive startup cleanup before
+serving HELLO. A failed probe or unchanged identity preserves occupied capacity;
+the retired MCP session cannot reopen.
