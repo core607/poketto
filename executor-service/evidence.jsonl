@@ -1,9 +1,9 @@
-{"test": "initial-signed-bundle-copy", "result": "PASS", "milliseconds": 643.71, "bundleBytes": 323}
-{"test": "twenty-directory-reuses", "result": "PASS", "count": 20, "meanMillis": 665.8}
+{"test": "initial-signed-bundle-copy", "result": "PASS", "milliseconds": 602.85, "bundleBytes": 322, "supervisorUmask": "0077"}
+{"test": "twenty-directory-reuses", "result": "PASS", "count": 20, "meanMillis": 690.42}
 {"test": "same-key-independent-client-directories", "result": "PASS"}
 {"test": "host-other-session-and-control-path-denied", "result": "PASS"}
 {"test": "network-and-host-proxy-denied", "result": "PASS"}
-{"test": "cpu-quota-enforced", "result": "PASS", "processCpuSeconds": 1.003289136}
+{"test": "cpu-quota-enforced", "result": "PASS", "processCpuSeconds": 0.9995529710000001}
 {"test": "host-pid-and-proc-root-denied", "result": "PASS"}
 {"test": "untrusted-git-and-shell-config-reuse-stays-inside-srt", "result": "PASS"}
 {"test": "tmpfs-disk-limit", "result": "PASS"}
@@ -16,5 +16,5 @@
 {"test": "revoke-interrupts-active-process-tree", "result": "PASS"}
 {"test": "abandoned-client-lease-expires", "result": "PASS"}
 {"test": "supervisor-sigkill-cleans-and-invalidates-leases", "result": "PASS"}
-{"summary": "PASS", "tests": 18, "source": "synthetic-only", "workerSha256": "c2d783ba9a9cd4c94fd05022e7f67ed346de87cf24b0584f173c2e6797871029", "launcherSha256": "37a3a1b28a28a9dde26fbb67e7b8a8a8e24a24b157a5e1ebfd77ca9f8ef4ea80"}
+{"summary": "PASS", "tests": 18, "source": "synthetic-only", "workerSha256": "64a28248db1000dbf54e639fdc312fa7d0b3d7a38b7d03a47a0aa4ab48d0963a", "probeSha256": "a403c208a3d98df97e769855363103f20173637bbabf26b2819e9e89640f753f", "launcherSha256": "37a3a1b28a28a9dde26fbb67e7b8a8a8e24a24b157a5e1ebfd77ca9f8ef4ea80"}
 {"cleanup": "PASS"}

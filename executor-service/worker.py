@@ -334,6 +334,8 @@ class SystemdBackend:
         os.chmod(self.root, 0o751)
         os.chown(self.sessions, 0, self.user.pw_gid)
         os.chown(self.records, 0, self.user.pw_gid)
+        os.chmod(self.sessions, 0o750)
+        os.chmod(self.records, 0o750)
         self.lock_fd = os.open(self.root / '.supervisor.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.cleanup()
@@ -350,14 +352,18 @@ class SystemdBackend:
         os.chown(target, 0, self.user.pw_gid)
         bootstrap = target / 'bootstrap'
         bootstrap.mkdir(mode=0o555)
+        bootstrap.chmod(0o555)
         # SRT 0.0.75 binds deny markers at these paths. Supply inert root-owned targets
         # so bwrap never needs to write its own startup directory.
         for name in ('.gitconfig', '.gitmodules', '.bashrc', '.bash_profile', '.zshrc',
                      '.zprofile', '.profile', '.ripgreprc', '.mcp.json'):
             marker = bootstrap / name
             marker.touch(mode=0o444)
+            marker.chmod(0o444)
         for name in ('.vscode', '.idea', '.claude', '.claude/commands', '.claude/agents'):
-            (bootstrap / name).mkdir(mode=0o555)
+            directory = bootstrap / name
+            directory.mkdir(mode=0o555)
+            directory.chmod(0o555)
         # The untrusted account can replace only children, never the root mountpoint or records.
         for name in ('work', 'home', 'tmp'):
             path = target / name
@@ -518,6 +524,7 @@ class SystemdBackend:
                 raise RuntimeError('Unexpected executor unit')
             checked(['systemctl', 'stop', name])
             self.assert_empty(name)
+            subprocess.run(['systemctl', 'reset-failed', name], capture_output=True, timeout=5)
         for target in self.sessions.iterdir():
             identifier(target.name)
             self.close(Session(target.name, (), '', 0))

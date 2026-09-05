@@ -65,6 +65,7 @@ def main():
     config_path = str(root / 'config.json')
     def start():
         run(['systemd-run', '--quiet', '--unit', supervisor,
+             '-p', 'UMask=0077',
              '-p', 'Environment=PYTHONPATH=' + str(root / 'tools/python'),
              '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {config_path} --cleanup',
              '/usr/bin/python3', str(root / 'worker.py'), '--config', config_path])
@@ -139,12 +140,15 @@ def main():
         before = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest() for p in source.rglob('*') if p.is_file()}
         workspace, app_boot = str(uuid.uuid4()), str(uuid.uuid4())
         boot = start()['workerBootId']
+        supervisor_umask = run(['systemctl', 'show', supervisor, '-p', 'UMask', '--value'])
+        assert supervisor_umask == '0077'
         started = time.monotonic()
         first, first_stop = new_session()
         source_inodes = {(p.stat().st_dev, p.stat().st_ino) for p in (source / '.git/objects').rglob('*') if p.is_file()}
         copied_objects = root / 'runtime/sessions' / first['leaseId'] / 'work/repository/.git/objects'
         assert all((p.stat().st_dev, p.stat().st_ino) not in source_inodes for p in copied_objects.rglob('*') if p.is_file())
-        passed('initial-signed-bundle-copy', milliseconds=round((time.monotonic() - started) * 1000, 2), bundleBytes=bundle.stat().st_size)
+        passed('initial-signed-bundle-copy', milliseconds=round((time.monotonic() - started) * 1000, 2),
+               bundleBytes=bundle.stat().st_size, supervisorUmask=supervisor_umask)
         timings = []
         for _ in range(20):
             started = time.monotonic()
@@ -280,6 +284,8 @@ def main():
         while time.monotonic() < deadline and list((root / 'runtime/sessions').iterdir()):
             time.sleep(.1)
         assert not list((root / 'runtime/sessions').iterdir())
+        # Empty mounts can precede completion of ExecStopPost and transient-unit collection.
+        run(['systemctl', 'stop', supervisor])
         run(['systemctl', 'reset-failed', supervisor])
         previous_boot = boot
         boot = start()['workerBootId']
@@ -287,6 +293,7 @@ def main():
         passed('supervisor-sigkill-cleans-and-invalidates-leases')
         print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'source': 'synthetic-only',
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
+            'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
     finally:
         for stop in heartbeat_stops:
