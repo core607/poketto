@@ -34,11 +34,12 @@ One substantiated blocking finding beats a list of nitpicks. If nothing substant
 
 When the diff touches them, require direct evidence for these requirements rather than treating them as background prose:
 
-- Markdown files and the content repository's main branch remain the source of truth; PostgreSQL search data is rebuildable projection state.
-- Projection updates and checkpoint advancement commit atomically; a successful git commit and successful indexing are reported separately.
-- Machine writes are serialized, document UUIDs remain stable, and updates/deletes enforce `expected_revision` without overwriting conflicts.
-- Visitor Q&A can depend only on a public-content search interface that exposes no caller-supplied scope.
-- Publication is presented as practically irreversible; backup coverage includes non-derived state and image blobs, not rebuildable projection rows.
+- Remote `main` remains content authority. Public reads use one verified, unexpired snapshot; missing or disabled policy exposes nothing, and invalid policy closes service rather than retaining older authorization. PostgreSQL holds relational application state, not a content projection.
+- Browser and MCP writes share base-commit and per-path revision/absence checks. Atomic batches preserve untouched source; conflicts do not overwrite, ambiguous acknowledgments require reconciliation, and Git acknowledgement is distinct from snapshot installation.
+- Public search fixes its scope internally. Private reads and writes require current workspace authorization; changes to public content, references, or publishing policy also require `PUBLISH`.
+- Image authorization binds the page snapshot and exact immutable version. Withdrawal stops new public grants; issued grants remain bounded by five minutes and snapshot expiry. Private reads recheck identity, uploads do not publish or write Git, and acknowledged managed originals survive cache cleanup.
+- Execution copies are isolated by principal, workspace, and server-issued MCP session. Authoritative reads never use command-modified copies; cancellation, revocation, expiry, and shutdown terminate descendants. Missing sandbox capabilities never permit an ordinary subprocess fallback.
+- The [phase-one record](../../../notes/proposed/2026-09-05-phase-one-daily-use.md) owns acceptance and exclusions. Do not require deferred backups or visitor Q&A as a release prerequisite, or equate protocol probes and synthetic fixtures with real browser, client, and HTTPS acceptance.
 
 ## Reporting findings
 
