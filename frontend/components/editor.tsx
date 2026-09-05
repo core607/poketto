@@ -8,6 +8,7 @@ import { message, type Identity } from "./admin";
 import { AssetPicker } from "./asset-picker";
 import { Gallery } from "./gallery";
 import { FileTree } from "./file-tree";
+import { DiagnosticMessage } from "./diagnostic";
 
 type Preview = {
   body?: string;
@@ -303,11 +304,10 @@ export function Editor({
           <details className="diagnostics">
             <summary>仓库诊断 · {tree.diagnostics.length}</summary>
             {tree.diagnostics.map((diagnostic, index) => (
-              <p key={index}>
+              <div key={index}>
                 <strong>{diagnostic.path}</strong>
-                <br />
-                {diagnostic.message}
-              </p>
+                <DiagnosticMessage diagnostic={diagnostic} />
+              </div>
             ))}
           </details>
         ) : null}
@@ -472,9 +472,9 @@ export function Editor({
               )}
             </div>
             {file.diagnostics.map((diagnostic, index) => (
-              <p className="notice" key={index}>
-                {diagnostic.message}
-              </p>
+              <div className="notice" key={index}>
+                <DiagnosticMessage diagnostic={diagnostic} />
+              </div>
             ))}
           </>
         ) : (
