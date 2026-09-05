@@ -6,7 +6,6 @@ import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.IssuedToken;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -35,8 +35,11 @@ class WorkspaceAdminController {
     }
 
     @GetMapping("/members")
-    List<AuthService.MemberInfo> members(@AuthenticationPrincipal AuthPrincipal principal) {
-        return auth.listMembers(principal, workspaces.defaultWorkspace().id());
+    AuthService.Page<AuthService.MemberInfo> members(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "30") int limit) {
+        return auth.listMembers(principal, workspaces.defaultWorkspace().id(), offset, limit);
     }
 
     @PutMapping("/members/{accountId}")
@@ -50,8 +53,11 @@ class WorkspaceAdminController {
     }
 
     @GetMapping("/invitations")
-    List<AuthService.InvitationInfo> invitations(@AuthenticationPrincipal AuthPrincipal principal) {
-        return auth.listInvitations(principal, workspaces.defaultWorkspace().id());
+    AuthService.Page<AuthService.InvitationInfo> invitations(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "30") int limit) {
+        return auth.listInvitations(principal, workspaces.defaultWorkspace().id(), offset, limit);
     }
 
     @PostMapping("/invitations")
@@ -68,8 +74,11 @@ class WorkspaceAdminController {
     }
 
     @GetMapping("/keys")
-    List<AuthService.ApiKeyInfo> keys(@AuthenticationPrincipal AuthPrincipal principal) {
-        return auth.listApiKeys(principal, workspaces.defaultWorkspace().id());
+    AuthService.Page<AuthService.ApiKeyInfo> keys(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "30") int limit) {
+        return auth.listApiKeys(principal, workspaces.defaultWorkspace().id(), offset, limit);
     }
 
     @PostMapping("/keys")

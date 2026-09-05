@@ -1,9 +1,10 @@
 "use client";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { api } from "../lib/browser-api";
 import { date } from "../lib/format";
 import { message } from "./admin";
 import { Secret } from "./secret";
+import { AdminPagination, useAdminPage } from "./admin-pagination";
 export type Member = {
   accountId: string;
   loginName: string;
@@ -17,22 +18,17 @@ type Invitation = {
   used: boolean;
 };
 export function Members() {
-  const [members, setMembers] = useState<Member[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const memberPage = useAdminPage<Member>("/api/admin/members");
+  const members = memberPage.items;
+  const invitationPage = useAdminPage<Invitation>("/api/admin/invitations");
+  const invitations = invitationPage.items;
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  async function refresh() {
-    const [users, invites] = await Promise.all([
-      api<Member[]>("/api/admin/members"),
-      api<Invitation[]>("/api/admin/invitations"),
-    ]);
-    setMembers(users);
-    setInvitations(invites);
+  function refresh() {
+    memberPage.reload();
+    invitationPage.reload();
   }
-  useEffect(() => {
-    void refresh().catch((error) => setError(message(error)));
-  }, []);
   async function update(member: Member, values: Partial<Member>) {
     setPending(true);
     setError("");
@@ -107,9 +103,9 @@ export function Members() {
           创建邀请 ↗
         </button>
       </div>
-      {error && (
+      {(error || memberPage.error || invitationPage.error) && (
         <p className="notice danger" role="alert">
-          {error}
+          {error || memberPage.error || invitationPage.error}
         </p>
       )}
       {secret && (
@@ -172,6 +168,7 @@ export function Members() {
           </tbody>
         </table>
       </div>
+      <AdminPagination label="成员" page={memberPage} disabled={pending} />
       <section className="sub-panel">
         <h2>邀请记录</h2>
         <div className="table-scroll">
@@ -212,6 +209,11 @@ export function Members() {
             </tbody>
           </table>
         </div>
+        <AdminPagination
+          label="邀请"
+          page={invitationPage}
+          disabled={pending}
+        />
         {!invitations.length && <p className="muted">还没有创建邀请。</p>}
       </section>
       <details className="sub-panel">

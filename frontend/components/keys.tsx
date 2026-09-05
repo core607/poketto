@@ -1,9 +1,10 @@
 "use client";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { api } from "../lib/browser-api";
 import { message, type Identity } from "./admin";
 import type { Member } from "./members";
 import { Secret } from "./secret";
+import { AdminPagination, useAdminPage } from "./admin-pagination";
 const capabilities = [
   {
     key: "READ_PRIVATE",
@@ -38,22 +39,23 @@ type Key = {
   revoked: boolean;
 };
 export function Keys({ identity }: { identity: Identity }) {
-  const [keys, setKeys] = useState<Key[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
+  const keyPage = useAdminPage<Key>("/api/admin/keys");
+  const keys = keyPage.items;
+  const memberPage = useAdminPage<Member>("/api/admin/members");
+  const members = memberPage.items;
+  const [holder, setHolder] = useState(identity.accountId);
+  const selectedHolder = members.some(
+    (member) => member.active && member.accountId === holder,
+  )
+    ? holder
+    : "";
   const [secret, setSecret] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  async function refresh() {
-    const [keys, members] = await Promise.all([
-      api<Key[]>("/api/admin/keys"),
-      api<Member[]>("/api/admin/members"),
-    ]);
-    setKeys(keys);
-    setMembers(members);
+  function refresh() {
+    keyPage.reload();
+    memberPage.reload();
   }
-  useEffect(() => {
-    void refresh().catch((error) => setError(message(error)));
-  }, []);
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -102,9 +104,9 @@ export function Keys({ identity }: { identity: Identity }) {
           <p className="muted">每个客户端使用独立密钥，按需要分配权限。</p>
         </div>
       </div>
-      {error && (
+      {(error || keyPage.error || memberPage.error) && (
         <p className="notice danger" role="alert">
-          {error}
+          {error || keyPage.error || memberPage.error}
         </p>
       )}
       {secret && (
@@ -117,7 +119,16 @@ export function Keys({ identity }: { identity: Identity }) {
       <form className="key-form" onSubmit={create}>
         <label>
           关联成员
-          <select name="accountId" defaultValue={identity.accountId}>
+          <select
+            name="accountId"
+            required
+            value={selectedHolder}
+            disabled={memberPage.loading}
+            onChange={(event) => setHolder(event.target.value)}
+          >
+            <option value="" disabled>
+              请选择这一页的成员
+            </option>
             {members
               .filter((member) => member.active)
               .map((member) => (
@@ -127,6 +138,11 @@ export function Keys({ identity }: { identity: Identity }) {
               ))}
           </select>
         </label>
+        <AdminPagination
+          label="关联成员"
+          page={memberPage}
+          disabled={pending}
+        />
         <fieldset>
           <legend>允许的能力</legend>
           <div className="capabilities">
@@ -146,7 +162,9 @@ export function Keys({ identity }: { identity: Identity }) {
             ))}
           </div>
         </fieldset>
-        <button disabled={pending || !members.length}>创建密钥 ↗</button>
+        <button disabled={pending || memberPage.loading || !selectedHolder}>
+          创建密钥 ↗
+        </button>
       </form>
       <section className="sub-panel">
         <h2>已创建的密钥</h2>
@@ -156,7 +174,7 @@ export function Keys({ identity }: { identity: Identity }) {
               <div>
                 <h3>
                   {members.find((member) => member.accountId === key.accountId)
-                    ?.loginName ?? "关联成员"}
+                    ?.loginName ?? key.accountId}
                   <span className="muted"> · {key.id.slice(0, 8)}</span>
                 </h3>
                 <p>
@@ -184,6 +202,7 @@ export function Keys({ identity }: { identity: Identity }) {
             </article>
           ))}
         </div>
+        <AdminPagination label="密钥" page={keyPage} disabled={pending} />
         {!keys.length && <p className="muted">还没有访问密钥。</p>}
       </section>
     </div>

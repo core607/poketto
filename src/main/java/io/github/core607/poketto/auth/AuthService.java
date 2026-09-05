@@ -206,19 +206,25 @@ public final class AuthService {
         });
     }
 
-    public List<InvitationInfo> listInvitations(AuthPrincipal actor, WorkspaceId workspace) {
+    public Page<InvitationInfo> listInvitations(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
         requireHumanOwner(actor, workspace);
-        return jdbc.query(
+        validatePage(offset, limit);
+        long total = jdbc.queryForObject(
+                "select count(*) from auth_invitations where workspace_id = ?", Long.class, workspace.value());
+        List<InvitationInfo> items = jdbc.query(
                 """
                 select invitation_id, expires_at, revoked_at, used_at from auth_invitations
-                where workspace_id = ? order by created_at desc, invitation_id limit 100
+                where workspace_id = ? order by created_at desc, invitation_id limit ? offset ?
                 """,
                 (rs, row) -> new InvitationInfo(
                         rs.getObject(1, UUID.class),
                         rs.getTimestamp(2).toInstant(),
                         rs.getTimestamp(3) != null,
                         rs.getTimestamp(4) != null),
-                workspace.value());
+                workspace.value(),
+                limit,
+                offset);
+        return new Page<>(items, total, offset, limit);
     }
 
     /** Creates an account only while atomically consuming a valid invitation. No standalone signup exists. */
@@ -245,20 +251,26 @@ public final class AuthService {
         });
     }
 
-    public List<MemberInfo> listMembers(AuthPrincipal actor, WorkspaceId workspace) {
+    public Page<MemberInfo> listMembers(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
         requireHumanOwner(actor, workspace);
-        return jdbc.query(
+        validatePage(offset, limit);
+        long total = jdbc.queryForObject(
+                "select count(*) from auth_memberships where workspace_id = ?", Long.class, workspace.value());
+        List<MemberInfo> items = jdbc.query(
                 """
                 select m.account_id, a.login_name, m.role, m.suspended_at from auth_memberships m
                 join auth_accounts a on a.account_id = m.account_id where workspace_id = ?
-                order by a.login_name limit 100
+                order by a.login_name limit ? offset ?
                 """,
                 (rs, row) -> new MemberInfo(
                         rs.getObject(1, UUID.class),
                         rs.getString(2),
                         MembershipRole.valueOf(rs.getString(3)),
                         rs.getTimestamp(4) == null),
-                workspace.value());
+                workspace.value(),
+                limit,
+                offset);
+        return new Page<>(items, total, offset, limit);
     }
 
     public void changeMembership(
@@ -345,10 +357,13 @@ public final class AuthService {
         });
     }
 
-    public List<ApiKeyInfo> listApiKeys(AuthPrincipal actor, WorkspaceId workspace) {
+    public Page<ApiKeyInfo> listApiKeys(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
         requireKeyManager(actor, workspace);
-        return jdbc.query(
-                "select key_id, account_id, capabilities, revoked_at from auth_api_keys where workspace_id = ? order by created_at desc, key_id limit 100",
+        validatePage(offset, limit);
+        long total = jdbc.queryForObject(
+                "select count(*) from auth_api_keys where workspace_id = ?", Long.class, workspace.value());
+        List<ApiKeyInfo> items = jdbc.query(
+                "select key_id, account_id, capabilities, revoked_at from auth_api_keys where workspace_id = ? order by created_at desc, key_id limit ? offset ?",
                 (rs, row) -> new ApiKeyInfo(
                         rs.getObject(1, UUID.class),
                         rs.getObject(2, UUID.class),
@@ -356,7 +371,10 @@ public final class AuthService {
                                 .map(Capability::valueOf)
                                 .collect(Collectors.toSet()),
                         rs.getTimestamp(4) != null),
-                workspace.value());
+                workspace.value(),
+                limit,
+                offset);
+        return new Page<>(items, total, offset, limit);
     }
 
     public void revokeApiKey(AuthPrincipal actor, WorkspaceId workspace, UUID keyId) {
@@ -516,6 +534,16 @@ public final class AuthService {
     private record AccountCredential(UUID id, String hash) {}
 
     private record Invitation(UUID id, WorkspaceId workspace, Instant expires, boolean revoked, UUID usedBy) {}
+
+    private static void validatePage(int offset, int limit) {
+        if (offset < 0 || limit < 1 || limit > 100) throw failure(INVALID_INPUT);
+    }
+
+    public record Page<T>(List<T> items, long total, int offset, int limit) {
+        public Page {
+            items = List.copyOf(items);
+        }
+    }
 
     public record InvitationInfo(UUID id, Instant expiresAt, boolean revoked, boolean used) {}
 
