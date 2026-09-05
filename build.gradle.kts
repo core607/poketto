@@ -200,6 +200,7 @@ tasks.withType<Test>().configureEach {
 apply(from = "gradle/repository-checks.gradle.kts")
 apply(from = "gradle/frontend.gradle.kts")
 apply(from = "gradle/executor-service.gradle.kts")
+apply(from = "gradle/executor-native.gradle.kts")
 
 tasks.check {
     dependsOn(integrationTest)
