@@ -91,7 +91,7 @@ Set `POKETTO_EXECUTOR_ENABLED=true` only on Linux with the separate worker confi
 
 Exports independently limit compressed bundle bytes and preflight work: reachable blob sizes may total at most twice the configured bundle limit, with at most 100,000 commits and 250,000 total visited objects. The raw-byte check bounds compression work and can reject highly compressible history whose bundle would fit; it does not estimate the resulting bundle size. Both checks retain the export deadline.
 
-The adapter renews leases while initialization or execution waits, rechecks stored authority on renewal, and propagates cancellation and committed revocation to the complete worker unit. Unconfirmed closure retains admission capacity. Only confirmed CLOSED or a different authenticated worker boot after startup cleanup releases that capacity; the old MCP session cannot reopen. Lost execution responses require reconciliation rather than a blind retry.
+The adapter renews leases while initialization or execution waits, rechecks stored authority on renewal, and propagates cancellation and committed revocation to the complete worker unit. Unconfirmed closure retains admission capacity. After a failed close attempt, the bounded control pool rechecks CLOSE at the worker's advertised renewal interval, without renewing authority or retrying execution. The original failed acknowledgement remains a failure until closure is actually confirmed. Only confirmed CLOSED or a different authenticated worker boot after startup cleanup releases that capacity; the old MCP session cannot reopen. Lost execution responses require reconciliation rather than a blind retry.
 
 ## Verification and remaining acceptance
 

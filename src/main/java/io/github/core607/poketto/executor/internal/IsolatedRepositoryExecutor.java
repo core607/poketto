@@ -258,6 +258,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             current = new ArrayList<>(sessions.values());
         }
         for (Session session : current) {
+            if (session.stopping.get()) {
+                reconcileClose(session);
+                continue;
+            }
             if (!session.openAttempted
                     || session.stopping.get()
                     || System.nanoTime() < session.nextRenew
@@ -288,6 +292,35 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    private void reconcileClose(Session session) {
+        if (!session.openAttempted
+                || session.capacityReleased
+                || !session.stopped.isCompletedExceptionally()
+                || System.nanoTime() < session.nextRenew
+                || !session.renewing.compareAndSet(false, true)) return;
+        Runnable deferred = () -> {
+            session.nextRenew = System.nanoTime()
+                    + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
+            session.renewing.set(false);
+        };
+        try {
+            controls.execute(() -> {
+                try {
+                    if (session.capacityReleased || !session.stopping.get()) return;
+                    // Closing remains allowed after revocation; no OPEN, EXEC or renewal is replayed.
+                    closeWorker(session, session.closeReason);
+                    releaseCapacity(session);
+                } catch (RuntimeException exception) {
+                    log.debug("Worker close remains unconfirmed; admission is retained");
+                } finally {
+                    deferred.run();
+                }
+            });
+        } catch (RuntimeException exception) {
+            deferred.run();
+        }
+    }
+
     private JsonNode requestLive(Session session, String operation, Map<String, ?> data, Duration timeout) {
         WorkerClient.PreparedRequest request;
         synchronized (session) {
@@ -301,6 +334,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         synchronized (session) {
             if (session.capacityReleased) return CompletableFuture.completedFuture(null);
             if (!session.stopping.compareAndSet(false, true)) return session.stopped;
+            session.closeReason = reason;
             if (!session.openAttempted) {
                 releaseCapacity(session);
                 session.stopped.complete(null);
@@ -513,6 +547,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile boolean ready;
         private volatile boolean capacityReleased;
         private volatile boolean detached;
+        private String closeReason;
         private volatile long nextRenew;
 
         private Session(SessionKey key, AuthPrincipal principal) {

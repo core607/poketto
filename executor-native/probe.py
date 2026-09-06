@@ -220,9 +220,10 @@ with socket.socket(socket.AF_UNIX) as connection:
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'
-        fake_source.write_text('import socket\nfrom pathlib import Path\ns=socket.socket(socket.AF_UNIX)\ns.bind(' + repr(str(root / 'fake-inbox/fake.sock')) + ')\ns.listen(4)\nwhile True:\n c,_=s.accept()\n c.close()\n')
+        shutil.copyfile(Path(__file__).with_name('rejected_peer.py'), fake_source)
+        fake_observation = root / 'fake-inbox/observation.json'
         run(['systemd-run', '--quiet', '--unit', fake_unit, '-p', 'User=' + app_user,
-             '/usr/bin/python3', str(fake_source)])
+             '/usr/bin/python3', str(fake_source), str(root / 'fake-inbox/fake.sock'), str(fake_observation)])
         deadline = time.monotonic() + 10
         while not (root / 'fake-inbox/fake.sock').exists() and time.monotonic() < deadline:
             time.sleep(.1)
@@ -231,6 +232,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         os.chown(fake_socket, 0, app_account.pw_gid)
         os.chmod(fake_socket, 0o660)
         (root / 'java.json').write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
+            'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
             'commit': commit, 'control': str(root / 'control')}))
         execute_java('main')
@@ -240,7 +242,8 @@ with socket.socket(socket.AF_UNIX) as connection:
         control({'operation': 'assert-source-unchanged'})
         print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
-            'nativeScriptSha256': digest(Path(__file__)), 'source': 'synthetic-only'}), flush=True)
+            'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
+            'source': 'synthetic-only'}), flush=True)
     finally:
         diagnostic = root / 'initialization.json'
         if diagnostic.exists():

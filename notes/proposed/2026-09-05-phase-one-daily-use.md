@@ -5,7 +5,7 @@ Status: Proposed
 
 The [identity HTTP backend](../implemented/2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. This phase remains proposed until the other functionality and final installation acceptance are complete.
 
-The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. Frontend and final installation acceptance remain open.
+The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](../implemented/2026-09-06-blog-browser-interface.md) provides public pages and the editor. Final integrated installation acceptance remains open.
 
 ## Problem
 

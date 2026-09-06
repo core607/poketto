@@ -44,6 +44,8 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class AssetDeliveryTests {
@@ -60,6 +62,82 @@ class AssetDeliveryTests {
     void canonicalStorageRoot() throws Exception {
         // Windows may supply an 8.3 TEMP alias; the storage policy requires canonical ancestors.
         directory = directory.toRealPath();
+    }
+
+    @Test
+    void logicalRoutesResolveEncodedMarkdownLinksAndImagesWithoutReinterpretingNames() throws Exception {
+        assertLogicalMedia("目录 空格%#");
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void linuxQuestionMarkFolderSupportsPublicGalleryAndPrivatePreview() throws Exception {
+        assertLogicalMedia("目录 空格%#?");
+    }
+
+    private void assertLogicalMedia(String folder) throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        String source = """
+                # 文件夹
+                [percent](100%25.md)
+                [hash](note%23part.md#Section)
+                [encoded](literal%252Fslash.md)
+                [real](literal/slash.md)
+                [encodedUnicode](%25E9%259B%25A8.md)
+                [unicode](%E9%9B%A8.md)
+                [custom](custom.md)
+                [private](/private/hidden%20%25%23.md)
+                ![image](photo%20%25%23.png)
+                """;
+        var files = files(folder + "/index.md", source);
+        for (String name : new String[] {
+            "100%.md", "note#part.md", "literal%2Fslash.md", "literal/slash.md", "%E9%9B%A8.md", "雨.md"
+        }) {
+            files.put(folder + "/" + name, text("# " + name));
+        }
+        files.put(folder + "/custom.md", text("---\nroute: '/chosen ?%# '\n---\n# Custom"));
+        files.put(folder + "/photo %#.png", png(1));
+        files.put(folder + "/other %#.png", png(2));
+        files.put(folder + "/nested/image.png", png(3));
+        files.put("private/hidden %#.md", text("# Private"));
+        var commit = fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        var result = service.publicDocument(workspace, "/" + folder).orElseThrow();
+        assertThat(result.media().body()).isEqualTo(source);
+        assertThat(result.media().links())
+                .containsEntry("100%25.md", "/" + folder + "/100%")
+                .containsEntry("note%23part.md#Section", "/" + folder + "/note#part#Section")
+                .containsEntry("literal%252Fslash.md", "/" + folder + "/literal%2Fslash")
+                .containsEntry("literal/slash.md", "/" + folder + "/literal/slash")
+                .containsEntry("%25E9%259B%25A8.md", "/" + folder + "/%E9%9B%A8")
+                .containsEntry("%E9%9B%A8.md", "/" + folder + "/雨")
+                .containsEntry("custom.md", "/chosen ?%# ")
+                .doesNotContainKey("/private/hidden%20%25%23.md");
+        assertThat(result.media().gallery()).extracting(item -> item.alt()).containsExactly("other %#.png");
+        assertThat(service.readPublicImage(
+                                workspace, token(result.media().images().get("photo%20%25%23.png")))
+                        .bytes())
+                .isEqualTo(png(1));
+        assertThat(service.publicDocument(workspace, "/" + folder + "/100%")
+                        .orElseThrow()
+                        .media()
+                        .gallery())
+                .isEmpty();
+        assertThat(service.publicDocument(workspace, "/chosen ?%# ")).isPresent();
+        assertThat(service.publicDocument(workspace, "/chosen ?%#")).isEmpty();
+        assertThat(service.publicDocument(workspace, "/private/hidden %#")).isEmpty();
+        var preview = service.preview(actor, workspace, folder + "/index.md", source, Optional.of(commit.name()));
+        assertThat(preview.body()).isEqualTo(source);
+        assertThat(preview.links())
+                .containsEntry(
+                        "100%25.md",
+                        "/admin?path=" + java.net.URLEncoder.encode(folder + "/100%.md", StandardCharsets.UTF_8));
+        assertThat(service.readPrivateImage(
+                                actor, workspace, token(preview.images().get("photo%20%25%23.png")))
+                        .bytes())
+                .isEqualTo(png(1));
     }
 
     @Test
