@@ -70,6 +70,8 @@ exclude:
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。
 
+超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](notes/proposed/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
+
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
 每个客户端执行会话固定于选定的 commit，即使共用 key 也有独立目录。补丁返回新 commit，不会切换旧执行目录；`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。[集成记录](notes/proposed/2026-09-05-local-execution-supervisor.md)区分可执行检查、已有合成证据和最终客户端与部署验收。

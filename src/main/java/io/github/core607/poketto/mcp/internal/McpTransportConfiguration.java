@@ -7,6 +7,7 @@ import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
+import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import java.time.Clock;
 import java.time.Duration;
@@ -20,6 +21,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.web.servlet.function.EntityResponse;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
 import tools.jackson.databind.json.JsonMapper;
@@ -86,11 +88,19 @@ class McpTransportConfiguration {
                         && response.statusCode().is2xxSuccessful()) {
                     sessions.remove(sessionId, McpSessionClosed.Reason.CLIENT_DELETE);
                 }
-                return response;
+                return normalizeError(response);
             } catch (AuthException | SecurityException exception) {
                 return rejected(404);
             }
         });
+    }
+
+    static ServerResponse normalizeError(ServerResponse response) {
+        if (response instanceof EntityResponse<?> entity && entity.entity() instanceof McpError error) {
+            // SDK transport errors have no request ID. Never serialize the Throwable envelope.
+            return ServerResponse.from(response).body(Map.of("jsonrpc", "2.0", "error", error.getJsonRpcError()));
+        }
+        return response;
     }
 
     @Bean

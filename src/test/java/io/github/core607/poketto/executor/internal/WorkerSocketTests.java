@@ -51,6 +51,22 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void peerShutdownStillReportsAssertionsFromActualSocketHandling() throws Exception {
+        var peer = new Peer();
+        peer.assertOnHelloShutdown = true;
+        var exchange = CompletableFuture.runAsync(
+                () -> assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class));
+        try {
+            assertThat(peer.openEntered.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            assertThatThrownBy(peer::close)
+                    .isInstanceOf(AssertionError.class)
+                    .hasMessageContaining("peer assertion after shutdown");
+        }
+        exchange.get(5, TimeUnit.SECONDS);
+    }
+
+    @Test
     void signsExactFramesPinsEachClientAndReleasesExportsAfterOpening() throws Exception {
         var auth = mock(AuthService.class);
         var exports = exports();
@@ -669,6 +685,7 @@ class WorkerSocketTests {
         private volatile boolean closeForever;
         private volatile boolean dropClose;
         private volatile boolean dropHello;
+        private volatile boolean assertOnHelloShutdown;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
         private volatile boolean wrongRequestId;
@@ -712,6 +729,14 @@ class WorkerSocketTests {
                 JsonNode envelope = json.readTree(input.readNBytes(length));
                 Object response;
                 if (envelope.path("operation").asString("").equals("HELLO")) {
+                    if (assertOnHelloShutdown) {
+                        openEntered.countDown();
+                        try {
+                            openRelease.await(8, TimeUnit.SECONDS);
+                        } finally {
+                            fail("peer assertion after shutdown");
+                        }
+                    }
                     if (dropHello) return;
                     if (oversizedHello) {
                         output.writeInt(WorkerClient.MAX_FRAME + 1);
@@ -762,9 +787,14 @@ class WorkerSocketTests {
                 output.write(bytes);
                 output.flush();
             } catch (Throwable exception) {
-                if (!closed.get() && !(stallExec && exception instanceof java.io.IOException))
-                    failure.compareAndSet(null, exception);
+                recordFailure(exception);
             }
+        }
+
+        private void recordFailure(Throwable exception) {
+            if (exception instanceof java.io.IOException && (closed.get() || stallExec)) return;
+            if (exception instanceof InterruptedException && closed.get()) return;
+            failure.compareAndSet(null, exception);
         }
 
         private Object handle(JsonNode request) throws Exception {

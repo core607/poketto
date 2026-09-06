@@ -103,7 +103,7 @@ public final class ExecutorNativeProbe {
             assertThat(first.exitCode()).isZero();
             assertThat(first.commit()).isEqualTo(config.path("commit").stringValue());
             assertThat(first.stdout()).contains(first.commit(), "Synthetic native history", "searchable");
-            passed("signed-open-through-production-permission-checks", "milliseconds", millis(start));
+            passed("signed-open-through-production-socket-and-signature-checks", "milliseconds", millis(start));
             start = System.nanoTime();
             for (int i = 0; i < 20; i++)
                 assertThat(execute(executor, "first", "git rev-parse HEAD; test -f article.md", new Cancellation())

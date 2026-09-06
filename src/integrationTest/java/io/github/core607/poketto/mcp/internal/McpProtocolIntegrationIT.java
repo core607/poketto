@@ -8,6 +8,7 @@ import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationCon
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -150,6 +151,7 @@ class McpProtocolIntegrationIT {
                 .doesNotContain("repo_exec");
         JsonNode original = result(call(key.token(), first, "get_file", Map.of("path", "private/original.md")));
         String base = original.path("commit").stringValue();
+        assertRequestErrorBoundary(key.token(), first, base);
         assertThat(original.path("source").stringValue())
                 .withFailMessage("Authoritative file response: %s", original)
                 .isEqualTo("# Original\n");
@@ -268,6 +270,81 @@ class McpProtocolIntegrationIT {
                         .map(McpSessionClosed::reason)
                         .toList())
                 .contains(McpSessionClosed.Reason.AUTH_REVOKED);
+    }
+
+    private void assertRequestErrorBoundary(String token, String session, String base) throws Exception {
+        byte[] operation = JsonMapper.shared()
+                .writeValueAsBytes(rpc(
+                        "tools/call",
+                        Map.of(
+                                "name",
+                                "repo_patch",
+                                "arguments",
+                                Map.of(
+                                        "baseCommit",
+                                        base,
+                                        "changes",
+                                        List.of(Map.of(
+                                                "path",
+                                                "private/oversized-request.md",
+                                                "expectedAbsence",
+                                                true,
+                                                "content",
+                                                "# Must not execute\n"))))));
+        byte[] oversized = padded(operation, McpBodyLimitFilter.MAX_REQUEST_BYTES + 128);
+        for (boolean chunked : List.of(true, false)) {
+            var rejected = rawPost(token, session, oversized, chunked);
+            assertThat(rejected.statusCode()).isEqualTo(413);
+            assertThat(rejected.body()).doesNotContain("stackTrace", "className", "jsonRpcError");
+            assertThat(rejected.headers().firstValue("Cache-Control")).contains("no-store");
+            assertThat(result(call(token, session, "get_file", Map.of("path", "private/oversized-request.md")))
+                            .path("expectedAbsence")
+                            .booleanValue())
+                    .isTrue();
+        }
+        var boundary = rawPost(
+                token,
+                session,
+                padded(
+                        JsonMapper.shared().writeValueAsBytes(rpc("tools/list", Map.of())),
+                        McpBodyLimitFilter.MAX_REQUEST_BYTES),
+                true);
+        assertThat(response(boundary).path("result").path("tools").isArray()).isTrue();
+        var malformed = rawPost(token, session, new byte[] {'{'}, true);
+        assertThat(malformed.statusCode()).isEqualTo(400);
+        var error = json.readTree(malformed.body());
+        assertThat(error.path("jsonrpc").stringValue()).isEqualTo("2.0");
+        assertThat(error.has("id")).isFalse();
+        assertThat(error.path("error").path("code").intValue()).isEqualTo(-32600);
+        assertThat(error.path("error").path("message").stringValue()).isEqualTo("Invalid message format");
+        assertThat(malformed.body()).doesNotContain("stackTrace", "className", "localizedMessage", "jsonRpcError");
+        assertThat(post(token, session, rpc("tools/list", Map.of())).statusCode())
+                .isEqualTo(200);
+    }
+
+    private static byte[] padded(byte[] operation, int size) {
+        byte[] body = new byte[size];
+        java.util.Arrays.fill(body, (byte) ' ');
+        System.arraycopy(operation, 0, body, size - operation.length, operation.length);
+        return body;
+    }
+
+    private HttpResponse<String> rawPost(String token, String session, byte[] body, boolean chunked) throws Exception {
+        var publisher = chunked
+                ? HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(body))
+                : HttpRequest.BodyPublishers.ofByteArray(body);
+        assertThat(publisher.contentLength()).isEqualTo(chunked ? -1L : body.length);
+        var request = HttpRequest.newBuilder(endpoint())
+                .version(HttpClient.Version.HTTP_1_1)
+                .timeout(Duration.ofSeconds(45))
+                .header("Authorization", "Bearer " + token)
+                .header("Mcp-Session-Id", session)
+                .header("MCP-Protocol-Version", "2025-11-25")
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .POST(publisher)
+                .build();
+        return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private URI endpoint() {

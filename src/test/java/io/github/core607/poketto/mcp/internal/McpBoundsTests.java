@@ -24,6 +24,73 @@ import reactor.core.publisher.Mono;
 
 class McpBoundsTests {
     @Test
+    void onlyThrowableEntitiesAreNormalizedAndResponseMetadataSurvives() {
+        var original = org.springframework.web.servlet.function.ServerResponse.badRequest()
+                .header("MCP-Protocol-Version", "2025-11-25")
+                .header("Allow", "POST, DELETE")
+                .cookie(new jakarta.servlet.http.Cookie("fixture", "value"))
+                .body(io.modelcontextprotocol.spec.McpError.builder(-32600)
+                        .message("Invalid message format")
+                        .build());
+        var normalized = McpTransportConfiguration.normalizeError(original);
+        assertThat(normalized.statusCode()).isEqualTo(original.statusCode());
+        assertThat(normalized.headers()).isEqualTo(original.headers());
+        assertThat(normalized.cookies()).isEqualTo(original.cookies());
+        var body = (java.util.Map<?, ?>)
+                ((org.springframework.web.servlet.function.EntityResponse<?>) normalized).entity();
+        assertThat(body.keySet().stream().map(Object::toString).toList()).containsExactlyInAnyOrder("jsonrpc", "error");
+        var rpc = org.springframework.web.servlet.function.ServerResponse.badRequest()
+                .body(io.modelcontextprotocol.spec.McpSchema.JSONRPCResponse.error(
+                        42,
+                        io.modelcontextprotocol.spec.McpError.builder(-32600)
+                                .message("Invalid request")
+                                .build()
+                                .getJsonRpcError()));
+        assertThat(McpTransportConfiguration.normalizeError(rpc)).isSameAs(rpc);
+        var accepted = org.springframework.web.servlet.function.ServerResponse.accepted()
+                .build();
+        assertThat(McpTransportConfiguration.normalizeError(accepted)).isSameAs(accepted);
+    }
+
+    @Test
+    void fullBodyIsValidatedBeforeDispatchAndExactBytesAreConsumedOnlyOnce() throws Exception {
+        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        byte[] oversized = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1];
+        for (int attempt = 0; attempt < 5; attempt++) {
+            var request = chunked(oversized);
+            var response = new MockHttpServletResponse();
+            filter.doFilter(request, response, (input, output) -> fail("oversized data reached SDK"));
+            assertThat(response.getStatus()).isEqualTo(413);
+        }
+        byte[] exact = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES];
+        java.util.Arrays.fill(exact, (byte) 93);
+        filter.doFilter(chunked(exact), new MockHttpServletResponse(), (input, output) -> {
+            assertThat(input.getInputStream().read()).isEqualTo(93);
+            byte[] remaining = input.getInputStream().readAllBytes();
+            assertThat(java.util.Arrays.equals(exact, 1, exact.length, remaining, 0, remaining.length))
+                    .isTrue();
+            assertThat(input.getInputStream().read()).isEqualTo(-1);
+        });
+    }
+
+    private static MockHttpServletRequest chunked(byte[] bytes) {
+        var request = new MockHttpServletRequest("POST", "/mcp") {
+            @Override
+            public long getContentLengthLong() {
+                return -1;
+            }
+
+            @Override
+            public int getContentLength() {
+                return -1;
+            }
+        };
+        request.addHeader("Mcp-Session-Id", "server-session");
+        request.setContent(bytes);
+        return request;
+    }
+
+    @Test
     void actualSdkSessionIdsAreBoundToKeysExpireAndReleaseCapacity() {
         var time = new MutableClock();
         List<Object> events = new ArrayList<>();

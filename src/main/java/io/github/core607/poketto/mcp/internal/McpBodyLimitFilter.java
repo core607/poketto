@@ -16,7 +16,6 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.SequenceInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -76,6 +75,19 @@ final class McpBodyLimitFilter implements Filter {
             if (released.compareAndSet(false, true)) admission.release();
         };
         try {
+            // The SDK consumes stream exceptions itself, so enforce the bound before dispatch.
+            byte[] body = prefix;
+            int size = prefix.length;
+            if (prefix.length > MAX_INITIALIZE_BYTES) {
+                body = new byte[limit + 1];
+                System.arraycopy(prefix, 0, body, 0, prefix.length);
+                size += original.readNBytes(body, size, body.length - size);
+            }
+            if (size > limit) {
+                reject(output, 413);
+                return;
+            }
+            var source = new ByteArrayInputStream(body, 0, size);
             chain.doFilter(
                     new HttpServletRequestWrapper(http) {
                         private ServletInputStream bounded;
@@ -83,43 +95,30 @@ final class McpBodyLimitFilter implements Filter {
                         @Override
                         public ServletInputStream getInputStream() throws IOException {
                             if (bounded != null) return bounded;
-                            var source = new SequenceInputStream(new ByteArrayInputStream(prefix), original);
                             bounded = new ServletInputStream() {
-                                private int count;
-
                                 @Override
-                                public int read() throws IOException {
-                                    int value = source.read();
-                                    if (value >= 0 && ++count > limit)
-                                        throw new IOException("MCP request exceeds its byte limit");
-                                    return value;
+                                public int read() {
+                                    return source.read();
                                 }
 
                                 @Override
-                                public int read(byte[] buffer, int offset, int length) throws IOException {
-                                    int read = source.read(buffer, offset, Math.min(length, limit - count + 1));
-                                    if (read > 0 && (count += read) > limit)
-                                        throw new IOException("MCP request exceeds its byte limit");
-                                    return read;
+                                public int read(byte[] buffer, int offset, int length) {
+                                    return source.read(buffer, offset, length);
                                 }
 
                                 @Override
                                 public boolean isFinished() {
-                                    try {
-                                        return source.available() == 0 && original.isFinished();
-                                    } catch (IOException exception) {
-                                        return false;
-                                    }
+                                    return source.available() == 0;
                                 }
 
                                 @Override
                                 public boolean isReady() {
-                                    return original.isReady();
+                                    return true;
                                 }
 
                                 @Override
                                 public void setReadListener(ReadListener listener) {
-                                    original.setReadListener(listener);
+                                    throw new IllegalStateException("MCP request bodies use blocking reads");
                                 }
                             };
                             return bounded;
