@@ -232,6 +232,29 @@ class AuthIntegrationIT {
     }
 
     @Test
+    void promotionPreservesExplicitKeyCapabilitiesAndDemotionRevokesHeldAndCreatedKeys() {
+        AuthPrincipal owner = owner();
+        AuthPrincipal member = member(owner, "member");
+        IssuedToken held = auth.createApiKey(owner, workspace, member.accountId(), null);
+
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, true);
+        AuthPrincipal machine = auth.authenticateApiKey(held.token());
+        assertThat(auth.authorize(machine, workspace).capabilities())
+                .containsExactlyInAnyOrder(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
+        assertCode(() -> auth.authorize(machine, workspace, Capability.MANAGE_KEYS), AuthException.Code.DENIED);
+        assertCode(() -> auth.authorize(machine, workspace, Capability.PUBLISH), AuthException.Code.DENIED);
+        assertThat(events).isEmpty();
+
+        IssuedToken created = auth.createApiKey(member, workspace, owner.accountId(), null);
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true);
+        assertCode(() -> auth.authenticateApiKey(held.token()), AuthException.Code.INVALID_CREDENTIALS);
+        assertCode(() -> auth.authenticateApiKey(created.token()), AuthException.Code.INVALID_CREDENTIALS);
+        assertThat(events)
+                .containsExactly(
+                        new AuthRevocation(workspace, Set.of(member.accountId()), Set.of(held.id(), created.id())));
+    }
+
+    @Test
     void suspensionRevokesHeldAndCreatedKeysOnlyInThatWorkspace() {
         AuthPrincipal owner = owner();
         AuthPrincipal member = member(owner, "member");

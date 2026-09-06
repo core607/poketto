@@ -16,7 +16,8 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  # Metadata-only edits skip review and must not cancel an active source review.
+  group: ai-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && github.run_id || 'source' }}
   cancel-in-progress: true
 
 jobs:
