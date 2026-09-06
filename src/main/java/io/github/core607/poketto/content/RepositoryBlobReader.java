@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,4 +32,11 @@ public interface RepositoryBlobReader {
 
     /** Exact descriptor replay; does not reinterpret an earlier approved object under newer policy. */
     byte[] read(RepositoryBlob descriptor);
+
+    /**
+     * Verifies the exact source objects and prevents automatic source-cache eviction until expiry.
+     * Requires an already-authorized descriptor and a future expiry at most five minutes away.
+     * Does not fetch, publish, or rely on a hit in the derived image cache.
+     */
+    void protect(RepositoryBlob descriptor, Instant expiresAt);
 }

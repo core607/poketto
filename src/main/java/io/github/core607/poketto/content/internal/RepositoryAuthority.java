@@ -1,9 +1,12 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import org.eclipse.jgit.lib.ObjectReader;
 
 /**
  * Resolves workspace identity to an authoritative ref without exposing provider coordinates or
@@ -25,6 +28,20 @@ interface RepositoryAuthority {
      */
     <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader);
 
+    /**
+     * Reads explicit immutable object ids without fetching or holding the workspace mutex during
+     * the callback. The cache remains in use until its reader and repository have closed. The
+     * callback is synchronous, must not close the supplied reader, and must not return or retain
+     * readers, streams or RevWalk objects.
+     */
+    <T> T readImmutableObjects(WorkspaceId workspaceId, ObjectReaderAction<T> action);
+
+    /**
+     * After successful source validation, retains this cache until a future expiry at most five
+     * minutes away. The reader pin remains held until protection is installed and handles close.
+     */
+    void protectImmutableObjects(WorkspaceId workspaceId, Instant expiresAt, ObjectReaderAction<Void> validation);
+
     <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer);
 
     /** Writes Git objects and advances the exact remote ref without checking out repository files. */
@@ -36,6 +53,11 @@ interface RepositoryAuthority {
     interface SnapshotReader<T> {
 
         T read(Snapshot snapshot);
+    }
+
+    @FunctionalInterface
+    interface ObjectReaderAction<T> {
+        T read(ObjectReader objects) throws IOException;
     }
 
     @FunctionalInterface

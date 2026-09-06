@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -25,6 +27,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
@@ -32,11 +35,13 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     private static final String MAIN = Constants.R_HEADS + "main";
+    private static final Duration MAX_PROTECTION = Duration.ofMinutes(5);
 
     private final WorkspacePaths paths;
     private final RepositoryBindingSource bindings;
     private final RemoteGitTransport transport;
     private final int maxCachedWorkspaces;
+    private final Clock clock;
     private final Map<WorkspaceId, CacheLock> workspaceLocks = new java.util.HashMap<>();
     private final ReentrantLock cacheLifecycleLock = new ReentrantLock();
 
@@ -44,7 +49,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             WorkspacePaths paths,
             RepositoryBindingSource bindings,
             RemoteGitTransport transport,
-            int maxCachedWorkspaces) {
+            int maxCachedWorkspaces,
+            Clock clock) {
         this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
         this.bindings = Objects.requireNonNull(bindings, "binding source must not be null");
         this.transport = Objects.requireNonNull(transport, "remote transport must not be null");
@@ -52,6 +58,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             throw new IllegalArgumentException("repository cache must allow at least one workspace");
         }
         this.maxCachedWorkspaces = maxCachedWorkspaces;
+        this.clock = Objects.requireNonNull(clock, "repository clock must not be null");
     }
 
     @Override
@@ -107,6 +114,76 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     @Override
+    public <T> T readImmutableObjects(WorkspaceId workspaceId, ObjectReaderAction<T> action) {
+        return readImmutableObjects(workspaceId, action, null);
+    }
+
+    @Override
+    public void protectImmutableObjects(
+            WorkspaceId workspaceId, Instant expiresAt, ObjectReaderAction<Void> validation) {
+        Objects.requireNonNull(expiresAt, "source protection expiry must not be null");
+        validateProtection(expiresAt);
+        readImmutableObjects(workspaceId, validation, expiresAt);
+    }
+
+    private <T> T readImmutableObjects(WorkspaceId workspaceId, ObjectReaderAction<T> action, Instant protectedUntil) {
+        Objects.requireNonNull(workspaceId, "workspace id must not be null");
+        Objects.requireNonNull(action, "object reader action must not be null");
+        CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
+        try {
+            Repository opened;
+            workspaceLock.lock.lock();
+            try {
+                Path cache = paths.contentDirectory(workspaceId);
+                cacheLifecycleLock.lock();
+                try {
+                    if (!Files.isDirectory(cache) || isEmpty(cache))
+                        throw failure(workspaceId, "no repository cache exists");
+                    opened = openExistingCache(cache, workspaceId);
+                    try {
+                        touch(cache);
+                    } catch (RuntimeException | Error failure) {
+                        try {
+                            opened.close();
+                        } catch (RuntimeException | Error closeFailure) {
+                            failure.addSuppressed(closeFailure);
+                        }
+                        throw failure;
+                    }
+                } finally {
+                    cacheLifecycleLock.unlock();
+                }
+            } finally {
+                workspaceLock.lock.unlock();
+            }
+            // The users reference survives mutex release. Eviction must observe the repository
+            // and its object reader as active until both handles have actually closed.
+            try (Repository repository = opened;
+                    ObjectReader objects = repository.newObjectReader()) {
+                T result = action.read(objects);
+                if (protectedUntil != null) {
+                    synchronized (workspaceLocks) {
+                        validateProtection(protectedUntil);
+                        if (protectedUntil.isAfter(workspaceLock.protectedUntil))
+                            workspaceLock.protectedUntil = protectedUntil;
+                    }
+                }
+                return result;
+            }
+        } catch (IOException exception) {
+            throw new ContentRepositoryException("immutable repository objects cannot be read", exception);
+        } finally {
+            releaseWorkspaceLock(workspaceId, workspaceLock);
+        }
+    }
+
+    private void validateProtection(Instant expiresAt) {
+        Instant now = clock.instant();
+        if (!now.isBefore(expiresAt) || expiresAt.isAfter(now.plus(MAX_PROTECTION)))
+            throw new ContentRepositoryException("repository source protection must expire within five minutes");
+    }
+
+    @Override
     public <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer) {
         Objects.requireNonNull(writer, "candidate writer must not be null");
         return inCache(
@@ -158,14 +235,14 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ObjectId commit;
             try {
                 commit = transport.fetchMain(opened, binding);
-                if (commit.equals(ObjectId.zeroId()) && hasCommit(opened)) {
-                    opened.close();
-                    deleteTree(cache);
-                    opened = openOrInitialize(cache, workspaceId);
-                }
-                if (materialize) {
+                if (commit.equals(ObjectId.zeroId())) {
+                    // Readers of already selected immutable objects may still be active. Removing
+                    // main closes the old authority binding without destroying their object store.
+                    updateObjectRef(opened, commit);
                     resetCache(opened, commit);
-                } else if (!commit.equals(ObjectId.zeroId())) {
+                } else if (materialize) {
+                    resetCache(opened, commit);
+                } else {
                     updateObjectRef(opened, commit);
                 }
             } catch (RuntimeException exception) {
@@ -321,29 +398,45 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                         .call()
                         .getRepository();
             }
-            FileRepositoryBuilder builder = new FileRepositoryBuilder();
-            builder.findGitDir(cache.toFile());
-            if (builder.getGitDir() == null) {
-                throw failure(workspaceId, "repository cache is not a Git worktree");
-            }
-            Repository repository = builder.build();
-            Path actual = repository.getWorkTree().toPath().toAbsolutePath().normalize();
-            if (repository.isBare() || !actual.equals(cache.toAbsolutePath().normalize())) {
+            Repository repository = openExistingCache(cache, workspaceId);
+            try {
+                RefUpdate.Result head = repository.updateRef(Constants.HEAD).link(MAIN);
+                if (!(head == RefUpdate.Result.NEW
+                        || head == RefUpdate.Result.NO_CHANGE
+                        || head == RefUpdate.Result.FORCED)) {
+                    throw failure(workspaceId, "repository cache HEAD cannot be attached to main");
+                }
+                return repository;
+            } catch (IOException | RuntimeException exception) {
                 repository.close();
-                throw failure(workspaceId, "repository cache is not the expected Git worktree");
+                throw exception;
             }
-            RefUpdate.Result head = repository.updateRef(Constants.HEAD).link(MAIN);
-            if (!(head == RefUpdate.Result.NEW
-                    || head == RefUpdate.Result.NO_CHANGE
-                    || head == RefUpdate.Result.FORCED)) {
-                repository.close();
-                throw failure(workspaceId, "repository cache HEAD cannot be attached to main");
-            }
-            return repository;
         } catch (ContentRepositoryException exception) {
             throw exception;
         } catch (IOException | GitAPIException exception) {
             throw failure(workspaceId, "repository cache cannot be opened");
+        }
+    }
+
+    private static Repository openExistingCache(Path cache, WorkspaceId workspaceId) throws IOException {
+        FileRepositoryBuilder builder = new FileRepositoryBuilder();
+        builder.findGitDir(cache.toFile());
+        if (builder.getGitDir() == null) throw failure(workspaceId, "repository cache is not a Git worktree");
+        Repository repository = builder.build();
+        try {
+            if (repository.isBare()
+                    || !repository
+                            .getWorkTree()
+                            .toPath()
+                            .toAbsolutePath()
+                            .normalize()
+                            .equals(cache.toAbsolutePath().normalize())) {
+                throw failure(workspaceId, "repository cache is not the expected Git worktree");
+            }
+            return repository;
+        } catch (RuntimeException exception) {
+            repository.close();
+            throw exception;
         }
     }
 
@@ -402,12 +495,27 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         try {
             RefUpdate update = repository.updateRef(MAIN);
             if (commit.equals(ObjectId.zeroId())) {
-                update.setForceUpdate(true);
-                RefUpdate.Result deleted = update.delete();
-                if (!(deleted == RefUpdate.Result.FORCED
-                        || deleted == RefUpdate.Result.NO_CHANGE
-                        || deleted == RefUpdate.Result.NEW)) {
-                    throw new ContentRepositoryException("repository object cache main cannot be removed");
+                ObjectId previous = repository.resolve(MAIN);
+                if (previous == null) return;
+                // JGit rejects deletion of the checked-out branch. Detach HEAD only while the
+                // workspace mutex is held, then restore the symbolic unborn HEAD without pruning.
+                RefUpdate detached = repository.updateRef(Constants.HEAD, true);
+                detached.setNewObjectId(previous);
+                requireRefChange(detached.forceUpdate(), "HEAD detach");
+                Throwable deletionFailure = null;
+                try {
+                    update.setForceUpdate(true);
+                    requireRefChange(update.delete(), "main delete");
+                } catch (IOException | RuntimeException | Error failure) {
+                    deletionFailure = failure;
+                    throw failure;
+                } finally {
+                    try {
+                        requireRefChange(repository.updateRef(Constants.HEAD).link(MAIN), "HEAD relink");
+                    } catch (IOException | RuntimeException | Error relinkFailure) {
+                        if (deletionFailure == null) throw relinkFailure;
+                        deletionFailure.addSuppressed(relinkFailure);
+                    }
                 }
                 return;
             }
@@ -425,6 +533,15 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         }
     }
 
+    private static void requireRefChange(RefUpdate.Result result, String operation) {
+        if (!(result == RefUpdate.Result.FORCED
+                || result == RefUpdate.Result.NO_CHANGE
+                || result == RefUpdate.Result.NEW
+                || result == RefUpdate.Result.FAST_FORWARD)) {
+            throw new ContentRepositoryException("repository object cache " + operation + " failed: " + result);
+        }
+    }
+
     private static void clearIndex(Repository repository) throws IOException {
         DirCache index = repository.lockDirCache();
         try {
@@ -438,14 +555,6 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         }
     }
 
-    private static boolean hasCommit(Repository repository) {
-        try {
-            return repository.resolve(MAIN) != null;
-        } catch (IOException exception) {
-            throw new ContentRepositoryException("repository cache main cannot be resolved");
-        }
-    }
-
     private void ensureCacheCapacity(WorkspaceId current, Path currentCache) {
         List<Path> caches = existingCaches();
         int allowedExisting = Files.isDirectory(currentCache) ? maxCachedWorkspaces : maxCachedWorkspaces - 1;
@@ -454,7 +563,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     .filter(path -> !path.equals(currentCache))
                     .filter(this::isIdle)
                     .min(Comparator.comparing(JGitRemoteRepositoryAuthority::lastModified))
-                    .orElseThrow(() -> failure(current, "repository cache capacity is occupied by active workspaces"));
+                    .orElseThrow(() -> failure(
+                            current, "repository cache capacity is occupied by active or protected workspaces"));
             deleteTree(victim);
             caches.remove(victim);
         }
@@ -495,13 +605,15 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         WorkspaceId id = WorkspaceId.parse(workspaceDirectory.getFileName().toString());
         synchronized (workspaceLocks) {
             CacheLock lock = workspaceLocks.get(id);
-            return lock == null || lock.users == 0;
+            return lock == null || (lock.users == 0 && !clock.instant().isBefore(lock.protectedUntil));
         }
     }
 
     private CacheLock acquireWorkspaceLock(WorkspaceId workspaceId) {
         CacheLock entry;
         synchronized (workspaceLocks) {
+            Instant now = clock.instant();
+            workspaceLocks.values().removeIf(lock -> lock.users == 0 && !now.isBefore(lock.protectedUntil));
             entry = workspaceLocks.computeIfAbsent(workspaceId, ignored -> new CacheLock());
             entry.users++;
         }
@@ -511,7 +623,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private void releaseWorkspaceLock(WorkspaceId workspaceId, CacheLock entry) {
         synchronized (workspaceLocks) {
             entry.users--;
-            if (entry.users == 0) {
+            if (entry.users == 0 && !clock.instant().isBefore(entry.protectedUntil)) {
                 workspaceLocks.remove(workspaceId, entry);
             }
         }
@@ -529,7 +641,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         try {
             Files.setLastModifiedTime(cache, FileTime.from(Instant.now()));
         } catch (IOException exception) {
-            throw new ContentRepositoryException("repository cache access time cannot be recorded");
+            throw new ContentRepositoryException("repository cache access time cannot be recorded", exception);
         }
     }
 
@@ -586,5 +698,6 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
         private final ReentrantLock lock = new ReentrantLock();
         private int users;
+        private Instant protectedUntil = Instant.MIN;
     }
 }

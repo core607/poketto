@@ -50,7 +50,8 @@ class ContentConfiguration {
             RepositoryBindingSource bindings,
             RemoteGitTransport transport,
             RepositoryProperties properties) {
-        return new JGitRemoteRepositoryAuthority(paths, bindings, transport, properties.cacheMaxWorkspaces());
+        return new JGitRemoteRepositoryAuthority(
+                paths, bindings, transport, properties.cacheMaxWorkspaces(), Clock.systemUTC());
     }
 
     @Bean

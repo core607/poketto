@@ -93,7 +93,8 @@ class ContentRepositoryBootstrapTests {
                     throw new ContentRepositoryException("no provisioned remote binding");
                 },
                 new JGitRemoteGitTransport(),
-                2);
+                2,
+                java.time.Clock.systemUTC());
         ContentRepositoryStore store =
                 new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec(), java.time.Clock.systemUTC());
 
@@ -113,7 +114,8 @@ class ContentRepositoryBootstrapTests {
                 new WorkspacePaths(root.resolve("data").toAbsolutePath()),
                 ignored -> binding,
                 new JGitRemoteGitTransport(),
-                2);
+                2,
+                java.time.Clock.systemUTC());
 
         assertThatThrownBy(() -> authority.ensureReady(workspace))
                 .hasMessageNotContaining(address)
