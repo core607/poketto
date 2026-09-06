@@ -1290,3 +1290,41 @@ td select {
 .form-help {
   font-size: 11px;
 }
+
+.confirmation-dialog {
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 20px 70px #262a2530;
+  overflow-wrap: anywhere;
+}
+.confirmation-dialog::backdrop {
+  background: #262a2566;
+}
+.confirmation-dialog h2 {
+  font-size: 24px;
+  margin-bottom: 14px;
+}
+.confirmation-dialog p {
+  font-size: 14px;
+  line-height: 1.9;
+}
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+.button-danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.button-danger:hover {
+  background: #842724;
+}

@@ -5,6 +5,7 @@ import { message, type Identity } from "./admin";
 import type { Member } from "./members";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
+import { useConfirmation } from "./confirmation";
 const capabilities = [
   {
     key: "READ_PRIVATE",
@@ -39,6 +40,7 @@ type Key = {
   revoked: boolean;
 };
 export function Keys({ identity }: { identity: Identity }) {
+  const confirm = useConfirmation();
   const keyPage = useAdminPage<Key>("/api/admin/keys");
   const keys = keyPage.items;
   const memberPage = useAdminPage<Member>("/api/admin/members");
@@ -79,9 +81,11 @@ export function Keys({ identity }: { identity: Identity }) {
   }
   async function revoke(id: string) {
     if (
-      !window.confirm(
-        "撤销后，使用这把密钥的客户端将立即失去访问权限。确认撤销？",
-      )
+      !(await confirm({
+        title: "撤销访问密钥？",
+        description: `撤销密钥「${id.slice(0, 8)}」后，使用它的客户端将立即失去访问权限。此操作无法撤回。`,
+        confirmLabel: "确认撤销",
+      }))
     )
       return;
     setPending(true);

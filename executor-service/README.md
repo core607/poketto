@@ -191,8 +191,11 @@ sudo env PYTHONPATH=/temporary/probe/tools/python python3 /temporary/probe/nativ
 Only exit zero plus both `summary: PASS` and `cleanup: PASS` completes the probe.
 The disposable source, tools, and logs remain for inspection; remove that exact
 verified probe directory after its mounts and units are gone. The checked-in
-[evidence](evidence.jsonl) records synthetic measurements and source hashes.
-It does not claim production sizing, actual MCP clients, or formal deployment.
+[evidence](evidence.jsonl) records 19 synthetic checks, including supervisor and
+command membership in the finite resource pool, with the worker, launcher,
+probe and pool source hashes. Those hashes define the verified implementation;
+changed sources require a new run. The record does not claim production sizing,
+actual MCP clients, or formal deployment.
 
 The separate [resource pool probe](resource_pool_probe.py) needs only root,
 systemd/cgroup v2, Python, `runuser` with a `nobody` account, `mount`, and the kernel
