@@ -1,13 +1,14 @@
 import { articles } from "../../lib/public-api";
 import { articleHref, date } from "../../lib/format";
+import { pageOffset } from "../../lib/pagination";
 export const metadata = { title: "归档" };
 export default async function Archive({
   searchParams,
 }: {
-  searchParams: Promise<{ offset?: string }>;
+  searchParams: Promise<{ offset?: string | string[] }>;
 }) {
   const { offset = "0" } = await searchParams;
-  const page = await articles({ offset, limit: "100" });
+  const page = await articles({ offset: pageOffset(offset), limit: "100" });
   const years = Map.groupBy(page.items, (item) => item.createdAt.slice(0, 4));
   return (
     <div className="page-shell narrow">

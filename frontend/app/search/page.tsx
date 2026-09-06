@@ -1,13 +1,22 @@
 import { articles } from "../../lib/public-api";
 import { ArticleList } from "../../components/articles";
+import { pageOffset } from "../../lib/pagination";
 export const metadata = { title: "搜索" };
 export default async function Search({
   searchParams,
 }: {
-  searchParams: Promise<{ query?: string; offset?: string }>;
+  searchParams: Promise<{
+    query?: string | string[];
+    offset?: string | string[];
+  }>;
 }) {
-  const { query = "", offset = "0" } = await searchParams;
-  const page = query ? await articles({ query, offset, limit: "12" }) : null;
+  const { query: rawQuery, offset = "0" } = await searchParams;
+  const query = String(rawQuery ?? "");
+  const tooLong = query.length > 200;
+  const page =
+    query && !tooLong
+      ? await articles({ query, offset: pageOffset(offset), limit: "12" })
+      : null;
   return (
     <div className="page-shell">
       <header className="page-heading">
@@ -23,6 +32,8 @@ export default async function Search({
           name="query"
           type="search"
           defaultValue={query}
+          aria-invalid={tooLong || undefined}
+          aria-describedby={tooLong ? "search-validation" : undefined}
           maxLength={200}
           placeholder="输入标题或正文中的文字…"
           required
@@ -31,6 +42,11 @@ export default async function Search({
           搜索 <span aria-hidden>↗</span>
         </button>
       </form>
+      {tooLong && (
+        <p id="search-validation" className="notice danger" role="alert">
+          搜索内容过长，请缩短后再试。
+        </p>
+      )}
       <p className="muted search-help">在公开文章中按原文匹配。</p>
       {page && (
         <ArticleList page={page} base="/search" parameters={{ query }} />

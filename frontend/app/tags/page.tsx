@@ -1,15 +1,27 @@
 import { articles, tags } from "../../lib/public-api";
 import { ArticleList } from "../../components/articles";
+import { pageOffset } from "../../lib/pagination";
+import { notFound } from "next/navigation";
 
 export const metadata = { title: "标签" };
 export default async function Tags({
   searchParams,
 }: {
-  searchParams: Promise<{ tag?: string; offset?: string; tagOffset?: string }>;
+  searchParams: Promise<{
+    tag?: string | string[];
+    offset?: string | string[];
+    tagOffset?: string | string[];
+  }>;
 }) {
-  const { tag, offset = "0", tagOffset = "0" } = await searchParams;
+  const { tag: rawTag, offset = "0", tagOffset = "0" } = await searchParams;
+  const tag = String(rawTag ?? "");
+  if (tag.length > 64) notFound();
   if (tag) {
-    const page = await articles({ tag, offset, limit: "12" });
+    const page = await articles({
+      tag,
+      offset: pageOffset(offset),
+      limit: "12",
+    });
     return (
       <div className="page-shell">
         <a className="back-link" href="/tags">
@@ -23,7 +35,10 @@ export default async function Tags({
       </div>
     );
   }
-  const page = await tags({ offset: tagOffset, limit: "100" });
+  const page = await tags({
+    offset: pageOffset(tagOffset, 320000),
+    limit: "100",
+  });
   return (
     <div className="page-shell">
       <header className="page-heading">

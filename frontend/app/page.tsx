@@ -2,15 +2,16 @@ import { article, articles, PublicApiError } from "../lib/public-api";
 import { ArticleList } from "../components/articles";
 import { Markdown } from "../components/markdown";
 import { Gallery } from "../components/gallery";
+import { pageOffset } from "../lib/pagination";
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ offset?: string }>;
+  searchParams: Promise<{ offset?: string | string[] }>;
 }) {
   const parameters = await searchParams;
   const page = await articles({
-    offset: parameters.offset ?? "0",
+    offset: pageOffset(parameters.offset),
     limit: "12",
   });
   const root = await article("/").catch((error) => {
