@@ -73,14 +73,22 @@ def cleanup():
             removed = subprocess.run(["docker", "rm", "-f", name], text=True, capture_output=True, timeout=30)
             if removed.returncode:
                 failures.append(name)
-    inspection = subprocess.run(["docker", "network", "inspect", "--format", '{{index .Labels "' + LABEL + '"}}', NETWORK],
-                                text=True, capture_output=True, timeout=20)
-    if inspection.returncode and "No such" not in inspection.stderr:
-        failures.append(NETWORK + " ownership could not be checked")
-    elif inspection.returncode == 0 and inspection.stdout.strip() == RUN:
-        removed = subprocess.run(["docker", "network", "rm", NETWORK], text=True, capture_output=True, timeout=30)
-        if removed.returncode:
-            failures.append(NETWORK)
+    listing = subprocess.run(["docker", "network", "ls", "-q", "--filter", f"name=^{NETWORK}$"],
+                             text=True, capture_output=True, timeout=20)
+    if listing.returncode:
+        failures.append(NETWORK + " existence could not be checked")
+    elif listing.stdout.strip():
+        inspection = subprocess.run(["docker", "network", "inspect", NETWORK],
+                                    text=True, capture_output=True, timeout=20)
+        if inspection.returncode:
+            failures.append(NETWORK + " ownership could not be checked")
+        else:
+            network = json.loads(inspection.stdout)[0]
+            if network["Name"] != NETWORK or network["Labels"].get(LABEL) != RUN:
+                failures.append(NETWORK + " ownership mismatch")
+            elif subprocess.run(["docker", "network", "rm", NETWORK], text=True,
+                                capture_output=True, timeout=30).returncode:
+                failures.append(NETWORK)
     if failures:
         raise RuntimeError("owned proxy gate cleanup failed: " + ", ".join(failures))
     evidence["cleanup"] = "PASS"

@@ -9,7 +9,7 @@ def unused_subnet(docker, prefix):
     ids = docker("network", "ls", "-q").stdout.split()
     networks = json.loads(docker("network", "inspect", *ids).stdout) if ids else []
     occupied = [ipaddress.ip_network(item["Subnet"]) for network in networks
-                for item in network["IPAM"].get("Config", []) if item.get("Subnet")]
+                for item in (network["IPAM"].get("Config") or []) if item.get("Subnet")]
     for _ in range(16):
         candidate = ipaddress.ip_network(f"10.{secrets.randbelow(200) + 20}.{secrets.randbelow(250)}.0/{prefix}")
         if not any(other.version == 4 and candidate.overlaps(other) for other in occupied):
