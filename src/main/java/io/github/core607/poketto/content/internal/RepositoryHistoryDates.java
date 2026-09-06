@@ -160,7 +160,9 @@ final class RepositoryHistoryDates {
                         differences.remove(differences.keySet().iterator().next());
                 differenceBytes -= removed.size() / 8L + 192;
             }
-            differences.put(pair, changed);
+            // RevTree extends ObjectIdOwnerMap.Entry and can retain the walk through its next link.
+            // Only stored keys need detached ids; temporary lookup keys never escape this call.
+            differences.put(new TreePair(parent.copy(), current.copy()), changed);
             differenceBytes += retained;
             return changed;
         }

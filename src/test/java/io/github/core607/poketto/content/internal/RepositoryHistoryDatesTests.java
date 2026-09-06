@@ -148,6 +148,42 @@ class RepositoryHistoryDatesTests {
     }
 
     @Test
+    void cachedTreeDifferencesDoNotRetainRevWalkOwnershipLinks() throws Exception {
+        try (var repository = memory()) {
+            var root = commit(repository, Map.of("note.md", "# One"), START, List.of(), Map.of());
+            var head = commit(repository, Map.of("note.md", "# Two"), START.plusSeconds(1), List.of(root), Map.of());
+            // Inspect the actual private cache: date equality cannot reveal a retained RevTree's
+            // ObjectIdOwnerMap.Entry.next link to other commits and their raw buffers.
+            Class<?> readerType = Class.forName(RepositoryHistoryDates.class.getName() + "$BudgetedReader");
+            var constructor =
+                    readerType.getDeclaredConstructor(org.eclipse.jgit.lib.ObjectReader.class, long.class, List.class);
+            constructor.setAccessible(true);
+            try (var reader = (org.eclipse.jgit.lib.ObjectReader) constructor.newInstance(
+                            repository.newObjectReader(), 256L * 1024 * 1024, List.of("note.md"));
+                    var walk = new RevWalk(reader)) {
+                var changed = readerType.getDeclaredMethod("changed", ObjectId.class, ObjectId.class);
+                changed.setAccessible(true);
+                var parentTree = walk.parseCommit(root).getTree();
+                var currentTree = walk.parseCommit(head).getTree();
+                changed.invoke(reader, parentTree, currentTree);
+                changed.invoke(reader, parentTree, currentTree);
+                var field = readerType.getDeclaredField("differences");
+                field.setAccessible(true);
+                var cache = (Map<?, ?>) field.get(reader);
+                assertThat(cache).hasSize(1);
+                Object pair = cache.keySet().iterator().next();
+                for (String side : List.of("parent", "current")) {
+                    var accessor = pair.getClass().getDeclaredMethod(side);
+                    accessor.setAccessible(true);
+                    Object retained = accessor.invoke(pair);
+                    assertThat(retained).isExactlyInstanceOf(ObjectId.class);
+                    assertThat(retained).isEqualTo(side.equals("parent") ? parentTree.copy() : currentTree.copy());
+                }
+            }
+        }
+    }
+
+    @Test
     void mergePruningForOnePathDoesNotCutAnotherPathsHistory() throws Exception {
         try (var repository = memory()) {
             var root = commit(repository, Map.of("a.md", "# Old A", "b.md", "# Old B"), START, List.of(), Map.of());
