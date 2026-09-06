@@ -15,6 +15,7 @@ import java.util.Set;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -53,11 +54,10 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
         validateCommit(commit);
         RepositoryPathRules.validate(path);
         if (RepositoryPathRules.reserved(path)) return Optional.empty();
-        return authority.readCache(workspace, cache -> {
-            try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace)) {
-                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(
-                        workspace, new RepositoryAuthority.Snapshot(cache.worktree(), Optional.of(commit)));
-                return find(repository, workspace, commit, path, policy);
+        return authority.readImmutableObjects(workspace, objects -> {
+            try {
+                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(objects, commit);
+                return find(objects, workspace, commit, path, policy);
             } catch (IOException exception) {
                 throw unavailable();
             }
@@ -76,23 +76,20 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
         RepositoryPathRules.validate(documentPath);
         if (limit < 1 || limit > 128) throw new IllegalArgumentException("image sibling limit must be 1 to 128");
         String folder = documentPath.contains("/") ? documentPath.substring(0, documentPath.lastIndexOf('/') + 1) : "";
-        return authority.readCache(workspace, cache -> {
-            try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace);
-                    RevWalk commits = new RevWalk(repository);
-                    TreeWalk tree = new TreeWalk(repository)) {
+        return authority.readImmutableObjects(workspace, objects -> {
+            try (RevWalk commits = new RevWalk(objects);
+                    TreeWalk tree = new TreeWalk(objects)) {
                 var root = commits.parseCommit(ObjectId.fromString(commit)).getTree();
                 ObjectId folderTree = root;
                 if (!folder.isEmpty()) {
-                    try (TreeWalk entry =
-                            TreeWalk.forPath(repository, folder.substring(0, folder.length() - 1), root)) {
+                    try (TreeWalk entry = TreeWalk.forPath(objects, folder.substring(0, folder.length() - 1), root)) {
                         if (entry == null || !FileMode.TREE.equals(entry.getFileMode(0)))
                             return new SiblingImages(List.of(), false);
                         folderTree = entry.getObjectId(0);
                     }
                 }
                 tree.addTree(folderTree);
-                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(
-                        workspace, new RepositoryAuthority.Snapshot(cache.worktree(), Optional.of(commit)));
+                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(objects, commit);
                 var order = Comparator.comparing(ImageCandidate::path);
                 var candidates = new PriorityQueue<ImageCandidate>(limit, order.reversed());
                 boolean partial = false;
@@ -156,14 +153,12 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     }
 
     private List<RepositoryBlob> scanImages(WorkspaceId workspace, String commit, String folder) {
-        return authority.readCache(workspace, cache -> {
-            try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace);
-                    RevWalk commits = new RevWalk(repository);
-                    TreeWalk tree = new TreeWalk(repository)) {
+        return authority.readImmutableObjects(workspace, objects -> {
+            try (RevWalk commits = new RevWalk(objects);
+                    TreeWalk tree = new TreeWalk(objects)) {
                 tree.addTree(commits.parseCommit(ObjectId.fromString(commit)).getTree());
                 tree.setRecursive(true);
-                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(
-                        workspace, new RepositoryAuthority.Snapshot(cache.worktree(), Optional.of(commit)));
+                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(objects, commit);
                 List<RepositoryBlob> result = new ArrayList<>();
                 int visited = 0;
                 while (tree.next()) {
@@ -195,19 +190,17 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     @Override
     public byte[] read(RepositoryBlob descriptor) {
         RepositoryPathRules.validate(descriptor.path());
-        return authority.readCache(descriptor.workspaceId(), cache -> {
-            try (Repository repository =
-                            JGitContentRepositoryStore.openCache(cache.worktree(), descriptor.workspaceId());
-                    RevWalk commits = new RevWalk(repository);
+        return authority.readImmutableObjects(descriptor.workspaceId(), objects -> {
+            try (RevWalk commits = new RevWalk(objects);
                     TreeWalk entry = TreeWalk.forPath(
-                            repository,
+                            objects,
                             descriptor.path(),
                             commits.parseCommit(ObjectId.fromString(descriptor.commit()))
                                     .getTree())) {
                 if (entry == null
                         || !regular(entry.getFileMode(0))
                         || !entry.getObjectId(0).name().equals(descriptor.objectId())) throw unavailable();
-                var loader = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+                var loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
                 if (loader.getSize() != descriptor.size() || loader.getSize() > MAX_BLOB_BYTES) throw unavailable();
                 return loader.getBytes(MAX_BLOB_BYTES);
             } catch (IOException exception) {
@@ -217,16 +210,15 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     }
 
     private static Optional<RepositoryBlob> find(
-            Repository repository, WorkspaceId workspace, String commit, String path, RepositoryPublishingPolicy policy)
+            ObjectReader objects, WorkspaceId workspace, String commit, String path, RepositoryPublishingPolicy policy)
             throws IOException {
-        try (RevWalk commits = new RevWalk(repository);
+        try (RevWalk commits = new RevWalk(objects);
                 TreeWalk entry = TreeWalk.forPath(
-                        repository,
+                        objects,
                         path,
                         commits.parseCommit(ObjectId.fromString(commit)).getTree())) {
             if (entry == null || !regular(entry.getFileMode(0))) return Optional.empty();
-            long size =
-                    repository.open(entry.getObjectId(0), Constants.OBJ_BLOB).getSize();
+            long size = objects.getObjectSize(entry.getObjectId(0), Constants.OBJ_BLOB);
             if (size > MAX_BLOB_BYTES) return Optional.empty();
             return Optional.of(new RepositoryBlob(
                     workspace, commit, path, entry.getObjectId(0).name(), size, policy.permitsPath(path)));
