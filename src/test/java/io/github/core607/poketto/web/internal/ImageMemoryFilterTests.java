@@ -46,7 +46,7 @@ class ImageMemoryFilterTests {
         try {
             for (String path : List.of(
                     "/api/public/document",
-                    "/api/admin/preview",
+                    "/api/admin/repository/preview",
                     "/api/admin/assets/repository",
                     "/api/admin/assets",
                     "/api/auth/logout")) {
@@ -58,7 +58,7 @@ class ImageMemoryFilterTests {
                 assertThat(response.getContentAsString()).isEqualTo("body");
             }
             filter.doFilter(
-                    new MockHttpServletRequest("POST", "/api/admin/preview"),
+                    new MockHttpServletRequest("POST", "/api/admin/repository/preview"),
                     new MockHttpServletResponse(),
                     (in, out) -> {});
         } finally {

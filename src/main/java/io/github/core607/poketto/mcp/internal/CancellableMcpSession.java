@@ -32,17 +32,16 @@ final class CancellableMcpSession extends McpStreamableServerSession {
 
     @Override
     public Mono<Void> responseStream(McpSchema.JSONRPCRequest request, McpStreamableServerTransport transport) {
+        String key = requestKey(request.id());
+        if (key == null)
+            return transport
+                    .closeGracefully()
+                    .then(Mono.error(new IllegalArgumentException("Invalid bounded MCP request identifier")));
         if (!request.method().equals("tools/call")) return delegate.responseStream(request, transport);
         return Mono.deferContextual(context -> {
-            String key = requestKey(request.id());
             var cancellation = new McpCancellation();
             synchronized (this) {
-                if (closed || key == null || active.containsKey(key) || active.size() >= 4) {
-                    return transport.sendMessage(McpSchema.JSONRPCResponse.error(
-                            request.id(),
-                            new McpSchema.JSONRPCResponse.JSONRPCError(
-                                    -32600, "MCP request id or capacity unavailable", null)));
-                }
+                if (closed || active.containsKey(key) || active.size() >= 4) return reject(transport, request.id());
                 active.put(key, cancellation);
             }
             McpTransportContext previous = context.getOrDefault(McpTransportContext.KEY, McpTransportContext.EMPTY);
@@ -59,6 +58,15 @@ final class CancellableMcpSession extends McpStreamableServerSession {
                     })
                     .doOnTerminate(() -> finish(key, cancellation));
         });
+    }
+
+    private static Mono<Void> reject(McpStreamableServerTransport transport, Object id) {
+        return transport
+                .sendMessage(McpSchema.JSONRPCResponse.error(
+                        id,
+                        new McpSchema.JSONRPCResponse.JSONRPCError(
+                                -32600, "MCP request id or capacity unavailable", null)))
+                .then(transport.closeGracefully());
     }
 
     private void finish(String key, McpCancellation cancellation) {

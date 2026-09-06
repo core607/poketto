@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Shared conservative working-set reservations; byte limits do not measure the JVM's total heap. */
 public final class ImageMemoryAdmission {
-    public static final long BROWSER_BYTES = 64L * 1024 * 1024;
+    public static final long BROWSER_BYTES = 128L * 1024 * 1024;
     public static final long MCP_BYTES = 256L * 1024 * 1024;
     private static final long UNIT = 1024 * 1024;
     private final int capacity;

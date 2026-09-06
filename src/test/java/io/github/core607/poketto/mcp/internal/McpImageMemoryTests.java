@@ -29,6 +29,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockAsyncContext;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -39,6 +41,106 @@ import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.ObjectMapper;
 
 class McpImageMemoryTests {
+    @Test
+    void bodyFilterRejectsUnboundedIdsWithoutEchoingOrDispatchingAndAcceptsLegalIds() throws Exception {
+        var memory = memory();
+        var json = new ObjectMapper();
+        var filter = new McpBodyLimitFilter(json, memory);
+        for (Object id : new Object[] {
+            "图".repeat(129), "x".repeat(1024 * 1024), java.math.BigInteger.TEN.pow(128), Map.of("invalid", "value")
+        }) {
+            var response = new MockHttpServletResponse();
+            filter.doFilter(
+                    post(json.writeValueAsString(Map.of("method", "tools/list", "id", id))),
+                    response,
+                    (input, output) -> fail("unbounded id reached SDK"));
+            assertThat(response.getStatus()).isEqualTo(400);
+            var error = json.readTree(response.getContentAsString());
+            assertThat(error.has("id")).isFalse();
+            assertThat(error.path("error").path("code").intValue()).isEqualTo(-32600);
+            assertThat(response.getContentAsByteArray()).hasSizeLessThan(200);
+            assertThat(memory.reservedBytes()).isZero();
+        }
+        for (Object id : new Object[] {"图".repeat(128), Long.MIN_VALUE, Long.MAX_VALUE}) {
+            var response = new MockHttpServletResponse();
+            filter.doFilter(
+                    post(json.writeValueAsString(Map.of("method", "tools/list", "id", id))),
+                    response,
+                    (input, output) -> output.getWriter().write("dispatched"));
+            assertThat(response.getContentAsString()).isEqualTo("dispatched");
+        }
+    }
+
+    @Test
+    void envelopeDepthAndTokenLimitsBoundSdkNodeAllocationWithoutRejectingLargeText() throws Exception {
+        var memory = memory();
+        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
+        for (String body : new String[] {"[".repeat(33) + "]".repeat(33), "[" + "[],".repeat(2050) + "[]]"}) {
+            var response = new MockHttpServletResponse();
+            filter.doFilter(post(body), response, (input, output) -> fail("unbounded tree reached SDK"));
+            assertThat(response.getStatus()).isEqualTo(413);
+            assertThat(memory.reservedBytes()).isZero();
+        }
+        var response = new MockHttpServletResponse();
+        filter.doFilter(
+                post("{\"id\":1,\"params\":{\"text\":\"" + "x".repeat(1024 * 1024) + "\"}}"),
+                response,
+                (input, output) -> output.getWriter().write("dispatched"));
+        assertThat(response.getContentAsString()).isEqualTo("dispatched");
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
+    void getAssetEnvelopeLimitAlsoAppliesWhenToolNameFollowsArguments() throws Exception {
+        var memory = memory();
+        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
+        String body = "{\"method\":\"tools/call\",\"id\":1,\"params\":{\"arguments\":{\"ignored\":\""
+                + "x".repeat(16384) + "\"},\"name\":\"get_asset\"}}";
+        var output = new MockHttpServletResponse();
+        filter.doFilter(post(body), output, (input, response) -> fail("large get_asset envelope reached SDK"));
+        assertThat(output.getStatus()).isEqualTo(413);
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void bothStartAsyncFormsInstallBeforeAnEarlyFailureAndDoNotReleaseTheRunningChain(boolean supplied)
+            throws Exception {
+        var memory = memory();
+        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
+        var request = post(imageCall("get_asset"));
+        var output = new MockHttpServletResponse();
+        filter.doFilter(request, output, (input, response) -> {
+            var async = (MockAsyncContext) (supplied ? input.startAsync(input, response) : input.startAsync());
+            assertThat(async.getListeners()).hasSize(1);
+            async.getListeners().getFirst().onError(new AsyncEvent(async, new IOException("early write failure")));
+            assertThat(output.getStatus()).isEqualTo(500);
+            assertThat(output.getContentAsString()).contains("MCP response unavailable");
+            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
+        });
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
+    void aSecondAsyncCycleReattachesAndTimeoutFinishesWithoutAnEmptySuccess() throws Exception {
+        var memory = memory();
+        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
+        var request = post(imageCall("get_asset"));
+        var output = new MockHttpServletResponse();
+        filter.doFilter(request, output, (input, response) -> input.startAsync());
+        var first = (MockAsyncContext) request.getAsyncContext();
+        var second = new MockAsyncContext(request, output);
+        first.getListeners().getFirst().onStartAsync(new AsyncEvent(second));
+        assertThat(second.getListeners()).hasSize(1);
+        second.getListeners().getFirst().onTimeout(new AsyncEvent(second));
+        assertThat(output.getStatus()).isEqualTo(503);
+        assertThat(output.getContentAsString()).contains("MCP response unavailable");
+        assertThat(memory.reservedBytes()).isZero();
+        first.complete();
+        second.complete();
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void actualImageToolKeepsAnInterruptedReadAccountedAndLateCallbackCannotStartAnotherRead() throws Exception {

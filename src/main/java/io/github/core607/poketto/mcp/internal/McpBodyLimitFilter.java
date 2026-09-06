@@ -2,6 +2,7 @@ package io.github.core607.poketto.mcp.internal;
 
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ImageRequestScope;
+import jakarta.servlet.AsyncContext;
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
 import jakarta.servlet.Filter;
@@ -93,6 +94,28 @@ final class McpBodyLimitFilter implements Filter {
             if (scope != null) scope.responseComplete();
             release.run();
         };
+        AsyncListener listener = new AsyncListener() {
+            @Override
+            public void onComplete(AsyncEvent event) {
+                complete.run();
+            }
+
+            @Override
+            public void onTimeout(AsyncEvent event) {
+                finishAsync(event, output, 503);
+            }
+
+            @Override
+            public void onError(AsyncEvent event) {
+                finishAsync(event, output, 500);
+            }
+
+            @Override
+            public void onStartAsync(AsyncEvent event) {
+                event.getAsyncContext().addListener(this);
+            }
+        };
+        AtomicBoolean watching = new AtomicBoolean();
         try (var producer = scope == null ? (ImageRequestScope.Producer) () -> {} : scope.producer()) {
             // The SDK consumes stream exceptions itself, so enforce the bound before dispatch.
             byte[] body = prefix;
@@ -106,10 +129,43 @@ final class McpBodyLimitFilter implements Filter {
                 reject(output, 413);
                 return;
             }
+            var envelope = new McpEnvelopeBounds(json).inspect(body, size);
+            if (envelope == McpEnvelopeBounds.Result.TOO_COMPLEX) {
+                reject(output, 413);
+                return;
+            }
+            if (envelope == McpEnvelopeBounds.Result.INVALID_ID || envelope == McpEnvelopeBounds.Result.INVALID_JSON) {
+                output.setStatus(400);
+                output.setContentType("application/json");
+                output.setHeader("Cache-Control", "no-store");
+                String message = envelope == McpEnvelopeBounds.Result.INVALID_ID
+                        ? "Invalid request identifier"
+                        : "Invalid message format";
+                output.getWriter()
+                        .write("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"" + message + "\"}}");
+                return;
+            }
             var source = new ByteArrayInputStream(body, 0, size);
             chain.doFilter(
                     new HttpServletRequestWrapper(http) {
                         private ServletInputStream bounded;
+
+                        @Override
+                        public AsyncContext startAsync() {
+                            return watch(super.startAsync());
+                        }
+
+                        @Override
+                        public AsyncContext startAsync(ServletRequest input, ServletResponse output) {
+                            return watch(super.startAsync(input, output));
+                        }
+
+                        private AsyncContext watch(AsyncContext context) {
+                            // Register before the SDK's synchronous SSE producer can fail its first write.
+                            context.addListener(listener);
+                            watching.set(true);
+                            return context;
+                        }
 
                         @Override
                         public ServletInputStream getInputStream() throws IOException {
@@ -152,31 +208,33 @@ final class McpBodyLimitFilter implements Filter {
         } finally {
             if (http.isAsyncStarted()) {
                 try {
-                    http.getAsyncContext().addListener(new AsyncListener() {
-                        @Override
-                        public void onComplete(AsyncEvent event) {
-                            complete.run();
-                        }
-
-                        @Override
-                        public void onTimeout(AsyncEvent event) {
-                            // Timeout handling can still retain the request and an active producer.
-                        }
-
-                        @Override
-                        public void onError(AsyncEvent event) {
-                            // Complete the response before releasing request admission.
-                        }
-
-                        @Override
-                        public void onStartAsync(AsyncEvent event) {
-                            event.getAsyncContext().addListener(this);
-                        }
-                    });
+                    if (!watching.get()) http.getAsyncContext().addListener(listener);
                 } catch (IllegalStateException exception) {
                     complete.run();
                 }
             } else complete.run();
+        }
+    }
+
+    private static void finishAsync(AsyncEvent event, HttpServletResponse output, int status) {
+        try {
+            if (!output.isCommitted()) {
+                output.setStatus(status);
+                output.setContentType("application/problem+json");
+                output.setHeader("Cache-Control", "no-store");
+                output.getOutputStream()
+                        .write(("{\"type\":\"about:blank\",\"title\":\"MCP response unavailable\",\"status\":" + status
+                                        + "}")
+                                .getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (IOException | IllegalStateException disconnected) {
+            // The stream may already have failed; the servlet still needs a terminal lifecycle.
+        }
+        try {
+            // Spring's SSE builder cannot finish itself after sendFailed; close the servlet lifecycle.
+            event.getAsyncContext().complete();
+        } catch (IllegalStateException completed) {
+            // A competing completion owns onComplete. Producer reservations remain independent.
         }
     }
 
