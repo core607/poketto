@@ -10,15 +10,25 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.assets.ManagedAsset;
+import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.ManagedImage;
+import io.github.core607.poketto.assets.ResolvedMedia;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicContentSnapshot;
+import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryBlob;
+import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
+import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -29,6 +39,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +51,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.lib.FileMode;
@@ -185,6 +197,311 @@ class AssetDeliveryTests {
         assertThat(fixture.cache(workspace).resolve("notes/a.png")).doesNotExist();
         assertThat(result.media().images().toString() + result.media().gallery())
                 .doesNotContain("private/secret.png", "excluded.png", "escape.png");
+    }
+
+    @Test
+    void overflowingGalleryPreservesTheDocumentAndFirst128Images() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("index.md", "# Still readable");
+        for (int i = 0; i < 129; i++) files.put("image-%03d.png".formatted(i), png(i));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var media = service(fixture, snapshots)
+                .publicDocument(workspace, "/")
+                .orElseThrow()
+                .media();
+        assertThat(media.body()).isEqualTo("# Still readable");
+        assertThat(media.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
+        assertThat(media.gallery()).hasSize(128);
+        assertThat(media.gallery().getLast().alt()).isEqualTo("image-127.png");
+    }
+
+    @Test
+    void exactly128ImagesRemainCompleteAndUnicodeTruncationKeepsJavaFilenameOrder() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("目录/index.md", "# Gallery");
+        for (int i = 0; i < 126; i++) files.put("目录/image-%03d.png".formatted(i), png(i));
+        files.put("目录/中文.png", png(1));
+        files.put("目录/\ue000.png", png(2));
+        var commit = fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var complete = service(fixture, snapshots)
+                .publicDocument(workspace, "/目录")
+                .orElseThrow()
+                .media();
+        assertThat(complete.gallery()).hasSize(128);
+        assertThat(complete.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.COMPLETE);
+        files.put("目录/😀.png", png(3));
+        commit = fixture.commitRemote(workspace, files);
+        snapshots.refresh(workspace);
+        var reader = new JGitRepositoryBlobReader(fixture.authority());
+        var result = reader.siblings(workspace, commit.name(), "目录/index.md", 128, true, Set.of());
+        var expected = files.keySet().stream()
+                .filter(path -> path.endsWith(".png"))
+                .sorted()
+                .limit(128)
+                .toList();
+        assertThat(result.partial()).isTrue();
+        assertThat(result.items()).extracting(RepositoryBlob::path).containsExactlyElementsOf(expected);
+        assertThat(result.items().getLast().path()).isEqualTo("目录/😀.png");
+    }
+
+    @Test
+    void normalizedInlineAndExcludedPathsDoNotConsumeSlotsOrRevealTruncation() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var source = new StringBuilder("# Body\n");
+        var files = files("notes/index.md", "");
+        for (int i = 0; i < 129; i++) {
+            String name = "inline-%03d.png".formatted(i);
+            files.put(
+                    "notes/" + name,
+                    i == 128 ? new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1] : text("invalid image"));
+            source.append("![already referenced](./")
+                    .append(name.replace("inline", "%69nline"))
+                    .append(")\n");
+        }
+        files.put("notes/visible.png", png(1));
+        files.put("notes/index.md", text(source.toString()));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        var before = service.publicDocument(workspace, "/notes").orElseThrow().media();
+        assertThat(before.images()).isEmpty();
+        assertThat(before.gallery()).extracting(ResolvedMedia.GalleryImage::alt).containsExactly("visible.png");
+        assertThat(before.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.COMPLETE);
+        files.put(
+                RepositoryPublishingPolicy.PATH,
+                text("enabled: true\nmode: public-by-default\nexclude: ['notes/hidden-*.png']\n"));
+        for (int i = 0; i < 129; i++) {
+            files.put("notes/hidden-%03d.png".formatted(i), png(i));
+            files.put("private/image-%03d.png".formatted(i), png(i));
+            files.put("notes/nested/image-%03d.png".formatted(i), png(i));
+        }
+        var commit = fixture.commitRemote(workspace, files);
+        snapshots.refresh(workspace);
+        var after = service.publicDocument(workspace, "/notes").orElseThrow().media();
+        assertThat(after.gallery()).extracting(ResolvedMedia.GalleryImage::alt).containsExactly("visible.png");
+        assertThat(after.galleryStatus()).isEqualTo(before.galleryStatus());
+        var reader = new JGitRepositoryBlobReader(fixture.authority());
+        var denied = reader.siblings(workspace, commit.name(), "private/index.md", 128, true, Set.of());
+        assertThat(denied.items()).isEmpty();
+        assertThat(denied.partial()).isFalse();
+        var authorized = reader.siblings(workspace, commit.name(), "private/index.md", 128, false, Set.of());
+        assertThat(authorized.items()).hasSize(128);
+        assertThat(authorized.partial()).isTrue();
+    }
+
+    @Test
+    void corruptAndOversizedSiblingsYieldPartialWithoutFailingTextOrRefillingCandidates() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("index.md", "# Still readable");
+        files.put("a.png", new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
+        files.put("b.png", text("not a PNG"));
+        files.put("c.png", png(1));
+        for (int i = 3; i < 129; i++) files.put("z-%03d.png".formatted(i), png(i));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var media = service(fixture, snapshots)
+                .publicDocument(workspace, "/")
+                .orElseThrow()
+                .media();
+        assertThat(media.body()).isEqualTo("# Still readable");
+        assertThat(media.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
+        assertThat(media.gallery()).hasSize(126);
+        assertThat(media.gallery())
+                .extracting(ResolvedMedia.GalleryImage::alt)
+                .doesNotContain("a.png", "b.png", "z-128.png");
+    }
+
+    @Test
+    void emptyPartialGalleryAndMissingPreviewFolderHaveDistinctStatuses() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryPublishingPolicy.PATH,
+                        text("enabled: true\nmode: public-by-default\n"),
+                        "index.md",
+                        text("# Text"),
+                        "invalid.png",
+                        text("invalid")));
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        var media = service.publicDocument(workspace, "/").orElseThrow().media();
+        assertThat(media.gallery()).isEmpty();
+        assertThat(media.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
+        var preview = service.preview(actor, workspace, "new/folder/index.md", "# Draft", Optional.empty());
+        assertThat(preview.body()).isEqualTo("# Draft");
+        assertThat(preview.gallery()).isEmpty();
+        assertThat(preview.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.COMPLETE);
+    }
+
+    @Test
+    void imageCacheFailureProducesUnavailableGalleryWhileSnapshotExpiryStillFailsClosed() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("index.md", "# Readable");
+        files.put("image.png", png(1));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        Files.createDirectories(directory.resolve("image-cache"));
+        Files.writeString(directory.resolve("image-cache/unexpected"), "isolated invalid cache entry");
+        var service = service(fixture, snapshots);
+        var media = service.publicDocument(workspace, "/").orElseThrow().media();
+        assertThat(media.body()).isEqualTo("# Readable");
+        assertThat(media.gallery()).isEmpty();
+        assertThat(media.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.UNAVAILABLE);
+        clock.now = clock.now.plusSeconds(3600);
+        assertThatThrownBy(() -> service.publicDocument(workspace, "/")).isInstanceOf(ContentRepositoryException.class);
+    }
+
+    @Test
+    void bodyImagesHavePriorityAndExhaustedPageBudgetDoesNotReadMoreManagedOrGitBytes() {
+        var store = mock(ManagedBlobStore.class);
+        var blobs = mock(RepositoryBlobReader.class);
+        var references = new ArrayList<ManagedAssetReference>();
+        var source = new StringBuilder("# Text survives\n");
+        for (int i = 0; i < 9; i++) {
+            var reference = new ManagedAssetReference(UUID.randomUUID(), "a".repeat(64));
+            references.add(reference);
+            source.append("![Image](").append(reference).append(")\n");
+        }
+        var image = new ManagedImage(
+                new ManagedAsset(references.getFirst(), "image/png", ManagedBlobStore.MAX_UPLOAD_BYTES),
+                new byte[ManagedBlobStore.MAX_UPLOAD_BYTES]);
+        when(store.read(any(), any())).thenReturn(image);
+        var gallery = new RepositoryBlob(workspace, "b".repeat(40), "sibling.png", "c".repeat(40), 1, true);
+        when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenReturn(new SiblingImages(List.of(gallery), false));
+        var media = pageService(blobs, store, source.toString())
+                .publicDocument(workspace, "/")
+                .orElseThrow()
+                .media();
+        assertThat(media.body()).isEqualTo(source.toString());
+        assertThat(media.images())
+                .hasSize(8)
+                .doesNotContainKey(references.getLast().toString());
+        verify(store, times(8)).read(any(), any());
+        verify(store, never()).read(workspace, references.getLast());
+        verify(blobs, never()).read(any());
+        assertThat(media.gallery()).isEmpty();
+        assertThat(media.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
+    }
+
+    @Test
+    void successfulSmallManagedReadsReturnUnusedPageAllowance() {
+        var store = mock(ManagedBlobStore.class);
+        var blobs = mock(RepositoryBlobReader.class);
+        var reference = new ManagedAssetReference(UUID.randomUUID(), "a".repeat(64));
+        var source = new StringBuilder("# Text\n");
+        for (int i = 0; i < 20; i++)
+            source.append("![Image](managed:")
+                    .append(UUID.randomUUID())
+                    .append(":")
+                    .append("a".repeat(64))
+                    .append(")\n");
+        when(store.read(any(), any()))
+                .thenReturn(new ManagedImage(new ManagedAsset(reference, "image/png", 1), new byte[] {1}));
+        when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenReturn(new SiblingImages(List.of(), false));
+        var media = pageService(blobs, store, source.toString())
+                .publicDocument(workspace, "/")
+                .orElseThrow()
+                .media();
+        assertThat(media.images()).hasSize(20);
+        verify(store, times(20)).read(any(), any());
+        assertThat(media.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.COMPLETE);
+    }
+
+    @Test
+    void failedGitTargetsChargeOnceAndKnownSizeIsCheckedBeforeMaterialization() {
+        var blobs = mock(RepositoryBlobReader.class);
+        var source = new StringBuilder("# Text\n![one](first.png)\n![same](./first.png)\n");
+        var first = new RepositoryBlob(
+                workspace, "b".repeat(40), "first.png", "c".repeat(40), RepositoryBlobReader.MAX_BLOB_BYTES, true);
+        when(blobs.find(workspace, "b".repeat(40), "first.png")).thenReturn(Optional.of(first));
+        for (int i = 1; i < 9; i++) {
+            String path = "image-" + i + ".png";
+            var blob = new RepositoryBlob(
+                    workspace, "b".repeat(40), path, "c".repeat(40), RepositoryBlobReader.MAX_BLOB_BYTES, true);
+            when(blobs.find(workspace, "b".repeat(40), path)).thenReturn(Optional.of(blob));
+            source.append("![image](").append(path).append(")\n");
+        }
+        when(blobs.read(any())).thenThrow(new ContentRepositoryException("isolated object failure"));
+        when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenReturn(new SiblingImages(List.of(), false));
+        var media = pageService(blobs, mock(ManagedBlobStore.class), source.toString())
+                .publicDocument(workspace, "/")
+                .orElseThrow()
+                .media();
+        assertThat(media.body()).isEqualTo(source.toString());
+        assertThat(media.images()).isEmpty();
+        verify(blobs).read(first);
+        verify(blobs, times(8)).read(any());
+        verify(blobs, never()).read(argThat(blob -> blob.path().equals("image-8.png")));
+    }
+
+    @Test
+    void memoryRejectedBodyImagesDoNotConsumeTheGalleryByteAllowance() throws Exception {
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        var store = mock(ManagedBlobStore.class);
+        var blobs = mock(RepositoryBlobReader.class);
+        var body = new StringBuilder("# Text remains\n");
+        for (int i = 0; i < 9; i++) body.append("![Busy](managed:").append(UUID.randomUUID()).append(":").append("a".repeat(64)).append(")\n");
+        byte[] image = png(3);
+        RepositoryBlob candidate;
+        try (var formatter = new org.eclipse.jgit.lib.ObjectInserter.Formatter()) {
+            candidate = new RepositoryBlob(workspace, "b".repeat(40), "gallery.png", formatter.idFor(org.eclipse.jgit.lib.Constants.OBJ_BLOB, image).name(), image.length, true);
+        }
+        when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any())).thenAnswer(call -> {
+            held.responseComplete();
+            return new SiblingImages(List.of(candidate), false);
+        });
+        when(blobs.read(candidate)).thenReturn(image);
+        try {
+            var media = pageService(blobs, store, body.toString(), memory).publicDocument(workspace, "/").orElseThrow().media();
+            assertThat(media.body()).isEqualTo(body.toString());
+            assertThat(media.images()).isEmpty();
+            assertThat(media.gallery()).hasSize(1);
+            verifyNoInteractions(store);
+            assertThat(memory.rejectedRequests()).isEqualTo(9);
+            assertThat(memory.reservedBytes()).isZero();
+        } finally { held.responseComplete(); }
+    }
+
+    private AssetService pageService(RepositoryBlobReader blobs, ManagedBlobStore store, String body) {
+        return pageService(blobs, store, body, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
+    }
+
+    private AssetService pageService(RepositoryBlobReader blobs, ManagedBlobStore store, String body, ImageMemoryAdmission memory) {
+        Instant now = clock.instant();
+        var snapshot = new PublicContentSnapshot(
+                workspace,
+                Optional.of("b".repeat(40)),
+                now,
+                now.plusSeconds(3600),
+                List.of(new PublicArticle("index.md", "/", "Text", body, List.of(), now, now, true)));
+        var snapshots = mock(PublicContentSnapshots.class);
+        when(snapshots.withCurrent(any(), any()))
+                .thenAnswer(call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(snapshot));
+        return new AssetService(
+                null,
+                null,
+                blobs,
+                null,
+                snapshots,
+                () -> store,
+                directory.resolve("page-cache"),
+                16L * 1024 * 1024,
+                128,
+                clock,
+                memory);
     }
 
     @Test

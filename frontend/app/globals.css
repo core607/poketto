@@ -530,6 +530,11 @@ img {
   gap: 20px;
   margin: 32px 0;
 }
+.gallery-notice {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  margin: 0;
+}
 .gallery figure {
   margin: 0;
 }
