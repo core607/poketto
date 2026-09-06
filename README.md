@@ -24,7 +24,6 @@ build.gradle.kts     Gradle build and verification entry points
 Dockerfile           Application image: Gradle build stage, JRE runtime stage
 deploy/              Production Compose, deployment entrance, transfer script, script tests
 src/                 Application modules and their tests
-infra/postgres/      Reproducible PostgreSQL 17 + zhparser test image
 notes/               Decision records: proposed / implemented / rejected / archived
 ```
 

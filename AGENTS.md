@@ -27,7 +27,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 |---|---|
 | `./gradlew bootRun` | Start the application locally |
 | `./gradlew test` | Run fast unit, context, and module-boundary tests |
-| `./gradlew integrationTest` | Build the PostgreSQL 17 + zhparser image and run database integration tests |
+| `./gradlew integrationTest` | Run database integration tests against pinned official PostgreSQL 17 |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
 | `./gradlew deployScriptTests` | Run the deployment script tests against fake docker, curl, and ssh |
 | `./gradlew spotlessApply` | Rewrite Java sources into the canonical format |

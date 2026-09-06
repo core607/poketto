@@ -3,6 +3,8 @@
 Date: 2026-08-27
 Status: Proposed
 
+This remains future work. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) excludes backups and restore drills and does not require them as an implementation or deployment gate.
+
 ## Problem
 
 The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, images, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running a second `git push`, copying object-storage keys, or invoking `pg_dump` does not prove that data survives provider loss and may propagate a deletion into the supposed backup. [Source-encrypted backup recovery](2026-09-01-source-encrypted-backup-recovery.md) reverses this proposal's original target-access-only confidentiality choice and owns the encryption and key-custody decision.

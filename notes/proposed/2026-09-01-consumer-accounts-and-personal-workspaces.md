@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+This remains an independent future delivery. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) uses one pre-provisioned workspace and invitation-only membership, without consumer account or personal-workspace provisioning.
+
 ## Problem
 
 The implemented [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) makes a workspace the tenant and allows one account to belong to several workspaces, but the executable topology creates only one default workspace and exposes no self-service creation entrance. The [invitation proposal](2026-08-27-invitation-only-membership.md) explains how an account joins an existing workspace; it does not define the personal workspace created for a new consumer.

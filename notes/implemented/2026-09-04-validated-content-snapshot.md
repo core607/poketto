@@ -3,6 +3,8 @@
 Date: 2026-09-04
 Status: Implemented
 
+The proposed [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md) replaces whole-commit document rejection with per-file diagnostics and stops public service at snapshot expiry. Those changes remain unimplemented until their owning code and tests ship; this record retains the baseline mechanism and rationale.
+
 ## Problem
 
 The [HTTP entrance baseline](2026-09-03-http-entrance-baseline.md) resolved remote `main` on every public request: fetch, reset the cache, read and parse every managed document under the workspace lock, then filter to public documents. Remote latency and outages reached every page view, concurrent requests to one workspace queued behind a single fetch, and one document that failed validation anywhere in the repository, private documents included, turned the whole public API into a 503. No bound existed on document size, frontmatter size, tag count, path length, document count, or total bytes, so one push could exhaust memory. `/actuator/health` proved only that the process and the database answered; startup proved only that the remote could be reached. The remote's own refusal of a push was reported as a lost response, and an update read the host clock before taking the lock and failed when that clock was not ahead of the stored `updated_at`.

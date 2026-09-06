@@ -31,8 +31,9 @@ java {
 }
 
 val springModulithVersion = "2.1.0"
+// Immutable official PostgreSQL 17.11-bookworm manifest.
 val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
-    .orElse("poketto-postgres:17.11-zhparser")
+    .orElse("postgres@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0")
 
 dependencies {
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
@@ -86,27 +87,12 @@ dependencies {
     add(integrationTestSourceSet.runtimeOnlyConfigurationName, "org.postgresql:postgresql")
 }
 
-val buildPostgresTestImage = tasks.register<Exec>("buildPostgresTestImage") {
-    group = "verification"
-    description = "Builds the PostgreSQL 17 image used by integration tests."
-    inputs.dir(layout.projectDirectory.dir("infra/postgres"))
-    outputs.upToDateWhen { false }
-    commandLine(
-        "docker",
-        "build",
-        "--tag",
-        postgresTestImage.get(),
-        layout.projectDirectory.dir("infra/postgres").asFile.absolutePath,
-    )
-}
-
 val integrationTest = tasks.register<Test>("integrationTest") {
     group = "verification"
     description = "Runs Docker-backed integration tests."
     testClassesDirs = integrationTestSourceSet.output.classesDirs
     classpath = integrationTestSourceSet.runtimeClasspath
     shouldRunAfter(tasks.test)
-    dependsOn(buildPostgresTestImage)
     systemProperty("poketto.postgres.image", postgresTestImage.get())
 }
 

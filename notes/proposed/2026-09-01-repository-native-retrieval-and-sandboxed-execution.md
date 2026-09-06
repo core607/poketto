@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+[Phase-one delivery](2026-09-05-phase-one-daily-use.md) specifies the five-tool delivery, excludes visitor Q&A, and limits initial transport to ordinary history fetch with incremental reuse. It does not promise selective cold object transfer. Runtime isolation remains subject to real-host acceptance.
+
 ## Problem
 
 The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) put document search in a PostgreSQL `search_documents` projection and give AI agents a fixed set of retrieval tools. That design keeps queries predictable, but it makes PostgreSQL duplicate repository content, adds replay and checkpoint state, and limits an agent to query shapes implemented in advance.

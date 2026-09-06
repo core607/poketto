@@ -3,6 +3,8 @@
 Date: 2026-08-27
 Status: Proposed
 
+[Phase-one delivery](2026-09-05-phase-one-daily-use.md) selects the self-hosted initialization, invitation, membership, and key lifecycle for the first daily-use installation. Consumer provisioning remains outside that delivery.
+
 ## Problem
 
 A Poketto knowledge workspace needs to serve its owner, trusted members, and their AI agents. The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) allow trusted members but define only issued API keys; they do not define how a human joins or leaves a workspace while retaining an independent audit identity.

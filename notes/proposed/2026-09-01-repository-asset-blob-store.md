@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+[Phase-one delivery](2026-09-05-phase-one-daily-use.md) implements the local storage profile and retains all acknowledged managed originals. OSS, physical reclamation, and backup-dependent recovery remain outside that delivery; completing the local profile alone does not implement this entire proposal.
+
 ## Problem
 
 Poketto must support two image-authoring paths without turning them into a synchronization system. An existing repository may contain ordinary image files beside Markdown. A browser, API client, or trusted agent must also be able to upload an image without adding binary history to Git.

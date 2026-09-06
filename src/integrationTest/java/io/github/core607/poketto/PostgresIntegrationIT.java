@@ -88,18 +88,13 @@ class PostgresIntegrationIT {
     private ApplicationRunner defaultWorkspaceInitializer;
 
     @Test
-    void providesPostgres17WithWorkingZhparser() {
+    void providesPostgres17WithUtf8TextSupport() {
         Integer majorVersion =
                 jdbc.queryForObject("select current_setting('server_version_num')::integer / 10000", Integer.class);
         assertThat(majorVersion).isEqualTo(17);
 
-        jdbc.execute("create extension zhparser");
-        jdbc.execute("create text search configuration poketto_zh (parser = zhparser)");
-        jdbc.execute("alter text search configuration poketto_zh " + "add mapping for n,v,a,i,e,l with simple");
-
-        Integer tokenCount =
-                jdbc.queryForObject("select count(*) from ts_parse('zhparser', '知识库支持中文搜索')", Integer.class);
-        assertThat(tokenCount).isPositive();
+        assertThat(jdbc.queryForObject("show server_encoding", String.class)).isEqualTo("UTF8");
+        assertThat(jdbc.queryForObject("select ?::text", String.class, "知识库成员")).isEqualTo("知识库成员");
     }
 
     @Test
