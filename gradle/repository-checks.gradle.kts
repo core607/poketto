@@ -1,6 +1,9 @@
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.FileVisitResult
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
@@ -8,19 +11,25 @@ import kotlin.io.path.name
 import org.gradle.api.GradleException
 
 val repositoryRoot: Path = rootDir.toPath().toAbsolutePath().normalize()
-val excludedDirectoryNames = setOf(".git", ".gradle", "build")
+val excludedDirectoryNames = setOf(".git", ".gradle", "build", "node_modules", ".next")
 
-fun repositoryFiles(predicate: (Path) -> Boolean): List<Path> =
-    Files.walk(repositoryRoot).use { paths ->
-        paths
-            .filter { path ->
-                val relative = repositoryRoot.relativize(path)
-                relative.none { segment -> segment.toString() in excludedDirectoryNames }
-            }
-            .filter(predicate)
-            .sorted()
-            .toList()
-    }
+fun repositoryFiles(predicate: (Path) -> Boolean): List<Path> {
+    val paths = mutableListOf<Path>()
+    Files.walkFileTree(repositoryRoot, object : SimpleFileVisitor<Path>() {
+        override fun preVisitDirectory(directory: Path, attributes: BasicFileAttributes): FileVisitResult {
+            if (directory != repositoryRoot && directory.fileName.toString() in excludedDirectoryNames)
+                return FileVisitResult.SKIP_SUBTREE
+            if (predicate(directory)) paths.add(directory)
+            return FileVisitResult.CONTINUE
+        }
+
+        override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
+            if (predicate(file)) paths.add(file)
+            return FileVisitResult.CONTINUE
+        }
+    })
+    return paths.sorted()
+}
 
 fun Path.repositoryPath(): String = repositoryRoot.relativize(this).toString().replace('\\', '/')
 
@@ -73,7 +82,7 @@ tasks.register("repoCheck") {
     description = "Validates repository documents, agent rules, and skill metadata."
     inputs.files(
         fileTree(repositoryRoot) {
-            exclude(".git/**", ".gradle/**", "build/**", "notes/archived/**")
+            exclude(".git/**", ".gradle/**", "build/**", "notes/archived/**", "**/node_modules/**", "**/.next/**")
         },
     )
 

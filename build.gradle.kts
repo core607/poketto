@@ -97,6 +97,16 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     systemProperty("poketto.postgres.image", postgresTestImage.get())
 }
 
+tasks.register<Sync>("stageAcceptanceRuntime") {
+    group = "verification"
+    description = "Stages real application classes and synthetic fixtures for isolated browser acceptance."
+    dependsOn(tasks.named(integrationTestSourceSet.classesTaskName))
+    into(layout.buildDirectory.dir("acceptance/runtime"))
+    from(sourceSets.main.get().output) { into("classes") }
+    from(integrationTestSourceSet.output) { into("classes") }
+    from(configurations[integrationTestSourceSet.runtimeClasspathConfigurationName]) { into("jars") }
+}
+
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.
 // Invoke Git Bash as a login shell so its own /usr/bin tools are available to the test scripts.
 fun gitBash(): File? {
@@ -142,6 +152,7 @@ tasks.withType<Test>().configureEach {
 }
 
 apply(from = "gradle/repository-checks.gradle.kts")
+apply(from = "gradle/frontend.gradle.kts")
 
 tasks.check {
     dependsOn(integrationTest)
