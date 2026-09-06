@@ -364,48 +364,57 @@ public final class AssetService {
                 image.bytes());
     }
 
-    private synchronized Optional<String> mint(GrantKey key, Instant snapshotExpires) {
-        Instant now = clock.instant();
-        purge(now);
-        Instant expires =
-                now.plus(GRANT_LIFETIME).isBefore(snapshotExpires) ? now.plus(GRANT_LIFETIME) : snapshotExpires;
-        if (!now.isBefore(expires)) throw notFound();
-        String token = reusable.get(key);
-        if (token != null) {
-            Instant previousExpires = grants.get(token).expires();
-            // A snapshot near expiry cannot give a replacement token a longer useful lifetime.
-            if (!previousExpires.isAfter(expires)
-                    && (previousExpires.equals(expires)
-                            || !previousExpires.isBefore(now.plus(MINIMUM_REUSABLE_LIFETIME))))
+    private Optional<String> mint(GrantKey key, Instant snapshotExpires) {
+        CapacityWarning warning;
+        synchronized (this) {
+            Instant now = clock.instant();
+            purge(now);
+            Instant expires =
+                    now.plus(GRANT_LIFETIME).isBefore(snapshotExpires) ? now.plus(GRANT_LIFETIME) : snapshotExpires;
+            if (!now.isBefore(expires)) throw notFound();
+            String token = reusable.get(key);
+            if (token != null) {
+                Instant previousExpires = grants.get(token).expires();
+                // A snapshot near expiry cannot give a replacement token a longer useful lifetime.
+                if (!previousExpires.isAfter(expires)
+                        && (previousExpires.equals(expires)
+                                || !previousExpires.isBefore(now.plus(MINIMUM_REUSABLE_LIFETIME))))
+                    return Optional.of(token);
+            }
+            if (grants.size() >= maxGrants) {
+                warning = capacityWarning(now);
+            } else {
+                byte[] entropy = new byte[32];
+                do {
+                    random.nextBytes(entropy);
+                    token = Base64.getUrlEncoder().withoutPadding().encodeToString(entropy);
+                } while (grants.containsKey(token));
+                grants.put(token, new Grant(key, now, expires));
+                reusable.put(key, token);
                 return Optional.of(token);
+            }
         }
-        if (grants.size() >= maxGrants) {
-            warnCapacity(now);
-            return Optional.empty();
+        if (warning != null) {
+            log.warn(
+                    "Image grant capacity exhausted; omitted {} image authorization(s) since the previous warning (capacity {})",
+                    warning.omissions(),
+                    warning.capacity());
         }
-        byte[] entropy = new byte[32];
-        do {
-            random.nextBytes(entropy);
-            token = Base64.getUrlEncoder().withoutPadding().encodeToString(entropy);
-        } while (grants.containsKey(token));
-        grants.put(token, new Grant(key, now, expires));
-        reusable.put(key, token);
-        return Optional.of(token);
+        return Optional.empty();
     }
 
-    /** Called under the grant lock; warnings contain no workspace, path, identity or token. */
-    private void warnCapacity(Instant now) {
+    /** Captures only counts under the grant lock; log output must happen after leaving it. */
+    private CapacityWarning capacityWarning(Instant now) {
         if (capacityOmissions < Long.MAX_VALUE) capacityOmissions++;
         if (capacityWarningAt == null
                 || now.isBefore(capacityWarningAt)
                 || !now.isBefore(capacityWarningAt.plus(CAPACITY_WARNING_INTERVAL))) {
-            log.warn(
-                    "Image grant capacity exhausted; omitted {} image authorization(s) since the previous warning (capacity {})",
-                    capacityOmissions,
-                    maxGrants);
+            var warning = new CapacityWarning(capacityOmissions, maxGrants);
             capacityOmissions = 0;
             capacityWarningAt = now;
+            return warning;
         }
+        return null;
     }
 
     private synchronized Grant grant(WorkspaceId workspace, String token, String actor) {
@@ -455,4 +464,6 @@ public final class AssetService {
     private record GrantKey(WorkspaceId workspace, String commit, String page, Target target, String actor) {}
 
     private record Grant(GrantKey key, Instant issued, Instant expires) {}
+
+    private record CapacityWarning(long omissions, int capacity) {}
 }
