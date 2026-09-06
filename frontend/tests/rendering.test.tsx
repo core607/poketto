@@ -277,3 +277,27 @@ test("GFM generated footnote targets keep their own namespace", () => {
   assert.match(html, /href="#user-content-fnref-1"/);
   assert.doesNotMatch(html, /href="#poketto-heading-user-content-fn/);
 });
+
+test("empty incomplete galleries expose a notice without unsafe image fallbacks", () => {
+  assert.equal(
+    renderToStaticMarkup(<Gallery items={[]} status="COMPLETE" />),
+    "",
+  );
+  for (const [status, message] of [
+    ["PARTIAL", "部分同目录图片未展示。"],
+    ["UNAVAILABLE", "同目录图片暂时无法加载。"],
+  ] as const) {
+    for (const preview of [false, true]) {
+      const html = renderToStaticMarkup(
+        <Gallery
+          status={status}
+          preview={preview}
+          items={[{ src: "../private/image.png", alt: "Hidden" }]}
+        />,
+      );
+      assert.match(html, /role="status"/);
+      assert.ok(html.includes(message));
+      assert.doesNotMatch(html, /<img|private\/image|Hidden/);
+    }
+  }
+});

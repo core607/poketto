@@ -1,3 +1,4 @@
+export type GalleryStatus = "COMPLETE" | "PARTIAL" | "UNAVAILABLE";
 export type Snapshot = {
   commit: string | null;
   verifiedAt: string;
@@ -24,6 +25,7 @@ export type Article = Snapshot &
     images?: Record<string, string>;
     links?: Record<string, string>;
     gallery?: { src: string; alt: string }[];
+    galleryStatus: GalleryStatus;
   };
 export type TagPage = Snapshot & {
   tags: string[];

@@ -3,12 +3,15 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.PriorityQueue;
+import java.util.Set;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -62,13 +65,85 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     }
 
     @Override
-    public List<RepositoryBlob> siblings(
-            WorkspaceId workspace, String commit, String documentPath, int limit, boolean publicOnly) {
+    public SiblingImages siblings(
+            WorkspaceId workspace,
+            String commit,
+            String documentPath,
+            int limit,
+            boolean publicOnly,
+            Set<String> inlinePaths) {
         validateCommit(commit);
         RepositoryPathRules.validate(documentPath);
         if (limit < 1 || limit > 128) throw new IllegalArgumentException("image sibling limit must be 1 to 128");
         String folder = documentPath.contains("/") ? documentPath.substring(0, documentPath.lastIndexOf('/') + 1) : "";
-        return scanImages(workspace, commit, folder, true, limit, publicOnly);
+        return authority.readCache(workspace, cache -> {
+            try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace);
+                    RevWalk commits = new RevWalk(repository);
+                    TreeWalk tree = new TreeWalk(repository)) {
+                var root = commits.parseCommit(ObjectId.fromString(commit)).getTree();
+                ObjectId folderTree = root;
+                if (!folder.isEmpty()) {
+                    try (TreeWalk entry =
+                            TreeWalk.forPath(repository, folder.substring(0, folder.length() - 1), root)) {
+                        if (entry == null || !FileMode.TREE.equals(entry.getFileMode(0)))
+                            return new SiblingImages(List.of(), false);
+                        folderTree = entry.getObjectId(0);
+                    }
+                }
+                tree.addTree(folderTree);
+                RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(
+                        workspace, new RepositoryAuthority.Snapshot(cache.worktree(), Optional.of(commit)));
+                var order = Comparator.comparing(ImageCandidate::path);
+                var candidates = new PriorityQueue<ImageCandidate>(limit, order.reversed());
+                boolean partial = false;
+                int visited = 0;
+                while (tree.next()) {
+                    if (++visited > 100_000) throw unavailable();
+                    String path = folder + tree.getPathString();
+                    if (!regular(tree.getFileMode(0)) || !imagePath(path) || inlinePaths.contains(path)) continue;
+                    try {
+                        RepositoryPathRules.validate(path);
+                    } catch (IllegalArgumentException invalid) {
+                        continue;
+                    }
+                    if (RepositoryPathRules.reserved(path)) continue;
+                    boolean publicPath = policy.permitsPath(path);
+                    if (publicOnly && !publicPath) continue;
+                    var candidate = new ImageCandidate(path, tree.getObjectId(0), publicPath);
+                    if (candidates.size() == limit) {
+                        partial = true;
+                        // Git byte order differs from Java filename order for non-BMP characters.
+                        if (order.compare(candidate, candidates.peek()) >= 0) continue;
+                        candidates.remove();
+                    }
+                    candidates.add(candidate);
+                }
+                List<RepositoryBlob> result = new ArrayList<>();
+                for (var candidate : candidates.stream().sorted(order).toList()) {
+                    long size = tree.getObjectReader().getObjectSize(candidate.objectId(), Constants.OBJ_BLOB);
+                    if (size > MAX_BLOB_BYTES) {
+                        partial = true;
+                        continue;
+                    }
+                    result.add(new RepositoryBlob(
+                            workspace,
+                            commit,
+                            candidate.path(),
+                            candidate.objectId().name(),
+                            size,
+                            candidate.publicPath()));
+                }
+                return new SiblingImages(result, partial);
+            } catch (IOException exception) {
+                throw unavailable();
+            }
+        });
+    }
+
+    private record ImageCandidate(String path, ObjectId objectId, boolean publicPath) {}
+
+    private static boolean imagePath(String path) {
+        return path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)");
     }
 
     @Override
@@ -77,11 +152,10 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
         if (prefix == null) throw new IllegalArgumentException("image prefix is required");
         if (!prefix.isEmpty())
             RepositoryPathRules.validate(prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix);
-        return scanImages(workspace, commit, prefix, false, 1000, false);
+        return scanImages(workspace, commit, prefix);
     }
 
-    private List<RepositoryBlob> scanImages(
-            WorkspaceId workspace, String commit, String folder, boolean siblings, int limit, boolean publicOnly) {
+    private List<RepositoryBlob> scanImages(WorkspaceId workspace, String commit, String folder) {
         return authority.readCache(workspace, cache -> {
             try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace);
                     RevWalk commits = new RevWalk(repository);
@@ -96,7 +170,6 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                     if (++visited > 100_000) throw unavailable();
                     String path = tree.getPathString();
                     if (!path.startsWith(folder)
-                            || (siblings && path.substring(folder.length()).contains("/"))
                             || !path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)")) continue;
                     if (!regular(tree.getFileMode(0))) continue;
                     long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
@@ -107,8 +180,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                         continue;
                     }
                     if (RepositoryPathRules.reserved(path)) continue;
-                    if (publicOnly && !policy.permitsPath(path)) continue;
-                    if (result.size() >= limit) throw unavailable();
+                    if (result.size() >= 1000) throw unavailable();
                     result.add(new RepositoryBlob(
                             workspace, commit, path, tree.getObjectId(0).name(), size, policy.permitsPath(path)));
                 }

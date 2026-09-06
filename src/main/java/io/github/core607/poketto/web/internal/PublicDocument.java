@@ -21,7 +21,8 @@ record PublicDocument(
         String body,
         Map<String, String> links,
         Map<String, String> images,
-        List<ResolvedMedia.GalleryImage> gallery) {
+        List<ResolvedMedia.GalleryImage> gallery,
+        ResolvedMedia.GalleryStatus galleryStatus) {
     static PublicDocument of(PublicArticle article, PublicContentSnapshot snapshot, ResolvedMedia media) {
         return new PublicDocument(
                 snapshot.commit().orElse(null),
@@ -36,6 +37,7 @@ record PublicDocument(
                 article.body(),
                 media.links(),
                 media.images(),
-                media.gallery());
+                media.gallery(),
+                media.galleryStatus());
     }
 }
