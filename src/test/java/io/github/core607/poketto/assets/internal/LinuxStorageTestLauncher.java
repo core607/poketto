@@ -19,6 +19,7 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.content.internal.AssetDeliveryTests",
             "io.github.core607.poketto.content.internal.ImmutableRepositoryReadTests",
             "io.github.core607.poketto.content.internal.GitImageGrantRetentionTests",
+            "io.github.core607.poketto.content.internal.PublicImagePreparationTests",
             "io.github.core607.poketto.content.internal.RepositoryContentReaderTests",
             "io.github.core607.poketto.content.internal.RepositoryHistoryDatesTests",
             "io.github.core607.poketto.content.internal.RepositoryPatchServiceTests");
