@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import org.eclipse.jgit.lib.ObjectReader;
@@ -34,6 +35,12 @@ interface RepositoryAuthority {
      * readers, streams or RevWalk objects.
      */
     <T> T readImmutableObjects(WorkspaceId workspaceId, ObjectReaderAction<T> action);
+
+    /**
+     * After successful source validation, retains this cache until a future expiry at most five
+     * minutes away. The reader pin remains held until protection is installed and handles close.
+     */
+    void protectImmutableObjects(WorkspaceId workspaceId, Instant expiresAt, ObjectReaderAction<Void> validation);
 
     <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer);
 

@@ -94,7 +94,7 @@ class AssetDeliveryTests {
     }
 
     private void assertLogicalMedia(String folder) throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         String source = """
                 # 文件夹
                 [percent](100%25.md)
@@ -160,7 +160,7 @@ class AssetDeliveryTests {
 
     @Test
     void publicResolutionUsesAstPathsPolicyAndSortedNonrecursiveGallery() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         Map<String, byte[]> files = files("notes/index.md", """
                 # Gallery
                 ![inline](./a.png)
@@ -200,7 +200,7 @@ class AssetDeliveryTests {
 
     @Test
     void overflowingGalleryPreservesTheDocumentAndFirst128Images() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("index.md", "# Still readable");
         for (int i = 0; i < 129; i++) files.put("image-%03d.png".formatted(i), png(i));
         fixture.commitRemote(workspace, files);
@@ -218,7 +218,7 @@ class AssetDeliveryTests {
 
     @Test
     void exactly128ImagesRemainCompleteAndUnicodeTruncationKeepsJavaFilenameOrder() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("目录/index.md", "# Gallery");
         for (int i = 0; i < 126; i++) files.put("目录/image-%03d.png".formatted(i), png(i));
         files.put("目录/中文.png", png(1));
@@ -249,7 +249,7 @@ class AssetDeliveryTests {
 
     @Test
     void normalizedInlineAndExcludedPathsDoNotConsumeSlotsOrRevealTruncation() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var source = new StringBuilder("# Body\n");
         var files = files("notes/index.md", "");
         for (int i = 0; i < 129; i++) {
@@ -295,7 +295,7 @@ class AssetDeliveryTests {
 
     @Test
     void corruptAndOversizedSiblingsYieldPartialWithoutFailingTextOrRefillingCandidates() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("index.md", "# Still readable");
         files.put("a.png", new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
         files.put("b.png", text("not a PNG"));
@@ -318,7 +318,7 @@ class AssetDeliveryTests {
 
     @Test
     void emptyPartialGalleryAndMissingPreviewFolderHaveDistinctStatuses() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         fixture.commitRemote(
                 workspace,
                 Map.of(
@@ -342,7 +342,7 @@ class AssetDeliveryTests {
 
     @Test
     void imageCacheFailureProducesUnavailableGalleryWhileSnapshotExpiryStillFailsClosed() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("index.md", "# Readable");
         files.put("image.png", png(1));
         fixture.commitRemote(workspace, files);
@@ -471,7 +471,7 @@ class AssetDeliveryTests {
 
     @Test
     void ordinaryArticlesHaveNoGalleryAndExplicitSymlinkIsNotAnImage() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("article.md", "# Article\n![symlink](link.png)");
         files.put("a.png", png(1));
         files.put("link.png", text("a.png"));
@@ -487,7 +487,7 @@ class AssetDeliveryTests {
 
     @Test
     void oldGrantKeepsExactBytesAfterWithdrawalAndDerivedCacheDeletion() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var oldFiles = files("article.md", "# Article\n![image](image.png)");
         oldFiles.put("image.png", png(1));
         String old = fixture.commitRemote(workspace, oldFiles).name();
@@ -543,7 +543,7 @@ class AssetDeliveryTests {
                 return status;
             }
         };
-        var fixture = new RemoteRepositoryFixture(directory, transport);
+        var fixture = new RemoteRepositoryFixture(directory, transport, clock);
         var files = files("article.md", "# Public\n![image](image.png)");
         files.put("other.md", text("# Another public page\n![image](image.png)"));
         files.put("image.png", png(1));
@@ -593,7 +593,7 @@ class AssetDeliveryTests {
 
     @Test
     void failureToPersistClosedPublicationPreventsSubmittingThePublicPatch() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("article.md", "# Original");
         var base = fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
@@ -621,7 +621,7 @@ class AssetDeliveryTests {
 
     @Test
     void grantCannotOutliveTheIssuingSnapshot() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("article.md", "![image](image.png)");
         files.put("image.png", png(1));
         fixture.commitRemote(workspace, files);
@@ -641,7 +641,7 @@ class AssetDeliveryTests {
 
     @Test
     void healthyGrantsAreReusedAndRenewalKeepsOldLinksUntilTheirOriginalExpiry() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("article.md", "![image](image.png)");
         files.put("image.png", png(1));
         fixture.commitRemote(workspace, files);
@@ -670,7 +670,7 @@ class AssetDeliveryTests {
 
     @Test
     void snapshotExpiryRemainsTheLimitWhenRenewalCannotImproveTheLifetime() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("article.md", "![image](image.png)");
         files.put("image.png", png(1));
         fixture.commitRemote(workspace, files);
@@ -690,7 +690,7 @@ class AssetDeliveryTests {
     @Test
     @ExtendWith(OutputCaptureExtension.class)
     void capacityOmitsOnlyNewImagesAndPreservesExistingGrantsAcrossWorkspaces(CapturedOutput output) throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("plain.md", "# Still readable");
         for (int i = 0; i < 128; i++) files.put("article-" + i + ".md", text("![image](image.png)"));
         files.put("image.png", png(1));
@@ -754,7 +754,7 @@ class AssetDeliveryTests {
 
     @Test
     void aBlockedCapacityWarningDoesNotBlockAnotherWorkspacesIssuedImage() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("article-0.md", "![image](image.png)");
         for (int i = 1; i < 128; i++) files.put("article-" + i + ".md", text("![image](image.png)"));
         files.put("image.png", png(1));
@@ -838,7 +838,7 @@ class AssetDeliveryTests {
                 return delegate.pushMain(repository, binding, expected, candidate);
             }
         };
-        var fixture = new RemoteRepositoryFixture(directory, transport);
+        var fixture = new RemoteRepositoryFixture(directory, transport, clock);
         var files = files("article.md", "![image](image.png)");
         files.put("image.png", png(1));
         fixture.commitRemote(workspace, files);
@@ -872,7 +872,7 @@ class AssetDeliveryTests {
 
     @Test
     void privatePreviewUsesRepositoryParserAndRechecksCurrentAuthorizationForEveryImage() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("private/article.md", "# Private");
         files.put("private/image.png", png(7));
         String commit = fixture.commitRemote(workspace, files).name();
@@ -899,7 +899,7 @@ class AssetDeliveryTests {
 
     @Test
     void privateInventoryValidatesActualMediaAndReportsInvalidCandidates() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("private/article.md", "# Private");
         files.put("private/image.png", png(7));
         files.put("private/broken.jpg", text("not a JPEG"));
@@ -919,7 +919,7 @@ class AssetDeliveryTests {
 
     @Test
     void currentCallbackSerializesImageMintingWithSnapshotInstallation() throws Exception {
-        var fixture = new RemoteRepositoryFixture(directory);
+        var fixture = new RemoteRepositoryFixture(directory, clock);
         fixture.commitRemote(workspace, files("article.md", "# Public"));
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -1028,7 +1028,7 @@ class AssetDeliveryTests {
     }
 
     private static final class MutableClock extends Clock {
-        Instant now = Instant.parse("2026-09-05T00:00:00Z");
+        volatile Instant now = Instant.parse("2026-09-05T00:00:00Z");
 
         @Override
         public ZoneId getZone() {

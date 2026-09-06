@@ -363,13 +363,24 @@ public final class AssetService {
     }
 
     private Optional<String> mint(GrantKey key, Instant snapshotExpires) {
+        Instant preparedAt = clock.instant();
+        Instant expires = preparedAt.plus(GRANT_LIFETIME).isBefore(snapshotExpires)
+                ? preparedAt.plus(GRANT_LIFETIME)
+                : snapshotExpires;
+        if (!preparedAt.isBefore(expires)) throw notFound();
+        if (key.target() instanceof Git git) {
+            // Source retention and its workspace lock must never run under the global grant lock.
+            try {
+                blobs.protect(git.blob(), expires);
+            } catch (ContentRepositoryException unavailable) {
+                throw notFound();
+            }
+        }
         CapacityWarning warning;
         synchronized (this) {
             Instant now = clock.instant();
             purge(now);
-            Instant expires =
-                    now.plus(GRANT_LIFETIME).isBefore(snapshotExpires) ? now.plus(GRANT_LIFETIME) : snapshotExpires;
-            if (!now.isBefore(expires)) throw notFound();
+            if (now.isBefore(preparedAt) || !now.isBefore(expires)) throw notFound();
             String token = reusable.get(key);
             if (token != null) {
                 Instant previousExpires = grants.get(token).expires();
