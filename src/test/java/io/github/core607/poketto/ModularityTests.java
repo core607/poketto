@@ -13,6 +13,6 @@ class ModularityTests {
                 ApplicationModules.of(PokettoApplication.class).verify();
 
         assertThat(modules.stream().map(module -> module.getIdentifier().toString()))
-                .containsExactlyInAnyOrder("assets", "auth", "content", "mcp", "qa", "workspace", "web");
+                .containsExactlyInAnyOrder("assets", "auth", "content", "executor", "mcp", "qa", "workspace", "web");
     }
 }

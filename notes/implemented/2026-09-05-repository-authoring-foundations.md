@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Scope
 
-This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages, Markdown rendering, MCP transport and the production executor remain separate work. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
+This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages and Markdown rendering remain separate work. The [MCP and local execution record](../proposed/2026-09-05-local-execution-supervisor.md) owns the implemented transport and worker adapter, along with their remaining installation acceptance. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
 
 ## Repository and publication
 
