@@ -175,6 +175,8 @@ with socket.socket(socket.AF_UNIX) as connection:
                 request_file.unlink()
                 response = root / 'control/response.tmp'
                 response.write_text(json.dumps({'id': request['id'], 'ok': True}))
+                os.chmod(response, 0o600)
+                os.chown(response, app_account.pw_uid, app_account.pw_gid)
                 response.replace(root / 'control/response.json')
             time.sleep(.02)
         reader.join(timeout=5)
@@ -228,6 +230,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         start_worker()
         fake_source = root / 'fake-peer.py'
         shutil.copyfile(Path(__file__).with_name('rejected_peer.py'), fake_source)
+        os.chmod(fake_source, 0o644)
         fake_observation = root / 'fake-inbox/observation.json'
         run(['systemd-run', '--quiet', '--unit', fake_unit, '-p', 'User=' + app_user,
              '/usr/bin/python3', str(fake_source), str(root / 'fake-inbox/fake.sock'), str(fake_observation)])
@@ -238,10 +241,13 @@ with socket.socket(socket.AF_UNIX) as connection:
         (root / 'fake-inbox/fake.sock').rename(fake_socket)
         os.chown(fake_socket, 0, app_account.pw_gid)
         os.chmod(fake_socket, 0o660)
-        (root / 'java.json').write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
+        java_config = root / 'java.json'
+        java_config.write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
             'commit': commit, 'control': str(root / 'control')}))
+        os.chmod(java_config, 0o600)
+        os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         execute_java('main')
         execute_java('abandon')
         no_processes(wait=22)
