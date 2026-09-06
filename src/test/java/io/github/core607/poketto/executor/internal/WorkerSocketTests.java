@@ -501,6 +501,153 @@ class WorkerSocketTests {
     }
 
     @Test
+    void closeReconciliationRetainsAdmissionUntilMatchingReplyEvenAfterDetach() throws Exception {
+        var principal = principal();
+        var auth = mock(AuthService.class);
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        auth, exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+            peer.dropClose = true;
+            peer.terminationReason = "cancelled";
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "detached-A",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> executor.closed(new io.github.core607.poketto.mcp.McpSessionClosed(
+                            WORKSPACE,
+                            principal.subjectId(),
+                            "detached-A",
+                            io.github.core607.poketto.mcp.McpSessionClosed.Reason.CLIENT_DELETE)))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            clearInvocations(auth);
+            int firstCloses = peer.operations("CLOSE").size();
+            peer.wrongRequestId = true;
+            peer.dropClose = false;
+            long deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
+            while (peer.operations("CLOSE").size() < firstCloses + 2 && System.nanoTime() < deadline) Thread.sleep(20);
+            assertThat(peer.operations("CLOSE").size()).isGreaterThanOrEqualTo(firstCloses + 2);
+            assertThat(peer.states.values()).contains("CLOSED");
+            verifyNoInteractions(auth);
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "fresh-B",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            peer.wrongRequestId = false;
+            peer.terminationReason = "normal";
+            deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
+            boolean admitted = false;
+            while (System.nanoTime() < deadline) {
+                try {
+                    executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "fresh-B",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation());
+                    admitted = true;
+                    break;
+                } catch (WorkerUnavailableException unavailable) {
+                    Thread.sleep(20);
+                }
+            }
+            assertThat(admitted).isTrue();
+            assertThat(peer.operations("OPEN")).hasSize(2);
+            assertThat(peer.operations("EXEC")).hasSize(2);
+        }
+    }
+
+    @Test
+    void sameBootCloseRecoveryReleasesAdmissionWithoutReopeningTheStoppedClient() throws Exception {
+        for (boolean lostReply : List.of(true, false)) {
+            var principal = principal();
+            try (var peer = new Peer();
+                    var executor = new IsolatedRepositoryExecutor(
+                            mock(AuthService.class),
+                            exports(),
+                            peer.client(),
+                            1,
+                            Duration.ofSeconds(3),
+                            Duration.ofMillis(100))) {
+                UUID boot = peer.boot;
+                peer.dropClose = lostReply;
+                peer.closeForever = !lostReply;
+                peer.terminationReason = "cancelled";
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "old-A",
+                                Optional.empty(),
+                                "pwd",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOf(WorkerUnavailableException.class);
+                int initialCloses = peer.operations("CLOSE").size();
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "new-B",
+                                Optional.empty(),
+                                "pwd",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOf(WorkerUnavailableException.class);
+                peer.dropClose = false;
+                peer.closeForever = false;
+                peer.terminationReason = "normal";
+                long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+                boolean recovered = false;
+                while (System.nanoTime() < deadline) {
+                    try {
+                        assertThat(executor.execute(
+                                                principal,
+                                                WORKSPACE,
+                                                "new-B",
+                                                Optional.empty(),
+                                                "pwd",
+                                                Duration.ofSeconds(1),
+                                                new Cancellation())
+                                        .exitCode())
+                                .isZero();
+                        recovered = true;
+                        break;
+                    } catch (WorkerUnavailableException unavailable) {
+                        Thread.sleep(50);
+                    }
+                }
+                assertThat(recovered)
+                        .as("same worker boot must reconcile CLOSE after recovery")
+                        .isTrue();
+                assertThat(peer.boot).isEqualTo(boot);
+                assertThat(peer.operations("CLOSE").size()).isGreaterThan(initialCloses);
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "old-A",
+                                Optional.empty(),
+                                "pwd",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOf(WorkerUnavailableException.class);
+                assertThat(peer.operations("OPEN")).hasSize(2);
+                assertThat(peer.operations("EXEC")).hasSize(2);
+            }
+        }
+    }
+
+    @Test
     void aNewWorkerBootRecoversSaturatedAdmissionWithoutReopeningTheOldClient() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
