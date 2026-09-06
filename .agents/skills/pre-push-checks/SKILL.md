@@ -24,7 +24,7 @@ git status --short --branch
 | Surface | What to run |
 |---|---|
 | Documents and skills | Apply [prose-standard](../prose-standard/SKILL.md) and [trim-cot-leakage](../trim-cot-leakage/SKILL.md); run `./gradlew repoCheck` and `git diff --check` |
-| Code | Run focused owning tests with `./gradlew test --tests '<class-or-pattern>'`, then `./gradlew test`; use `./gradlew check` when build wiring or several runtime surfaces changed |
+| Code | For an isolated change with demonstrated coverage, run `./gradlew test --tests '<class-or-pattern>'`; use `./gradlew test` for shared unit contracts and `./gradlew check` when build wiring or several runtime surfaces changed. Do not run both focused and full unit tests by default |
 | MCP tools and model-visible output | Real entry-path tests and replayable snapshots — command table to be filled when snapshot replay lands |
 | Web UI | Owning behavior tests plus [ui-evidence](../ui-evidence/SKILL.md) from the exact changed tree — command table to be filled when the web runtime lands |
 | Database and storage | Run `./gradlew integrationTest` against pinned official PostgreSQL for Flyway, workspace persistence, initialization, and real application entry paths; add transaction and concurrency coverage when their owning persistence behavior lands |
@@ -42,6 +42,8 @@ If a required check tool does not exist yet, report the uncovered surface explic
 An environment-specific failure needs evidence: exact command, failure, platform difference, and the non-platform checks that still passed. Bypassing a hook requires explicit user authorization.
 
 ## Push and verify
+
+Enter this section only when pushing is explicitly authorized. A request to run checks or assess readiness does not authorize a push. Reuse authorization already given for the same push and scope.
 
 1. Run the selected evidence once; do not repeat a passing command solely because a commit or push follows.
 2. Commit on a short-lived branch. Inspect any files changed by formatting or hooks.
