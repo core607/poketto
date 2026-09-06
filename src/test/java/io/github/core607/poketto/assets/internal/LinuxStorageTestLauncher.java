@@ -9,6 +9,8 @@ import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 /** Runs the owning JUnit class without Gradle or a Docker daemon inside the test container. */
 public final class LinuxStorageTestLauncher {
     private static final java.util.List<String> SUITES = java.util.List.of(
+            "io.github.core607.poketto.assets.internal.BoundedImageReadsTests",
+            "io.github.core607.poketto.assets.internal.RepositoryImageCacheTests",
             "io.github.core607.poketto.assets.internal.LocalManagedBlobStoreTests",
             "io.github.core607.poketto.assets.internal.ManagedAssetDeliveryTests",
             "io.github.core607.poketto.content.internal.PublicSnapshotMarkerNativeTests",

@@ -65,7 +65,7 @@ public final class RepositoryImageCache {
             }
             if (!Files.isRegularFile(file, NOFOLLOW_LINKS)) throw unavailable();
             try (var input = Files.newInputStream(file, StandardOpenOption.READ, NOFOLLOW_LINKS)) {
-                byte[] value = input.readNBytes(RepositoryBlobReader.MAX_BLOB_BYTES + 1);
+                byte[] value = BoundedImageReads.read(input, RepositoryBlobReader.MAX_BLOB_BYTES + 1);
                 if (value.length > RepositoryBlobReader.MAX_BLOB_BYTES) return null;
                 entries.get(key);
                 return value;
