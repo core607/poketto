@@ -26,4 +26,3 @@ The broader frontend proposal remains proposed: final deployment integration, pr
 ## Verification
 
 The frontend gate covers 22 behavioral tests, including initial article HTML, URL/image restrictions, Chinese routes and fragment targets, CSRF forwarding, upload idempotency, unchanged-save acknowledgement and uncertain-write handling. These tests use explicit API fixtures. Real-browser acceptance against the integrated content backend and screenshots of its exact source version remain required before this interface is ready for review.
-

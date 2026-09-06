@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
+
 [Phase-one delivery](2026-09-05-phase-one-daily-use.md) fixes the initial delivery boundary, snapshot expiry, and maximum public image grant lifetime. This proposal remains unimplemented until its corresponding behavior and acceptance evidence ship.
 
 ## Problem

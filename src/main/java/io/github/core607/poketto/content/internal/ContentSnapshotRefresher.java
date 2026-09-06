@@ -1,7 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.ContentRepositoryStore;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
 import java.util.List;
@@ -11,20 +10,21 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Re-validates each served workspace against remote {@code main} on a fixed delay, so a direct
- * owner push becomes visible without any request contacting the remote. A failed refresh leaves
- * the snapshot in service untouched and is logged once per outage.
+ * owner push becomes visible without any request contacting the remote. Snapshot policy owns
+ * failure handling and expiry; the scheduler logs once per outage.
  */
 final class ContentSnapshotRefresher implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ContentSnapshotRefresher.class);
 
-    private final ContentRepositoryStore store;
+    private final Consumer<WorkspaceId> refresh;
     private final Supplier<List<WorkspaceId>> servedWorkspaces;
     private final Duration interval;
     private final Set<WorkspaceId> failing = ConcurrentHashMap.newKeySet();
@@ -36,8 +36,8 @@ final class ContentSnapshotRefresher implements AutoCloseable {
     });
 
     ContentSnapshotRefresher(
-            ContentRepositoryStore store, Supplier<List<WorkspaceId>> servedWorkspaces, Duration interval) {
-        this.store = Objects.requireNonNull(store, "content repository store must not be null");
+            Consumer<WorkspaceId> refresh, Supplier<List<WorkspaceId>> servedWorkspaces, Duration interval) {
+        this.refresh = Objects.requireNonNull(refresh, "content refresh must not be null");
         this.servedWorkspaces = Objects.requireNonNull(servedWorkspaces, "served workspaces must not be null");
         this.interval = Objects.requireNonNull(interval, "refresh interval must not be null");
         if (interval.isNegative() || interval.isZero()) {
@@ -72,16 +72,13 @@ final class ContentSnapshotRefresher implements AutoCloseable {
 
     private void refresh(WorkspaceId workspaceId) {
         try {
-            store.refresh(workspaceId);
+            refresh.accept(workspaceId);
             if (failing.remove(workspaceId)) {
                 log.info("workspace {} content snapshot refresh recovered", workspaceId);
             }
         } catch (ContentRepositoryException exception) {
             if (failing.add(workspaceId)) {
-                log.warn(
-                        "workspace {} keeps serving its last validated snapshot: {}",
-                        workspaceId,
-                        exception.getMessage());
+                log.warn("workspace {} public snapshot refresh failed: {}", workspaceId, exception.getMessage());
             } else {
                 log.debug("workspace {} content snapshot refresh still failing", workspaceId);
             }

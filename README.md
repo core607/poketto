@@ -6,9 +6,9 @@ A repository-native personal knowledge service whose public face is a blog. Its 
 
 ## Status
 
-Development. The executable baseline, workspace isolation, content repository foundation, document writes, and [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md) are implemented. [Continuous delivery](notes/implemented/2026-09-03-continuous-delivery.md) publishes a verified `main` commit to GHCR and deploys it to one Docker Compose host over SSH. An [HTTP entrance](notes/implemented/2026-09-03-http-entrance-baseline.md) exposes health, RFC 9457 problem responses, and a read-only public document API over the default workspace, served from a [validated content snapshot](notes/implemented/2026-09-04-validated-content-snapshot.md) that never puts the remote on the request path. The primary single-server deployment keeps a disposable local Git cache while remote `main` is the only repository acknowledgement point. Accepted proposals add [repository-native Markdown and read-only sibling-image galleries](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md) and an authoritative [local ManagedBlobStore while treating repository-image copies as disposable](notes/proposed/2026-09-01-repository-asset-blob-store.md). [Consumer accounts](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), the [Next.js frontend](notes/proposed/2026-08-30-nextjs-frontend.md), and MCP entry points remain proposed. Serverless stays optional and waits for real OSS, shared-database, and remote-SRT infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline; proposals identify target decisions that have not shipped.
+Development. [Repository authoring foundations](notes/implemented/2026-09-05-repository-authoring-foundations.md) provide arbitrary-path Markdown, file diagnostics, bounded public and private search, publication policy, atomic text patches, immutable local image storage and exact-version image delivery. Remote `main` remains authoritative; public requests use a verified snapshot without fetching remotely. The [identity HTTP backend](notes/implemented/2026-09-06-workspace-identity-http.md) supplies initialization, sessions, invitations, membership and scoped keys.
 
-The [identity backend](notes/implemented/2026-09-06-workspace-identity-http.md) provides one-time owner initialization, password sessions, invitations, member suspension and scoped API key administration over HTTP. Administration pages and MCP tools remain pending.
+These capabilities have HTTP APIs. Blog and administration pages, Markdown rendering, MCP tools, sandbox execution and final HTTPS installation remain pending. The [phase-one proposal](notes/proposed/2026-09-05-phase-one-daily-use.md) and broader proposals remain open until their complete acceptance is met. Consumer provisioning, backups, visitor Q&A and serverless are excluded from phase one. [Continuous delivery](notes/implemented/2026-09-03-continuous-delivery.md) publishes verified `main` commits to GHCR; automatic deployment is separately enabled. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) distinguish implemented behavior from historical and proposed choices.
 
 ## Who this is for
 
@@ -33,7 +33,7 @@ notes/               Decision records: proposed / implemented / rejected / archi
 
 Use Java 26 and the checked-in Gradle Wrapper. Docker is required for database integration tests and the complete check; the faster unit and repository checks do not require it.
 
-Application startup requires a PostgreSQL data source, an absolute `POKETTO_DATA_DIR`, and one pre-provisioned private HTTPS Git repository. Set `SPRING_DATASOURCE_URL`, database credentials, `POKETTO_REPOSITORY_REMOTE_URI`, `POKETTO_REPOSITORY_USERNAME`, and `POKETTO_REPOSITORY_PASSWORD` before `bootRun`. Flyway creates the default workspace; the application binds it to remote `main` and materializes only a disposable cache below `<data-dir>/workspaces/<workspace-id>/content`. `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` and `POKETTO_REPOSITORY_TIMEOUT_SECONDS` optionally change the defaults of 32 workspaces and 30 seconds; `POKETTO_REPOSITORY_REFRESH_SECONDS` sets how often served content is re-validated against remote `main` (default 30), and `POKETTO_REPOSITORY_STALE_AFTER_SECONDS` sets how long served content may go without a successful re-validation before health reports it out of service (default 3600). Startup fails without content it can serve. A running instance answers `GET /actuator/health` for deployment checks and serves the default workspace's public documents at `GET /api/public/documents`; a write through Poketto is visible immediately, and a valid direct push after the next refresh.
+Application startup requires a PostgreSQL data source, an absolute `POKETTO_DATA_DIR`, and one pre-provisioned private HTTPS Git repository. Set `SPRING_DATASOURCE_URL`, database credentials, `POKETTO_REPOSITORY_REMOTE_URI`, `POKETTO_REPOSITORY_USERNAME`, and `POKETTO_REPOSITORY_PASSWORD` before `bootRun`. Flyway creates the default workspace; the application binds it to remote `main` and materializes only a disposable cache below `<data-dir>/workspaces/<workspace-id>/content`. `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` and `POKETTO_REPOSITORY_TIMEOUT_SECONDS` optionally change the defaults of 32 workspaces and 30 seconds; `POKETTO_REPOSITORY_REFRESH_SECONDS` sets how often served content is re-validated against remote `main` (default 30), and `POKETTO_REPOSITORY_STALE_AFTER_SECONDS` sets how long served content may go without a successful re-validation before health reports it out of service (default 3600). Unavailable content keeps the process and refresh loop running, but readiness reports out of service and public reads fail closed. Snapshot expiry also stops public reads; the maximum stale lifetime is one hour. A running instance answers `GET /actuator/health` for deployment checks and serves the default workspace's public documents at `GET /api/public/documents`; a write through Poketto is visible immediately, and a valid direct push after the next refresh.
 
 ```sh
 ./gradlew test repoCheck
@@ -47,7 +47,24 @@ POKETTO_REPOSITORY_PASSWORD=... \
 
 To initialize the first owner, set a private `POKETTO_AUTH_INITIALIZATION_TOKEN` and configure `POKETTO_SECURITY_ALLOWED_ORIGINS` with the exact browser origin. Local HTTP also needs `POKETTO_SESSION_COOKIE_SECURE=false`; HTTPS retains the secure default. Fetch `/api/auth/csrf` before initialization or login and send its named CSRF header with the session cookie. See the [identity HTTP contract](notes/implemented/2026-09-06-workspace-identity-http.md#operation) for the initialization and login sequence. The deployment profile does not yet wire these identity settings; operators must provide them to the application explicitly.
 
-On Windows, set the same names through `$env:...`, make `POKETTO_DATA_DIR` absolute, and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
+On Windows, `check` also runs `linuxStorageTest` in a pinned Linux container using a disposable native disk volume. Authoritative image storage requires directory synchronization; an unsupported host cannot acknowledge durable uploads. Set the same names through `$env:...`, make `POKETTO_DATA_DIR` absolute, and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
+
+## Content and images
+
+To publish, create `.poketto/publishing.yaml` in the content repository:
+
+```yaml
+enabled: true
+mode: public-by-default
+exclude:
+  - drafts/**
+```
+
+Missing or disabled policy publishes nothing; invalid policy closes public service. Root `private/` and configured exclusions remain private. Markdown metadata is optional, and unchanged source bytes are retained. The public detail endpoint is `GET /api/public/document?route=...`; list/search and tags include snapshot metadata. `index.md` owns its folder route and supplies a non-recursive sibling-image gallery without repeating body images.
+
+Authenticated `/api/admin/repository` endpoints provide tree, file, search, preview and atomic patches. Every changed path carries a revision or explicit absence against the base commit. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
+
+Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Withdrawal stops new grants, while private previews recheck the current identity. See the [foundations record](notes/implemented/2026-09-05-repository-authoring-foundations.md) for limits, storage guarantees and failure behavior.
 
 ## Deployment
 
