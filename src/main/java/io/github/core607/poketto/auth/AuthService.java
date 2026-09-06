@@ -304,7 +304,7 @@ public final class AuthService {
                     workspace.value(),
                     account);
             // Demotion also removes issued authority, including execution and key-management grants.
-            if (!active || before.role() != role) {
+            if (!active || (before.role() == MembershipRole.OWNER && role != MembershipRole.OWNER)) {
                 List<UUID> keys = jdbc.query(
                         """
                         update auth_api_keys set revoked_at = ? where workspace_id = ? and revoked_at is null
