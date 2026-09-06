@@ -155,6 +155,8 @@ for (const kind of ["members", "keys"] as const) {
   const action = kind === "members" ? "停用" : "撤销";
   test(`${kind}: pending, cancel and native cancel event never write; confirmation writes exactly once`, async (t) => {
     const f = await mount(t);
+    const trigger = f.button(action);
+    trigger.focus();
     await f.act(async () => f.button(action).click());
     const firstDialog = f.dialog();
     assert.equal(f.writes.length, 0);
@@ -163,6 +165,7 @@ for (const kind of ["members", "keys"] as const) {
     await f.act(async () => cancel.click());
     assert.equal(f.writes.length, 0);
     assert.equal(f.window.document.querySelector("dialog[open]"), null);
+    assert.equal(f.window.document.activeElement, trigger);
 
     await f.act(async () => f.button(action).click());
     // Browsers dispatch this cancel event for Escape; happy-dom has no native key UI.
@@ -173,6 +176,7 @@ for (const kind of ["members", "keys"] as const) {
     });
     assert.equal(f.writes.length, 0);
     assert.equal(f.window.document.querySelector("dialog[open]"), null);
+    assert.equal(f.window.document.activeElement, trigger);
 
     await f.act(async () => f.button(action).click());
     const confirm = [...f.dialog().querySelectorAll("button")].find(

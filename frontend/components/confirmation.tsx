@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -21,7 +22,9 @@ const ConfirmationContext = createContext<{
 } | null>(null);
 
 export function ConfirmationProvider({ children }: { children: ReactNode }) {
-  const [request, setRequest] = useState<Confirmation | null>(null);
+  const [request, setRequest] = useState<
+    (Confirmation & { returnFocus: HTMLElement | null }) | null
+  >(null);
   const resolve = useRef<{
     owner: string;
     done: (confirmed: boolean) => void;
@@ -30,7 +33,13 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
     if (resolve.current) return Promise.resolve(false);
     return new Promise<boolean>((done) => {
       resolve.current = { owner, done };
-      setRequest(next);
+      setRequest({
+        ...next,
+        returnFocus:
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null,
+      });
     });
   }, []);
   const settle = useCallback((confirmed: boolean) => {
@@ -76,17 +85,20 @@ function ConfirmationDialog({
   request,
   onDecision,
 }: {
-  request: Confirmation;
+  request: Confirmation & { returnFocus: HTMLElement | null };
   onDecision: (confirmed: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = dialog.current!;
     element.showModal();
-    return () => element.close();
-  }, []);
+    return () => {
+      element.close();
+      if (request.returnFocus?.isConnected) request.returnFocus.focus();
+    };
+  }, [request.returnFocus]);
   return (
     <dialog
       ref={dialog}
