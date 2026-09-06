@@ -29,11 +29,8 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
-import org.eclipse.jgit.treewalk.filter.PathFilter;
 
 final class JGitRepositoryContentReader implements RepositoryContentReader {
-    private static final int MAX_HISTORY_COMMITS = 100_000;
-    private static final long MAX_HISTORY_PATH_VISITS = 1_000_000;
     private static final int MAX_TREE_ENTRIES = 100_000;
     private final RepositoryAuthority authority;
     private final RepositoryMarkdownParser parser = new RepositoryMarkdownParser();
@@ -72,8 +69,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
         List<String> paths = new ArrayList<>();
         long total = 0;
-        long historyVisits = 0;
-        int historySize = historySize(repository, resolved.orElseThrow());
+        List<ParsedDocument> parsed = new ArrayList<>();
         int entries = 0;
         try (RevWalk revisions = new RevWalk(repository);
                 TreeWalk tree = new TreeWalk(repository)) {
@@ -105,38 +101,37 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 if (!file.diagnostics().isEmpty()) continue;
                 try {
                     var metadata = parser.parse(path, file.source().orElseThrow());
-                    History dates;
-                    if (metadata.createdAt().isPresent() && metadata.updatedAt().isPresent()) {
-                        dates = new History(
-                                metadata.createdAt().orElseThrow(),
-                                metadata.updatedAt().orElseThrow());
-                    } else {
-                        // A path-filtered walk can visit commits that it never returns. Charge the
-                        // complete reachable history before starting each walk to bound that work.
-                        historyVisits += historySize;
-                        if (historyVisits > MAX_HISTORY_PATH_VISITS)
-                            throw new ContentRepositoryException("repository date lookup work limit exceeded");
-                        dates = history(repository, resolved.orElseThrow(), path);
-                    }
-                    Instant createdAt = metadata.createdAt().orElse(dates.createdAt());
-                    Instant updatedAt = metadata.updatedAt().orElse(dates.updatedAt());
-                    if (metadata.inferredMetadata())
-                        diagnostics.add(
-                                diagnostic(path, "INFERRED_METADATA", "title and dates use repository fallbacks"));
-                    documents.add(new RepositoryDocument(
-                            file,
-                            metadata.title(),
-                            metadata.body(),
-                            metadata.tags(),
-                            createdAt,
-                            updatedAt,
-                            metadata.route(),
-                            RepositoryPathRules.folderPage(path),
-                            RepositoryPathRules.privatePath(path)));
+                    parsed.add(new ParsedDocument(file, metadata));
                 } catch (IllegalArgumentException exception) {
                     diagnostics.add(diagnostic(path, "INVALID_MARKDOWN", exception.getMessage()));
                 }
             }
+        }
+        List<String> fallbackPaths = parsed.stream()
+                .filter(document -> document.metadata().createdAt().isEmpty()
+                        || document.metadata().updatedAt().isEmpty())
+                .map(document -> document.file().path())
+                .toList();
+        var history = new RepositoryHistoryDates().read(repository, resolved.orElseThrow(), fallbackPaths);
+        for (ParsedDocument document : parsed) {
+            RepositoryFile file = document.file();
+            var metadata = document.metadata();
+            var dates = history.get(file.path());
+            Instant createdAt = metadata.createdAt().orElseGet(() -> dates.createdAt());
+            Instant updatedAt = metadata.updatedAt().orElseGet(() -> dates.updatedAt());
+            if (metadata.inferredMetadata())
+                diagnostics.add(
+                        diagnostic(file.path(), "INFERRED_METADATA", "title and dates use repository fallbacks"));
+            documents.add(new RepositoryDocument(
+                    file,
+                    metadata.title(),
+                    metadata.body(),
+                    metadata.tags(),
+                    createdAt,
+                    updatedAt,
+                    metadata.route(),
+                    RepositoryPathRules.folderPage(file.path()),
+                    RepositoryPathRules.privatePath(file.path())));
         }
         Set<String> excluded = collisions(paths, documents, diagnostics);
         documents.removeIf(document -> excluded.contains(document.file().path()));
@@ -228,44 +223,12 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
             int count = 0;
             for (RevCommit commit : walk) {
-                if (++count > MAX_HISTORY_COMMITS)
+                if (++count > RepositoryHistoryDates.MAX_COMMITS)
                     throw new ContentRepositoryException("repository history limit exceeded");
                 if (commit.name().equals(candidate)) return true;
             }
             return false;
         }
-    }
-
-    private static int historySize(Repository repository, String head) throws IOException {
-        try (RevWalk walk = new RevWalk(repository)) {
-            walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
-            int count = 0;
-            for (RevCommit ignored : walk) {
-                if (++count > MAX_HISTORY_COMMITS)
-                    throw new ContentRepositoryException("repository history limit exceeded");
-            }
-            return count;
-        }
-    }
-
-    private static History history(Repository repository, String commit, String path) throws IOException {
-        Instant first = null;
-        Instant last = null;
-        try (RevWalk walk = new RevWalk(repository)) {
-            walk.setTreeFilter(org.eclipse.jgit.treewalk.filter.AndTreeFilter.create(
-                    PathFilter.create(path), org.eclipse.jgit.treewalk.filter.TreeFilter.ANY_DIFF));
-            walk.markStart(walk.parseCommit(ObjectId.fromString(commit)));
-            int count = 0;
-            for (RevCommit item : walk) {
-                if (++count > MAX_HISTORY_COMMITS)
-                    throw new ContentRepositoryException("repository history limit exceeded");
-                Instant at = item.getCommitterIdent().getWhenAsInstant();
-                if (first == null || at.isBefore(first)) first = at;
-                if (last == null || at.isAfter(last)) last = at;
-            }
-        }
-        if (first == null) throw new ContentRepositoryException("file history is unavailable");
-        return new History(first, last);
     }
 
     private static Set<String> collisions(
@@ -319,5 +282,5 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         T read(Repository repository, Optional<String> commit) throws IOException;
     }
 
-    private record History(Instant createdAt, Instant updatedAt) {}
+    private record ParsedDocument(RepositoryFile file, RepositoryMarkdownParser.Metadata metadata) {}
 }

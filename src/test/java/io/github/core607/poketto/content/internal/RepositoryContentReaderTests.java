@@ -274,6 +274,24 @@ class RepositoryContentReaderTests {
     }
 
     @Test
+    void partialDateMetadataKeepsItsExplicitFieldWhileNewCommitsRefreshFallbacks() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var first = Instant.parse("2026-08-01T09:00:00Z");
+        String source = "---\ndate: 2026-07-01\n---\n# Note";
+        fixture.commitRemote(workspace, Map.of("note.md", bytes(source)), Map.of(), first);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        var initial = reader.readTree(workspace, Optional.empty()).documents().getFirst();
+        assertThat(initial.createdAt()).isEqualTo(Instant.parse("2026-07-01T00:00:00Z"));
+        assertThat(initial.updatedAt()).isEqualTo(first);
+        var changed = first.plusSeconds(86400);
+        fixture.commitRemote(workspace, Map.of("note.md", bytes(source + "\nChanged")), Map.of(), changed);
+        var current = reader.readTree(workspace, Optional.empty()).documents().getFirst();
+        assertThat(current.createdAt()).isEqualTo(initial.createdAt());
+        assertThat(current.updatedAt()).isEqualTo(changed);
+        assertThat(current.file().source()).contains(source + "\nChanged");
+    }
+
+    @Test
     void objectReadsDoNotMaterializeImagesOrApplyLegacyDocumentBounds() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var commit = fixture.commitRemote(
