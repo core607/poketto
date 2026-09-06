@@ -5,6 +5,8 @@ Status: Implemented
 
 The [phase-one delivery boundary](../proposed/2026-09-05-phase-one-daily-use.md) explicitly excludes backup prerequisites. Its installation may enable deployment without the backup freshness gate described below; backup and recovery work remains a separate proposal.
 
+The [blog stack delivery entrance](2026-09-05-blog-stack-delivery.md) extends this pipeline with matched application/frontend images, HTTPS routing and an independently installed executor. It owns the current stack and deployment prerequisites; the two-service topology below describes the original baseline.
+
 ## Problem
 
 The [requirements](2026-08-25-requirements-and-architecture.md) require application images in GHCR and a fallback that transfers a `docker save` artifact over SSH when registry access is unreliable. The [development baseline](2026-08-26-development-baseline.md) verified every commit but built no deployable image and provided no repeatable production Compose or deployment script.

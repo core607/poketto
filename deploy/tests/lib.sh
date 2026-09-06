@@ -6,23 +6,31 @@ ROOT="$PWD/root"
 REVISION="0123456789abcdef0123456789abcdef01234567"
 DIGEST_IMAGE="ghcr.io/core607/poketto@sha256:1111111111111111111111111111111111111111111111111111111111111111"
 TAG_IMAGE="ghcr.io/core607/poketto:sha-$REVISION"
+FRONTEND_IMAGE="ghcr.io/core607/poketto-frontend@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+FRONTEND_TAG="ghcr.io/core607/poketto-frontend:sha-$REVISION"
+GATEWAY_IMAGE="$(sed -n 's/^POKETTO_GATEWAY_IMAGE=//p' "$DEPLOY_DIR/.env.example" | tr -d '\r')"
 # Exercise the database reference operators receive, including its full tag and digest.
 DB_IMAGE="$(sed -n 's/^POKETTO_DB_IMAGE=//p' "$DEPLOY_DIR/.env.example" | tr -d '\r')"
 [ -n "$DB_IMAGE" ] || { echo "deployment example has no database image"; exit 1; }
 
 export POKETTO_DOCKER=docker POKETTO_CURL=curl POKETTO_SSH=ssh
-export POKETTO_HEALTH_INTERVAL=0 POKETTO_MIN_FREE_MB=1 POKETTO_APP_UID="$(id -u)"
+export POKETTO_HEALTH_INTERVAL=0 POKETTO_MIN_FREE_MB=1 POKETTO_APP_UID="$(id -u)" POKETTO_GATEWAY_UID="$(id -u)"
 unset DOCKER_CONFIG POKETTO_DEPLOY_LOCK_FD POKETTO_DEPLOY_LOCK_HELD
 
 # Starts one scenario from a clean root and clean fake state.
 setup_root() {
     rm -rf "$ROOT" "$FAKE_STATE"
     mkdir -p "$ROOT" "$FAKE_STATE"
-    cp "$DEPLOY_DIR/compose.yaml" "$DEPLOY_DIR/deploy.sh" "$ROOT/"
+    cp "$DEPLOY_DIR/compose.yaml" "$DEPLOY_DIR/compose.executor.yaml" "$DEPLOY_DIR/Caddyfile" "$DEPLOY_DIR/deploy.sh" "$ROOT/"
     cat > "$ROOT/.env" <<EOF
 POKETTO_APP_IMAGE=$DIGEST_IMAGE
 POKETTO_APP_REVISION=$REVISION
 POKETTO_DB_IMAGE=$DB_IMAGE
+POKETTO_FRONTEND_IMAGE=$FRONTEND_IMAGE
+POKETTO_GATEWAY_IMAGE=$GATEWAY_IMAGE
+POKETTO_PUBLIC_DOMAIN=site.example.invalid
+POKETTO_AUTH_INITIALIZATION_TOKEN=isolated-fixture-initialization
+POKETTO_GATEWAY_DIR_HOST=$ROOT/gateway
 POSTGRES_DB=poketto
 POSTGRES_USER=poketto
 POSTGRES_PASSWORD=secret
@@ -33,6 +41,8 @@ POKETTO_DATA_DIR_HOST=$ROOT/data
 POKETTO_DB_DIR_HOST=$ROOT/db
 EOF
     echo "$DB_IMAGE" >> "$FAKE_STATE/images"
+    echo "$GATEWAY_IMAGE" >> "$FAKE_STATE/images"
+    have_image "$FRONTEND_IMAGE"
 }
 
 have_image() {

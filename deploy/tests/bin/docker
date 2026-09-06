@@ -76,6 +76,8 @@ case "${1:-}" in
         exit 0 ;;
     load) cat > /dev/null; exit 0 ;;
     inspect)
+        service="${*: -1}"
+        [ ! -f "$FAKE_STATE/$service-unhealthy" ] || { echo unhealthy; exit 0; }
         status="$(head -1 "$FAKE_STATE/health" 2>/dev/null || echo healthy)"
         if [ "$(wc -l < "$FAKE_STATE/health" 2>/dev/null || echo 0)" -gt 1 ]; then
             tail -n +2 "$FAKE_STATE/health" > "$FAKE_STATE/health.next" && mv "$FAKE_STATE/health.next" "$FAKE_STATE/health"
@@ -92,7 +94,7 @@ case "${1:-}" in
             version) exit 0 ;;
             config) exit "${FAKE_COMPOSE_CONFIG_EXIT:-0}" ;;
             up) echo "$*" >> "$FAKE_STATE/up.log"; exit 0 ;;
-            ps) if [ "${2:-}" = --quiet ]; then echo fake-app-container; else echo "NAME STATUS"; fi; exit 0 ;;
+            ps) if [ "${2:-}" = --quiet ]; then echo "fake-${3:-app}-container"; else echo "NAME STATUS"; fi; exit 0 ;;
             logs) echo "fake app log line"; exit 0 ;;
             down|rm) echo "fake docker: destructive compose command $1" >&2; exit 99 ;;
             *) exit 0 ;;

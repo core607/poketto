@@ -21,7 +21,8 @@ LABEL org.opencontainers.image.revision="${POKETTO_REVISION}" \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --uid 10001 --user-group --home-dir /var/lib/poketto --create-home poketto
+    && groupadd --system --gid 10001 poketto \
+    && useradd --system --uid 10001 --gid 10001 --home-dir /var/lib/poketto --create-home poketto
 WORKDIR /app
 COPY --from=build /app/dependencies/ ./
 COPY --from=build /app/spring-boot-loader/ ./

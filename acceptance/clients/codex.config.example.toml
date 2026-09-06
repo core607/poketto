@@ -1,0 +1,6 @@
+[mcp_servers.poketto]
+url = "http://127.0.0.1:38180/mcp"
+bearer_token_env_var = "POKETTO_MCP_TOKEN"
+required = true
+startup_timeout_sec = 30
+tool_timeout_sec = 180

@@ -4,18 +4,14 @@
 # images, directories, and disk space, and it succeeds only when the real health entrance passes.
 # It never removes, recreates, or rolls back a data volume, and it never guesses an older image.
 #
-# Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT] [--db-image REF]
-#                  [--set-stdin] [--sync-from DIR]
-#   Option values are candidates: they are validated and used for this run, and recorded into
-#   .env only after the health check passes, so a failed deployment leaves .env unchanged and a
-#   rerun without options redeploys the confirmed pins. When a confirmed pin changes, the
-#   previous pins are saved to .env.previous first; pass them as options to redeploy that
-#   version. --set-stdin reads KEY=VALUE lines from standard input and records them the same
-#   way, which keeps a secret out of the command line and process list; REGISTRY_USERNAME and
-#   REGISTRY_PASSWORD lines log in once inside a temporary Docker configuration that this run
-#   deletes, and are never recorded. --sync-from moves a staged compose.yaml and deploy.sh
-#   from DIR into the root under the deployment lock; a changed deploy.sh re-executes itself
-#   before reading standard input, so one run never pairs an old entrance with a new stack.
+# Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT --frontend-image REF]
+#                  [--db-image REF] [--gateway-image REF] [--set-stdin] [--sync-from DIR]
+# Candidate pins and literal KEY=VALUE stdin settings reach .env only after all services and
+# local HTTPS checks succeed. Confirmed application/frontend, database and gateway pins are
+# retained in .env.previous when replaced. Registry credentials supplied on stdin are used
+# only in a temporary Docker configuration and are never recorded.
+# --sync-from installs staged Compose files, Caddyfile and this script under the deployment
+# lock. A changed script re-executes before reading stdin, retaining the lock and arguments.
 # Exit codes: 0 deployed and healthy, 1 validation or deployment failure, 75 another
 #   deployment holds the lock.
 
@@ -28,6 +24,8 @@ ORIGINAL_ARGS=("$@")
 APP_IMAGE_ARG=""
 APP_REVISION_ARG=""
 DB_IMAGE_ARG=""
+FRONTEND_IMAGE_ARG=""
+GATEWAY_IMAGE_ARG=""
 SET_STDIN=0
 SYNC_FROM=""
 REGISTRY_USERNAME=""
@@ -40,14 +38,20 @@ PENDING_KEYS=()
 PENDING_VALUES=()
 
 CONFIG_KEYS=(
-    POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE
+    POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE
     POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
     POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME POKETTO_REPOSITORY_PASSWORD
     POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST
-    POKETTO_HTTP_BIND POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
+    POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
+    POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN POKETTO_GATEWAY_DIR_HOST POKETTO_GATEWAY_UID
+    POKETTO_FRONTEND_MEMORY POKETTO_GATEWAY_MEMORY POKETTO_APP_CPUS POKETTO_DB_CPUS POKETTO_FRONTEND_CPUS POKETTO_GATEWAY_CPUS
+    POKETTO_ASSETS_CACHE_MAX_BYTES POKETTO_ASSETS_MAX_GRANTS
+    POKETTO_EXECUTOR_ENABLED POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST
+    POKETTO_EXECUTOR_MAX_SESSIONS POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS
+    POKETTO_EXECUTOR_MAX_BUNDLE_BYTES POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
 )
-PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE)
+PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE)
 
 usage() {
     sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -89,6 +93,8 @@ while [ $# -gt 0 ]; do
         --app-image) APP_IMAGE_ARG="$2"; shift 2 ;;
         --app-revision) APP_REVISION_ARG="$2"; shift 2 ;;
         --db-image) DB_IMAGE_ARG="$2"; shift 2 ;;
+        --frontend-image) FRONTEND_IMAGE_ARG="$2"; shift 2 ;;
+        --gateway-image) GATEWAY_IMAGE_ARG="$2"; shift 2 ;;
         --set-stdin) SET_STDIN=1; shift ;;
         --sync-from) SYNC_FROM="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -102,6 +108,8 @@ fi
 [ -z "$APP_IMAGE_ARG" ] || stage_value POKETTO_APP_IMAGE "$APP_IMAGE_ARG"
 [ -z "$APP_REVISION_ARG" ] || stage_value POKETTO_APP_REVISION "$APP_REVISION_ARG"
 [ -z "$DB_IMAGE_ARG" ] || stage_value POKETTO_DB_IMAGE "$DB_IMAGE_ARG"
+[ -z "$FRONTEND_IMAGE_ARG" ] || stage_value POKETTO_FRONTEND_IMAGE "$FRONTEND_IMAGE_ARG"
+[ -z "$GATEWAY_IMAGE_ARG" ] || stage_value POKETTO_GATEWAY_IMAGE "$GATEWAY_IMAGE_ARG"
 
 ENV_FILE="$ROOT/.env"
 PREVIOUS_ENV_FILE="$ROOT/.env.previous"
@@ -110,7 +118,9 @@ LOCK_FILE="$ROOT/.deploy.lock"
 LOCK_DIR="$ROOT/.deploy.lock.d"
 
 compose() {
-    "$DOCKER" compose --env-file /dev/null --project-directory "$ROOT" -f "$COMPOSE_FILE" "$@"
+    local files=(-f "$COMPOSE_FILE")
+    if [ "${POKETTO_EXECUTOR_ENABLED:-false}" = true ]; then files+=(-f "$ROOT/compose.executor.yaml"); fi
+    "$DOCKER" compose --env-file /dev/null --project-directory "$ROOT" "${files[@]}" "$@"
 }
 
 cleanup() {
@@ -183,7 +193,7 @@ apply_sync() {
     if [ -f "$SYNC_FROM/deploy.sh" ] && ! cmp -s "$SYNC_FROM/deploy.sh" "${BASH_SOURCE[0]}"; then
         reexec=1
     fi
-    for file in compose.yaml deploy.sh; do
+    for file in compose.yaml compose.executor.yaml Caddyfile deploy.sh; do
         [ -f "$SYNC_FROM/$file" ] || continue
         mv -f "$SYNC_FROM/$file" "$ROOT/$file"
     done
@@ -266,6 +276,15 @@ check_directories() {
         || fail "POKETTO_DATA_DIR_HOST $DATA_DIR is or contains the deployment root $root"
     ! path_within "$root" "$DB_DIR" \
         || fail "POKETTO_DB_DIR_HOST $DB_DIR is or contains the deployment root $root"
+    [[ "$POKETTO_GATEWAY_DIR_HOST" = /* ]] || fail "POKETTO_GATEWAY_DIR_HOST must be absolute"
+    GATEWAY_DIR="$(canonical_path "$POKETTO_GATEWAY_DIR_HOST")"
+    local other
+    for other in "$DATA_DIR" "$DB_DIR"; do
+        ! path_within "$GATEWAY_DIR" "$other" && ! path_within "$other" "$GATEWAY_DIR" \
+            || fail "gateway certificate data must not overlap application or database data"
+    done
+    ! path_within "$root" "$GATEWAY_DIR" || fail "gateway data must not contain the deployment root"
+
 }
 
 load_configuration() {
@@ -288,7 +307,9 @@ load_configuration() {
 
     for key in POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POSTGRES_DB POSTGRES_USER \
             POSTGRES_PASSWORD POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME \
-            POKETTO_REPOSITORY_PASSWORD POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST; do
+            POKETTO_REPOSITORY_PASSWORD POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST \
+            POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE POKETTO_GATEWAY_DIR_HOST \
+            POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN; do
         [ -n "${!key:-}" ] || missing+=("$key")
     done
     [ ${#missing[@]} -eq 0 ] || fail "missing values in $ENV_FILE: ${missing[*]}"
@@ -297,16 +318,30 @@ load_configuration() {
         || fail "POKETTO_APP_REVISION must be a full lowercase commit id"
     [[ "$POKETTO_APP_IMAGE" =~ ^[^[:space:]]+$ ]] \
         || fail "POKETTO_APP_IMAGE must be one image reference"
-    [[ "$POKETTO_DB_IMAGE" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] \
+    [[ "$POKETTO_DB_IMAGE" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] \
         || fail "POKETTO_DB_IMAGE must be pinned as <image>@sha256:<digest>"
+    [[ "$POKETTO_FRONTEND_IMAGE" =~ ^[^[:space:]]+$ ]] || fail "POKETTO_FRONTEND_IMAGE must be one image reference"
+    for key in POKETTO_APP_IMAGE POKETTO_FRONTEND_IMAGE; do
+        if [[ "${!key}" == *@* ]]; then
+            [[ "${!key}" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || fail "$key must carry a complete registry digest"
+        else
+            [[ "${!key}" == *":sha-$POKETTO_APP_REVISION" ]] || fail "$key must be a digest or a transferred per-commit tag"
+        fi
+    done
+    [[ "$POKETTO_GATEWAY_IMAGE" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || fail "POKETTO_GATEWAY_IMAGE must be pinned as <image>@sha256:<digest>"
+    [[ "$POKETTO_PUBLIC_DOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] && [ "${#POKETTO_PUBLIC_DOMAIN}" -le 253 ] \
+        || fail "POKETTO_PUBLIC_DOMAIN must be one lowercase DNS name without a scheme, port or path"
+    case "${POKETTO_EXECUTOR_ENABLED:-false}" in true|false) ;; *) fail "POKETTO_EXECUTOR_ENABLED must be true or false" ;; esac
+    [ -f "$ROOT/Caddyfile" ] || fail "missing $ROOT/Caddyfile"
     check_directories
 
-    HTTP_BIND="${POKETTO_HTTP_BIND:-127.0.0.1}"
+    HTTP_BIND=127.0.0.1
     HTTP_PORT="${POKETTO_HTTP_PORT:-8080}"
     HEALTH_TIMEOUT="${POKETTO_HEALTH_TIMEOUT:-180}"
     HEALTH_INTERVAL="${POKETTO_HEALTH_INTERVAL:-5}"
     MIN_FREE_MB="${POKETTO_MIN_FREE_MB:-2048}"
     APP_UID="${POKETTO_APP_UID:-10001}"
+    GATEWAY_UID="${POKETTO_GATEWAY_UID:-10002}"
 }
 
 # Rewrites .env with the pending values in one pass; the temporary file is renamed into place so
@@ -351,12 +386,13 @@ write_previous_pins() {
 # has no healthy version to return to and writes none.
 record_configuration() {
     [ ${#PENDING_KEYS[@]} -gt 0 ] || return 0
-    local i key changed=0
+    local i key changed=0 complete=1
     for i in "${!PIN_KEYS[@]}"; do
         key="${PIN_KEYS[$i]}"
         [ "${!key}" = "${PREVIOUS_PINS[$i]}" ] || changed=1
+        [ -n "${PREVIOUS_PINS[$i]}" ] || complete=0
     done
-    if [ "$changed" = 1 ] && [ -n "${PREVIOUS_PINS[0]}" ] && [ -n "${PREVIOUS_PINS[1]}" ]; then
+    if [ "$changed" = 1 ] && [ "$complete" = 1 ]; then
         write_previous_pins
     fi
     write_env_file
@@ -409,11 +445,39 @@ check_free_space() {
         || fail "only ${free_mb:-0} MB free below $path; at least $MIN_FREE_MB MB is required"
 }
 
+check_executor() {
+    [ "${POKETTO_EXECUTOR_ENABLED:-false}" = true ] || return 0
+    local key runtime staging signing mode
+    for key in POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST; do
+        [[ "${!key:-}" = /* ]] || fail "$key must be an absolute path to an installed host executor prerequisite"
+    done
+    runtime="$POKETTO_EXECUTOR_RUNTIME_DIR_HOST"
+    staging="$POKETTO_EXECUTOR_STAGING_DIR_HOST"
+    signing="$POKETTO_EXECUTOR_SIGNING_KEY_HOST"
+    [ -f "$ROOT/compose.executor.yaml" ] || fail "missing executor Compose overlay"
+    [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ] \
+        || fail "executor runtime directory must already exist and be owned by root"
+    mode="$(stat -c %a "$runtime")"
+    [ "$mode" = 751 ] || fail "executor runtime directory must have mode 0751"
+    [ -S "$runtime/control.sock" ] && [ ! -L "$runtime/control.sock" ] \
+        || fail "host executor control.sock is unavailable; install/start the isolated worker first"
+    [ "$(owner_uid "$runtime/control.sock")" = 0 ] && [ "$(stat -c %a "$runtime/control.sock")" = 660 ] && [ "$(stat -c %g "$runtime/control.sock")" = "$APP_UID" ] \
+        || fail "executor socket must be root-owned mode 0660 with the application's group"
+    [ -d "$staging" ] && [ ! -L "$staging" ] && [ "$(owner_uid "$staging")" = "$APP_UID" ] \
+        || fail "executor staging directory must already exist and be owned by the application uid"
+    [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ] \
+        || fail "executor signing key must already exist and be owned by the application uid"
+    [ "$(stat -c %a "$signing")" = 600 ] || fail "executor signing key must have mode 0600"
+    systemctl is-active --quiet poketto-executor.service \
+        || fail "the installed poketto-executor.service must be active before enabling execution"
+    check_free_space "$staging"
+}
+
 check_host() {
     "$DOCKER" info >/dev/null 2>&1 || fail "docker daemon is not reachable by $(id -un)"
     compose version >/dev/null 2>&1 || fail "docker compose plugin is not installed"
 
-    mkdir -p "$POKETTO_DATA_DIR_HOST" "$POKETTO_DB_DIR_HOST"
+    mkdir -p "$POKETTO_DATA_DIR_HOST" "$POKETTO_DB_DIR_HOST" "$POKETTO_GATEWAY_DIR_HOST"
     if [ "$(owner_uid "$POKETTO_DATA_DIR_HOST")" != "$APP_UID" ]; then
         if [ "$(id -u)" = 0 ]; then
             chown "$APP_UID:$APP_UID" "$POKETTO_DATA_DIR_HOST"
@@ -422,12 +486,19 @@ check_host() {
         fi
     fi
 
+    if [ "$(owner_uid "$POKETTO_GATEWAY_DIR_HOST")" != "$GATEWAY_UID" ]; then
+        if [ "$(id -u)" = 0 ]; then chown "$GATEWAY_UID:$GATEWAY_UID" "$POKETTO_GATEWAY_DIR_HOST";
+        else fail "gateway certificate directory must be owned by uid $GATEWAY_UID"; fi
+    fi
+    check_executor
+
     # Images and container layers land below the daemon's data root, which may be a different
     # filesystem than any directory this script manages.
     local docker_root
     check_free_space "$ROOT"
     check_free_space "$DATA_DIR"
     check_free_space "$DB_DIR"
+    check_free_space "$GATEWAY_DIR"
     if docker_root="$("$DOCKER" info --format '{{ .DockerRootDir }}' 2>/dev/null)" && [ -d "$docker_root" ]; then
         check_free_space "$docker_root"
     fi
@@ -467,56 +538,57 @@ registry_login() {
 
 acquire_images() {
     registry_login
-    if ! image_present "$POKETTO_DB_IMAGE"; then
-        pull_image "$POKETTO_DB_IMAGE" >/dev/null || fail "cannot pull $POKETTO_DB_IMAGE"
-    fi
-
-    if [[ "$POKETTO_APP_IMAGE" == *@sha256:* ]]; then
-        if ! image_present "$POKETTO_APP_IMAGE"; then
-            pull_image "$POKETTO_APP_IMAGE" >/dev/null || fail "cannot pull $POKETTO_APP_IMAGE"
+    local image revision
+    for image in "$POKETTO_DB_IMAGE" "$POKETTO_GATEWAY_IMAGE"; do
+        image_present "$image" || pull_image "$image" >/dev/null || fail "cannot pull $image"
+    done
+    for image in "$POKETTO_APP_IMAGE" "$POKETTO_FRONTEND_IMAGE"; do
+        if [[ "$image" == *@sha256:* ]]; then
+            image_present "$image" || pull_image "$image" >/dev/null || fail "cannot pull $image"
+        else
+            image_present "$image" || fail "$image is not loaded on this host; pin a digest or transfer the archive first"
         fi
-    else
-        # A tag is movable, so it is accepted only when the archive that carries it was already
-        # loaded on this host; the revision label below binds it to the requested commit.
-        image_present "$POKETTO_APP_IMAGE" \
-            || fail "$POKETTO_APP_IMAGE is not loaded on this host; pin a digest or transfer the archive first"
-    fi
-
-    local revision
-    revision="$(image_revision "$POKETTO_APP_IMAGE")"
-    [ "$revision" = "$POKETTO_APP_REVISION" ] \
-        || fail "$POKETTO_APP_IMAGE carries revision '${revision:-none}', expected $POKETTO_APP_REVISION"
+        revision="$(image_revision "$image")"
+        [ "$revision" = "$POKETTO_APP_REVISION" ] \
+            || fail "$image carries revision '${revision:-none}', expected $POKETTO_APP_REVISION"
+    done
 }
 
 # ---- deployment ------------------------------------------------------------------------------
 
 deploy() {
-    compose up --detach --remove-orphans --no-build --pull never
+    compose up --detach --remove-orphans --no-build --pull never --wait --wait-timeout "$HEALTH_TIMEOUT" \
+        || report_failure "stack startup did not become healthy within ${HEALTH_TIMEOUT}s"
 }
 
 wait_for_health() {
-    local deadline container status
+    local deadline container status service
     deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
-    container="$(compose ps --quiet app)"
-    [ -n "$container" ] || fail "the app container was not created"
-
-    while :; do
-        status="$("$DOCKER" inspect --format '{{ .State.Health.Status }}' "$container" 2>/dev/null || echo unknown)"
-        case "$status" in
-            healthy) break ;;
-            unhealthy) report_failure "the app container reported unhealthy" ;;
-        esac
-        if [ "$(date +%s)" -ge "$deadline" ]; then
-            report_failure "the app container did not become healthy within ${HEALTH_TIMEOUT}s (last status: $status)"
-        fi
-        sleep "$HEALTH_INTERVAL"
+    for service in app frontend gateway; do
+        container="$(compose ps --quiet "$service")"
+        [ -n "$container" ] || fail "the $service container was not created"
+        while :; do
+            status="$("$DOCKER" inspect --format '{{ .State.Health.Status }}' "$container" 2>/dev/null || echo unknown)"
+            case "$status" in
+                healthy) break ;;
+                unhealthy) report_failure "the $service container reported unhealthy" ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+                report_failure "the $service container did not become healthy within ${HEALTH_TIMEOUT}s (last status: $status)"
+            fi
+            sleep "$HEALTH_INTERVAL"
+        done
     done
 
     local host="$HTTP_BIND" body
     [ "$host" = 0.0.0.0 ] && host=127.0.0.1
-    body="$("$CURL" -fsS --max-time 10 "http://$host:$HTTP_PORT/actuator/health" 2>/dev/null)" \
+    body="$("$CURL" -fsS --noproxy '*' --max-time 10 "http://$host:$HTTP_PORT/actuator/health" 2>/dev/null)" \
         || report_failure "the health entrance at $host:$HTTP_PORT did not answer"
-    [[ "$body" == *'"UP"'* ]] || report_failure "the health entrance answered without UP: $body"
+    [[ "$body" == *'"UP"'* ]] || report_failure "the health entrance answered without UP"
+    "$CURL" -fsS --noproxy '*' --max-time 15 --resolve "$POKETTO_PUBLIC_DOMAIN:443:127.0.0.1" "https://$POKETTO_PUBLIC_DOMAIN/" >/dev/null 2>&1 \
+        || report_failure "the local HTTPS website did not answer with a valid certificate"
+    "$CURL" -fsS --noproxy '*' --max-time 15 --resolve "$POKETTO_PUBLIC_DOMAIN:443:127.0.0.1" "https://$POKETTO_PUBLIC_DOMAIN/api/public/documents?limit=1" >/dev/null 2>&1 \
+        || report_failure "the same-origin HTTPS API did not answer"
 }
 
 report_failure() {
@@ -540,7 +612,7 @@ main() {
     deploy
     wait_for_health
     record_configuration
-    echo "deploy: healthy; app=$POKETTO_APP_IMAGE revision=$POKETTO_APP_REVISION db=$POKETTO_DB_IMAGE"
+    echo "deploy: healthy; app=$POKETTO_APP_IMAGE revision=$POKETTO_APP_REVISION frontend=$POKETTO_FRONTEND_IMAGE db=$POKETTO_DB_IMAGE gateway=$POKETTO_GATEWAY_IMAGE"
 }
 
 main
