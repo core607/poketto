@@ -8,6 +8,8 @@ A repository-native personal knowledge service whose public face is a blog. Its 
 
 Development. The executable baseline, workspace isolation, content repository foundation, document writes, and [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md) are implemented. [Continuous delivery](notes/implemented/2026-09-03-continuous-delivery.md) publishes a verified `main` commit to GHCR and deploys it to one Docker Compose host over SSH. An [HTTP entrance](notes/implemented/2026-09-03-http-entrance-baseline.md) exposes health, RFC 9457 problem responses, and a read-only public document API over the default workspace, served from a [validated content snapshot](notes/implemented/2026-09-04-validated-content-snapshot.md) that never puts the remote on the request path. The primary single-server deployment keeps a disposable local Git cache while remote `main` is the only repository acknowledgement point. Accepted proposals add [repository-native Markdown and read-only sibling-image galleries](notes/proposed/2026-09-01-repository-native-publishing-and-assets.md) and an authoritative [local ManagedBlobStore while treating repository-image copies as disposable](notes/proposed/2026-09-01-repository-asset-blob-store.md). [Consumer accounts](notes/proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md), [repository-native retrieval](notes/proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), the [Next.js frontend](notes/proposed/2026-08-30-nextjs-frontend.md), and MCP entry points remain proposed. Serverless stays optional and waits for real OSS, shared-database, and remote-SRT infrastructure. The [requirements](notes/implemented/2026-08-25-requirements-and-architecture.md) record the implemented baseline; proposals identify target decisions that have not shipped.
 
+The [identity backend](notes/implemented/2026-09-06-workspace-identity-http.md) provides one-time owner initialization, password sessions, invitations, member suspension and scoped API key administration over HTTP. Administration pages and MCP tools remain pending.
+
 ## Who this is for
 
 - People who want their notes, clippings, and blog to remain Markdown with Git history while relational application state stays outside the content repository.
@@ -42,6 +44,8 @@ POKETTO_REPOSITORY_USERNAME=operator \
 POKETTO_REPOSITORY_PASSWORD=... \
 ./gradlew bootRun
 ```
+
+To initialize the first owner, set a private `POKETTO_AUTH_INITIALIZATION_TOKEN` and configure `POKETTO_SECURITY_ALLOWED_ORIGINS` with the exact browser origin. Local HTTP also needs `POKETTO_SESSION_COOKIE_SECURE=false`; HTTPS retains the secure default. Fetch `/api/auth/csrf` before initialization or login and send its named CSRF header with the session cookie. See the [identity HTTP contract](notes/implemented/2026-09-06-workspace-identity-http.md#operation) for the initialization and login sequence. The deployment profile does not yet wire these identity settings; operators must provide them to the application explicitly.
 
 On Windows, set the same names through `$env:...`, make `POKETTO_DATA_DIR` absolute, and use `.\gradlew.bat`. See [AGENTS.md](AGENTS.md#commands) for the command table and contribution rules.
 

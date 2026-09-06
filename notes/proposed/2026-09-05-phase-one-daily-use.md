@@ -3,6 +3,8 @@
 Date: 2026-09-05
 Status: Proposed
 
+The [identity HTTP backend](../implemented/2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. This phase remains proposed until the other functionality and final installation acceptance are complete.
+
 ## Problem
 
 The executable baseline serves canonical documents through a read-only public API. The accepted publishing, frontend, membership, asset, and execution proposals describe a broader product, but their combined first delivery needs an explicit boundary and verifiable completion criteria. A daily-use installation needs working browser and agent authoring, not only independently passing infrastructure tests.
