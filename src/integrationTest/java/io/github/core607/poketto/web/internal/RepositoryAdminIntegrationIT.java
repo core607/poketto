@@ -5,7 +5,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
+import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import java.awt.image.BufferedImage;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.URI;
@@ -14,6 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -21,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,7 +64,9 @@ class RepositoryAdminIntegrationIT {
             DockerImageName.parse(System.getProperty("poketto.postgres.image")).asCompatibleSubstituteFor("postgres"));
 
     @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
+    static void properties(DynamicPropertyRegistry registry) throws java.io.IOException {
+        // Windows TEMP may be an 8.3 alias; image storage requires canonical ancestors.
+        directory = directory.toRealPath();
         Path remote = directory.resolve("remote.git");
         try (Git ignored = Git.init()
                 .setBare(true)
@@ -84,6 +91,12 @@ class RepositoryAdminIntegrationIT {
 
     @Autowired
     AuthService auth;
+
+    @Autowired
+    PublicContentSnapshots snapshots;
+
+    @Autowired
+    WorkspaceCatalog catalog;
 
     @LocalServerPort
     int port;
@@ -257,7 +270,63 @@ class RepositoryAdminIntegrationIT {
             }
             http(client, "GET", "/api/public/document?route=" + encode("/private/隐藏 %#"), null, null, 404);
             http(client, "GET", "/api/public/document?route=" + encode("/explicit ?%#"), null, null, 404);
+            overflowingGalleryOverHttp(client, csrf);
         }
+    }
+
+    private void overflowingGalleryOverHttp(HttpClient client, JsonNode csrf) throws Exception {
+        Path checkout = directory.resolve("gallery-author");
+        String source = "# 相册正文\n\n图片较多时正文仍可阅读。";
+        try (Git git = Git.cloneRepository()
+                .setURI(directory.resolve("remote.git").toUri().toString())
+                .setDirectory(checkout.toFile())
+                .call()) {
+            Files.createDirectories(checkout.resolve("album"));
+            Files.createDirectories(checkout.resolve("private"));
+            Files.writeString(checkout.resolve("album/index.md"), source);
+            Files.writeString(checkout.resolve("private/index.md"), "# Private album");
+            Files.writeString(
+                    checkout.resolve(".poketto/publishing.yaml"),
+                    "enabled: true\nmode: public-by-default\nexclude: ['album/hidden-*.png']\n");
+            var image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+            for (int i = 0; i < 129; i++) {
+                for (String name : List.of("album/photo-%03d.png", "album/hidden-%03d.png", "private/image-%03d.png"))
+                    ImageIO.write(
+                            image, "png", checkout.resolve(name.formatted(i)).toFile());
+            }
+            git.add().addFilepattern(".").call();
+            git.commit()
+                    .setMessage("Seed isolated gallery boundary")
+                    .setAuthor("Fixture", "fixture@example.test")
+                    .call();
+            git.push().call();
+        }
+        snapshots.refresh(catalog.defaultWorkspace().id());
+        JsonNode page = http(client, "GET", "/api/public/document?route=/album", null, null, 200);
+        assertThat(page.get("body").stringValue()).isEqualTo(source);
+        assertThat(page.get("galleryStatus").stringValue()).isEqualTo("PARTIAL");
+        assertThat(page.get("gallery").size()).isEqualTo(128);
+        assertThat(page.get("gallery").get(127).get("alt").stringValue()).isEqualTo("photo-127.png");
+        assertThat(page.toString()).doesNotContain("hidden-", "private/", "repositoryPath", "diagnostics");
+        String imageUrl = page.get("gallery").get(0).get("src").stringValue();
+        var image = client.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + imageUrl))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(image.statusCode()).isEqualTo(200);
+        assertThat(image.body()).isEqualTo(Files.readAllBytes(checkout.resolve("album/photo-000.png")));
+        http(client, "GET", "/api/public/document?route=/private", null, null, 404);
+        JsonNode preview = http(
+                client,
+                "POST",
+                "/api/admin/repository/preview",
+                csrf,
+                Map.of("path", "private/index.md", "body", "# Private album"),
+                200);
+        assertThat(preview.get("galleryStatus").stringValue()).isEqualTo("PARTIAL");
+        assertThat(preview.get("gallery").size()).isEqualTo(128);
+        assertThat(preview.get("gallery").get(0).get("src").stringValue()).startsWith("/api/admin/assets/images/");
     }
 
     private JsonNode http(HttpClient client, String method, String path, JsonNode csrf, Object payload, int status)

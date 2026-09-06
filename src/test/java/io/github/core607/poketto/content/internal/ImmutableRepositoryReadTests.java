@@ -216,6 +216,9 @@ class ImmutableRepositoryReadTests {
         assertThat(blobs.find(workspace, descriptor.commit(), descriptor.path()))
                 .contains(descriptor);
         assertThat(blobs.images(workspace, descriptor.commit(), "")).containsExactly(descriptor);
+        assertThat(blobs.siblings(workspace, descriptor.commit(), "article.md", 128, false, java.util.Set.of())
+                        .items())
+                .containsExactly(descriptor);
         assertThat(blobs.read(descriptor)).isEqualTo(image);
         assertThat(Files.readString(head)).isEqualTo(before);
         assertThat(fixture.cache(workspace).resolve("image.png")).doesNotExist();
