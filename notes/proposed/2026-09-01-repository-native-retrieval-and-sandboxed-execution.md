@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
+
 [Phase-one delivery](2026-09-05-phase-one-daily-use.md) specifies the five-tool delivery, excludes visitor Q&A, and limits initial transport to ordinary history fetch with incremental reuse. It does not promise selective cold object transfer. Runtime isolation remains subject to real-host acceptance.
 
 ## Problem

@@ -1,63 +1,116 @@
 package io.github.core607.poketto.web.internal;
 
-import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.ContentRepositoryStore;
-import io.github.core607.poketto.content.ContentSnapshot;
-import io.github.core607.poketto.content.DocumentId;
-import io.github.core607.poketto.content.DocumentVisibility;
-import io.github.core607.poketto.content.StoredDocument;
+import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicContentSnapshot;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
-import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 
-/**
- * Public-content-only read surface over the default workspace. The interface carries no visibility
- * parameter, so no entrance built on it can widen the scope to private documents.
- *
- * <p>Every read serves the workspace's current validated snapshot and never contacts the remote.
- * A write acknowledged by this service is visible on the next request; a direct owner push is
- * visible after the next successful background refresh.
- */
+/** Public scope is fixed here, before route lookup, filtering, snippets, or tag enumeration. */
 final class PublicDocuments {
-
-    private static final Comparator<StoredDocument> NEWEST_PUBLICATION_FIRST = Comparator.comparing(
-                    (StoredDocument document) -> document.content().metadata().publishedAt(),
-                    Comparator.comparing((Optional<Instant> published) -> published.orElse(Instant.MIN))
-                            .reversed())
-            .thenComparing(document -> document.content().metadata().id().toString());
-
-    private final ContentRepositoryStore store;
+    private final PublicContentSnapshots snapshots;
     private final WorkspaceCatalog workspaces;
+    private final AssetService assets;
 
-    PublicDocuments(ContentRepositoryStore store, WorkspaceCatalog workspaces) {
-        this.store = Objects.requireNonNull(store, "content repository store must not be null");
-        this.workspaces = Objects.requireNonNull(workspaces, "workspace catalog must not be null");
+    PublicDocuments(PublicContentSnapshots snapshots, WorkspaceCatalog workspaces, AssetService assets) {
+        this.snapshots = snapshots;
+        this.workspaces = workspaces;
+        this.assets = assets;
     }
 
-    List<StoredDocument> list() {
-        return snapshot().documents().stream()
-                .filter(PublicDocuments::isPublic)
-                .sorted(NEWEST_PUBLICATION_FIRST)
+    PublicContentSnapshot snapshot() {
+        return snapshots.current(workspaces.defaultWorkspace().id());
+    }
+
+    Page search(String query, String tag, Instant from, Instant to, int offset, int limit) {
+        if (query.length() > 200
+                || tag.length() > 64
+                || offset < 0
+                || offset > 10_000
+                || limit < 1
+                || limit > 100
+                || (from != null && to != null && from.isAfter(to)))
+            throw new IllegalArgumentException("search exceeds its bounds or has an invalid date range");
+        PublicContentSnapshot snapshot = snapshot();
+        List<PublicArticle> matches = snapshot.articles().stream()
+                .filter(article -> query.isEmpty()
+                        || article.title().contains(query)
+                        || article.body().contains(query))
+                .filter(article -> tag.isEmpty() || article.tags().contains(tag))
+                .filter(article -> from == null || !article.createdAt().isBefore(from))
+                .filter(article -> to == null || !article.createdAt().isAfter(to))
                 .toList();
+        List<PublicDocumentSummary> items = matches.stream()
+                .skip(offset)
+                .limit(limit)
+                .map(article -> PublicDocumentSummary.of(article, snippet(article.body(), query)))
+                .toList();
+        return new Page(
+                snapshot.commit().orElse(null),
+                snapshot.verifiedAt(),
+                snapshot.expiresAt(),
+                items,
+                matches.size(),
+                offset,
+                limit);
     }
 
-    Optional<StoredDocument> find(DocumentId documentId) {
-        Objects.requireNonNull(documentId, "document id must not be null");
-        return snapshot().find(documentId).filter(PublicDocuments::isPublic);
+    PublicDocument find(String route) {
+        if (route.length() > 256 || !route.startsWith("/")) throw notFound();
+        return assets.publicDocument(workspaces.defaultWorkspace().id(), route)
+                .map(value -> PublicDocument.of(value.article(), value.snapshot(), value.media()))
+                .orElseThrow(PublicDocuments::notFound);
     }
 
-    private ContentSnapshot snapshot() {
-        WorkspaceId workspaceId = workspaces.defaultWorkspace().id();
-        return store.snapshot(workspaceId)
-                .orElseThrow(() ->
-                        new ContentRepositoryException("workspace " + workspaceId + " has no validated snapshot"));
+    Tags tags(int offset, int limit) {
+        if (offset < 0 || offset > 320_000 || limit < 1 || limit > 200)
+            throw new IllegalArgumentException("tag page exceeds its bounds");
+        PublicContentSnapshot snapshot = snapshot();
+        List<String> tags = snapshot.articles().stream()
+                .flatMap(article -> article.tags().stream())
+                .distinct()
+                .sorted()
+                .toList();
+        return new Tags(
+                snapshot.commit().orElse(null),
+                snapshot.verifiedAt(),
+                snapshot.expiresAt(),
+                tags.stream().skip(offset).limit(limit).toList(),
+                tags.size(),
+                offset,
+                limit);
     }
 
-    private static boolean isPublic(StoredDocument document) {
-        return document.content().metadata().visibility() == DocumentVisibility.PUBLIC;
+    private static String snippet(String body, String query) {
+        int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
+        int start = Math.max(0, match - 60);
+        int end = Math.min(body.length(), start + 240);
+        if (start > 0 && Character.isLowSurrogate(body.charAt(start))) start--;
+        if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) end--;
+        return body.substring(start, end);
     }
+
+    private static PublicResourceNotFoundException notFound() {
+        return new PublicResourceNotFoundException("public document not found");
+    }
+
+    record Page(
+            String commit,
+            Instant verifiedAt,
+            Instant expiresAt,
+            List<PublicDocumentSummary> items,
+            int total,
+            int offset,
+            int limit) {}
+
+    record Tags(
+            String commit,
+            Instant verifiedAt,
+            Instant expiresAt,
+            List<String> tags,
+            int total,
+            int offset,
+            int limit) {}
 }

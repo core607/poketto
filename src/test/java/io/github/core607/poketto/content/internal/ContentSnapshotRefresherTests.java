@@ -49,7 +49,7 @@ class ContentSnapshotRefresherTests {
             return new ContentSnapshot(workspace, Optional.empty(), List.of(), Instant.EPOCH);
         });
         ContentSnapshotRefresher refresher =
-                new ContentSnapshotRefresher(store, () -> List.of(workspace), Duration.ofMillis(1));
+                new ContentSnapshotRefresher(store::refresh, () -> List.of(workspace), Duration.ofMillis(1));
         try (var closer = Executors.newSingleThreadExecutor()) {
             refresher.start();
             try {
@@ -73,7 +73,7 @@ class ContentSnapshotRefresherTests {
         WorkspaceId failing = WorkspaceId.random();
         CountingStore store = new CountingStore(failing);
         try (ContentSnapshotRefresher refresher =
-                new ContentSnapshotRefresher(store, () -> List.of(failing, healthy), Duration.ofSeconds(1))) {
+                new ContentSnapshotRefresher(store::refresh, () -> List.of(failing, healthy), Duration.ofSeconds(1))) {
             refresher.refreshAll();
             refresher.refreshAll();
         }
@@ -86,7 +86,7 @@ class ContentSnapshotRefresherTests {
     void aFailingWorkspaceListingRefreshesNothing() {
         CountingStore store = new CountingStore(WorkspaceId.random());
         try (ContentSnapshotRefresher refresher = new ContentSnapshotRefresher(
-                store,
+                store::refresh,
                 () -> {
                     throw new IllegalStateException("catalog unavailable");
                 },

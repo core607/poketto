@@ -66,6 +66,12 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     @Override
+    public <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader) {
+        Objects.requireNonNull(reader, "snapshot reader must not be null");
+        return inCache(workspaceId, false, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
+    }
+
+    @Override
     public <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader) {
         Objects.requireNonNull(reader, "snapshot reader must not be null");
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
@@ -107,11 +113,33 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 workspaceId,
                 (repository, binding, baseCommit) -> writer.write(
                         snapshot(repository, baseCommit),
-                        candidateCommit ->
-                                advance(workspaceId, repository, binding, baseCommit, parseCommit(candidateCommit))));
+                        candidateCommit -> advance(
+                                workspaceId, repository, binding, baseCommit, parseCommit(candidateCommit), true)));
+    }
+
+    @Override
+    public <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer) {
+        Objects.requireNonNull(writer, "candidate writer must not be null");
+        return inCache(
+                workspaceId,
+                false,
+                (repository, binding, baseCommit) -> writer.write(snapshot(repository, baseCommit), candidateCommit -> {
+                    ObjectId candidate = parseCommit(candidateCommit);
+                    advance(workspaceId, repository, binding, baseCommit, candidate, false);
+                    try {
+                        updateObjectRef(repository, candidate);
+                    } catch (ContentRepositoryException exception) {
+                        throw new RepositoryWriteAmbiguousException(
+                                "remote acknowledged the patch but cache recording failed; read remote main before retrying");
+                    }
+                }));
     }
 
     private <T> T inCache(WorkspaceId workspaceId, CacheAction<T> action) {
+        return inCache(workspaceId, true, action);
+    }
+
+    private <T> T inCache(WorkspaceId workspaceId, boolean materialize, CacheAction<T> action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
@@ -135,7 +163,11 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     deleteTree(cache);
                     opened = openOrInitialize(cache, workspaceId);
                 }
-                resetCache(opened, commit);
+                if (materialize) {
+                    resetCache(opened, commit);
+                } else if (!commit.equals(ObjectId.zeroId())) {
+                    updateObjectRef(opened, commit);
+                }
             } catch (RuntimeException exception) {
                 opened.close();
                 throw exception;
@@ -157,19 +189,20 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             Repository repository,
             RepositoryBinding binding,
             ObjectId baseCommit,
-            ObjectId candidateCommit) {
+            ObjectId candidateCommit,
+            boolean materialize) {
         Objects.requireNonNull(candidateCommit, "candidate commit must not be null");
         try {
             RemoteGitTransport.PushStatus result = transport.pushMain(repository, binding, baseCommit, candidateCommit);
             if (result == RemoteGitTransport.PushStatus.CONFLICT) {
-                restoreAfterConflict(repository, binding);
+                restoreAfterConflict(repository, binding, materialize);
                 throw new RepositoryConflictException(
                         "workspace " + workspaceId + " remote main changed while the write was being prepared");
             }
         } catch (RemoteGitRejectedException rejected) {
-            reconcileRejection(workspaceId, repository, binding, baseCommit, rejected);
+            reconcileRejection(workspaceId, repository, binding, baseCommit, rejected, materialize);
         } catch (RemoteGitTransportException lostResponse) {
-            reconcileLostResponse(workspaceId, repository, binding, baseCommit, candidateCommit);
+            reconcileLostResponse(workspaceId, repository, binding, baseCommit, candidateCommit, materialize);
         }
     }
 
@@ -184,7 +217,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             Repository repository,
             RepositoryBinding binding,
             ObjectId baseCommit,
-            RemoteGitRejectedException rejected) {
+            RemoteGitRejectedException rejected,
+            boolean materialize) {
         final ObjectId remoteCommit;
         try {
             remoteCommit = transport.fetchMain(repository, binding);
@@ -192,12 +226,12 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
         }
         if (!remoteCommit.equals(baseCommit)) {
-            resetAfterConflict(repository, remoteCommit);
+            resetAfterConflict(repository, remoteCommit, materialize);
             throw new RepositoryConflictException(
                     "workspace " + workspaceId + " remote main changed while the write was being prepared");
         }
         if (!remoteCommit.equals(ObjectId.zeroId())) {
-            resetCache(repository, remoteCommit);
+            restoreCache(repository, remoteCommit, materialize);
         }
         throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
     }
@@ -221,7 +255,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             Repository repository,
             RepositoryBinding binding,
             ObjectId baseCommit,
-            ObjectId candidateCommit) {
+            ObjectId candidateCommit,
+            boolean materialize) {
         final ObjectId remoteCommit;
         try {
             remoteCommit = transport.fetchMain(repository, binding);
@@ -230,31 +265,36 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     + " remote write response was lost and main cannot be verified; do not retry blindly");
         }
         if (remoteCommit.equals(candidateCommit)) {
-            resetCache(repository, candidateCommit);
+            try {
+                restoreCache(repository, candidateCommit, materialize);
+            } catch (ContentRepositoryException exception) {
+                throw new RepositoryWriteAmbiguousException(
+                        "remote acknowledged the patch but cache recording failed; read remote main before retrying");
+            }
             return;
         }
         if (!remoteCommit.equals(baseCommit)) {
-            resetAfterConflict(repository, remoteCommit);
+            resetAfterConflict(repository, remoteCommit, materialize);
             throw new RepositoryConflictException(
                     "workspace " + workspaceId + " remote main changed while the write was being prepared");
         }
         if (!remoteCommit.equals(ObjectId.zeroId())) {
-            resetCache(repository, remoteCommit);
+            restoreCache(repository, remoteCommit, materialize);
         }
         throw failure(workspaceId, "remote write failed before main advanced");
     }
 
-    private void restoreAfterConflict(Repository repository, RepositoryBinding binding) {
+    private void restoreAfterConflict(Repository repository, RepositoryBinding binding, boolean materialize) {
         try {
-            resetAfterConflict(repository, transport.fetchMain(repository, binding));
+            resetAfterConflict(repository, transport.fetchMain(repository, binding), materialize);
         } catch (RemoteGitTransportException ignored) {
             // The outcome is already definite. A later operation rebuilds the disposable cache.
         }
     }
 
-    private static void resetAfterConflict(Repository repository, ObjectId commit) {
+    private static void resetAfterConflict(Repository repository, ObjectId commit, boolean materialize) {
         try {
-            resetCache(repository, commit);
+            restoreCache(repository, commit, materialize);
         } catch (ContentRepositoryException ignored) {
             // A competing owner's invalid tree must neither expand into the cache nor hide the
             // already established conflict. A later operation retries cache materialization.
@@ -347,6 +387,41 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ContentWorktree.clearIntent(repository);
         } catch (IOException | GitAPIException exception) {
             throw new ContentRepositoryException("repository cache cannot be materialized");
+        }
+    }
+
+    private static void restoreCache(Repository repository, ObjectId commit, boolean materialize) {
+        if (materialize) {
+            resetCache(repository, commit);
+        } else {
+            updateObjectRef(repository, commit);
+        }
+    }
+
+    private static void updateObjectRef(Repository repository, ObjectId commit) {
+        try {
+            RefUpdate update = repository.updateRef(MAIN);
+            if (commit.equals(ObjectId.zeroId())) {
+                update.setForceUpdate(true);
+                RefUpdate.Result deleted = update.delete();
+                if (!(deleted == RefUpdate.Result.FORCED
+                        || deleted == RefUpdate.Result.NO_CHANGE
+                        || deleted == RefUpdate.Result.NEW)) {
+                    throw new ContentRepositoryException("repository object cache main cannot be removed");
+                }
+                return;
+            }
+            update.setNewObjectId(commit);
+            update.setForceUpdate(true);
+            RefUpdate.Result result = update.forceUpdate();
+            if (!(result == RefUpdate.Result.NEW
+                    || result == RefUpdate.Result.FORCED
+                    || result == RefUpdate.Result.FAST_FORWARD
+                    || result == RefUpdate.Result.NO_CHANGE)) {
+                throw new ContentRepositoryException("repository object cache main cannot be updated");
+            }
+        } catch (IOException exception) {
+            throw new ContentRepositoryException("repository object cache main cannot be updated", exception);
         }
     }
 

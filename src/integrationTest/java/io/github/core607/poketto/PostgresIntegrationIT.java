@@ -6,16 +6,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.github.core607.poketto.content.DocumentDraft;
-import io.github.core607.poketto.content.DocumentWriteResult;
-import io.github.core607.poketto.content.DocumentWriteService;
-import io.github.core607.poketto.content.WritePrincipal;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,7 +74,7 @@ class PostgresIntegrationIT {
     private WorkspacePaths workspacePaths;
 
     @Autowired
-    private DocumentWriteService writes;
+    private PublicContentSnapshots snapshots;
 
     @Autowired
     private MockMvc mvc;
@@ -133,35 +129,55 @@ class PostgresIntegrationIT {
     }
 
     @Test
-    void servesOnlyPublishedDocumentsThroughThePublicEntrance() throws Exception {
+    void servesRepositoryNativeDocumentsOnlyAfterPublishingPolicyIsEnabled() throws Exception {
         Workspace workspace = workspaces.defaultWorkspace();
-        DocumentWriteResult secret = writes.create(
-                workspace.id(),
-                WritePrincipal.SYSTEM,
-                new DocumentDraft("documents/it/secret.md", "Secret", List.of(), "private body"));
-        DocumentWriteResult draft = writes.create(
-                workspace.id(),
-                WritePrincipal.SYSTEM,
-                new DocumentDraft("documents/it/hello.md", "Hello", List.of("intro"), "# Hello\n\nPublic body"));
-
-        mvc.perform(get("/api/public/documents/" + draft.documentId())).andExpect(status().isNotFound());
-
-        writes.publish(
-                workspace.id(),
-                WritePrincipal.SYSTEM,
-                draft.documentId(),
-                draft.revision().orElseThrow());
-
+        Path author = Files.createTempDirectory(dataDirectory, "author-");
+        try (Git git = Git.init()
+                .setInitialBranch("main")
+                .setDirectory(author.toFile())
+                .call()) {
+            Files.createDirectories(author.resolve("private"));
+            Files.writeString(author.resolve("private/secret.md"), "# Secret\nprivate body");
+            Files.writeString(author.resolve("hello.md"), "# Hello\n\nPublic body");
+            git.add().addFilepattern(".").call();
+            git.commit()
+                    .setAuthor("Test Author", "test@invalid")
+                    .setMessage("Initial notes")
+                    .call();
+            String remote = dataDirectory.resolve("remote.git").toUri().toString();
+            git.push()
+                    .setRemote(remote)
+                    .setRefSpecs(new org.eclipse.jgit.transport.RefSpec("refs/heads/main:refs/heads/main"))
+                    .call();
+            snapshots.refresh(workspace.id());
+            mvc.perform(get("/api/public/documents"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.total").value(0));
+            Files.createDirectories(author.resolve(".poketto"));
+            Files.writeString(author.resolve(".poketto/publishing.yaml"), "enabled: true\nmode: public-by-default\n");
+            git.add().addFilepattern(".").call();
+            git.commit()
+                    .setAuthor("Test Author", "test@invalid")
+                    .setMessage("Enable publication")
+                    .call();
+            git.push()
+                    .setRemote(remote)
+                    .setRefSpecs(new org.eclipse.jgit.transport.RefSpec("refs/heads/main:refs/heads/main"))
+                    .call();
+            snapshots.refresh(workspace.id());
+        }
         mvc.perform(get("/api/public/documents"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(draft.documentId().toString()));
-        mvc.perform(get("/api/public/documents/" + draft.documentId()))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].route").value("/hello"));
+        mvc.perform(get("/api/public/document").param("route", "/hello"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Hello"))
-                .andExpect(jsonPath("$.tags[0]").value("intro"))
-                .andExpect(jsonPath("$.publishedAt").isNotEmpty())
                 .andExpect(jsonPath("$.body").value("# Hello\n\nPublic body"));
-        mvc.perform(get("/api/public/documents/" + secret.documentId())).andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/document").param("route", "/private/secret"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/documents").param("query", "private body"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
     }
 }
