@@ -15,7 +15,7 @@ Build the reproducible runtime with Java 26:
 ```
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs,
-and a SHA-256 manifest. Copy that directory, `probe.py`, and the corresponding
+and a SHA-256 manifest. Copy that directory, `probe.py`, `rejected_peer.py`, and the corresponding
 worker and launcher sources to isolated host staging. The probe verifies every
 manifest entry before running. It never stages operator settings or credentials.
 
@@ -38,7 +38,9 @@ The root controller creates a disposable directory under `/run`, two temporary
 accounts, a signing key, synthetic history, and transient units. Java runs as
 the application account and the worker launches commands as the distinct
 execution account. A root-owned socket served by the application account tests
-the negative Unix peer-identity path. The controller's narrow test mailbox
+the negative Unix peer-identity path. The peer records an accepted connection
+and zero request bytes: the production check must reject before writing, so an
+ordinary EOF cannot satisfy the assertion. The controller's narrow test mailbox
 observes detached descendants, checks unchanged source bytes, and restarts only
 its own transient worker unit.
 
@@ -74,3 +76,30 @@ Saturated admission can retire old leases only when a protected root peer return
 a different boot identity. The worker completes exclusive startup cleanup before
 serving HELLO. A failed probe or unchanged identity preserves occupied capacity;
 the retired MCP session cannot reopen.
+
+## Isolated peer regression
+
+The historical combined report predates the accepted-connection and byte-count
+assertions. Its unavailable-result assertion could also pass on an ordinary EOF.
+The following bounded local check exercises the strengthened assertion through
+the production configuration and socket client, using root-owned paths and a
+non-root peer inside one container. It does not run SRT or replace the final
+combined host acceptance.
+
+```sh
+./gradlew stageExecutorNativeTest
+docker build --network none -f executor-native/Dockerfile.peer-tests -t poketto-peer-test executor-native
+docker run --rm --network none --read-only --memory 512m --cpus 1 --pids-limit 64 \
+  --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE \
+  --security-opt no-new-privileges \
+  --tmpfs /run:rw,nosuid,nodev,noexec,size=16m,mode=0755 \
+  --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777 \
+  --mount type=bind,source="$(pwd)/build/executor-native/runtime",target=/runtime,readonly \
+  poketto-peer-test
+```
+
+Success requires Java exit zero, `accepted: true`, `requestBytes: 0`, and fixture
+cleanup. A temporary test build omitting the production peer guard must fail
+with nonzero observed request bytes; restore production source before delivery.
+The fixture changes only container-local UIDs, paths and processes and opens no
+network listener. Its runtime manifest identifies the exact compiled input.

@@ -77,6 +77,7 @@ public final class ExecutorNativeProbe {
         var probe = new ExecutorNativeProbe(Path.of(args[0]));
         if (args[1].equals("abandon")) probe.abandon();
         else if (args[1].equals("main")) probe.run();
+        else if (args[1].equals("peer-only")) probe.rejectNonRootPeer();
         else throw new IllegalArgumentException();
     }
 
@@ -89,12 +90,24 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(auth, exports, JSON, socket, path("privateKey"), maxSessions, 45, 8);
     }
 
-    private void run() throws Exception {
+    private void rejectNonRootPeer() throws Exception {
         try (var rejected = adapter(path("fakeSocket"))) {
             assertThatThrownBy(() -> execute(rejected, "wrong-peer", "pwd", new Cancellation()))
                     .isInstanceOf(WorkerUnavailableException.class);
         }
-        passed("root-owned-socket-rejects-non-root-peer");
+        Path observation = path("fakeObservation");
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (!Files.exists(observation) && System.nanoTime() < deadline) Thread.sleep(20);
+        assertThat(observation).exists();
+        JsonNode result = JSON.readTree(Files.readString(observation));
+        assertThat(result.path("accepted").booleanValue()).isTrue();
+        assertThat(result.path("requestBytes").isIntegralNumber()).isTrue();
+        assertThat(result.path("requestBytes").intValue()).isZero();
+        passed("root-owned-socket-rejects-non-root-peer", "observation", Map.of("accepted", true, "requestBytes", 0));
+    }
+
+    private void run() throws Exception {
+        rejectNonRootPeer();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
