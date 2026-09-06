@@ -184,6 +184,13 @@ class RepositoryHistoryDatesTests {
                     List.of(replaced),
                     Map.of("note.md", FileMode.EXECUTABLE_FILE));
             assertMatchesGit(repository, head, List.of("note.md"));
+            var renamed =
+                    commit(repository, Map.of("fresh.md", "# Source"), START.plusSeconds(30), List.of(root), Map.of());
+            assertMatchesGit(repository, renamed, List.of("fresh.md"));
+            assertThat(new RepositoryHistoryDates()
+                            .read(repository, renamed.name(), List.of("fresh.md"))
+                            .get("fresh.md"))
+                    .isEqualTo(new RepositoryHistoryDates.Dates(START.plusSeconds(30), START.plusSeconds(30)));
         }
     }
 
