@@ -9,8 +9,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,20 +24,26 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 final class JGitPublicContentSnapshots implements PublicContentSnapshots {
-    private static final String MARKER = "poketto-public-snapshot";
     private final RepositoryAuthority authority;
     private final JGitRepositoryContentReader reader;
     private final Clock clock;
     private final Duration lifetime;
+    private final PublicSnapshotMarker marker;
     private final Map<WorkspaceId, PublicContentSnapshot> snapshots = new ConcurrentHashMap<>();
 
     JGitPublicContentSnapshots(RepositoryAuthority authority, Clock clock, Duration lifetime) {
+        this(authority, clock, lifetime, new PublicSnapshotMarker());
+    }
+
+    JGitPublicContentSnapshots(
+            RepositoryAuthority authority, Clock clock, Duration lifetime, PublicSnapshotMarker marker) {
         if (lifetime.isNegative() || lifetime.isZero() || lifetime.compareTo(Duration.ofHours(1)) > 0)
             throw new IllegalArgumentException("public snapshot lifetime must be positive and at most one hour");
         this.authority = authority;
         this.reader = new JGitRepositoryContentReader(authority);
         this.clock = clock;
         this.lifetime = lifetime;
+        this.marker = marker;
     }
 
     @Override
@@ -47,6 +51,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         try {
             refresh(workspaceId);
         } catch (ContentRepositoryException unavailable) {
+            if (unavailable.getCause() instanceof PublicSnapshotMarker.WriteFailure) throw unavailable;
             try {
                 authority.readCache(workspaceId, snapshot -> restore(workspaceId, snapshot));
                 current(workspaceId);
@@ -104,15 +109,19 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     }
 
     private PublicContentSnapshot restore(WorkspaceId workspaceId, RepositoryAuthority.Snapshot cache) {
+        if (!marker.supportsOfflineRestoration())
+            throw new ContentRepositoryException(
+                    "offline public snapshot restoration is disabled on Windows development hosts");
         try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspaceId)) {
-            Path marker = repository.getDirectory().toPath().resolve(MARKER);
+            Path marker = repository.getDirectory().toPath().resolve(PublicSnapshotMarker.NAME);
             if (!Files.isRegularFile(marker) || Files.size(marker) > 256) throw unavailable();
             String[] fields =
                     Files.readString(marker, StandardCharsets.UTF_8).strip().split(" ", -1);
-            if (fields.length != 3
-                    || !fields[2].equals("OPEN")
-                    || !fields[0].equals(cache.commitId().orElse("unborn"))) throw unavailable();
-            Instant verifiedAt = Instant.parse(fields[1]);
+            if (fields.length != 4
+                    || !fields[0].equals("DURABLE_V2")
+                    || !fields[3].equals("OPEN")
+                    || !fields[1].equals(cache.commitId().orElse("unborn"))) throw unavailable();
+            Instant verifiedAt = Instant.parse(fields[2]);
             if (clock.instant().isBefore(verifiedAt) || !clock.instant().isBefore(verifiedAt.plus(lifetime)))
                 throw unavailable();
             PublicContentSnapshot restored = build(workspaceId, cache, verifiedAt);
@@ -170,21 +179,11 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         }
     }
 
-    private static void writeMarker(
-            WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Instant at, boolean open) {
+    private void writeMarker(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Instant at, boolean open) {
         try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
-            Path marker = repository.getDirectory().toPath().resolve(MARKER);
-            Path staged = marker.resolveSibling(MARKER + ".tmp");
-            Files.writeString(
-                    staged,
-                    snapshot.commitId().orElse("unborn") + " " + at + " " + (open ? "OPEN" : "CLOSED") + "\n",
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING,
-                    StandardOpenOption.WRITE,
-                    StandardOpenOption.SYNC);
-            Files.move(staged, marker, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException exception) {
+            marker.write(repository.getDirectory().toPath(), snapshot.commitId().orElse("unborn"), at, open);
+        } catch (IOException | UnsupportedOperationException exception) {
+            snapshots.remove(workspaceId);
             throw new ContentRepositoryException("public snapshot state cannot be recorded", exception);
         }
     }

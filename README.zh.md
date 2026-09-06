@@ -47,7 +47,7 @@ POKETTO_REPOSITORY_PASSWORD=... \
 
 初始化首个 owner 前，私下设置 `POKETTO_AUTH_INITIALIZATION_TOKEN`，并把 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin。本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`；HTTPS 保留安全默认值。初始化或登录前先获取 `/api/auth/csrf`，后续请求同时携带会话 cookie 和响应指定的 CSRF header。初始化与登录顺序见[身份 HTTP 契约](notes/implemented/2026-09-06-workspace-identity-http.md#operation)。部署 profile 从私有运行配置中传入这些身份设置。
 
-Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生磁盘卷运行 `linuxStorageTest`。权威图片存储要求目录同步能力；不支持的宿主不能确认持久化上传。用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。
+Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生磁盘卷运行 `linuxStorageTest`，包括公开标记持久化与快照恢复测试。Windows 开发模式只能在远端重新验证成功后建立内存公开快照；离线重启不会从磁盘恢复公开授权。Linux 上影响发布的写入必须先成功同步文件与目录才能推送；同步失败或不受支持时关闭公开服务。权威图片存储要求目录同步能力；不支持的宿主不能确认持久化上传。用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。
 
 ## 内容与图片
 
