@@ -38,6 +38,7 @@ When the diff touches them, require direct evidence for these requirements rathe
 - Browser and MCP writes share base-commit and per-path revision/absence checks. Atomic batches preserve untouched source; conflicts do not overwrite, ambiguous acknowledgments require reconciliation, and Git acknowledgement is distinct from snapshot installation.
 - Public search fixes its scope internally. Private reads and writes require current workspace authorization; changes to public content, references, or publishing policy also require `PUBLISH`.
 - Image authorization binds the page snapshot and exact immutable version. Withdrawal stops new public grants; issued grants remain bounded by five minutes and snapshot expiry. Private reads recheck identity, uploads do not publish or write Git, and acknowledged managed originals survive cache cleanup.
+- Execution copies are isolated by principal, workspace, and server-issued MCP session. Authoritative reads never use command-modified copies; cancellation, revocation, expiry, and shutdown terminate descendants. Missing sandbox capabilities never permit an ordinary subprocess fallback.
 - The [phase-one record](../../../notes/proposed/2026-09-05-phase-one-daily-use.md) owns acceptance and exclusions. Do not require deferred backups or visitor Q&A as a release prerequisite, or equate protocol probes and synthetic fixtures with real browser, client, and HTTPS acceptance.
 
 ## Reporting findings

@@ -1,0 +1,149 @@
+{
+  "runs": [
+    {
+      "fixtureParent": "/run",
+      "records": [
+        {
+          "test": "root-owned-socket-rejects-non-root-peer",
+          "source": "synthetic-only",
+          "result": "PASS"
+        },
+        {
+          "test": "signed-open-through-production-permission-checks",
+          "milliseconds": 1326.757179,
+          "result": "PASS"
+        },
+        {
+          "test": "twenty-adapter-session-reuses",
+          "result": "PASS",
+          "meanMilliseconds": 629.15666935
+        },
+        {
+          "test": "same-key-clients-have-separate-pinned-workdirs",
+          "source": "synthetic-only",
+          "result": "PASS"
+        },
+        {
+          "test": "command-mutations-preserve-authority-bundle-and-source",
+          "source": "synthetic-only",
+          "result": "PASS"
+        },
+        {
+          "test": "callback-cancellation-kills-detached-descendants",
+          "source": "synthetic-only",
+          "result": "PASS"
+        },
+        {
+          "test": "revocation-closes-active-process-tree",
+          "result": "PASS",
+          "reason": "CANCELLED"
+        },
+        {
+          "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client",
+          "source": "synthetic-only",
+          "result": "PASS"
+        },
+        {
+          "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
+          "summary": "PASS",
+          "tests": 8,
+          "adapterClassSha256": "ffe79e25bcfec9ee563ec1da1177d47c948f9fdd6f2ded4818c14260ac2c50c0",
+          "nativeProbeClassSha256": "ea7729b7b990df6aab2b752c9a26a1c754ea9108f3524feb627cdb60f4791d58"
+        },
+        {
+          "abandon": "READY"
+        },
+        {
+          "test": "java-process-loss-expires-real-worker-lease",
+          "result": "PASS"
+        },
+        {
+          "nativeCombined": "PASS",
+          "runtimeManifestSha256": "7cee53f7316aaca26b19f97bf722473ff2f276e0c38856a0b6a42ea766f8dc25",
+          "workerSha256": "e304b51eea8fdaafe99009be537037eebd7f464576004ce612b46f142624d453",
+          "launcherSha256": "37a3a1b28a28a9dde26fbb67e7b8a8a8e24a24b157a5e1ebfd77ca9f8ef4ea80",
+          "nativeScriptSha256": "6a7513d17dc8440c0dd576ebada4d9b15b695961a040d4cfd270dba98021d0c6",
+          "source": "synthetic-only"
+        },
+        {
+          "cleanup": "PASS"
+        }
+      ]
+    },
+    {
+      "fixtureParent": "/var/lib",
+      "records": [
+        {
+          "source": "synthetic-only",
+          "test": "root-owned-socket-rejects-non-root-peer",
+          "result": "PASS"
+        },
+        {
+          "milliseconds": 1477.032305,
+          "test": "signed-open-through-production-permission-checks",
+          "result": "PASS"
+        },
+        {
+          "test": "twenty-adapter-session-reuses",
+          "meanMilliseconds": 626.47529515,
+          "result": "PASS"
+        },
+        {
+          "source": "synthetic-only",
+          "test": "same-key-clients-have-separate-pinned-workdirs",
+          "result": "PASS"
+        },
+        {
+          "source": "synthetic-only",
+          "test": "command-mutations-preserve-authority-bundle-and-source",
+          "result": "PASS"
+        },
+        {
+          "source": "synthetic-only",
+          "test": "callback-cancellation-kills-detached-descendants",
+          "result": "PASS"
+        },
+        {
+          "test": "revocation-closes-active-process-tree",
+          "reason": "CANCELLED",
+          "result": "PASS"
+        },
+        {
+          "source": "synthetic-only",
+          "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client",
+          "result": "PASS"
+        },
+        {
+          "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
+          "nativeProbeClassSha256": "ea7729b7b990df6aab2b752c9a26a1c754ea9108f3524feb627cdb60f4791d58",
+          "adapterClassSha256": "ffe79e25bcfec9ee563ec1da1177d47c948f9fdd6f2ded4818c14260ac2c50c0",
+          "tests": 8,
+          "summary": "PASS"
+        },
+        {
+          "abandon": "READY"
+        },
+        {
+          "test": "java-process-loss-expires-real-worker-lease",
+          "result": "PASS"
+        },
+        {
+          "nativeCombined": "PASS",
+          "runtimeManifestSha256": "7cee53f7316aaca26b19f97bf722473ff2f276e0c38856a0b6a42ea766f8dc25",
+          "workerSha256": "e304b51eea8fdaafe99009be537037eebd7f464576004ce612b46f142624d453",
+          "launcherSha256": "37a3a1b28a28a9dde26fbb67e7b8a8a8e24a24b157a5e1ebfd77ca9f8ef4ea80",
+          "nativeScriptSha256": "6a7513d17dc8440c0dd576ebada4d9b15b695961a040d4cfd270dba98021d0c6",
+          "source": "synthetic-only"
+        },
+        {
+          "cleanup": "PASS"
+        }
+      ]
+    }
+  ],
+  "adapterSourceSha256": "0ba87d1c3b23eaff8efcc16ce510772b81924a69ce72265487080ae646131c37",
+  "scope": "Synthetic Java adapter to real Python worker and SRT; authentication stub, not PostgreSQL or MCP client acceptance",
+  "srt": "0.0.75",
+  "date": "2026-09-05",
+  "jdk": "Temurin 26.0.2+10"
+}
