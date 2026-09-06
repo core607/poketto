@@ -1,13 +1,16 @@
 import { articles } from "../../lib/public-api";
 import { ArticleList } from "../../components/articles";
+import { pageOffset } from "../../lib/pagination";
 export const metadata = { title: "搜索" };
 export default async function Search({
   searchParams,
 }: {
-  searchParams: Promise<{ query?: string; offset?: string }>;
+  searchParams: Promise<{ query?: string; offset?: string | string[] }>;
 }) {
   const { query = "", offset = "0" } = await searchParams;
-  const page = query ? await articles({ query, offset, limit: "12" }) : null;
+  const page = query
+    ? await articles({ query, offset: pageOffset(offset), limit: "12" })
+    : null;
   return (
     <div className="page-shell">
       <header className="page-heading">

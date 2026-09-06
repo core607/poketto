@@ -9,6 +9,8 @@ The [Next.js frontend proposal](../proposed/2026-08-30-nextjs-frontend.md) separ
 
 Next.js reads public Spring APIs without forwarding a browser identity or caching mutable content across requests. Browser mutations use same-origin Spring APIs with the current session and CSRF token. Git, database access, authorization, publication policy and image grants remain Spring responsibilities. The renderer discards raw HTML and accepts images only through Spring-resolved references; the public view and authenticated preview use the same restricted Markdown rules.
 
+Public page offsets accept nonnegative decimal integers within the owning API's bounds: 10000 for articles and 320000 for the tag catalogue. Missing, malformed, repeated or out-of-range values select the first page before an API request. Valid offsets retain their value; this presentation rule does not relax backend limits.
+
 The editor keeps the loaded revision and commit alongside the draft. A rename or delete becomes an atomic repository patch. Conflict and uncertain-response states retain the draft instead of retrying a write. Image uploads use independent idempotency keys and report their acknowledgement separately from a document save.
 
 Repository image choices encode each filename segment while retaining relative parent traversal. New image references and previews use the draft's pending destination path. Changing that path clears old image choices without rewriting the draft or its existing references.
@@ -27,4 +29,4 @@ The broader frontend proposal remains proposed: final deployment integration, pr
 
 ## Verification
 
-The frontend gate covers 24 behavioral tests, including initial article HTML, URL/image restrictions, Chinese routes and fragment targets, CSRF forwarding, upload idempotency, unchanged-save acknowledgement and uncertain-write handling. A mounted editor test changes the pending destination, chooses an image and checks the emitted preview requests and unchanged draft bytes. These tests use explicit API fixtures. Real-browser acceptance against the integrated content backend and screenshots of its exact source version remain required before this interface is ready for review.
+The frontend gate covers 26 behavioral tests, including initial article HTML, URL/image restrictions, Chinese routes and fragment targets, CSRF forwarding, upload idempotency, unchanged-save acknowledgement and uncertain-write handling. Public page consumers exercise malformed, repeated, overflowing and endpoint-boundary offsets through an HTTP fixture, retaining Chinese page content and search/tag filters. A mounted editor test changes the pending destination, chooses an image and checks the emitted preview requests and unchanged draft bytes. These tests use explicit API fixtures. Real-browser acceptance against the integrated content backend and screenshots of its exact source version remain required before this interface is ready for review.
