@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -134,6 +135,29 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 var loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
                 if (loader.getSize() != descriptor.size() || loader.getSize() > MAX_BLOB_BYTES) throw unavailable();
                 return loader.getBytes(MAX_BLOB_BYTES);
+            } catch (IOException exception) {
+                throw unavailable();
+            }
+        });
+    }
+
+    @Override
+    public void protect(RepositoryBlob descriptor, Instant expiresAt) {
+        validateCommit(descriptor.commit());
+        RepositoryPathRules.validate(descriptor.path());
+        authority.protectImmutableObjects(descriptor.workspaceId(), expiresAt, objects -> {
+            try (RevWalk commits = new RevWalk(objects);
+                    TreeWalk entry = TreeWalk.forPath(
+                            objects,
+                            descriptor.path(),
+                            commits.parseCommit(ObjectId.fromString(descriptor.commit()))
+                                    .getTree())) {
+                if (entry == null
+                        || !regular(entry.getFileMode(0))
+                        || !entry.getObjectId(0).name().equals(descriptor.objectId())) throw unavailable();
+                long size = objects.getObjectSize(entry.getObjectId(0), Constants.OBJ_BLOB);
+                if (size != descriptor.size() || size > MAX_BLOB_BYTES) throw unavailable();
+                return null;
             } catch (IOException exception) {
                 throw unavailable();
             }

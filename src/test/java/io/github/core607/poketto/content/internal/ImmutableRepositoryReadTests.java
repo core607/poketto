@@ -250,7 +250,7 @@ class ImmutableRepositoryReadTests {
     private void assertCapacityOccupied(RemoteRepositoryFixture fixture) {
         assertThatThrownBy(() -> fixture.authority().readObjects(other, snapshot -> snapshot.commitId()))
                 .isInstanceOf(ContentRepositoryException.class)
-                .hasMessageContaining("capacity is occupied by active workspaces");
+                .hasMessageContaining("capacity is occupied by active or protected workspaces");
     }
 
     private Map<String, byte[]> files() {
