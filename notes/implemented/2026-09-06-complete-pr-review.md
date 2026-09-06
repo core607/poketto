@@ -21,7 +21,7 @@ Every successful part produces a commit-bound review and retains its exact visib
 
 Missing credentials, failed requests, malformed or truncated model results, missing parts, posting failures, and base/head drift leave the run incomplete and failing. Already posted comments remain bound to their original commit. Complete coverage requires every part and the cross-contract response, successful posting, and an unchanged PR identity. The workflow does not make itself a protected-branch required check or approve or merge anything.
 
-Opening, synchronizing, reopening, marking ready, and changing the target branch trigger review. Editing only the title or description does not. A manual dispatch on `main` can review an existing owner PR; the runner rechecks current admission and base/head identity. Repeating a failed run consumes a new bounded set of provider calls; there is no automatic retry of an ambiguous provider request or GitHub post.
+Opening, synchronizing, reopening, marking ready, and changing the target branch trigger review. Editing only the title or description does not. These skipped metadata events use separate concurrency groups so they cannot cancel a source review already in progress. A manual dispatch on `main` can review an existing owner PR; the runner rechecks current admission and base/head identity. Repeating a failed run consumes a new bounded set of provider calls; there is no automatic retry of an ambiguous provider request or GitHub post.
 
 ## Alternatives and Consequences
 
