@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
+
 [Phase-one delivery](2026-09-05-phase-one-daily-use.md) implements the local storage profile and retains all acknowledged managed originals. OSS, physical reclamation, and backup-dependent recovery remain outside that delivery; completing the local profile alone does not implement this entire proposal.
 
 ## Problem

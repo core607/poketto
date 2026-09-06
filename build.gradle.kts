@@ -37,6 +37,7 @@ val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.commonmark:commonmark:0.30.0")
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
     implementation("org.yaml:snakeyaml")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
@@ -51,7 +52,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test:$springModulithVersion")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.junit.platform:junit-platform-launcher")
 }
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -95,6 +96,37 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     classpath = integrationTestSourceSet.runtimeClasspath
     shouldRunAfter(tasks.test)
     systemProperty("poketto.postgres.image", postgresTestImage.get())
+}
+
+val storageTestsNeedLinux = System.getProperty("os.name").startsWith("Windows")
+val linuxStorageRuntime = layout.buildDirectory.dir("linuxStorageTest/runtime")
+val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
+    dependsOn(tasks.testClasses)
+    onlyIf { storageTestsNeedLinux }
+    into(linuxStorageRuntime)
+    from(sourceSets.main.get().output.classesDirs) { into("classes") }
+    from(sourceSets.test.get().output.classesDirs) { into("classes") }
+    from(configurations.testRuntimeClasspath) { into("jars") }
+}
+
+val linuxStorageTest = tasks.register<Exec>("linuxStorageTest") {
+    group = "verification"
+    description = "Runs the real durable-storage JUnit suite in Linux when the host is Windows."
+    dependsOn(stageLinuxStorageTest)
+    onlyIf { storageTestsNeedLinux }
+    inputs.files(sourceSets.test.get().runtimeClasspath)
+    outputs.upToDateWhen { false }
+    // Stage only compiled classes and resolved dependency JARs; never mount operator files.
+    commandLine(
+        "docker", "run", "--rm", "--network", "none", "--read-only",
+        "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+        "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
+        "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
+        "--entrypoint", "java",
+        "eclipse-temurin@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc",
+        "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
+        "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
+    )
 }
 
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.
@@ -147,4 +179,5 @@ tasks.check {
     dependsOn(integrationTest)
     dependsOn("repoCheck")
     dependsOn(deployScriptTests)
+    dependsOn(linuxStorageTest)
 }

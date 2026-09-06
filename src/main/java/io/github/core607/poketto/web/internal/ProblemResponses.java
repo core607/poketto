@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentNotFoundException;
@@ -27,6 +28,19 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ProblemResponses.class);
 
+    @ExceptionHandler(AssetStorageException.class)
+    ProblemDetail assetFailure(AssetStorageException exception) {
+        HttpStatus status =
+                switch (exception.reason()) {
+                    case NOT_FOUND -> HttpStatus.NOT_FOUND;
+                    case IDEMPOTENCY_CONFLICT -> HttpStatus.CONFLICT;
+                    case TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
+                    case INVALID_IMAGE -> HttpStatus.BAD_REQUEST;
+                    case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+                };
+        return problem(status, "Image unavailable", exception.getMessage());
+    }
+
     @ExceptionHandler({PublicResourceNotFoundException.class, DocumentNotFoundException.class})
     ProblemDetail notFound(RuntimeException exception) {
         return problem(HttpStatus.NOT_FOUND, "Not found", exception.getMessage());
@@ -50,7 +64,7 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         return problem(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "Write outcome unknown",
-                "the repository did not confirm the write; re-read before retrying");
+                "write completion could not be confirmed; re-read remote main before retrying");
     }
 
     @ExceptionHandler(ContentRepositoryException.class)
@@ -70,5 +84,13 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle(title);
         return problem;
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail invalidArgument(IllegalArgumentException exception) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "Invalid request",
+                "a request parameter is outside its allowed format or bounds");
     }
 }

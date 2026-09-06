@@ -1,0 +1,64 @@
+# Repository Authoring Foundations
+
+Date: 2026-09-05
+Status: Implemented
+
+## Scope
+
+This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages, Markdown rendering, MCP transport and the production executor remain separate work. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
+
+## Repository and publication
+
+`RepositoryContentReader` reads exact UTF-8 blobs and service-issued revisions from arbitrary paths. Explicit commits must be full lowercase Git object ids reachable from current remote `main`. Missing files return expected absence; existing unreadable files return diagnostics. Structured Markdown accepts optional frontmatter, preserves original source, falls back to a real Markdown heading or filename for title, and uses path-filtered Git history for missing dates. Malformed files and path/route collisions are isolated. Traversal, Git internals, symlinks, and submodules cannot supply structured documents.
+
+The authority's object-only read path fetches history and updates the local ref without a checkout or the legacy `documents/` validation gate. Tree scans cap entries at 100,000, Markdown count at 10,000, and accumulated raw Markdown bytes at 256 MiB. Individual text reads retain the 1 MiB bound. History work caps reachable commits at 100,000 and conservatively charges the reachable history per fallback path against a one-million-visit budget. These limits bound work without claiming selective network transfer.
+
+`PublicContentSnapshots` reads a tree and its `.poketto/publishing.yaml` in one authority operation. Missing or disabled policy produces an empty public snapshot. Invalid policy closes public service immediately; a CLOSED marker is written before validating a changed commit. On supported production filesystems, marker publication synchronizes the temporary file before atomic replacement, then synchronizes the Git directory, content-cache directory, and its workspace parent before returning. Offline restoration requires a durable-version OPEN marker matching the cache ref and retains the original verification time. Older or Windows-written markers require fresh remote verification. Public reads reject expired snapshots, snapshots dated in the future, and unavailable publication state. The configured lifetime cannot exceed one hour.
+
+Publication policy uses the bounded YAML and glob schema in the phase-one record. Top-level YAML nodes are checked before map construction so merge keys cannot bypass unknown- or duplicate-key rejection. Public path eligibility runs before route collision resolution: a private file cannot suppress or reveal a public article by changing its route metadata.
+
+Startup keeps the application and refresh loop running when content is unavailable, with readiness out of service, so authenticated diagnosis can be integrated without requiring a Git repair before the process starts. Public requests never fetch remotely. The public endpoints are `GET /api/public/documents`, `GET /api/public/document?route=...`, and `GET /api/public/tags`; the former UUID document route is absent. Responses carry commit, verification time, expiry, and `no-store`. Public mappers omit raw frontmatter, revisions, private diagnostics, and source repository paths.
+
+Public and authorized private search perform case-sensitive literal matching with tag and date filters. Query length is capped at 200 characters, tag length at 64, pages at 100 results, and snippets at 240 characters. Tag pages are capped at 200 entries. No database content index is present.
+
+Windows development uses an explicit online-only public-snapshot mode because its directory provider does not support these durability primitives. Fresh remote verification can install an in-memory snapshot, and that running snapshot keeps its normal bounded expiry. A process restart never restores public authorization from disk on Windows, even from a durable-version marker copied from another host. Linux synchronization errors never select this mode. This limitation does not alter the Linux production contract.
+
+## Atomic authoring
+
+`RepositoryPatchService` validates a batch of at most 64 text changes and 4 MiB, with a 1 MiB per-file limit. Every path carries a revision or explicit expected absence and the batch names the exact base commit, including explicit unborn state. An in-memory Git index builds the candidate; untouched objects and file modes must remain identical, including when the index editor would otherwise replace an ancestor or directory implicitly. Moves are checked deletion/creation pairs. Images and non-UTF-8 binary files are not writable through this service.
+
+`AuthService.withAuthorization` holds the workspace row lock through the operation, serializing it with membership and key revocation. Patches require `WRITE_PRIVATE`; policy edits and paths public before or after the change also require `PUBLISH`. A changed raw body is retained exactly rather than canonicalized. Commits contain a fixed service author and an opaque account or API-key UUID trailer.
+
+Before a patch affecting publication can push, it closes the in-memory public view and persists the CLOSED marker. Failure to persist the marker prevents the push. A known withdrawal therefore cannot leave older public authorization available when recording the acknowledged local ref fails or the process restarts offline. A directory-synchronization failure prevents the push and leaves public memory closed. A failed OPEN publication also attempts a synchronized in-place CLOSED record without replacing the directory entry again; an I/O failure never becomes success. A later verified refresh can reopen service.
+
+Remote exact-ref acknowledgement owns success. Concurrent edits conflict. A lost response is reconciled once by reading remote `main`; unreadable authority or failed local recording after verified remote success produces an explicit indeterminate result requiring a fresh read before retry. An acknowledged patch immediately calls the public snapshot installer under the authority lock without another fetch. If installation fails, public state closes and the result still reports the Git commit with `snapshotUpdated=false`; it does not pretend the remote write failed. A database transaction completion error after the external acknowledgement also requires reconciliation.
+
+The [identity HTTP backend](2026-09-06-workspace-identity-http.md) owns account, invitation, membership, key and browser-session behavior. Browser repository tree, file, private-search, and atomic-patch endpoints use the shared authorized reader and writer. Authentication bodies are limited to 16 KiB; patch and preview JSON to 6 MiB, with the lower domain text limits still enforced. Multipart uploads allow a 16 MiB file within a 17 MiB request.
+
+## Managed originals and image delivery
+
+`ManagedBlobStore` stores originals outside Git under workspace namespaces. Uploads stream at most 16 MiB plus one detection byte, validate image signatures, structural envelopes and dimension bounds, and return a random asset identity with an exact SHA-256 revision. Supported formats are PNG, JPEG, GIF, and WebP; active media and transformations are excluded. A workspace-scoped operation key makes an identical retry return the same reference; different bytes conflict.
+
+File and directory synchronization, atomic directory publication, a synchronized operation ledger, and OS file locks protect acknowledgement and cross-process retries. Reads verify exact version, digest, metadata and image policy. All acknowledged originals are retained. The store rejects symlinks and unsupported durability primitives; Windows providers lacking directory synchronization report unavailability instead of claiming durability.
+
+Repository images are read-only Git objects, materialized on demand into a bounded disposable cache. Public image grants are opaque and bind the exact page commit and image version for at most five minutes, never past snapshot expiry. Withdrawal stops new grants; already issued grants retain their exact bytes until expiry. Private image access checks current workspace authorization on every request. Upload success neither writes Git nor makes the image public.
+
+`index.md` owns its folder route. It supplies a non-recursive, filename-sorted gallery of eligible sibling images, excluding images already referenced by the body. Ordinary articles do not add neighboring images. Public media resolution excludes private or policy-excluded paths, including references from an otherwise public article. Preview uses the same Markdown destination and image rules, with private URLs requiring the current session.
+
+`GET /api/admin/assets` and `/api/admin/assets/repository` supply bounded image pages. Multipart uploads require `Idempotency-Key`; private preview and image reads remain under `/api/admin`. Public article responses supply media mappings and galleries for a future renderer, and `/api/public/assets/{token}` serves the exact granted bytes. These JSON and image APIs do not implement blog pages, RSS, sitemap or Markdown HTML rendering.
+
+## Alternatives and related records
+
+This record replaces the whole-commit rejection and indefinite stale public reads in the [validated snapshot baseline](2026-09-04-validated-content-snapshot.md), while retaining its rationale and cache ownership. File diagnostics permit unrelated articles to remain available; publication-policy failure remains global because authorization cannot be guessed.
+
+The [remote authority decision](2026-09-01-remote-repository-authority.md) remains unchanged. Object-only patches avoid worktree mutation and cleanup as part of new writes. Legacy UUID write code remains an internal transitional implementation and has no new external compatibility endpoint; its removal follows migration of remaining callers and tests.
+
+The same-topic audit retains [publishing](../proposed/2026-09-01-repository-native-publishing-and-assets.md), [retrieval](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), [membership](../proposed/2026-08-27-invitation-only-membership.md), and [assets](../proposed/2026-09-01-repository-asset-blob-store.md) as partially fulfilled proposals. [Stock PostgreSQL](2026-09-05-stock-postgresql.md) owns the database-image simplification. No note is archived or rejected by this slice.
+
+## Verification and limits
+
+The integrated Gradle `check` runs unit/module tests, real PostgreSQL integration, deployment scripts, repository validation, formatting, and required native Linux storage replay. `RepositoryPatchIntegrationIT` exercises live key capabilities, actual remote Git acknowledgement, immediate snapshot installation, private/public route isolation, and post-revocation rejection through the real Spring composition.
+
+On Windows, `linuxStorageTest` is a required `check` dependency. It runs the exact owning JUnit storage suite using a pinned Linux JDK image, staged compiled classes and runtime jars, no network, a low-privilege user, and a disposable native disk volume. It includes public-marker creation/replacement, actual directory synchronization, snapshot restoration, image-grant lifecycle, and injected synchronization failures that must prevent a real remote ref update. It fails on zero tests, skips, aborts, or failures. These are synchronization and fault-order tests, not a simulated host power loss. Linux CI executes those tests directly through the normal test task. Local unsupported-platform tests do not substitute for native storage verification.
+
+Final browser, MCP client, deployment, and whole-product acceptance remain required by the phase-one record. These foundation checks do not establish that the installation is ready for daily use.
