@@ -57,6 +57,7 @@ test("editor inserts and previews new images relative to the pending destination
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { Editor } = await import("../components/editor");
+  const { ConfirmationProvider } = await import("../components/confirmation");
   const container = window.document.createElement("div");
   window.document.body.append(container);
   const root = createRoot(container as unknown as HTMLDivElement);
@@ -113,15 +114,17 @@ test("editor inserts and previews new images relative to the pending destination
   });
   await act(async () =>
     root.render(
-      <Editor
-        identity={{
-          accountId: "owner",
-          workspaceId: "workspace",
-          role: "OWNER",
-          capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
-        }}
-        onDirtyChange={() => {}}
-      />,
+      <ConfirmationProvider>
+        <Editor
+          identity={{
+            accountId: "owner",
+            workspaceId: "workspace",
+            role: "OWNER",
+            capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
+          }}
+          onDirtyChange={() => {}}
+        />
+      </ConfirmationProvider>,
     ),
   );
   await act(async () => {

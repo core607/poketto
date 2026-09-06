@@ -5,6 +5,7 @@ import { date } from "../lib/format";
 import { message } from "./admin";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
+import { useConfirmation } from "./confirmation";
 export type Member = {
   accountId: string;
   loginName: string;
@@ -18,6 +19,7 @@ type Invitation = {
   used: boolean;
 };
 export function Members() {
+  const confirm = useConfirmation();
   const memberPage = useAdminPage<Member>("/api/admin/members");
   const members = memberPage.items;
   const invitationPage = useAdminPage<Invitation>("/api/admin/invitations");
@@ -149,12 +151,14 @@ export function Members() {
                   <button
                     className="text-button"
                     disabled={pending}
-                    onClick={() => {
+                    onClick={async () => {
                       if (
                         member.active &&
-                        !window.confirm(
-                          "停用后，这位成员和关联密钥将无法访问空间。确认停用？",
-                        )
+                        !(await confirm({
+                          title: "停用成员？",
+                          description: `停用「${member.loginName}」后，这位成员和关联密钥将无法访问空间。`,
+                          confirmLabel: "确认停用",
+                        }))
                       )
                         return;
                       void update(member, { active: !member.active });
