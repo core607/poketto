@@ -16,7 +16,7 @@ Build the reproducible runtime with Java 26:
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs,
 and a SHA-256 manifest. Copy that directory, `probe.py`, `rejected_peer.py`, and the corresponding
-worker and launcher sources to isolated host staging. The probe verifies every
+worker, launcher, `resource_pool.py` and `native_pool.py` sources to isolated host staging. The probe verifies every
 manifest entry before running. It never stages operator settings or credentials.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's
@@ -49,7 +49,10 @@ source immutability, cancellation and revocation through the actual adapter,
 worker restart with its sole Java session slot occupied, and lease expiry after
 abrupt Java process loss. A test-only
 observer records failed synthetic initialization output without changing worker
-results. The supervisor uses production `UMask=0077`.
+results. The supervisor uses production `UMask=0077` and a disposable finite
+resource slice shared with its transient commands. The separate
+[aggregate pool probe](../executor-service/README.md#verification) checks retained
+tmpfs charges and deployment preflight without replacing this SRT acceptance.
 
 Run the same probe with `--fixture-parent /var/lib` to compare filesystem
 topologies without weakening ownership or sandbox checks. SRT 0.0.75 restores

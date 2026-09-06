@@ -71,7 +71,7 @@ def run_suite(source, report):
         if importlib.metadata.version(package) != version:
             raise RuntimeError('Required executor dependency version does not match its pin: ' + package)
     sys.path.insert(0, str(source))
-    suite = unittest.defaultTestLoader.discover(str(source), pattern='test_worker.py')
+    suite = unittest.defaultTestLoader.discover(str(source), pattern='test_*.py')
     runner = unittest.TextTestRunner(verbosity=2, resultclass=ReportResult)
     result = runner.run(suite)
     if result.testsRun < 12:

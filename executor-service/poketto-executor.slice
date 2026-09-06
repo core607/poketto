@@ -1,0 +1,10 @@
+[Unit]
+Description=Aggregate budget for isolated repository execution
+
+[Slice]
+# Bounded examples; size the pool through a private systemd drop-in before installation.
+MemoryAccounting=yes
+MemoryMax=2G
+MemorySwapMax=0
+TasksMax=256
+CPUQuota=200%

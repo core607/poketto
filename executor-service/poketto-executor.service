@@ -5,6 +5,7 @@ After=local-fs.target
 [Service]
 Type=simple
 User=root
+Slice=poketto-executor.slice
 UMask=0077
 ExecStart=/opt/poketto-executor/venv/bin/python /opt/poketto-executor/worker.py --config /etc/poketto-executor/config.json
 ExecStopPost=/opt/poketto-executor/venv/bin/python /opt/poketto-executor/worker.py --config /etc/poketto-executor/config.json --cleanup

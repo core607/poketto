@@ -33,6 +33,17 @@ count, output, temporary storage, and repository storage are bounded outside
 the command. Only one command runs per session. Session and request admission
 have explicit bounds. Sandbox failure never invokes an ordinary subprocess.
 
+A dedicated systemd slice supplies the aggregate memory, swap, process and CPU
+budget. The root supervisor and every transient command explicitly use the same
+slice; per-command limits alone cannot bound tmpfs pages retained after a command
+exits or bundles copied by the supervisor. The slice owns the quota values, while
+worker configuration names it. Startup and new operations verify actual cgroup
+membership and finite kernel limits. A prefix drop-in is insufficient because
+an omitted installation step could place commands outside the pool. Cleanup and
+revocation remain available when resource validation fails. The worker reference
+owns installation and the isolated retained-memory probe; examples do not replace
+real corpus sizing.
+
 Cancellation and revocation stop the entire systemd unit. Short signed renewal
 leases also expire when Spring fails or communication stops. Revocation and
 pre-initialization cancellation establish tombstones before cleanup begins.

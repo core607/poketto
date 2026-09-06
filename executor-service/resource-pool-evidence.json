@@ -1,0 +1,33 @@
+{
+  "scope": "Isolated systemd resource pool; not SRT, production sizing, or client acceptance",
+  "platform": {
+    "systemd": "249",
+    "kernel": "Linux 5.15",
+    "cgroupVersion": 2
+  },
+  "sourceSha256": {
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "resource_pool_probe.py": "1d46c57956c31dede2febe397c5fd637d62ce84212ba0e75f43232d75f4080c2",
+    "native_pool.py": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed"
+  },
+  "rawEvidenceSha256": "05ad70e22f4a70bc53ed590610151036ebcd4f895e222e2381946e26e61576b2",
+  "checks": {
+    "unprivilegedPreflightStatus": 0,
+    "outsidePoolStatus": 1,
+    "nonrootSupervisorStatus": 1,
+    "unlimitedMemoryStatus": 1
+  },
+  "syntheticMemory": {
+    "poolBytes": 100663296,
+    "tmpfsBytes": 134217728,
+    "firstWriterExit": 0,
+    "retainedFileBytes": 33554432,
+    "parentAfterFirstExitBytes": 33857536,
+    "secondWriterRequestedBytes": 83886080,
+    "secondWriterExit": 1,
+    "parentOomKillDelta": 1,
+    "parentAfterUnmountBytes": 155648
+  },
+  "result": "PASS",
+  "cleanup": "PASS"
+}

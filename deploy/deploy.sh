@@ -492,6 +492,10 @@ check_executor() {
     for key in POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST; do
         [[ "${!key:-}" = /* ]] || fail "$key must be an absolute path to an installed host executor prerequisite"
     done
+    systemctl is-active --quiet poketto-executor.service \
+        || fail "the installed poketto-executor.service must be active before enabling execution"
+    python3 /opt/poketto-executor/resource_pool.py --service poketto-executor.service \
+        || fail "the installed executor requires a verified finite aggregate resource pool"
     runtime="$POKETTO_EXECUTOR_RUNTIME_DIR_HOST"
     staging="$POKETTO_EXECUTOR_STAGING_DIR_HOST"
     signing="$POKETTO_EXECUTOR_SIGNING_KEY_HOST"
@@ -509,8 +513,6 @@ check_executor() {
     [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ] \
         || fail "executor signing key must already exist and be owned by the application uid"
     [ "$(stat -c %a "$signing")" = 600 ] || fail "executor signing key must have mode 0600"
-    systemctl is-active --quiet poketto-executor.service \
-        || fail "the installed poketto-executor.service must be active before enabling execution"
     check_free_space "$staging"
 }
 

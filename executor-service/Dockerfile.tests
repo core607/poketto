@@ -4,6 +4,6 @@ COPY requirements.txt /suite/requirements.txt
 RUN python -m venv /venv && /venv/bin/python -I -m pip --isolated --require-virtualenv \
     --disable-pip-version-check install --no-deps --only-binary=:all: \
     --index-url https://pypi.org/simple --timeout 30 --retries 2 -r /suite/requirements.txt
-COPY worker.py test_worker.py run_tests.py /suite/
+COPY worker.py resource_pool.py test_worker.py test_resource_pool.py run_tests.py /suite/
 USER 65534:65534
 ENTRYPOINT ["/venv/bin/python", "-I", "/suite/run_tests.py", "--suite", "--report", "/reports/TEST-executor-service.xml"]

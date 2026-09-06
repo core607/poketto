@@ -45,7 +45,11 @@ def main():
         assert target.is_relative_to(runtime) and digest(target) == expected
     assert expected_files == {str(path.relative_to(runtime)) for path in runtime.rglob('*')
                               if path.is_file() and path.name != 'manifest.sha256'}
+    sys.path.insert(0, str(worker_source))
+    from native_pool import NativePool
+    from resource_pool import check_service
     token = uuid.uuid4().hex[:8]
+    resource_pool = NativePool(token)
     root = Path(tempfile.mkdtemp(prefix='poketto-java-native-', dir=args.fixture_parent))
     os.chmod(root, 0o751)
     app_user, exec_user = 'pkt-japp-' + token, 'pkt-jexec-' + token
@@ -56,7 +60,7 @@ def main():
     config_path = root / 'worker.json'
     worker_config = None
     evidence = []
-    for name in ('worker.py', 'launcher.py'):
+    for name in ('worker.py', 'launcher.py', 'resource_pool.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -80,7 +84,8 @@ worker.main()
         print(json.dumps(record), flush=True)
 
     def start_worker():
-        run(['systemd-run', '--quiet', '--unit', supervisor,
+        run(['systemd-run', '--quiet', '--unit', supervisor, '--slice', resource_pool.name,
+             '-p', 'User=root',
              '-p', 'Environment=PYTHONPATH=' + str(tools / 'python'),
              '-p', 'UMask=0077',
              '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {config_path} --cleanup',
@@ -102,6 +107,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             # A stopped supervisor can leave its socket inode behind until the new bind.
             if subprocess.run(['runuser', '-u', app_user, '--', '/usr/bin/python3', '-c', hello,
                                str(root / 'runtime/control.sock')], capture_output=True, timeout=3).returncode == 0:
+                check_service(supervisor + '.service')
                 return
             time.sleep(.1)
         raise AssertionError('Worker did not become ready')
@@ -169,6 +175,8 @@ with socket.socket(socket.AF_UNIX) as connection:
                 request_file.unlink()
                 response = root / 'control/response.tmp'
                 response.write_text(json.dumps({'id': request['id'], 'ok': True}))
+                os.chmod(response, 0o600)
+                os.chown(response, app_account.pw_uid, app_account.pw_gid)
                 response.replace(root / 'control/response.json')
             time.sleep(.02)
         reader.join(timeout=5)
@@ -180,6 +188,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
     try:
+        resource_pool.start()
         for user in (app_user, exec_user):
             run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
             created_users.append(user)
@@ -211,7 +220,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'socketPath': str(root / 'runtime/control.sock'), 'publicKey': str(root / 'public.pem'),
             'toolsRoot': str(tools), 'launcher': str(root / 'launcher.py'), 'execUser': exec_user,
             'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
-            'unitPrefix': 'poketto-exec-j' + token + '-', 'supervisorUnit': supervisor + '.service',
+            'unitPrefix': 'poketto-exec-j' + token + '-', 'supervisorUnit': supervisor + '.service', 'resourceSlice': resource_pool.name,
             'leaseSeconds': 15, 'renewAfterSeconds': 5, 'maxRequests': 4096, 'maxConnections': 32,
             'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
@@ -221,6 +230,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         start_worker()
         fake_source = root / 'fake-peer.py'
         shutil.copyfile(Path(__file__).with_name('rejected_peer.py'), fake_source)
+        os.chmod(fake_source, 0o644)
         fake_observation = root / 'fake-inbox/observation.json'
         run(['systemd-run', '--quiet', '--unit', fake_unit, '-p', 'User=' + app_user,
              '/usr/bin/python3', str(fake_source), str(root / 'fake-inbox/fake.sock'), str(fake_observation)])
@@ -231,43 +241,51 @@ with socket.socket(socket.AF_UNIX) as connection:
         (root / 'fake-inbox/fake.sock').rename(fake_socket)
         os.chown(fake_socket, 0, app_account.pw_gid)
         os.chmod(fake_socket, 0o660)
-        (root / 'java.json').write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
+        java_config = root / 'java.json'
+        java_config.write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
             'commit': commit, 'control': str(root / 'control')}))
+        os.chmod(java_config, 0o600)
+        os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         execute_java('main')
         execute_java('abandon')
         no_processes(wait=22)
         passed('java-process-loss-expires-real-worker-lease')
         control({'operation': 'assert-source-unchanged'})
         print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
+            'resourcePoolSha256': digest(root / 'resource_pool.py'),
+            'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only'}), flush=True)
     finally:
-        diagnostic = root / 'initialization.json'
-        if diagnostic.exists():
-            result = json.loads(diagnostic.read_text())
-            print(json.dumps({'syntheticInitializationDiagnostic': {'exitCode': result['exitCode'],
-                'reason': result['terminationReason'], 'stderr': result['stderr'][:4000]}}), flush=True)
-        if process is not None and process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
-        for unit in (app_unit, fake_unit, supervisor):
-            subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=25)
-            subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=10)
-        if worker_config is not None:
-            cleanup = subprocess.run([sys.executable, str(root / 'worker.py'), '--config', str(config_path), '--cleanup'], capture_output=True, timeout=30)
-            sessions = root / 'runtime/sessions'
-            assert not sessions.exists() or not list(sessions.iterdir())
-            mounts = run(['findmnt', '-rn', '-o', 'TARGET']).splitlines()
-            assert not any(value == str(root) or value.startswith(str(root) + '/') for value in mounts)
-        for user in reversed(created_users):
-            account = pwd.getpwnam(user)
-            assert subprocess.run(['pgrep', '-u', str(account.pw_uid)], capture_output=True).returncode == 1
-            run(['userdel', user])
-        assert root.parent == Path(args.fixture_parent) and root.name.startswith('poketto-java-native-')
-        shutil.rmtree(root)
+        try:
+            diagnostic = root / 'initialization.json'
+            if diagnostic.exists():
+                result = json.loads(diagnostic.read_text())
+                print(json.dumps({'syntheticInitializationDiagnostic': {'exitCode': result['exitCode'],
+                    'reason': result['terminationReason'], 'stderr': result['stderr'][:4000]}}), flush=True)
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+            for unit in (app_unit, fake_unit, supervisor):
+                subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=25)
+                subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=10)
+            if worker_config is not None:
+                cleanup = subprocess.run([sys.executable, str(root / 'worker.py'), '--config', str(config_path), '--cleanup'], capture_output=True, timeout=30)
+                sessions = root / 'runtime/sessions'
+                assert not sessions.exists() or not list(sessions.iterdir())
+                mounts = run(['findmnt', '-rn', '-o', 'TARGET']).splitlines()
+                assert not any(value == str(root) or value.startswith(str(root) + '/') for value in mounts)
+            for user in reversed(created_users):
+                account = pwd.getpwnam(user)
+                assert subprocess.run(['pgrep', '-u', str(account.pw_uid)], capture_output=True).returncode == 1
+                run(['userdel', user])
+            assert root.parent == Path(args.fixture_parent) and root.name.startswith('poketto-java-native-')
+            shutil.rmtree(root)
+        finally:
+            resource_pool.close()
         print(json.dumps({'cleanup': 'PASS'}), flush=True)
 
 
