@@ -85,17 +85,26 @@ class OriginAndBodyFilterTests {
     }
 
     @Test
-    void repositoryAndAssetEntrancesKeepTheirLargerLimits() throws Exception {
+    void administrationBodiesRemainUnconsumedForTheIdentityAndAdmissionFilters() throws Exception {
         for (String path :
                 new String[] {"/api/admin/repository/patch", "/api/admin/repository/preview", "/api/admin/assets"}) {
             var called = new AtomicBoolean();
-            filter.doFilter(
-                    unknown(path, "x".repeat(16385), "application/json"),
-                    new MockHttpServletResponse(),
-                    (wrapped, ignored) -> {
-                        assertThat(wrapped.getInputStream().readAllBytes()).hasSize(16385);
-                        called.set(true);
-                    });
+            var request = new MockHttpServletRequest("POST", path) {
+                @Override
+                public long getContentLengthLong() {
+                    return -1;
+                }
+
+                @Override
+                public jakarta.servlet.ServletInputStream getInputStream() {
+                    throw new AssertionError("administration body read before identity and admission");
+                }
+            };
+            request.setContentType("application/json");
+            filter.doFilter(request, new MockHttpServletResponse(), (wrapped, ignored) -> {
+                assertThat(wrapped).isSameAs(request);
+                called.set(true);
+            });
             assertThat(called).isTrue();
         }
     }

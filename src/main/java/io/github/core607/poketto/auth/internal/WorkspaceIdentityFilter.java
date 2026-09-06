@@ -61,10 +61,11 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
             } else {
                 String path = AuthHttpErrors.path(request);
                 var authentication = SecurityContextHolder.getContext().getAuthentication();
-                if ((path.startsWith("/api/admin/") || path.startsWith("/api/private/") || path.equals("/api/auth/me"))
-                        && authentication != null
-                        && authentication.getPrincipal() instanceof AuthPrincipal principal) {
-                    if (principal.kind() != AuthPrincipal.Kind.ACCOUNT) {
+                if (path.startsWith("/api/admin/") || path.startsWith("/api/private/") || path.equals("/api/auth/me")) {
+                    if (authentication == null
+                            || !authentication.isAuthenticated()
+                            || !(authentication.getPrincipal() instanceof AuthPrincipal principal)
+                            || principal.kind() != AuthPrincipal.Kind.ACCOUNT) {
                         AuthHttpErrors.write(response, 401);
                         return;
                     }
