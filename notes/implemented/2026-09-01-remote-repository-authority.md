@@ -17,7 +17,7 @@ Every production workspace has one private remote Git repository. Its `main` ref
 
 The primary single-server profile and the proposed serverless profile use the same internal `RepositoryAuthority` port. Neither supports local Git authority or falls back to local disk. `<data-dir>/workspaces/<workspace-id>/content` is a disposable workspace-scoped cache selected only from a validated `WorkspaceId`.
 
-Each read fetches and resolves remote `main`, resets the cache to that exact commit, removes local untracked and ignored files, and reads the pinned tree. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next read or write; local cache edits are not content. Public requests do not perform this read: the [validated content snapshot](2026-09-04-validated-content-snapshot.md) performs it on a refresh schedule and serves the last commit that passed validation.
+Materialized reads fetch and resolve remote `main`, reset the cache to that exact commit, remove local untracked and ignored files, and read the pinned tree. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next authoritative read or write; local cache edits are not content. Public requests do not perform this read: the [validated content snapshot](2026-09-04-validated-content-snapshot.md) performs it on a refresh schedule and serves the last commit that passed validation.
 
 ### Writes and failure semantics
 
@@ -48,6 +48,10 @@ The adapter does not persist a Git remote in cache configuration and fetches ove
 
 The cache retains fetched Git objects, so a warm read negotiates current `main` but receives no unchanged image or history objects. `poketto.repository.cache-max-workspaces` bounds materialized workspace caches. On first access beyond the bound, the least-recently-used idle cache is removed; an active cache is never evicted. Cache deletion, eviction, dirty local state, and an empty-disk restart do not change authoritative content.
 
+Exact image reads and image metadata scans use a synchronous `ObjectReader` operation over the existing cache. Opening the repository holds the workspace mutex briefly; the callback reads explicit commit and blob ids after releasing it, without fetching, checking out files, or changing refs. The cache remains active until both the reader and repository have closed, including callback failure and cancellation. This lifetime prevents eviction during a read; it does not reserve an idle source cache for the lifetime of a previously issued image grant.
+
+A remote ref update, including a force push or an unborn `main`, preserves already fetched objects. Transitioning to unborn `main` removes the local ref, index entries, and materialized files without deleting the object database. Existing immutable readers can finish while the new empty snapshot takes effect. This operation does not change publication or workspace authorization: callers still choose and authorize the exact commit before reading, and the public page resolution callback retains its existing snapshot installation lock.
+
 SRT does not receive this cache or the authority binding. [Repository-native retrieval and sandboxed execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) owns full-copy, commit-pinned execution workspaces.
 
 ## Alternatives considered
@@ -71,6 +75,7 @@ The application owns disposable cache directories completely. Direct authoring h
 ## Verification
 
 - `ContentRepositoryBootstrapTests` covers missing binding, empty remote materialization, cache deletion plus process replacement, direct owner pushes, local-cache discard, cache eviction, address and credential redaction, and the absence of the remote address from cache metadata.
+- `ImmutableRepositoryReadTests` blocks an exact blob payload read while withdrawing publication or removing remote `main`, verifies active-reader eviction exclusion, and checks pin cleanup after opening failure, callback failure, and cancellation. The required Linux storage replay runs these tests on a native Linux filesystem.
 - `DocumentWriteRecoveryTests` uses real disposable bare remotes to cover lost-success response reconciliation, an unverifiable ambiguous result, residue of a write interrupted before the root commit staying out of the next candidate, and two independent application caches advancing the same base with one success and one conflict.
 - `ContentRepositoryScanTests` and `DocumentWriteServiceTests` run the existing read, revision, validation, attribution, and workspace-isolation contract through the remote-authority port.
 - A representative nested Markdown plus 256 KiB image fixture records cold and warm latency, object bytes, cache bytes, and heap deltas. The local reference run recorded 264073 cold object bytes and zero additional warm object bytes; timing and heap observations remain environment-specific test output rather than product thresholds.
