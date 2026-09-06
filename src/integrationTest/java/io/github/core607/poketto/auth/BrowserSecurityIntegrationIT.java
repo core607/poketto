@@ -5,10 +5,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
@@ -255,6 +257,113 @@ class BrowserSecurityIntegrationIT {
             assertThat(cookie).startsWith("POKETTO_SESSION=").contains("Secure", "HttpOnly", "SameSite=Strict");
         });
         assertThat(response.headers().firstValue("cache-control")).contains("no-store");
+    }
+
+    @Test
+    void liveChunkedInitializationRejectsMaxPlusOneBeforeCreatingOwner() throws Exception {
+        HttpClient client =
+                HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+        HttpResponse<String> csrf = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/csrf"))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(csrf.statusCode()).isEqualTo(200);
+        JsonNode token = json.readTree(csrf.body());
+        String cookie = csrf.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
+        String payload = json.writeValueAsString(
+                Map.of("initializationToken", INITIALIZATION_TOKEN, "login", "chunk-owner", "password", secret()));
+        int padding = 16384 - payload.getBytes(StandardCharsets.UTF_8).length;
+        for (String overLimit :
+                java.util.List.of(payload + " ".repeat(padding + 1), " ".repeat(padding + 1) + payload)) {
+            byte[] bytes = overLimit.getBytes(StandardCharsets.UTF_8);
+            HttpResponse<String> rejected = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/initialize"))
+                            .header("Origin", ORIGIN)
+                            .header("Cookie", cookie)
+                            .header(
+                                    token.get("headerName").stringValue(),
+                                    token.get("token").stringValue())
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(bytes)))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+                    .isZero();
+            assertThat(jdbc.queryForObject(
+                            "select count(*) from auth_initialization where initialized_at is not null", Integer.class))
+                    .isZero();
+            assertThat(rejected.statusCode())
+                    .as("chunked body with %s bytes", bytes.length)
+                    .isEqualTo(413);
+            assertThat(rejected.body()).doesNotContain(INITIALIZATION_TOKEN, "chunk-owner");
+        }
+        byte[] exact = (" ".repeat(padding) + payload).getBytes(StandardCharsets.UTF_8);
+        HttpResponse<String> accepted = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/initialize"))
+                        .header("Origin", ORIGIN)
+                        .header("Cookie", cookie)
+                        .header(
+                                token.get("headerName").stringValue(),
+                                token.get("token").stringValue())
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(exact)))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(accepted.statusCode()).isEqualTo(201);
+        assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void liveChunkedFormRejectsOverflowWithoutLoggingInAndAcceptsExactLimit() throws Exception {
+        String password = secret();
+        auth.initializeOwner(INITIALIZATION_TOKEN, "form-owner", password);
+        HttpClient client =
+                HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+        HttpResponse<String> csrf = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/csrf"))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(csrf.statusCode()).isEqualTo(200);
+        JsonNode token = json.readTree(csrf.body());
+        String cookie = csrf.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
+        String form = "username=form-owner&password=" + password + "&padding=";
+        int padding = 16384 - form.getBytes(StandardCharsets.UTF_8).length;
+        for (int size : new int[] {16385, 16384}) {
+            byte[] bytes = (form + "x".repeat(padding + size - 16384)).getBytes(StandardCharsets.UTF_8);
+            HttpResponse<String> response = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/login"))
+                            .header("Origin", ORIGIN)
+                            .header("Cookie", cookie)
+                            .header(
+                                    token.get("headerName").stringValue(),
+                                    token.get("token").stringValue())
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(bytes)))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode())
+                    .as("chunked login body size %s", bytes.length)
+                    .isEqualTo(size == 16385 ? 413 : 204);
+            assertThat(response.body()).doesNotContain(password, "form-owner", "padding");
+            if (size == 16385) {
+                assertThat(response.headers().allValues("set-cookie")).isEmpty();
+                HttpResponse<String> me = client.send(
+                        HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/me"))
+                                .header("Cookie", cookie)
+                                .GET()
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
+                assertThat(me.statusCode()).isEqualTo(401);
+                assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+                        .isEqualTo(1);
+            } else {
+                assertThat(response.headers().allValues("set-cookie"))
+                        .anyMatch(value -> !value.startsWith(cookie + ";"));
+            }
+        }
     }
 
     @Test
