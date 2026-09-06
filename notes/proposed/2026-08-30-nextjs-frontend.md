@@ -3,6 +3,8 @@
 Date: 2026-08-30
 Status: Proposed
 
+The [blog and browser administration](../implemented/2026-09-06-blog-browser-interface.md) record describes the implemented presentation and local browser acceptance entrance. Deployment integration, production resource measurements and release acceptance remain part of this proposal.
+
 [Phase-one delivery](2026-09-05-phase-one-daily-use.md) includes the public blog and Markdown administration interface with real-browser evidence. Visitor-Q&A controls are excluded from that delivery.
 
 ## Problem
