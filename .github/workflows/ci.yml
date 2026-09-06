@@ -48,7 +48,7 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@12.0.2
 
-      - name: Set up Python for isolated executor tests
+      - name: Set up Python for executor and proxy tests
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12.14"
@@ -64,6 +64,7 @@ jobs:
           path: |
             build/reports/
             build/test-results/
+            build/proxy-forwarding/
           if-no-files-found: ignore
           retention-days: 7
 

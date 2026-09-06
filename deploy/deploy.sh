@@ -44,6 +44,7 @@ CONFIG_KEYS=(
     POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST
     POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
     POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN POKETTO_GATEWAY_DIR_HOST POKETTO_GATEWAY_UID
+    POKETTO_NETWORK_SUBNET POKETTO_GATEWAY_INTERNAL_IP
     POKETTO_FRONTEND_MEMORY POKETTO_GATEWAY_MEMORY POKETTO_APP_CPUS POKETTO_DB_CPUS POKETTO_FRONTEND_CPUS POKETTO_GATEWAY_CPUS
     POKETTO_ASSETS_CACHE_MAX_BYTES POKETTO_ASSETS_MAX_GRANTS
     POKETTO_EXECUTOR_ENABLED POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST
@@ -287,6 +288,32 @@ check_directories() {
 
 }
 
+ipv4_number() {
+    local address="$1" a b c d part
+    [[ "$address" =~ ^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] || return 1
+    IFS=. read -r a b c d <<< "$address"
+    for part in "$a" "$b" "$c" "$d"; do [ "$part" -le 255 ] || return 1; done
+    printf '%s' "$(( (a << 24) | (b << 16) | (c << 8) | d ))"
+}
+
+check_proxy_network() {
+    local cidr="$POKETTO_NETWORK_SUBNET" address prefix network gateway mask last
+    [[ "$cidr" =~ ^([^/]+)/([1-9]|[12][0-9]|30)$ ]] || fail "POKETTO_NETWORK_SUBNET must be a private IPv4 CIDR with usable host addresses"
+    address="${BASH_REMATCH[1]}"; prefix="${BASH_REMATCH[2]}"
+    network="$(ipv4_number "$address")" || fail "POKETTO_NETWORK_SUBNET must contain a canonical IPv4 address"
+    gateway="$(ipv4_number "$POKETTO_GATEWAY_INTERNAL_IP")" || fail "POKETTO_GATEWAY_INTERNAL_IP must be one canonical IPv4 address"
+    mask=$(( (0xffffffff << (32 - prefix)) & 0xffffffff ))
+    [ "$((network & mask))" = "$network" ] || fail "POKETTO_NETWORK_SUBNET must start at its network address"
+    if ! { [ "$prefix" -ge 8 ] && [ "$((network >> 24))" = 10 ]; } \
+        && ! { [ "$prefix" -ge 12 ] && [ "$((network >> 20))" = 2753 ]; } \
+        && ! { [ "$prefix" -ge 16 ] && [ "$((network >> 16))" = 49320 ]; }; then
+        fail "POKETTO_NETWORK_SUBNET must lie entirely within RFC1918 private space"
+    fi
+    last=$(( network | (0xffffffff ^ mask) ))
+    [ "$gateway" -gt "$((network + 1))" ] && [ "$gateway" -lt "$last" ] \
+        || fail "POKETTO_GATEWAY_INTERNAL_IP must be inside the subnet, excluding network, bridge and broadcast addresses"
+}
+
 load_configuration() {
     local missing=() key i
     [ -f "$COMPOSE_FILE" ] || fail "missing $COMPOSE_FILE"
@@ -309,7 +336,8 @@ load_configuration() {
             POSTGRES_PASSWORD POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME \
             POKETTO_REPOSITORY_PASSWORD POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST \
             POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE POKETTO_GATEWAY_DIR_HOST \
-            POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN; do
+            POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN \
+            POKETTO_NETWORK_SUBNET POKETTO_GATEWAY_INTERNAL_IP; do
         [ -n "${!key:-}" ] || missing+=("$key")
     done
     [ ${#missing[@]} -eq 0 ] || fail "missing values in $ENV_FILE: ${missing[*]}"
@@ -333,6 +361,7 @@ load_configuration() {
         || fail "POKETTO_PUBLIC_DOMAIN must be one lowercase DNS name without a scheme, port or path"
     case "${POKETTO_EXECUTOR_ENABLED:-false}" in true|false) ;; *) fail "POKETTO_EXECUTOR_ENABLED must be true or false" ;; esac
     [ -f "$ROOT/Caddyfile" ] || fail "missing $ROOT/Caddyfile"
+    check_proxy_network
     check_directories
 
     HTTP_BIND=127.0.0.1

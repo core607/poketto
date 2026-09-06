@@ -10,6 +10,7 @@
     @business path /api /api/* /mcp /mcp/*
     handle @business {
         reverse_proxy app:8080 {
+            header_up -X-Forwarded-Port
             flush_interval -1
         }
     }

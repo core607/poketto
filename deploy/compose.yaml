@@ -19,6 +19,8 @@ services:
       POKETTO_AUTH_INITIALIZATION_TOKEN: "${POKETTO_AUTH_INITIALIZATION_TOKEN:?initialization token is required}"
       POKETTO_SECURITY_ALLOWED_ORIGINS: "https://${POKETTO_PUBLIC_DOMAIN:?public domain is required}"
       POKETTO_SESSION_COOKIE_SECURE: "true"
+      SERVER_FORWARDHEADERSSTRATEGY: native
+      SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES: "${POKETTO_GATEWAY_INTERNAL_IP:?fixed gateway IPv4 is required}/32"
       POKETTO_ASSETS_CACHE_MAX_BYTES: "${POKETTO_ASSETS_CACHE_MAX_BYTES:-134217728}"
       POKETTO_ASSETS_MAX_GRANTS: "${POKETTO_ASSETS_MAX_GRANTS:-2048}"
       POKETTO_EXECUTOR_ENABLED: "false"
@@ -123,6 +125,9 @@ services:
         condition: service_healthy
     environment:
       POKETTO_PUBLIC_DOMAIN: "${POKETTO_PUBLIC_DOMAIN:?public domain is required}"
+    networks:
+      default:
+        ipv4_address: "${POKETTO_GATEWAY_INTERNAL_IP:?fixed gateway IPv4 is required}"
     ports:
       - "80:80"
       - "443:443"
@@ -155,3 +160,9 @@ services:
       timeout: 5s
       retries: 8
       start_period: 30s
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: "${POKETTO_NETWORK_SUBNET:?private IPv4 subnet is required}"

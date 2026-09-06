@@ -80,6 +80,8 @@ Every verified `main` commit publishes separate Spring and frontend images from 
 
 Caddy owns public HTTPS, forwards `/api` and `/mcp` to Spring and other paths to Next.js, and blocks the management entrance. Success requires healthy containers plus the local certificate-verified website and API. `deploy/transfer.sh` transfers both application images when the host cannot reach GHCR; the host still needs Docker Hub access or the exact cached database/gateway digests. Its `--pull --sync` mode synchronizes current stack files while acquiring application images on the host. Automatic deployment stays separately enabled through the production environment. The host executor is installed and tested independently before setting `POKETTO_EXECUTOR_ENABLED=true`; missing isolation prerequisites fail closed. See the [stack delivery record](notes/implemented/2026-09-05-blog-stack-delivery.md) for image identity, configuration, persistence and remaining real-installation acceptance.
 
+Set `POKETTO_NETWORK_SUBNET` to an unused RFC1918 IPv4 CIDR and `POKETTO_GATEWAY_INTERNAL_IP` to Caddy's fixed address in it, excluding the network, first usable bridge and broadcast addresses. This deployment alone enables Tomcat forwarding and trusts only that gateway `/32`; Caddy rebuilds client address, protocol and host headers and removes `X-Forwarded-Port` before Spring. Other entry points explicitly default to `server.forward-headers-strategy=none`. `./gradlew proxyForwardingCheck` requires Docker and Python 3.10+ and tests real per-client and shared-account login limits through the shipped gateway configuration; it is mandatory in `check` and CI.
+
 ## License
 
 Code and project documents: [Apache-2.0](LICENSE).
