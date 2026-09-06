@@ -55,16 +55,19 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
     private final AuthService auth;
     private final Clock clock;
     private final BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> installAcknowledged;
+    private final BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> closePublication;
 
     JGitRepositoryPatchService(
             RepositoryAuthority authority,
             AuthService auth,
             Clock clock,
-            BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> installAcknowledged) {
+            BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> installAcknowledged,
+            BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> closePublication) {
         this.authority = authority;
         this.auth = auth;
         this.clock = clock;
         this.installAcknowledged = installAcknowledged;
+        this.closePublication = closePublication;
     }
 
     @Override
@@ -153,6 +156,9 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                     + attribution.trailerValue() + "\n");
                             ObjectId commit = inserter.insert(candidate);
                             inserter.flush();
+                            // Close the prior authorization before a remote outcome can become uncertain.
+                            // Failure to persist this marker must prevent the push itself.
+                            if (needsPublish) closePublication.accept(workspace, snapshot);
                             advancer.advance(commit.name());
                             acknowledged[0] = true;
                             boolean snapshotUpdated = false;

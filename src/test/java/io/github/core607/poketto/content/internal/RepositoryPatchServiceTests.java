@@ -53,7 +53,8 @@ class RepositoryPatchServiceTests {
         doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get())
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());
-        return new JGitRepositoryPatchService(fixture.authority(), auth, Clock.systemUTC(), installed);
+        return new JGitRepositoryPatchService(
+                fixture.authority(), auth, Clock.systemUTC(), installed, (id, snapshot) -> {});
     }
 
     @Test

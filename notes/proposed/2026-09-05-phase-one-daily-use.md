@@ -41,6 +41,8 @@ Browser editing and `repo_patch` call the same workspace-authorized service. Eac
 
 `WRITE_PRIVATE` alone permits changes only to paths private or excluded both before and after the patch. Changes to existing or newly public content, public references, gallery reachability, or publication policy also require `PUBLISH`. Binary repository mutation is outside this text bridge. Upload acknowledgement and document-save acknowledgement remain separate.
 
+Before submitting a non-no-op publication-affecting patch, persist a closed public-snapshot marker under the workspace lock. A confirmed remote change followed by a local ref failure, or an indeterminate remote result, must not retain or restore the earlier public authorization. Acknowledged installation reopens service from the new snapshot; any failed public write leaves new public reads and grants unavailable until a successful authoritative refresh. Failure to persist the closed marker prevents the push. Previously issued image grants retain their original expiry, and private-only writes do not close unrelated public content.
+
 ## Identity and assets
 
 Spring Security owns one-time owner initialization protected by a separate initialization credential, adaptive password hashing, server-side sessions, logout, CSRF, and login throttling. Initialization cannot reopen after success. Invitations are single-use, workspace-bound, expiring member invitations. Suspension blocks new requests and revokes affected keys. Concurrent membership changes cannot remove the last active owner.

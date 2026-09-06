@@ -20,6 +20,7 @@ class RepositoryPatchConfiguration {
     @Bean
     RepositoryPatchService repositoryPatchService(
             RepositoryAuthority authority, AuthService auth, JGitPublicContentSnapshots snapshots) {
-        return new JGitRepositoryPatchService(authority, auth, Clock.systemUTC(), snapshots::installAcknowledged);
+        return new JGitRepositoryPatchService(
+                authority, auth, Clock.systemUTC(), snapshots::installAcknowledged, snapshots::closePublication);
     }
 }

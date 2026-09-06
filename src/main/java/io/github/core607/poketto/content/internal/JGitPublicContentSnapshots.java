@@ -83,6 +83,12 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         return result;
     }
 
+    /** Caller holds the workspace authority lock before submitting a publication-affecting write. */
+    void closePublication(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
+        snapshots.remove(workspaceId);
+        writeMarker(workspaceId, snapshot, clock.instant(), false);
+    }
+
     @Override
     public PublicContentSnapshot current(WorkspaceId workspaceId) {
         PublicContentSnapshot snapshot = snapshots.get(workspaceId);

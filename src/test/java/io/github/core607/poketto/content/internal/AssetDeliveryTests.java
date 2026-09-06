@@ -11,6 +11,11 @@ import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryTextChange;
+import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -22,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +40,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -141,6 +149,107 @@ class AssetDeliveryTests {
         assertNotFound(() -> service.readPublicImage(WorkspaceId.random(), grant));
         clock.now = clock.now.plusSeconds(300);
         assertNotFound(() -> service.readPublicImage(workspace, grant));
+    }
+
+    @Test
+    void acknowledgedWithdrawalWithLockedCacheRefClosesNewReadsAndOfflineRestoration() throws Exception {
+        var delegate = new JGitRemoteGitTransport();
+        AtomicBoolean offline = new AtomicBoolean();
+        RemoteGitTransport transport = new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                if (offline.get()) throw new RemoteGitTransportException("synthetic offline authority");
+                return delegate.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
+                PushStatus status = delegate.pushMain(repository, binding, expected, candidate);
+                try {
+                    Path lock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
+                    Files.createDirectories(lock.getParent());
+                    Files.writeString(lock, "synthetic local ref lock after remote acknowledgement");
+                } catch (java.io.IOException failure) {
+                    throw new RuntimeException(failure);
+                }
+                return status;
+            }
+        };
+        var fixture = new RemoteRepositoryFixture(directory, transport);
+        var files = files("article.md", "# Public\n![image](image.png)");
+        files.put("other.md", text("# Another public page\n![image](image.png)"));
+        files.put("image.png", png(1));
+        var base = fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        String issued = token(service.publicDocument(workspace, "/article")
+                .orElseThrow()
+                .media()
+                .images()
+                .get("image.png"));
+        var patches = new JGitRepositoryPatchService(
+                fixture.authority(), auth, clock, snapshots::installAcknowledged, snapshots::closePublication);
+        var change = new RepositoryTextChange(
+                RepositoryPublishingPolicy.PATH,
+                false,
+                Optional.of(DocumentRevision.sha256(files.get(RepositoryPublishingPolicy.PATH))),
+                Optional.of("enabled: false\nmode: public-by-default\n"));
+        assertThatThrownBy(() ->
+                        patches.apply(actor, workspace, new RepositoryPatch(Optional.of(base.name()), List.of(change))))
+                .isInstanceOf(RepositoryWriteAmbiguousException.class)
+                .hasMessageContaining("remote acknowledged");
+        assertThat(fixture.remoteHead(workspace)).isNotEqualTo(base);
+        // Previously issued authorization remains valid for its exact bytes, even after withdrawal.
+        assertThat(service.readPublicImage(workspace, issued).bytes()).isEqualTo(png(1));
+        offline.set(true);
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertThatThrownBy(() -> snapshots.current(workspace))
+                        .as("known remote withdrawal must close public search and listings")
+                        .isInstanceOf(ContentRepositoryException.class),
+                () -> assertThatThrownBy(() -> service.publicDocument(workspace, "/other"))
+                        .as("known remote withdrawal must prevent new image grants")
+                        .isInstanceOf(ContentRepositoryException.class),
+                () -> assertThatThrownBy(
+                                () -> snapshots(fixture, Duration.ofHours(1)).ensureReady(workspace))
+                        .as("offline restart must not restore the earlier OPEN marker")
+                        .isInstanceOf(ContentRepositoryException.class));
+        offline.set(false);
+        Files.delete(fixture.cache(workspace).resolve(".git/refs/heads/main.lock"));
+        assertThat(snapshots.refresh(workspace).articles()).isEmpty();
+        assertThat(service.publicDocument(workspace, "/other")).isEmpty();
+        assertThat(service.readPublicImage(workspace, issued).bytes()).isEqualTo(png(1));
+        clock.now = clock.now.plusSeconds(300);
+        assertNotFound(() -> service.readPublicImage(workspace, issued));
+    }
+
+    @Test
+    void failureToPersistClosedPublicationPreventsSubmittingThePublicPatch() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("article.md", "# Original");
+        var base = fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        service(fixture, snapshots);
+        var patches = new JGitRepositoryPatchService(
+                fixture.authority(), auth, clock, snapshots::installAcknowledged, snapshots::closePublication);
+        Path blockedMarker = fixture.cache(workspace).resolve(".git/poketto-public-snapshot.tmp");
+        Files.createDirectory(blockedMarker);
+        var change = new RepositoryTextChange(
+                "article.md",
+                false,
+                Optional.of(DocumentRevision.sha256(files.get("article.md"))),
+                Optional.of("# Edited"));
+        assertThatThrownBy(() ->
+                        patches.apply(actor, workspace, new RepositoryPatch(Optional.of(base.name()), List.of(change))))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("snapshot state cannot be recorded");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+        Files.delete(blockedMarker);
+        assertThat(snapshots.refresh(workspace).articles())
+                .extracting(article -> article.title())
+                .containsExactly("Original");
     }
 
     @Test
