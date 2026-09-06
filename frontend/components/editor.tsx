@@ -2,7 +2,11 @@
 import { useConfirmation } from "./confirmation";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/browser-api";
-import type { RepositoryFile, RepositoryTree } from "../lib/types";
+import type {
+  GalleryStatus,
+  RepositoryFile,
+  RepositoryTree,
+} from "../lib/types";
 import { saveRepositoryFile } from "../lib/repository-write";
 import { Markdown } from "./markdown";
 import { message, type Identity } from "./admin";
@@ -16,6 +20,7 @@ type Preview = {
   images?: Record<string, string>;
   links?: Record<string, string>;
   gallery?: { src: string; alt: string }[];
+  galleryStatus: GalleryStatus;
 };
 export function Editor({
   identity,
@@ -441,7 +446,11 @@ export function Editor({
                           links={preview.links}
                           preview
                         />
-                        <Gallery items={preview.gallery} preview />
+                        <Gallery
+                          items={preview.gallery}
+                          status={preview.galleryStatus}
+                          preview
+                        />
                       </>
                     )}
                   </div>

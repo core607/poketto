@@ -58,7 +58,7 @@ export default async function Home({
             images={root.images}
             links={root.links}
           />
-          <Gallery items={root.gallery} />
+          <Gallery items={root.gallery} status={root.galleryStatus} />
         </section>
       )}
       <div className="section-heading">

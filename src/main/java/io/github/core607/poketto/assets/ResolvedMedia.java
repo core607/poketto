@@ -5,11 +5,23 @@ import java.util.Map;
 
 /** Only mapped destinations may become local links or images; absent image mappings never fall back to authored URLs. */
 public record ResolvedMedia(
-        String body, String commit, Map<String, String> links, Map<String, String> images, List<GalleryImage> gallery) {
+        String body,
+        String commit,
+        Map<String, String> links,
+        Map<String, String> images,
+        List<GalleryImage> gallery,
+        GalleryStatus galleryStatus) {
     public ResolvedMedia {
         links = Map.copyOf(links);
         images = Map.copyOf(images);
         gallery = List.copyOf(gallery);
+        java.util.Objects.requireNonNull(galleryStatus);
+    }
+
+    public enum GalleryStatus {
+        COMPLETE,
+        PARTIAL,
+        UNAVAILABLE
     }
 
     public record GalleryImage(String src, String alt) {}

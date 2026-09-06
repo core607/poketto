@@ -98,6 +98,9 @@ test("editor inserts and previews new images relative to the pending destination
         images: {},
         links: {},
         gallery: [],
+        galleryStatus: request.path.startsWith("archive/")
+          ? "UNAVAILABLE"
+          : "PARTIAL",
       });
     }
     throw new Error(`Unexpected test API: ${url.pathname}`);
@@ -131,6 +134,7 @@ test("editor inserts and previews new images relative to the pending destination
     await new Promise((resolve) => setTimeout(resolve, 550));
   });
   assert.equal(previews.at(-1)?.path, "notes/a.md");
+  assert.match(container.textContent!, /部分同目录图片未展示。/);
   const button = (label: string) => {
     const value = [...container.querySelectorAll("button")].find(
       (item) => item.textContent?.trim() === label,
@@ -152,6 +156,7 @@ test("editor inserts and previews new images relative to the pending destination
     await new Promise((resolve) => setTimeout(resolve, 550));
   });
   assert.equal(previews.at(-1)?.path, "archive/a.md");
+  assert.match(container.textContent!, /同目录图片暂时无法加载。/);
   assert.equal(previews.at(-1)?.body, original);
   assert.equal(
     container.querySelector(".asset-shelf"),

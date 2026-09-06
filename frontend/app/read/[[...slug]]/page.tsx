@@ -66,7 +66,7 @@ export default async function Article({
         </div>
       </header>
       <Markdown source={value.body} images={value.images} links={value.links} />
-      <Gallery items={value.gallery} />
+      <Gallery items={value.gallery} status={value.galleryStatus} />
       <footer className="article-footer">
         最后更新于 {date(value.updatedAt)}
         <a href="/">更多记录 ↗</a>
