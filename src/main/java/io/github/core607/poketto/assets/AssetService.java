@@ -30,10 +30,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Shared browser/MCP authorization, exact image reads, and snapshot-bound rendering references. */
 public final class AssetService {
+    private static final Logger log = LoggerFactory.getLogger(AssetService.class);
     private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
+    private static final Duration MINIMUM_REUSABLE_LIFETIME = Duration.ofMinutes(1);
+    private static final Duration CAPACITY_WARNING_INTERVAL = Duration.ofMinutes(1);
     private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
     private final AuthService auth;
@@ -48,6 +53,8 @@ public final class AssetService {
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Grant> grants = new HashMap<>();
     private final Map<GrantKey, String> reusable = new HashMap<>();
+    private Instant capacityWarningAt;
+    private long capacityOmissions;
 
     public AssetService(
             AuthService auth,
@@ -167,7 +174,10 @@ public final class AssetService {
         });
     }
 
-    /** Article lookup, current-public validation and every grant mint share the installation lock. */
+    /**
+     * Article lookup, current-public validation and every grant mint share the installation lock.
+     * Grant capacity exhaustion omits affected image mappings without failing the article.
+     */
     public Optional<ResolvedPublicDocument> publicDocument(WorkspaceId workspace, String route) {
         return snapshots.withCurrent(workspace, snapshot -> {
             var article = snapshot.articles().stream()
@@ -280,8 +290,12 @@ public final class AssetService {
             total[0] += image.size();
             if (total[0] > PAGE_IMAGE_BYTES)
                 throw new ContentRepositoryException("page image resolution byte bound exceeded");
-            String token = mint(new GrantKey(workspace, commit, page, target, actor), expires);
-            String url = (actor.isEmpty() ? "/api/public/assets/" : "/api/admin/assets/images/") + token;
+            Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor), expires);
+            if (token.isEmpty()) {
+                resolved.put(target, null);
+                return null;
+            }
+            String url = (actor.isEmpty() ? "/api/public/assets/" : "/api/admin/assets/images/") + token.orElseThrow();
             resolved.put(target, url);
             return url;
         } catch (AssetStorageException unavailable) {
@@ -328,15 +342,25 @@ public final class AssetService {
                 image.bytes());
     }
 
-    private synchronized String mint(GrantKey key, Instant snapshotExpires) {
+    private synchronized Optional<String> mint(GrantKey key, Instant snapshotExpires) {
         Instant now = clock.instant();
         purge(now);
         Instant expires =
                 now.plus(GRANT_LIFETIME).isBefore(snapshotExpires) ? now.plus(GRANT_LIFETIME) : snapshotExpires;
         if (!now.isBefore(expires)) throw notFound();
         String token = reusable.get(key);
-        if (token != null && !grants.get(token).expires().isAfter(expires)) return token;
-        if (grants.size() >= maxGrants) throw new ContentRepositoryException("image grant capacity exceeded");
+        if (token != null) {
+            Instant previousExpires = grants.get(token).expires();
+            // A snapshot near expiry cannot give a replacement token a longer useful lifetime.
+            if (!previousExpires.isAfter(expires)
+                    && (previousExpires.equals(expires)
+                            || !previousExpires.isBefore(now.plus(MINIMUM_REUSABLE_LIFETIME))))
+                return Optional.of(token);
+        }
+        if (grants.size() >= maxGrants) {
+            warnCapacity(now);
+            return Optional.empty();
+        }
         byte[] entropy = new byte[32];
         do {
             random.nextBytes(entropy);
@@ -344,7 +368,22 @@ public final class AssetService {
         } while (grants.containsKey(token));
         grants.put(token, new Grant(key, now, expires));
         reusable.put(key, token);
-        return token;
+        return Optional.of(token);
+    }
+
+    /** Called under the grant lock; warnings contain no workspace, path, identity or token. */
+    private void warnCapacity(Instant now) {
+        if (capacityOmissions < Long.MAX_VALUE) capacityOmissions++;
+        if (capacityWarningAt == null
+                || now.isBefore(capacityWarningAt)
+                || !now.isBefore(capacityWarningAt.plus(CAPACITY_WARNING_INTERVAL))) {
+            log.warn(
+                    "Image grant capacity exhausted; omitted {} image authorization(s) since the previous warning (capacity {})",
+                    capacityOmissions,
+                    maxGrants);
+            capacityOmissions = 0;
+            capacityWarningAt = now;
+        }
     }
 
     private synchronized Grant grant(WorkspaceId workspace, String token, String actor) {

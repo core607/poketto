@@ -46,7 +46,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 class AssetDeliveryTests {
     @TempDir
@@ -351,6 +354,177 @@ class AssetDeliveryTests {
     }
 
     @Test
+    void healthyGrantsAreReusedAndRenewalKeepsOldLinksUntilTheirOriginalExpiry() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("article.md", "![image](image.png)");
+        files.put("image.png", png(1));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        Instant issued = clock.now;
+        String original = articleToken(service, workspace, "/article", "image.png");
+        clock.now = issued.plusSeconds(240);
+        assertThat(articleToken(service, workspace, "/article", "image.png")).isEqualTo(original);
+        clock.now = issued.plusSeconds(241);
+        String renewed = articleToken(service, workspace, "/article", "image.png");
+        assertThat(renewed).isNotEqualTo(original);
+        clock.now = issued.plusSeconds(299);
+        for (int i = 0; i < 130; i++)
+            assertThat(articleToken(service, workspace, "/article", "image.png"))
+                    .isEqualTo(renewed);
+        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        clock.now = issued.plusSeconds(300);
+        assertNotFound(() -> service.readPublicImage(workspace, original));
+        assertThat(articleToken(service, workspace, "/article", "image.png")).isEqualTo(renewed);
+        assertThat(service.readPublicImage(workspace, renewed).bytes()).isEqualTo(png(1));
+        clock.now = issued.plusSeconds(541);
+        assertNotFound(() -> service.readPublicImage(workspace, renewed));
+    }
+
+    @Test
+    void snapshotExpiryRemainsTheLimitWhenRenewalCannotImproveTheLifetime() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("article.md", "![image](image.png)");
+        files.put("image.png", png(1));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofSeconds(10));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        String original = articleToken(service, workspace, "/article", "image.png");
+        clock.now = clock.now.plusSeconds(9);
+        assertThat(articleToken(service, workspace, "/article", "image.png")).isEqualTo(original);
+        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        clock.now = clock.now.plusSeconds(1);
+        assertNotFound(() -> service.readPublicImage(workspace, original));
+        assertThatThrownBy(() -> service.publicDocument(workspace, "/article"))
+                .isInstanceOf(ContentRepositoryException.class);
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void capacityOmitsOnlyNewImagesAndPreservesExistingGrantsAcrossWorkspaces(CapturedOutput output) throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("plain.md", "# Still readable");
+        for (int i = 0; i < 128; i++) files.put("article-" + i + ".md", text("![image](image.png)"));
+        files.put("image.png", png(1));
+        fixture.commitRemote(workspace, files);
+        WorkspaceId other = WorkspaceId.random();
+        var otherFiles = files("article.md", "# Other workspace\n![known](known.png)\n![new](new.png)");
+        otherFiles.put("known.png", png(2));
+        otherFiles.put("new.png", png(3));
+        fixture.commitRemote(other, otherFiles);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        snapshots.refresh(other);
+        var service = service(fixture, snapshots);
+        String original = articleToken(service, workspace, "/article-0", "image.png");
+        for (int i = 1; i < 127; i++) articleToken(service, workspace, "/article-" + i, "image.png");
+        var partial = service.publicDocument(other, "/article").orElseThrow();
+        assertThat(partial.media().body()).contains("# Other workspace", "![new](new.png)");
+        assertThat(partial.media().images()).containsOnlyKeys("known.png");
+        String otherGrant = token(partial.media().images().get("known.png"));
+        for (int i = 0; i < 8; i++)
+            assertThat(service.publicDocument(workspace, "/article-127")
+                            .orElseThrow()
+                            .media()
+                            .images())
+                    .isEmpty();
+        assertThat(service.publicDocument(workspace, "/plain")
+                        .orElseThrow()
+                        .article()
+                        .title())
+                .isEqualTo("Still readable");
+        assertThat(articleToken(service, workspace, "/article-0", "image.png")).isEqualTo(original);
+        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        assertThat(service.readPublicImage(other, otherGrant).bytes()).isEqualTo(png(2));
+        assertNotFound(() -> service.readPublicImage(other, original));
+        assertNotFound(() -> service.readPublicImage(workspace, otherGrant));
+        assertThat(output.getAll().lines().filter(line -> line.contains("Image grant capacity exhausted")))
+                .hasSize(1);
+        clock.now = clock.now.plusSeconds(60);
+        assertThat(service.publicDocument(workspace, "/article-127")
+                        .orElseThrow()
+                        .media()
+                        .images())
+                .isEmpty();
+        assertThat(output.getAll())
+                .contains("omitted 9 image authorization(s)")
+                .doesNotContain(workspace.toString(), other.toString(), original, otherGrant, "new.png");
+        clock.now = clock.now.plusSeconds(240);
+        assertNotFound(() -> service.readPublicImage(workspace, original));
+        assertNotFound(() -> service.readPublicImage(other, otherGrant));
+        assertThat(service.publicDocument(other, "/article")
+                        .orElseThrow()
+                        .media()
+                        .images())
+                .containsOnlyKeys("known.png", "new.png");
+        assertThat(service.publicDocument(workspace, "/article-127")
+                        .orElseThrow()
+                        .media()
+                        .images())
+                .containsKey("image.png");
+    }
+
+    @Test
+    void aWithdrawalAlreadyHoldingTheAuthorityLockPreventsNearExpiryRenewal() throws Exception {
+        var delegate = new JGitRemoteGitTransport();
+        AtomicBoolean pauseFetch = new AtomicBoolean();
+        CountDownLatch fetching = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        RemoteGitTransport transport = new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                if (pauseFetch.get()) {
+                    fetching.countDown();
+                    try {
+                        if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("fetch release timed out");
+                    } catch (InterruptedException interrupted) {
+                        throw new RuntimeException(interrupted);
+                    }
+                }
+                return delegate.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
+                return delegate.pushMain(repository, binding, expected, candidate);
+            }
+        };
+        var fixture = new RemoteRepositoryFixture(directory, transport);
+        var files = files("article.md", "![image](image.png)");
+        files.put("image.png", png(1));
+        fixture.commitRemote(workspace, files);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = service(fixture, snapshots);
+        String original = articleToken(service, workspace, "/article", "image.png");
+        clock.now = clock.now.plusSeconds(299);
+        files.put(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-by-default\n"));
+        fixture.commitRemote(workspace, files);
+        pauseFetch.set(true);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var withdrawing = pool.submit(() -> snapshots.refresh(workspace));
+            assertThat(fetching.await(5, TimeUnit.SECONDS)).isTrue();
+            var renewing = pool.submit(() -> service.publicDocument(workspace, "/article"));
+            try {
+                assertThatThrownBy(() -> renewing.get(100, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(TimeoutException.class);
+            } finally {
+                release.countDown();
+            }
+            assertThat(withdrawing.get(5, TimeUnit.SECONDS).articles()).isEmpty();
+            assertThat(renewing.get(5, TimeUnit.SECONDS)).isEmpty();
+        } finally {
+            release.countDown();
+        }
+        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        clock.now = clock.now.plusSeconds(1);
+        assertNotFound(() -> service.readPublicImage(workspace, original));
+    }
+
+    @Test
     void privatePreviewUsesRepositoryParserAndRechecksCurrentAuthorizationForEveryImage() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var files = files("private/article.md", "# Private");
@@ -481,6 +655,14 @@ class AssetDeliveryTests {
 
     private static String token(String url) {
         return url.substring(url.lastIndexOf('/') + 1);
+    }
+
+    private static String articleToken(AssetService service, WorkspaceId workspace, String route, String image) {
+        return token(service.publicDocument(workspace, route)
+                .orElseThrow()
+                .media()
+                .images()
+                .get(image));
     }
 
     private static AuthPrincipal actor() {
