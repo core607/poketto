@@ -90,7 +90,7 @@ test("safe URL rules reject protocols, external image grants, and normalized tra
   );
   assert.equal(
     relativePath("笔记/旅行/index.md", "笔记/图片/雨.png"),
-    "../图片/雨.png",
+    "../%E5%9B%BE%E7%89%87/%E9%9B%A8.png",
   );
   assert.equal(xml("<&\"'"), "&lt;&amp;&quot;&apos;");
 });

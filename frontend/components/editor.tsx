@@ -69,12 +69,12 @@ export function Editor({
   useEffect(() => {
     setPreview({});
     setPreviewError("");
-    if (!file || unreadable) return;
+    if (!file || unreadable || !path) return;
     let active = true;
     const timer = window.setTimeout(() => {
       void api<Preview>("/api/admin/repository/preview", {
         method: "POST",
-        body: { path: file.path, body: source, commit: file.commit },
+        body: { path, body: source, commit: file.commit },
       })
         .then((value) => {
           if (active) setPreview(value);
@@ -87,7 +87,7 @@ export function Editor({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [file?.path, file?.commit, source, previewVersion, unreadable]);
+  }, [path, file?.commit, source, previewVersion, unreadable]);
   async function open(target: string, discard = false) {
     if (
       dirty &&
@@ -442,8 +442,8 @@ export function Editor({
                 </div>
                 {writable && !busy && (
                   <AssetPicker
-                    key={file.path}
-                    path={file.path}
+                    key={path}
+                    path={path}
                     commit={file.commit}
                     onInsert={insert}
                   />
