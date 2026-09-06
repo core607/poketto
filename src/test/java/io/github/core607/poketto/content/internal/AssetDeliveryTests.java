@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
@@ -48,6 +50,7 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
@@ -464,6 +467,66 @@ class AssetDeliveryTests {
                         .media()
                         .images())
                 .containsKey("image.png");
+    }
+
+    @Test
+    void aBlockedCapacityWarningDoesNotBlockAnotherWorkspacesIssuedImage() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = files("article-0.md", "![image](image.png)");
+        for (int i = 1; i < 128; i++) files.put("article-" + i + ".md", text("![image](image.png)"));
+        files.put("image.png", png(1));
+        fixture.commitRemote(workspace, files);
+        WorkspaceId other = WorkspaceId.random();
+        var otherFiles = files("article.md", "![other](image.png)");
+        byte[] otherImage = png(2);
+        otherFiles.put("image.png", otherImage);
+        fixture.commitRemote(other, otherFiles);
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        snapshots.refresh(other);
+        var service = service(fixture, snapshots);
+        String otherGrant = articleToken(service, other, "/article", "image.png");
+        for (int i = 0; i < 127; i++) articleToken(service, workspace, "/article-" + i, "image.png");
+
+        var logging = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var appender = new AppenderBase<ILoggingEvent>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                if (!event.getMessage().startsWith("Image grant capacity exhausted;")) return;
+                logging.countDown();
+                try {
+                    if (!release.await(15, TimeUnit.SECONDS)) throw new AssertionError("warning release timed out");
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(exception);
+                }
+            }
+        };
+        var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(AssetService.class);
+        appender.setContext(logger.getLoggerContext());
+        appender.start();
+        logger.addAppender(appender);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var warning = pool.submit(() -> service.publicDocument(workspace, "/article-127"));
+            try {
+                assertThat(logging.await(5, TimeUnit.SECONDS)).isTrue();
+                var reading = pool.submit(() -> service.readPublicImage(other, otherGrant));
+                assertThat(reading.get(5, TimeUnit.SECONDS).bytes()).isEqualTo(otherImage);
+                assertThat(warning).isNotDone();
+            } finally {
+                release.countDown();
+                assertThat(warning.get(5, TimeUnit.SECONDS)
+                                .orElseThrow()
+                                .media()
+                                .images())
+                        .isEmpty();
+            }
+        } finally {
+            release.countDown();
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test
