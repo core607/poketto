@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from compose_ipam import unused_subnet, verify_compose_ipam
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "build/acceptance/runtime"
@@ -90,6 +91,7 @@ for sig in (signal.SIGINT, signal.SIGTERM):
 OUTPUT.mkdir(parents=True, exist_ok=True)
 evidence["inputSha256"] = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in (
     "deploy/compose.yaml", "deploy/Caddyfile", "deploy/tests/proxy_client.py", "deploy/tests/validate_proxy_forwarding.py",
+    "deploy/tests/compose_ipam.py",
     "src/integrationTest/java/io/github/core607/poketto/acceptance/ProxyRequestProbeConfiguration.java",
 )}
 try:
@@ -101,16 +103,8 @@ try:
     for image in (JAVA, PYTHON, pins["POKETTO_DB_IMAGE"], pins["POKETTO_GATEWAY_IMAGE"]):
         if docker("image", "inspect", image, check=False).returncode:
             docker("pull", image, timeout=240)
-    # Docker refuses overlap with existing networks; never alter another network to make room.
-    for _ in range(8):
-        subnet = ipaddress.ip_network(f"10.{secrets.randbelow(200) + 20}.{secrets.randbelow(250)}.0/24")
-        result = docker("network", "create", "--label", f"{LABEL}={RUN}", "--subnet", subnet, NETWORK, check=False)
-        if result.returncode == 0:
-            break
-        if "overlap" not in result.stderr.lower():
-            raise RuntimeError(result.stderr.strip())
-    else:
-        raise RuntimeError("no unused synthetic test subnet after eight attempts")
+    subnet = unused_subnet(docker, 24)
+    pool = ipaddress.ip_network(f"{subnet.network_address + 128}/25")
     gateway_ip = str(subnet.network_address + 10)
     password = secrets.token_urlsafe(24)
     environment = os.environ.copy()
@@ -123,6 +117,7 @@ try:
         "POKETTO_REPOSITORY_USERNAME": "synthetic", "POKETTO_REPOSITORY_PASSWORD": "synthetic",
         "POKETTO_DATA_DIR_HOST": "/unused-proxy-data", "POKETTO_DB_DIR_HOST": "/unused-proxy-db",
         "POKETTO_GATEWAY_DIR_HOST": "/unused-proxy-gateway", "POKETTO_NETWORK_SUBNET": str(subnet),
+        "POKETTO_NETWORK_DYNAMIC_RANGE": str(pool),
         "POKETTO_GATEWAY_INTERNAL_IP": gateway_ip,
     })
     # Consume production Compose's actual environment/IP binding rather than a copied test configuration.
@@ -135,6 +130,15 @@ try:
     actual_gateway = configuration["services"]["gateway"]["networks"]["default"]["ipv4_address"]
     expect("gateway static address", actual_gateway, gateway_ip)
     expect("production subnet", configuration["networks"]["default"]["ipam"]["config"][0]["subnet"], str(subnet))
+    ipam = configuration["networks"]["default"]["ipam"]["config"][0]
+    expect("production dynamic pool", ipam["ip_range"], str(pool))
+    evidence["composeAllocation"] = verify_compose_ipam(ROOT, OUTPUT, docker, environment, PYTHON, RUN)
+    # The real forwarding topology uses the resolved production subnet AND dynamic pool.
+    # Docker rejects overlapping existing networks; never alter another network to make room.
+    docker("network", "create", "--label", f"{LABEL}={RUN}", "--subnet", ipam["subnet"],
+           "--ip-range", ipam["ip_range"], NETWORK)
+    actual_ipam = json.loads(docker("network", "inspect", NETWORK).stdout)[0]["IPAM"]["Config"][0]
+    expect("real forwarding network dynamic pool", actual_ipam["IPRange"], ipam["ip_range"])
     expect("production loopback binding", configuration["services"]["app"]["ports"][0]["host_ip"], "127.0.0.1")
     common = ["--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only"]
     db = start("db", pins["POKETTO_DB_IMAGE"], ["--network-alias", "db", "--memory", "384m", "--cpus", "0.75",

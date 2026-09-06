@@ -166,3 +166,4 @@ networks:
     ipam:
       config:
         - subnet: "${POKETTO_NETWORK_SUBNET:?private IPv4 subnet is required}"
+          ip_range: "${POKETTO_NETWORK_DYNAMIC_RANGE:?isolated dynamic IPv4 pool is required}"

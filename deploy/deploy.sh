@@ -44,7 +44,7 @@ CONFIG_KEYS=(
     POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST
     POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
     POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN POKETTO_GATEWAY_DIR_HOST POKETTO_GATEWAY_UID
-    POKETTO_NETWORK_SUBNET POKETTO_GATEWAY_INTERNAL_IP
+    POKETTO_NETWORK_SUBNET POKETTO_NETWORK_DYNAMIC_RANGE POKETTO_GATEWAY_INTERNAL_IP
     POKETTO_FRONTEND_MEMORY POKETTO_GATEWAY_MEMORY POKETTO_APP_CPUS POKETTO_DB_CPUS POKETTO_FRONTEND_CPUS POKETTO_GATEWAY_CPUS
     POKETTO_ASSETS_CACHE_MAX_BYTES POKETTO_ASSETS_MAX_GRANTS
     POKETTO_EXECUTOR_ENABLED POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST
@@ -298,7 +298,8 @@ ipv4_number() {
 
 check_proxy_network() {
     local cidr="$POKETTO_NETWORK_SUBNET" address prefix network gateway mask last
-    [[ "$cidr" =~ ^([^/]+)/([1-9]|[12][0-9]|30)$ ]] || fail "POKETTO_NETWORK_SUBNET must be a private IPv4 CIDR with usable host addresses"
+    local pool pool_prefix pool_mask pool_last
+    [[ "$cidr" =~ ^([^/]+)/([1-9]|1[0-9]|2[0-8])$ ]] || fail "POKETTO_NETWORK_SUBNET must be a private IPv4 CIDR with at least 16 addresses (/28 or larger)"
     address="${BASH_REMATCH[1]}"; prefix="${BASH_REMATCH[2]}"
     network="$(ipv4_number "$address")" || fail "POKETTO_NETWORK_SUBNET must contain a canonical IPv4 address"
     gateway="$(ipv4_number "$POKETTO_GATEWAY_INTERNAL_IP")" || fail "POKETTO_GATEWAY_INTERNAL_IP must be one canonical IPv4 address"
@@ -312,6 +313,17 @@ check_proxy_network() {
     last=$(( network | (0xffffffff ^ mask) ))
     [ "$gateway" -gt "$((network + 1))" ] && [ "$gateway" -lt "$last" ] \
         || fail "POKETTO_GATEWAY_INTERNAL_IP must be inside the subnet, excluding network, bridge and broadcast addresses"
+    [[ "$POKETTO_NETWORK_DYNAMIC_RANGE" =~ ^([^/]+)/([1-9]|[12][0-9])$ ]] \
+        || fail "POKETTO_NETWORK_DYNAMIC_RANGE must be an IPv4 CIDR with at least eight addresses (/29 or larger)"
+    address="${BASH_REMATCH[1]}"; pool_prefix="${BASH_REMATCH[2]}"
+    pool="$(ipv4_number "$address")" || fail "POKETTO_NETWORK_DYNAMIC_RANGE must contain a canonical IPv4 address"
+    pool_mask=$(( (0xffffffff << (32 - pool_prefix)) & 0xffffffff ))
+    [ "$((pool & pool_mask))" = "$pool" ] || fail "POKETTO_NETWORK_DYNAMIC_RANGE must start at its network address"
+    pool_last=$(( pool | (0xffffffff ^ pool_mask) ))
+    [ "$pool_prefix" -gt "$prefix" ] && [ "$pool" -ge "$network" ] && [ "$pool_last" -le "$last" ] \
+        || fail "POKETTO_NETWORK_DYNAMIC_RANGE must be a strict subnet of POKETTO_NETWORK_SUBNET"
+    { [ "$gateway" -lt "$pool" ] || [ "$gateway" -gt "$pool_last" ]; } \
+        || fail "POKETTO_GATEWAY_INTERNAL_IP must be outside POKETTO_NETWORK_DYNAMIC_RANGE"
 }
 
 load_configuration() {
@@ -337,7 +349,7 @@ load_configuration() {
             POKETTO_REPOSITORY_PASSWORD POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST \
             POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE POKETTO_GATEWAY_DIR_HOST \
             POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN \
-            POKETTO_NETWORK_SUBNET POKETTO_GATEWAY_INTERNAL_IP; do
+            POKETTO_NETWORK_SUBNET POKETTO_NETWORK_DYNAMIC_RANGE POKETTO_GATEWAY_INTERNAL_IP; do
         [ -n "${!key:-}" ] || missing+=("$key")
     done
     [ ${#missing[@]} -eq 0 ] || fail "missing values in $ENV_FILE: ${missing[*]}"
