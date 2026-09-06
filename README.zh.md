@@ -8,7 +8,7 @@
 
 开发中。[仓库创作基础](notes/implemented/2026-09-05-repository-authoring-foundations.md)提供任意路径 Markdown、文件级诊断、有界公开与私有搜索、发布策略、原子文本补丁、不可变本地图片存储和精确版本图片交付。远端 `main` 仍是权威；公开请求使用已验证快照，不会在请求中访问远端。[身份 HTTP 后端](notes/implemented/2026-09-06-workspace-identity-http.md)提供初始化、会话、邀请、成员与作用域 key。
 
-这些能力已有 HTTP API。博客与管理页面、Markdown 渲染、MCP 工具、沙箱执行及最终 HTTPS 安装仍待完成。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
+这些能力已有 HTTP 和 MCP API。`/mcp` 提供四个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。博客与管理页面、Markdown 渲染和最终 HTTPS 安装仍待完成。本地 worker 接入不代表最终部署拓扑已通过验收。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
 
 ## 适合谁
 
@@ -31,7 +31,7 @@ notes/               决策记录：proposed / implemented / rejected / archived
 
 ## 开发
 
-使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。
+使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。Linux 执行服务测试要求 Python 3.10+ 及 venv、pip；Windows 在固定版本的 Linux 容器中运行必需的协议与状态测试。
 
 应用启动需要 PostgreSQL 数据源、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。Flyway 会创建默认工作空间；应用将它绑定到远端 `main`，只在 `<data-dir>/workspaces/<workspace-id>/content` 物化一次性缓存。`POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` 与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS` 可以调整默认值为 32 个工作空间和 30 秒的限制；`POKETTO_REPOSITORY_REFRESH_SECONDS` 决定所服务内容多久对照远端 `main` 重新校验一次（默认 30 秒），`POKETTO_REPOSITORY_STALE_AFTER_SECONDS` 决定所服务内容最多多久没有成功重新校验，健康检查就会把它报告为停止服务（默认 3600 秒）。内容不可用时进程与刷新循环继续运行，但 readiness 报告停止服务，公开读取失败关闭。快照过期同样停止公开读取，最长允许沿用一小时。运行中的实例通过 `GET /actuator/health` 回应部署检查，并在 `GET /api/public/documents` 提供默认工作空间的公开文档；经 Poketto 的写入立即可见，合法的直接推送在下一次刷新后可见。
 
@@ -65,6 +65,14 @@ exclude:
 认证后的 `/api/admin/repository` 入口提供文件树、文件读取、搜索、预览与原子补丁。每个变更路径须在 base commit 下携带 revision 或明确的缺失条件；冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](notes/implemented/2026-09-05-repository-authoring-foundations.md)。
+
+## MCP 与隔离执行
+
+`/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。
+
+`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
+
+每个客户端执行会话固定于选定的 commit，即使共用 key 也有独立目录。补丁返回新 commit，不会切换旧执行目录；`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。[集成记录](notes/proposed/2026-09-05-local-execution-supervisor.md)区分可执行检查、已有合成证据和最终客户端与部署验收。
 
 ## 部署
 

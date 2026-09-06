@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Scope
 
-This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages, Markdown rendering, MCP transport and the production executor remain separate work. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
+This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages and Markdown rendering remain separate work. The [MCP and local execution record](../proposed/2026-09-05-local-execution-supervisor.md) owns the implemented transport and worker adapter, along with their remaining installation acceptance. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
 
 ## Repository and publication
 
@@ -43,7 +43,7 @@ Repository images are read-only Git objects, materialized on demand into a bound
 
 `index.md` owns its folder route. It supplies a non-recursive, filename-sorted gallery of eligible sibling images, excluding images already referenced by the body. Ordinary articles do not add neighboring images. Public media resolution excludes private or policy-excluded paths, including references from an otherwise public article. Preview uses the same Markdown destination and image rules, with private URLs requiring the current session.
 
-`GET /api/admin/assets` and `/api/admin/assets/repository` supply bounded image pages. Multipart uploads require `Idempotency-Key`; private preview and image reads remain under `/api/admin`. Public article responses supply media mappings and galleries for a future renderer, and `/api/public/images/{token}` serves the exact granted bytes. These JSON and image APIs do not implement blog pages, RSS, sitemap or Markdown HTML rendering.
+`GET /api/admin/assets` and `/api/admin/assets/repository` supply bounded image pages. Multipart uploads require `Idempotency-Key`; private preview and image reads remain under `/api/admin`. Public article responses supply media mappings and galleries for a future renderer, and `/api/public/assets/{token}` serves the exact granted bytes. These JSON and image APIs do not implement blog pages, RSS, sitemap or Markdown HTML rendering.
 
 ## Alternatives and related records
 

@@ -194,9 +194,8 @@ class BrowserSecurityIntegrationIT {
         String bearer = "Bearer " + key.get("token").stringValue();
         mvc.perform(get("/api/auth/me").header("Authorization", bearer)).andExpect(status().isUnauthorized());
         mvc.perform(post("/mcp").session(session.session())).andExpect(status().isUnauthorized());
-        // Authentication succeeds, but this backend has no MCP transport handler yet.
         MvcResult accepted = mvc.perform(post("/mcp").header("Authorization", bearer))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isBadRequest())
                 .andReturn();
         assertThat(accepted.getRequest().getSession(false)).isNull();
         mvc.perform(post("/mcp").header("Authorization", bearer).header("Origin", "https://unexpected.invalid"))

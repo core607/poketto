@@ -1,0 +1,4 @@
+cryptography==46.0.5
+cffi==2.0.0
+pycparser==2.23
+typing-extensions==4.16.0
