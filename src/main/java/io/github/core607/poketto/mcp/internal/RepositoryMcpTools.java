@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.AssetBytes;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthException;
@@ -195,6 +196,13 @@ final class RepositoryMcpTools {
             try {
                 sessions.resolve(exchange);
                 if (request.arguments() == null) throw new IllegalArgumentException();
+                if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
+                    try (var producer = scope.producer()) {
+                        return operation.apply(exchange, request.arguments());
+                    }
+                }
+                if (name.equals("get_asset") || name.equals("put_asset"))
+                    return error("UNAVAILABLE", "Image memory admission is unavailable.");
                 return operation.apply(exchange, request.arguments());
             } catch (AuthException | SecurityException exception) {
                 return error("DENIED", "Current workspace capability is required.");

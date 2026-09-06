@@ -54,7 +54,9 @@ class McpBoundsTests {
 
     @Test
     void fullBodyIsValidatedBeforeDispatchAndExactBytesAreConsumedOnlyOnce() throws Exception {
-        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var filter = new McpBodyLimitFilter(
+                new tools.jackson.databind.ObjectMapper(),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         byte[] oversized = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1];
         for (int attempt = 0; attempt < 5; attempt++) {
             var request = chunked(oversized);
@@ -63,9 +65,11 @@ class McpBoundsTests {
             assertThat(response.getStatus()).isEqualTo(413);
         }
         byte[] exact = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES];
-        java.util.Arrays.fill(exact, (byte) 93);
+        java.util.Arrays.fill(exact, (byte) ' ');
+        exact[0] = '{';
+        exact[1] = '}';
         filter.doFilter(chunked(exact), new MockHttpServletResponse(), (input, output) -> {
-            assertThat(input.getInputStream().read()).isEqualTo(93);
+            assertThat(input.getInputStream().read()).isEqualTo('{');
             byte[] remaining = input.getInputStream().readAllBytes();
             assertThat(java.util.Arrays.equals(exact, 1, exact.length, remaining, 0, remaining.length))
                     .isTrue();
@@ -123,7 +127,9 @@ class McpBoundsTests {
 
     @Test
     void bodyLimitEnforcesDeclaredAndChunkedBytesAndDoesNotResetOnRepeatedStreamAccess() throws Exception {
-        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var filter = new McpBodyLimitFilter(
+                new tools.jackson.databind.ObjectMapper(),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var declared = new MockHttpServletRequest("POST", "/mcp");
         declared.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
         var response = new MockHttpServletResponse();
@@ -146,7 +152,11 @@ class McpBoundsTests {
                 chunked, chunkedResponse, (request, output) -> fail("oversized chunked initialization reached SDK"));
         assertThat(chunkedResponse.getStatus()).isEqualTo(413);
         var valid = new MockHttpServletRequest("POST", "/mcp");
-        valid.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES]);
+        byte[] validBytes = new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES];
+        java.util.Arrays.fill(validBytes, (byte) ' ');
+        validBytes[0] = '{';
+        validBytes[1] = '}';
+        valid.setContent(validBytes);
         for (int i = 0; i < 5; i++) {
             filter.doFilter(
                     valid,
@@ -157,7 +167,9 @@ class McpBoundsTests {
 
     @Test
     void cancellationHasBoundedReservedAdmissionWhenAllDataPostsAreActive() throws Exception {
-        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var filter = new McpBodyLimitFilter(
+                new tools.jackson.databind.ObjectMapper(),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var held = new ArrayList<MockHttpServletRequest>();
         try {
             for (int i = 0; i < 4; i++) {

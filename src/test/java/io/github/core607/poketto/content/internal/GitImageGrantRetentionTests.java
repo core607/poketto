@@ -8,6 +8,7 @@ import static org.mockito.Mockito.*;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -368,7 +369,8 @@ class GitImageGrantRetentionTests {
                 directory.resolve("images"),
                 16L * 1024 * 1024,
                 128,
-                clock);
+                clock,
+                new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
     }
 
     private String publicToken(AssetService service) {

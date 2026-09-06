@@ -231,7 +231,9 @@ class PublicDocumentControllerTests {
                             .toAbsolutePath(),
                     16L * 1024 * 1024,
                     128,
-                    java.time.Clock.fixed(VERIFIED, java.time.ZoneOffset.UTC));
+                    java.time.Clock.fixed(VERIFIED, java.time.ZoneOffset.UTC),
+                    new io.github.core607.poketto.assets.ImageMemoryAdmission(
+                            256L * 1024 * 1024, 16, java.time.Duration.ZERO));
             return new PublicDocuments(snapshots, workspaces, assets);
         }
     }

@@ -1,6 +1,8 @@
 package io.github.core607.poketto.mcp.internal;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -58,8 +60,13 @@ class McpTransportConfiguration {
                 .mcpEndpoint("/mcp")
                 .maxSessions(maxSessions)
                 .sessionIdleTimeout(Duration.ofSeconds(idleSeconds))
-                .contextExtractor(request ->
-                        McpTransportContext.create(Map.of(McpSessions.IDENTITY_CONTEXT, sessions.currentIdentity())))
+                .contextExtractor(request -> {
+                    var context = new java.util.HashMap<String, Object>();
+                    context.put(McpSessions.IDENTITY_CONTEXT, sessions.currentIdentity());
+                    Object scope = request.servletRequest().getAttribute(ImageRequestScope.ATTRIBUTE);
+                    if (scope instanceof ImageRequestScope) context.put(ImageRequestScope.ATTRIBUTE, scope);
+                    return McpTransportContext.create(context);
+                })
                 .build();
     }
 
@@ -104,8 +111,9 @@ class McpTransportConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(tools.jackson.databind.ObjectMapper json) {
-        var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json));
+    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(
+            tools.jackson.databind.ObjectMapper json, ImageMemoryAdmission memory) {
+        var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json, memory));
         registration.setUrlPatterns(java.util.List.of("/mcp"));
         registration.setOrder(-99);
         registration.setAsyncSupported(true);

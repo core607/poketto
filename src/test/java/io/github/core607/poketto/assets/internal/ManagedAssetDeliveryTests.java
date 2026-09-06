@@ -76,7 +76,9 @@ class ManagedAssetDeliveryTests {
                 directory.resolve("cache"),
                 16L * 1024 * 1024,
                 128,
-                Clock.fixed(now, ZoneOffset.UTC));
+                Clock.fixed(now, ZoneOffset.UTC),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(
+                        256L * 1024 * 1024, 16, java.time.Duration.ZERO));
         var page = service.publicDocument(workspace, "/article").orElseThrow();
         String url = page.media().images().get(authored);
         assertThat(url).startsWith("/api/public/assets/");

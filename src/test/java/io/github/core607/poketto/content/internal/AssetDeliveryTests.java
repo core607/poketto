@@ -9,6 +9,7 @@ import ch.qos.logback.core.AppenderBase;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
@@ -445,7 +446,60 @@ class AssetDeliveryTests {
         verify(blobs, never()).read(argThat(blob -> blob.path().equals("image-8.png")));
     }
 
+    @Test
+    void memoryRejectedBodyImagesDoNotConsumeTheGalleryByteAllowance() throws Exception {
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        var store = mock(ManagedBlobStore.class);
+        var blobs = mock(RepositoryBlobReader.class);
+        var body = new StringBuilder("# Text remains\n");
+        for (int i = 0; i < 9; i++)
+            body.append("![Busy](managed:")
+                    .append(UUID.randomUUID())
+                    .append(":")
+                    .append("a".repeat(64))
+                    .append(")\n");
+        byte[] image = png(3);
+        RepositoryBlob candidate;
+        try (var formatter = new org.eclipse.jgit.lib.ObjectInserter.Formatter()) {
+            candidate = new RepositoryBlob(
+                    workspace,
+                    "b".repeat(40),
+                    "gallery.png",
+                    formatter
+                            .idFor(org.eclipse.jgit.lib.Constants.OBJ_BLOB, image)
+                            .name(),
+                    image.length,
+                    true);
+        }
+        when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any())).thenAnswer(call -> {
+            held.responseComplete();
+            return new SiblingImages(List.of(candidate), false);
+        });
+        when(blobs.read(candidate)).thenReturn(image);
+        try {
+            var media = pageService(blobs, store, body.toString(), memory)
+                    .publicDocument(workspace, "/")
+                    .orElseThrow()
+                    .media();
+            assertThat(media.body()).isEqualTo(body.toString());
+            assertThat(media.images()).isEmpty();
+            assertThat(media.gallery()).hasSize(1);
+            verifyNoInteractions(store);
+            assertThat(memory.rejectedRequests()).isEqualTo(9);
+            assertThat(memory.reservedBytes()).isZero();
+        } finally {
+            held.responseComplete();
+        }
+    }
+
     private AssetService pageService(RepositoryBlobReader blobs, ManagedBlobStore store, String body) {
+        return pageService(
+                blobs, store, body, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
+    }
+
+    private AssetService pageService(
+            RepositoryBlobReader blobs, ManagedBlobStore store, String body, ImageMemoryAdmission memory) {
         Instant now = clock.instant();
         var snapshot = new PublicContentSnapshot(
                 workspace,
@@ -466,7 +520,8 @@ class AssetDeliveryTests {
                 directory.resolve("page-cache"),
                 16L * 1024 * 1024,
                 128,
-                clock);
+                clock,
+                memory);
     }
 
     @Test
@@ -898,6 +953,52 @@ class AssetDeliveryTests {
     }
 
     @Test
+    void imagePressurePreservesTextAndSkipsImageValidationWithoutWaitingUnderRepositoryLocks() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        String body = "# Body survives\n![image](image.png)\n[next](next.md)";
+        var files = files("article.md", body);
+        files.put("next.md", text("# Next"));
+        files.put("image.png", png(7));
+        String commit = fixture.commitRemote(workspace, files).name();
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ofSeconds(5));
+        var service = service(fixture, snapshots, memory);
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        try {
+            var article = service.publicDocument(workspace, "/article").orElseThrow();
+            assertThat(article.media().body()).isEqualTo(body);
+            assertThat(article.media().links()).containsEntry("next.md", "/next");
+            assertThat(article.media().images()).isEmpty();
+            var preview = service.preview(actor, workspace, "article.md", body, Optional.of(commit));
+            assertThat(preview.body()).isEqualTo(body);
+            assertThat(preview.images()).isEmpty();
+            var inventory = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30);
+            assertThat(inventory.items()).isEmpty();
+            assertThat(inventory.diagnostics())
+                    .extracting(item -> item.code())
+                    .containsExactly("IMAGE_CAPACITY_UNAVAILABLE");
+            assertThat(memory.waitingRequests()).isZero();
+            assertThat(memory.rejectedRequests()).isEqualTo(3);
+            assertThat(directory.resolve("image-cache")).doesNotExist();
+        } finally {
+            held.responseComplete();
+        }
+        assertThat(service.publicDocument(workspace, "/article")
+                        .orElseThrow()
+                        .media()
+                        .images())
+                .containsOnlyKeys("image.png");
+        assertThat(service.preview(actor, workspace, "article.md", body, Optional.of(commit))
+                        .images())
+                .containsOnlyKeys("image.png");
+        assertThat(service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30)
+                        .items())
+                .hasSize(1);
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
     void privateInventoryValidatesActualMediaAndReportsInvalidCandidates() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("private/article.md", "# Private");
@@ -957,6 +1058,11 @@ class AssetDeliveryTests {
     }
 
     private AssetService service(RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots) {
+        return service(fixture, snapshots, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
+    }
+
+    private AssetService service(
+            RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, ImageMemoryAdmission memory) {
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(invocation -> {
             if (!authorized.get()) throw new SecurityException("authorization revoked");
             return ((Supplier<?>) invocation.getArgument(3)).get();
@@ -971,7 +1077,8 @@ class AssetDeliveryTests {
                 directory.resolve("image-cache"),
                 16L * 1024 * 1024,
                 128,
-                clock);
+                clock,
+                memory);
     }
 
     private JGitPublicContentSnapshots snapshots(RemoteRepositoryFixture fixture, Duration lifetime) {

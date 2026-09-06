@@ -231,7 +231,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
         checkDirectory(path.getParent());
         if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) throw unavailable();
         try (InputStream input = Files.newInputStream(path, READ, NOFOLLOW_LINKS)) {
-            byte[] bytes = input.readNBytes(limit + 1);
+            byte[] bytes = BoundedImageReads.read(input, limit + 1);
             if (bytes.length > limit) throw unavailable();
             return bytes;
         }

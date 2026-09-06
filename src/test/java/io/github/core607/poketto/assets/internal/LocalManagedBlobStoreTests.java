@@ -34,6 +34,27 @@ class LocalManagedBlobStoreTests {
     Path temp;
 
     @Test
+    void maximumOriginalIsExactAndLaterTruncationOrGrowthIsRejected() throws Exception {
+        var root = temp.resolve("originals");
+        var workspace = WorkspaceId.random();
+        var store = ManagedBlobStore.local(root);
+        byte[] bytes = paddedPng(ManagedBlobStore.MAX_UPLOAD_BYTES);
+        var asset = store.upload(workspace, KEY, new ByteArrayInputStream(bytes));
+        assertThat(store.read(workspace, asset.reference()).bytes()).isEqualTo(bytes);
+        Path original = root.resolve(workspace.toString())
+                .resolve("objects")
+                .resolve(asset.reference().assetId().toString())
+                .resolve("bytes");
+        try (var channel = java.nio.channels.FileChannel.open(original, java.nio.file.StandardOpenOption.WRITE)) {
+            channel.truncate(bytes.length - 1L);
+        }
+        assertReason(AssetStorageException.Reason.UNAVAILABLE, () -> store.read(workspace, asset.reference()));
+        Files.write(original, bytes);
+        Files.write(original, new byte[] {1}, java.nio.file.StandardOpenOption.APPEND);
+        assertReason(AssetStorageException.Reason.UNAVAILABLE, () -> store.read(workspace, asset.reference()));
+    }
+
+    @Test
     void preservesExactBytesAndReferenceAfterRestartForSupportedImageTypes() throws Exception {
         WorkspaceId workspace = WorkspaceId.random();
         ManagedBlobStore store = ManagedBlobStore.local(temp.resolve("originals"));
@@ -315,6 +336,24 @@ class LocalManagedBlobStoreTests {
         if (!ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), format, out))
             throw new IOException("writer unavailable");
         return out.toByteArray();
+    }
+
+    static byte[] paddedPng(int size) throws IOException {
+        byte[] small = image("png");
+        byte[] bytes = new byte[size];
+        int offset = small.length - 12;
+        int payload = size - small.length - 12;
+        System.arraycopy(small, 0, bytes, 0, offset);
+        ByteBuffer.wrap(bytes).putInt(offset, payload);
+        System.arraycopy(new byte[] {'t', 'E', 'X', 't'}, 0, bytes, offset + 4, 4);
+        java.util.Arrays.fill(bytes, offset + 8, offset + 8 + payload, (byte) 'x');
+        bytes[offset + 8] = 'p';
+        bytes[offset + 9] = 0;
+        var crc = new CRC32();
+        crc.update(bytes, offset + 4, payload + 4);
+        ByteBuffer.wrap(bytes).putInt(offset + 8 + payload, (int) crc.getValue());
+        System.arraycopy(small, small.length - 12, bytes, size - 12, 12);
+        return bytes;
     }
 
     private static void assertReason(
