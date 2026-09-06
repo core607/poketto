@@ -22,10 +22,12 @@ test("raw HTML and script links cannot enter rendered Markdown", () => {
 
 test("authored image URLs never become network requests without backend resolution", () => {
   const html = renderToStaticMarkup(
-    <Markdown source="![外链](https://remote.invalid/photo.png)\n\n![私有](../private/photo.png)" />,
+    <Markdown source="![外链](https://remote.invalid/photo.png)\n\n![私有](../private/photo.png)\n\n![托管图](managed:11111111-1111-4111-8111-111111111111:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)" />,
   );
   assert.doesNotMatch(html, /<img|src=/);
   assert.match(html, /暂无可用预览/);
+  assert.match(html, /托管图 · 暂无可用预览/);
+  assert.doesNotMatch(html, /managed:|private\/photo|remote\.invalid/);
 });
 
 test("public and authenticated previews use separate approved image entrances", () => {
