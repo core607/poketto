@@ -2,7 +2,7 @@
 
 Date: 2026-08-25
 
-The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path text reads, bounded public snapshots and search, atomic text patches, local managed storage and exact-version image delivery. The [identity HTTP backend](2026-09-06-workspace-identity-http.md) supplies browser authentication, invitations, memberships and scoped keys. These capabilities are exposed through HTTP APIs. Blog and administration pages, Markdown rendering, MCP tools, sandbox execution and final HTTPS installation remain pending.
+The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path text reads, bounded public snapshots and search, atomic text patches, local managed storage and exact-version image delivery. The [identity HTTP backend](2026-09-06-workspace-identity-http.md) supplies browser authentication, invitations, memberships and scoped keys. The [blog and browser administration](2026-09-06-blog-browser-interface.md) present these HTTP APIs with restricted Markdown rendering and an isolated browser acceptance entrance. MCP tools, sandbox execution and final HTTPS installation remain pending.
 
 The [phase-one delivery proposal](../proposed/2026-09-05-phase-one-daily-use.md) defines the daily-use installation and its acceptance criteria. It includes the blog, administration, and five repository MCP tools; it excludes backups, restore drills, visitor Q&A, consumer provisioning, and serverless from this delivery. These exclusions are not deployment prerequisites, and proposed capabilities are not shipped behavior.
 
@@ -56,7 +56,7 @@ The phase-one asset contract supersedes the original hash-only reference and ima
 
 ## Technology stack
 
-The build requires JDK 26 and pins Spring Boot 4.1.1. Spring Security owns browser authentication; Spring Modulith defines application module boundaries. JGit owns repository access, commonmark-java and Jackson YAML parse content, and [official PostgreSQL 17](2026-09-05-stock-postgresql.md) stores relational application state. The [Next.js frontend proposal](../proposed/2026-08-30-nextjs-frontend.md) replaces the original JTE + htmx selection but has no implementation in this backend.
+The build requires JDK 26 and pins Spring Boot 4.1.1. Spring Security owns browser authentication; Spring Modulith defines application module boundaries. JGit owns repository access, commonmark-java and Jackson YAML parse content, and [official PostgreSQL 17](2026-09-05-stock-postgresql.md) stores relational application state. The [blog frontend](2026-09-06-blog-browser-interface.md) uses Next.js App Router, React, TypeScript and Tailwind, with Node.js 24.19.0 and npm 12.0.2. It replaces JTE + htmx while Spring retains business APIs and persistence.
 CI: GitHub Actions + Testcontainers; images publish to GHCR. A docker-save-over-SSH deployment script is provided for networks with restricted registry access. GraalVM Native Image and JDK structured concurrency (preview) stay on the experimental track.
 The planned MCP entrance will pin its SDK and protocol version. Static API keys are a deliberate phase-one simplification without a claim to standard MCP OAuth. The reserved authentication chain already validates supplied Origin headers.
 
