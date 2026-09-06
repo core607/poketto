@@ -29,8 +29,9 @@ interface RepositoryAuthority {
     <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader);
 
     /**
-     * Reads explicit immutable object ids without fetching or holding the workspace mutex during
-     * the callback. The cache remains in use until its reader and repository have closed. The
+     * Reads explicit immutable object ids without fetching or acquiring the workspace mutex,
+     * including when another operation is fetching. Cache opening uses only the short lifecycle
+     * lock. The cache remains in use until its reader and repository have closed. The
      * callback is synchronous, must not close the supplied reader, and must not return or retain
      * readers, streams or RevWalk objects.
      */

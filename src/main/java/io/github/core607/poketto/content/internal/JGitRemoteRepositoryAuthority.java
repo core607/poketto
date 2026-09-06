@@ -132,32 +132,27 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         try {
             Repository opened;
-            workspaceLock.lock.lock();
+            Path cache = paths.contentDirectory(workspaceId);
+            cacheLifecycleLock.lock();
             try {
-                Path cache = paths.contentDirectory(workspaceId);
-                cacheLifecycleLock.lock();
+                if (!Files.isDirectory(cache) || isEmpty(cache))
+                    throw failure(workspaceId, "no repository cache exists");
+                opened = openExistingCache(cache, workspaceId);
                 try {
-                    if (!Files.isDirectory(cache) || isEmpty(cache))
-                        throw failure(workspaceId, "no repository cache exists");
-                    opened = openExistingCache(cache, workspaceId);
+                    touch(cache);
+                } catch (RuntimeException | Error failure) {
                     try {
-                        touch(cache);
-                    } catch (RuntimeException | Error failure) {
-                        try {
-                            opened.close();
-                        } catch (RuntimeException | Error closeFailure) {
-                            failure.addSuppressed(closeFailure);
-                        }
-                        throw failure;
+                        opened.close();
+                    } catch (RuntimeException | Error closeFailure) {
+                        failure.addSuppressed(closeFailure);
                     }
-                } finally {
-                    cacheLifecycleLock.unlock();
+                    throw failure;
                 }
             } finally {
-                workspaceLock.lock.unlock();
+                cacheLifecycleLock.unlock();
             }
-            // The users reference survives mutex release. Eviction must observe the repository
-            // and its object reader as active until both handles have actually closed.
+            // Explicit objects are append-only, independent of network work or ref/worktree changes.
+            // The users pin prevents eviction until both repository and reader handles have closed.
             try (Repository repository = opened;
                     ObjectReader objects = repository.newObjectReader()) {
                 T result = action.read(objects);
