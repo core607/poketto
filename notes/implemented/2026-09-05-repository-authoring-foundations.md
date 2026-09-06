@@ -43,7 +43,7 @@ Repository images are read-only Git objects, materialized on demand into a bound
 
 `index.md` owns its folder route. It supplies a non-recursive, filename-sorted gallery of eligible sibling images, excluding images already referenced by the body. Ordinary articles do not add neighboring images. Public media resolution excludes private or policy-excluded paths, including references from an otherwise public article. Preview uses the same Markdown destination and image rules, with private URLs requiring the current session.
 
-`GET /api/admin/assets` and `/api/admin/assets/repository` supply bounded image pages. Multipart uploads require `Idempotency-Key`; private preview and image reads remain under `/api/admin`. Public article responses supply media mappings and galleries for a future renderer, and `/api/public/images/{token}` serves the exact granted bytes. These JSON and image APIs do not implement blog pages, RSS, sitemap or Markdown HTML rendering.
+`GET /api/admin/assets` and `/api/admin/assets/repository` supply bounded image pages. Multipart uploads require `Idempotency-Key`; private preview and image reads remain under `/api/admin`. Public article responses supply media mappings and galleries for a future renderer, and `/api/public/assets/{token}` serves the exact granted bytes. These JSON and image APIs do not implement blog pages, RSS, sitemap or Markdown HTML rendering.
 
 ## Alternatives and related records
 
