@@ -1,18 +1,21 @@
 import { articles, tags } from "../../lib/public-api";
 import { ArticleList } from "../../components/articles";
 import { pageOffset } from "../../lib/pagination";
+import { notFound } from "next/navigation";
 
 export const metadata = { title: "标签" };
 export default async function Tags({
   searchParams,
 }: {
   searchParams: Promise<{
-    tag?: string;
+    tag?: string | string[];
     offset?: string | string[];
     tagOffset?: string | string[];
   }>;
 }) {
-  const { tag, offset = "0", tagOffset = "0" } = await searchParams;
+  const { tag: rawTag, offset = "0", tagOffset = "0" } = await searchParams;
+  const tag = String(rawTag ?? "");
+  if (tag.length > 64) notFound();
   if (tag) {
     const page = await articles({
       tag,

@@ -64,8 +64,14 @@ async function backend(t: TestContext) {
     requests.push(url);
     const offset = Number(url.searchParams.get("offset"));
     const maximum = url.pathname === "/api/public/tags" ? 320000 : 10000;
-    // PublicDocuments rejects offsets beyond these distinct endpoint bounds.
-    if (!Number.isInteger(offset) || offset < 0 || offset > maximum) {
+    // PublicDocuments uses Java String.length (UTF-16) and these endpoint bounds.
+    if (
+      !Number.isInteger(offset) ||
+      offset < 0 ||
+      offset > maximum ||
+      (url.searchParams.get("query") ?? "").length > 200 ||
+      (url.searchParams.get("tag") ?? "").length > 64
+    ) {
       response.writeHead(400).end("{}");
       return;
     }
@@ -141,5 +147,63 @@ test("public page consumers retain valid offsets through each backend maximum", 
       assert.equal(request.searchParams.get("offset"), String(Number(offset)));
       if (Number(offset) > 0) assert.match(html, /← 上一页/);
     }
+  }
+});
+
+test("search rejects overlong UTF-16 input locally while preserving the entered query", async (t) => {
+  const requests = await backend(t);
+  for (const query of [
+    "a".repeat(200),
+    "😀".repeat(100),
+    ["a".repeat(99), "b".repeat(100)],
+  ]) {
+    const html = renderToStaticMarkup(
+      await Search({ searchParams: Promise.resolve({ query }) }),
+    );
+    assert.equal(requests.length, 1);
+    assert.equal(requests.shift()!.searchParams.get("query"), String(query));
+    assert.ok(html.includes(`value="${String(query)}"`));
+    assert.doesNotMatch(html, /role="alert"/);
+  }
+  for (const query of [
+    "a".repeat(201),
+    "😀".repeat(100) + "a",
+    ["a".repeat(100), "b".repeat(100)],
+  ]) {
+    const html = renderToStaticMarkup(
+      await Search({ searchParams: Promise.resolve({ query }) }),
+    );
+    assert.ok(html.includes(`value="${String(query)}"`));
+    assert.match(html, /role="alert"/);
+    assert.match(html, /搜索内容过长，请缩短后再试。/);
+    assert.match(html, /aria-invalid="true"/);
+    assert.equal(requests.length, 0);
+  }
+});
+
+test("tag filters preserve the 64 UTF-16 boundary and reject oversized tags before HTTP", async (t) => {
+  const requests = await backend(t);
+  for (const tag of [
+    "a".repeat(64),
+    "😀".repeat(32),
+    ["a".repeat(31), "b".repeat(32)],
+  ]) {
+    const html = renderToStaticMarkup(
+      await Tags({ searchParams: Promise.resolve({ tag }) }),
+    );
+    assert.equal(requests.length, 1);
+    assert.equal(requests.shift()!.searchParams.get("tag"), String(tag));
+    if (typeof tag === "string") assert.ok(html.includes(`#${tag}`));
+  }
+  for (const tag of [
+    "a".repeat(65),
+    "😀".repeat(32) + "a",
+    ["a".repeat(32), "b".repeat(32)],
+  ]) {
+    await assert.rejects(
+      Tags({ searchParams: Promise.resolve({ tag }) }),
+      /NEXT_HTTP_ERROR_FALLBACK;404/,
+    );
+    assert.equal(requests.length, 0);
   }
 });
