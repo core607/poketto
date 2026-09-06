@@ -54,13 +54,10 @@ final class RepositoryPathRules {
 
     static String validateRoute(String route) {
         if (route.equals("/")) return route;
-        if (!route.startsWith("/")
-                || route.contains("%")
-                || route.contains("?")
-                || route.contains("#")
-                || route.codePoints().anyMatch(Character::isWhitespace)) {
-            throw new IllegalArgumentException("route must be an absolute path without escapes, query, or fragment");
+        if (!route.startsWith("/")) {
+            throw new IllegalArgumentException("route must be an absolute logical path");
         }
+        // A logical route preserves repository names; URI encoding belongs to the transport boundary.
         validate(route.substring(1));
         return route;
     }

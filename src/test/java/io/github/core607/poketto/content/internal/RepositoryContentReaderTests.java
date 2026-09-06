@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepositoryContentReaderTests {
@@ -21,6 +23,97 @@ class RepositoryContentReaderTests {
     Path directory;
 
     private final WorkspaceId workspace = WorkspaceId.random();
+
+    @Test
+    void logicalRoutesPreserveOrdinaryGitNamesWithoutUriDecoding() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        for (String path : new String[] {
+            "中文 空格.md",
+            "100%.md",
+            "井#号.md",
+            "literal%2Fslash.md",
+            "literal/slash.md",
+            "%E9%9B%A8.md",
+            "雨.md",
+            "a b.md",
+            "a%20b.md",
+            "目录 空格%#/index.md",
+            "末尾 .md"
+        }) files.put(path, bytes("# 原文\r\n"));
+        files.put("custom.md", bytes("---\nroute: '/自定义 空格%#? '\n---\n# Custom"));
+        var commit = fixture.commitRemote(workspace, files);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        var tree = reader.readTree(workspace, Optional.empty());
+        assertThat(tree.documents()).hasSize(files.size());
+        assertThat(tree.diagnostics())
+                .extracting(RepositoryDiagnostic::code)
+                .doesNotContain("INVALID_MARKDOWN", "ROUTE_COLLISION");
+        for (var document : tree.documents()) {
+            String path = document.file().path();
+            assertThat(document.route())
+                    .isEqualTo(path.equals("custom.md") ? "/自定义 空格%#? " : RepositoryPathRules.route(path));
+            var file = reader.getFile(workspace, Optional.of(commit.name()), path);
+            assertThat(file.source().orElseThrow().getBytes(StandardCharsets.UTF_8))
+                    .isEqualTo(files.get(path));
+            assertThat(file.revision()).contains(DocumentRevision.sha256(files.get(path)));
+            assertThat(file.diagnostics()).isEmpty();
+        }
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void linuxGitNamesWithQuestionMarksRemainReadableWithoutMetadata() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var commit =
+                fixture.commitRemote(workspace, Map.of("问?号.md", bytes("# 原文"), "目录 空格%#?/index.md", bytes("# 文件夹")));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        var tree = reader.readTree(workspace, Optional.of(commit.name()));
+        assertThat(tree.documents())
+                .extracting(document -> document.route())
+                .containsExactlyInAnyOrder("/问?号", "/目录 空格%#?");
+        assertThat(tree.diagnostics()).extracting(RepositoryDiagnostic::code).doesNotContain("INVALID_MARKDOWN");
+        assertThat(reader.getFile(workspace, Optional.of(commit.name()), "问?号.md")
+                        .source())
+                .contains("# 原文");
+    }
+
+    @Test
+    void logicalRoutesKeepStructuralGuardsAndExactFolderCollisions() throws Exception {
+        for (String route : new String[] {
+            "relative",
+            "//a",
+            "/../a",
+            "/a/./b",
+            "/.git/config",
+            "/a\\b",
+            "/a:b",
+            "/a\tb",
+            "/a\nb",
+            "/" + "x".repeat(256)
+        }) {
+            assertThatThrownBy(() -> RepositoryPathRules.validateRoute(route))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(RepositoryPathRules.validateRoute("/%2e%2e/literal%2F 空格\u2003"))
+                .isEqualTo("/%2e%2e/literal%2F 空格\u2003");
+        var fixture = new RemoteRepositoryFixture(directory);
+        fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "文件 夹.md",
+                        bytes("# Article"),
+                        "文件 夹/index.md",
+                        bytes("# Folder"),
+                        "文件%20夹.md",
+                        bytes("# Distinct")));
+        var tree = new JGitRepositoryContentReader(fixture.authority()).readTree(workspace, Optional.empty());
+        assertThat(tree.documents()).extracting(document -> document.route()).containsExactly("/文件%20夹");
+        assertThat(tree.diagnostics().stream()
+                        .filter(diagnostic -> diagnostic.code().equals("ROUTE_COLLISION")))
+                .extracting(RepositoryDiagnostic::path)
+                .containsExactly("文件 夹.md", "文件 夹/index.md");
+    }
 
     @Test
     void adoptsNestedChineseMarkdownWithoutChangingOriginalText() throws Exception {

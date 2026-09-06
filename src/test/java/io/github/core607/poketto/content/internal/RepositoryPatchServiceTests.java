@@ -36,6 +36,8 @@ import java.util.function.Supplier;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepositoryPatchServiceTests {
@@ -68,18 +70,59 @@ class RepositoryPatchServiceTests {
         });
         String source = "\ufeff# 中文\r\n\r\n保持原样。\r\n";
         RepositoryPatchResult result = service.apply(
-                principal, workspace, new RepositoryPatch(Optional.empty(), List.of(create("笔记/首页.md", source))));
+                principal,
+                workspace,
+                new RepositoryPatch(Optional.empty(), List.of(create("笔记 空格%#/100%.md", source))));
         assertThat(result.committed()).isTrue();
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
         var file = new JGitRepositoryContentReader(fixture.authority())
-                .getFile(workspace, Optional.of(result.commit()), "笔记/首页.md");
+                .getFile(workspace, Optional.of(result.commit()), "笔记 空格%#/100%.md");
         assertThat(file.source()).contains(source);
-        assertThat(result.revisions().get("笔记/首页.md")).isEqualTo(file.revision());
-        assertThat(fixture.cache(workspace).resolve("笔记/首页.md")).doesNotExist();
+        assertThat(result.revisions().get("笔记 空格%#/100%.md")).isEqualTo(file.revision());
+        assertThat(fixture.cache(workspace).resolve("笔记 空格%#/100%.md")).doesNotExist();
         assertThat(installed).hasValue(1);
         verify(auth)
                 .withAuthorization(eq(principal), eq(workspace), eq(java.util.Set.of(Capability.WRITE_PRIVATE)), any());
         verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void atomicMoveToQuestionMarkFolderPreservesTextAndDistinctEncodedNames() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        String original = "\ufeff# 原文\r\n";
+        var base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "source?.md",
+                        bytes(original),
+                        "literal%2Fname.md",
+                        bytes("# Encoded"),
+                        "literal/name.md",
+                        bytes("# Segments")));
+        String destination = "目录 空格%#?/index.md";
+        var result = service(fixture, (id, snapshot) -> {})
+                .apply(
+                        principal,
+                        workspace,
+                        patch(
+                                base,
+                                delete("source?.md", original),
+                                create(destination, original),
+                                update("literal%2Fname.md", "# Encoded", "# Changed")));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.of(result.commit()), "source?.md")
+                        .expectedAbsence())
+                .isTrue();
+        assertThat(reader.getFile(workspace, Optional.of(result.commit()), destination)
+                        .source())
+                .contains(original);
+        assertThat(reader.getFile(workspace, Optional.of(result.commit()), "literal/name.md")
+                        .source())
+                .contains("# Segments");
+        assertThat(reader.readTree(workspace, Optional.of(result.commit())).documents())
+                .extracting(document -> document.route())
+                .containsExactlyInAnyOrder("/目录 空格%#?", "/literal%2Fname", "/literal/name");
     }
 
     @Test
