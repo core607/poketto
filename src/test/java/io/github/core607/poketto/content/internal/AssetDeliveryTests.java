@@ -453,11 +453,24 @@ class AssetDeliveryTests {
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
         var body = new StringBuilder("# Text remains\n");
-        for (int i = 0; i < 9; i++) body.append("![Busy](managed:").append(UUID.randomUUID()).append(":").append("a".repeat(64)).append(")\n");
+        for (int i = 0; i < 9; i++)
+            body.append("![Busy](managed:")
+                    .append(UUID.randomUUID())
+                    .append(":")
+                    .append("a".repeat(64))
+                    .append(")\n");
         byte[] image = png(3);
         RepositoryBlob candidate;
         try (var formatter = new org.eclipse.jgit.lib.ObjectInserter.Formatter()) {
-            candidate = new RepositoryBlob(workspace, "b".repeat(40), "gallery.png", formatter.idFor(org.eclipse.jgit.lib.Constants.OBJ_BLOB, image).name(), image.length, true);
+            candidate = new RepositoryBlob(
+                    workspace,
+                    "b".repeat(40),
+                    "gallery.png",
+                    formatter
+                            .idFor(org.eclipse.jgit.lib.Constants.OBJ_BLOB, image)
+                            .name(),
+                    image.length,
+                    true);
         }
         when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any())).thenAnswer(call -> {
             held.responseComplete();
@@ -465,21 +478,28 @@ class AssetDeliveryTests {
         });
         when(blobs.read(candidate)).thenReturn(image);
         try {
-            var media = pageService(blobs, store, body.toString(), memory).publicDocument(workspace, "/").orElseThrow().media();
+            var media = pageService(blobs, store, body.toString(), memory)
+                    .publicDocument(workspace, "/")
+                    .orElseThrow()
+                    .media();
             assertThat(media.body()).isEqualTo(body.toString());
             assertThat(media.images()).isEmpty();
             assertThat(media.gallery()).hasSize(1);
             verifyNoInteractions(store);
             assertThat(memory.rejectedRequests()).isEqualTo(9);
             assertThat(memory.reservedBytes()).isZero();
-        } finally { held.responseComplete(); }
+        } finally {
+            held.responseComplete();
+        }
     }
 
     private AssetService pageService(RepositoryBlobReader blobs, ManagedBlobStore store, String body) {
-        return pageService(blobs, store, body, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
+        return pageService(
+                blobs, store, body, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
     }
 
-    private AssetService pageService(RepositoryBlobReader blobs, ManagedBlobStore store, String body, ImageMemoryAdmission memory) {
+    private AssetService pageService(
+            RepositoryBlobReader blobs, ManagedBlobStore store, String body, ImageMemoryAdmission memory) {
         Instant now = clock.instant();
         var snapshot = new PublicContentSnapshot(
                 workspace,

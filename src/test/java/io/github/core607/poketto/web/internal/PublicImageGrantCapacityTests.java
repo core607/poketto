@@ -70,7 +70,8 @@ class PublicImageGrantCapacityTests {
                 directory.toAbsolutePath(),
                 16L * 1024 * 1024,
                 128,
-                Clock.fixed(at, ZoneOffset.UTC));
+                Clock.fixed(at, ZoneOffset.UTC),
+                new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, java.time.Duration.ZERO));
         var mvc = MockMvcBuilders.standaloneSetup(
                         new PublicDocumentController(new PublicDocuments(snapshots, catalog, service)))
                 .setControllerAdvice(new ProblemResponses())
