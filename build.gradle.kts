@@ -102,7 +102,7 @@ val integrationTest = tasks.register<Test>("integrationTest") {
 
 tasks.register<Sync>("stageAcceptanceRuntime") {
     group = "verification"
-    description = "Stages real application classes and synthetic fixtures for isolated browser acceptance."
+    description = "Stages real application classes and synthetic fixtures for isolated browser/MCP acceptance."
     dependsOn(tasks.named(integrationTestSourceSet.classesTaskName))
     into(layout.buildDirectory.dir("acceptance/runtime"))
     from(sourceSets.main.get().output) { into("classes") }
