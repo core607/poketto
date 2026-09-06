@@ -99,6 +99,16 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     systemProperty("poketto.postgres.image", postgresTestImage.get())
 }
 
+tasks.register<Sync>("stageAcceptanceRuntime") {
+    group = "verification"
+    description = "Stages real application classes and synthetic fixtures for isolated browser acceptance."
+    dependsOn(tasks.named(integrationTestSourceSet.classesTaskName))
+    into(layout.buildDirectory.dir("acceptance/runtime"))
+    from(sourceSets.main.get().output) { into("classes") }
+    from(integrationTestSourceSet.output) { into("classes") }
+    from(configurations[integrationTestSourceSet.runtimeClasspathConfigurationName]) { into("jars") }
+}
+
 val storageTestsNeedLinux = System.getProperty("os.name").startsWith("Windows")
 val linuxStorageRuntime = layout.buildDirectory.dir("linuxStorageTest/runtime")
 val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
@@ -175,6 +185,7 @@ tasks.withType<Test>().configureEach {
 }
 
 apply(from = "gradle/repository-checks.gradle.kts")
+apply(from = "gradle/frontend.gradle.kts")
 
 apply(from = "gradle/executor-service.gradle.kts")
 apply(from = "gradle/executor-native.gradle.kts")

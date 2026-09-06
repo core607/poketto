@@ -14,7 +14,9 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.content.internal.PublicSnapshotMarkerNativeTests",
             "io.github.core607.poketto.content.internal.PublicSnapshotMarkerModeTests",
             "io.github.core607.poketto.content.internal.PublicContentSnapshotTests",
-            "io.github.core607.poketto.content.internal.AssetDeliveryTests");
+            "io.github.core607.poketto.content.internal.AssetDeliveryTests",
+            "io.github.core607.poketto.content.internal.RepositoryContentReaderTests",
+            "io.github.core607.poketto.content.internal.RepositoryPatchServiceTests");
 
     private LinuxStorageTestLauncher() {}
 

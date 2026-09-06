@@ -21,7 +21,7 @@ There are no external users during development: rename and refactor freely; writ
 
 ## Commands
 
-Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. Linux executor tests additionally require Python 3.10+ with venv and pip support.
+Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. Linux executor tests additionally require Python 3.10+ with venv and pip support.
 
 | Command | Purpose |
 |---|---|
@@ -29,6 +29,8 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew test` | Run fast unit, context, and module-boundary tests |
 | `./gradlew integrationTest` | Run database integration tests against pinned official PostgreSQL 17 |
 | `./gradlew linuxStorageTest` | On Windows, run required storage tests on a native Linux disk volume in Docker |
+| `./gradlew frontendCheck` | Run pinned frontend formatting, type checks, tests, and production build |
+| `./gradlew stageAcceptanceRuntime` | Stage real application classes and synthetic browser fixtures |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
 | `./gradlew deployScriptTests` | Run the deployment script tests against fake docker, curl, and ssh |
 | `./gradlew executorServiceTests` | Run required executor protocol and lifecycle tests on Linux; Windows uses Docker |

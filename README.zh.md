@@ -8,7 +8,7 @@
 
 开发中。[仓库创作基础](notes/implemented/2026-09-05-repository-authoring-foundations.md)提供任意路径 Markdown、文件级诊断、有界公开与私有搜索、发布策略、原子文本补丁、不可变本地图片存储和精确版本图片交付。远端 `main` 仍是权威；公开请求使用已验证快照，不会在请求中访问远端。[身份 HTTP 后端](notes/implemented/2026-09-06-workspace-identity-http.md)提供初始化、会话、邀请、成员与作用域 key。
 
-这些能力已有 HTTP 和 MCP API。`/mcp` 提供四个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。博客与管理页面、Markdown 渲染和最终 HTTPS 安装仍待完成。本地 worker 接入不代表最终部署拓扑已通过验收。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
+[博客与浏览器管理界面](notes/implemented/2026-09-06-blog-browser-interface.md)通过服务端渲染的公开页面，以及包含图片、成员和密钥管理的中文 Markdown 编辑器呈现这些 HTTP API。`/mcp` 提供四个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。最终 HTTPS 安装仍待完成，本地 worker 接入不代表最终部署拓扑已通过验收。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
 
 ## 适合谁
 
@@ -31,7 +31,7 @@ notes/               决策记录：proposed / implemented / rejected / archived
 
 ## 开发
 
-使用 Java 26 和仓库内的 Gradle Wrapper。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。Linux 执行服务测试要求 Python 3.10+ 及 venv、pip；Windows 在固定版本的 Linux 容器中运行必需的协议与状态测试。
+使用 Java 26 和仓库内的 Gradle Wrapper。前端与完整校验还需要 Node.js 24.19.0 和 npm 12.0.2。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。`./gradlew frontendCheck` 运行前端格式、类型、测试和生产构建。通过[隔离浏览器入口](acceptance/README.md)使用合成数据操作真实应用；前端运行设置见 [frontend/README.md](frontend/README.md)。Linux 执行服务测试要求 Python 3.10+ 及 venv、pip；Windows 在固定版本的 Linux 容器中运行必需的协议与状态测试。
 
 应用启动需要 PostgreSQL 数据源、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。Flyway 会创建默认工作空间；应用将它绑定到远端 `main`，只在 `<data-dir>/workspaces/<workspace-id>/content` 物化一次性缓存。`POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` 与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS` 可以调整默认值为 32 个工作空间和 30 秒的限制；`POKETTO_REPOSITORY_REFRESH_SECONDS` 决定所服务内容多久对照远端 `main` 重新校验一次（默认 30 秒），`POKETTO_REPOSITORY_STALE_AFTER_SECONDS` 决定所服务内容最多多久没有成功重新校验，健康检查就会把它报告为停止服务（默认 3600 秒）。内容不可用时进程与刷新循环继续运行，但 readiness 报告停止服务，公开读取失败关闭。快照过期同样停止公开读取，最长允许沿用一小时。运行中的实例通过 `GET /actuator/health` 回应部署检查，并在 `GET /api/public/documents` 提供默认工作空间的公开文档；经 Poketto 的写入立即可见，合法的直接推送在下一次刷新后可见。
 

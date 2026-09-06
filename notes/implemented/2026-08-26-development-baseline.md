@@ -5,6 +5,8 @@ Status: Implemented
 
 [Stock PostgreSQL](2026-09-05-stock-postgresql.md) replaces the custom integration image and its tokenizer smoke test with a pinned official image and UTF-8 verification. The build and workspace ownership decisions in this record remain applicable.
 
+The [blog and browser interface](2026-09-06-blog-browser-interface.md) adds a separate Next.js artifact. Spring's `web` module owns business HTTP contracts; frontend components own pages and rendering. Gradle `check` includes the locked frontend build alongside the Java and repository gates.
+
 ## Problem
 
 Poketto had settled product boundaries but no executable build, module enforcement, database test environment, repository checks, or continuous integration. The baseline needed to establish those capabilities without implementing product behavior.

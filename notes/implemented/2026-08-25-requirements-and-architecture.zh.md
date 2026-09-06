@@ -2,7 +2,7 @@
 
 Date: 2026-08-25
 
-[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。这些能力通过 HTTP 和 MCP API 提供，并可通过[本地 worker 适配器](../proposed/2026-09-05-local-execution-supervisor.md)启用隔离执行。博客与管理页面、Markdown 渲染和最终 HTTPS 安装仍待完成。
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。这些能力通过 HTTP 和 MCP API 提供，并可通过[本地 worker 适配器](../proposed/2026-09-05-local-execution-supervisor.md)启用隔离执行。[博客与浏览器管理界面](2026-09-06-blog-browser-interface.md)通过受限 Markdown 渲染呈现这些 HTTP API，并提供隔离浏览器验收入口。最终 HTTPS 安装仍待完成。
 
 [第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及五个仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
 
@@ -32,6 +32,8 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY；AI key 默认不含后三项。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。
 5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间，不提供自助创建更多工作空间的入口。
 
+从仓库路径派生或由可选元数据指定的[路由](2026-09-06-logical-repository-routes.md)保留原始名称，包括空格、`%`、`?` 和 `#`，不做 URI 编码、解码或首尾裁剪。原有路径安全与长度限制继续适用；调用方在 URI 边界编码逻辑路由。
+
 ## 当前 MCP 契约
 
 第一阶段契约取代最初基于 UUID 的文档工具选型。`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。工具包括 `get_file`、`get_asset`、`put_asset` 和 `repo_patch`，仅在隔离执行适配器启用时注册 `repo_exec`。[本地执行服务](../../executor-service/README.md)是独立的 Linux 服务；启用适配器不能替代真实进程边界验证。
@@ -56,7 +58,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 技术栈
 
-构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[Next.js 前端提案](../proposed/2026-08-30-nextjs-frontend.md)取代最初的 JTE + htmx 选型，但本后端尚未实现前端。
+构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[博客前端](2026-09-06-blog-browser-interface.md)使用 Next.js App Router、React、TypeScript 与 Tailwind，锁定 Node.js 24.19.0 和 npm 12.0.2。它取代 JTE + htmx，业务 API 与持久化仍归 Spring。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。另提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随固定 SDK 确定。第一阶段使用静态 API key 是有意识的简化，不宣称实现 MCP 标准 OAuth；Streamable HTTP 校验传入的 Origin header。
 
