@@ -11,20 +11,26 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class ImmutableRepositoryReadTests {
     @TempDir
@@ -213,6 +219,147 @@ class ImmutableRepositoryReadTests {
         assertThat(blobs.read(descriptor)).isEqualTo(image);
         assertThat(Files.readString(head)).isEqualTo(before);
         assertThat(fixture.cache(workspace).resolve("image.png")).doesNotExist();
+    }
+
+    @Test
+    void failedOpeningDoesNotPromoteACorruptCacheInTheEvictionOrder() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, 2);
+        load(fixture);
+        fixture.authority().readObjects(other, snapshot -> snapshot.commitId());
+        Path cache = fixture.cache(workspace);
+        Files.writeString(cache.resolve(".git/config"), "[unterminated");
+        FileTime older = FileTime.fromMillis(1000);
+        Files.setLastModifiedTime(cache, older);
+        Files.setLastModifiedTime(fixture.cache(other), FileTime.fromMillis(2000));
+        assertThatThrownBy(() -> fixture.authority().readImmutableObjects(workspace, objects -> "unreachable"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("config");
+        assertThat(Files.getLastModifiedTime(cache)).isEqualTo(older);
+        fixture.authority().readObjects(WorkspaceId.random(), snapshot -> snapshot.commitId());
+        assertThat(cache).doesNotExist();
+        assertThat(fixture.cache(other)).isDirectory();
+    }
+
+    @Test
+    void failedTouchClosesTheOpenedRepositoryAndPreservesAnyCloseFailure() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, 1);
+        load(fixture);
+        Path cache = fixture.cache(workspace);
+        Path moved = cache.resolveSibling("moved-cache");
+        assertThat(moved.toAbsolutePath().normalize().startsWith(directory)).isTrue();
+        Repository opened = spy(JGitContentRepositoryStore.openCache(cache, workspace));
+        var gitDirectory = opened.getDirectory();
+        var closed = new AtomicBoolean();
+        var closeFailure = new IllegalStateException("injected close failure after real closure");
+        doAnswer(invocation -> {
+                    invocation.callRealMethod();
+                    closed.set(true);
+                    throw closeFailure;
+                })
+                .when(opened)
+                .close();
+        try (var construction = mockConstruction(FileRepositoryBuilder.class, (builder, context) -> {
+            when(builder.getGitDir()).thenReturn(gitDirectory);
+            when(builder.build()).thenAnswer(invocation -> {
+                // Model the cache directory disappearing after a successful open. The following
+                // touch fails through the real filesystem; the repository handle is still real.
+                Files.move(cache, moved);
+                return opened;
+            });
+        })) {
+            assertThatThrownBy(() -> fixture.authority().readImmutableObjects(workspace, objects -> "unreachable"))
+                    .isInstanceOf(ContentRepositoryException.class)
+                    .hasMessage("repository cache access time cannot be recorded")
+                    .hasCauseInstanceOf(NoSuchFileException.class)
+                    .satisfies(failure -> assertThat(failure.getSuppressed()).containsExactly(closeFailure));
+            verify(opened).close();
+        } finally {
+            if (!closed.get()) {
+                doCallRealMethod().when(opened).close();
+                opened.close();
+            }
+            if (Files.exists(moved)) Files.move(moved, cache);
+        }
+        fixture.authority().readObjects(other, snapshot -> snapshot.commitId());
+        assertThat(cache).doesNotExist();
+    }
+
+    @Test
+    void unbornRefFailuresIdentifyDetachDeleteAndRelinkSeparately() throws Exception {
+        for (String operation : new String[] {"HEAD detach", "main delete", "HEAD relink"}) {
+            var fixture = new RemoteRepositoryFixture(directory.resolve(operation.replace(' ', '-')));
+            load(fixture);
+            try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
+                Repository observed = spy(repository);
+                Path headLock = repository.getDirectory().toPath().resolve("HEAD.lock");
+                Path mainLock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
+                if (operation.equals("HEAD detach")) Files.createFile(headLock);
+                if (operation.equals("main delete")) Files.createFile(mainLock);
+                if (operation.equals("HEAD relink")) failRelinkWithRealLock(observed, headLock);
+                try {
+                    assertThatThrownBy(() -> removeMain(observed))
+                            .isInstanceOf(ContentRepositoryException.class)
+                            .hasMessage("repository object cache " + operation + " failed: LOCK_FAILURE");
+                } finally {
+                    Files.deleteIfExists(headLock);
+                    Files.deleteIfExists(mainLock);
+                }
+            }
+        }
+    }
+
+    @Test
+    void unbornCleanupFailureIsSuppressedBehindTheOriginalResultOrIoFailure() throws Exception {
+        for (boolean ioFailure : new boolean[] {false, true}) {
+            var fixture = new RemoteRepositoryFixture(directory.resolve("suppressed-" + ioFailure));
+            load(fixture);
+            try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
+                Repository observed = spy(repository);
+                Path headLock = repository.getDirectory().toPath().resolve("HEAD.lock");
+                Path mainLock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
+                var injected = new IOException("injected ref deletion I/O failure");
+                if (ioFailure) {
+                    var update = spy(repository.updateRef(Constants.R_HEADS + "main"));
+                    doThrow(injected).when(update).delete();
+                    doReturn(update).when(observed).updateRef(Constants.R_HEADS + "main");
+                } else {
+                    Files.createFile(mainLock);
+                }
+                failRelinkWithRealLock(observed, headLock);
+                try {
+                    Throwable failure = catchThrowable(() -> removeMain(observed));
+                    assertThat(failure).isInstanceOf(ContentRepositoryException.class);
+                    Throwable primary = failure;
+                    if (ioFailure) {
+                        assertThat(failure.getCause()).isSameAs(injected);
+                        primary = failure.getCause();
+                    } else {
+                        assertThat(failure).hasMessage("repository object cache main delete failed: LOCK_FAILURE");
+                    }
+                    assertThat(primary.getSuppressed())
+                            .singleElement()
+                            .satisfies(suppressed -> assertThat(suppressed)
+                                    .hasMessage("repository object cache HEAD relink failed: LOCK_FAILURE"));
+                } finally {
+                    Files.deleteIfExists(headLock);
+                    Files.deleteIfExists(mainLock);
+                }
+            }
+        }
+    }
+
+    private static void failRelinkWithRealLock(Repository repository, Path headLock) throws Exception {
+        doAnswer(invocation -> {
+                    Files.createFile(headLock);
+                    return invocation.callRealMethod();
+                })
+                .when(repository)
+                .updateRef(Constants.HEAD);
+    }
+
+    private static void removeMain(Repository repository) {
+        ReflectionTestUtils.invokeMethod(
+                JGitRemoteRepositoryAuthority.class, "updateObjectRef", repository, ObjectId.zeroId());
     }
 
     @Test

@@ -121,8 +121,17 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 try {
                     if (!Files.isDirectory(cache) || isEmpty(cache))
                         throw failure(workspaceId, "no repository cache exists");
-                    touch(cache);
                     opened = openExistingCache(cache, workspaceId);
+                    try {
+                        touch(cache);
+                    } catch (RuntimeException | Error failure) {
+                        try {
+                            opened.close();
+                        } catch (RuntimeException | Error closeFailure) {
+                            failure.addSuppressed(closeFailure);
+                        }
+                        throw failure;
+                    }
                 } finally {
                     cacheLifecycleLock.unlock();
                 }
@@ -460,12 +469,21 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 // workspace mutex is held, then restore the symbolic unborn HEAD without pruning.
                 RefUpdate detached = repository.updateRef(Constants.HEAD, true);
                 detached.setNewObjectId(previous);
-                requireRefChange(detached.forceUpdate());
+                requireRefChange(detached.forceUpdate(), "HEAD detach");
+                Throwable deletionFailure = null;
                 try {
                     update.setForceUpdate(true);
-                    requireRefChange(update.delete());
+                    requireRefChange(update.delete(), "main delete");
+                } catch (IOException | RuntimeException | Error failure) {
+                    deletionFailure = failure;
+                    throw failure;
                 } finally {
-                    requireRefChange(repository.updateRef(Constants.HEAD).link(MAIN));
+                    try {
+                        requireRefChange(repository.updateRef(Constants.HEAD).link(MAIN), "HEAD relink");
+                    } catch (IOException | RuntimeException | Error relinkFailure) {
+                        if (deletionFailure == null) throw relinkFailure;
+                        deletionFailure.addSuppressed(relinkFailure);
+                    }
                 }
                 return;
             }
@@ -483,12 +501,12 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         }
     }
 
-    private static void requireRefChange(RefUpdate.Result result) {
+    private static void requireRefChange(RefUpdate.Result result, String operation) {
         if (!(result == RefUpdate.Result.FORCED
                 || result == RefUpdate.Result.NO_CHANGE
                 || result == RefUpdate.Result.NEW
                 || result == RefUpdate.Result.FAST_FORWARD)) {
-            throw new ContentRepositoryException("repository object cache main cannot be removed");
+            throw new ContentRepositoryException("repository object cache " + operation + " failed: " + result);
         }
     }
 
@@ -588,7 +606,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         try {
             Files.setLastModifiedTime(cache, FileTime.from(Instant.now()));
         } catch (IOException exception) {
-            throw new ContentRepositoryException("repository cache access time cannot be recorded");
+            throw new ContentRepositoryException("repository cache access time cannot be recorded", exception);
         }
     }
 
