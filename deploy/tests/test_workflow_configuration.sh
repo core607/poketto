@@ -12,3 +12,16 @@ if grep -Eq 'POKETTO_SSH:.*~/' "$workflow"; then
     echo "POKETTO_SSH contains a tilde that parameter expansion will not expand"
     exit 1
 fi
+
+# Publication and deployment carry two independently pinned images from the same source commit.
+grep -Fq 'file: frontend/Dockerfile' "$workflow"
+grep -Fq 'frontend_image: ${{ steps.summary.outputs.frontend_image }}' "$workflow"
+grep -Fq 'FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}' "$workflow"
+grep -Fq -- '--frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin' "$workflow"
+grep -Fq 'bash deploy/transfer.sh "${args[@]}" --pull' "$workflow"
+
+grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
+grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
+grep -Fq 'python-version: "3.12.14"' "$workflow"
+
+grep -Fq 'dependsOn(appImageIdentityCheck)' "$DEPLOY_DIR/../build.gradle.kts"

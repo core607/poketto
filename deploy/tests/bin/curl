@@ -5,4 +5,17 @@ set -u
 mkdir -p "$FAKE_STATE"
 printf '%s\n' "$*" >> "$FAKE_STATE/curl.log"
 [ -f "$FAKE_STATE/curl-fails" ] && exit 22
+if [[ "${*: -1}" == https:* ]]; then
+    kind=https-site
+    [[ "${*: -1}" == https:*/api/* ]] && kind=https-api
+    attempt=0
+    [ ! -f "$FAKE_STATE/$kind-attempts" ] || read -r attempt < "$FAKE_STATE/$kind-attempts"
+    attempt=$((attempt + 1))
+    echo "$attempt" > "$FAKE_STATE/$kind-attempts"
+    failures=0
+    [ ! -f "$FAKE_STATE/$kind-transient-failures" ] || read -r failures < "$FAKE_STATE/$kind-transient-failures"
+    [ "$attempt" -gt "$failures" ] || exit 60
+fi
+if [[ "${*: -1}" == https:* ]] && [ -f "$FAKE_STATE/https-fails" ]; then exit 60; fi
+if [[ "${*: -1}" == https:*/api/* ]] && [ -f "$FAKE_STATE/https-api-fails" ]; then exit 22; fi
 cat "$FAKE_STATE/curl-body" 2>/dev/null || echo '{"status":"UP"}'

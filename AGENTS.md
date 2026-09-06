@@ -21,7 +21,7 @@ There are no external users during development: rename and refactor freely; writ
 
 ## Commands
 
-Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. Linux executor tests additionally require Python 3.10+ with venv and pip support.
+Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. `check` requires Python 3.10+; Linux executor tests additionally require venv and pip support.
 
 | Command | Purpose |
 |---|---|
@@ -33,6 +33,9 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew stageAcceptanceRuntime` | Stage real application classes and synthetic browser fixtures |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
 | `./gradlew deployScriptTests` | Run the deployment script tests against fake docker, curl, and ssh |
+| `./gradlew gatewayConfigCheck` | Validate the Caddy configuration using its pinned real container |
+| `./gradlew proxyForwardingCheck` | Verify real Caddy/Tomcat address and login buckets with isolated Docker clients |
+| `./gradlew appImageIdentityCheck` | Verify the production image identity and protected executor socket access |
 | `./gradlew executorServiceTests` | Run required executor protocol and lifecycle tests on Linux; Windows uses Docker |
 | `./gradlew spotlessApply` | Rewrite Java sources into the canonical format |
 | `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |

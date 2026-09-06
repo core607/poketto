@@ -38,11 +38,6 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
 
-      - name: Set up Python for isolated executor tests
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12.14"
-
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -52,6 +47,11 @@ jobs:
 
       - name: Pin npm
         run: npm install --global npm@12.0.2
+
+      - name: Set up Python for executor and proxy tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.14"
 
       - name: Verify
         run: ./gradlew check --no-daemon
@@ -64,6 +64,7 @@ jobs:
           path: |
             build/reports/
             build/test-results/
+            build/proxy-forwarding/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -80,6 +81,7 @@ jobs:
     outputs:
       image: ${{ steps.summary.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
+      frontend_image: ${{ steps.summary.outputs.frontend_image }}
 
     steps:
       - name: Check out repository
@@ -115,14 +117,33 @@ jobs:
           build-args: POKETTO_REVISION=${{ github.sha }}
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
+
+      - name: Build and push frontend
+        id: frontend
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: POKETTO_REVISION=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository }}-frontend:sha-${{ github.sha }}
+            ghcr.io/${{ github.repository }}-frontend:main
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
 
       - name: Record publication
         id: summary
         run: |
           image="ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
           echo "image=$image" >> "$GITHUB_OUTPUT"
+          frontend_image="ghcr.io/${{ github.repository }}-frontend@${{ steps.frontend.outputs.digest }}"
+          echo "frontend_image=$frontend_image" >> "$GITHUB_OUTPUT"
           db_image="$(grep '^POKETTO_DB_IMAGE=' deploy/.env.example | cut -d = -f 2-)"
           {
             echo "## Published image"
@@ -131,6 +152,7 @@ jobs:
             echo "|---|---|"
             echo "| Source commit | \`${{ github.sha }}\` |"
             echo "| Application image | \`$image\` |"
+            echo "| Frontend image | \`$frontend_image\` |"
             echo "| Database image | \`$db_image\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -196,6 +218,7 @@ jobs:
           DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
           DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
           IMAGE: ${{ needs.publish.outputs.image }}
+          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
           REVISION: ${{ github.sha }}
           REPOSITORY_PASSWORD: ${{ secrets.POKETTO_REPOSITORY_PASSWORD }}
           GITHUB_ACTOR: ${{ github.actor }}
@@ -204,22 +227,20 @@ jobs:
         run: |
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
+          args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
+                --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin)
           if [ "${DEPLOY_MODE:-pull}" = transfer ]; then
-            printf '%s\n' "$settings" | bash deploy/transfer.sh \
-              --target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" \
-              --image "$IMAGE" --revision "$REVISION" --sync --set-stdin
+            printf '%s\n' "$settings" | bash deploy/transfer.sh "${args[@]}"
           else
-            # The host logs in to GHCR with this run's token for one pull; the entrance never
-            # records registry credentials.
             printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
-              | $POKETTO_SSH "$DEPLOY_TARGET" \
-                "'$DEPLOY_ROOT/deploy.sh' --set-stdin --app-image '$IMAGE' --app-revision '$REVISION'"
+              | bash deploy/transfer.sh "${args[@]}" --pull
           fi
 
       - name: Record deployment
         if: always()
         env:
           IMAGE: ${{ needs.publish.outputs.image }}
+          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
         run: |
           {
             echo "## Production deployment"
@@ -228,6 +249,7 @@ jobs:
             echo "|---|---|"
             echo "| Source commit | \`${{ github.sha }}\` |"
             echo "| Application image | \`$IMAGE\` |"
+            echo "| Frontend image | \`$FRONTEND_IMAGE\` |"
             echo "| Mode | \`${{ vars.POKETTO_DEPLOY_MODE || 'pull' }}\` |"
             echo "| Result | ${{ job.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"

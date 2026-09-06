@@ -1,0 +1,11 @@
+# Actual MCP client acceptance
+
+Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
+
+Codex supports Streamable HTTP with a bearer token read from an environment variable; its [official configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) documents connection and tool timeouts. The adjacent TOML fragment supplies the isolated endpoint. For a single CLI run, pass the same fields with `codex exec -c` overrides rather than changing global configuration.
+
+Claude Code accepts the adjacent JSON with `--mcp-config` and `--strict-mcp-config`. Its [official MCP documentation](https://code.claude.com/docs/en/mcp#environment-variable-expansion-in-mcp-json) specifies environment expansion in URLs and authentication headers. A connected status establishes only discovery, not tool acceptance.
+
+For each client, use its actual model-driven tool calls to explore directories/history, read the private sentinel, read a Git image, upload a small valid image with an idempotency key, create a private text file using server-provided revision/absence, edit and move it, provoke a stale-base conflict, and delete only that newly created sample file. Re-read the original file after changing its execution copy to prove `get_file` still reads authoritative Git objects. Retry the same image upload with identical bytes and operation key, checking its immutable reference. An unconfirmed write must be read back before any retry.
+
+Record the client version, tested application commit, actual discovered tools, each tool outcome, and final repository readback. Keep raw sample transcripts outside tracked source and redact credentials. The execution tool is absent while the isolated worker is disabled; that run cannot complete the five-tool acceptance. Repeat the agreed workflows against the final HTTPS installation before marking phase one complete. Protocol tests and HTTP probes supplement these runs; neither replaces them.

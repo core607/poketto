@@ -1,3 +1,4 @@
+import java.time.Duration
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 plugins {
@@ -101,7 +102,7 @@ val integrationTest = tasks.register<Test>("integrationTest") {
 
 tasks.register<Sync>("stageAcceptanceRuntime") {
     group = "verification"
-    description = "Stages real application classes and synthetic fixtures for isolated browser acceptance."
+    description = "Stages real application classes and synthetic fixtures for isolated browser/MCP acceptance."
     dependsOn(tasks.named(integrationTestSourceSet.classesTaskName))
     into(layout.buildDirectory.dir("acceptance/runtime"))
     from(sourceSets.main.get().output) { into("classes") }
@@ -171,6 +172,66 @@ val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
     )
 }
 
+val gatewayConfigCheck = tasks.register<Exec>("gatewayConfigCheck") {
+    group = "verification"
+    description = "Validates the deployed Caddy configuration using its pinned Docker image."
+    inputs.files("deploy/Caddyfile", "deploy/.env.example", "deploy/tests/validate_gateway.sh")
+    outputs.upToDateWhen { false }
+    val bash = gitBash()
+    commandLine(
+        bash?.absolutePath ?: "bash",
+        *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
+        layout.projectDirectory.file("deploy/tests/validate_gateway.sh").asFile.absolutePath.replace('\\', '/'),
+    )
+}
+
+val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src")
+val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
+val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
+    group = "verification"
+    description = "Builds the production application image for its runtime identity check."
+    inputs.files(appImageInputs)
+    inputs.property("sourceRevision", appImageRevision)
+    outputs.files(appIdentityDirectory.map { it.file("image.id") }, appIdentityDirectory.map { it.file("revision") })
+    outputs.upToDateWhen { false }
+    timeout.set(Duration.ofMinutes(15))
+    doFirst {
+        val changed = providers.exec {
+            commandLine(listOf("git", "status", "--porcelain", "--untracked-files=all", "--") + appImageInputs)
+        }.standardOutput.asText.get().trim()
+        val head = appImageRevision.get()
+        check(Regex("[0-9a-f]{40}").matches(head)) { "A full source revision is required" }
+        val revision = head + if (changed.isEmpty()) "" else "-dirty"
+        val directory = appIdentityDirectory.get().asFile
+        directory.mkdirs()
+        directory.resolve("revision").writeText(revision)
+        commandLine("docker", "build", "--iidfile", directory.resolve("image.id").absolutePath,
+            "--build-arg", "POKETTO_REVISION=$revision", "--file", layout.projectDirectory.file("Dockerfile").asFile.absolutePath,
+            layout.projectDirectory.asFile.absolutePath)
+    }
+}
+val appImageIdentityCheck = tasks.register<Exec>("appImageIdentityCheck") {
+    group = "verification"
+    description = "Verifies the production image identity and protected executor Unix socket access."
+    dependsOn(buildAppIdentityImage)
+    inputs.files("deploy/tests/validate_app_identity.sh", "deploy/tests/app_identity_socket.py")
+    outputs.upToDateWhen { false }
+    timeout.set(Duration.ofMinutes(3))
+    doFirst {
+        val image = appIdentityDirectory.get().file("image.id").asFile.readText().trim()
+        val revision = appIdentityDirectory.get().file("revision").asFile.readText().trim()
+        check(Regex("sha256:[0-9a-f]{64}").matches(image)) { "Invalid production image identifier" }
+        val bash = gitBash()
+        commandLine(
+            bash?.absolutePath ?: "bash",
+            *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
+            layout.projectDirectory.file("deploy/tests/validate_app_identity.sh").asFile.absolutePath.replace('\\', '/'),
+            image, revision,
+        )
+    }
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release = 26
@@ -186,13 +247,15 @@ tasks.withType<Test>().configureEach {
 
 apply(from = "gradle/repository-checks.gradle.kts")
 apply(from = "gradle/frontend.gradle.kts")
-
 apply(from = "gradle/executor-service.gradle.kts")
 apply(from = "gradle/executor-native.gradle.kts")
+apply(from = "gradle/proxy-forwarding.gradle.kts")
 
 tasks.check {
     dependsOn(integrationTest)
     dependsOn("repoCheck")
     dependsOn(deployScriptTests)
     dependsOn(linuxStorageTest)
+    dependsOn(gatewayConfigCheck)
+    dependsOn(appImageIdentityCheck)
 }

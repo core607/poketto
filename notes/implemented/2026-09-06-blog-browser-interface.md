@@ -27,7 +27,7 @@ The [browser acceptance entrance](../../acceptance/README.md) runs actual Spring
 
 JTE and htmx would keep one process, but editing state would span server templates, fragment responses and browser scripts. Next.js supplies one component model while preserving Spring as the business boundary. A static export would require a separate content publication and invalidation contract; request-time rendering uses Spring's current public snapshot instead.
 
-The broader frontend proposal remains proposed: final deployment integration, production resource measurements and release acceptance have separate requirements. This browser entrance supplies no MCP transport or execution worker. Synthetic HTTP evidence does not satisfy the final HTTPS-domain and real-content acceptance criteria in [phase one](../proposed/2026-09-05-phase-one-daily-use.md).
+The broader frontend proposal remains proposed: production resource measurements and release acceptance have separate requirements. The [stack delivery record](2026-09-05-blog-stack-delivery.md) owns integrated deployment. Repository execution still needs a separately configured worker, and browser scenarios do not substitute for actual MCP-client workflows. Synthetic HTTP evidence does not satisfy the final HTTPS-domain and real-content acceptance criteria in [phase one](../proposed/2026-09-05-phase-one-daily-use.md).
 
 ## Verification
 

@@ -8,7 +8,7 @@
 
 开发中。[仓库创作基础](notes/implemented/2026-09-05-repository-authoring-foundations.md)提供任意路径 Markdown、文件级诊断、有界公开与私有搜索、发布策略、原子文本补丁、不可变本地图片存储和精确版本图片交付。远端 `main` 仍是权威；公开请求使用已验证快照，不会在请求中访问远端。[身份 HTTP 后端](notes/implemented/2026-09-06-workspace-identity-http.md)提供初始化、会话、邀请、成员与作用域 key。
 
-[博客与浏览器管理界面](notes/implemented/2026-09-06-blog-browser-interface.md)通过服务端渲染的公开页面，以及包含图片、成员和密钥管理的中文 Markdown 编辑器呈现这些 HTTP API。`/mcp` 提供四个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。最终 HTTPS 安装仍待完成，本地 worker 接入不代表最终部署拓扑已通过验收。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
+[博客与浏览器管理界面](notes/implemented/2026-09-06-blog-browser-interface.md)通过服务端渲染的公开页面，以及包含图片、成员和密钥管理的中文 Markdown 编辑器呈现这些 HTTP API。`/mcp` 提供四个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。最终 HTTPS 安装与部署拓扑验收仍待完成。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
 
 ## 适合谁
 
@@ -31,7 +31,7 @@ notes/               决策记录：proposed / implemented / rejected / archived
 
 ## 开发
 
-使用 Java 26 和仓库内的 Gradle Wrapper。前端与完整校验还需要 Node.js 24.19.0 和 npm 12.0.2。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。`./gradlew frontendCheck` 运行前端格式、类型、测试和生产构建。通过[隔离浏览器入口](acceptance/README.md)使用合成数据操作真实应用；前端运行设置见 [frontend/README.md](frontend/README.md)。Linux 执行服务测试要求 Python 3.10+ 及 venv、pip；Windows 在固定版本的 Linux 容器中运行必需的协议与状态测试。
+使用 Java 26 和仓库内的 Gradle Wrapper。Linux 执行服务测试需要带 venv 与 pip 支持的 Python 3.10+；Windows 在固定的 Linux 容器中运行该必需测试入口。前端与完整校验还需要 Node.js 24.19.0 和 npm 12.0.2。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。`./gradlew frontendCheck` 运行前端格式、类型、测试和生产构建。通过[隔离浏览器入口](acceptance/README.md)使用合成数据操作真实应用；前端运行设置见 [frontend/README.md](frontend/README.md)。
 
 应用启动需要 PostgreSQL 数据源、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。Flyway 会创建默认工作空间；应用将它绑定到远端 `main`，只在 `<data-dir>/workspaces/<workspace-id>/content` 物化一次性缓存。`POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` 与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS` 可以调整默认值为 32 个工作空间和 30 秒的限制；`POKETTO_REPOSITORY_REFRESH_SECONDS` 决定所服务内容多久对照远端 `main` 重新校验一次（默认 30 秒），`POKETTO_REPOSITORY_STALE_AFTER_SECONDS` 决定所服务内容最多多久没有成功重新校验，健康检查就会把它报告为停止服务（默认 3600 秒）。内容不可用时进程与刷新循环继续运行，但 readiness 报告停止服务，公开读取失败关闭。快照过期同样停止公开读取，最长允许沿用一小时。运行中的实例通过 `GET /actuator/health` 回应部署检查，并在 `GET /api/public/documents` 提供默认工作空间的公开文档；经 Poketto 的写入立即可见，合法的直接推送在下一次刷新后可见。
 
@@ -45,7 +45,7 @@ POKETTO_REPOSITORY_PASSWORD=... \
 ./gradlew bootRun
 ```
 
-初始化首个 owner 前，私下设置 `POKETTO_AUTH_INITIALIZATION_TOKEN`，并把 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin。本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`；HTTPS 保留安全默认值。初始化或登录前先获取 `/api/auth/csrf`，后续请求同时携带会话 cookie 和响应指定的 CSRF header。初始化与登录顺序见[身份 HTTP 契约](notes/implemented/2026-09-06-workspace-identity-http.md#operation)。部署 profile 尚未接入这些身份设置，运营者需显式把它们传入应用。
+初始化首个 owner 前，私下设置 `POKETTO_AUTH_INITIALIZATION_TOKEN`，并把 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin。本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`；HTTPS 保留安全默认值。初始化或登录前先获取 `/api/auth/csrf`，后续请求同时携带会话 cookie 和响应指定的 CSRF header。初始化与登录顺序见[身份 HTTP 契约](notes/implemented/2026-09-06-workspace-identity-http.md#operation)。部署 profile 从私有运行配置中传入这些身份设置。
 
 Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生磁盘卷运行 `linuxStorageTest`，包括公开标记持久化与快照恢复测试。Windows 开发模式只能在远端重新验证成功后建立内存公开快照；离线重启不会从磁盘恢复公开授权。Linux 上影响发布的写入必须先成功同步文件与目录才能推送；同步失败或不受支持时关闭公开服务。权威图片存储要求目录同步能力；不支持的宿主不能确认持久化上传。用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。
 
@@ -78,7 +78,11 @@ exclude:
 
 ## 部署
 
-每个通过校验的 `main` 提交都会发布 `ghcr.io/core607/poketto`，标签为 `sha-<commit>`。在主机上把 `deploy/compose.yaml`、`deploy/deploy.sh` 和填好的 `deploy/.env.example` 副本放进同一个部署目录，然后运行 `deploy.sh --app-image <镜像> --app-revision <提交>`；之后不带参数运行 `deploy.sh` 会按记录的固定版本重新部署。脚本会校验配置、版本固定、目录与磁盘空间，核对镜像的 revision 标签，只有 `/actuator/health` 回答 `UP` 才算成功。走这条路主机得能拉到镜像：私有的 GHCR 包需要先用只读 token 在主机上 `docker login ghcr.io`，或者把包设为公开。主机完全连不上 GHCR 时，`deploy/transfer.sh` 把镜像经 SSH 传过去并调用同一个入口。GitHub Actions 的自动部署默认关闭，直到配置了仓库变量 `POKETTO_DEPLOY_ENABLED` 和 `production` 环境；详见[持续交付笔记](notes/implemented/2026-09-03-continuous-delivery.md)。
+每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
+
+Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](notes/implemented/2026-09-05-blog-stack-delivery.md)。
+
+把 `POKETTO_NETWORK_SUBNET` 设置为未被占用、至少含 16 个地址的 RFC1918 IPv4 CIDR，把 `POKETTO_NETWORK_DYNAMIC_RANGE` 设置为规范且严格包含于主网、至少含八个地址的动态子池。把 `POKETTO_GATEWAY_INTERNAL_IP` 设置为池外的 Caddy 固定地址，排除主网的网络地址、供网桥使用的首个可用地址和广播地址。部署会在启动容器前拒绝无效范围；Docker 只从动态池为其他服务分配地址。只有该部署启用 Tomcat 转发解析，且仅信任网关的 `/32`；Caddy 重建客户端地址、协议和主机头，并在转交 Spring 前移除 `X-Forwarded-Port`。其它入口显式默认为 `server.forward-headers-strategy=none`。`./gradlew proxyForwardingCheck` 需要 Docker 和 Python 3.10+，验证真实 Compose 地址分配、客户端独立登录限流与共享账号限流；`check` 和 CI 必须执行它。
 
 ## 授权
 

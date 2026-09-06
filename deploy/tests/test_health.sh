@@ -34,3 +34,20 @@ echo '{"status":"DOWN"}' > "$FAKE_STATE/curl-body"
 run_deploy
 assert_status 1
 assert_contains "$ERR" "answered without UP"
+
+# Initial certificate issuance and later API readiness can fail independently. The same
+# deployment must wait for both entrances before recording its first confirmed pins.
+setup_root
+have_image "$DIGEST_IMAGE"
+sed -i.bak -e 's/^POKETTO_APP_IMAGE=.*/POKETTO_APP_IMAGE=/' -e 's/^POKETTO_APP_REVISION=.*/POKETTO_APP_REVISION=/' "$ROOT/.env"
+echo 2 > "$FAKE_STATE/https-site-transient-failures"
+echo 2 > "$FAKE_STATE/https-api-transient-failures"
+POKETTO_HEALTH_TIMEOUT=10 run_deploy --app-image "$DIGEST_IMAGE" --app-revision "$REVISION"
+assert_status 0
+[ "$(cat "$FAKE_STATE/https-site-attempts")" = 3 ]
+[ "$(cat "$FAKE_STATE/https-api-attempts")" = 3 ]
+[ "$(up_count)" = 1 ]
+grep -qx "POKETTO_APP_IMAGE=$DIGEST_IMAGE" "$ROOT/.env"
+grep -qx "POKETTO_APP_REVISION=$REVISION" "$ROOT/.env"
+[ ! -e "$ROOT/.env.previous" ]
+assert_not_contains "$(cat "$FAKE_STATE/curl.log")" '--insecure'
