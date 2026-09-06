@@ -192,6 +192,11 @@ class PublicContentSnapshotTests {
         transport.offline = true;
         clock.now = clock.now.plusSeconds(1800);
         var restarted = snapshots(fixture);
+        if (!new PublicSnapshotMarker().supportsOfflineRestoration()) {
+            assertThatThrownBy(() -> restarted.ensureReady(workspace)).isInstanceOf(ContentRepositoryException.class);
+            assertThatThrownBy(() -> restarted.current(workspace)).isInstanceOf(ContentRepositoryException.class);
+            return;
+        }
         restarted.ensureReady(workspace);
         assertThat(restarted.current(workspace).verifiedAt()).isEqualTo(original.verifiedAt());
         assertThat(restarted.current(workspace).expiresAt()).isEqualTo(original.expiresAt());

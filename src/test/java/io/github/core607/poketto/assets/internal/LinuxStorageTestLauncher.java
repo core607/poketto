@@ -10,7 +10,11 @@ import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 public final class LinuxStorageTestLauncher {
     private static final java.util.List<String> SUITES = java.util.List.of(
             "io.github.core607.poketto.assets.internal.LocalManagedBlobStoreTests",
-            "io.github.core607.poketto.assets.internal.ManagedAssetDeliveryTests");
+            "io.github.core607.poketto.assets.internal.ManagedAssetDeliveryTests",
+            "io.github.core607.poketto.content.internal.PublicSnapshotMarkerNativeTests",
+            "io.github.core607.poketto.content.internal.PublicSnapshotMarkerModeTests",
+            "io.github.core607.poketto.content.internal.PublicContentSnapshotTests",
+            "io.github.core607.poketto.content.internal.AssetDeliveryTests");
 
     private LinuxStorageTestLauncher() {}
 

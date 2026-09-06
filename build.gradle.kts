@@ -124,7 +124,7 @@ val linuxStorageTest = tasks.register<Exec>("linuxStorageTest") {
         "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
         "--entrypoint", "java",
         "eclipse-temurin@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc",
-        "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
+        "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
         "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
     )
 }
