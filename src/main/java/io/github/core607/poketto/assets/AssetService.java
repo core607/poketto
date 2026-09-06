@@ -250,29 +250,40 @@ public final class AssetService {
         Map<String, String> images = new LinkedHashMap<>();
         Map<Target, String> resolved = new HashMap<>();
         Set<String> inlinePaths = new HashSet<>();
+        for (String authored : destinations.images())
+            MarkdownDestinations.path(path, authored).ifPresent(inlinePaths::add);
         long[] bytes = {0};
         for (String authored : destinations.images()) {
-            Optional<Target> selected = target(workspace, commit, path, authored);
-            if (selected.isEmpty()) continue;
-            Target target = selected.orElseThrow();
-            if (target instanceof Git git) {
-                inlinePaths.add(git.blob().path());
-                if (publicOnly && !git.blob().publicPath()) continue;
+            try {
+                Optional<Target> selected = target(workspace, commit, path, authored);
+                if (selected.isEmpty()) continue;
+                Target target = selected.orElseThrow();
+                if (target instanceof Git git && publicOnly && !git.blob().publicPath()) continue;
+                String url = resolveImage(workspace, path, commit, actor, expires, target, resolved, bytes);
+                if (url != null) images.put(authored, url);
+            } catch (AssetStorageException | ContentRepositoryException unavailable) {
+                // An unavailable image retains its Markdown placeholder, without an authored URL fallback.
             }
-            String url = resolveImage(workspace, path, commit, actor, expires, target, resolved, bytes);
-            if (url != null) images.put(authored, url);
         }
         List<ResolvedMedia.GalleryImage> gallery = new ArrayList<>();
+        var galleryStatus = ResolvedMedia.GalleryStatus.COMPLETE;
         if (folder && commit != null) {
-            for (RepositoryBlob blob : blobs.siblings(workspace, commit, path, 128, publicOnly)) {
-                if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) continue;
-                String url = resolveImage(workspace, path, commit, actor, expires, new Git(blob), resolved, bytes);
-                if (url != null)
-                    gallery.add(new ResolvedMedia.GalleryImage(
-                            url, blob.path().substring(blob.path().lastIndexOf('/') + 1)));
+            try {
+                var siblings = blobs.siblings(workspace, commit, path, 128, publicOnly, inlinePaths);
+                if (siblings.partial()) galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                for (RepositoryBlob blob : siblings.items()) {
+                    if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) continue;
+                    String url = resolveImage(workspace, path, commit, actor, expires, new Git(blob), resolved, bytes);
+                    if (url != null)
+                        gallery.add(new ResolvedMedia.GalleryImage(
+                                url, blob.path().substring(blob.path().lastIndexOf('/') + 1)));
+                    else galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                }
+            } catch (AssetStorageException | ContentRepositoryException unavailable) {
+                galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
             }
         }
-        return new ResolvedMedia(body, commit, links, images, gallery);
+        return new ResolvedMedia(body, commit, links, images, gallery, galleryStatus);
     }
 
     private String resolveImage(
@@ -285,11 +296,16 @@ public final class AssetService {
             Map<Target, String> resolved,
             long[] total) {
         if (resolved.containsKey(target)) return resolved.get(target);
+        long allowance = target instanceof Git git ? git.blob().size() : ManagedBlobStore.MAX_UPLOAD_BYTES;
+        if (allowance > PAGE_IMAGE_BYTES - total[0]) {
+            resolved.put(target, null);
+            return null;
+        }
+        // Failed reads consume their allowance; managed reads settle to actual bytes only after success.
+        total[0] += allowance;
         try {
             AssetBytes image = bytes(workspace, target);
-            total[0] += image.size();
-            if (total[0] > PAGE_IMAGE_BYTES)
-                throw new ContentRepositoryException("page image resolution byte bound exceeded");
+            total[0] -= allowance - image.size();
             Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor), expires);
             if (token.isEmpty()) {
                 resolved.put(target, null);
@@ -300,7 +316,11 @@ public final class AssetService {
             return url;
         } catch (AssetStorageException unavailable) {
             resolved.put(target, null);
+            if (unavailable.reason() == AssetStorageException.Reason.UNAVAILABLE) throw unavailable;
             return null;
+        } catch (ContentRepositoryException unavailable) {
+            resolved.put(target, null);
+            throw unavailable;
         }
     }
 

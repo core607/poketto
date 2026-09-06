@@ -56,6 +56,8 @@ Source validation runs outside the global image-grant monitor and does not autho
 
 A remote ref update, including a force push or an unborn `main`, preserves already fetched objects. Transitioning to unborn `main` removes the local ref, index entries, and materialized files without deleting the object database. Existing immutable readers can finish while the new empty snapshot takes effect. This operation does not change publication or workspace authorization: callers still choose and authorize the exact commit before reading, and the public page resolution callback retains its existing snapshot installation lock.
 
+Unreachable fetched objects can accumulate until safe whole-cache eviction; the authority does not run concurrent Git garbage collection.
+
 SRT does not receive this cache or the authority binding. [Repository-native retrieval and sandboxed execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) owns full-copy, commit-pinned execution workspaces.
 
 ## Alternatives considered

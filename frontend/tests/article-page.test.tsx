@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import Home from "../app/page";
 import Article, { generateMetadata } from "../app/read/[[...slug]]/page";
 import { articleHref } from "../lib/format";
 
@@ -89,5 +90,53 @@ test("article page rejects malformed escapes and encoded path separators before 
       Article({ params: Promise.resolve({ slug: [segment] }) }),
       /NEXT_HTTP_ERROR_FALLBACK;404/,
     );
+  }
+});
+
+test("home and article keep text and empty gallery status in their initial HTML", async (t) => {
+  let galleryStatus = "PARTIAL";
+  const server = createServer((request, response) => {
+    const url = new URL(request.url!, "http://localhost");
+    response.setHeader("Content-Type", "application/json");
+    response.end(
+      JSON.stringify(
+        url.pathname === "/api/public/documents"
+          ? { commit: "fixture", items: [], total: 0, offset: 0, limit: 12 }
+          : {
+              ...document(url.searchParams.get("route")!),
+              commit: "fixture",
+              folderPage: true,
+              galleryStatus,
+            },
+      ),
+    );
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const previous = process.env.POKETTO_API_BASE_URL;
+  t.after(() => {
+    if (previous === undefined) delete process.env.POKETTO_API_BASE_URL;
+    else process.env.POKETTO_API_BASE_URL = previous;
+    server.closeAllConnections();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  process.env.POKETTO_API_BASE_URL = `http://127.0.0.1:${address.port}`;
+  for (const [status, message] of [
+    ["PARTIAL", "部分同目录图片未展示。"],
+    ["UNAVAILABLE", "同目录图片暂时无法加载。"],
+  ]) {
+    galleryStatus = status;
+    const values = [
+      await Home({ searchParams: Promise.resolve({}) }),
+      await Article({ params: Promise.resolve({ slug: ["album"] }) }),
+    ];
+    for (const value of values) {
+      const html = renderToStaticMarkup(value);
+      assert.match(html, /正文应该出现在初始 HTML 中。/);
+      assert.ok(html.includes(message));
+      assert.doesNotMatch(html, /<img/);
+    }
   }
 });

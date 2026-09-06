@@ -15,8 +15,18 @@ public interface RepositoryBlobReader {
     /** These cache-only methods require a server-selected commit, including a still-live earlier snapshot. */
     Optional<RepositoryBlob> find(WorkspaceId workspace, String commit, String path);
 
-    List<RepositoryBlob> siblings(
-            WorkspaceId workspace, String commit, String documentPath, int limit, boolean publicOnly);
+    /**
+     * Non-recursive Java filename prefix. Normalized inline paths and public-policy exclusions do
+     * not consume the 1–128 candidate limit. Oversized candidates mark partial without replacement;
+     * an absent folder returns empty and complete. Storage or scan-bound failures throw.
+     */
+    SiblingImages siblings(
+            WorkspaceId workspace,
+            String commit,
+            String documentPath,
+            int limit,
+            boolean publicOnly,
+            java.util.Set<String> inlinePaths);
     /** Lists at most 1000 bounded regular image candidates under a literal path prefix. */
     List<RepositoryBlob> images(WorkspaceId workspace, String commit, String prefix);
 
