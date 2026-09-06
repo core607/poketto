@@ -42,7 +42,9 @@ export function Editor({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
-  const [preview, setPreview] = useState<Preview>({});
+  const [preview, setPreview] = useState<Preview>({
+    galleryStatus: "COMPLETE",
+  });
   const [previewError, setPreviewError] = useState("");
   const [previewVersion, setPreviewVersion] = useState(0);
   const [view, setView] = useState("split");
@@ -74,7 +76,7 @@ export function Editor({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, onDirtyChange]);
   useEffect(() => {
-    setPreview({});
+    setPreview({ galleryStatus: "COMPLETE" });
     setPreviewError("");
     if (!file || unreadable || !path) return;
     let active = true;
@@ -110,7 +112,7 @@ export function Editor({
     setError("");
     setNotice("");
     setConflict(false);
-    setPreview({});
+    setPreview({ galleryStatus: "COMPLETE" });
     try {
       const result = await api<RepositoryFile>(
         "/api/admin/repository/file?" + new URLSearchParams({ path: target }),
