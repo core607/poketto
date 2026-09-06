@@ -10,6 +10,7 @@
   "appGid": 1001,
   "unitPrefix": "poketto-exec-worker-",
   "supervisorUnit": "poketto-executor.service",
+  "resourceSlice": "poketto-executor.slice",
   "leaseSeconds": 15,
   "renewAfterSeconds": 5,
   "maxRequests": 4096,

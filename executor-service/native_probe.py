@@ -21,6 +21,8 @@ import uuid
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from worker import recv_exact
+from native_pool import NativePool
+from resource_pool import check_service, properties
 
 
 def run(args, **kw):
@@ -43,6 +45,7 @@ def main():
     user = 'pkt-exec-' + token
     supervisor = 'poketto-probe-' + token
     unit_prefix = 'poketto-exec-' + token + '-'
+    resource_pool = NativePool(token)
     key = Ed25519PrivateKey.generate()
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     heartbeat_stops = []
@@ -58,7 +61,7 @@ def main():
         'socketPath': str(runtime / 'control.sock'), 'publicKey': str(root / 'public.pem'),
         'toolsRoot': str(root / 'tools'), 'launcher': str(root / 'launcher.py'),
         'execUser': user, 'appUid': 0, 'appGid': 0, 'unitPrefix': unit_prefix,
-        'supervisorUnit': supervisor + '.service', 'leaseSeconds': 15, 'renewAfterSeconds': 5,
+        'supervisorUnit': supervisor + '.service', 'resourceSlice': resource_pool.name, 'leaseSeconds': 15, 'renewAfterSeconds': 5,
         'maxRequests': 4096, 'maxConnections': 32, 'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
         'diskBytes': 33554432, 'diskInodes': 8192, 'memoryBytes': 201326592,
         'temporaryBytes': 8388608, 'temporaryInodes': 1024,
@@ -67,8 +70,8 @@ def main():
     (root / 'config.json').write_text(json.dumps(config))
     config_path = str(root / 'config.json')
     def start():
-        run(['systemd-run', '--quiet', '--unit', supervisor,
-             '-p', 'UMask=0077',
+        run(['systemd-run', '--quiet', '--unit', supervisor, '--slice', resource_pool.name,
+             '-p', 'User=root', '-p', 'UMask=0077',
              '-p', 'Environment=PYTHONPATH=' + str(root / 'tools/python'),
              '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {config_path} --cleanup',
              '/usr/bin/python3', str(root / 'worker.py'), '--config', config_path])
@@ -127,6 +130,7 @@ def main():
         evidence.append(record)
         print(json.dumps(record), flush=True)
     try:
+        resource_pool.start()
         run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
         created_user = True
         run(['git', 'init', '-q', str(source)])
@@ -143,6 +147,7 @@ def main():
         before = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest() for p in source.rglob('*') if p.is_file()}
         workspace, app_boot = str(uuid.uuid4()), str(uuid.uuid4())
         boot = start()['workerBootId']
+        check_service(supervisor + '.service')
         supervisor_umask = run(['systemctl', 'show', supervisor, '-p', 'UMask', '--value'])
         assert supervisor_umask == '0077'
         started = time.monotonic()
@@ -152,6 +157,21 @@ def main():
         assert all((p.stat().st_dev, p.stat().st_ino) not in source_inodes for p in copied_objects.rglob('*') if p.is_file())
         passed('initial-signed-bundle-copy', milliseconds=round((time.monotonic() - started) * 1000, 2),
                bundleBytes=bundle.stat().st_size, supervisorUmask=supervisor_umask)
+        active = pool.submit(execute, first, 'sleep 3')
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*']).splitlines()
+            if units:
+                break
+            time.sleep(.05)
+        assert units
+        for line in units:
+            unit = line.split()[0]
+            info = properties(unit)
+            assert info['Slice'] == resource_pool.name
+            assert info['ControlGroup'].startswith(properties(resource_pool.name)['ControlGroup'] + '/')
+        assert active.result(timeout=10)['exitCode'] == 0
+        passed('root-supervisor-and-command-share-finite-pool', slice=resource_pool.name)
         timings = []
         for _ in range(20):
             started = time.monotonic()
@@ -298,29 +318,34 @@ def main():
         passed('supervisor-sigkill-cleans-and-invalidates-leases')
         print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'source': 'synthetic-only',
             'runtimeParent': '/run', 'supervisorUmask': supervisor_umask,
+            'resourcePoolSha256': hashlib.sha256((root / 'resource_pool.py').read_bytes()).hexdigest(),
+            'nativePoolSha256': hashlib.sha256((root / 'native_pool.py').read_bytes()).hexdigest(),
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
     finally:
-        for stop in heartbeat_stops:
-            stop.set()
-        subprocess.run(['systemctl', 'stop', supervisor], capture_output=True, timeout=20)
-        subprocess.run(['systemctl', 'reset-failed', supervisor], capture_output=True, timeout=10)
-        subprocess.run([sys.executable, str(root / 'worker.py'), '--config', config_path, '--cleanup'], check=True, timeout=30)
-        pool.shutdown(wait=True, cancel_futures=True)
-        assert not list((runtime / 'sessions').iterdir())
-        if created_user:
-            assert subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)], capture_output=True).returncode == 1
-            run(['userdel', user])
-        for name in ('control.sock', '.supervisor.lock'):
-            file = runtime / name
-            if file.exists():
-                assert not file.is_symlink()
-                assert stat.S_ISSOCK(file.stat().st_mode) if name == 'control.sock' else file.is_file()
-                file.unlink()
-        (runtime / 'sessions').rmdir()
-        (runtime / 'records').rmdir()
-        runtime.rmdir()
+        try:
+            for stop in heartbeat_stops:
+                stop.set()
+            subprocess.run(['systemctl', 'stop', supervisor], capture_output=True, timeout=20)
+            subprocess.run(['systemctl', 'reset-failed', supervisor], capture_output=True, timeout=10)
+            subprocess.run([sys.executable, str(root / 'worker.py'), '--config', config_path, '--cleanup'], check=True, timeout=30)
+            pool.shutdown(wait=True, cancel_futures=True)
+            assert not list((runtime / 'sessions').iterdir())
+            if created_user:
+                assert subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)], capture_output=True).returncode == 1
+                run(['userdel', user])
+            for name in ('control.sock', '.supervisor.lock'):
+                file = runtime / name
+                if file.exists():
+                    assert not file.is_symlink()
+                    assert stat.S_ISSOCK(file.stat().st_mode) if name == 'control.sock' else file.is_file()
+                    file.unlink()
+            (runtime / 'sessions').rmdir()
+            (runtime / 'records').rmdir()
+            runtime.rmdir()
+        finally:
+            resource_pool.close()
         print(json.dumps({'cleanup': 'PASS'}), flush=True)
 
 

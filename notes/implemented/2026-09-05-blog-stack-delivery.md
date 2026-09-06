@@ -34,6 +34,8 @@ The production application image explicitly creates UID/GID 10001; automatic sys
 
 The generic deployment entrance does not install privileged worker services or rewrite worker policy. Their installation and native boundary tests are separate prerequisites, and phase-one acceptance still requires enabled, verified execution.
 
+Deployment also invokes the installed [resource-pool checker](../../executor-service/resource_pool.py) as the deployment account. It reads systemd service identity and kernel cgroup state, without accessing private worker configuration. The root supervisor must belong to a dedicated slice with finite aggregate memory, swap, task and CPU limits. A missing helper, incorrect membership or unlimited budget stops deployment. The [worker installation contract](../../executor-service/README.md#runtime) owns matching source installation and private quota configuration.
+
 ## Alternatives and consequences
 
 A single image containing both web runtimes would make source matching implicit but couple their processes, health and resource limits. Two labeled images keep those boundaries explicit without requiring another release manifest. Transferring official database and gateway images as unverified local tags would avoid Docker Hub access at the cost of weakening their pin contract; this entrance retains digest pulls and cached digests instead.

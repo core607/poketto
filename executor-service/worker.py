@@ -20,6 +20,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from resource_pool import ResourcePool
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -321,6 +322,7 @@ def checked(args, **kwargs):
 class SystemdBackend:
     def __init__(self, config):
         self.c = config
+        self.pool = None
         self.root = Path(config['runtimeRoot'])
         self.sessions = self.root / 'sessions'
         self.records = self.root / 'records'
@@ -348,6 +350,7 @@ class SystemdBackend:
         return self.sessions / identifier(s.id)
 
     def open(self, s, data):
+        self.pool.verify()
         target = self.mount_path(s)
         target.mkdir(mode=0o750)
         checked(['mount', '-t', 'tmpfs', '-o',
@@ -411,6 +414,7 @@ class SystemdBackend:
         return self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
 
     def run(self, s, payload, timeout_ms):
+        self.pool.verify()
         target = self.mount_path(s)
         operation = str(uuid.uuid4())
         record = self.records / (operation + '.json')
@@ -430,6 +434,7 @@ class SystemdBackend:
         unit = self.c['unitPrefix'] + operation
         s.unit = unit
         args = ['systemd-run', '--quiet', '--wait', '--pipe', '--unit', unit,
+                '--slice', self.pool.name,
                 '-p', 'User=' + self.c['execUser'], '-p', 'CPUQuota=' + str(self.c['cpuQuotaPercent']) + '%',
                 '-p', 'MemoryMax=' + str(self.c['memoryBytes']), '-p', 'MemorySwapMax=0',
                 '-p', 'TasksMax=' + str(self.c['tasksMax']), '-p', f'RuntimeMaxSec={timeout_ms / 1000}',
@@ -622,6 +627,9 @@ def main():
     backend = SystemdBackend(config)
     if args.cleanup:
         return
+    # Cleanup precedes pool validation, so a broken installation cannot strand old trees.
+    backend.pool = ResourcePool(config.get('resourceSlice'))
+    backend.pool.verify()
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):
         raise SystemExit('Ed25519 public key required')

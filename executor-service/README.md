@@ -20,7 +20,7 @@ its PEM public key. Never put the signing key or a real operator configuration
 in this repository.
 
 [config.example.json](config.example.json) lists all configurable paths and
-resource bounds. Its UID/GID and numeric limits are examples, not approved
+per-command resource bounds. Its UID/GID and numeric limits are examples, not approved
 production values. `runtimeRoot` must be a dedicated root-owned directory;
 `exportRoot` contains only the application's atomic `<UUID>.bundle` exports.
 `socketPath` must be under `runtimeRoot`. Configure `appUid` for `SO_PEERCRED`
@@ -41,6 +41,37 @@ The worker captures at most 64 KiB of combined stdout/stderr bytes and stops
 the process tree when that limit is exceeded. UTF-8 decoding replaces malformed
 output bytes; the decoded string can use more encoded bytes than its captured
 input. The complete framed response still has a separate 1 MiB bound.
+
+Install [resource_pool.py](resource_pool.py) with the worker at
+`/opt/poketto-executor/resource_pool.py`, and install
+[poketto-executor.slice](poketto-executor.slice) and
+[poketto-executor.service](poketto-executor.service) in `/etc/systemd/system/`.
+Keep these files and their parent directories root-owned and unwritable by
+application, execution, and deployment accounts. The slice is the single source
+of aggregate limits: set finite `MemoryMax`, `MemorySwapMax`, `TasksMax` and
+`CPUQuota` in a private systemd drop-in before starting the service. Its checked-in
+numbers are bounded examples, not production sizing. Run `systemctl daemon-reload`
+after installation or changes. `resourceSlice` in worker configuration must match
+the service's `Slice`; the default name is `poketto-executor.slice`.
+
+The root supervisor and every transient command explicitly join this pool.
+Its memory budget includes bundle copying and tmpfs pages retained after a
+command exits. Per-command limits remain additional bounds; they do not replace
+the pool. Startup and new OPEN/EXEC operations reject missing, unlimited or
+incorrectly placed pools. Startup cleanup runs before validation, and CLOSE,
+revocation and `--cleanup` remain available when pool validation fails.
+
+The deployment operator runs the same read-only validation without reading
+private worker configuration:
+
+```sh
+python3 /opt/poketto-executor/resource_pool.py --service poketto-executor.service
+```
+
+It checks the actual root process, service membership and kernel cgroup limits.
+The deployment script requires this check when execution is enabled; a missing
+helper or failed check stops deployment. Install matching worker/helper versions
+before redeploying an application that requires execution.
 
 `maxSessions`, `maxConnections`, `maxRequests`, and `maxExecutionsPerSession`
 bound admission and replay state. A full replay table can reject new work until
@@ -147,7 +178,7 @@ actual signed socket entry point and cleans units, mounts, and the account in
 `finally`. Its runtime uses a new root-owned directory under `/run` and the
 production `UMask=0077`; this prevents the private `/tmp` write grant from
 concealing a production filesystem-mount error. Use a new disposable root
-directory containing worker.py,
+directory containing worker.py, resource_pool.py, native_pool.py,
 launcher.py, native_probe.py, and a prepared `tools` directory. Install the
 pinned Python dependencies into `tools/python`; the probe's supervisor uses
 that directory. `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike` creates
@@ -162,3 +193,22 @@ The disposable source, tools, and logs remain for inspection; remove that exact
 verified probe directory after its mounts and units are gone. The checked-in
 [evidence](evidence.jsonl) records synthetic measurements and source hashes.
 It does not claim production sizing, actual MCP clients, or formal deployment.
+
+The separate [resource pool probe](resource_pool_probe.py) needs only root,
+systemd/cgroup v2, Python, `runuser` with a `nobody` account, `mount`, and the kernel
+journal. Place it beside `resource_pool.py` and `native_pool.py`, then run:
+
+```sh
+sudo python3 resource_pool_probe.py --output /temporary/new-pool-evidence.json
+```
+
+The output must not exist. The probe creates a new 96 MiB pool and a 128 MiB tmpfs,
+checks the unprivileged deployment helper against real service identities and
+missing limits, then verifies that 32 MiB remains charged after its allocating
+process exits. A second 80 MiB write must hit the parent memory limit. It records
+kernel counters and scoped OOM evidence, and removes only its own units, mount,
+slice and files. Both `result: PASS` and `cleanup: PASS` are required. This is an
+isolated aggregate-budget test, not an SRT or production-capacity acceptance.
+The [recorded result](resource-pool-evidence.json) contains source hashes and
+synthetic counters from a Linux cgroup v2 run; it does not include operator paths
+or production limits.
