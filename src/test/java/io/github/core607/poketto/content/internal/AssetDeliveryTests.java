@@ -868,7 +868,7 @@ class AssetDeliveryTests {
     }
 
     @Test
-    void aWithdrawalAlreadyHoldingTheAuthorityLockPreventsNearExpiryRenewal() throws Exception {
+    void pendingFetchAllowsRenewalUntilObservedWithdrawalClosesPublication() throws Exception {
         var delegate = new JGitRemoteGitTransport();
         AtomicBoolean pauseFetch = new AtomicBoolean();
         CountDownLatch fetching = new CountDownLatch(1);
@@ -905,24 +905,33 @@ class AssetDeliveryTests {
         files.put(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-by-default\n"));
         fixture.commitRemote(workspace, files);
         pauseFetch.set(true);
+        String renewed;
         try (var pool = Executors.newFixedThreadPool(2)) {
             var withdrawing = pool.submit(() -> snapshots.refresh(workspace));
             assertThat(fetching.await(5, TimeUnit.SECONDS)).isTrue();
             var renewing = pool.submit(() -> service.publicDocument(workspace, "/article"));
             try {
-                assertThatThrownBy(() -> renewing.get(100, TimeUnit.MILLISECONDS))
-                        .isInstanceOf(TimeoutException.class);
+                renewed = token(renewing.get(2, TimeUnit.SECONDS)
+                        .orElseThrow()
+                        .media()
+                        .images()
+                        .get("image.png"));
+                assertThat(renewed).isNotEqualTo(original);
+                assertThat(withdrawing).isNotDone();
             } finally {
                 release.countDown();
             }
             assertThat(withdrawing.get(5, TimeUnit.SECONDS).articles()).isEmpty();
-            assertThat(renewing.get(5, TimeUnit.SECONDS)).isEmpty();
+            assertThat(service.publicDocument(workspace, "/article")).isEmpty();
         } finally {
             release.countDown();
         }
         assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
         clock.now = clock.now.plusSeconds(1);
         assertNotFound(() -> service.readPublicImage(workspace, original));
+        assertThat(service.readPublicImage(workspace, renewed).bytes()).isEqualTo(png(1));
+        clock.now = clock.now.plusSeconds(299);
+        assertNotFound(() -> service.readPublicImage(workspace, renewed));
     }
 
     @Test

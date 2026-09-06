@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -97,7 +98,10 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
 
     @Override
     public PublicContentSnapshot current(WorkspaceId workspaceId) {
-        PublicContentSnapshot snapshot = snapshots.get(workspaceId);
+        return requireCurrent(snapshots.get(workspaceId));
+    }
+
+    private PublicContentSnapshot requireCurrent(PublicContentSnapshot snapshot) {
         Instant now = clock.instant();
         if (snapshot == null || now.isBefore(snapshot.verifiedAt()) || !now.isBefore(snapshot.expiresAt()))
             throw unavailable();
@@ -106,7 +110,15 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
 
     @Override
     public <T> T withCurrent(WorkspaceId workspaceId, java.util.function.Function<PublicContentSnapshot, T> action) {
-        return authority.readCache(workspaceId, ignored -> action.apply(current(workspaceId)));
+        var result = new AtomicReference<T>();
+        // The same-key put/remove operations install or close publication. Network fetches keep
+        // their authority mutex but never own this gate; callbacks must not enter that mutex.
+        var selected = snapshots.computeIfPresent(workspaceId, (ignored, snapshot) -> {
+            result.set(action.apply(requireCurrent(snapshot)));
+            return snapshot;
+        });
+        if (selected == null) throw unavailable();
+        return result.get();
     }
 
     private PublicContentSnapshot restore(WorkspaceId workspaceId, RepositoryAuthority.Snapshot cache) {
