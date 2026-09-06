@@ -39,15 +39,20 @@ assert_contains "$ERR" "frontend container reported unhealthy"
 setup_root
 have_image "$DIGEST_IMAGE"
 touch "$FAKE_STATE/https-fails"
-run_deploy
+cp "$ROOT/.env" "$PWD/env.before"
+POKETTO_HEALTH_TIMEOUT=5 run_deploy
 assert_status 1
 assert_contains "$ERR" "valid certificate"
+[ "$(cat "$FAKE_STATE/https-site-attempts")" -ge 2 ]
+cmp -s "$ROOT/.env" "$PWD/env.before"
+[ ! -e "$ROOT/.env.previous" ]
 setup_root
 have_image "$DIGEST_IMAGE"
 touch "$FAKE_STATE/https-api-fails"
-run_deploy
+POKETTO_HEALTH_TIMEOUT=5 run_deploy
 assert_status 1
 assert_contains "$ERR" "same-origin HTTPS API"
+[ "$(cat "$FAKE_STATE/https-api-attempts")" -ge 2 ]
 setup_root
 have_image "$DIGEST_IMAGE"
 run_deploy

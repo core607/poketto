@@ -626,10 +626,25 @@ wait_for_health() {
     body="$("$CURL" -fsS --noproxy '*' --max-time 10 "http://$host:$HTTP_PORT/actuator/health" 2>/dev/null)" \
         || report_failure "the health entrance at $host:$HTTP_PORT did not answer"
     [[ "$body" == *'"UP"'* ]] || report_failure "the health entrance answered without UP"
-    "$CURL" -fsS --noproxy '*' --max-time 15 --resolve "$POKETTO_PUBLIC_DOMAIN:443:127.0.0.1" "https://$POKETTO_PUBLIC_DOMAIN/" >/dev/null 2>&1 \
-        || report_failure "the local HTTPS website did not answer with a valid certificate"
-    "$CURL" -fsS --noproxy '*' --max-time 15 --resolve "$POKETTO_PUBLIC_DOMAIN:443:127.0.0.1" "https://$POKETTO_PUBLIC_DOMAIN/api/public/documents?limit=1" >/dev/null 2>&1 \
-        || report_failure "the same-origin HTTPS API did not answer"
+    wait_for_https "$deadline" / "the local HTTPS website did not answer with a valid certificate"
+    wait_for_https "$deadline" '/api/public/documents?limit=1' "the same-origin HTTPS API did not answer"
+}
+
+# Container health can precede certificate issuance. Both HTTPS entrances share the
+# remaining health deadline; every request retains certificate verification.
+wait_for_https() {
+    local deadline="$1" path="$2" failure="$3" remaining timeout
+    while :; do
+        remaining=$(( deadline - $(date +%s) ))
+        [ "$remaining" -gt 0 ] || report_failure "$failure within ${HEALTH_TIMEOUT}s"
+        timeout=$(( remaining < 15 ? remaining : 15 ))
+        if "$CURL" -fsS --noproxy '*' --max-time "$timeout" \
+            --resolve "$POKETTO_PUBLIC_DOMAIN:443:127.0.0.1" "https://$POKETTO_PUBLIC_DOMAIN$path" >/dev/null 2>&1; then
+            return 0
+        fi
+        [ "$(date +%s)" -lt "$deadline" ] || report_failure "$failure within ${HEALTH_TIMEOUT}s"
+        sleep 1
+    done
 }
 
 report_failure() {
