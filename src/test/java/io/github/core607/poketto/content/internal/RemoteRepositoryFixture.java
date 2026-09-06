@@ -44,6 +44,18 @@ final class RemoteRepositoryFixture {
         this(root, new JGitRemoteGitTransport());
     }
 
+    RemoteRepositoryFixture(Path root, Clock clock) {
+        this(root.resolve("data"), root.resolve("remotes"), new JGitRemoteGitTransport(), 32, clock);
+    }
+
+    RemoteRepositoryFixture(Path root, int maxCachedWorkspaces, Clock clock) {
+        this(root.resolve("data"), root.resolve("remotes"), new JGitRemoteGitTransport(), maxCachedWorkspaces, clock);
+    }
+
+    RemoteRepositoryFixture(Path root, RemoteGitTransport transport, Clock clock) {
+        this(root.resolve("data"), root.resolve("remotes"), transport, 32, clock);
+    }
+
     RemoteRepositoryFixture(Path root, int maxCachedWorkspaces) {
         this(root.resolve("data"), root.resolve("remotes"), new JGitRemoteGitTransport(), maxCachedWorkspaces);
     }
@@ -57,6 +69,11 @@ final class RemoteRepositoryFixture {
     }
 
     RemoteRepositoryFixture(Path dataRoot, Path remoteRoot, RemoteGitTransport transport, int maxCachedWorkspaces) {
+        this(dataRoot, remoteRoot, transport, maxCachedWorkspaces, Clock.systemUTC());
+    }
+
+    RemoteRepositoryFixture(
+            Path dataRoot, Path remoteRoot, RemoteGitTransport transport, int maxCachedWorkspaces, Clock clock) {
         remotes = remoteRoot.toAbsolutePath();
         paths = new WorkspacePaths(dataRoot.toAbsolutePath());
         bindings = workspaceId -> {
@@ -68,7 +85,7 @@ final class RemoteRepositoryFixture {
                 throw new IllegalStateException("test remote cannot be bound", exception);
             }
         };
-        authority = new JGitRemoteRepositoryAuthority(paths, bindings, transport, maxCachedWorkspaces);
+        authority = new JGitRemoteRepositoryAuthority(paths, bindings, transport, maxCachedWorkspaces, clock);
         store = new JGitContentRepositoryStore(authority, codec, Clock.systemUTC());
     }
 

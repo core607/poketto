@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -33,11 +35,13 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     private static final String MAIN = Constants.R_HEADS + "main";
+    private static final Duration MAX_PROTECTION = Duration.ofMinutes(5);
 
     private final WorkspacePaths paths;
     private final RepositoryBindingSource bindings;
     private final RemoteGitTransport transport;
     private final int maxCachedWorkspaces;
+    private final Clock clock;
     private final Map<WorkspaceId, CacheLock> workspaceLocks = new java.util.HashMap<>();
     private final ReentrantLock cacheLifecycleLock = new ReentrantLock();
 
@@ -45,7 +49,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             WorkspacePaths paths,
             RepositoryBindingSource bindings,
             RemoteGitTransport transport,
-            int maxCachedWorkspaces) {
+            int maxCachedWorkspaces,
+            Clock clock) {
         this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
         this.bindings = Objects.requireNonNull(bindings, "binding source must not be null");
         this.transport = Objects.requireNonNull(transport, "remote transport must not be null");
@@ -53,6 +58,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             throw new IllegalArgumentException("repository cache must allow at least one workspace");
         }
         this.maxCachedWorkspaces = maxCachedWorkspaces;
+        this.clock = Objects.requireNonNull(clock, "repository clock must not be null");
     }
 
     @Override
@@ -109,6 +115,18 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     @Override
     public <T> T readImmutableObjects(WorkspaceId workspaceId, ObjectReaderAction<T> action) {
+        return readImmutableObjects(workspaceId, action, null);
+    }
+
+    @Override
+    public void protectImmutableObjects(
+            WorkspaceId workspaceId, Instant expiresAt, ObjectReaderAction<Void> validation) {
+        Objects.requireNonNull(expiresAt, "source protection expiry must not be null");
+        validateProtection(expiresAt);
+        readImmutableObjects(workspaceId, validation, expiresAt);
+    }
+
+    private <T> T readImmutableObjects(WorkspaceId workspaceId, ObjectReaderAction<T> action, Instant protectedUntil) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         Objects.requireNonNull(action, "object reader action must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
@@ -142,13 +160,27 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             // and its object reader as active until both handles have actually closed.
             try (Repository repository = opened;
                     ObjectReader objects = repository.newObjectReader()) {
-                return action.read(objects);
+                T result = action.read(objects);
+                if (protectedUntil != null) {
+                    synchronized (workspaceLocks) {
+                        validateProtection(protectedUntil);
+                        if (protectedUntil.isAfter(workspaceLock.protectedUntil))
+                            workspaceLock.protectedUntil = protectedUntil;
+                    }
+                }
+                return result;
             }
         } catch (IOException exception) {
             throw new ContentRepositoryException("immutable repository objects cannot be read", exception);
         } finally {
             releaseWorkspaceLock(workspaceId, workspaceLock);
         }
+    }
+
+    private void validateProtection(Instant expiresAt) {
+        Instant now = clock.instant();
+        if (!now.isBefore(expiresAt) || expiresAt.isAfter(now.plus(MAX_PROTECTION)))
+            throw new ContentRepositoryException("repository source protection must expire within five minutes");
     }
 
     @Override
@@ -531,7 +563,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     .filter(path -> !path.equals(currentCache))
                     .filter(this::isIdle)
                     .min(Comparator.comparing(JGitRemoteRepositoryAuthority::lastModified))
-                    .orElseThrow(() -> failure(current, "repository cache capacity is occupied by active workspaces"));
+                    .orElseThrow(() -> failure(
+                            current, "repository cache capacity is occupied by active or protected workspaces"));
             deleteTree(victim);
             caches.remove(victim);
         }
@@ -572,13 +605,15 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         WorkspaceId id = WorkspaceId.parse(workspaceDirectory.getFileName().toString());
         synchronized (workspaceLocks) {
             CacheLock lock = workspaceLocks.get(id);
-            return lock == null || lock.users == 0;
+            return lock == null || (lock.users == 0 && !clock.instant().isBefore(lock.protectedUntil));
         }
     }
 
     private CacheLock acquireWorkspaceLock(WorkspaceId workspaceId) {
         CacheLock entry;
         synchronized (workspaceLocks) {
+            Instant now = clock.instant();
+            workspaceLocks.values().removeIf(lock -> lock.users == 0 && !now.isBefore(lock.protectedUntil));
             entry = workspaceLocks.computeIfAbsent(workspaceId, ignored -> new CacheLock());
             entry.users++;
         }
@@ -588,7 +623,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private void releaseWorkspaceLock(WorkspaceId workspaceId, CacheLock entry) {
         synchronized (workspaceLocks) {
             entry.users--;
-            if (entry.users == 0) {
+            if (entry.users == 0 && !clock.instant().isBefore(entry.protectedUntil)) {
                 workspaceLocks.remove(workspaceId, entry);
             }
         }
@@ -663,5 +698,6 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
         private final ReentrantLock lock = new ReentrantLock();
         private int users;
+        private Instant protectedUntil = Instant.MIN;
     }
 }
