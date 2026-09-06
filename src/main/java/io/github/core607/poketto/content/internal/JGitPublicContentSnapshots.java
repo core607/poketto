@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -160,18 +161,22 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     static RepositoryPublishingPolicy policy(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
         if (snapshot.commitId().isEmpty()) return RepositoryPublishingPolicy.missing();
         try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId);
-                RevWalk commits = new RevWalk(repository);
+                ObjectReader objects = repository.newObjectReader()) {
+            return policy(objects, snapshot.commitId().orElseThrow());
+        }
+    }
+
+    static RepositoryPublishingPolicy policy(ObjectReader objects, String commit) {
+        try (RevWalk commits = new RevWalk(objects);
                 TreeWalk entry = TreeWalk.forPath(
-                        repository,
+                        objects,
                         RepositoryPublishingPolicy.PATH,
-                        commits.parseCommit(
-                                        ObjectId.fromString(snapshot.commitId().orElseThrow()))
-                                .getTree())) {
+                        commits.parseCommit(ObjectId.fromString(commit)).getTree())) {
             if (entry == null) return RepositoryPublishingPolicy.missing();
             if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))
                     && !FileMode.EXECUTABLE_FILE.equals(entry.getFileMode(0)))
                 return RepositoryPublishingPolicy.parse(null);
-            var loader = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+            var loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
             if (loader.getSize() > RepositoryPublishingPolicy.MAX_BYTES) return RepositoryPublishingPolicy.parse(null);
             return RepositoryPublishingPolicy.parse(loader.getBytes(RepositoryPublishingPolicy.MAX_BYTES));
         } catch (IOException exception) {
