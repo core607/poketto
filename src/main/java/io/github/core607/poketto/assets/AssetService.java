@@ -50,6 +50,7 @@ public final class AssetService {
     private final RepositoryImageCache cache;
     private final Clock clock;
     private final int maxGrants;
+    private final ImageMemoryAdmission memory;
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Grant> grants = new HashMap<>();
     private final Map<GrantKey, String> reusable = new HashMap<>();
@@ -66,7 +67,8 @@ public final class AssetService {
             Path cacheDirectory,
             long cacheBytes,
             int maxGrants,
-            Clock clock) {
+            Clock clock,
+            ImageMemoryAdmission memory) {
         if (maxGrants < 128 || maxGrants > 100_000)
             throw new IllegalArgumentException("image grant capacity must be 128 to 100000");
         this.auth = auth;
@@ -78,6 +80,7 @@ public final class AssetService {
         this.cache = new RepositoryImageCache(cacheDirectory, cacheBytes);
         this.clock = clock;
         this.maxGrants = maxGrants;
+        this.memory = java.util.Objects.requireNonNull(memory);
     }
 
     public ManagedAsset upload(AuthPrincipal actor, WorkspaceId workspace, String operationKey, InputStream original) {
@@ -128,12 +131,23 @@ public final class AssetService {
                 totalBytes += blob.size();
                 if (totalBytes > INVENTORY_IMAGE_BYTES)
                     throw new ContentRepositoryException("repository image inventory byte bound exceeded");
-                try {
+                var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES);
+                if (reservation.isEmpty()) {
+                    diagnostics.add(new RepositoryDiagnostic(
+                            blob.path(),
+                            "IMAGE_CAPACITY_UNAVAILABLE",
+                            "image validation capacity is temporarily unavailable"));
+                    continue;
+                }
+                var scope = reservation.orElseThrow();
+                try (var producer = scope.producer()) {
                     AssetBytes image = bytes(workspace, new Git(blob));
                     images.add(new RepositoryImagePage.Item(blob.path(), image.mediaType(), blob.size()));
                 } catch (AssetStorageException | ContentRepositoryException invalid) {
                     diagnostics.add(new RepositoryDiagnostic(
                             blob.path(), "INVALID_IMAGE", "image signature, dimensions or bytes are unavailable"));
+                } finally {
+                    scope.responseComplete();
                 }
             }
             return new RepositoryImagePage(
@@ -285,7 +299,13 @@ public final class AssetService {
             Map<Target, String> resolved,
             long[] total) {
         if (resolved.containsKey(target)) return resolved.get(target);
-        try {
+        var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES);
+        if (reservation.isEmpty()) {
+            resolved.put(target, null);
+            return null;
+        }
+        var scope = reservation.orElseThrow();
+        try (var producer = scope.producer()) {
             AssetBytes image = bytes(workspace, target);
             total[0] += image.size();
             if (total[0] > PAGE_IMAGE_BYTES)
@@ -301,6 +321,8 @@ public final class AssetService {
         } catch (AssetStorageException unavailable) {
             resolved.put(target, null);
             return null;
+        } finally {
+            scope.responseComplete();
         }
     }
 

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.mcp.internal;
 
+import io.github.core607.poketto.assets.ImageRequestScope;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -47,7 +48,10 @@ final class CancellableMcpSession extends McpStreamableServerSession {
             McpTransportContext previous = context.getOrDefault(McpTransportContext.KEY, McpTransportContext.EMPTY);
             McpTransportContext decorated =
                     name -> name.equals(McpCancellation.CONTEXT_KEY) ? cancellation : previous.get(name);
-            return delegate.responseStream(request, transport)
+            var output = previous.get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope
+                    ? new ImageBudgetTransport(transport, scope)
+                    : transport;
+            return delegate.responseStream(request, output)
                     .contextWrite(current -> current.put(McpTransportContext.KEY, decorated))
                     .doOnCancel(() -> {
                         cancellation.cancel();

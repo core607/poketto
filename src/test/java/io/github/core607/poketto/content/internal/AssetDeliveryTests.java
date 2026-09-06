@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -552,6 +553,52 @@ class AssetDeliveryTests {
     }
 
     @Test
+    void imagePressurePreservesTextAndSkipsImageValidationWithoutWaitingUnderRepositoryLocks() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        String body = "# Body survives\n![image](image.png)\n[next](next.md)";
+        var files = files("article.md", body);
+        files.put("next.md", text("# Next"));
+        files.put("image.png", png(7));
+        String commit = fixture.commitRemote(workspace, files).name();
+        var snapshots = snapshots(fixture, Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ofSeconds(5));
+        var service = service(fixture, snapshots, memory);
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        try {
+            var article = service.publicDocument(workspace, "/article").orElseThrow();
+            assertThat(article.media().body()).isEqualTo(body);
+            assertThat(article.media().links()).containsEntry("next.md", "/next");
+            assertThat(article.media().images()).isEmpty();
+            var preview = service.preview(actor, workspace, "article.md", body, Optional.of(commit));
+            assertThat(preview.body()).isEqualTo(body);
+            assertThat(preview.images()).isEmpty();
+            var inventory = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30);
+            assertThat(inventory.items()).isEmpty();
+            assertThat(inventory.diagnostics())
+                    .extracting(item -> item.code())
+                    .containsExactly("IMAGE_CAPACITY_UNAVAILABLE");
+            assertThat(memory.waitingRequests()).isZero();
+            assertThat(memory.rejectedRequests()).isEqualTo(3);
+            assertThat(directory.resolve("image-cache")).doesNotExist();
+        } finally {
+            held.responseComplete();
+        }
+        assertThat(service.publicDocument(workspace, "/article")
+                        .orElseThrow()
+                        .media()
+                        .images())
+                .containsOnlyKeys("image.png");
+        assertThat(service.preview(actor, workspace, "article.md", body, Optional.of(commit))
+                        .images())
+                .containsOnlyKeys("image.png");
+        assertThat(service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30)
+                        .items())
+                .hasSize(1);
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
     void privateInventoryValidatesActualMediaAndReportsInvalidCandidates() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var files = files("private/article.md", "# Private");
@@ -611,6 +658,11 @@ class AssetDeliveryTests {
     }
 
     private AssetService service(RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots) {
+        return service(fixture, snapshots, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
+    }
+
+    private AssetService service(
+            RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, ImageMemoryAdmission memory) {
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(invocation -> {
             if (!authorized.get()) throw new SecurityException("authorization revoked");
             return ((Supplier<?>) invocation.getArgument(3)).get();
@@ -625,7 +677,8 @@ class AssetDeliveryTests {
                 directory.resolve("image-cache"),
                 16L * 1024 * 1024,
                 128,
-                clock);
+                clock,
+                memory);
     }
 
     private JGitPublicContentSnapshots snapshots(RemoteRepositoryFixture fixture, Duration lifetime) {

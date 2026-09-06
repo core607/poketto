@@ -3,6 +3,7 @@ package io.github.core607.poketto.web.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
@@ -57,6 +59,7 @@ class PublicImageGrantCapacityTests {
         var store = mock(ManagedBlobStore.class);
         when(store.read(workspace.id(), reference))
                 .thenReturn(new ManagedImage(new ManagedAsset(reference, "image/png", 1), new byte[] {1}));
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, java.time.Duration.ZERO);
         var service = new AssetService(
                 null,
                 null,
@@ -67,11 +70,23 @@ class PublicImageGrantCapacityTests {
                 directory.toAbsolutePath(),
                 16L * 1024 * 1024,
                 128,
-                Clock.fixed(at, ZoneOffset.UTC));
+                Clock.fixed(at, ZoneOffset.UTC),
+                memory);
         var mvc = MockMvcBuilders.standaloneSetup(
                         new PublicDocumentController(new PublicDocuments(snapshots, catalog, service)))
                 .setControllerAdvice(new ProblemResponses())
+                .addFilters(new ImageMemoryFilter(memory))
                 .build();
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        try {
+            mvc.perform(get("/api/public/document").param("route", "/article-0"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.body").value(body))
+                    .andExpect(jsonPath("$.images").isEmpty());
+            verifyNoInteractions(store);
+        } finally {
+            held.responseComplete();
+        }
         for (int i = 0; i < 128; i++) {
             mvc.perform(get("/api/public/document").param("route", "/article-" + i))
                     .andExpect(status().isOk())

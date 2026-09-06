@@ -1,5 +1,7 @@
 package io.github.core607.poketto.mcp.internal;
 
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.assets.ImageRequestScope;
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
 import jakarta.servlet.Filter;
@@ -29,9 +31,11 @@ final class McpBodyLimitFilter implements Filter {
     private final Semaphore activeControls = new Semaphore(4);
     private final Semaphore readingPrefixes = new Semaphore(8);
     private final ObjectMapper json;
+    private final ImageMemoryAdmission memory;
 
-    McpBodyLimitFilter(ObjectMapper json) {
+    McpBodyLimitFilter(ObjectMapper json, ImageMemoryAdmission memory) {
         this.json = json;
+        this.memory = memory;
     }
 
     @Override
@@ -74,7 +78,22 @@ final class McpBodyLimitFilter implements Filter {
         Runnable release = () -> {
             if (released.compareAndSet(false, true)) admission.release();
         };
-        try {
+        boolean imageWork = imageWork(prefix);
+        var reservation = imageWork
+                ? memory.acquire(ImageMemoryAdmission.MCP_BYTES)
+                : java.util.Optional.<ImageRequestScope>empty();
+        if (imageWork && reservation.isEmpty()) {
+            release.run();
+            reject(output, 429);
+            return;
+        }
+        ImageRequestScope scope = reservation.orElse(null);
+        if (scope != null) http.setAttribute(ImageRequestScope.ATTRIBUTE, scope);
+        Runnable complete = () -> {
+            if (scope != null) scope.responseComplete();
+            release.run();
+        };
+        try (var producer = scope == null ? (ImageRequestScope.Producer) () -> {} : scope.producer()) {
             // The SDK consumes stream exceptions itself, so enforce the bound before dispatch.
             byte[] body = prefix;
             int size = prefix.length;
@@ -136,17 +155,17 @@ final class McpBodyLimitFilter implements Filter {
                     http.getAsyncContext().addListener(new AsyncListener() {
                         @Override
                         public void onComplete(AsyncEvent event) {
-                            release.run();
+                            complete.run();
                         }
 
                         @Override
                         public void onTimeout(AsyncEvent event) {
-                            release.run();
+                            // Timeout handling can still retain the request and an active producer.
                         }
 
                         @Override
                         public void onError(AsyncEvent event) {
-                            release.run();
+                            // Complete the response before releasing request admission.
                         }
 
                         @Override
@@ -155,9 +174,22 @@ final class McpBodyLimitFilter implements Filter {
                         }
                     });
                 } catch (IllegalStateException exception) {
-                    release.run();
+                    complete.run();
                 }
-            } else release.run();
+            } else complete.run();
+        }
+    }
+
+    private boolean imageWork(byte[] prefix) {
+        // A large request may put the tool name after its arguments. Reserve before buffering it.
+        if (prefix.length > MAX_INITIALIZE_BYTES) return true;
+        try {
+            var message = json.readTree(prefix);
+            if (!message.path("method").asString("").equals("tools/call")) return false;
+            String tool = message.path("params").path("name").asString("");
+            return tool.equals("get_asset") || tool.equals("put_asset");
+        } catch (RuntimeException invalid) {
+            return false;
         }
     }
 

@@ -54,7 +54,9 @@ class McpBoundsTests {
 
     @Test
     void fullBodyIsValidatedBeforeDispatchAndExactBytesAreConsumedOnlyOnce() throws Exception {
-        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var filter = new McpBodyLimitFilter(
+                new tools.jackson.databind.ObjectMapper(),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         byte[] oversized = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1];
         for (int attempt = 0; attempt < 5; attempt++) {
             var request = chunked(oversized);
@@ -123,7 +125,9 @@ class McpBoundsTests {
 
     @Test
     void bodyLimitEnforcesDeclaredAndChunkedBytesAndDoesNotResetOnRepeatedStreamAccess() throws Exception {
-        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var filter = new McpBodyLimitFilter(
+                new tools.jackson.databind.ObjectMapper(),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var declared = new MockHttpServletRequest("POST", "/mcp");
         declared.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
         var response = new MockHttpServletResponse();
@@ -157,7 +161,9 @@ class McpBoundsTests {
 
     @Test
     void cancellationHasBoundedReservedAdmissionWhenAllDataPostsAreActive() throws Exception {
-        var filter = new McpBodyLimitFilter(new tools.jackson.databind.ObjectMapper());
+        var filter = new McpBodyLimitFilter(
+                new tools.jackson.databind.ObjectMapper(),
+                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var held = new ArrayList<MockHttpServletRequest>();
         try {
             for (int i = 0; i < 4; i++) {
