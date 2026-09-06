@@ -11,6 +11,8 @@ Next.js reads public Spring APIs without forwarding a browser identity or cachin
 
 The editor keeps the loaded revision and commit alongside the draft. A rename or delete becomes an atomic repository patch. Conflict and uncertain-response states retain the draft instead of retrying a write. Image uploads use independent idempotency keys and report their acknowledgement separately from a document save.
 
+Repository image choices encode each filename segment while retaining relative parent traversal. New image references and previews use the draft's pending destination path. Changing that path clears old image choices without rewriting the draft or its existing references.
+
 ## Build and local acceptance
 
 Node.js 24.19.0, npm 12.0.2 and the committed lockfile define the frontend build. Gradle `frontendCheck`, also required by `check`, runs formatting, type checking, behavioral tests and the production build. The frontend Dockerfile packages standalone production output; the root Docker ignore rules exclude local dependencies, build caches and operator environment files.
@@ -25,4 +27,4 @@ The broader frontend proposal remains proposed: final deployment integration, pr
 
 ## Verification
 
-The frontend gate covers 22 behavioral tests, including initial article HTML, URL/image restrictions, Chinese routes and fragment targets, CSRF forwarding, upload idempotency, unchanged-save acknowledgement and uncertain-write handling. These tests use explicit API fixtures. Real-browser acceptance against the integrated content backend and screenshots of its exact source version remain required before this interface is ready for review.
+The frontend gate covers 24 behavioral tests, including initial article HTML, URL/image restrictions, Chinese routes and fragment targets, CSRF forwarding, upload idempotency, unchanged-save acknowledgement and uncertain-write handling. A mounted editor test changes the pending destination, chooses an image and checks the emitted preview requests and unchanged draft bytes. These tests use explicit API fixtures. Real-browser acceptance against the integrated content backend and screenshots of its exact source version remain required before this interface is ready for review.

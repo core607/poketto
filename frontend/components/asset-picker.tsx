@@ -234,5 +234,8 @@ export function relativePath(file: string, target: string) {
     parent.shift();
     destination.shift();
   }
-  return [...parent.map(() => ".."), ...destination].join("/");
+  return [
+    ...parent.map(() => ".."),
+    ...destination.map(encodeURIComponent),
+  ].join("/");
 }
