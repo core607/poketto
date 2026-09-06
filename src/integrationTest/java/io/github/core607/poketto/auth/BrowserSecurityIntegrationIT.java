@@ -5,24 +5,40 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import jakarta.servlet.Filter;
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+import jakarta.servlet.http.Part;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
@@ -43,7 +59,10 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "poketto.security.allowed-origins=https://site.example.invalid")
 @AutoConfigureMockMvc
-@Import(io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class)
+@Import({
+    io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class,
+    BrowserSecurityIntegrationIT.BodyObservation.class
+})
 class BrowserSecurityIntegrationIT {
     @Container
     @ServiceConnection
@@ -74,6 +93,8 @@ class BrowserSecurityIntegrationIT {
     @LocalServerPort
     int port;
 
+    private final Map<Socket, String> pendingIds = new java.util.IdentityHashMap<>();
+
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("poketto.data-dir", () -> directory.toString());
@@ -93,6 +114,7 @@ class BrowserSecurityIntegrationIT {
 
     @BeforeEach
     void resetIdentities() {
+        BodyObservation.accesses.clear();
         jdbc.execute("truncate table auth_accounts cascade");
         jdbc.execute("update auth_initialization set initialized_at = null");
     }
@@ -391,6 +413,186 @@ class BrowserSecurityIntegrationIT {
                             .param("username", variant)
                             .param("password", password))
                     .andExpect(status().isTooManyRequests());
+        }
+    }
+
+    @Test
+    void liveAnonymousAdminRequestsRejectWithoutRequestBodyAccessForAnyFraming() throws Exception {
+        for (String method : new String[] {"GET", "POST"}) {
+            for (boolean declared : new boolean[] {false, true}) {
+                for (String type : new String[] {"application/json", "multipart/form-data; boundary=synthetic"}) {
+                    try (Socket request = pendingBody(method, "/api/admin/assets", type, declared, null)) {
+                        assertThat(readStatus(request)).isEqualTo(401);
+                        assertThat(BodyObservation.accesses.get(pendingIds.get(request)))
+                                .hasValue(0);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void liveSlowBodiesSaturateAfterLoginAndDisconnectReturnsAdmission() throws Exception {
+        String password = secret();
+        auth.initializeOwner(INITIALIZATION_TOKEN, "slow-owner", password);
+        LiveSession session = liveLogin("slow-owner", password);
+        try (Socket first = pendingBody("POST", "/api/admin/repository/preview", "application/json", false, session);
+                Socket second = pendingBody(
+                        "POST", "/api/admin/assets", "multipart/form-data; boundary=synthetic", true, session)) {
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                assertThat(BodyObservation.accesses.get(pendingIds.get(first)).get())
+                        .isPositive();
+                assertThat(BodyObservation.accesses.get(pendingIds.get(second)).get())
+                        .isPositive();
+            });
+            try (Socket overflow =
+                    pendingBody("POST", "/api/admin/repository/preview", "application/json", true, session)) {
+                assertThat(readStatus(overflow)).isEqualTo(429);
+                assertThat(BodyObservation.accesses.get(pendingIds.get(overflow)))
+                        .hasValue(0);
+            }
+            first.close();
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                HttpResponse<String> response = HttpClient.newHttpClient()
+                        .send(
+                                HttpRequest.newBuilder(URI.create(
+                                                "http://localhost:" + port + "/api/admin/repository/preview"))
+                                        .timeout(Duration.ofSeconds(5))
+                                        .header("Cookie", session.cookie())
+                                        .header(session.header(), session.token())
+                                        .header("Content-Type", "application/json")
+                                        .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                                        .build(),
+                                HttpResponse.BodyHandlers.ofString());
+                // Missing preview fields are checked by the real controller, after successful admission.
+                assertThat(response.statusCode()).isEqualTo(400);
+            });
+        }
+    }
+
+    private LiveSession liveLogin(String login, String password) throws Exception {
+        try (var client = HttpClient.newHttpClient()) {
+            HttpResponse<String> csrf = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/csrf"))
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(csrf.statusCode()).isEqualTo(200);
+            JsonNode token = json.readTree(csrf.body());
+            String cookie =
+                    csrf.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
+            HttpResponse<String> signedIn = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/login"))
+                            .header("Cookie", cookie)
+                            .header(
+                                    token.get("headerName").stringValue(),
+                                    token.get("token").stringValue())
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(HttpRequest.BodyPublishers.ofString("username=" + login + "&password=" + password))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(signedIn.statusCode()).isEqualTo(204);
+            String rotated =
+                    signedIn.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
+            HttpResponse<String> current = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/csrf"))
+                            .header("Cookie", rotated)
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(current.statusCode()).isEqualTo(200);
+            JsonNode fresh = json.readTree(current.body());
+            return new LiveSession(
+                    rotated,
+                    fresh.get("headerName").stringValue(),
+                    fresh.get("token").stringValue());
+        }
+    }
+
+    private Socket pendingBody(String method, String path, String type, boolean declared, LiveSession session)
+            throws Exception {
+        var socket = new Socket();
+        try {
+            socket.connect(new InetSocketAddress("localhost", port), 5000);
+            socket.setSoTimeout(5000);
+            String id = UUID.randomUUID().toString();
+            pendingIds.put(socket, id);
+            BodyObservation.accesses.put(id, new AtomicInteger());
+            String headers = method + " " + path + " HTTP/1.1\r\nHost: localhost:" + port
+                    + "\r\nConnection: close\r\nExpect: 100-continue\r\nX-Synthetic-Read-Id: " + id
+                    + "\r\nContent-Type: " + type + "\r\n"
+                    + (declared ? "Content-Length: 1048576\r\n" : "Transfer-Encoding: chunked\r\n")
+                    + (session == null
+                            ? ""
+                            : "Cookie: " + session.cookie() + "\r\n" + session.header() + ": " + session.token()
+                                    + "\r\n")
+                    + "\r\n";
+            socket.getOutputStream().write(headers.getBytes(StandardCharsets.ISO_8859_1));
+            socket.getOutputStream().flush();
+            return socket;
+        } catch (Exception exception) {
+            socket.close();
+            throw exception;
+        }
+    }
+
+    private int readStatus(Socket socket) throws Exception {
+        var reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.ISO_8859_1));
+        for (; ; ) {
+            String line = reader.readLine();
+            assertThat(line).isNotNull();
+            int status = Integer.parseInt(line.split(" ", 3)[1]);
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {}
+            if (status != 100) return status;
+        }
+    }
+
+    @TestConfiguration
+    static class BodyObservation {
+        static final Map<String, AtomicInteger> accesses = new ConcurrentHashMap<>();
+
+        @Bean
+        FilterRegistrationBean<Filter> bodyReads() {
+            var registration = new FilterRegistrationBean<Filter>((request, response, chain) -> {
+                var http = (HttpServletRequest) request;
+                String id = http.getHeader("X-Synthetic-Read-Id");
+                AtomicInteger observed = id == null ? null : accesses.get(id);
+                if (observed == null) {
+                    chain.doFilter(request, response);
+                    return;
+                }
+                chain.doFilter(
+                        new HttpServletRequestWrapper(http) {
+                            @Override
+                            public ServletInputStream getInputStream() throws java.io.IOException {
+                                observed.incrementAndGet();
+                                return super.getInputStream();
+                            }
+
+                            @Override
+                            public Collection<Part> getParts()
+                                    throws java.io.IOException, jakarta.servlet.ServletException {
+                                observed.incrementAndGet();
+                                return super.getParts();
+                            }
+
+                            @Override
+                            public String getParameter(String name) {
+                                observed.incrementAndGet();
+                                return super.getParameter(name);
+                            }
+                        },
+                        response);
+            });
+            registration.setOrder(-101);
+            return registration;
+        }
+    }
+
+    private record LiveSession(String cookie, String header, String token) {
+        @Override
+        public String toString() {
+            return "LiveSession[REDACTED]";
         }
     }
 

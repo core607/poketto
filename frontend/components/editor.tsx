@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "./confirmation";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/browser-api";
 import type { RepositoryFile, RepositoryTree } from "../lib/types";
@@ -23,6 +24,7 @@ export function Editor({
   identity: Identity;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const confirm = useConfirmation();
   const [tree, setTree] = useState<RepositoryTree | null>(null);
   const [file, setFile] = useState<RepositoryFile | null>(null);
   const [source, setSource] = useState("");
@@ -92,7 +94,11 @@ export function Editor({
     if (
       dirty &&
       !discard &&
-      !window.confirm("有未保存的修改。放弃这些修改并打开其他文件？")
+      !(await confirm({
+        title: "放弃未保存的修改？",
+        description: `打开「${target}」将丢弃当前编辑框中未保存的修改。`,
+        confirmLabel: "放弃并打开",
+      }))
     )
       return;
     setBusy(true);
@@ -458,11 +464,13 @@ export function Editor({
                 <button
                   className="text-button danger-text"
                   disabled={!writable || busy}
-                  onClick={() => {
+                  onClick={async () => {
                     if (
-                      window.confirm(
-                        "确认删除这个文件？尚未保存的修改也会丢失。",
-                      )
+                      await confirm({
+                        title: "删除文件？",
+                        description: `将从仓库中删除「${file.path}」。尚未保存的修改也会丢失。`,
+                        confirmLabel: "确认删除",
+                      })
                     )
                       void save(file.path, true);
                   }}

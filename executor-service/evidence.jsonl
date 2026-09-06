@@ -1,9 +1,10 @@
-{"test": "initial-signed-bundle-copy", "result": "PASS", "milliseconds": 774.32, "bundleBytes": 323, "supervisorUmask": "0077"}
-{"test": "twenty-directory-reuses", "result": "PASS", "count": 20, "meanMillis": 685.06}
+{"test": "initial-signed-bundle-copy", "result": "PASS", "milliseconds": 668.19, "bundleBytes": 323, "supervisorUmask": "0077"}
+{"test": "root-supervisor-and-command-share-finite-pool", "result": "PASS", "slice": "pokettoprobeaaa712b1.slice"}
+{"test": "twenty-directory-reuses", "result": "PASS", "count": 20, "meanMillis": 727.52}
 {"test": "same-key-independent-client-directories", "result": "PASS"}
 {"test": "host-other-session-and-control-path-denied", "result": "PASS"}
 {"test": "network-and-host-proxy-denied", "result": "PASS"}
-{"test": "cpu-quota-enforced", "result": "PASS", "processCpuSeconds": 0.9991311589999999}
+{"test": "cpu-quota-enforced", "result": "PASS", "processCpuSeconds": 1.000158139}
 {"test": "host-pid-and-proc-root-denied", "result": "PASS"}
 {"test": "untrusted-git-and-shell-config-reuse-stays-inside-srt", "result": "PASS"}
 {"test": "tmpfs-disk-limit", "result": "PASS"}
@@ -16,5 +17,5 @@
 {"test": "revoke-interrupts-active-process-tree", "result": "PASS"}
 {"test": "abandoned-client-lease-expires", "result": "PASS"}
 {"test": "supervisor-sigkill-cleans-and-invalidates-leases", "result": "PASS"}
-{"summary": "PASS", "tests": 18, "source": "synthetic-only", "runtimeParent": "/run", "supervisorUmask": "0077", "workerSha256": "e304b51eea8fdaafe99009be537037eebd7f464576004ce612b46f142624d453", "probeSha256": "ac02e278cb9e2dda4d24368329c2c4ea8cee0bb06944853e51d5f95516efd1c0", "launcherSha256": "37a3a1b28a28a9dde26fbb67e7b8a8a8e24a24b157a5e1ebfd77ca9f8ef4ea80"}
+{"summary": "PASS", "tests": 19, "source": "synthetic-only", "runtimeParent": "/run", "supervisorUmask": "0077", "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880", "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed", "workerSha256": "0794d704f0cf64e3e156e338ad7d3314148092ba6f384562a96b99d6119d3e07", "probeSha256": "e746c999b59887801cee8daab729bb1cf4e5c0c551874a979ac1c1d596e0ad48", "launcherSha256": "37a3a1b28a28a9dde26fbb67e7b8a8a8e24a24b157a5e1ebfd77ca9f8ef4ea80"}
 {"cleanup": "PASS"}

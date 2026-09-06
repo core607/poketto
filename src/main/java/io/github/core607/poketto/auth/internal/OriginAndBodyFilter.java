@@ -50,34 +50,44 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
                 AuthHttpErrors.write(response, 413);
                 return;
             }
-            if (request.getContentLengthLong() >= 0) {
-                // The servlet container enforces HTTP framing for a declared body length.
-                chain.doFilter(request, response);
-                return;
-            }
-            String type = request.getContentType();
-            if (path.equals("/api/admin/assets")
-                    && type != null
-                    && type.split(";", 2)[0].trim().equalsIgnoreCase("multipart/form-data")) {
-                // Servlet getParts reads the original request and enforces the configured multipart limits.
-                // Consuming that stream here would prevent the asset controller from receiving its file.
-                chain.doFilter(request, response);
-                return;
-            }
-            // Decide before MVC or form authentication can consume the body and handle read exceptions.
-            byte[] body = request.getInputStream().readNBytes(limit + 1);
-            if (body.length > limit) {
-                AuthHttpErrors.write(response, 413);
-                return;
-            }
-            try {
-                chain.doFilter(new BoundedRequest(request, body), response);
-            } catch (InvalidFormException exception) {
-                AuthHttpErrors.write(response, 400);
-            }
+            // Administration bodies belong after current membership validation and admission.
+            if (path.startsWith("/api/admin/")) chain.doFilter(request, response);
+            else filterBody(request, response, chain, limit);
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    static void filterBody(HttpServletRequest request, HttpServletResponse response, FilterChain chain, int limit)
+            throws IOException, ServletException {
+        if (request.getContentLengthLong() > limit) {
+            AuthHttpErrors.write(response, 413);
+            return;
+        }
+        if (request.getContentLengthLong() >= 0) {
+            // The servlet container enforces HTTP framing for a declared body length.
+            chain.doFilter(request, response);
+            return;
+        }
+        String type = request.getContentType();
+        if (AuthHttpErrors.path(request).equals("/api/admin/assets")
+                && type != null
+                && type.split(";", 2)[0].trim().equalsIgnoreCase("multipart/form-data")) {
+            // Servlet getParts consumes the original stream under the configured multipart limits.
+            chain.doFilter(request, response);
+            return;
+        }
+        // Validate the complete body before MVC or form authentication can perform an operation.
+        byte[] body = request.getInputStream().readNBytes(limit + 1);
+        if (body.length > limit) {
+            AuthHttpErrors.write(response, 413);
+            return;
+        }
+        try {
+            chain.doFilter(new BoundedRequest(request, body), response);
+        } catch (InvalidFormException exception) {
+            AuthHttpErrors.write(response, 400);
+        }
     }
 
     private static final class BoundedRequest extends HttpServletRequestWrapper {
@@ -207,7 +217,7 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
 
     private static final class InvalidFormException extends RuntimeException {}
 
-    private static int bodyLimit(String path) {
+    static int bodyLimit(String path) {
         return switch (path) {
             case "/api/admin/repository/patch", "/api/admin/repository/preview" -> 6 * 1024 * 1024;
             case "/api/admin/assets" -> 17 * 1024 * 1024;

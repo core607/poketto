@@ -86,6 +86,7 @@ class BrowserSecurityConfiguration {
             ObjectProvider<AuthService> auth,
             ObjectProvider<WorkspaceCatalog> workspaces,
             @Value("${poketto.security.allowed-origins:}") String origins,
+            @Value("${poketto.security.admin-body-concurrency:2}") int adminBodyConcurrency,
             @Value("${poketto.security.login-limit-per-account:10}") int perAccount,
             @Value("${poketto.security.login-limit-per-address:40}") int perAddress,
             @Value("${poketto.security.login-throttle-max-entries:10000}") int maxEntries,
@@ -120,7 +121,9 @@ class BrowserSecurityConfiguration {
                         .accessDeniedHandler((request, response, exception) -> AuthHttpErrors.write(response, 403)))
                 .headers(headers -> headers.contentSecurityPolicy(
                         csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'")))
-                .addFilterBefore(new OriginAndBodyFilter(origins(origins)), CsrfFilter.class)
+                .addFilterBefore(new AdminBodyFilter(adminBodyConcurrency), CsrfFilter.class)
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, workspaces, false), AdminBodyFilter.class)
+                .addFilterBefore(new OriginAndBodyFilter(origins(origins)), WorkspaceIdentityFilter.class)
                 .addFilterBefore(
                         new LoginThrottleFilter(
                                 Clock.systemUTC(),
@@ -128,9 +131,7 @@ class BrowserSecurityConfiguration {
                                 perAddress,
                                 maxEntries,
                                 Duration.ofSeconds(windowSeconds)),
-                        UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(
-                        new WorkspaceIdentityFilter(auth, workspaces, false), AnonymousAuthenticationFilter.class);
+                        UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

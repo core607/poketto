@@ -4,6 +4,7 @@ import { api, ApiError } from "../lib/browser-api";
 import { Editor } from "./editor";
 import { Members } from "./members";
 import { Keys } from "./keys";
+import { ConfirmationProvider, useConfirmation } from "./confirmation";
 
 export type Identity = {
   accountId: string;
@@ -17,6 +18,14 @@ export function message(error: unknown) {
     : "操作未能完成，请检查连接后重试。";
 }
 export function Admin() {
+  return (
+    <ConfirmationProvider>
+      <AdminContent />
+    </ConfirmationProvider>
+  );
+}
+function AdminContent() {
+  const confirm = useConfirmation();
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -40,7 +49,15 @@ export function Admin() {
     void refresh();
   }, []);
   async function logout() {
-    if (dirty && !window.confirm("还有未保存的修改。确认放弃并退出？")) return;
+    if (
+      dirty &&
+      !(await confirm({
+        title: "放弃修改并退出登录？",
+        description: "还有未保存的修改。退出后，这些修改将丢失。",
+        confirmLabel: "放弃并退出",
+      }))
+    )
+      return;
     try {
       await api("/api/auth/logout", { method: "POST" });
       setIdentity(null);
