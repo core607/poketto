@@ -165,7 +165,7 @@ jobs:
     needs: publish
     if: vars.POKETTO_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     environment: production
     concurrency:
       group: production-deploy
