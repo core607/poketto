@@ -129,8 +129,10 @@ class Installation:
                     body = response.read(1024 * 1024)
                     if response.status != 200:
                         raise DeploymentError("health check " + str(index) + " did not return 200")
-                    if check.get("status") and json.loads(body).get("status") != check["status"]:
-                        raise DeploymentError("health check " + str(index) + " did not confirm readiness")
+                    if check.get("status"):
+                        payload = json.loads(body)
+                        if not isinstance(payload, dict) or payload.get("status") != check["status"]:
+                            raise DeploymentError("health check " + str(index) + " did not confirm readiness")
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
 

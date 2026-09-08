@@ -88,6 +88,30 @@ class RepositoryDirectoryReaderTests {
     }
 
     @Test
+    void pagesAtTheMaximumOffsetRemainReadableWithoutReturningAnInvalidContinuation() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        byte[] content = bytes("content");
+        for (int index = 0; index <= 100_000; index++) files.put("file-" + (1_000_000 + index), content);
+        var commit = fixture.commitRemote(workspace, files);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.listDirectory(workspace, Optional.empty(), "", 0, 100).entries())
+                .hasSize(100);
+        var boundary = reader.listDirectory(workspace, Optional.of(commit.name()), "", 99_999, 1);
+        assertThat(boundary.entries()).containsExactly(entry("file-1099999", RepositoryDirectoryPage.Kind.FILE));
+        assertThat(boundary.nextOffset()).isEqualTo(100_000);
+        var last = reader.listDirectory(workspace, boundary.commit(), "", boundary.nextOffset(), 200);
+        assertThat(last.entries()).containsExactly(entry("file-1100000", RepositoryDirectoryPage.Kind.FILE));
+        assertThat(last.nextOffset()).isNull();
+
+        for (int index = 100_001; index <= 100_200; index++) files.put("file-" + (1_000_000 + index), content);
+        var largerCommit = fixture.commitRemote(workspace, files);
+        assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.of(largerCommit.name()), "", 100_000, 200))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("maximum offset");
+    }
+
+    @Test
     void missingDirectoriesAreDistinctFromFilesAndAnUnbornRoot() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var reader = new JGitRepositoryContentReader(fixture.authority());

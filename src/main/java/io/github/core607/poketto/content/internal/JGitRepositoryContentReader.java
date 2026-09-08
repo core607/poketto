@@ -77,11 +77,11 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 int index = 0;
                 Integer nextOffset = null;
                 while (children.next()) {
-                    if (++index > MAX_TREE_ENTRIES)
-                        throw new ContentRepositoryException("directory entry limit exceeded");
-                    if (index <= offset) continue;
+                    if (++index <= offset) continue;
                     if (entries.size() == limit) {
                         nextOffset = offset + entries.size();
+                        if (nextOffset > MAX_TREE_ENTRIES)
+                            throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
                         break;
                     }
                     if (children.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4)

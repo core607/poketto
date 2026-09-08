@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 spec = importlib.util.spec_from_file_location("updater", Path(__file__).parents[1] / "update-existing.py")
 updater = importlib.util.module_from_spec(spec)
@@ -163,6 +164,20 @@ class ExistingDeploymentTests(unittest.TestCase):
                 updater.load_config(self.root)
         updater.write_json(path, {**self.config, "healthChecks": [{"url": "http://127.0.0.1:65535/health"}]})
         self.assertEqual(updater.load_config(self.root)["healthChecks"][0]["url"], "http://127.0.0.1:65535/health")
+
+    def test_non_object_health_responses_leave_a_reconcilable_pending_attempt(self):
+        self.config["healthChecks"] = [{"url": "http://127.0.0.1:8080/health", "status": "UP"}]
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        with patch.object(updater.urllib.request, "urlopen", return_value=response):
+            for payload in [[{"status": "UP"}], None, 1, "UP", {"status": "DOWN"}]:
+                response.read.return_value = json.dumps(payload).encode()
+                with self.assertRaisesRegex(updater.DeploymentError, "health check 1 did not confirm readiness"):
+                    self.installation.update(REVISION, "new-app", "new-frontend")
+                self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+            response.read.return_value = b'{"status":"UP"}'
+            self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["status"], "healthy")
 
 
 if __name__ == "__main__":
