@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.ContentLimits;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
@@ -153,6 +154,20 @@ class RepositoryDirectoryReaderTests {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.of("0".repeat(40)), "", 100001, 100))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void overlongEntriesFailRatherThanReturnTruncatedPathsOrUnboundedMetadata() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        fixture.commitRemote(workspace, Map.of("x".repeat(256), bytes("content")));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.empty(), "", 0, 100))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("path bound");
+        fixture.commitRemote(workspace, Map.of("长".repeat(400), bytes("content")));
+        assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.empty(), "", 0, 100))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("path bound");
     }
 
     private static RepositoryDirectoryPage.Entry entry(String path, RepositoryDirectoryPage.Kind kind) {

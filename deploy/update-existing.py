@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 
 
@@ -49,7 +50,7 @@ def runtime_contract(container):
     config = container["Config"]
     host = container["HostConfig"]
     return {
-        "environment": sorted(item for item in config.get("Env", []) if not item.startswith("POKETTO_REVISION=")),
+        "environment": sorted(config.get("Env", [])),
         "user": config.get("User"),
         "workingDirectory": config.get("WorkingDir"),
         "host": {key: host.get(key) for key in (
@@ -122,16 +123,16 @@ class Installation:
             raise DeploymentError("an unrelated Compose container changed")
         if digest(json.loads(self.compose("config", "--format", "json"))) != state["configuration"]:
             raise DeploymentError("installation configuration changed during deployment")
-        for check in self.config.get("healthChecks", []):
+        for index, check in enumerate(self.config.get("healthChecks", []), 1):
             try:
                 with urllib.request.urlopen(check["url"], timeout=15) as response:
                     body = response.read(1024 * 1024)
                     if response.status != 200:
-                        raise DeploymentError("application health entrance did not return 200")
+                        raise DeploymentError("health check " + str(index) + " did not return 200")
                     if check.get("status") and json.loads(body).get("status") != check["status"]:
-                        raise DeploymentError("application readiness is not confirmed")
+                        raise DeploymentError("health check " + str(index) + " did not confirm readiness")
             except (OSError, ValueError) as error:
-                raise DeploymentError("application health entrance is unavailable") from error
+                raise DeploymentError("health check " + str(index) + " is unavailable") from error
 
     def update(self, revision, app_image, frontend_image, check_only=False):
         image_refs = {"app": app_image, "frontend": frontend_image}
@@ -199,6 +200,12 @@ def load_config(root):
     for check in config.get("healthChecks", []):
         if not re.fullmatch(r"http://127\.0\.0\.1:[0-9]{1,5}/[^\s]*", check.get("url", "")):
             raise DeploymentError("health checks must use a loopback HTTP entrance")
+        try:
+            port = urllib.parse.urlsplit(check["url"]).port
+            if port is None or not 1 <= port <= 65535:
+                raise ValueError()
+        except ValueError as error:
+            raise DeploymentError("health check port must be between 1 and 65535") from error
     return config
 
 

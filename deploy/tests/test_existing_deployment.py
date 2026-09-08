@@ -16,6 +16,7 @@ class Docker:
         self.calls = []
         self.fail_up = False
         self.changed_runtime = False
+        self.changed_revision_environment = False
         self.image_revision = REVISION
         self.configuration = {
             "name": "example", "services": {
@@ -63,6 +64,8 @@ class Docker:
                     self.running[name]["Config"]["Image"] = image
                 if self.changed_runtime:
                     self.running["app"]["HostConfig"]["Memory"] += 1
+                if self.changed_revision_environment:
+                    self.running["app"]["Config"]["Env"].append("POKETTO_REVISION=unexpected")
                 return ""
         raise AssertionError(args)
 
@@ -145,6 +148,21 @@ class ExistingDeploymentTests(unittest.TestCase):
         updater.write_json(path, {**self.config, "composeFiles": ["../outside.yaml"]})
         with self.assertRaisesRegex(updater.DeploymentError, "below the deployment root"):
             updater.load_config(self.root)
+
+    def test_revision_environment_is_protected_like_other_declared_settings(self):
+        self.docker.changed_revision_environment = True
+        with self.assertRaisesRegex(updater.DeploymentError, "runtime configuration"):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+
+    def test_health_ports_are_validated_before_an_update(self):
+        path = self.root / "deployment.json"
+        for port in [0, 65536, 99999]:
+            updater.write_json(path, {**self.config, "healthChecks": [{"url": "http://127.0.0.1:" + str(port) + "/health"}]})
+            with self.assertRaisesRegex(updater.DeploymentError, "port"):
+                updater.load_config(self.root)
+        updater.write_json(path, {**self.config, "healthChecks": [{"url": "http://127.0.0.1:65535/health"}]})
+        self.assertEqual(updater.load_config(self.root)["healthChecks"][0]["url"], "http://127.0.0.1:65535/health")
 
 
 if __name__ == "__main__":

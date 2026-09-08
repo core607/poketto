@@ -84,8 +84,12 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                         nextOffset = offset + entries.size();
                         break;
                     }
+                    if (children.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4)
+                        throw new ContentRepositoryException("directory entry exceeds the repository path bound");
                     String childPath =
                             path.isEmpty() ? children.getPathString() : path + "/" + children.getPathString();
+                    if (childPath.length() > ContentLimits.MAX_PATH_LENGTH)
+                        throw new ContentRepositoryException("directory entry exceeds the repository path bound");
                     entries.add(new RepositoryDirectoryPage.Entry(childPath, kind(children.getFileMode(0))));
                 }
                 return new RepositoryDirectoryPage(workspaceId, resolved, path, false, entries, nextOffset);
