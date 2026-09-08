@@ -5,7 +5,9 @@ Status: Proposed
 
 The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
 
-[Phase-one delivery](2026-09-05-phase-one-daily-use.md) specifies the five-tool delivery, excludes visitor Q&A, and limits initial transport to ordinary history fetch with incremental reuse. It does not promise selective cold object transfer. Runtime isolation remains subject to real-host acceptance.
+[Phase-one delivery](2026-09-05-phase-one-daily-use.md) specifies the delivery scope, excludes visitor Q&A, and limits initial transport to ordinary history fetch with incremental reuse. It does not promise selective cold object transfer. Runtime isolation remains subject to real-host acceptance.
+
+[Directory navigation](../implemented/2026-09-08-repository-directory-navigation.md) adds immediate Git listings without execution authority. It extends the read-tool selection below while retaining this proposal's composable executor and isolation boundary.
 
 ## Problem
 

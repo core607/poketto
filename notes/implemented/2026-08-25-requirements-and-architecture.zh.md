@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 [仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。[博客与浏览器管理界面](2026-09-06-blog-browser-interface.md)通过受限 Markdown 渲染呈现这些 HTTP API，并提供隔离浏览器验收入口。MCP API 与[本地 worker 适配器](../proposed/2026-09-05-local-execution-supervisor.md)提供仓库工具及显式启用的隔离执行。最终 HTTPS 安装与部署拓扑验收仍待完成。
 
-[第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及五个仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
+[第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
 
 ## 本文范围
 
@@ -36,7 +36,9 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 ## 当前 MCP 契约
 
-第一阶段契约取代最初基于 UUID 的文档工具选型。`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。工具包括 `get_file`、`get_asset`、`put_asset` 和 `repo_patch`，仅在隔离执行适配器启用时注册 `repo_exec`。[本地执行服务](../../executor-service/README.md)是独立的 Linux 服务；启用适配器不能替代真实进程边界验证。
+第一阶段契约取代最初基于 UUID 的文档工具选型。`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。工具包括 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，仅在隔离执行适配器启用时注册 `repo_exec`。[本地执行服务](../../executor-service/README.md)是独立的 Linux 服务；启用适配器不能替代真实进程边界验证。
+
+[目录导航](2026-09-08-repository-directory-navigation.md)在读取授权下分页返回 Git 的直接子条目，无须执行服务。内容仓库自己的 `AGENTS.md` 提供可选的渐进式指引，服务端不解释其正文。
 
 文件使用仓库相对路径，无须 frontmatter ID。`get_file` 将权威 UTF-8 字节作为文本返回，并提供解析出的 commit、服务端 revision、诊断与明确的 expected-absence。`repo_patch` 检查 base commit，以及每个变更路径的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。执行会话固定于解析出的 commit，命令不能改变权威读取的结果。第一阶段记录定义完整的工具、取消、权限与验收契约。
 

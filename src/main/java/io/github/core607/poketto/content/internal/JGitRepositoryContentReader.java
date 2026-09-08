@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
+import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.content.RepositoryDocument;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryTree;
@@ -45,6 +46,64 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 workspaceId,
                 commit,
                 (repository, resolved) -> readTreeObjects(workspaceId, repository, resolved, path -> true));
+    }
+
+    @Override
+    public RepositoryDirectoryPage listDirectory(
+            WorkspaceId workspaceId, Optional<String> commit, String path, int offset, int limit) {
+        Objects.requireNonNull(path);
+        if (!path.isEmpty()) RepositoryPathRules.validate(path);
+        if (offset < 0 || offset > MAX_TREE_ENTRIES || limit < 1 || limit > 200 || (offset > 0 && commit.isEmpty()))
+            throw new IllegalArgumentException("directory pages require valid bounds and a pinned continuation commit");
+        return resolve(workspaceId, commit, (repository, resolved) -> {
+            if (resolved.isEmpty())
+                return new RepositoryDirectoryPage(workspaceId, resolved, path, !path.isEmpty(), List.of(), null);
+            try (RevWalk revisions = new RevWalk(repository);
+                    TreeWalk children = new TreeWalk(repository)) {
+                ObjectId tree = revisions
+                        .parseCommit(ObjectId.fromString(resolved.orElseThrow()))
+                        .getTree();
+                if (!path.isEmpty()) {
+                    try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
+                        if (entry == null)
+                            return new RepositoryDirectoryPage(workspaceId, resolved, path, true, List.of(), null);
+                        if (!FileMode.TREE.equals(entry.getFileMode(0)))
+                            throw new IllegalArgumentException("requested path is not a directory");
+                        tree = entry.getObjectId(0);
+                    }
+                }
+                children.addTree(tree);
+                List<RepositoryDirectoryPage.Entry> entries = new ArrayList<>();
+                int index = 0;
+                Integer nextOffset = null;
+                while (children.next()) {
+                    if (++index <= offset) continue;
+                    if (entries.size() == limit) {
+                        nextOffset = offset + entries.size();
+                        if (nextOffset > MAX_TREE_ENTRIES)
+                            throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
+                        break;
+                    }
+                    if (children.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4)
+                        throw new ContentRepositoryException("directory entry exceeds the repository path bound");
+                    String childPath =
+                            path.isEmpty() ? children.getPathString() : path + "/" + children.getPathString();
+                    if (childPath.length() > ContentLimits.MAX_PATH_LENGTH)
+                        throw new ContentRepositoryException("directory entry exceeds the repository path bound");
+                    entries.add(new RepositoryDirectoryPage.Entry(childPath, kind(children.getFileMode(0))));
+                }
+                return new RepositoryDirectoryPage(workspaceId, resolved, path, false, entries, nextOffset);
+            }
+        });
+    }
+
+    private static RepositoryDirectoryPage.Kind kind(FileMode mode) {
+        if (FileMode.TREE.equals(mode)) return RepositoryDirectoryPage.Kind.DIRECTORY;
+        if (FileMode.REGULAR_FILE.equals(mode) || FileMode.EXECUTABLE_FILE.equals(mode))
+            return RepositoryDirectoryPage.Kind.FILE;
+        if (FileMode.SYMLINK.equals(mode)) return RepositoryDirectoryPage.Kind.SYMLINK;
+        if (FileMode.GITLINK.equals(mode)) return RepositoryDirectoryPage.Kind.SUBMODULE;
+        return RepositoryDirectoryPage.Kind.OTHER;
     }
 
     /** Caller holds the authority lock and supplies a server-resolved snapshot. Does not fetch. */

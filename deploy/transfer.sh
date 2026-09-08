@@ -4,9 +4,10 @@
 # registry digests instead. Database and Caddy remain digest pulls/caches on the host in both modes.
 #
 # Usage: transfer.sh --target USER@HOST --root DIR --image REF --frontend-image REF
-#                    --revision COMMIT [--sync] [--set-stdin] [--pull]
+#                    --revision COMMIT [--sync] [--set-stdin] [--pull] [--existing]
 # --sync stages compose.yaml, compose.executor.yaml, Caddyfile and deploy.sh with checksums.
 # --set-stdin forwards literal settings and temporary registry credentials without argv exposure.
+# --existing calls the preinstalled privileged updater; it preserves operator Compose and settings.
 # POKETTO_SSH overrides the SSH command; only trusted operator configuration supplies this value.
 # Exit codes: 0 deployed and healthy, 1 transfer or deployment failure.
 
@@ -15,7 +16,7 @@ set -euo pipefail
 DOCKER="${POKETTO_DOCKER:-docker}"
 SSH="${POKETTO_SSH:-ssh}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="" ROOT="" IMAGE="" FRONTEND_IMAGE="" REVISION="" SYNC=0 SET_STDIN=0 SETTINGS="" PULL=0
+TARGET="" ROOT="" IMAGE="" FRONTEND_IMAGE="" REVISION="" SYNC=0 SET_STDIN=0 SETTINGS="" PULL=0 EXISTING=0
 
 fail() {
     echo "transfer: $*" >&2
@@ -32,6 +33,7 @@ while [ $# -gt 0 ]; do
         --sync) SYNC=1; shift ;;
         --pull) PULL=1; shift ;;
         --set-stdin) SET_STDIN=1; shift ;;
+        --existing) EXISTING=1; shift ;;
         -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) fail "unknown argument: $1" ;;
     esac
@@ -42,6 +44,9 @@ done
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || fail "--revision must be a full lowercase commit id"
 [[ "$ROOT" = /* ]] || fail "--root must be absolute"
 [[ "$ROOT" != *"'"* && "$ROOT" != *$'\n'* && "$ROOT" != *$'\r'* ]] || fail "--root must not contain quotes or line breaks"
+if [ "$EXISTING" = 1 ] && { [ "$SYNC" = 1 ] || [ "$SET_STDIN" = 1 ] || [ "$PULL" = 1 ]; }; then
+    fail "--existing requires archive transfer without --sync, --set-stdin or --pull"
+fi
 # Settings are read before any other command touches standard input.
 [ "$SET_STDIN" = 1 ] && SETTINGS="$(cat)"
 
@@ -112,7 +117,10 @@ if [ "$PULL" = 0 ]; then
 fi
 
 status=0
-if [ "$SET_STDIN" = 1 ]; then
+if [ "$EXISTING" = 1 ]; then
+    remote "sudo -n /usr/local/sbin/poketto-update-existing --root '$ROOT' --app-image '$TAG' --app-revision '$REVISION' --frontend-image '$FRONTEND_TAG'" < /dev/null \
+        || status=$?
+elif [ "$SET_STDIN" = 1 ]; then
     printf '%s\n' "$SETTINGS" \
         | remote "'$ROOT/deploy.sh' $SYNC_ARGS --set-stdin --app-image '$TAG' --app-revision '$REVISION' --frontend-image '$FRONTEND_TAG'" \
         || status=$?

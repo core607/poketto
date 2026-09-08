@@ -1,6 +1,8 @@
 # Continuous Delivery for a Single Host
 
 Date: 2026-09-03
+
+[Existing-installation delivery](2026-09-08-existing-installation-delivery.md) adds an image-only layout for operator-owned Compose installations. The standard synchronization and configuration contract below remains applicable to the generic stack.
 Status: Implemented
 
 The [phase-one delivery boundary](../proposed/2026-09-05-phase-one-daily-use.md) explicitly excludes backup prerequisites. Its installation may enable deployment without the backup freshness gate described below; backup and recovery work remains a separate proposal.

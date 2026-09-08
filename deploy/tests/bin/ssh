@@ -16,7 +16,7 @@ case "$command" in
         [ -f "$FAKE_STATE/remote-load-fails" ] && exit 1
         exit 0 ;;
     *"cat >"*) cat > /dev/null; echo "$command" >> "$FAKE_STATE/sync.log"; exit 0 ;;
-    *"deploy.sh"*)
+    *"deploy.sh"*|*"poketto-update-existing"*)
         echo "$command" >> "$FAKE_STATE/deploy-calls"
         cat > "$FAKE_STATE/deploy-stdin"
         exit "${FAKE_REMOTE_DEPLOY_EXIT:-0}" ;;

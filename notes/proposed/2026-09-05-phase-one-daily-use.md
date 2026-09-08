@@ -57,12 +57,15 @@ Public image grants are opaque and bind workspace, page commit, and exact Git bl
 
 ## Frontend and MCP
 
+[Directory navigation](../implemented/2026-09-08-repository-directory-navigation.md) extends the basic read surface while retaining the remaining installation and client acceptance in this proposal.
+
 Next.js owns presentation and consumes Spring contracts; it never reads repositories, blob stores, or PostgreSQL directly. Spring owns authorization, mutations, asset resolution, and business state. Public pages and editor preview share restricted Markdown rendering: raw HTML disabled, safe URLs and media, and CSP. Public initial HTML remains readable with JavaScript disabled. Mutable public responses have no uncoordinated cross-request Next.js cache.
 
 Use the Spring AI 2.0.1 WebMVC Streamable HTTP server at `/mcp`, authenticated with Bearer API keys independently of browser sessions. Origin validation remains explicit. The initial tool set is:
 
 | Tool | Contract |
 |---|---|
+| `list_directory` | Paged immediate Git entries and resolved commit under read authorization; no executor required |
 | `get_file` | Exact authoritative UTF-8 source, commit, service-issued revision, diagnostics, and explicit expected absence for a missing path |
 | `get_asset` | Authorized exact Git or managed image version as bounded MCP image content |
 | `put_asset` | Bounded idempotent upload returning an immutable reference; no Git write or publication |
@@ -86,7 +89,7 @@ Resource and lease parameters are centralized and receive production values only
 | 0 | This scope record, reconciled proposal links, working test environment, and an early real-Linux SRT isolation/resource/cleanup spike using synthetic data |
 | 1 | Arbitrary-path exact-commit reads, optional metadata, diagnostics, publication policy, bounded search, and atomic text writes with real-ref conflict behavior |
 | 2 | Identity lifecycle with PostgreSQL tests; managed uploads and Git-image delivery with real storage and permission tests |
-| 3 | Blog/admin and five MCP tools over shared business contracts; pinned frontend dependencies and lockfile-based CI production build |
+| 3 | Blog/admin and repository MCP tools over shared business contracts; pinned frontend dependencies and lockfile-based CI production build |
 | 4 | Prebuilt frontend, Spring, PostgreSQL, and executor integrated with Caddy same-origin HTTPS; health, failed deployment retry, fixed-version redeployment, and resource evidence |
 | 5 | The configured real content repository on a formal HTTPS domain; browser, Codex, and Claude Code workflows; final reviewed commit equals deployed revision |
 
@@ -116,7 +119,7 @@ The scoped same-topic audit retains these records; none is archived or rejected 
 | [Remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) | Retain exact-ref authority, conflict, and lost-response semantics |
 | [Validated content snapshot](../implemented/2026-09-04-validated-content-snapshot.md) | Retain snapshot and resource ownership; this proposal replaces whole-tree document rejection and indefinite stale public service |
 | [Repository publishing](2026-09-01-repository-native-publishing-and-assets.md) | Retain discovery, policy, gallery, and patch contracts; bound delivery grants explicitly here |
-| [Repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain five-tool direction and isolation; exclude Q&A and selective cold transfer from this delivery |
+| [Repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain composable exploration and isolation; exclude Q&A and selective cold transfer from this delivery |
 | [Asset storage](2026-09-01-repository-asset-blob-store.md) | Deliver local storage and Git-image cache; retain OSS and physical reclamation as unimplemented scope |
 | [Invitation-only membership](2026-08-27-invitation-only-membership.md) | Deliver self-hosted identity lifecycle and member administration |
 | [Next.js frontend](2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |

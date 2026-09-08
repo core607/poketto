@@ -127,3 +127,17 @@ assert_status 1
 run_transfer --target ops@host --root "/srv/poketto'bad" --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --pull
 assert_status 1
 assert_contains "$ERR" "quotes or line breaks"
+
+# Existing installations receive only the two images and the dedicated updater invocation.
+rm -f "$FAKE_STATE/sync.log" "$FAKE_STATE/deploy-calls" "$FAKE_STATE/ssh.log"
+touch "$FAKE_STATE/remote-has-image"
+run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing
+assert_status 0
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "sudo -n /usr/local/sbin/poketto-update-existing --root '/srv/existing'"
+[ ! -e "$FAKE_STATE/sync.log" ]
+for incompatible in --sync --set-stdin --pull; do
+    rm -f "$FAKE_STATE/ssh.log"
+    run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing "$incompatible"
+    assert_status 1
+    [ ! -e "$FAKE_STATE/ssh.log" ]
+done
