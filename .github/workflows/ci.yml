@@ -183,6 +183,7 @@ jobs:
           DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
           DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
           DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
+          DEPLOY_LAYOUT: ${{ vars.POKETTO_DEPLOY_LAYOUT }}
           SSH_PRIVATE_KEY: ${{ secrets.POKETTO_DEPLOY_SSH_KEY }}
           SSH_HOST_KEY: ${{ secrets.POKETTO_DEPLOY_HOST_KEY }}
           SSH_DIR: ${{ runner.temp }}/poketto-ssh
@@ -193,6 +194,11 @@ jobs:
           [ -n "$SSH_PRIVATE_KEY" ] || missing+=("secret POKETTO_DEPLOY_SSH_KEY")
           [ -n "$SSH_HOST_KEY" ] || missing+=("secret POKETTO_DEPLOY_HOST_KEY (known_hosts line)")
           case "${DEPLOY_MODE:-pull}" in pull|transfer) ;; *) missing+=("variable POKETTO_DEPLOY_MODE must be pull or transfer") ;; esac
+          case "${DEPLOY_LAYOUT:-standard}" in
+            standard) ;;
+            existing) [ "${DEPLOY_MODE:-pull}" = transfer ] || missing+=("existing installations require transfer mode") ;;
+            *) missing+=("variable POKETTO_DEPLOY_LAYOUT must be standard or existing") ;;
+          esac
           if [ ${#missing[@]} -gt 0 ]; then
             echo "deployment is enabled but not configured:"
             printf -- '- %s\n' "${missing[@]}"
@@ -212,7 +218,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Update existing installation
+        if: vars.POKETTO_DEPLOY_LAYOUT == 'existing'
+        env:
+          DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
+          DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
+          IMAGE: ${{ needs.publish.outputs.image }}
+          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
+          REVISION: ${{ github.sha }}
+          POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
+        run: |
+          bash deploy/transfer.sh --target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE" \
+            --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing
+
       - name: Deploy
+        if: vars.POKETTO_DEPLOY_LAYOUT != 'existing'
         env:
           DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
           DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
@@ -251,5 +271,6 @@ jobs:
             echo "| Application image | \`$IMAGE\` |"
             echo "| Frontend image | \`$FRONTEND_IMAGE\` |"
             echo "| Mode | \`${{ vars.POKETTO_DEPLOY_MODE || 'pull' }}\` |"
+            echo "| Layout | \`${{ vars.POKETTO_DEPLOY_LAYOUT || 'standard' }}\` |"
             echo "| Result | ${{ job.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"

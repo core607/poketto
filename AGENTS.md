@@ -33,6 +33,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew stageAcceptanceRuntime` | Stage real application classes and synthetic browser fixtures |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
 | `./gradlew deployScriptTests` | Run the deployment script tests against fake docker, curl, and ssh |
+| `./gradlew existingDeploymentTests` | Verify existing-installation updates and retry reconciliation on Linux in Docker |
 | `./gradlew gatewayConfigCheck` | Validate the Caddy configuration using its pinned real container |
 | `./gradlew proxyForwardingCheck` | Verify real Caddy/Tomcat address and login buckets with isolated Docker clients |
 | `./gradlew appImageIdentityCheck` | Verify the production image identity and protected executor socket access |

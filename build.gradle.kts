@@ -185,6 +185,23 @@ val gatewayConfigCheck = tasks.register<Exec>("gatewayConfigCheck") {
     )
 }
 
+val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
+    group = "verification"
+    description = "Verifies existing-installation updates and interrupted-run reconciliation on Linux."
+    inputs.files("deploy/update-existing.py", "deploy/tests/test_existing_deployment.py")
+    outputs.upToDateWhen { false }
+    commandLine(
+        "docker", "run", "--rm", "--network", "none", "--read-only",
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+        "--memory", "128m", "--pids-limit", "64", "--tmpfs", "/tmp:size=32m,mode=1777",
+        "--mount", "type=bind,source=${layout.projectDirectory.dir("deploy").asFile.absolutePath},target=/suite,readonly",
+        "--workdir", "/suite", "--entrypoint", "python",
+        "python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254",
+        "-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_existing_deployment.py", "-v",
+    )
+}
+tasks.named("check") { dependsOn(existingDeploymentTests) }
+
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
 val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }

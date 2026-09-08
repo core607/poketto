@@ -19,6 +19,13 @@ grep -Fq 'frontend_image: ${{ steps.summary.outputs.frontend_image }}' "$workflo
 grep -Fq 'FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}' "$workflow"
 grep -Fq -- '--frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin' "$workflow"
 grep -Fq 'bash deploy/transfer.sh "${args[@]}" --pull' "$workflow"
+grep -Fq "if: vars.POKETTO_DEPLOY_LAYOUT == 'existing'" "$workflow"
+grep -Fq "if: vars.POKETTO_DEPLOY_LAYOUT != 'existing'" "$workflow"
+grep -Fq -- '--frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing' "$workflow"
+existing_step="$(sed -n '/- name: Update existing installation/,/- name: Deploy/p' "$workflow")"
+assert_not_contains "$existing_step" 'POKETTO_REPOSITORY_PASSWORD'
+assert_not_contains "$existing_step" '--sync'
+assert_not_contains "$existing_step" '--set-stdin'
 
 grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"

@@ -1,0 +1,8 @@
+{
+  "project": "poketto",
+  "composeFiles": ["compose.yaml"],
+  "healthTimeoutSeconds": 180,
+  "healthChecks": [
+    {"url": "http://127.0.0.1:8080/actuator/health/readiness", "status": "UP"}
+  ]
+}
