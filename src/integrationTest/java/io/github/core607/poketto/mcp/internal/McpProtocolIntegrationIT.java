@@ -94,6 +94,10 @@ class McpProtocolIntegrationIT {
             seed.getRepository().updateRef("HEAD").link("refs/heads/main");
             Path tree = seed.getRepository().getWorkTree().toPath();
             Files.createDirectories(tree.resolve("private"));
+            Files.createDirectories(tree.resolve("topics"));
+            Files.writeString(tree.resolve("AGENTS.md"), "# Repository guide\nSee topics/AGENTS.md.\n");
+            Files.writeString(tree.resolve("topics/AGENTS.md"), "# Topics\nMaintain the existing list.\n");
+            Files.writeString(tree.resolve("topics/list.txt"), "An existing item\n");
             Files.writeString(tree.resolve("private/original.md"), "# Original\n");
             Files.write(tree.resolve("private/pixel.png"), PNG);
             seed.add().addFilepattern(".").call();
@@ -165,8 +169,9 @@ class McpProtocolIntegrationIT {
         assertThat(tools.valueStream()
                         .map(tool -> tool.path("name").stringValue())
                         .toList())
-                .contains("get_file", "repo_patch", "get_asset", "put_asset")
+                .contains("list_directory", "get_file", "repo_patch", "get_asset", "put_asset")
                 .doesNotContain("repo_exec");
+        assertDirectoryNavigation(other.token(), denied.token());
         JsonNode original = result(call(key.token(), first, "get_file", Map.of("path", "private/original.md")));
         String base = original.path("commit").stringValue();
         assertRequestErrorBoundary(key.token(), first, base);
@@ -288,6 +293,59 @@ class McpProtocolIntegrationIT {
                         .map(McpSessionClosed::reason)
                         .toList())
                 .contains(McpSessionClosed.Reason.AUTH_REVOKED);
+    }
+
+    private void assertDirectoryNavigation(String readOnlyToken, String deniedToken) throws Exception {
+        String session = initialize(readOnlyToken);
+        JsonNode root = result(call(readOnlyToken, session, "list_directory", Map.of("limit", 2)));
+        String commit = root.path("commit").stringValue();
+        // Pin the complete model-visible page shape on the real authenticated MCP entrance.
+        assertThat(root).isEqualTo(json.readTree("""
+                {"commit":"%s","path":"","expectedAbsence":false,
+                 "entries":[{"path":"AGENTS.md","kind":"FILE"},{"path":"private","kind":"DIRECTORY"}],
+                 "nextOffset":2}
+                """.formatted(commit)));
+        JsonNode tail = result(call(
+                readOnlyToken,
+                session,
+                "list_directory",
+                Map.of("commit", commit, "offset", root.path("nextOffset").intValue(), "limit", 2)));
+        assertThat(tail.path("entries")).isEqualTo(json.readTree("""
+                [{"path":"topics","kind":"DIRECTORY"}]
+                """));
+        assertThat(tail.path("nextOffset").isNull()).isTrue();
+        JsonNode topics =
+                result(call(readOnlyToken, session, "list_directory", Map.of("path", "topics", "commit", commit)));
+        assertThat(topics.path("entries")).isEqualTo(json.readTree("""
+                [{"path":"topics/AGENTS.md","kind":"FILE"},{"path":"topics/list.txt","kind":"FILE"}]
+                """));
+        assertThat(result(call(
+                                readOnlyToken,
+                                session,
+                                "get_file",
+                                Map.of("path", "topics/AGENTS.md", "commit", commit)))
+                        .path("source")
+                        .stringValue())
+                .contains("Maintain the existing list.");
+        assertThat(result(call(readOnlyToken, session, "list_directory", Map.of("path", "absent")))
+                        .path("expectedAbsence")
+                        .booleanValue())
+                .isTrue();
+        assertThat(error(call(readOnlyToken, session, "list_directory", Map.of("path", "topics/list.txt"))))
+                .isEqualTo("INVALID_INPUT");
+        for (Map<String, Object> input : List.<Map<String, Object>>of(
+                Map.of("offset", 1),
+                Map.of("limit", 201),
+                Map.of("path", "../other"),
+                Map.of("limit", 1.5),
+                Map.of("unknown", true))) {
+            assertThat(call(readOnlyToken, session, "list_directory", input)
+                            .path("isError")
+                            .booleanValue())
+                    .isTrue();
+        }
+        assertThat(error(call(deniedToken, initialize(deniedToken), "list_directory", Map.of())))
+                .isEqualTo("DENIED");
     }
 
     private void assertRequestErrorBoundary(String token, String session, String base) throws Exception {

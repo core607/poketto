@@ -4,7 +4,7 @@ Date: 2026-08-25
 
 The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path text reads, bounded public snapshots and search, atomic text patches, local managed storage and exact-version image delivery. The [identity HTTP backend](2026-09-06-workspace-identity-http.md) supplies browser authentication, invitations, memberships and scoped keys. The [blog and browser administration](2026-09-06-blog-browser-interface.md) present these HTTP APIs with restricted Markdown rendering and an isolated browser acceptance entrance. MCP APIs and the [local worker adapter](../proposed/2026-09-05-local-execution-supervisor.md) supply repository tools and explicitly enabled isolated execution. Final HTTPS installation and deployed-topology acceptance remain pending.
 
-The [phase-one delivery proposal](../proposed/2026-09-05-phase-one-daily-use.md) defines the daily-use installation and its acceptance criteria. It includes the blog, administration, and five repository MCP tools; it excludes backups, restore drills, visitor Q&A, consumer provisioning, and serverless from this delivery. These exclusions are not deployment prerequisites, and proposed capabilities are not shipped behavior.
+The [phase-one delivery proposal](../proposed/2026-09-05-phase-one-daily-use.md) defines the daily-use installation and its acceptance criteria. It includes the blog, administration, and the repository MCP tools; it excludes backups, restore drills, visitor Q&A, consumer provisioning, and serverless from this delivery. These exclusions are not deployment prerequisites, and proposed capabilities are not shipped behavior.
 
 ## Scope of this record
 
@@ -36,7 +36,9 @@ Repository-derived and optional metadata [routes](2026-09-06-logical-repository-
 
 ## Current MCP contract
 
-The phase-one contract supersedes the original UUID-based document tool selection. `/mcp` uses Streamable HTTP and workspace Bearer API keys independently of browser sessions. Its tools are `get_file`, `get_asset`, `put_asset`, and `repo_patch`, with `repo_exec` registered only when the isolated execution adapter is enabled. The [local worker](../../executor-service/README.md) is a separate Linux service; enabling the adapter does not substitute for verifying the real process boundary.
+The phase-one contract supersedes the original UUID-based document tool selection. `/mcp` uses Streamable HTTP and workspace Bearer API keys independently of browser sessions. Its tools are `list_directory`, `get_file`, `get_asset`, `put_asset`, and `repo_patch`, with `repo_exec` registered only when the isolated execution adapter is enabled. The [local worker](../../executor-service/README.md) is a separate Linux service; enabling the adapter does not substitute for verifying the real process boundary.
+
+[Directory navigation](2026-09-08-repository-directory-navigation.md) supplies paged immediate Git entries under read authorization without an executor. Content-owned `AGENTS.md` files provide optional progressive guidance; the server does not interpret their prose.
 
 Files use repository-relative paths without mandatory frontmatter IDs. `get_file` returns authoritative UTF-8 bytes as text, the resolved commit, a service-issued revision, diagnostics, and explicit expected absence. `repo_patch` checks the base commit and each changed path's revision or absence. Images have exact Git or immutable managed versions; uploading neither writes Git nor publishes. Execution sessions remain pinned to their resolved commit, and commands cannot alter what authoritative reads return. The phase-one record owns the complete tool, cancellation, permission, and acceptance contracts.
 

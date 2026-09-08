@@ -69,6 +69,20 @@ final class RepositoryMcpTools {
     List<McpServerFeatures.SyncToolSpecification> specifications() {
         List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
         tools.add(tool(
+                "list_directory",
+                "List immediate committed files and directories without execution access. Omit path or use an empty path for root. Read relevant AGENTS.md files for repository guidance. Continue with nextOffset and the returned commit; entry kinds do not grant file readability. Missing directories return expectedAbsence=true; non-directory paths are invalid.",
+                object(
+                        Map.of(
+                                "path", text(255),
+                                "commit", nullableCommit(),
+                                "offset", Map.of("type", "integer", "minimum", 0, "maximum", 100000),
+                                "limit", Map.of("type", "integer", "minimum", 1, "maximum", 200)),
+                        List.of()),
+                true,
+                false,
+                true,
+                this::listDirectory));
+        tools.add(tool(
                 "get_file",
                 "Read exact original UTF-8 text from authoritative Git. Omit commit for current main; preserve the returned opaque revision when editing. Missing paths return expectedAbsence=true.",
                 object(Map.of("path", text(255), "commit", nullableCommit()), List.of("path")),
@@ -222,6 +236,34 @@ final class RepositoryMcpTools {
                         "Operation could not be completed; verify authoritative state before retrying writes.");
             }
         });
+    }
+
+    private McpSchema.CallToolResult listDirectory(McpSyncServerExchange exchange, Map<String, Object> input) {
+        fields(input, Set.of("path", "commit", "offset", "limit"));
+        var identity = sessions.resolve(exchange);
+        var page = reader.listDirectory(
+                identity.principal(),
+                identity.workspace(),
+                optionalText(input, "commit", 40),
+                optionalText(input, "path", 255).orElse(""),
+                boundedInteger(input, "offset", 0, 0, 100000),
+                boundedInteger(input, "limit", 100, 1, 200));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("commit", page.commit().orElse(null));
+        result.put("path", page.path());
+        result.put("expectedAbsence", page.expectedAbsence());
+        result.put("entries", page.entries());
+        result.put("nextOffset", page.nextOffset());
+        return textResult(result);
+    }
+
+    private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
+        if (!input.containsKey(field)) return fallback;
+        if (!(input.get(field) instanceof Number number)
+                || number.doubleValue() != number.intValue()
+                || number.intValue() < minimum
+                || number.intValue() > maximum) throw new IllegalArgumentException();
+        return number.intValue();
     }
 
     private McpSchema.CallToolResult getFile(McpSyncServerExchange exchange, Map<String, Object> input) {

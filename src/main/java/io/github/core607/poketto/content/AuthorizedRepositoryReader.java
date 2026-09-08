@@ -23,6 +23,12 @@ public final class AuthorizedRepositoryReader {
         return reader.readTree(workspace, commit);
     }
 
+    public RepositoryDirectoryPage listDirectory(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, String path, int offset, int limit) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        return reader.listDirectory(workspace, commit, path, offset, limit);
+    }
+
     public RepositoryFile getFile(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, String path) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
         return reader.getFile(workspace, commit, path);

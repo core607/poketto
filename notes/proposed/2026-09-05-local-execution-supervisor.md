@@ -132,7 +132,7 @@ phase-one record. A passing synthetic probe does not satisfy those conditions.
 
 ## Same-topic audit
 
-- Retain [repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). This proposal narrows its local transport and substitutes bundle handoff for executor read access to application caches; its five-tool and isolation contracts remain useful.
+- Retain [repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). This proposal narrows its local transport and substitutes bundle handoff for executor read access to application caches; its composable execution and isolation contracts remain useful; [directory navigation](../implemented/2026-09-08-repository-directory-navigation.md) extends basic reads independently of the worker.
 - Retain [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md). Execution copies never become write authority.
 - Retain [phase-one delivery](2026-09-05-phase-one-daily-use.md), which owns completion criteria and excludes partial clone.
 - Retain [the optional serverless profile](2026-09-01-optional-serverless-deployment-profile.md) as independent future work. This local socket and systemd topology does not implement remote workers.

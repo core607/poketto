@@ -8,7 +8,7 @@
 
 开发中。[仓库创作基础](notes/implemented/2026-09-05-repository-authoring-foundations.md)提供任意路径 Markdown、文件级诊断、有界公开与私有搜索、发布策略、原子文本补丁、不可变本地图片存储和精确版本图片交付。远端 `main` 仍是权威；公开请求使用已验证快照，不会在请求中访问远端。[身份 HTTP 后端](notes/implemented/2026-09-06-workspace-identity-http.md)提供初始化、会话、邀请、成员与作用域 key。
 
-[博客与浏览器管理界面](notes/implemented/2026-09-06-blog-browser-interface.md)通过服务端渲染的公开页面，以及包含图片、成员和密钥管理的中文 Markdown 编辑器呈现这些 HTTP API。`/mcp` 提供四个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。最终 HTTPS 安装与部署拓扑验收仍待完成。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
+[博客与浏览器管理界面](notes/implemented/2026-09-06-blog-browser-interface.md)通过服务端渲染的公开页面，以及包含图片、成员和密钥管理的中文 Markdown 编辑器呈现这些 HTTP API。`/mcp` 提供五个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。最终 HTTPS 安装与部署拓扑验收仍待完成。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
 
 ## 适合谁
 
@@ -68,7 +68,9 @@ exclude:
 
 ## MCP 与隔离执行
 
-`/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。
+`/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。
+
+`list_directory` 使用读取权限列出已提交的直接子文件与子目录，无须执行服务。不传 `path` 即选择根目录；后续页使用返回的 `nextOffset` 和 `commit`。默认每页 100 项，最多 200 项。内容仓库自己的 `AGENTS.md` 可以引导逐层探索与维护，服务端不会自动注入其内容。条目类型、缺失路径与边界见[目录导航记录](notes/implemented/2026-09-08-repository-directory-navigation.md)。
 
 超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](notes/proposed/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
 
