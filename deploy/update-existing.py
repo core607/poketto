@@ -18,6 +18,11 @@ class DeploymentError(RuntimeError):
     pass
 
 
+class NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, file, code, message, headers, new_url):
+        return None
+
+
 def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=240)
     if result.returncode:
@@ -125,7 +130,8 @@ class Installation:
             raise DeploymentError("installation configuration changed during deployment")
         for index, check in enumerate(self.config.get("healthChecks", []), 1):
             try:
-                with urllib.request.urlopen(check["url"], timeout=15) as response:
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
+                with opener.open(check["url"], timeout=15) as response:
                     body = response.read(1024 * 1024)
                     if response.status != 200:
                         raise DeploymentError("health check " + str(index) + " did not return 200")
@@ -199,8 +205,12 @@ def load_config(root):
     timeout = config.get("healthTimeoutSeconds", 180)
     if type(timeout) is not int or not 1 <= timeout <= 210:
         raise DeploymentError("health timeout must be between 1 and 210 seconds")
-    for check in config.get("healthChecks", []):
-        if not re.fullmatch(r"http://127\.0\.0\.1:[0-9]{1,5}/[^\s]*", check.get("url", "")):
+    checks = config.get("healthChecks", [])
+    if not isinstance(checks, list) or any(not isinstance(check, dict) for check in checks):
+        raise DeploymentError("health checks must be a list of objects")
+    for check in checks:
+        url = check.get("url", "")
+        if not isinstance(url, str) or not re.fullmatch(r"http://127\.0\.0\.1:[0-9]{1,5}/[^\s]*", url):
             raise DeploymentError("health checks must use a loopback HTTP entrance")
         try:
             port = urllib.parse.urlsplit(check["url"]).port

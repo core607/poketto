@@ -1,8 +1,10 @@
 import copy
 import importlib.util
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -170,7 +172,9 @@ class ExistingDeploymentTests(unittest.TestCase):
         response = MagicMock()
         response.__enter__.return_value = response
         response.status = 200
-        with patch.object(updater.urllib.request, "urlopen", return_value=response):
+        opener = MagicMock()
+        opener.open.return_value = response
+        with patch.object(updater.urllib.request, "build_opener", return_value=opener):
             for payload in [[{"status": "UP"}], None, 1, "UP", {"status": "DOWN"}]:
                 response.read.return_value = json.dumps(payload).encode()
                 with self.assertRaisesRegex(updater.DeploymentError, "health check 1 did not confirm readiness"):
@@ -178,6 +182,48 @@ class ExistingDeploymentTests(unittest.TestCase):
                 self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
             response.read.return_value = b'{"status":"UP"}'
             self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["status"], "healthy")
+
+    def test_health_redirects_are_not_followed(self):
+        visited = []
+
+        class HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                visited.append(self.path)
+                if self.path == "/health":
+                    self.send_response(302)
+                    self.send_header("Location", "/target")
+                    self.end_headers()
+                else:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'{"status":"UP"}')
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), HealthHandler)
+        thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+        thread.start()
+        try:
+            self.config["healthChecks"] = [{"url": "http://127.0.0.1:" + str(server.server_port) + "/health", "status": "UP"}]
+            with self.assertRaisesRegex(updater.DeploymentError, "health check 1 is unavailable"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            self.assertEqual(visited, ["/health"])
+            self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def test_health_configuration_requires_a_list_of_objects_with_string_urls(self):
+        path = self.root / "deployment.json"
+        for checks in [None, 1, {}, [1], [None], ["http://127.0.0.1:8080/"]]:
+            updater.write_json(path, {**self.config, "healthChecks": checks})
+            with self.assertRaisesRegex(updater.DeploymentError, "list of objects"):
+                updater.load_config(self.root)
+        updater.write_json(path, {**self.config, "healthChecks": [{"url": None}]})
+        with self.assertRaisesRegex(updater.DeploymentError, "loopback HTTP entrance"):
+            updater.load_config(self.root)
 
 
 if __name__ == "__main__":
