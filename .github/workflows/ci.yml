@@ -165,6 +165,7 @@ jobs:
     needs: publish
     if: vars.POKETTO_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
+    # Full image archives may need a slow-link transfer window; updater deadlines remain bounded.
     timeout-minutes: 90
     environment: production
     concurrency:
