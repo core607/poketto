@@ -297,6 +297,11 @@ class McpProtocolIntegrationIT {
 
     private void assertDirectoryNavigation(String readOnlyToken, String deniedToken) throws Exception {
         String session = initialize(readOnlyToken);
+        JsonNode noArguments = response(
+                        post(readOnlyToken, session, rpc("tools/call", Map.of("name", "list_directory"))))
+                .path("result");
+        assertThat(noArguments.path("isError").booleanValue()).isFalse();
+        assertThat(result(noArguments).path("path").stringValue()).isEmpty();
         JsonNode root = result(call(readOnlyToken, session, "list_directory", Map.of("limit", 2)));
         String commit = root.path("commit").stringValue();
         // Pin the complete model-visible page shape on the real authenticated MCP entrance.

@@ -209,15 +209,19 @@ final class RepositoryMcpTools {
         return new McpServerFeatures.SyncToolSpecification(tool, (exchange, request) -> {
             try {
                 sessions.resolve(exchange);
-                if (request.arguments() == null) throw new IllegalArgumentException();
+                var arguments = request.arguments();
+                if (arguments == null) {
+                    if (!name.equals("list_directory")) throw new IllegalArgumentException();
+                    arguments = Map.of();
+                }
                 if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
                     try (var producer = scope.producer()) {
-                        return operation.apply(exchange, request.arguments());
+                        return operation.apply(exchange, arguments);
                     }
                 }
                 if (name.equals("get_asset") || name.equals("put_asset"))
                     return error("UNAVAILABLE", "Image memory admission is unavailable.");
-                return operation.apply(exchange, request.arguments());
+                return operation.apply(exchange, arguments);
             } catch (AuthException | SecurityException exception) {
                 return error("DENIED", "Current workspace capability is required.");
             } catch (RepositoryConflictException exception) {
