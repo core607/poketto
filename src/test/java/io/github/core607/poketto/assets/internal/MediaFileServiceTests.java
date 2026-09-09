@@ -128,6 +128,86 @@ class MediaFileServiceTests {
     }
 
     @Test
+    void activeTransfersEnforceWorkspaceAndInstanceLimitsAndReleaseCapacity() throws Exception {
+        var other = WorkspaceId.random();
+        var otherAsset =
+                store.uploadFile(other, "other-transfer-01", "application/pdf", new ByteArrayInputStream(bytes));
+        when(repository.selectCommit(eq(other), any())).thenReturn(Optional.of(commit));
+        when(repository.media(other, commit))
+                .thenReturn(new RepositoryMediaSnapshot(
+                        other,
+                        commit,
+                        new RepositoryMediaIndex(Map.of(
+                                "private/source.pdf",
+                                new RepositoryMediaIndex.Media(
+                                        otherAsset.reference().assetId(),
+                                        otherAsset.reference().revision(),
+                                        otherAsset.mediaType(),
+                                        otherAsset.size()))),
+                        Set.of()));
+        var firstTwo = new java.util.concurrent.CountDownLatch(2);
+        var allFour = new java.util.concurrent.CountDownLatch(4);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        OutputStream blocked = new OutputStream() {
+            @Override
+            public void write(int value) throws java.io.IOException {
+                write(new byte[] {(byte) value}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] data, int offset, int length) throws java.io.IOException {
+                firstTwo.countDown();
+                allFour.countDown();
+                try {
+                    if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                        throw new java.io.IOException("fixture timed out");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new java.io.IOException(interrupted);
+                }
+            }
+        };
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            try {
+                for (int i = 0; i < 2; i++)
+                    futures.add(executor.submit(
+                            () -> service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
+                                    .writeTo(blocked)));
+                assertThat(firstTwo.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isTrue();
+                assertUnavailable(
+                        () -> service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
+                                .writeTo(OutputStream.nullOutputStream()));
+                for (int i = 0; i < 2; i++)
+                    futures.add(executor.submit(
+                            () -> service.privateDownload(actor, other, Optional.empty(), "private/source.pdf")
+                                    .writeTo(blocked)));
+                assertThat(allFour.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isTrue();
+                var untouched = new ByteArrayInputStream(bytes);
+                assertUnavailable(() -> service.upload(
+                        actor, WorkspaceId.random(), "saturated-upload-01", "application/pdf", untouched));
+                assertThat(untouched.available()).isEqualTo(bytes.length);
+            } finally {
+                release.countDown();
+                for (var future : futures) future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+        var output = new ByteArrayOutputStream();
+        service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
+                .writeTo(output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
+    }
+
+    private static void assertUnavailable(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+        assertThatThrownBy(action)
+                .isInstanceOfSatisfying(
+                        AssetStorageException.class,
+                        error -> assertThat(error.reason()).isEqualTo(AssetStorageException.Reason.UNAVAILABLE));
+    }
+
+    @Test
     void corruptionWritesNothingAndUploadBoundsDoNotAcknowledgeOrPublish() throws Exception {
         var download = service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf");
         Path original = directory
