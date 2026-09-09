@@ -26,7 +26,6 @@ FINAL_INSTRUCTION = "不许再调工具，把目前看到的问题直接总结�
 FINAL_MESSAGE = {"role": "user", "content": FINAL_INSTRUCTION}
 FINAL_BYTES = len(json.dumps(FINAL_MESSAGE, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 REQUEST_BYTES = INPUT_TOKENS - FRAMING_ALLOWANCE - FINAL_BYTES
-MAX_TOOL_CALLS = 8 * MAX_TURNS
 DIFF_BYTES = 8_000_000
 RESPONSE_BYTES = 2_000_000
 MAX_PARTS = 32
@@ -332,7 +331,7 @@ class AgentReview:
 
     def review(self, body):
         request = json.loads(body)
-        trace, seen, calls = [], set(), 0
+        trace, seen = [], set()
         requested_operations = set()
         finalize = False
         upper_bound = len(body) + FRAMING_ALLOWANCE
@@ -340,7 +339,7 @@ class AgentReview:
         try:
             for turn in range(self.turns):
                 self.unchanged()
-                if turn == self.turns - 1 or calls >= MAX_TOOL_CALLS or finalize:
+                if turn == self.turns - 1 or finalize:
                     request["messages"].append(FINAL_MESSAGE)
                     self.record("finalization", {"message": FINAL_MESSAGE})
                     upper_bound += FINAL_BYTES
@@ -356,7 +355,7 @@ class AgentReview:
                 tool_calls = assistant.get("tool_calls", [])
                 if not tool_calls:
                     return self.scrub(assistant["content"])
-                if request.get("tool_choice") == "none" or calls + len(tool_calls) > MAX_TOOL_CALLS:
+                if request.get("tool_choice") == "none":
                     raise Incomplete("The review agent exceeded its tool call bound.")
                 added = [assistant]
                 for call in tool_calls:
@@ -365,17 +364,20 @@ class AgentReview:
                     seen.add(call["id"])
                     try:
                         arguments = json.loads(call["function"]["arguments"])
+                        argument_identity = {"parsed": arguments}
                     except ValueError:
                         arguments = None
+                        argument_identity = {"raw": call["function"]["arguments"]}
                     self.record("tool_call", {"tool_call_id": call["id"], "name": call["function"]["name"], "arguments": arguments})
-                    operation = digest(json.dumps({"name": call["function"]["name"], "arguments": arguments},
+                    operation = digest(json.dumps({"name": call["function"]["name"], "arguments": argument_identity},
                                                   ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
                     if finalize or operation in requested_operations:
                         finalize = True
                         result = encoded({"warning": "Repeated tool request; do not call tools again. Summarize observed findings now."}).decode("utf-8")
                     else:
                         requested_operations.add(operation)
-                        result = self.repository.call(call["function"]["name"], arguments)
+                        result = (encoded({"error": "Tool arguments are not valid JSON; correct them before retrying."}).decode("utf-8")
+                                  if "raw" in argument_identity else self.repository.call(call["function"]["name"], arguments))
                     self.record("tool_result", {"tool_call_id": call["id"], "name": call["function"]["name"],
                                 "arguments": arguments, "content": result})
                     added.append({"role": "tool", "tool_call_id": call["id"], "content": result})
@@ -383,7 +385,6 @@ class AgentReview:
                     trace[-1]["tools"].append({"name": call["function"]["name"], "arguments": arguments,
                                                "result_bytes": len(result.encode("utf-8")),
                                                "result_sha256": digest(result.encode("utf-8"))})
-                    calls += 1
                 request["messages"].extend(added)
                 # Provider usage anchors the existing prefix. UTF-8 bytes conservatively bound
                 # appended text tokens; allowance covers chat/tool framing. No guessed chars/token.

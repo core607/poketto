@@ -25,7 +25,9 @@ class AgentTests(unittest.TestCase):
         self.git("commit", "-m", "base")
         base = self.git("rev-parse", "HEAD").strip()
         (self.repo / "consumer.py").write_text("def consumer():\n    return 'head implementation'\n")
-        (self.repo / "attack.py").write_text("raise RuntimeError('must never execute')\n")
+        self.marker = self.root / "executed-marker"
+        (self.repo / "attack.py").write_text(
+            "from pathlib import Path\nPath(" + repr(str(self.marker)) + ").write_text('executed')\n")
         (self.repo / "binary").write_bytes(b"binary\0data")
         (self.repo / "oversized").write_bytes(b"x" * 1_000_001)
         (self.repo / "lines").write_text("".join(f"line {i} needle\n" for i in range(230)))
@@ -146,6 +148,30 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual("none", final["tool_choice"])
                 self.assertIn("Repeated tool request", final["messages"][-2]["content"])
                 self.assertEqual(review.FINAL_INSTRUCTION, final["messages"][-1]["content"])
+
+    def test_repository_script_is_returned_as_text_without_executing_its_side_effect(self):
+        result, opener = self.run_agent([
+            self.response(self.tool_message(arguments={"action": "read", "revision": "head", "path": "attack.py"}), "tool_calls"),
+            self.response({"content": "Inspected script as data."})])
+        self.assertEqual("Inspected script as data.", result)
+        followup = json.loads(opener.call_args.args[0].data)
+        self.assertIn("write_text", followup["messages"][-2]["content"])
+        self.assertFalse(self.marker.exists())
+
+    def test_distinct_malformed_arguments_can_be_corrected_without_false_repeat_shutdown(self):
+        message = self.tool_message()
+        first = message["tool_calls"][0]
+        first["function"]["arguments"] = "{broken"
+        message["tool_calls"].append({"id": "bad_2", "type": "function", "function": {
+            "name": "repository", "arguments": "[broken"}})
+        with patch.object(self.provider.opener, "open", side_effect=[
+                self.response(message, "tool_calls"), self.response(self.tool_message("fixed"), "tool_calls"),
+                self.response({"content": "Inspected valid source."})]) as opener:
+            result = review.AgentReview(self.provider, self.tools, lambda: None, self.root, "bad-json", 5).review(self.body)
+        self.assertEqual("Inspected valid source.", result)
+        second = json.loads(opener.call_args_list[1].args[0].data)
+        self.assertNotEqual("none", second.get("tool_choice"))
+        self.assertTrue(all("not valid JSON" in item["content"] for item in second["messages"][-2:]))
 
     def test_pinned_reads_search_pagination_and_explicit_unsupported_files(self):
         self.assertIn("head implementation", str(self.call("read", path="consumer.py")))
