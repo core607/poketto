@@ -3,6 +3,8 @@
 Date: 2026-09-09
 Status: Proposed
 
+[CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns the expanded implementation target: public/private roots, local indexed media, workspace-only deduplication, original history for full-read sessions, portable exports and deterministic service authorization without a mandatory reviewer agent.
+
 ## Priority and problem
 
 This is the next development priority for repository agent access, ahead of expanding specialized MCP tools. Implement the workspace and authorization boundary before replacing the agent authoring entrance. The implementation steps below describe one target architecture, not compatibility modes or separate experimental products.

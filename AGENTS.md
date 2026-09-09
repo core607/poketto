@@ -8,7 +8,7 @@ The public README and requirements note have .zh.md counterparts; edit both side
 
 Current phase: development. The executable baseline is established; product capabilities are implemented only from an assigned, settled task.
 
-The next repository-agent development priority is [CodeAct workspaces and permission-scoped execution](notes/proposed/2026-09-09-codeact-workspaces.md); its ordered implementation plan remains proposed until delivered.
+The assigned repository-agent development priority is [CodeAct content and media](notes/proposed/2026-09-09-codeact-content-and-media.md); its implementation plan remains proposed until delivered.
 
 An agent arriving for the first time:
 

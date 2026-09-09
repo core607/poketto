@@ -5,7 +5,7 @@ Status: Proposed
 
 ## Next development priority
 
-[CodeAct workspaces and permission-scoped execution](2026-09-09-codeact-workspaces.md) are the next repository-agent development priority. Implement scope-aware exports, coherent session file operations and a service-mediated save bridge before expanding specialized MCP tools. That proposal owns the replacement agent contract; the delivery contracts below describe the existing baseline until its cutover. Installation acceptance remains required.
+[CodeAct content and media](2026-09-09-codeact-content-and-media.md) are the assigned repository-agent development priority. Implement workspace-scoped local media, public/private roots, coherent execution and a service-mediated save bridge before expanding specialized MCP tools. That proposal owns the replacement agent contract; the delivery contracts below describe the existing baseline until its cutover. Installation acceptance remains required.
 
 The [identity HTTP backend](../implemented/2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. This phase remains proposed until the other functionality and final installation acceptance are complete.
 
