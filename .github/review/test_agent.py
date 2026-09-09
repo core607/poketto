@@ -67,13 +67,13 @@ class AgentTests(unittest.TestCase):
             result = review.AgentReview(self.provider, self.tools, unchanged, self.root, "probe", 2).review(self.body)
         return result, opener
 
-    def test_real_bare_code_tool_round_trip_replays_reasoning_only_in_memory(self):
+    def test_real_bare_code_tool_round_trip_replays_and_records_provider_reasoning(self):
         result, opener = self.run_agent([
             self.response(self.tool_message(), "tool_calls"), self.response({"content": "Verified consumer."})])
         self.assertEqual("Verified consumer.", result)
         requests = [json.loads(call.args[0].data) for call in opener.call_args_list]
-        self.assertEqual(150000, requests[0]["max_tokens"])
-        self.assertEqual(149950, requests[1]["max_tokens"])
+        self.assertEqual(128000, requests[0]["max_tokens"])
+        self.assertEqual(128000, requests[1]["max_tokens"])
         self.assertEqual("PRIVATE_REASONING_FIXTURE", requests[1]["messages"][-3]["reasoning_content"])
         self.assertIn("head implementation", requests[1]["messages"][-2]["content"])
         self.assertEqual("read_1", requests[1]["messages"][-2]["tool_call_id"])
@@ -84,7 +84,27 @@ class AgentTests(unittest.TestCase):
         self.assertNotIn("fixture-key", trace)
         self.assertNotIn("head implementation", trace)
         self.assertIn("consumer.py", trace)
+        full_trace = [json.loads(line) for line in (self.root / "agent-trace.jsonl").read_text().split("\n") if line]
+        model = next(item for item in full_trace if item["event"] == "model_response")
+        self.assertEqual("PRIVATE_REASONING_FIXTURE", model["message"]["reasoning_content"])
+        self.assertEqual("tool_calls", model["finish_reason"])
+        self.assertTrue(any(item["event"] == "tool_call" for item in full_trace))
+        result_record = next(item for item in full_trace if item["event"] == "tool_result")
+        self.assertIn("head implementation", result_record["content"])
         self.assertFalse((self.bare / "attack.py").exists())
+
+    def test_trace_redacts_provider_echoes_and_retains_failed_response_for_diagnosis(self):
+        self.provider.key = 'credential-with-"-quotes'
+        with patch.object(self.provider.opener, "open", return_value=self.response({
+                "content": "partial " + self.provider.key, "reasoning_content": "diagnostic reasoning"}, finish="length")):
+            with self.assertRaises(review.Incomplete):
+                review.AgentReview(self.provider, self.tools, lambda: None, self.root, "failed", 2).review(self.body)
+        trace = [json.loads(line) for line in (self.root / "agent-trace.jsonl").read_text().split("\n") if line]
+        response = next(item for item in trace if item["event"] == "model_response")
+        self.assertEqual("partial [REDACTED]", response["message"]["content"])
+        self.assertEqual("diagnostic reasoning", response["message"]["reasoning_content"])
+        self.assertEqual("length", response["finish_reason"])
+        self.assertEqual("incomplete", trace[-1]["event"])
 
     def test_cache_usage_is_measured_and_long_lines_are_marked_truncated(self):
         raw = json.loads(self.response({"content": "complete"}).getvalue())
@@ -98,6 +118,34 @@ class AgentTests(unittest.TestCase):
         self.assertTrue(result["lines"][0]["truncated"])
         self.assertEqual(1, result["next_offset"])
         self.assertLessEqual(len(review.encoded(result)), TOOL_BYTES)
+
+    def test_source_line_numbers_follow_git_lf_and_blob_cache_reuses_objects(self):
+        text = "one\rtwo\fthree\u2028four\nsecond\n"
+        with patch.object(self.tools, "blob", return_value=text):
+            result = self.call("read", path="consumer.py", offset=1, limit=1)
+            self.assertEqual([{"line": 2, "text": "second"}], result["lines"])
+            search = self.call("search", path="consumer.py", query="four")
+            self.assertEqual([{"path": "consumer.py", "line": 1}], search["entries"])
+        with patch.object(self.tools, "git", wraps=review.git) as git:
+            self.call("read", path="consumer.py", limit=1)
+            count = git.call_count
+            self.call("read", path="consumer.py", offset=1, limit=1)
+            self.call("search", path="consumer.py", query="head")
+            self.assertEqual(count, git.call_count)
+
+    def test_repeated_arguments_with_new_call_id_warn_then_finalize_without_rereading(self):
+        second = self.tool_message("another_id", {"path": "consumer.py", "revision": "head", "action": "read"})
+        with patch.object(self.tools, "call", wraps=self.tools.call) as tool:
+            with patch.object(self.provider.opener, "open", side_effect=[
+                    self.response(self.tool_message(), "tool_calls"),
+                    self.response(second, "tool_calls"), self.response({"content": "Final observed findings."})]) as opener:
+                result = review.AgentReview(self.provider, self.tools, lambda: None, self.root, "loop", 10).review(self.body)
+                self.assertEqual("Final observed findings.", result)
+                tool.assert_called_once()
+                final = json.loads(opener.call_args.args[0].data)
+                self.assertEqual("none", final["tool_choice"])
+                self.assertIn("Repeated tool request", final["messages"][-2]["content"])
+                self.assertEqual(review.FINAL_INSTRUCTION, final["messages"][-1]["content"])
 
     def test_pinned_reads_search_pagination_and_explicit_unsupported_files(self):
         self.assertIn("head implementation", str(self.call("read", path="consumer.py")))
@@ -135,12 +183,14 @@ class AgentTests(unittest.TestCase):
                 cursor = following
         self.assertEqual(sorted(self.tools.tree("head")), names)
 
-    def test_shared_budget_includes_reasoning_and_stops_next_review_before_request(self):
-        self.run_agent([self.response({"content": "finished"}, completion=150000)])
-        with patch.object(self.provider.opener, "open") as opener:
-            with self.assertRaisesRegex(review.Incomplete, "budget"):
-                review.AgentReview(self.provider, self.tools, lambda: None, self.root, "second", 2).review(self.body)
-            opener.assert_not_called()
+    def test_each_call_has_128k_output_without_a_pr_total_cap(self):
+        for index in range(2):
+            with patch.object(self.provider.opener, "open", return_value=self.response(
+                    {"content": "finished"}, completion=128000)) as opener:
+                result = review.AgentReview(self.provider, self.tools, lambda: None, self.root,
+                                            "review-" + str(index), 2).review(self.body)
+                self.assertEqual("finished", result)
+                self.assertEqual(128000, json.loads(opener.call_args.args[0].data)["max_tokens"])
 
     def test_new_context_over_input_cap_is_not_sent(self):
         with patch.object(self.provider.opener, "open", return_value=self.response(
@@ -148,6 +198,29 @@ class AgentTests(unittest.TestCase):
             with self.assertRaisesRegex(review.Incomplete, "budget"):
                 review.AgentReview(self.provider, self.tools, lambda: None, self.root, "probe", 2).review(self.body)
             self.assertEqual(1, opener.call_count)
+
+    def test_exact_initial_request_cap_leaves_space_for_forced_summary(self):
+        request = json.loads(self.body)
+        request["messages"][1]["content"] += "x" * (review.REQUEST_BYTES - len(self.body))
+        body = review.encoded(request)
+        self.assertEqual(review.REQUEST_BYTES, len(body))
+        with patch.object(self.provider.opener, "open", return_value=self.response({"content": "Final summary."})):
+            result = review.AgentReview(self.provider, self.tools, lambda: None, self.root, "last", 1).review(body)
+        self.assertEqual("Final summary.", result)
+        trace = json.loads((self.root / "last-operations.json").read_bytes())
+        self.assertEqual(review.INPUT_TOKENS, trace[0]["input_token_upper_bound"])
+
+    def test_non_utf8_git_path_does_not_hide_valid_source(self):
+        blob = subprocess.check_output(["git", "hash-object", "-w", "--stdin"], cwd=self.repo,
+                                       input=b"valid source\n").strip()
+        tree = subprocess.check_output(["git", "mktree"], cwd=self.repo,
+                                       input=b"100644 blob " + blob + b"\tgood.py\n100644 blob " + blob + b"\tbad-\xff.py\n").strip()
+        commit = subprocess.check_output(["git", "commit-tree", tree.decode(), "-m", "odd names"],
+                                         cwd=self.repo).decode().strip()
+        tools = RepositoryTools(self.repo, {"base": commit, "head": commit}, commit, review.Budget(), review.git)
+        result = json.loads(tools.call("repository", {"action": "read", "revision": "head", "path": "good.py"}))
+        self.assertEqual("valid source", result["lines"][0]["text"])
+        self.assertEqual(1, result["unreadable_utf8_paths"])
 
     def test_loop_requests_final_answer_at_bound_and_refuses_ignored_tool_choice(self):
         with patch.object(review, "MAX_TURNS", 2):
@@ -168,7 +241,7 @@ class AgentTests(unittest.TestCase):
                 with self.assertRaises(review.Incomplete):
                     self.provider.complete(self.body)
 
-    def test_drift_between_model_call_and_read_prevents_tool_execution(self):
+    def test_drift_is_checked_once_per_round_before_next_model_call(self):
         count = 0
 
         def changed():
@@ -177,10 +250,10 @@ class AgentTests(unittest.TestCase):
             if count == 2:
                 raise review.Incomplete("stale fixture")
 
-        with patch.object(self.tools, "call") as tool:
+        with patch.object(self.tools, "call", wraps=self.tools.call) as tool:
             with self.assertRaisesRegex(review.Incomplete, "stale"):
                 self.run_agent([self.response(self.tool_message(), "tool_calls")], changed)
-            tool.assert_not_called()
+            tool.assert_called_once()
 
 
 if __name__ == "__main__":

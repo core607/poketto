@@ -17,12 +17,15 @@ from repository_tools import RepositoryTools, TOOLS
 
 
 INPUT_TOKENS = 300_000
-OUTPUT_TOKENS = 150_000
+OUTPUT_TOKENS_PER_CALL = 128_000
 FRAMING_ALLOWANCE = 4096
-REQUEST_BYTES = INPUT_TOKENS - FRAMING_ALLOWANCE
 TRANSPORT_BYTES = 4_000_000
 MAX_TURNS = 30
 FINAL_INSTRUCTION = "不许再调工具，把目前看到的问题直接总结出来。明确标注尚未核实的内容。"
+# Reserve the complete final message, including JSON keys and UTF-8 escaping overhead.
+FINAL_MESSAGE = {"role": "user", "content": FINAL_INSTRUCTION}
+FINAL_BYTES = len(json.dumps(FINAL_MESSAGE, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+REQUEST_BYTES = INPUT_TOKENS - FRAMING_ALLOWANCE - FINAL_BYTES
 MAX_TOOL_CALLS = 8 * MAX_TURNS
 DIFF_BYTES = 8_000_000
 RESPONSE_BYTES = 2_000_000
@@ -153,7 +156,7 @@ def fetch_diff(directory, revision, github, budget):
 
 
 def payload(model, rules, revision, title, content):
-    return encoded({"model": model, "reasoning_effort": "high", "max_tokens": OUTPUT_TOKENS, "tools": TOOLS,
+    return encoded({"model": model, "reasoning_effort": "high", "max_tokens": OUTPUT_TOKENS_PER_CALL, "tools": TOOLS,
                     "messages": [{"role": "system", "content": PERSONA + rules},
                                  {"role": "user", "content":
                                   f"PR 标题：{title}\n基准：{revision['base']}\n提交：{revision['head']}\n"
@@ -162,7 +165,8 @@ def payload(model, rules, revision, title, content):
 
 def split_diff(data, make_request, cap=REQUEST_BYTES):
     """Keep exact raw byte ranges; repeated file/hunk context is separate from those ranges."""
-    lines = data.splitlines(keepends=True)
+    segments = data.split(b"\n")
+    lines = [line + b"\n" for line in segments[:-1]] + ([segments[-1]] if segments[-1] else [])
     positions, contexts, boundaries = [0], [], []
     file_header, hunk = "", ""
     for index, line in enumerate(lines):
@@ -203,7 +207,7 @@ def split_diff(data, make_request, cap=REQUEST_BYTES):
         meta, body = request(end)
         raw = data[meta["start"]:meta["end"]]
         parts.append({**meta, "bytes": len(raw), "sha256": digest(raw), "request_bytes": len(body),
-                      "file_headers": [line.decode("utf-8").rstrip() for line in raw.splitlines()
+                      "file_headers": [line.decode("utf-8").rstrip() for line in raw.split(b"\n")
                                        if line.startswith(b"diff --git ")],
                       "raw": raw, "request": body})
         index = end
@@ -225,9 +229,8 @@ class Provider:
             raise Incomplete("The model endpoint must use HTTPS.")
         self.url, self.key, self.budget = url.rstrip("/") + "/chat/completions", key, budget
         self.opener = urllib.request.build_opener(NoRedirect())
-        self.remaining = OUTPUT_TOKENS
 
-    def complete(self, body):
+    def complete(self, body, record=lambda event, data: None):
         if len(body) > TRANSPORT_BYTES:
             raise Incomplete("The complete model request exceeds its transport byte cap.")
         request = urllib.request.Request(self.url, data=body, method="POST",
@@ -236,17 +239,26 @@ class Provider:
         try:
             with self.opener.open(request, timeout=self.budget.timeout(900)) as response:
                 raw = response.read(RESPONSE_BYTES + 1)
+        except urllib.error.HTTPError as error:
+            record("model_error", {"kind": "http", "status": error.code})
+            raise Incomplete("The model endpoint failed; the review is incomplete.") from None
         except (urllib.error.URLError, OSError):
+            record("model_error", {"kind": "transport"})
             raise Incomplete("The model endpoint failed; the review is incomplete.") from None
         if len(raw) > RESPONSE_BYTES:
             raise Incomplete("The model response exceeded its byte cap.")
         try:
             response = json.loads(raw)
+            first = response.get("choices", [{}])[0]
+            message = first.get("message", {})
+            record("model_response", {"finish_reason": first.get("finish_reason"),
+                   "message": {key: message[key] for key in ("role", "content", "reasoning_content", "tool_calls")
+                               if key in message}, "usage": response.get("usage"), "response_bytes": len(raw)})
             choice, usage = response["choices"][0], response["usage"]
             message = choice["message"]
             prompt, completion = usage["prompt_tokens"], usage["completion_tokens"]
             if (type(prompt) is not int or type(completion) is not int or prompt < 0
-                    or completion < 1 or prompt > INPUT_TOKENS or completion > self.remaining):
+                    or completion < 1 or prompt > INPUT_TOKENS or completion > OUTPUT_TOKENS_PER_CALL):
                 raise ValueError()
             if message.get("role") != "assistant":
                 raise ValueError()
@@ -269,9 +281,9 @@ class Provider:
             elif choice["finish_reason"] != "stop" or not content or not content.strip() or len(content) > 50_000:
                 raise ValueError()
         except (KeyError, IndexError, AttributeError, TypeError, ValueError):
+            record("model_error", {"kind": "invalid_response"})
             raise Incomplete("The model returned invalid usage, tool calls, or incomplete review text.") from None
-        self.remaining -= completion
-        # Replay the provider's reasoning only in memory, as required for thinking-mode tool turns.
+        # Replay reasoning unchanged, as required for thinking-mode tool turns.
         assistant = {"role": "assistant", "content": content}
         if reasoning is not None:
             assistant["reasoning_content"] = reasoning
@@ -290,29 +302,60 @@ class AgentReview:
         self.provider, self.repository, self.unchanged = provider, repository, unchanged
         self.output, self.label, self.turns = output, label, turns
         self.used = 0
+        self.started = time.monotonic()
+
+    def scrub(self, value):
+        secrets = [secret for secret in (getattr(self.provider, "key", ""), os.environ.get("GH_TOKEN", "")) if secret]
+
+        def scrub(value):
+            if isinstance(value, str):
+                for secret in secrets:
+                    value = value.replace(secret, "[REDACTED]")
+            elif isinstance(value, list):
+                value = [scrub(item) for item in value]
+            elif isinstance(value, dict):
+                value = {scrub(key): scrub(item) for key, item in value.items()}
+            return value
+
+        return scrub(value)
+
+    def record(self, event, data):
+        # Headers and environment dumps are never recorded. Redaction also covers accidental
+        # provider echoes while preserving valid JSON even for credentials containing punctuation.
+        value = encoded(self.scrub({"stage": self.label, "turn": self.used, "event": event,
+                               "at": time.time(), "elapsed_seconds": round(time.monotonic() - self.started, 3), **data}))
+        path = self.output / "agent-trace.jsonl"
+        if path.exists() and path.stat().st_size + len(value) > 128 * 1024 * 1024:
+            raise Incomplete("The retained review trace exceeds its disk bound.")
+        with path.open("ab") as stream:
+            stream.write(value + b"\n")
 
     def review(self, body):
         request = json.loads(body)
         trace, seen, calls = [], set(), 0
+        requested_operations = set()
+        finalize = False
         upper_bound = len(body) + FRAMING_ALLOWANCE
+        self.record("initial_context", {"request": request})
         try:
             for turn in range(self.turns):
                 self.unchanged()
-                if turn == self.turns - 1 or calls >= MAX_TOOL_CALLS:
-                    final = {"role": "user", "content": FINAL_INSTRUCTION}
-                    request["messages"].append(final)
-                    upper_bound += len(encoded(final))
+                if turn == self.turns - 1 or calls >= MAX_TOOL_CALLS or finalize:
+                    request["messages"].append(FINAL_MESSAGE)
+                    self.record("finalization", {"message": FINAL_MESSAGE})
+                    upper_bound += FINAL_BYTES
                     request["tool_choice"] = "none"
-                if upper_bound > INPUT_TOKENS or self.provider.remaining < 1:
-                    raise Incomplete("The review agent exhausted its input or shared output token budget.")
-                request["max_tokens"] = self.provider.remaining
+                if upper_bound > INPUT_TOKENS:
+                    raise Incomplete("The review agent exhausted its input token budget.")
+                request["max_tokens"] = OUTPUT_TOKENS_PER_CALL
                 self.used += 1
-                assistant, usage = self.provider.complete(encoded(request))
+                self.record("model_request", {"model": request["model"], "max_tokens": request["max_tokens"],
+                            "tool_choice": request.get("tool_choice", "auto"), "input_token_upper_bound": upper_bound})
+                assistant, usage = self.provider.complete(encoded(request), self.record)
                 trace.append({"turn": turn + 1, **usage, "input_token_upper_bound": upper_bound, "tools": []})
-                self.unchanged()
                 tool_calls = assistant.get("tool_calls", [])
                 if not tool_calls:
-                    return assistant["content"]
+                    return self.scrub(assistant["content"])
                 if request.get("tool_choice") == "none" or calls + len(tool_calls) > MAX_TOOL_CALLS:
                     raise Incomplete("The review agent exceeded its tool call bound.")
                 added = [assistant]
@@ -320,14 +363,23 @@ class AgentReview:
                     if call["id"] in seen:
                         raise Incomplete("The model repeated a tool call identity.")
                     seen.add(call["id"])
-                    self.unchanged()
                     try:
                         arguments = json.loads(call["function"]["arguments"])
                     except ValueError:
                         arguments = None
-                    result = self.repository.call(call["function"]["name"], arguments)
+                    self.record("tool_call", {"tool_call_id": call["id"], "name": call["function"]["name"], "arguments": arguments})
+                    operation = digest(json.dumps({"name": call["function"]["name"], "arguments": arguments},
+                                                  ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+                    if finalize or operation in requested_operations:
+                        finalize = True
+                        result = encoded({"warning": "Repeated tool request; do not call tools again. Summarize observed findings now."}).decode("utf-8")
+                    else:
+                        requested_operations.add(operation)
+                        result = self.repository.call(call["function"]["name"], arguments)
+                    self.record("tool_result", {"tool_call_id": call["id"], "name": call["function"]["name"],
+                                "arguments": arguments, "content": result})
                     added.append({"role": "tool", "tool_call_id": call["id"], "content": result})
-                    # Persist observed operations and result hashes, never reasoning or raw envelopes.
+                    # Keep the compact index separate from the full diagnostic transcript.
                     trace[-1]["tools"].append({"name": call["function"]["name"], "arguments": arguments,
                                                "result_bytes": len(result.encode("utf-8")),
                                                "result_sha256": digest(result.encode("utf-8"))})
@@ -336,9 +388,14 @@ class AgentReview:
                 # Provider usage anchors the existing prefix. UTF-8 bytes conservatively bound
                 # appended text tokens; allowance covers chat/tool framing. No guessed chars/token.
                 upper_bound = usage["prompt_tokens"] + len(encoded(added)) + FRAMING_ALLOWANCE
+                if upper_bound + FINAL_BYTES > INPUT_TOKENS:
+                    raise Incomplete("New tool context leaves no input budget for a final review.")
             raise Incomplete("The review agent reached its turn limit without a final review.")
+        except Incomplete as error:
+            self.record("incomplete", {"reason": str(error)})
+            raise
         finally:
-            (self.output / (self.label + "-operations.json")).write_bytes(encoded(trace))
+            (self.output / (self.label + "-operations.json")).write_bytes(encoded(self.scrub(trace)))
 
 
 def save_manifest(output, manifest):
@@ -346,12 +403,12 @@ def save_manifest(output, manifest):
 
 
 def complete_review(github, provider, revision, title, model, rules, merge, data, output, repository):
-    changed_files = sum(line.startswith(b"diff --git ") for line in data.splitlines())
+    changed_files = sum(line.startswith(b"diff --git ") for line in data.split(b"\n"))
     turns = min(MAX_TURNS, 8 + 2 * changed_files)
     manifest = {**revision, "merge_base": merge, "model": model, "diff_bytes": len(data),
                 "diff_sha256": digest(data), "rules_sha256": digest(rules.encode("utf-8")),
                 "state": "incomplete", "parts": [], "input_tokens": INPUT_TOKENS,
-                "shared_output_tokens": OUTPUT_TOKENS, "max_turns": turns, "changed_files": changed_files}
+                "output_tokens_per_call": OUTPUT_TOKENS_PER_CALL, "max_turns": turns, "changed_files": changed_files, "trace": "agent-trace.jsonl"}
     save_manifest(output, manifest)
     request = lambda text: payload(model, rules, revision, title, text)
     parts = split_diff(data, request)
@@ -382,17 +439,10 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
 
     reports = []
     for part, meta in zip(parts, manifest["parts"]):
-        unchanged()
         text = agent_review(part["request"], f"part-{part['part']:02d}", len(parts) - part["part"] + 1)
         (output / f"part-{part['part']:02d}.md").write_text(text, encoding="utf-8")
         reports.append(text)
         meta.update(state="reviewed", review_sha256=digest(text.encode("utf-8")))
-        save_manifest(output, manifest)
-        unchanged()
-        posted = github.post(revision["head"], f"## AI review · {part['part']}/{len(parts)}\n\n"
-                             + text.replace("@", "＠") + f"\n\n---\n提交：`{revision['head']}`；"
-                             f"范围：diff bytes {part['start']}..{part['end']}；完整审查仍待汇总。")
-        meta["review_id"] = posted["id"]
         save_manifest(output, manifest)
 
     content = ("以下是同一最终提交的完整分片审查及覆盖清单。复核跨模块权限、快照、写入、取消与部署契约。"
@@ -403,15 +453,10 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     cross_request = request(content)
     if len(cross_request) > REQUEST_BYTES:
         raise Incomplete("Cross-contract review exceeds the request cap; coverage remains incomplete.")
-    unchanged()
     cross = agent_review(cross_request, "cross-contract", 0)
     (output / "cross-contract.md").write_text(cross, encoding="utf-8")
     unchanged()
-    posted = github.post(revision["head"], "## AI review · complete coverage\n\n"
-                         + cross.replace("@", "＠") + f"\n\n---\n模型：`{model}`；"
-                         f"base：`{revision['base']}`；head：`{revision['head']}`；"
-                         f"{len(parts)}/{len(parts)} 片、{len(data)} bytes 全部审查。"
-                         "完整覆盖不代表没有问题；各分片评论仍需逐项处理。")
+    posted = github.post(revision["head"], cross.replace("@", "＠"))
     unchanged()
     manifest.update(state="complete", cross_review_id=posted["id"],
                     cross_review_sha256=digest(cross.encode("utf-8")))
@@ -443,7 +488,7 @@ def main():
         trusted = Path(__file__).resolve().parents[2]
         rules = "\n\n".join((trusted / name).read_text(encoding="utf-8") for name in
                               ["AGENTS.md", ".agents/skills/review/SKILL.md"])
-        model = os.environ.get("AI_REVIEW_MODEL", "deepseek-v4-flash-vision-exp")
+        model = os.environ.get("AI_REVIEW_MODEL", "deepseek-v4.1-flash-expires-on-0910")
         provider = Provider(os.environ.get("AI_REVIEW_BASE_URL", "https://api.deepseek.com"),
                             os.environ.get("AI_REVIEW_API_KEY", ""), budget)
         with tempfile.TemporaryDirectory() as directory:

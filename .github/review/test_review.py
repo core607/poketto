@@ -40,13 +40,11 @@ class FakeProvider:
     def __init__(self):
         self.requests = []
         self.fail_at = None
-        self.remaining = review.OUTPUT_TOKENS
 
-    def complete(self, body):
+    def complete(self, body, record=None):
         self.requests.append(body)
         if self.fail_at == len(self.requests):
             raise review.Incomplete("Fixture provider failure.")
-        self.remaining -= 10
         return {"role": "assistant", "content": "Fixture review: inspect the caller and consumer together. @literal"}, {"prompt_tokens": 1000, "completion_tokens": 10}
 
 
@@ -169,7 +167,7 @@ class ReviewTests(unittest.TestCase):
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         self.assertEqual("complete", manifest["state"])
         self.assertEqual(len(manifest["parts"]) + 1, len(self.provider.requests))
-        self.assertEqual(len(self.provider.requests), len(self.github.posts))
+        self.assertEqual(1, len(self.github.posts))
         retained = b"".join((self.output / f"part-{part['part']:02d}.diff").read_bytes()
                             for part in manifest["parts"])
         self.assertEqual(self.data, retained)
@@ -181,7 +179,8 @@ class ReviewTests(unittest.TestCase):
         for post in self.github.posts:
             self.assertEqual(self.head, post["commit_id"])
             self.assertNotIn("@literal", post["body"])
-        self.assertIn("complete coverage", self.github.posts[-1]["body"])
+        self.assertEqual((self.output / "cross-contract.md").read_text(encoding="utf-8").replace("@", "＠"),
+                         self.github.posts[-1]["body"])
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2
@@ -191,17 +190,15 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual("incomplete", manifest["state"])
         self.assertEqual("pending", manifest["parts"][1]["state"])
         self.assertTrue((self.output / "part-01.md").exists())
-        self.assertEqual(1, len(self.github.posts))
-        self.assertNotIn("complete coverage", self.github.posts[0]["body"])
+        self.assertEqual([], self.github.posts)
 
     def test_entire_pr_shares_scaled_turn_budget_and_reserves_cross_summary(self):
         for changed_files in (1, 12):
             self.provider = FakeProvider()
             self.github = FakeGitHub(self.revision)
 
-            def complete(body):
+            def complete(body, record=None):
                 self.provider.requests.append(body)
-                self.provider.remaining -= 10
                 request = json.loads(body)
                 if request.get("tool_choice") == "none":
                     self.assertEqual(review.FINAL_INSTRUCTION, request["messages"][-1]["content"])
@@ -209,7 +206,7 @@ class ReviewTests(unittest.TestCase):
                         "prompt_tokens": 1000, "completion_tokens": 10}
                 return {"role": "assistant", "content": "", "tool_calls": [{
                     "id": "call_" + str(len(self.provider.requests)), "type": "function", "function": {
-                        "name": "repository", "arguments": '{"action":"list","revision":"head"}'}}]}, {
+                        "name": "repository", "arguments": json.dumps({"action":"read", "revision":"head", "path":"large.txt", "offset":len(self.provider.requests), "limit":1})}}]}, {
                             "prompt_tokens": 1000, "completion_tokens": 10}
 
             self.provider.complete = complete
@@ -222,10 +219,10 @@ class ReviewTests(unittest.TestCase):
             self.assertEqual(expected, manifest["used_turns"])
             self.assertEqual(expected, manifest["max_turns"])
             self.assertEqual("complete", manifest["state"])
-            self.assertEqual(2, len(self.github.posts))
+            self.assertEqual(1, len(self.github.posts))
 
     def test_head_drift_after_provider_before_post_blocks_stale_review(self):
-        self.github.drift_after = 3
+        self.github.drift_after = 2
         with self.assertRaisesRegex(review.Incomplete, "stale and incomplete"):
             self.run_review()
         self.assertEqual([], self.github.posts)
@@ -283,7 +280,7 @@ class ReviewTests(unittest.TestCase):
         env = {"REVIEW_OUTPUT": str(self.output), "GITHUB_EVENT_PATH": str(event),
                "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
                "GITHUB_REPOSITORY": self.github.repository}
-        self.provider.complete = lambda body: time.sleep(10)
+        self.provider.complete = lambda body, record=None: time.sleep(10)
         small = b"diff --git a/a b/a\n@@ -0,0 +1 @@\n+new\n"
         start = time.monotonic()
         with patch.dict(os.environ, env), patch.object(review, "GitHub", return_value=self.github), \
@@ -304,12 +301,12 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual([], self.provider.requests)
 
     def test_provider_never_called_when_cross_contract_context_is_too_large(self):
-        self.provider.complete = lambda body: ({"role": "assistant", "content": "x" * 49000},
+        self.provider.complete = lambda body, record=None: ({"role": "assistant", "content": "x" * 49000},
                                                        {"prompt_tokens": 1000, "completion_tokens": 100})
         with self.assertRaisesRegex(review.Incomplete, "Cross-contract review exceeds"):
             self.run_review()
         self.assertFalse((self.output / "cross-contract.md").exists())
-        self.assertNotIn("complete coverage", self.github.posts[-1]["body"])
+        self.assertEqual([], self.github.posts)
 
     def test_workflow_keeps_main_trust_and_no_optional_failure(self):
         root = Path(__file__).resolve().parents[2]

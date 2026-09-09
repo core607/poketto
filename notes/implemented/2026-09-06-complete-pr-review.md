@@ -3,7 +3,7 @@
 Date: 2026-09-06
 Status: Implemented
 
-[Repository-aware review](2026-09-09-review-agent-loop.md) supersedes the request budgets and single-response stages below with bounded code-reading loops. Immutable diff coverage, trusted execution, commit-bound results, and failure rules remain current.
+[Repository-aware review](2026-09-09-review-agent-loop.md) supersedes the request budgets, single-response stages, per-part posting, and reasoning-retention rules below with bounded code-reading loops and diagnostic traces. Immutable diff coverage, trusted execution, commit-bound results, and failure rules remain current.
 
 ## Problem
 

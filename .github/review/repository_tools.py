@@ -1,5 +1,6 @@
 """Read fixed Git objects without checking out or executing reviewed source."""
 
+from collections import OrderedDict
 import json
 import re
 
@@ -8,6 +9,8 @@ TOOL_BYTES = 24_000
 FILE_BYTES = 1_000_000
 TREE_BYTES = 16_000_000
 MAX_ENTRIES = 100_000
+BLOB_CACHE_BYTES = 16_000_000
+BLOB_CACHE_ENTRIES = 256
 
 TOOLS = [{"type": "function", "function": {
     "name": "repository", "description": (
@@ -39,40 +42,78 @@ class RepositoryTools:
         self.directory, self.budget, self.git = directory, budget, git
         self.revisions = {"base": revision["base"], "head": revision["head"], "merge_base": merge_base}
         self.trees = {}
+        self.unreadable_paths = {}
+        self.blobs = OrderedDict()
+        self.blob_bytes = 0
 
     def tree(self, revision):
         if revision not in self.trees:
             raw = self.git(["ls-tree", "-r", "-z", "--full-tree", self.revisions[revision]],
                            self.budget, self.directory, limit=TREE_BYTES)
             entries = {}
+            unreadable = 0
+            count = 0
             for record in raw.split(b"\0"):
                 if not record:
                     continue
                 metadata, name = record.split(b"\t", 1)
                 mode, kind, oid = metadata.decode("ascii").split()
-                name = name.decode("utf-8", errors="strict")
+                count += 1
+                if count > MAX_ENTRIES:
+                    raise ToolInputError("Repository tree exceeds the entry bound.")
+                try:
+                    name = name.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    unreadable += 1
+                    continue
                 if not re.fullmatch("[0-9a-f]{40}", oid):
                     raise ValueError("Invalid Git object identity")
                 entries[name] = (mode, kind, oid)
-                if len(entries) > MAX_ENTRIES:
-                    raise ToolInputError("Repository tree exceeds the entry bound.")
             self.trees[revision] = entries
+            self.unreadable_paths[revision] = unreadable
         return self.trees[revision]
 
     def blob(self, entry):
         mode, kind, oid = entry
         if mode not in ("100644", "100755") or kind != "blob":
             raise ToolInputError("Only regular file blobs can be read; symlinks and submodules are not followed.")
+        if oid in self.blobs:
+            value, size = self.blobs[oid]
+            self.blobs.move_to_end(oid)
+            if isinstance(value, ToolInputError):
+                raise value
+            return value
         size = int(self.git(["cat-file", "-s", oid], self.budget, self.directory, limit=64))
         if size > FILE_BYTES:
-            raise ToolInputError("File exceeds the 1 MB read limit.")
+            error = ToolInputError("File exceeds the 1 MB read limit.")
+            self.cache(oid, error, 0)
+            raise error
         raw = self.git(["cat-file", "blob", oid], self.budget, self.directory, limit=FILE_BYTES)
         if b"\0" in raw:
-            raise ToolInputError("Binary file cannot be read as source text.")
+            error = ToolInputError("Binary file cannot be read as source text.")
+            self.cache(oid, error, 0)
+            raise error
         try:
-            return raw.decode("utf-8", errors="strict")
+            text = raw.decode("utf-8", errors="strict")
         except UnicodeDecodeError:
-            raise ToolInputError("Non-UTF-8 file cannot be read as source text.") from None
+            error = ToolInputError("Non-UTF-8 file cannot be read as source text.")
+            self.cache(oid, error, 0)
+            raise error from None
+        self.cache(oid, text, len(raw))
+        return text
+
+    def cache(self, oid, value, size):
+        # Object identity is immutable. The cache lives only for this one PR's temporary repository.
+        while self.blobs and (self.blob_bytes + size > BLOB_CACHE_BYTES or len(self.blobs) >= BLOB_CACHE_ENTRIES):
+            _, (_, removed) = self.blobs.popitem(last=False)
+            self.blob_bytes -= removed
+        self.blobs[oid] = (value, size)
+        self.blob_bytes += size
+
+    @staticmethod
+    def lines(text):
+        lines = text.split("\n")
+        return lines[:-1] if lines[-1] == "" else lines
 
     def call(self, name, arguments):
         try:
@@ -98,7 +139,7 @@ class RepositoryTools:
             if action == "read":
                 if path not in entries:
                     raise ToolInputError("File does not exist at the selected revision.")
-                lines = self.blob(entries[path]).splitlines()
+                lines = self.lines(self.blob(entries[path]))
                 result = {"revision": revision, "path": path, "lines": [], "next_offset": None}
                 if offset > len(lines):
                     raise ToolInputError("Line offset exceeds the file.")
@@ -136,6 +177,7 @@ class RepositoryTools:
                     result["next_cursor"] = end if end < len(names) else None
                 else:
                     result = self.search(revision, names, entries, query, cursor)
+            result["unreadable_utf8_paths"] = self.unreadable_paths[revision]
             raw = encode(result)
             if len(raw) > TOOL_BYTES:
                 raise ToolInputError("Tool result exceeds the byte limit.")
@@ -155,7 +197,7 @@ class RepositoryTools:
         for index in range(file_index, min(len(names), file_index + 100)):
             name = names[index]
             try:
-                lines = self.blob(entries[name]).splitlines()
+                lines = self.lines(self.blob(entries[name]))
             except ToolInputError as error:
                 item = {"path": name, "reason": str(error)}
                 if len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
