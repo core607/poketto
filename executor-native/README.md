@@ -8,6 +8,8 @@ client acceptance required by [phase one](../notes/proposed/2026-09-05-phase-one
 
 The signed-open result checks production socket ownership, peer identity and signatures. Its authentication stub supplies the allowed principal; that result does not validate database permissions. Recorded evidence retains its original labels and source hashes.
 
+The public-scope scenario uses a separate synthetic Git authority with the production publication and export services. It searches the actual worker copy for private metadata and content, checks that source commit objects are absent, preserves the public scope after a permission increase, and rejects execution after publication withdrawal. The [recorded projection run](evidence/2026-09-10-public-projection.json) identifies the tested classes and runtime manifest. Media materialization and HTTP MCP client acceptance remain separate requirements.
+
 Build the reproducible runtime with Java 26:
 
 ```sh
