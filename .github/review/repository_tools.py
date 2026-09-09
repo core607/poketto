@@ -1,6 +1,7 @@
 """Read fixed Git objects without checking out or executing reviewed source."""
 
 from collections import OrderedDict
+from dataclasses import dataclass
 import json
 import re
 
@@ -31,6 +32,11 @@ TOOLS = [{"type": "function", "function": {
 
 class ToolInputError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class Unreadable:
+    reason: str
 
 
 def encode(value):
@@ -80,24 +86,24 @@ class RepositoryTools:
         if oid in self.blobs:
             value, size = self.blobs[oid]
             self.blobs.move_to_end(oid)
-            if isinstance(value, ToolInputError):
-                raise value
+            if isinstance(value, Unreadable):
+                raise ToolInputError(value.reason)
             return value
         size = int(self.git(["cat-file", "-s", oid], self.budget, self.directory, limit=64))
         if size > FILE_BYTES:
             error = ToolInputError("File exceeds the 1 MB read limit.")
-            self.cache(oid, error, 0)
+            self.cache(oid, Unreadable(str(error)), 0)
             raise error
         raw = self.git(["cat-file", "blob", oid], self.budget, self.directory, limit=FILE_BYTES)
         if b"\0" in raw:
             error = ToolInputError("Binary file cannot be read as source text.")
-            self.cache(oid, error, 0)
+            self.cache(oid, Unreadable(str(error)), 0)
             raise error
         try:
             text = raw.decode("utf-8", errors="strict")
         except UnicodeDecodeError:
             error = ToolInputError("Non-UTF-8 file cannot be read as source text.")
-            self.cache(oid, error, 0)
+            self.cache(oid, Unreadable(str(error)), 0)
             raise error from None
         self.cache(oid, text, len(raw))
         return text

@@ -279,7 +279,7 @@ class Provider:
                         raise ValueError()
             elif choice["finish_reason"] != "stop" or not content or not content.strip() or len(content) > 50_000:
                 raise ValueError()
-        except (KeyError, IndexError, AttributeError, TypeError, ValueError):
+        except (KeyError, IndexError, AttributeError, TypeError, ValueError, RecursionError):
             record("model_error", {"kind": "invalid_response"})
             raise Incomplete("The model returned invalid usage, tool calls, or incomplete review text.") from None
         # Replay reasoning unchanged, as required for thinking-mode tool turns.
@@ -364,8 +364,10 @@ class AgentReview:
                     seen.add(call["id"])
                     try:
                         arguments = json.loads(call["function"]["arguments"])
+                        if not isinstance(arguments, dict) or any(isinstance(value, (dict, list)) for value in arguments.values()):
+                            raise ValueError()
                         argument_identity = {"parsed": arguments}
-                    except ValueError:
+                    except (ValueError, RecursionError):
                         arguments = None
                         argument_identity = {"raw": call["function"]["arguments"]}
                     self.record("tool_call", {"tool_call_id": call["id"], "name": call["function"]["name"], "arguments": arguments})
@@ -376,7 +378,7 @@ class AgentReview:
                         result = encoded({"warning": "Repeated tool request; do not call tools again. Summarize observed findings now."}).decode("utf-8")
                     else:
                         requested_operations.add(operation)
-                        result = (encoded({"error": "Tool arguments are not valid JSON; correct them before retrying."}).decode("utf-8")
+                        result = (encoded({"error": "Tool arguments are not valid JSON for this tool; use a flat object."}).decode("utf-8")
                                   if "raw" in argument_identity else self.repository.call(call["function"]["name"], arguments))
                     self.record("tool_result", {"tool_call_id": call["id"], "name": call["function"]["name"],
                                 "arguments": arguments, "content": result})
@@ -392,6 +394,9 @@ class AgentReview:
                 if upper_bound + FINAL_BYTES > INPUT_TOKENS:
                     raise Incomplete("New tool context leaves no input budget for a final review.")
             raise Incomplete("The review agent reached its turn limit without a final review.")
+        except RecursionError:
+            self.record("incomplete", {"reason": "Review data nesting exceeds the parser bound."})
+            raise Incomplete("Review data nesting exceeds the parser bound.") from None
         except Incomplete as error:
             self.record("incomplete", {"reason": str(error)})
             raise
@@ -429,8 +434,8 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
 
     def agent_review(body, label, reserved):
         nonlocal used
-        # Keep at least one response for every remaining part and the final cross-contract summary.
-        agent = AgentReview(provider, repository, unchanged, output, label, turns - used - reserved)
+        # Share remaining calls among stages; unused calls roll forward to subsequent stages.
+        agent = AgentReview(provider, repository, unchanged, output, label, (turns - used) // (reserved + 1))
         try:
             return agent.review(body)
         finally:
@@ -498,7 +503,7 @@ def main():
             complete_review(github, provider, revision, pr["title"], model, rules, merge, data, output, repository)
         summary = "AI review: complete coverage; inspect every part for findings."
         status = 0
-    except (Incomplete, OSError, ValueError, KeyError) as error:
+    except (Incomplete, OSError, ValueError, KeyError, RecursionError) as error:
         # Only our controlled error messages enter logs. Remote text and credentials never do.
         summary = "AI review INCOMPLETE: " + (str(error) if isinstance(error, Incomplete)
                                               else "A required review input or operation failed.")

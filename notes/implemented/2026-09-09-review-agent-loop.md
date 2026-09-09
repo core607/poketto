@@ -9,7 +9,7 @@ Complete diff coverage does not show every caller, configuration, or existing im
 
 ## Decision
 
-Each diff part and the final cross-contract review use a tool-calling loop. The entire PR shares `min(30, 8 + 2 * changed_files)` model calls, including final responses. The runner reserves one response for each remaining part and the cross-contract summary. Before a stage's final permitted call, it appends an instruction to stop using tools and summarize observed findings, marking unverified claims. It keeps the tool definitions and sets `tool_choice: none`. A provider that nevertheless asks for tools fails explicitly. A diff requiring more mandatory responses than the PR budget remains incomplete.
+Each diff part and the final cross-contract review use a tool-calling loop. The entire PR shares `min(30, 8 + 2 * changed_files)` model calls, including final responses. The runner divides the remaining calls among the remaining stages; unused calls roll forward. Every remaining part and the cross-contract summary retain at least one response. Before a stage's final permitted call, it appends an instruction to stop using tools and summarize observed findings, marking unverified claims. It keeps the tool definitions and sets `tool_choice: none`. A provider that nevertheless asks for tools fails explicitly. A diff requiring more mandatory responses than the PR budget remains incomplete.
 
 The default model is `deepseek-v4.1-flash-expires-on-0910`; `AI_REVIEW_MODEL` remains the operator override.
 

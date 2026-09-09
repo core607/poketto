@@ -173,6 +173,27 @@ class AgentTests(unittest.TestCase):
         self.assertNotEqual("none", second.get("tool_choice"))
         self.assertTrue(all("not valid JSON" in item["content"] for item in second["messages"][-2:]))
 
+    def test_deep_argument_json_returns_tool_error_instead_of_crashing(self):
+        message = self.tool_message()
+        message["tool_calls"][0]["function"]["arguments"] = "[" * 1500 + "]" * 1500
+        result, opener = self.run_agent([
+            self.response(message, "tool_calls"), self.response({"content": "Unable to verify that request."})])
+        self.assertEqual("Unable to verify that request.", result)
+        last = json.loads(opener.call_args.args[0].data)
+        self.assertIn("not valid JSON", last["messages"][-2]["content"])
+
+    def test_cached_unreadable_blob_does_not_accumulate_exception_tracebacks(self):
+        import traceback
+        entry = self.tools.tree("head")["binary"]
+        depths = []
+        for _ in range(10):
+            try:
+                self.tools.blob(entry)
+            except Exception as error:
+                depths.append(len(list(traceback.walk_tb(error.__traceback__))))
+        self.assertEqual(10, len(depths))
+        self.assertLessEqual(max(depths), 2)
+
     def test_pinned_reads_search_pagination_and_explicit_unsupported_files(self):
         self.assertIn("head implementation", str(self.call("read", path="consumer.py")))
         base = self.tools.call("repository", {"action": "read", "revision": "base", "path": "consumer.py"})
