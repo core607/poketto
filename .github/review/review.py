@@ -401,6 +401,17 @@ class AgentReview:
                         self.record("finalization", {"message": FINAL_MESSAGE})
                         upper_bound += FINAL_BYTES
                         request["tool_choice"] = "none"
+                else:
+                    # This tool result has not been sent yet. Refresh after the GitHub check,
+                    # without changing any prefix the provider has already seen.
+                    final_call, text = self.reminder(turn, finalize)
+                    envelope = {"budget": text}
+                    if final_call:
+                        envelope["notice"] = FINAL_NOTICE
+                        self.record("finalization", {"notice": FINAL_NOTICE})
+                    added[-1]["content"] = encoded({**json.loads(added[-1]["content"]), **envelope}).decode("utf-8")
+                    request["messages"].extend(added)
+                    upper_bound = usage["prompt_tokens"] + len(encoded(added)) + FRAMING_ALLOWANCE
                 if upper_bound > INPUT_TOKENS:
                     raise Incomplete("The review agent exhausted its input token budget.")
                 request["max_tokens"] = OUTPUT_TOKENS_PER_CALL
@@ -445,22 +456,6 @@ class AgentReview:
                     trace[-1]["tools"].append({"name": call["function"]["name"], "arguments": arguments,
                                                "result_bytes": len(result.encode("utf-8")),
                                                "result_sha256": digest(result.encode("utf-8"))})
-                # A later call appends no user message and sets no tool_choice: either would re-render
-                # the prompt after the replayed reasoning_content and lose the cached prefix, as the
-                # decision record's run evidence shows. The last tool result of the round carries the
-                # next reminder and, before the final call, the notice that tools are disabled.
-                final_call, text = self.reminder(turn + 1, finalize)
-                envelope = {"budget": text}
-                if final_call:
-                    envelope["notice"] = FINAL_NOTICE
-                    self.record("finalization", {"notice": FINAL_NOTICE})
-                added[-1]["content"] = encoded({**json.loads(added[-1]["content"]), **envelope}).decode("utf-8")
-                request["messages"].extend(added)
-                # Provider usage anchors the existing prefix. UTF-8 bytes conservatively bound
-                # appended text tokens; allowance covers chat/tool framing. No guessed chars/token.
-                upper_bound = usage["prompt_tokens"] + len(encoded(added)) + FRAMING_ALLOWANCE
-                if upper_bound > INPUT_TOKENS:
-                    raise Incomplete("New tool context leaves no input budget for a final review.")
             raise Incomplete("The review agent reached its turn limit without a final review.")
         except RecursionError:
             self.record("incomplete", {"reason": "Review data nesting exceeds the parser bound."})

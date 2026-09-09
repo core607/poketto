@@ -293,6 +293,25 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(200, result["next_offset"])
         self.assertIn("error", self.call("read", path="lines", limit=0))
 
+    def test_maximum_literal_query_is_whole_in_byte_bounded_paginated_snippets(self):
+        query = "針" * 256
+        line = "x" * 5000 + query + " tail"
+        with patch.object(self.tools, "blob", return_value=(line + "\n") * 60):
+            entries, cursor, pages = [], "", 0
+            while cursor is not None:
+                page = self.call("search", path="consumer.py", query=query, cursor=cursor)
+                self.assertLessEqual(len(review.encoded(page)), TOOL_BYTES)
+                entries.extend(page["entries"])
+                cursor = page["next_cursor"]
+                pages += 1
+                self.assertLessEqual(pages, 60)
+        self.assertGreater(pages, 1)
+        self.assertEqual(list(range(1, 61)), [entry["line"] for entry in entries])
+        for entry in entries:
+            self.assertIn(query, entry["text"])
+            self.assertLessEqual(len(entry["text"]), 296)
+            self.assertTrue(entry["truncated"])
+
     def test_pagination_rejects_cursor_reused_for_another_selection(self):
         first = self.call("search", path="lines", query="needle")
         token = first["next_cursor"]
