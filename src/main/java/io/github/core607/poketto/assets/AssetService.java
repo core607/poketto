@@ -312,6 +312,7 @@ public final class AssetService {
         }
         final RepositoryMediaSnapshot catalog = media;
         Map<String, String> links = new LinkedHashMap<>();
+        Map<String, String> downloads = new LinkedHashMap<>();
         for (String authored : destinations.links()) {
             if (authored.startsWith("#")
                     && authored.length() <= 256
@@ -328,7 +329,8 @@ public final class AssetService {
                         && catalog != null
                         && catalog.index().files().containsKey(target)
                         && (!publicOnly || catalog.publicPaths().contains(target))) {
-                    selected = downloadUrl(publicOnly, commit, routes.get(path), target);
+                    downloads.put(
+                            authored, downloadUrl(publicOnly, commit, routes.get(path), target) + fragment(authored));
                 }
                 if (selected != null) links.put(authored, selected + fragment(authored));
             });
@@ -396,7 +398,7 @@ public final class AssetService {
                 }
             }
         }
-        return new PreparedMedia(body, commit, links, images, gallery, galleryStatus);
+        return new PreparedMedia(body, commit, links, downloads, images, gallery, galleryStatus);
     }
 
     private boolean prepareImage(WorkspaceId workspace, Target target, Map<Target, Boolean> resolved, long[] total) {
@@ -446,7 +448,8 @@ public final class AssetService {
             if (url != null) gallery.add(new ResolvedMedia.GalleryImage(url, image.alt()));
             else if (status == ResolvedMedia.GalleryStatus.COMPLETE) status = ResolvedMedia.GalleryStatus.PARTIAL;
         }
-        return new ResolvedMedia(prepared.body(), prepared.commit(), prepared.links(), images, gallery, status);
+        return new ResolvedMedia(
+                prepared.body(), prepared.commit(), prepared.links(), prepared.downloads(), images, gallery, status);
     }
 
     private String imageUrl(
@@ -651,6 +654,7 @@ public final class AssetService {
             String body,
             String commit,
             Map<String, String> links,
+            Map<String, String> downloads,
             Map<String, Target> images,
             List<PreparedGallery> gallery,
             ResolvedMedia.GalleryStatus galleryStatus) {}

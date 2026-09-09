@@ -91,13 +91,14 @@ class IndexedMediaDeliveryTests {
         var page = assets.publicDocument(workspace, "/public").orElseThrow();
         assertThat(page.media().images()).containsKey("picture.png").doesNotContainKey("../private/picture.png");
         assertThat(page.media().gallery()).hasSize(1);
-        assertThat(page.media().links()).containsKey("source.pdf").doesNotContainKey("../private/source.pdf");
-        assertThat(page.media().links().get("source.pdf"))
+        assertThat(page.media().downloads()).containsKey("source.pdf").doesNotContainKey("../private/source.pdf");
+        assertThat(page.media().links()).doesNotContainKey("source.pdf");
+        assertThat(page.media().downloads().get("source.pdf"))
                 .startsWith("/api/public/media?")
                 .contains(firstCommit.name());
         var preview = assets.preview(actor, workspace, "public/index.md", body, Optional.of(firstCommit.name()));
         assertThat(preview.images()).containsKeys("picture.png", "../private/picture.png");
-        assertThat(preview.links().get("../private/source.pdf")).startsWith("/api/admin/media?");
+        assertThat(preview.downloads().get("../private/source.pdf")).startsWith("/api/admin/media?");
         String token = page.media().images().get("picture.png").substring("/api/public/assets/".length());
         assertThat(assets.readPublicImage(workspace, token).bytes()).isEqualTo(image);
         var media = new MediaFileService(auth, blobs, snapshots, () -> store);

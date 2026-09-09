@@ -15,6 +15,8 @@ Transfers admit at most four simultaneous operations per instance and two per wo
 
 Article preparation resolves indexed image paths through the existing image validation and memory admission. Attachment links retain exact commits and route bindings. Indexed image grants include the logical path and require current publication at read time. Public rendering omits private media mappings. Full-authority image reads can resolve historical indexes; sibling image galleries combine bounded Git and indexed candidates. Text remains available when media metadata or originals are unavailable.
 
+Resolved media carries a separate `downloads` map for attachment HTTP URLs. Article `links` retain logical routes. Public pages and authenticated previews pass both maps to Markdown rendering, so a download never gains an article `/read/` prefix or heading-fragment namespace. The public renderer rejects private download mappings; the HTTP service independently enforces download authorization.
+
 ## Verification and remaining acceptance
 
 Native tests exercise real Git indexes, immutable originals, public/private aliases, relative image and attachment links, galleries, historical reads and publication withdrawal. Transfer tests cover exact bytes, guessed workspace references, corruption before output, bounded uploads and revocation during output. HTTP tests verify attachment headers and raw-body handling; real Spring/PostgreSQL integration remains part of the verification gate.

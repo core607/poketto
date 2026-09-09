@@ -10,11 +10,13 @@ export function Markdown({
   source,
   images = {},
   links = {},
+  downloads = {},
   preview = false,
 }: {
   source: string;
   images?: Record<string, string>;
   links?: Record<string, string>;
+  downloads?: Record<string, string>;
   preview?: boolean;
 }) {
   const resolvedImages = new Map(
@@ -27,6 +29,12 @@ export function Markdown({
     Object.entries(links).map(([authored, target]) => [
       normalizeUri(authored),
       resolvedLink(authored, target, preview),
+    ]),
+  );
+  const resolvedDownloads = new Map(
+    Object.entries(downloads).map(([authored, target]) => [
+      normalizeUri(authored),
+      safeDownload(target, preview),
     ]),
   );
   return (
@@ -47,13 +55,15 @@ export function Markdown({
               node.properties.id.startsWith("user-content-")
                 ? node.properties.id
                 : undefined;
-            const target = resolvedLinks.has(href)
-              ? resolvedLinks.get(href)
-              : safeLink(
-                  href.startsWith("#") && !footnote
-                    ? headingFragment(href)
-                    : href,
-                );
+            const target = resolvedDownloads.has(href)
+              ? resolvedDownloads.get(href)
+              : resolvedLinks.has(href)
+                ? resolvedLinks.get(href)
+                : safeLink(
+                    href.startsWith("#") && !footnote
+                      ? headingFragment(href)
+                      : href,
+                  );
             return target ? (
               <a href={target} id={footnoteId} rel="noreferrer noopener">
                 {children}
@@ -86,6 +96,19 @@ export function Markdown({
       </ReactMarkdown>
     </div>
   );
+}
+
+function safeDownload(target: string, preview: boolean) {
+  if (!safeLink(target)) return undefined;
+  const expected = target.startsWith("/api/public/media?")
+    ? "/api/public/media"
+    : preview && target.startsWith("/api/admin/media?")
+      ? "/api/admin/media"
+      : undefined;
+  if (!expected) return undefined;
+  return new URL(target, "https://placeholder.invalid").pathname === expected
+    ? target
+    : undefined;
 }
 
 function resolvedLink(authored: string, target: string, preview: boolean) {

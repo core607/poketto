@@ -70,6 +70,48 @@ test("resolved public routes and private editor links use their actual frontend 
   assert.equal(articleHref("/"), "/read");
 });
 
+test("download mappings keep exact HTTP destinations separate from article routes", () => {
+  const target =
+    "/api/public/media?commit=" +
+    "a".repeat(40) +
+    "&path=media%2Freport.pdf&route=%2Fdemo#page=2";
+  const privateTarget =
+    "/api/admin/media?commit=" + "a".repeat(40) + "&path=private%2Freport.pdf";
+  const source =
+    "[PDF](report.pdf) [Private](private.pdf) [Article](article.md)";
+  const downloads = { "report.pdf": target, "private.pdf": privateTarget };
+  const html = renderToStaticMarkup(
+    <Markdown
+      source={source}
+      downloads={downloads}
+      links={{ "article.md": target }}
+    />,
+  );
+  assert.ok(html.includes('href="' + target.replaceAll("&", "&amp;") + '"'));
+  assert.ok(html.includes('href="' + articleHref(target) + '"'));
+  assert.doesNotMatch(html, /href="\/api\/admin\/media/);
+  assert.ok(
+    renderToStaticMarkup(
+      <Markdown source={source} downloads={downloads} preview />,
+    ).includes(privateTarget.replaceAll("&", "&amp;")),
+  );
+  for (const invalid of [
+    "https://evil.invalid/api/public/media?x",
+    "/api/public/media/../auth?x",
+    "//evil.invalid/media?x",
+    "javascript:alert(1)",
+  ])
+    assert.doesNotMatch(
+      renderToStaticMarkup(
+        <Markdown
+          source="[PDF](report.pdf)"
+          downloads={{ "report.pdf": invalid }}
+        />,
+      ),
+      /href=/,
+    );
+});
+
 test("safe URL rules reject protocols, external image grants, and normalized traversal", () => {
   for (const value of [
     "javascript:alert(1)",

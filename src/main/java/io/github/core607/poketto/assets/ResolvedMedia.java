@@ -8,11 +8,13 @@ public record ResolvedMedia(
         String body,
         String commit,
         Map<String, String> links,
+        Map<String, String> downloads,
         Map<String, String> images,
         List<GalleryImage> gallery,
         GalleryStatus galleryStatus) {
     public ResolvedMedia {
         links = Map.copyOf(links);
+        downloads = Map.copyOf(downloads);
         images = Map.copyOf(images);
         gallery = List.copyOf(gallery);
         java.util.Objects.requireNonNull(galleryStatus);
