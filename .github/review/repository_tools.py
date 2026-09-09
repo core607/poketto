@@ -13,6 +13,10 @@ TREE_BYTES = 16_000_000
 MAX_ENTRIES = 100_000
 BLOB_CACHE_BYTES = 16_000_000
 BLOB_CACHE_ENTRIES = 256
+# A search page ends after this much source has been scanned or this many files, whichever comes
+# first, so a repository-wide query is not spent on the alphabetically earliest hundred paths.
+SEARCH_PAGE_BYTES = 8_000_000
+SEARCH_PAGE_FILES = 2000
 
 TOOLS = [{"type": "function", "function": {
     "name": "repository", "description": (
@@ -27,7 +31,7 @@ TOOLS = [{"type": "function", "function": {
         "path": {"type": "string", "description": "Exact file for read; optional file or directory prefix otherwise."},
         "query": {"type": "string", "description": "Literal, case-sensitive search text."},
         "offset": {"type": "integer", "minimum": 0, "description": "Zero-based line offset for read."},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Read at most this many lines (default 200)."},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Read at most this many lines (default 200; larger values are clamped)."},
         "cursor": {"type": "string", "description": "Opaque next_cursor from the same list/search selection."}},
         "required": ["action", "revision"], "additionalProperties": False}}}]
 
@@ -141,8 +145,10 @@ class RepositoryTools:
             offset = arguments.get("offset", 0)
             limit = arguments.get("limit", 200)
             if (not isinstance(cursor_token, str) or type(offset) is not int or offset < 0
-                    or type(limit) is not int or not 1 <= limit <= 200):
-                raise ToolInputError("Cursor must be a returned token; offset must be nonnegative; limit must be 1 to 200.")
+                    or type(limit) is not int or limit < 1):
+                raise ToolInputError("Cursor must be a returned token; offset must be nonnegative; limit must be at least 1.")
+            # An oversized page request costs the model a whole round if refused; the byte bound still applies.
+            limit = min(limit, 200)
             entries = self.tree(revision)
             if action == "read":
                 if path not in entries:
@@ -213,10 +219,16 @@ class RepositoryTools:
         if file_index > len(names) or (file_index == len(names) and line_offset):
             raise ToolInputError("Cursor exceeds this path selection.")
         result = {"revision": revision, "entries": [], "unsearched": [], "next_cursor": None}
-        for index in range(file_index, min(len(names), file_index + 100)):
+        scanned_bytes, end = 0, file_index
+        for index in range(file_index, len(names)):
+            if index > file_index and (scanned_bytes >= SEARCH_PAGE_BYTES or index - file_index >= SEARCH_PAGE_FILES):
+                break
+            end = index + 1
             name = names[index]
             try:
-                lines = self.lines(self.blob(entries[name]))
+                text = self.blob(entries[name])
+                scanned_bytes += len(text.encode("utf-8"))
+                lines = self.lines(text)
             except ToolInputError as error:
                 item = {"path": name, "reason": str(error)}
                 if len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
@@ -235,6 +247,5 @@ class RepositoryTools:
                     result["next_cursor"] = index * stride + line
                     return result
                 result["entries"].append(item)
-        end = min(len(names), file_index + 100)
         result["next_cursor"] = end * stride if end < len(names) else None
         return result

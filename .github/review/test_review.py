@@ -48,6 +48,11 @@ class FakeProvider:
         return {"role": "assistant", "content": "Fixture review: inspect the caller and consumer together. @literal"}, {"prompt_tokens": 1000, "completion_tokens": 10}
 
 
+def final_request(request):
+    last = request["messages"][-1]
+    return last == review.FINAL_MESSAGE or (last["role"] == "tool" and review.FINAL_NOTICE in last["content"])
+
+
 class ReviewTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -196,7 +201,7 @@ class ReviewTests(unittest.TestCase):
         self.assertTrue((self.output / "part-01.md").exists())
         self.assertEqual([], self.github.posts)
 
-    def test_entire_pr_shares_scaled_turn_budget_and_reserves_cross_summary(self):
+    def test_entire_pr_shares_scaled_turn_budget_and_single_part_runs_one_loop(self):
         for changed_files in (1, 12):
             self.provider = FakeProvider()
             self.github = FakeGitHub(self.revision)
@@ -204,8 +209,8 @@ class ReviewTests(unittest.TestCase):
             def complete(body, record=None):
                 self.provider.requests.append(body)
                 request = json.loads(body)
-                if request.get("tool_choice") == "none":
-                    self.assertEqual(review.FINAL_INSTRUCTION, request["messages"][-1]["content"])
+                if final_request(request):
+                    self.assertNotIn("tool_choice", request)
                     return {"role": "assistant", "content": "Final observed findings."}, {
                         "prompt_tokens": 1000, "completion_tokens": 10}
                 return {"role": "assistant", "content": "", "tool_calls": [{
@@ -224,6 +229,11 @@ class ReviewTests(unittest.TestCase):
             self.assertEqual(expected, manifest["max_turns"])
             self.assertEqual("complete", manifest["state"])
             self.assertEqual(1, len(self.github.posts))
+            # One part: the whole budget belongs to one loop and nothing is re-read from scratch.
+            self.assertEqual(1, len(manifest["parts"]))
+            self.assertEqual("cross-contract", manifest["parts"][0]["review_stage"])
+            self.assertEqual((self.output / "cross-contract.md").read_bytes(), (self.output / "part-01.md").read_bytes())
+            self.assertEqual(self.github.posts[0]["body"], (self.output / "part-01.md").read_text(encoding="utf-8"))
 
     def use_loop_provider(self, change_time=None):
         def complete(body, record=None):
@@ -233,7 +243,7 @@ class ReviewTests(unittest.TestCase):
                 change_time(number)
             request = json.loads(body)
             usage = {"prompt_tokens": 1000, "completion_tokens": 10}
-            if request.get("tool_choice") == "none":
+            if final_request(request):
                 return {"role": "assistant", "content": f"Final observed findings {number}."}, usage
             return {"role": "assistant", "content": "", "tool_calls": [{
                 "id": f"read_{number}", "type": "function", "function": {
@@ -241,7 +251,7 @@ class ReviewTests(unittest.TestCase):
                     "path": "large.txt", "offset": number, "limit": 1})}}]}, usage
         self.provider.complete = complete
 
-    def test_peak_small_pr_uses_three_total_calls_with_append_only_budget_hints(self):
+    def test_peak_small_pr_uses_three_total_calls_with_budget_hints_on_tool_results(self):
         self.now = self.now.replace(hour=16)
         self.use_loop_provider()
         data = b"diff --git a/base.txt b/base.txt\n@@ -1 +1 @@\n-base\n+changed\n"
@@ -250,14 +260,17 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(3, len(requests))
         self.assertIn(data.decode(), requests[0]["messages"][1]["content"])
         for index, request in enumerate(requests):
-            hint = request["messages"][-2 if index == 2 else -1]["content"]
+            last = request["messages"][-1]
+            self.assertEqual("user" if index == 0 else "tool", last["role"])
+            hint = last["content"] if index == 0 else json.loads(last["content"])["budget"]
             self.assertIn(f"本阶段剩余最多 {3 - index} 轮", hint)
             self.assertIn("峰价", hint)
             if index:
                 prefix = requests[index - 1]["messages"]
                 self.assertEqual(prefix, request["messages"][:len(prefix)])
-        self.assertEqual("none", requests[-1]["tool_choice"])
-        self.assertEqual(review.FINAL_INSTRUCTION, requests[-1]["messages"][-1]["content"])
+        self.assertNotIn("notice", json.loads(requests[1]["messages"][-1]["content"]))
+        self.assertEqual(review.FINAL_NOTICE, json.loads(requests[2]["messages"][-1]["content"])["notice"])
+        self.assertNotIn("tool_choice", requests[-1])
         self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3."}], self.github.posts)
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         self.assertEqual(3, manifest["max_turns"])
@@ -301,7 +314,9 @@ class ReviewTests(unittest.TestCase):
                         + b"+fixture\n" * 22000 for name in (b"one", b"two"))
         self.run_review(data)
         self.assertEqual(3, len(self.provider.requests))
+        # Each stage's first call is its last: the user instruction and tool_choice: none remain.
         self.assertTrue(all(json.loads(body)["tool_choice"] == "none" for body in self.provider.requests))
+        self.assertTrue(all(json.loads(body)["messages"][-1] == review.FINAL_MESSAGE for body in self.provider.requests))
         self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3."}], self.github.posts)
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         self.assertEqual(data, b"".join((self.output / f"part-{part['part']:02d}.diff").read_bytes()
@@ -324,7 +339,7 @@ class ReviewTests(unittest.TestCase):
         self.use_loop_provider(lambda number: setattr(self, "now", self.now.replace(hour=18)))
         self.run_review(b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+x\n")
         self.assertEqual(3, len(self.provider.requests))
-        self.assertIn("谷价", json.loads(self.provider.requests[-1])["messages"][-2]["content"])
+        self.assertIn("谷价", json.loads(self.provider.requests[-1])["messages"][-1]["content"])
 
     def test_head_drift_after_provider_before_post_blocks_stale_review(self):
         self.github.drift_after = 2
