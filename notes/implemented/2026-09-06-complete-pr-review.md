@@ -3,6 +3,8 @@
 Date: 2026-09-06
 Status: Implemented
 
+[Repository-aware review](2026-09-09-review-agent-loop.md) supersedes the request budgets and single-response stages below with bounded code-reading loops. Immutable diff coverage, trusted execution, commit-bound results, and failure rules remain current.
+
 ## Problem
 
 The [API review workflow](2026-09-01-api-pr-review-ci.md) used one GitHub diff response and truncated its prefix. GitHub refuses sufficiently large diff responses, and a successful response could still lose most changed files before reaching the model. A green job did not distinguish a complete review from skipped or partial coverage.
