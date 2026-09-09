@@ -138,7 +138,6 @@ test("folder selection cancels without writing and moves via the host service be
     return item;
   };
   const trigger = button("移动…");
-  trigger.focus();
   await act(async () => trigger.click());
   let dialog = container.querySelector("dialog[open]");
   assert.ok(dialog);
@@ -231,4 +230,15 @@ test("folder selection cancels without writing and moves via the host service be
   assert.match(container.textContent!, /仓库内容已改变，目录已刷新/);
   assert.equal(container.querySelector("textarea"), null);
   assert.equal(directoryVersions.at(-1), "concurrent");
+  const expandedPaths = [
+    ...container.querySelectorAll("details[open] > summary"),
+  ].map((item) => item.textContent);
+  assert.ok(
+    expandedPaths.includes("private"),
+    "The originally selected directory stays expanded across commits",
+  );
+  assert.ok(
+    expandedPaths.includes("public"),
+    "The moved file's directory expands and survives a later conflict",
+  );
 });

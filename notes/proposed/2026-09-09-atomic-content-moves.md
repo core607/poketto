@@ -23,6 +23,8 @@ Real Git fixtures cover a folder exceeding the external patch's file limit, exac
 
 ## Alternatives and related records
 
+[Browser recording and source provenance](https://github.com/core607/poketto/blob/2c46c5798fcd8fde41660c28b058a23ba2c3e64f/README.md) retain the isolated real-service acceptance separately from product history. The recording covers an actual concurrent save as well as a rejected destination; mocked HTTP component tests do not substitute for it.
+
 Sending delete/create text pairs through the external patch API limits ordinary folders to small text batches and cannot move arbitrary binary objects. Letting the agent edit the index and every backlink separately leaves repair incomplete and creates multiple authorization commit points. One host-prepared candidate avoids both problems without adding another persistence engine.
 
 [Authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) retain the atomic writer and authorization contract; [logical media](../implemented/2026-09-09-logical-media-index.md) retains index ownership and original validation; [directory navigation](../implemented/2026-09-08-repository-directory-navigation.md) retains the listing contract for the destination picker. The [CodeAct workspace proposal](2026-09-09-codeact-workspaces.md) owns session capture and baseline advancement. These records remain active during the wider CodeAct cutover.

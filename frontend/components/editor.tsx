@@ -204,7 +204,7 @@ export function Editor({
   function resolvePreview() {
     setPreviewVersion((value) => value + 1);
   }
-  function chooseMove(source: string, commit: string) {
+  function chooseMove(source: string, commit: string, trigger: HTMLElement) {
     if (dirty) {
       setError("有未保存的修改，请先保存，再移动文件或文件夹。");
       return;
@@ -213,10 +213,7 @@ export function Editor({
     setMoveSelection({
       source,
       commit,
-      returnFocus:
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null,
+      returnFocus: trigger,
     });
   }
   async function move(destination: string) {
@@ -469,7 +466,9 @@ export function Editor({
                     type="button"
                     className="button-secondary"
                     disabled={!writable || busy || dirty}
-                    onClick={() => chooseMove(file.path, file.commit!)}
+                    onClick={(event) =>
+                      chooseMove(file.path, file.commit!, event.currentTarget)
+                    }
                   >
                     移动…
                   </button>

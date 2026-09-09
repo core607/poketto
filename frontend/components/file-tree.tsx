@@ -10,15 +10,49 @@ type Props = {
   filter: string;
   busy: boolean;
   onOpen: (path: string) => void;
-  onMove?: (path: string, commit: string) => void;
+  onMove?: (path: string, commit: string, trigger: HTMLElement) => void;
 };
 
 export function FileTree(props: Props) {
-  return <DirectoryBranch key={props.commit ?? "empty"} {...props} path="" />;
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!props.selected) return;
+    setExpanded((current) => {
+      const next = new Set(current);
+      const segments = props.selected!.split("/");
+      for (let i = 1; i < segments.length; i++)
+        next.add(segments.slice(0, i).join("/"));
+      return next;
+    });
+  }, [props.selected]);
+  return (
+    <DirectoryBranch
+      key={props.commit ?? "empty"}
+      {...props}
+      path=""
+      expanded={expanded}
+      onExpanded={(path, opened) =>
+        setExpanded((current) => {
+          if (current.has(path) === opened) return current;
+          const next = new Set(current);
+          if (opened) next.add(path);
+          else next.delete(path);
+          return next;
+        })
+      }
+    />
+  );
 }
 
-function DirectoryBranch({ path, ...props }: Props & { path: string }) {
-  const [opened, setOpened] = useState(!path);
+function DirectoryBranch({
+  path,
+  ...props
+}: Props & {
+  path: string;
+  expanded: Set<string>;
+  onExpanded: (path: string, opened: boolean) => void;
+}) {
+  const opened = !path || props.expanded.has(path);
   const [page, setPage] = useState<RepositoryDirectory | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -95,7 +129,13 @@ function DirectoryBranch({ path, ...props }: Props & { path: string }) {
                     aria-label={`移动 ${entry.path}`}
                     title="移动"
                     disabled={props.busy}
-                    onClick={() => props.onMove!(entry.path, page.commit!)}
+                    onClick={(event) =>
+                      props.onMove!(
+                        entry.path,
+                        page.commit!,
+                        event.currentTarget,
+                      )
+                    }
                   >
                     移动
                   </button>
@@ -136,7 +176,7 @@ function DirectoryBranch({ path, ...props }: Props & { path: string }) {
     <details
       className="tree-directory"
       open={opened}
-      onToggle={(event) => setOpened(event.currentTarget.open)}
+      onToggle={(event) => props.onExpanded(path, event.currentTarget.open)}
     >
       <summary>{path.split("/").at(-1)}</summary>
       {props.onMove && props.commit && movablePath(path) && (
@@ -145,7 +185,9 @@ function DirectoryBranch({ path, ...props }: Props & { path: string }) {
           type="button"
           disabled={props.busy}
           aria-label={`移动文件夹 ${path}`}
-          onClick={() => props.onMove!(path, props.commit!)}
+          onClick={(event) =>
+            props.onMove!(path, props.commit!, event.currentTarget)
+          }
         >
           移动文件夹
         </button>
