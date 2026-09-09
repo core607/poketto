@@ -84,6 +84,15 @@ class AgentTests(unittest.TestCase):
         self.assertEqual("PRIVATE_REASONING_FIXTURE", assistant["reasoning_content"])
         self.assertIn("head implementation", tool["content"])
         self.assertEqual("read_1", tool["tool_call_id"])
+        # The final call disables tools through the last tool result, never through a new user
+        # message or tool_choice: none, so the replayed reasoning and the cached prefix survive.
+        self.assertEqual("tool", requests[1]["messages"][-1]["role"])
+        envelope = json.loads(requests[1]["messages"][-1]["content"])
+        self.assertIn("本阶段剩余最多 1 轮", envelope["budget"])
+        self.assertEqual(review.FINAL_NOTICE, envelope["notice"])
+        self.assertNotIn("tool_choice", requests[1])
+        self.assertEqual("user", requests[0]["messages"][-1]["role"])
+        self.assertIn("本阶段剩余最多 2 轮", requests[0]["messages"][-1]["content"])
         self.assertEqual(requests[0]["messages"], requests[1]["messages"][:len(requests[0]["messages"])])
         self.assertEqual(requests[0]["tools"], requests[1]["tools"])
         trace = (self.root / "probe-operations.json").read_text()
@@ -152,9 +161,11 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual("Final observed findings.", result)
                 tool.assert_called_once()
                 final = json.loads(opener.call_args.args[0].data)
-                self.assertEqual("none", final["tool_choice"])
-                self.assertIn("Repeated tool request", final["messages"][-3]["content"])
-                self.assertEqual(review.FINAL_INSTRUCTION, final["messages"][-1]["content"])
+                self.assertNotIn("tool_choice", final)
+                self.assertEqual("tool", final["messages"][-1]["role"])
+                self.assertIn("Repeated tool request", final["messages"][-1]["content"])
+                self.assertIn(review.FINAL_NOTICE, final["messages"][-1]["content"])
+                self.assertEqual(2, sum(message["role"] == "user" for message in final["messages"]))
 
     def test_repository_script_is_returned_as_text_without_executing_its_side_effect(self):
         result, opener = self.run_agent([
@@ -162,7 +173,7 @@ class AgentTests(unittest.TestCase):
             self.response({"content": "Inspected script as data."})])
         self.assertEqual("Inspected script as data.", result)
         followup = json.loads(opener.call_args.args[0].data)
-        self.assertIn("write_text", followup["messages"][-3]["content"])
+        self.assertIn("write_text", followup["messages"][-1]["content"])
         self.assertFalse(self.marker.exists())
 
     def test_distinct_malformed_arguments_can_be_corrected_without_false_repeat_shutdown(self):
@@ -187,7 +198,7 @@ class AgentTests(unittest.TestCase):
             self.response(message, "tool_calls"), self.response({"content": "Unable to verify that request."})])
         self.assertEqual("Unable to verify that request.", result)
         last = json.loads(opener.call_args.args[0].data)
-        self.assertIn("not valid JSON", last["messages"][-3]["content"])
+        self.assertIn("not valid JSON", last["messages"][-1]["content"])
 
     def test_cached_unreadable_blob_does_not_accumulate_exception_tracebacks(self):
         import traceback
@@ -237,6 +248,36 @@ class AgentTests(unittest.TestCase):
                 cursor = following
         self.assertEqual(sorted(self.tools.tree("head")), names)
 
+    def test_repository_wide_search_reaches_late_paths_on_the_first_page(self):
+        # Alphabetically early paths must not exhaust a page before the match is scanned.
+        entries = {f"a{i:03d}/filler.py": ("100644", "blob", f"{i:040x}") for i in range(150)}
+        entries["zzz/target.py"] = ("100644", "blob", "f" * 40)
+        texts = {oid: "filler\n" for _, _, oid in entries.values()}
+        texts["f" * 40] = "first\nlate needle\n"
+        self.tools.tree("head")
+        with patch.object(self.tools, "tree", return_value=entries):
+            with patch.object(self.tools, "blob", side_effect=lambda entry: texts[entry[2]]):
+                found = self.call("search", query="late needle")
+                self.assertEqual([{"path": "zzz/target.py", "line": 2}], found["entries"])
+                self.assertIsNone(found["next_cursor"])
+                with patch("repository_tools.SEARCH_PAGE_FILES", 100):
+                    paged, cursor = [], ""
+                    while cursor is not None:
+                        page = self.call("search", query="late needle", cursor=cursor)
+                        paged.extend(page["entries"])
+                        cursor = page["next_cursor"]
+                    self.assertEqual(found["entries"], paged)
+                with patch("repository_tools.SEARCH_PAGE_BYTES", 1):
+                    page = self.call("search", query="filler")
+                    self.assertEqual(1, len(page["entries"]))
+                    self.assertIsNotNone(page["next_cursor"])
+
+    def test_oversized_read_limit_is_clamped_instead_of_costing_a_round(self):
+        result = self.call("read", path="lines", limit=280)
+        self.assertEqual(200, len(result["lines"]))
+        self.assertEqual(200, result["next_offset"])
+        self.assertIn("error", self.call("read", path="lines", limit=0))
+
     def test_pagination_rejects_cursor_reused_for_another_selection(self):
         first = self.call("search", path="lines", query="needle")
         token = first["next_cursor"]
@@ -269,9 +310,14 @@ class AgentTests(unittest.TestCase):
         request["messages"][1]["content"] += "x" * (review.REQUEST_BYTES - len(self.body))
         body = review.encoded(request)
         self.assertEqual(review.REQUEST_BYTES, len(body))
-        with patch.object(self.provider.opener, "open", return_value=self.response({"content": "Final summary."})):
+        with patch.object(self.provider.opener, "open", return_value=self.response({"content": "Final summary."})) as opener:
             result = review.AgentReview(self.provider, self.tools, lambda: None, self.root, "last", 1).review(body)
         self.assertEqual("Final summary.", result)
+        # A stage whose first call is its last has no tool round to carry the notice and nothing
+        # cached yet, so it still appends the user instruction and refuses tools outright.
+        only = json.loads(opener.call_args.args[0].data)
+        self.assertEqual("none", only["tool_choice"])
+        self.assertEqual(review.FINAL_MESSAGE, only["messages"][-1])
         trace = json.loads((self.root / "last-operations.json").read_bytes())
         self.assertLessEqual(trace[0]["input_token_upper_bound"], review.INPUT_TOKENS)
         self.assertGreater(trace[0]["input_token_upper_bound"], review.INPUT_TOKENS - review.BUDGET_MESSAGE_BYTES)
@@ -288,7 +334,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual("valid source", result["lines"][0]["text"])
         self.assertEqual(1, result["unreadable_utf8_paths"])
 
-    def test_loop_requests_final_answer_at_bound_and_refuses_ignored_tool_choice(self):
+    def test_loop_notice_at_bound_refuses_further_tool_calls_without_tool_choice_none(self):
         with patch.object(review, "MAX_TURNS", 2):
             with patch.object(self.provider.opener, "open", side_effect=[
                     self.response(self.tool_message(), "tool_calls"),
@@ -296,9 +342,11 @@ class AgentTests(unittest.TestCase):
                 with self.assertRaisesRegex(review.Incomplete, "tool call bound"):
                     review.AgentReview(self.provider, self.tools, lambda: None, self.root, "probe", 2).review(self.body)
                 last = json.loads(opener.call_args.args[0].data)
-                self.assertEqual("none", last["tool_choice"])
+                self.assertNotIn("tool_choice", last)
                 self.assertIn("tools", last)
-                self.assertEqual(review.FINAL_INSTRUCTION, last["messages"][-1]["content"])
+                self.assertEqual("tool", last["messages"][-1]["role"])
+                self.assertIn(review.FINAL_NOTICE, last["messages"][-1]["content"])
+                self.assertNotIn(review.FINAL_INSTRUCTION, json.dumps(last, ensure_ascii=False))
 
     def test_missing_usage_and_length_stop_never_become_final_review(self):
         for raw in (review.encoded({"choices": [{"message": {"content": "looks complete"}, "finish_reason": "stop"}]}),
