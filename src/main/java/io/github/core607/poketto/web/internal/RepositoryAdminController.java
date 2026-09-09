@@ -4,7 +4,11 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
+import io.github.core607.poketto.content.RepositoryDirectoryPage;
+import io.github.core607.poketto.content.RepositoryMoveRequest;
+import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -30,13 +34,39 @@ import org.springframework.web.bind.annotation.RestController;
 class RepositoryAdminController {
     private final AuthorizedRepositoryReader reader;
     private final RepositoryPatchService patches;
+    private final RepositoryMoveService moves;
     private final WorkspaceCatalog workspaces;
 
     RepositoryAdminController(
-            AuthorizedRepositoryReader reader, RepositoryPatchService patches, WorkspaceCatalog workspaces) {
+            AuthorizedRepositoryReader reader,
+            RepositoryPatchService patches,
+            RepositoryMoveService moves,
+            WorkspaceCatalog workspaces) {
         this.reader = reader;
         this.patches = patches;
+        this.moves = moves;
         this.workspaces = workspaces;
+    }
+
+    @GetMapping("/directory")
+    Directory directory(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @RequestParam(required = false) String commit,
+            @RequestParam(defaultValue = "") String path,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "100") int limit) {
+        var page = reader.listDirectory(
+                actor, workspaces.defaultWorkspace().id(), Optional.ofNullable(commit), path, offset, limit);
+        return new Directory(
+                page.commit().orElse(null), page.path(), page.expectedAbsence(), page.entries(), page.nextOffset());
+    }
+
+    @PostMapping("/move")
+    PatchResult move(@AuthenticationPrincipal AuthPrincipal actor, @RequestBody MoveRequest request) {
+        if (request.source() == null || request.destination() == null)
+            throw new IllegalArgumentException("move source and destination are required");
+        var move = new RepositoryMoveRequest(request.baseCommit(), request.source(), request.destination());
+        return result(moves.move(actor, workspaces.defaultWorkspace().id(), move));
     }
 
     @GetMapping("/tree")
@@ -104,7 +134,10 @@ class RepositoryAdminController {
                                 Optional.ofNullable(change.expectedRevision()).map(DocumentRevision::new),
                                 Optional.ofNullable(change.content())))
                         .toList());
-        var result = patches.apply(actor, workspaces.defaultWorkspace().id(), patch);
+        return result(patches.apply(actor, workspaces.defaultWorkspace().id(), patch));
+    }
+
+    private static PatchResult result(RepositoryPatchResult result) {
         Map<String, String> revisions = new LinkedHashMap<>();
         result.revisions()
                 .forEach((path, revision) -> revisions.put(
@@ -113,6 +146,15 @@ class RepositoryAdminController {
     }
 
     record Entry(String path, String title) {}
+
+    record Directory(
+            String commit,
+            String path,
+            boolean expectedAbsence,
+            List<RepositoryDirectoryPage.Entry> entries,
+            Integer nextOffset) {}
+
+    record MoveRequest(String baseCommit, String source, String destination) {}
 
     record Tree(String commit, List<Entry> entries, List<RepositoryDiagnostic> diagnostics) {}
 

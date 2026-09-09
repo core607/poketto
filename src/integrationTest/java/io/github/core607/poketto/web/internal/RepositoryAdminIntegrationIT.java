@@ -106,6 +106,7 @@ class RepositoryAdminIntegrationIT {
         String password = UUID.randomUUID().toString();
         auth.initializeOwner(INITIALIZATION, "editor", password);
         mvc.perform(get("/api/admin/repository/tree")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/admin/repository/directory")).andExpect(status().isUnauthorized());
         Csrf anonymous = csrf(null);
         mvc.perform(post("/api/auth/login")
                         .session(anonymous.session())
@@ -157,14 +158,40 @@ class RepositoryAdminIntegrationIT {
                 .andExpect(jsonPath("$.total").value(0));
         mvc.perform(request(editor, create)).andExpect(status().isConflict());
 
-        var move = Map.of(
-                "baseCommit",
-                commit,
-                "changes",
-                List.of(
-                        Map.of("path", path, "expectedAbsence", false, "expectedRevision", revision),
-                        Map.of("path", "private/moved.md", "expectedAbsence", true, "content", source)));
-        mvc.perform(request(editor, move)).andExpect(status().isOk());
+        mvc.perform(get("/api/admin/repository/directory")
+                        .session(editor.session())
+                        .param("commit", commit))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.commit").value(commit))
+                .andExpect(jsonPath("$.entries[0].path").value("private"))
+                .andExpect(jsonPath("$.entries[0].kind").value("DIRECTORY"));
+        mvc.perform(get("/api/admin/repository/directory")
+                        .session(editor.session())
+                        .param("commit", commit)
+                        .param("path", "private"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[0].path").value(path));
+        var move = Map.of("baseCommit", commit, "source", path, "destination", "private/moved.md");
+        mvc.perform(post("/api/admin/repository/move")
+                        .session(editor.session())
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(move)))
+                .andExpect(status().isForbidden());
+        JsonNode moved = body(mvc.perform(post("/api/admin/repository/move")
+                        .session(editor.session())
+                        .header(editor.header(), editor.token())
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(move)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.committed").value(true))
+                .andReturn());
+        mvc.perform(get("/api/admin/repository/directory")
+                        .session(editor.session())
+                        .param("commit", moved.get("commit").stringValue())
+                        .param("path", "private"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[0].path").value("private/moved.md"));
         mvc.perform(get("/api/admin/repository/file").session(editor.session()).param("path", path))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.expectedAbsence").value(true));
@@ -175,7 +202,18 @@ class RepositoryAdminIntegrationIT {
                 .andExpect(status().isOk())
                 .andReturn());
         assertThat(history.get("source").stringValue()).isEqualTo(source);
-        mvc.perform(request(editor, move)).andExpect(status().isConflict());
+        mvc.perform(post("/api/admin/repository/move")
+                        .session(editor.session())
+                        .header(editor.header(), editor.token())
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(move)))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/admin/repository/move")
+                        .session(editor.session())
+                        .header(editor.header(), editor.token())
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
         mvc.perform(request(editor, Map.of())).andExpect(status().isBadRequest());
         mvc.perform(request(editor, Map.of("changes", List.of(Map.of("content", "# missing path")))))
                 .andExpect(status().isBadRequest());

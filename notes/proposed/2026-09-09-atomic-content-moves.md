@@ -17,7 +17,7 @@ Reference repair scans bounded Markdown at the same immutable base, resolves exi
 
 ## Delivery and evidence
 
-The domain implementation and shared-writer refactor are prepared. Browser destination selection, HTTP wiring, CLI session integration and real client acceptance remain required before this proposal is implemented. Public-root format conversion belongs to its coordinated migration; this service consumes the current publication policy rather than changing it.
+The domain implementation and shared-writer refactor are prepared. The session-authenticated `/api/admin/repository/directory` endpoint supplies commit-pinned immediate Git and indexed-media entries, and `/api/admin/repository/move` applies the same domain operation with CSRF protection. Browser destination selection, CLI session integration and real client acceptance remain required before this proposal is implemented. Public-root format conversion belongs to its coordinated migration; this service consumes the current publication policy rather than changing it.
 
 Real Git fixtures cover a folder exceeding the external patch's file limit, exact binary object reuse, logical media relocation, inbound/outbound reference repair, preserved source, stale bases, collisions and publication refusal without partial writes. The PostgreSQL integration path exercises the actual bean, scoped key permissions, owner publication, snapshot replacement and key revocation. The required Linux storage replay includes the shared writer suite. UI and CLI acceptance must exercise the final entrances after they are connected.
 
