@@ -8,6 +8,11 @@ export async function saveRepositoryFile(
   remove: boolean,
 ): Promise<PatchResult> {
   const moved = target !== file.path;
+  if (moved && !file.expectedAbsence)
+    throw new ApiError(
+      400,
+      "已保存的文件请使用移动入口，以便同时更新相关链接。",
+    );
   const changes = [];
   if (!file.expectedAbsence || !moved) {
     changes.push({

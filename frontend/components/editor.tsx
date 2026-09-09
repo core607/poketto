@@ -6,6 +6,7 @@ import type {
   GalleryStatus,
   RepositoryFile,
   RepositoryTree,
+  PatchResult,
 } from "../lib/types";
 import { saveRepositoryFile } from "../lib/repository-write";
 import { Markdown } from "./markdown";
@@ -13,6 +14,7 @@ import { message, type Identity } from "./admin";
 import { AssetPicker } from "./asset-picker";
 import { Gallery } from "./gallery";
 import { FileTree } from "./file-tree";
+import { FolderPicker } from "./folder-picker";
 import { DiagnosticMessage } from "./diagnostic";
 
 type Preview = {
@@ -39,6 +41,11 @@ export function Editor({
     { path: string; title: string; snippet: string }[] | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [moveSelection, setMoveSelection] = useState<{
+    source: string;
+    commit: string;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -49,6 +56,7 @@ export function Editor({
   const [previewVersion, setPreviewVersion] = useState(0);
   const [view, setView] = useState("split");
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const editorRoot = useRef<HTMLDivElement>(null);
   const dirty =
     file !== null && (source !== (file.source ?? "") || path !== file.path);
   const unreadable =
@@ -196,6 +204,93 @@ export function Editor({
   function resolvePreview() {
     setPreviewVersion((value) => value + 1);
   }
+  function chooseMove(source: string, commit: string, trigger: HTMLElement) {
+    if (dirty) {
+      setError("有未保存的修改，请先保存，再移动文件或文件夹。");
+      return;
+    }
+    setError("");
+    setMoveSelection({
+      source,
+      commit,
+      returnFocus: trigger,
+    });
+  }
+  async function move(destination: string) {
+    if (!moveSelection || dirty) return false;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setConflict(false);
+    try {
+      const result = await api<PatchResult>("/api/admin/repository/move", {
+        method: "POST",
+        body: {
+          baseCommit: moveSelection.commit,
+          source: moveSelection.source,
+          destination,
+        },
+      });
+      setSearch(null);
+      let notice = result.snapshotUpdated
+        ? "已移动，相关链接已更新。"
+        : "已移动，公开页面暂时无法更新。";
+      if (file) {
+        const nextPath =
+          file.path === moveSelection.source ||
+          file.path.startsWith(moveSelection.source + "/")
+            ? destination + file.path.slice(moveSelection.source.length)
+            : file.path;
+        setFile(null);
+        setSource("");
+        setPath("");
+        try {
+          const current = await api<RepositoryFile>(
+            "/api/admin/repository/file?" +
+              new URLSearchParams({ path: nextPath }),
+          );
+          setFile(current);
+          setSource(current.source ?? "");
+          setPath(current.path);
+        } catch {
+          notice += " 当前文件未能重新读取，请刷新后打开。";
+        }
+      }
+      try {
+        await reloadTree();
+      } catch {
+        notice += " 目录未能刷新，请稍后刷新。";
+      }
+      setNotice(notice);
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setMoveSelection(null);
+        setFile(null);
+        setSource("");
+        setPath("");
+        setSearch(null);
+        try {
+          await reloadTree();
+          setError(
+            "仓库内容已改变，目录已刷新。请重新选择要移动的文件或文件夹。",
+          );
+        } catch {
+          setError(
+            "仓库内容已改变，目录未能刷新。请刷新目录后重新选择要移动的内容。",
+          );
+        }
+        return false;
+      }
+      setError(message(error));
+      setConflict(
+        error instanceof ApiError && [0, 409, 503].includes(error.status),
+      );
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  }
   function insert(markdown: string) {
     const start = textarea.current?.selectionStart;
     const end = textarea.current?.selectionEnd;
@@ -209,7 +304,15 @@ export function Editor({
     );
   }
   return (
-    <div className="editor-layout">
+    <div className="editor-layout" ref={editorRoot} tabIndex={-1}>
+      {moveSelection && (
+        <FolderPicker
+          {...moveSelection}
+          fallbackFocus={editorRoot.current}
+          onClose={() => setMoveSelection(null)}
+          onMove={move}
+        />
+      )}
       <aside className="file-sidebar">
         <div className="sidebar-title">
           <h2>文件</h2>
@@ -230,21 +333,18 @@ export function Editor({
           id="file-filter"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="查找文件…"
+          placeholder="筛选已展开的文件…"
         />
         <nav className="file-tree" aria-label="仓库文件">
-          <FileTree
-            paths={
-              tree?.entries
-                .filter((entry) => entry.path.includes(filter))
-                .map((entry) => entry.path) ?? []
-            }
-            selected={file?.path}
-            busy={busy}
-            onOpen={(path) => void open(path)}
-          />
-          {tree && !tree.entries.length && (
-            <p className="muted">还没有 Markdown 文件。</p>
+          {tree && (
+            <FileTree
+              commit={tree.commit}
+              filter={filter}
+              selected={file?.path}
+              busy={busy}
+              onOpen={(path) => void open(path)}
+              onMove={writable ? chooseMove : undefined}
+            />
           )}
         </nav>
         <form
@@ -261,7 +361,7 @@ export function Editor({
             打开或新建路径
             <input
               name="path"
-              placeholder="笔记/新文章.md"
+              placeholder="private/笔记/新文章.md"
               required
               maxLength={255}
             />
@@ -356,11 +456,23 @@ export function Editor({
                 <input
                   value={path}
                   onChange={(event) => setPath(event.target.value)}
-                  disabled={!writable || busy}
+                  disabled={!writable || busy || !file.expectedAbsence}
                   maxLength={255}
                 />
               </label>
               <div className="editor-actions">
+                {!file.expectedAbsence && file.commit && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={!writable || busy || dirty}
+                    onClick={(event) =>
+                      chooseMove(file.path, file.commit!, event.currentTarget)
+                    }
+                  >
+                    移动…
+                  </button>
+                )}
                 <span className="save-state">
                   {file.expectedAbsence
                     ? "新文件"
@@ -378,11 +490,7 @@ export function Editor({
                   }
                   onClick={() => void save(path)}
                 >
-                  {busy
-                    ? "处理中…"
-                    : path !== file.path
-                      ? "移动并保存"
-                      : "保存"}
+                  {busy ? "处理中…" : "保存"}
                 </button>
               </div>
             </div>

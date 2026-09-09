@@ -20,7 +20,7 @@ test("repository image destinations encode filename bytes and retain relative pa
   }
 });
 
-test("editor inserts and previews new images relative to the pending destination without rewriting the draft", async (t) => {
+test("editor inserts and previews new images relative to a new draft destination without rewriting its text", async (t) => {
   const window = new Window({
     url: "http://localhost/admin?path=notes%2Fa.md",
   });
@@ -77,11 +77,19 @@ test("editor inserts and previews new images relative to the pending destination
     if (url.pathname === "/api/admin/repository/file")
       return Response.json({
         path: "notes/a.md",
-        source: original,
-        revision: "revision",
+        source: null,
+        revision: null,
         commit: "before",
-        expectedAbsence: false,
+        expectedAbsence: true,
         diagnostics: [],
+      });
+    if (url.pathname === "/api/admin/repository/directory")
+      return Response.json({
+        commit: "before",
+        path: "",
+        expectedAbsence: false,
+        entries: [],
+        nextOffset: null,
       });
     if (url.pathname === "/api/admin/assets/repository")
       return Response.json({
@@ -130,6 +138,15 @@ test("editor inserts and previews new images relative to the pending destination
       </ConfirmationProvider>,
     ),
   );
+  await act(async () => {
+    const draft = container.querySelector("textarea");
+    assert.ok(draft);
+    Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!.call(draft, original);
+    draft.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 550));
   });

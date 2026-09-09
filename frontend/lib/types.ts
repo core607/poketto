@@ -54,3 +54,13 @@ export type PatchResult = {
   snapshotUpdated: boolean;
   revisions: Record<string, string | null>;
 };
+export type RepositoryDirectory = {
+  commit: string | null;
+  path: string;
+  expectedAbsence: boolean;
+  entries: {
+    path: string;
+    kind: "FILE" | "DIRECTORY" | "SYMLINK" | "SUBMODULE" | "OTHER";
+  }[];
+  nextOffset: number | null;
+};

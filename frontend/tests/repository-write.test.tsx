@@ -3,6 +3,25 @@ import test from "node:test";
 import { saveRepositoryFile } from "../lib/repository-write";
 import type { RepositoryFile } from "../lib/types";
 
+test("saved files cannot bypass dependency repair through delete/create text patches", async () => {
+  await assert.rejects(
+    saveRepositoryFile(
+      {
+        path: "a.md",
+        commit: "before",
+        source: "# A",
+        revision: "revision",
+        expectedAbsence: false,
+        diagnostics: [],
+      },
+      "b.md",
+      "# A",
+      false,
+    ),
+    /移动入口/,
+  );
+});
+
 test("renaming an unsaved draft creates only its final path", async () => {
   const previous = globalThis.fetch;
   let submitted: unknown;

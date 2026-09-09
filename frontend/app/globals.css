@@ -723,6 +723,50 @@ img {
   padding: 10px;
   font-size: 12px;
 }
+.tree-file-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.tree-file-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.file-tree .tree-move {
+  width: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.folder-picker {
+  width: min(560px, calc(100vw - 32px));
+}
+.folder-navigation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.folder-navigation span,
+.move-destination {
+  overflow-wrap: anywhere;
+}
+.folder-options {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 16px 0;
+}
+.folder-options button {
+  justify-content: flex-start;
+  text-align: left;
+}
+.folder-picker label {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
 .open-path {
   border-top: 1px solid var(--line);
   padding-top: 16px;
