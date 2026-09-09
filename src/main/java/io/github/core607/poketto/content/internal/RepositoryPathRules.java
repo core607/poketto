@@ -32,7 +32,7 @@ public final class RepositoryPathRules {
         return DocumentPathRules.collisionKey(path).startsWith("private/");
     }
 
-    static boolean reserved(String path) {
+    public static boolean reserved(String path) {
         String key = DocumentPathRules.collisionKey(path);
         for (String segment : key.split("/", -1)) {
             if (segment.equals(".poketto")) return true;

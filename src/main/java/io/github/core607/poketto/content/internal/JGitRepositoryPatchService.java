@@ -10,6 +10,8 @@ import io.github.core607.poketto.content.PrincipalType;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryMediaValidator;
+import io.github.core607.poketto.content.RepositoryMoveRequest;
+import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
@@ -48,7 +50,7 @@ import org.eclipse.jgit.treewalk.TreeWalk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class JGitRepositoryPatchService implements RepositoryPatchService {
+final class JGitRepositoryPatchService implements RepositoryPatchService, RepositoryMoveService {
     private static final Logger log = LoggerFactory.getLogger(JGitRepositoryPatchService.class);
     private static final int MAX_TREE_ENTRIES = 100_000;
     private static final Set<String> IMAGE_EXTENSIONS =
@@ -78,14 +80,46 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
     @Override
     public RepositoryPatchResult apply(AuthPrincipal principal, WorkspaceId workspace, RepositoryPatch patch) {
         Map<String, byte[]> replacements = validate(patch);
+        return write(
+                principal, workspace, patch.baseCommit(), Set.of(Capability.WRITE_PRIVATE), (repository, index) -> {
+                    checkBase(repository, index, patch);
+                    Set<String> deletions = new HashSet<>();
+                    patch.changes().stream()
+                            .filter(change -> change.content().isEmpty())
+                            .forEach(change -> deletions.add(change.path()));
+                    boolean structural = patch.changes().stream()
+                            .anyMatch(change -> change.expectedAbsence()
+                                    || change.content().isEmpty()
+                                    || RepositoryPathRules.reserved(change.path()));
+                    return new RepositoryCandidateChanges(replacements, Map.of(), deletions, structural);
+                });
+    }
+
+    @Override
+    public RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
+        return write(
+                principal,
+                workspace,
+                Optional.of(request.baseCommit()),
+                Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE),
+                (repository, index) -> RepositoryMovePlanner.prepare(
+                        repository, index, request, policy(repository, index), mediaIndex(repository, index)));
+    }
+
+    private RepositoryPatchResult write(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            Optional<String> baseCommit,
+            Set<Capability> capabilities,
+            Preparer preparer) {
         boolean[] acknowledged = {false};
         try {
             return auth.withAuthorization(
                     principal,
                     workspace,
-                    Set.of(Capability.WRITE_PRIVATE),
+                    capabilities,
                     () -> authority.writeObjects(workspace, (snapshot, advancer) -> {
-                        if (!snapshot.commitId().equals(patch.baseCommit())) {
+                        if (!snapshot.commitId().equals(baseCommit)) {
                             throw new RepositoryConflictException(
                                     "repository base commit changed; read current files before retrying");
                         }
@@ -102,8 +136,10 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                     ? DirCache.newInCore()
                                     : DirCache.read(
                                             reader, walk.parseCommit(base).getTree());
-                            checkBase(repository, index, patch);
-                            Map<String, OriginalEntry> untouched = untouchedEntries(index, patch);
+                            RepositoryCandidateChanges changes = preparer.prepare(repository, index);
+                            Map<String, byte[]> replacements = changes.replacements();
+                            Set<String> paths = changes.paths();
+                            Map<String, OriginalEntry> untouched = untouchedEntries(index, paths);
                             RepositoryPublishingPolicy before = policy(repository, index);
                             RepositoryMediaIndex mediaBefore;
                             boolean invalidMediaBefore = false;
@@ -114,51 +150,49 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                 mediaBefore = RepositoryMediaIndex.empty();
                                 invalidMediaBefore = true;
                             }
-                            boolean needsPublish = patch.changes().stream()
-                                    .anyMatch(change -> change.path().equals(RepositoryPublishingPolicy.PATH)
+                            boolean needsPublish = paths.stream()
+                                    .anyMatch(path -> path.equals(RepositoryPublishingPolicy.PATH)
                                             || before.state() == RepositoryPublishingPolicy.State.INVALID
-                                            || before.permitsPath(change.path()));
-                            boolean changesMedia = patch.changes().stream()
-                                    .anyMatch(change -> change.path().equals(RepositoryMediaIndex.PATH));
+                                            || before.permitsPath(path));
+                            boolean changesMedia = paths.contains(RepositoryMediaIndex.PATH);
                             boolean preserveInvalidMedia = invalidMediaBefore && !changesMedia;
-                            if (preserveInvalidMedia
-                                    && (needsPublish
-                                            || patch.changes().stream()
-                                                    .anyMatch(change -> change.expectedAbsence()
-                                                            || change.content().isEmpty()
-                                                            || RepositoryPathRules.reserved(change.path()))))
+                            if (preserveInvalidMedia && (needsPublish || changes.structural()))
                                 throw new IllegalArgumentException(
                                         "repair the media index before structural or publication changes");
                             needsPublish |= invalidMediaBefore && changesMedia;
                             Map<String, Optional<DocumentRevision>> revisions = new LinkedHashMap<>();
                             DirCacheEditor editor = index.editor();
-                            for (RepositoryTextChange change : patch.changes()) {
-                                if (change.content().isEmpty()) {
-                                    editor.add(new DirCacheEditor.DeletePath(change.path()));
-                                    revisions.put(change.path(), Optional.empty());
+                            for (String path : paths) {
+                                if (changes.deletions().contains(path)) {
+                                    editor.add(new DirCacheEditor.DeletePath(path));
+                                    revisions.put(path, Optional.empty());
                                 } else {
-                                    byte[] bytes = replacements.get(change.path());
-                                    ObjectId blob = inserter.insert(Constants.OBJ_BLOB, bytes);
-                                    DirCacheEntry prior = index.getEntry(change.path());
-                                    FileMode mode =
-                                            prior == null || change.path().equals(RepositoryMediaIndex.PATH)
+                                    byte[] bytes = replacements.get(path);
+                                    var copied = changes.copies().get(path);
+                                    ObjectId blob = bytes != null
+                                            ? inserter.insert(Constants.OBJ_BLOB, bytes)
+                                            : copied.objectId();
+                                    DirCacheEntry prior = index.getEntry(path);
+                                    FileMode mode = copied != null
+                                            ? copied.mode()
+                                            : prior == null || path.equals(RepositoryMediaIndex.PATH)
                                                     ? FileMode.REGULAR_FILE
                                                     : prior.getFileMode();
-                                    editor.add(new DirCacheEditor.PathEdit(change.path()) {
+                                    editor.add(new DirCacheEditor.PathEdit(path) {
                                         @Override
                                         public void apply(DirCacheEntry entry) {
                                             entry.setFileMode(mode);
                                             entry.setObjectId(blob);
-                                            entry.setLength(bytes.length);
+                                            if (bytes != null) entry.setLength(bytes.length);
                                         }
                                     });
-                                    revisions.put(change.path(), Optional.of(DocumentRevision.sha256(bytes)));
+                                    if (bytes != null) revisions.put(path, Optional.of(DocumentRevision.sha256(bytes)));
                                 }
                             }
                             editor.finish();
                             inserter.flush();
                             requireUntouched(index, untouched);
-                            checkCandidate(index, replacements, repository, patch);
+                            checkCandidate(index, replacements, repository, paths);
                             RepositoryPublishingPolicy after = policy(repository, index);
                             RepositoryMediaIndex mediaAfter =
                                     preserveInvalidMedia ? RepositoryMediaIndex.empty() : mediaIndex(repository, index);
@@ -176,8 +210,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                         mediaAfter.files().get(path)))
                                     needsPublish |= before.permitsPath(path) || after.permitsPath(path);
                             }
-                            needsPublish |=
-                                    patch.changes().stream().anyMatch(change -> after.permitsPath(change.path()));
+                            needsPublish |= paths.stream().anyMatch(after::permitsPath);
                             if (needsPublish) auth.authorize(principal, workspace, Capability.PUBLISH);
                             if (changesMedia)
                                 mediaValidator.validate(
@@ -203,7 +236,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                             ? PrincipalType.ACCOUNT
                                             : PrincipalType.API_KEY,
                                     principal.subjectId().toString());
-                            candidate.setMessage("Apply repository text patch\n\nPoketto-Principal: "
+                            candidate.setMessage("Apply repository changes\n\nPoketto-Principal: "
                                     + attribution.trailerValue() + "\n");
                             ObjectId commit = inserter.insert(candidate);
                             inserter.flush();
@@ -229,8 +262,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                             }
                             return new RepositoryPatchResult(commit.name(), true, snapshotUpdated, revisions);
                         } catch (IOException exception) {
-                            throw new ContentRepositoryException(
-                                    "repository text patch could not be prepared", exception);
+                            throw new ContentRepositoryException("repository changes could not be prepared", exception);
                         }
                     }));
         } catch (RuntimeException exception) {
@@ -240,6 +272,11 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
             }
             throw exception;
         }
+    }
+
+    @FunctionalInterface
+    private interface Preparer {
+        RepositoryCandidateChanges prepare(Repository repository, DirCache index) throws IOException;
     }
 
     private static Map<String, byte[]> validate(RepositoryPatch patch) {
@@ -324,12 +361,12 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
     }
 
     private static void checkCandidate(
-            DirCache index, Map<String, byte[]> replacements, Repository repository, RepositoryPatch patch)
+            DirCache index, Map<String, byte[]> replacements, Repository repository, Set<String> paths)
             throws IOException {
         if (index.getEntryCount() > MAX_TREE_ENTRIES)
             throw new IllegalArgumentException("repository tree entry limit exceeded");
         Set<String> touched = new HashSet<>();
-        patch.changes().forEach(change -> touched.add(DocumentPathRules.collisionKey(change.path())));
+        paths.forEach(path -> touched.add(DocumentPathRules.collisionKey(path)));
         Map<String, String> seen = new HashMap<>();
         int count = 0;
         long bytes = 0;
@@ -383,9 +420,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
         }
     }
 
-    private static Map<String, OriginalEntry> untouchedEntries(DirCache index, RepositoryPatch patch) {
-        Set<String> touched = new HashSet<>();
-        patch.changes().forEach(change -> touched.add(change.path()));
+    private static Map<String, OriginalEntry> untouchedEntries(DirCache index, Set<String> touched) {
         Map<String, OriginalEntry> originals = new HashMap<>();
         for (int i = 0; i < index.getEntryCount(); i++) {
             DirCacheEntry entry = index.getEntry(i);
@@ -400,7 +435,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
 
     private static void requireUntouched(DirCache index, Map<String, OriginalEntry> originals) {
         // DirCacheEditor can replace a directory or ancestor entry implicitly. Every removed or
-        // changed path must instead have its own caller-supplied revision precondition.
+        // changed path must belong to the candidate prepared against the checked base.
         originals.forEach((path, original) -> {
             DirCacheEntry candidate = index.getEntry(path);
             if (candidate == null

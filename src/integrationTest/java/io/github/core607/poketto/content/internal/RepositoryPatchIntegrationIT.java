@@ -7,6 +7,8 @@ import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryContentReader;
+import io.github.core607.poketto.content.RepositoryMoveRequest;
+import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
@@ -71,6 +73,9 @@ class RepositoryPatchIntegrationIT {
     RepositoryPatchService patches;
 
     @Autowired
+    RepositoryMoveService moves;
+
+    @Autowired
     RepositoryContentReader files;
 
     @Autowired
@@ -113,12 +118,38 @@ class RepositoryPatchIntegrationIT {
         assertThat(snapshots.current(workspace).articles()).hasSize(1);
         assertThat(snapshots.current(workspace).articles().getFirst().title()).isEqualTo("Public");
 
+        var relocated = moves.move(
+                agent,
+                workspace,
+                new RepositoryMoveRequest(edited.commit(), "private/draft.md", "private/lists/draft.md"));
+        assertThat(files.getFile(workspace, Optional.empty(), "private/draft.md")
+                        .expectedAbsence())
+                .isTrue();
+        assertThat(files.getFile(workspace, Optional.empty(), "private/lists/draft.md")
+                        .source())
+                .contains("---\nroute: /article\n---\n# Private alias");
+        var publicMove = new RepositoryMoveRequest(relocated.commit(), "article.md", "moved-article.md");
+        assertThatThrownBy(() -> moves.move(agent, workspace, publicMove)).isInstanceOf(AuthException.class);
+        var movedPublic = moves.move(owner, workspace, publicMove);
+        assertThat(snapshots.current(workspace).commit()).contains(movedPublic.commit());
+        assertThat(snapshots.current(workspace).articles())
+                .singleElement()
+                .extracting(a -> a.route())
+                .isEqualTo("/moved-article");
+
         auth.revokeApiKey(owner, workspace, issued.id());
+        assertThatThrownBy(() -> moves.move(
+                        agent,
+                        workspace,
+                        new RepositoryMoveRequest(
+                                movedPublic.commit(), "private/lists/draft.md", "private/forbidden.md")))
+                .isInstanceOf(AuthException.class);
         assertThatThrownBy(() -> patches.apply(
                         agent,
                         workspace,
                         new RepositoryPatch(
-                                Optional.of(edited.commit()), List.of(create("private/forbidden.md", "# Denied")))))
+                                Optional.of(movedPublic.commit()),
+                                List.of(create("private/forbidden.md", "# Denied")))))
                 .isInstanceOf(AuthException.class);
         assertThat(files.getFile(workspace, Optional.empty(), "private/forbidden.md")
                         .expectedAbsence())

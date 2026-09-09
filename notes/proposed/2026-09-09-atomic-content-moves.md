@@ -1,0 +1,28 @@
+# Atomic Content Moves
+
+Date: 2026-09-09
+Status: Proposed
+
+## Scope
+
+The [CodeAct content plan](2026-09-09-codeact-content-and-media.md) requires one move operation for the browser and CLI. A directory can contain Git files and indexed media, while other documents refer to either kind. Separate rename, index and link commits can leave broken references or expose only part of a selected folder.
+
+## Prepared service
+
+`RepositoryMoveService` accepts exact source and destination paths at an expected authority commit. A folder destination must be absent; moves do not merge directories, replace workspace roots or metadata, follow symlinks, traverse submodules, or convert Markdown into another file type. Collision checks include normalized case, directory ancestors, Git entries and logical media. Directory moves reuse existing Git object identities and relocate media index entries without loading original bytes. Selecting one file never implicitly relocates its dependencies.
+
+The service requires `READ_PRIVATE` and `WRITE_PRIVATE` before accessing repository state. It uses the same remote-ref writer as text patches, including atomic compare-and-swap, current publication authorization, withdrawal before an uncertain outcome, reconciliation, attribution and separate snapshot-installation acknowledgement. Public changes and repaired inbound references require `PUBLISH`. A move that creates a public-to-private reference fails before authority advances. Invalid publication or media configuration must be repaired first.
+
+Reference repair scans bounded Markdown at the same immutable base, resolves existing file/media paths and unambiguous document routes, and computes relative destinations with preserved fragments. CommonMark source spans identify links, images and reference definitions. Only destination tokens change; frontmatter, labels, titles, code, HTML and line endings remain intact. Missing or external targets remain authored text. Unsupported repair syntax fails the whole operation instead of silently rewriting prose. The existing document, node, reference and workspace byte bounds apply. Copying objects avoids the 64-file/4-MiB external text-patch limit while retaining the repository tree bound.
+
+## Delivery and evidence
+
+The domain implementation and shared-writer refactor are prepared. Browser destination selection, HTTP wiring, CLI session integration and real client acceptance remain required before this proposal is implemented. Public-root format conversion belongs to its coordinated migration; this service consumes the current publication policy rather than changing it.
+
+Real Git fixtures cover a folder exceeding the external patch's file limit, exact binary object reuse, logical media relocation, inbound/outbound reference repair, preserved source, stale bases, collisions and publication refusal without partial writes. The PostgreSQL integration path exercises the actual bean, scoped key permissions, owner publication, snapshot replacement and key revocation. The required Linux storage replay includes the shared writer suite. UI and CLI acceptance must exercise the final entrances after they are connected.
+
+## Alternatives and related records
+
+Sending delete/create text pairs through the external patch API limits ordinary folders to small text batches and cannot move arbitrary binary objects. Letting the agent edit the index and every backlink separately leaves repair incomplete and creates multiple authorization commit points. One host-prepared candidate avoids both problems without adding another persistence engine.
+
+[Authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) retain the atomic writer and authorization contract; [logical media](../implemented/2026-09-09-logical-media-index.md) retains index ownership and original validation; [directory navigation](../implemented/2026-09-08-repository-directory-navigation.md) retains the listing contract for the destination picker. The [CodeAct workspace proposal](2026-09-09-codeact-workspaces.md) owns session capture and baseline advancement. All remain active; this record implements neither the complete move UI nor the wider CodeAct cutover.
