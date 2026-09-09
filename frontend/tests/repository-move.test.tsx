@@ -36,11 +36,13 @@ test("folder selection cancels without writing and moves via the host service be
   const root = createRoot(container as unknown as HTMLDivElement);
   const oldFetch = globalThis.fetch;
   let moved = false;
+  let stale = false;
+  let refreshed = false;
   const writes: unknown[] = [];
   const directoryVersions: string[] = [];
   globalThis.fetch = async (input, options) => {
     const url = new URL(String(input), "http://localhost");
-    const commit = moved ? "after" : "before";
+    const commit = refreshed ? "concurrent" : moved ? "after" : "before";
     const path = moved ? "public/renamed.md" : "private/note.md";
     if (url.pathname === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
@@ -87,7 +89,11 @@ test("folder selection cancels without writing and moves via the host service be
       assert.equal(options?.method, "POST");
       assert.equal(new Headers(options.headers).get("X-CSRF"), "fixture");
       writes.push(JSON.parse(String(options.body)));
-      if (writes.length === 1) return new Response(null, { status: 409 });
+      if (writes.length === 1) return new Response(null, { status: 400 });
+      if (stale) {
+        refreshed = true;
+        return new Response(null, { status: 409 });
+      }
       moved = true;
       return Response.json({
         commit: "after",
@@ -166,7 +172,7 @@ test("folder selection cancels without writing and moves via the host service be
     "A failed move is never retried automatically",
   );
   assert.ok(container.querySelector("dialog[open]"));
-  assert.match(dialog!.textContent!, /冲突/);
+  assert.match(dialog!.textContent!, /输入格式有误/);
   const name = dialog!.querySelector("input");
   assert.ok(name);
   await act(async () => {
@@ -212,4 +218,17 @@ test("folder selection cancels without writing and moves via the host service be
         container.querySelector(".editor-layout"),
     `Focus returns to the surviving trigger or the editor fallback; actual=${window.document.activeElement?.tagName}.${window.document.activeElement?.className}; trigger connected=${trigger.isConnected}`,
   );
+  stale = true;
+  await act(async () => button("移动…").click());
+  dialog = container.querySelector("dialog[open]");
+  assert.ok(dialog);
+  await act(async () => button("根目录", dialog! as typeof container).click());
+  await act(async () =>
+    button("移动到这里", dialog! as typeof container).click(),
+  );
+  assert.equal(writes.length, 3, "A stale base is not retried automatically");
+  assert.ok(!container.querySelector("dialog[open]"));
+  assert.match(container.textContent!, /仓库内容已改变，目录已刷新/);
+  assert.equal(container.querySelector("textarea"), null);
+  assert.equal(directoryVersions.at(-1), "concurrent");
 });

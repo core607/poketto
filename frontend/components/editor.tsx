@@ -267,6 +267,24 @@ export function Editor({
       setNotice(notice);
       return true;
     } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setMoveSelection(null);
+        setFile(null);
+        setSource("");
+        setPath("");
+        setSearch(null);
+        try {
+          await reloadTree();
+          setError(
+            "仓库内容已改变，目录已刷新。请重新选择要移动的文件或文件夹。",
+          );
+        } catch {
+          setError(
+            "仓库内容已改变，目录未能刷新。请刷新目录后重新选择要移动的内容。",
+          );
+        }
+        return false;
+      }
       setError(message(error));
       setConflict(
         error instanceof ApiError && [0, 409, 503].includes(error.status),
