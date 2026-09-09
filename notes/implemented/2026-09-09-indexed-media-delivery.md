@@ -1,11 +1,11 @@
 # Indexed Media Delivery
 
 Date: 2026-09-09
-Status: Proposed
+Status: Implemented
 
 ## Contract
 
-Extend the [logical media index](../implemented/2026-09-09-logical-media-index.md) and [original storage](../implemented/2026-09-05-repository-authoring-foundations.md) into browser and host-service transfers. The [CodeAct content plan](2026-09-09-codeact-content-and-media.md) remains the complete delivery target.
+The [logical media index](2026-09-09-logical-media-index.md) and [original storage](2026-09-05-repository-authoring-foundations.md) support browser and host-service transfers. The [CodeAct content plan](../proposed/2026-09-09-codeact-content-and-media.md) remains the complete delivery target.
 
 `POST /api/admin/media` accepts raw `application/octet-stream` bytes, an idempotency key and optional `X-Media-Type` metadata. It acknowledges only durable workspace originals; an index/text save is separate. The body passes through current identity and bounded request admission before streaming. Form and multipart types are rejected on this entrance to prevent implicit servlet form parsing. The existing multipart image entrance retains its image validation contract.
 
@@ -17,8 +17,10 @@ Article preparation resolves indexed image paths through the existing image vali
 
 Resolved media carries a separate `downloads` map for attachment HTTP URLs. Article `links` retain logical routes. Public pages and authenticated previews pass both maps to Markdown rendering, so a download never gains an article `/read/` prefix or heading-fragment namespace. The public renderer rejects private download mappings; the HTTP service independently enforces download authorization.
 
-## Verification and remaining acceptance
+## Verification and consequences
 
-Native tests exercise real Git indexes, immutable originals, public/private aliases, relative image and attachment links, galleries, historical reads and publication withdrawal. Transfer tests cover exact bytes, guessed workspace references, corruption before output, bounded uploads and revocation during output. HTTP tests verify attachment headers and raw-body handling; real Spring/PostgreSQL integration remains part of the verification gate.
+The 170-test native storage replay exercises real Git indexes, immutable originals, public/private aliases, relative image and attachment links, galleries, historical reads, cache lifecycle and publication withdrawal. Transfer tests cover exact bytes, guessed workspace references, corruption before output, bounded uploads, revocation during output, concurrent admission and released capacity. HTTP tests verify attachment headers and raw-body handling. Real Spring/PostgreSQL integration covers index/text publication and the administration entrance. Frontend checks cover separate attachment destinations, private-preview restrictions and article routes that resemble API paths.
 
-Real browser evidence from the exact changed tree is required before this proposal moves to implemented and the change is submitted. Browser control was unavailable during preparation; unit and native results do not replace that evidence. Source-cache lifecycle, transfer saturation and actual browser downloads must be included in final acceptance. Public-root conversion, CodeAct materialization, moves and portable exports remain separate work in the complete plan. The related foundation records retain their independent ownership and are not archived or rejected.
+The [browser recording and provenance](https://github.com/core607/poketto/blob/49fd3f6aa092a43b0780ac5e32e9f95f7d6e896b/README.md) uses fresh synthetic Git and actual Spring, PostgreSQL, Next.js and Caddy. It shows an indexed original rendered as an image and its attachment link. The browser reports a download event; an independent HTTP read of that exact destination matches the uploaded PDF byte-for-byte and verifies attachment, no-store and nosniff headers. The in-app browser does not expose its final filesystem download path. Anonymous private downloads and guessed public URLs for a private indexed path are denied.
+
+Returning attachment addresses in the article route map causes frontends to encode them as article paths. A separate download map preserves their transport semantics without reserving an otherwise valid article route. Serving declared media types inline would let metadata authorize active content; attachment delivery avoids that trust change. Uploading an original still does not publish it or save a document. Public-root conversion, CodeAct materialization and portable exports remain separate work. The logical-index, authoring and atomic-move records retain their independent ownership.
