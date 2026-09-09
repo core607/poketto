@@ -281,6 +281,19 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual([], self.github.posts)
         self.assertEqual("incomplete", json.loads((self.output / "manifest.json").read_bytes())["state"])
 
+    def test_peak_result_coverage_is_retained_when_head_changes_before_posting(self):
+        self.now = self.now.replace(hour=10)
+        self.github.drift_after = 2
+        with self.assertRaisesRegex(review.Incomplete, "stale and incomplete"):
+            self.run_review(b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+x\n")
+        self.assertEqual([], self.github.posts)
+        manifest = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual("incomplete", manifest["state"])
+        self.assertEqual(1, manifest["used_turns"])
+        self.assertEqual("reviewed", manifest["parts"][0]["state"])
+        self.assertEqual(review.digest((self.output / "part-01.md").read_bytes()),
+                         manifest["parts"][0]["review_sha256"])
+
     def test_two_peak_diff_parts_reserve_the_third_call_for_the_only_posted_summary(self):
         self.now = self.now.replace(hour=10)
         self.use_loop_provider()

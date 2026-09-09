@@ -518,6 +518,7 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
         manifest["parts"][0].update(state="reviewed", review_stage="cross-contract",
                                      review_sha256=digest(cross.encode("utf-8")))
     (output / "cross-contract.md").write_text(cross, encoding="utf-8")
+    save_manifest(output, manifest)
     unchanged()
     posted = github.post(revision["head"], cross.replace("@", "＠"))
     unchanged()
