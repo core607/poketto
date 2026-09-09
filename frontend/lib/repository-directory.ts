@@ -21,9 +21,14 @@ export async function readDirectory(
 }
 
 export function movablePath(path: string) {
+  const key = path
+    .normalize("NFC")
+    .toUpperCase()
+    .toLowerCase()
+    .normalize("NFC");
   return (
-    path.toLowerCase() !== "public" &&
-    path.toLowerCase() !== "private" &&
-    !path.split("/").some((part) => part.toLowerCase() === ".poketto")
+    key !== "public" &&
+    key !== "private" &&
+    !key.split("/").includes(".poketto")
   );
 }

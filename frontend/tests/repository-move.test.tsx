@@ -9,6 +9,8 @@ test("move controls preserve case-insensitive reserved roots and allow their chi
     "Public",
     "private",
     "Private",
+    "prıvate",
+    "publıc",
     ".POKETTO/assets.json",
   ])
     assert.equal(movablePath(path), false);
