@@ -341,6 +341,32 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(3, len(self.provider.requests))
         self.assertIn("谷价", json.loads(self.provider.requests[-1])["messages"][-1]["content"])
 
+    def test_entering_peak_during_identity_check_does_not_spend_an_extra_peak_call(self):
+        self.now = self.now.replace(hour=13, minute=59, second=59)
+        original_current = self.github.current
+        def current():
+            result = original_current()
+            if self.github.reads == 2:
+                self.now = self.now.replace(hour=14, minute=0, second=0)
+            return result
+        self.github.current = current
+        self.use_loop_provider()
+        complete = self.provider.complete
+        request_hours = []
+        def recorded(body, record=None):
+            request_hours.append(self.now.hour)
+            return complete(body, record)
+        self.provider.complete = recorded
+        self.run_review(b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+x\n")
+        self.assertEqual([13, 14, 14, 14], request_hours)
+        requests = [json.loads(body) for body in self.provider.requests]
+        for previous, following in zip(requests, requests[1:]):
+            prefix = previous["messages"]
+            self.assertEqual(prefix, following["messages"][:len(prefix)])
+        self.assertIn("剩余最多 3 轮", json.loads(requests[1]["messages"][-1]["content"])["budget"])
+        self.assertEqual(review.FINAL_NOTICE, json.loads(requests[-1]["messages"][-1]["content"])["notice"])
+        self.assertEqual(1, len(self.github.posts))
+
     def test_head_drift_after_provider_before_post_blocks_stale_review(self):
         self.github.drift_after = 2
         with self.assertRaisesRegex(review.Incomplete, "stale and incomplete"):
