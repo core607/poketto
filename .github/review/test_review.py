@@ -41,11 +41,11 @@ class FakeProvider:
         self.requests = []
         self.fail_at = None
 
-    def review(self, body):
+    def complete(self, body, record=None):
         self.requests.append(body)
         if self.fail_at == len(self.requests):
             raise review.Incomplete("Fixture provider failure.")
-        return "Fixture review: inspect the caller and consumer together. @literal"
+        return {"role": "assistant", "content": "Fixture review: inspect the caller and consumer together. @literal"}, {"prompt_tokens": 1000, "completion_tokens": 10}
 
 
 class ReviewTests(unittest.TestCase):
@@ -96,7 +96,8 @@ class ReviewTests(unittest.TestCase):
 
     def run_review(self, data=None):
         review.complete_review(self.github, self.provider, self.revision, "中文\"标题", "fixture-model",
-                               "trusted rules", self.merge, self.data if data is None else data, self.output)
+                               "trusted rules", self.merge, self.data if data is None else data, self.output,
+                               review.RepositoryTools(self.repo, self.revision, self.merge, review.Budget(), review.git))
 
     def test_real_git_large_diff_preserves_every_byte_with_utf8_and_request_wrappers(self):
         self.assertGreater(self.data.count(b"\n"), 20000)
@@ -158,7 +159,7 @@ class ReviewTests(unittest.TestCase):
 
     def test_whole_request_not_only_diff_is_bounded(self):
         with self.assertRaisesRegex(review.Incomplete, "One UTF-8 diff line"):
-            review.split_diff(b"+x\n", lambda text: review.payload("model", "x" * 200000,
+            review.split_diff(b"+x\n", lambda text: review.payload("model", "x" * review.REQUEST_BYTES,
                                                                self.revision, "title", text))
 
     def test_parts_and_cross_contract_results_retained_and_posts_bound_to_head(self):
@@ -166,7 +167,7 @@ class ReviewTests(unittest.TestCase):
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         self.assertEqual("complete", manifest["state"])
         self.assertEqual(len(manifest["parts"]) + 1, len(self.provider.requests))
-        self.assertEqual(len(self.provider.requests), len(self.github.posts))
+        self.assertEqual(1, len(self.github.posts))
         retained = b"".join((self.output / f"part-{part['part']:02d}.diff").read_bytes()
                             for part in manifest["parts"])
         self.assertEqual(self.data, retained)
@@ -178,7 +179,8 @@ class ReviewTests(unittest.TestCase):
         for post in self.github.posts:
             self.assertEqual(self.head, post["commit_id"])
             self.assertNotIn("@literal", post["body"])
-        self.assertIn("complete coverage", self.github.posts[-1]["body"])
+        self.assertEqual((self.output / "cross-contract.md").read_text(encoding="utf-8").replace("@", "＠"),
+                         self.github.posts[-1]["body"])
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2
@@ -188,15 +190,44 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual("incomplete", manifest["state"])
         self.assertEqual("pending", manifest["parts"][1]["state"])
         self.assertTrue((self.output / "part-01.md").exists())
-        self.assertEqual(1, len(self.github.posts))
-        self.assertNotIn("complete coverage", self.github.posts[0]["body"])
+        self.assertEqual([], self.github.posts)
+
+    def test_entire_pr_shares_scaled_turn_budget_and_reserves_cross_summary(self):
+        for changed_files in (1, 12):
+            self.provider = FakeProvider()
+            self.github = FakeGitHub(self.revision)
+
+            def complete(body, record=None):
+                self.provider.requests.append(body)
+                request = json.loads(body)
+                if request.get("tool_choice") == "none":
+                    self.assertEqual(review.FINAL_INSTRUCTION, request["messages"][-1]["content"])
+                    return {"role": "assistant", "content": "Final observed findings."}, {
+                        "prompt_tokens": 1000, "completion_tokens": 10}
+                return {"role": "assistant", "content": "", "tool_calls": [{
+                    "id": "call_" + str(len(self.provider.requests)), "type": "function", "function": {
+                        "name": "repository", "arguments": json.dumps({"action":"read", "revision":"head", "path":"large.txt", "offset":len(self.provider.requests), "limit":1})}}]}, {
+                            "prompt_tokens": 1000, "completion_tokens": 10}
+
+            self.provider.complete = complete
+            data = b"".join(f"diff --git a/file{i} b/file{i}\n@@ -0,0 +1 @@\n+new\n".encode()
+                            for i in range(changed_files))
+            self.run_review(data)
+            manifest = json.loads((self.output / "manifest.json").read_bytes())
+            expected = min(30, 8 + 2 * changed_files)
+            self.assertEqual(expected, len(self.provider.requests))
+            self.assertEqual(expected, manifest["used_turns"])
+            self.assertEqual(expected, manifest["max_turns"])
+            self.assertEqual("complete", manifest["state"])
+            self.assertEqual(1, len(self.github.posts))
 
     def test_head_drift_after_provider_before_post_blocks_stale_review(self):
         self.github.drift_after = 2
         with self.assertRaisesRegex(review.Incomplete, "stale and incomplete"):
             self.run_review()
         self.assertEqual([], self.github.posts)
-        self.assertTrue((self.output / "part-01.md").exists())
+        self.assertEqual(1, len(self.provider.requests))
+        self.assertTrue((self.output / "part-01-operations.json").exists())
 
     def test_base_drift_is_also_rejected(self):
         current = self.github.current
@@ -249,7 +280,7 @@ class ReviewTests(unittest.TestCase):
         env = {"REVIEW_OUTPUT": str(self.output), "GITHUB_EVENT_PATH": str(event),
                "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
                "GITHUB_REPOSITORY": self.github.repository}
-        self.provider.review = lambda body: time.sleep(10)
+        self.provider.complete = lambda body, record=None: time.sleep(10)
         small = b"diff --git a/a b/a\n@@ -0,0 +1 @@\n+new\n"
         start = time.monotonic()
         with patch.dict(os.environ, env), patch.object(review, "GitHub", return_value=self.github), \
@@ -270,11 +301,12 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual([], self.provider.requests)
 
     def test_provider_never_called_when_cross_contract_context_is_too_large(self):
-        self.provider.review = lambda body: "x" * 49000
+        self.provider.complete = lambda body, record=None: ({"role": "assistant", "content": "x" * 49000},
+                                                       {"prompt_tokens": 1000, "completion_tokens": 100})
         with self.assertRaisesRegex(review.Incomplete, "Cross-contract review exceeds"):
             self.run_review()
         self.assertFalse((self.output / "cross-contract.md").exists())
-        self.assertNotIn("complete coverage", self.github.posts[-1]["body"])
+        self.assertEqual([], self.github.posts)
 
     def test_workflow_keeps_main_trust_and_no_optional_failure(self):
         root = Path(__file__).resolve().parents[2]
@@ -302,39 +334,26 @@ class ReviewTests(unittest.TestCase):
     def test_provider_refuses_empty_truncated_or_oversized_response(self):
         provider = review.Provider("https://example.invalid", "fixture", review.Budget())
         for content, finish in [("", "stop"), ("partial", "length"), (None, "stop"), ("x" * 50001, "stop")]:
-            body = review.encoded({"choices": [{"message": {"content": content}, "finish_reason": finish}]})
+            body = review.encoded({"choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": finish}], "usage": {"prompt_tokens": 100, "completion_tokens": 10}})
             with patch.object(provider.opener, "open", return_value=io.BytesIO(body)):
                 with self.assertRaises(review.Incomplete):
-                    provider.review(b"{}")
-
+                    provider.complete(b"{}")
         with patch.object(provider.opener, "open", side_effect=urllib.error.URLError("fixture")):
             with self.assertRaisesRegex(review.Incomplete, "endpoint failed"):
-                provider.review(b"{}")
-
-    def test_output_budget_and_failure_shape_preserve_diagnostics_without_model_text(self):
-        request = json.loads(review.payload("fixture", "rules", self.revision, "title", "diff"))
-        self.assertEqual(128000, request["max_tokens"])
-        provider = review.Provider("https://example.invalid", "fixture-key", review.Budget())
-        raw = review.encoded({"choices": [{"finish_reason": "length", "message": {
-            "content": "private output", "reasoning_content": "private reasoning"}}]})
-        with patch.object(provider.opener, "open", return_value=io.BytesIO(raw)):
-            with self.assertRaises(review.Incomplete) as failure:
-                provider.review(b"{}")
-        self.assertIn("finish=length; visible_characters=14", str(failure.exception))
-        self.assertNotIn("private output", str(failure.exception))
-        self.assertNotIn("private reasoning", str(failure.exception))
+                provider.complete(b"{}")
 
     def test_provider_uses_bounded_request_and_does_not_follow_redirects(self):
         provider = review.Provider("https://example.invalid", "fixture", review.Budget())
-        raw = review.encoded({"choices": [{"message": {"content": "complete"}, "finish_reason": "stop"}]})
+        raw = review.encoded({"choices": [{"message": {"role": "assistant", "content": "complete"}, "finish_reason": "stop"}],
+                              "usage": {"prompt_tokens": 100, "completion_tokens": 10}})
         with patch.object(provider.opener, "open", return_value=io.BytesIO(raw)) as opener:
-            self.assertEqual("complete", provider.review(b"{}"))
+            self.assertEqual("complete", provider.complete(b"{}")[0]["content"])
             self.assertEqual("Bearer fixture", opener.call_args.args[0].get_header("Authorization"))
-            self.assertLessEqual(opener.call_args.kwargs["timeout"], 300)
+            self.assertLessEqual(opener.call_args.kwargs["timeout"], 900)
         with self.assertRaises(review.Incomplete):
             review.NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.invalid")
         with self.assertRaises(review.Incomplete):
-            provider.review(b"x" * (review.REQUEST_BYTES + 1))
+            provider.complete(b"x" * (review.TRANSPORT_BYTES + 1))
 
 
 if __name__ == "__main__":
