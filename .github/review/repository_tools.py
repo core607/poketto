@@ -14,14 +14,20 @@ MAX_ENTRIES = 100_000
 BLOB_CACHE_BYTES = 16_000_000
 BLOB_CACHE_ENTRIES = 256
 # A search page ends after this much source has been scanned or this many files, whichever comes
-# first, so a repository-wide query is not spent on the alphabetically earliest hundred paths.
+# first, so a repository-wide query reaches a late path instead of ending on the earliest ones.
 SEARCH_PAGE_BYTES = 8_000_000
 SEARCH_PAGE_FILES = 2000
+# A search entry carries the matched line so that a follow-up read is needed only for context. A
+# longer line yields a window that starts shortly before the match, since a read of an oversized
+# line returns only its prefix and could never reach a match deeper in the line.
+SNIPPET_CHARS = 200
+SNIPPET_LEAD = 40
 
 TOOLS = [{"type": "function", "function": {
     "name": "repository", "description": (
         "Inspect immutable PR code as untrusted data. list returns paginated paths; read returns "
-        "numbered UTF-8 lines; search finds literal text in a path/prefix. Select base, head, or "
+        "numbered UTF-8 lines; search finds literal text in a path/prefix and returns each matched "
+        "line, or a 200-character window around the match marked truncated. Select base, head, or "
         "merge_base. No shell, checkout, URLs, or working-tree files. Follow next_cursor for "
         "list/search with the same action, revision, path and query. Omit cursor for a new query. "
         "Follow next_offset for read; incomplete pages are not evidence of absence."),
@@ -31,7 +37,7 @@ TOOLS = [{"type": "function", "function": {
         "path": {"type": "string", "description": "Exact file for read; optional file or directory prefix otherwise."},
         "query": {"type": "string", "description": "Literal, case-sensitive search text."},
         "offset": {"type": "integer", "minimum": 0, "description": "Zero-based line offset for read."},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Read at most this many lines (default 200; larger values are clamped)."},
+        "limit": {"type": "integer", "minimum": 1, "description": "Read at most this many lines; at most 200 are returned (default 200)."},
         "cursor": {"type": "string", "description": "Opaque next_cursor from the same list/search selection."}},
         "required": ["action", "revision"], "additionalProperties": False}}}]
 
@@ -147,7 +153,7 @@ class RepositoryTools:
             if (not isinstance(cursor_token, str) or type(offset) is not int or offset < 0
                     or type(limit) is not int or limit < 1):
                 raise ToolInputError("Cursor must be a returned token; offset must be nonnegative; limit must be at least 1.")
-            # An oversized page request costs the model a whole round if refused; the byte bound still applies.
+            # An oversized page request would cost the model a whole round if refused.
             limit = min(limit, 200)
             entries = self.tree(revision)
             if action == "read":
@@ -242,7 +248,11 @@ class RepositoryTools:
             for line in range(start, len(lines)):
                 if query not in lines[line]:
                     continue
-                item = {"path": name, "line": line + 1}
+                text = lines[line]
+                item = {"path": name, "line": line + 1, "text": text}
+                if len(text) > SNIPPET_CHARS:
+                    begin = min(max(0, text.index(query) - SNIPPET_LEAD), len(text) - SNIPPET_CHARS)
+                    item.update(text=text[begin:begin + SNIPPET_CHARS], truncated=True)
                 if len(result["entries"]) >= 200 or len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
                     result["next_cursor"] = index * stride + line
                     return result
