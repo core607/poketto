@@ -18,7 +18,9 @@ class RepositorySnapshotExportConfiguration {
             AuthService auth,
             @Value("${poketto.executor.staging-directory}") Path staging,
             @Value("${poketto.executor.max-bundle-bytes:134217728}") long bytes,
-            @Value("${poketto.executor.export-timeout-seconds:30}") long seconds) {
-        return new JGitRepositorySnapshotExports(authority, auth, staging, bytes, Duration.ofSeconds(seconds));
+            @Value("${poketto.executor.export-timeout-seconds:30}") long seconds,
+            JGitPublicContentSnapshots snapshots) {
+        return new JGitRepositorySnapshotExports(
+                authority, auth, staging, bytes, Duration.ofSeconds(seconds), snapshots);
     }
 }

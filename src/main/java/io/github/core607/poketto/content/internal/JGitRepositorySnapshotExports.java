@@ -5,7 +5,11 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.PublicContentSnapshot;
+import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.FilterOutputStream;
@@ -38,14 +42,30 @@ import org.eclipse.jgit.transport.BundleWriter;
 final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     private final RepositoryAuthority authority;
     private final AuthService auth;
+    private final PublicContentSnapshots snapshots;
     private final Path staging;
     private final long maxBytes;
     private final Duration timeout;
     private final Set<UUID> exports = ConcurrentHashMap.newKeySet();
     private boolean initialized;
 
+    private record PublicRevision(WorkspaceId workspace, String commit) {}
+
+    private final java.util.Map<PublicRevision, String> publicFingerprints =
+            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<PublicRevision, String> eldest) {
+                    return size() > 64;
+                }
+            });
+
     JGitRepositorySnapshotExports(
-            RepositoryAuthority authority, AuthService auth, Path staging, long maxBytes, Duration timeout) {
+            RepositoryAuthority authority,
+            AuthService auth,
+            Path staging,
+            long maxBytes,
+            Duration timeout,
+            PublicContentSnapshots snapshots) {
         if (!staging.isAbsolute()
                 || maxBytes < 1024
                 || maxBytes > 1024L * 1024 * 1024
@@ -55,9 +75,191 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
             throw new IllegalArgumentException("invalid repository export bounds");
         this.authority = authority;
         this.auth = auth;
+        this.snapshots = snapshots;
         this.staging = staging.normalize();
         this.maxBytes = maxBytes;
         this.timeout = timeout;
+    }
+
+    @Override
+    public PublicExport createPublic(AuthPrincipal actor, WorkspaceId workspace) {
+        auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        var snapshot = snapshots.withCurrent(workspace, value -> value);
+        String authorityCommit = snapshot.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
+        long deadline = System.nanoTime() + timeout.toNanos();
+        var projection = projection(workspace, snapshot, deadline);
+        String fingerprint = PublicExecutionProjection.fingerprint(projection);
+        publicFingerprints.put(new PublicRevision(workspace, authorityCommit), fingerprint);
+        UUID id = UUID.randomUUID();
+        Path repositoryPath = staging.resolve(id + ".projection");
+        Path pending = staging.resolve(id + ".pending");
+        Path published = staging.resolve(id + ".bundle");
+        try {
+            safeStaging();
+            clearAbandoned();
+            Files.createDirectory(repositoryPath);
+            privatePermissions(repositoryPath, true);
+            try (var git = org.eclipse.jgit.api.Git.init()
+                            .setBare(true)
+                            .setDirectory(repositoryPath.toFile())
+                            .call();
+                    var inserter = git.getRepository().newObjectInserter()) {
+                var index = org.eclipse.jgit.dircache.DirCache.newInCore();
+                var builder = index.builder();
+                for (var file : projection.files().entrySet().stream()
+                        .sorted((a, b) -> java.util.Arrays.compareUnsigned(
+                                a.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                                b.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                        .toList()) {
+                    checkDeadline(deadline);
+                    var entry = new org.eclipse.jgit.dircache.DirCacheEntry(file.getKey());
+                    entry.setFileMode(org.eclipse.jgit.lib.FileMode.REGULAR_FILE);
+                    entry.setObjectId(inserter.insert(Constants.OBJ_BLOB, file.getValue()));
+                    builder.add(entry);
+                }
+                builder.finish();
+                var baseline = new org.eclipse.jgit.lib.CommitBuilder();
+                baseline.setTreeId(index.writeTree(inserter));
+                var author = new org.eclipse.jgit.lib.PersonIdent(
+                        "Poketto", "poketto@invalid", java.time.Instant.EPOCH, java.time.ZoneOffset.UTC);
+                baseline.setAuthor(author);
+                baseline.setCommitter(author);
+                baseline.setMessage("Public reading projection\n");
+                ObjectId commit = inserter.insert(baseline);
+                inserter.flush();
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                BundleWriter bundle = new BundleWriter(git.getRepository());
+                PackConfig pack = new PackConfig(git.getRepository());
+                pack.setThreads(1);
+                pack.setDeltaCompress(false);
+                bundle.setPackConfig(pack);
+                bundle.include("refs/heads/snapshot", commit);
+                try (OutputStream output = Files.newOutputStream(
+                                pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, NOFOLLOW_LINKS);
+                        var hashed = new DigestOutputStream(output, digest);
+                        var bounded = new BoundedOutput(hashed, maxBytes, deadline)) {
+                    privatePermissions(pending, false);
+                    bundle.writeBundle(new DeadlineMonitor(deadline), bounded);
+                }
+                try (FileChannel file = FileChannel.open(pending, StandardOpenOption.WRITE, NOFOLLOW_LINKS)) {
+                    file.force(true);
+                }
+                auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+                snapshots.withCurrent(workspace, current -> {
+                    if (!current.commit().equals(snapshot.commit())
+                            || !current.articles().equals(snapshot.articles())) throw unavailable();
+                    return null;
+                });
+                long size = Files.size(pending);
+                Files.move(pending, published, StandardCopyOption.ATOMIC_MOVE);
+                exports.add(id);
+                return new PublicExport(
+                        workspace,
+                        new Export(id, commit.name(), HexFormat.of().formatHex(digest.digest()), size),
+                        authorityCommit,
+                        fingerprint,
+                        projection.sourcePaths());
+            }
+        } catch (Exception exception) {
+            try {
+                Files.deleteIfExists(pending);
+                Files.deleteIfExists(published);
+            } catch (IOException ignored) {
+                /* Unacknowledged export. */
+            }
+            auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+            throw new ContentRepositoryException("public execution projection could not be exported", exception);
+        } finally {
+            try {
+                removeProjection(repositoryPath);
+            } catch (IOException exception) {
+                exports.remove(id);
+                try {
+                    Files.deleteIfExists(pending);
+                    Files.deleteIfExists(published);
+                } catch (IOException ignored) {
+                    /* Disposable export cleanup failed. */
+                }
+                throw new ContentRepositoryException("public execution projection cleanup failed", exception);
+            }
+        }
+    }
+
+    private PublicExecutionProjection.Projection projection(
+            WorkspaceId workspace, PublicContentSnapshot snapshot, long deadline) {
+        if (!workspace.equals(snapshot.workspaceId())) throw unavailable();
+        String authorityCommit = snapshot.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
+        return authority.readImmutableObjects(workspace, objects -> {
+            var policy = JGitPublicContentSnapshots.policy(objects, authorityCommit);
+            if (policy.state() != RepositoryPublishingPolicy.State.ENABLED) throw unavailable();
+            RepositoryMediaIndex index = RepositoryMediaIndex.empty();
+            try (RevWalk commits = new RevWalk(objects);
+                    var entry = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                            objects,
+                            RepositoryMediaIndex.PATH,
+                            commits.parseCommit(ObjectId.fromString(authorityCommit))
+                                    .getTree())) {
+                if (entry != null) {
+                    if (!org.eclipse.jgit.lib.FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) throw unavailable();
+                    var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+                    if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) throw unavailable();
+                    index = RepositoryMediaIndex.parse(blob.getBytes(RepositoryMediaIndex.MAX_BYTES));
+                }
+            }
+            checkDeadline(deadline);
+            return PublicExecutionProjection.build(
+                    snapshot, index, policy, Math.min(maxBytes * 2, ContentLimits.MAX_WORKSPACE_BYTES));
+        });
+    }
+
+    @Override
+    public void requireCurrentPublic(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported) {
+        auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        if (!workspace.equals(exported.workspaceId())) throw unavailable();
+        var current = snapshots.withCurrent(workspace, value -> value);
+        String commit = current.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
+        var revision = new PublicRevision(workspace, commit);
+        String fingerprint = publicFingerprints.get(revision);
+        if (fingerprint == null) {
+            fingerprint = PublicExecutionProjection.fingerprint(
+                    projection(workspace, current, System.nanoTime() + timeout.toNanos()));
+            publicFingerprints.put(revision, fingerprint);
+        }
+        if (!fingerprint.equals(exported.projectionSha256())) throw unavailable();
+        auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        snapshots.withCurrent(workspace, latest -> {
+            if (!latest.commit().equals(current.commit())) throw unavailable();
+            return null;
+        });
+    }
+
+    private void removeProjection(Path path) throws IOException {
+        if (!path.getParent().equals(staging) || !path.getFileName().toString().matches("[0-9a-f-]{36}\\.projection"))
+            throw unavailable();
+        if (!Files.exists(path, NOFOLLOW_LINKS)) return;
+        if (!Files.isDirectory(path, NOFOLLOW_LINKS) || !path.toRealPath().equals(path)) throw unavailable();
+        Files.walkFileTree(path, new java.nio.file.SimpleFileVisitor<>() {
+            @Override
+            public java.nio.file.FileVisitResult visitFile(
+                    Path file, java.nio.file.attribute.BasicFileAttributes attributes) throws IOException {
+                // JGit makes loose objects read-only; Windows requires clearing that flag before deletion.
+                if (attributes.isRegularFile()) {
+                    var dos = Files.getFileAttributeView(
+                            file, java.nio.file.attribute.DosFileAttributeView.class, NOFOLLOW_LINKS);
+                    if (dos != null) dos.setReadOnly(false);
+                }
+                Files.delete(file);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public java.nio.file.FileVisitResult postVisitDirectory(Path directory, IOException failure)
+                    throws IOException {
+                if (failure != null) throw failure;
+                Files.delete(directory);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     @Override
@@ -182,6 +384,12 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         try (var files = Files.newDirectoryStream(staging)) {
             int count = 0;
             for (Path file : files) {
+                if (Files.isDirectory(file, NOFOLLOW_LINKS)
+                        && file.getFileName().toString().matches("[0-9a-f-]{36}\\.projection")) {
+                    if (++count > 1024) throw unavailable();
+                    removeProjection(file);
+                    continue;
+                }
                 if (++count > 1024
                         || !Files.isRegularFile(file, NOFOLLOW_LINKS)
                         || !file.getFileName()

@@ -171,7 +171,7 @@ final class RepositoryMcpTools {
         if (executors.getIfAvailable() != null) {
             tools.add(tool(
                     "repo_exec",
-                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Omitted commit retains its pinned revision. Execution never writes repository authority.",
+                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the pinned revision. Execution never writes repository authority.",
                     object(
                             Map.of(
                                     "command",

@@ -80,7 +80,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
-        authorize(principal, workspace);
+        var access = authorize(principal, workspace);
         if (serverSessionId == null
                 || serverSessionId.isBlank()
                 || serverSessionId.length() > 128
@@ -108,7 +108,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                             .filter(value -> !value.capacityReleased)
                                             .count()
                                     >= maxSessions) throw new WorkerUnavailableException();
-                    session = new Session(key, principal);
+                    boolean fullRead = access.capabilities().contains(Capability.READ_PRIVATE);
+                    if (!fullRead && requestedCommit.isPresent())
+                        throw new IllegalArgumentException(
+                                "Public execution starts from current publication; omit commit");
+                    session = new Session(key, principal, fullRead);
                     sessions.put(key, session);
                 }
             }
@@ -122,9 +126,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         && !session.commit.equals(requestedCommit.get()))
                     throw new IllegalArgumentException(
                             "Execution session remains pinned; use a new MCP session for another commit");
+                authorize(session);
                 if (!session.ready) open(session, requestedCommit);
                 requireLive(session);
-                authorize(principal, workspace);
+                authorize(session);
                 JsonNode response = requestLive(
                         session,
                         "EXEC",
@@ -139,6 +144,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 timeout.toMillis()),
                         timeout.plusSeconds(5));
                 requireOk(response, session);
+                authorize(session);
                 ExecutionResult result = result(response.path("result"), session.commit);
                 String state = response.path("state").asString("");
                 if (state.equals("CLOSING")
@@ -195,11 +201,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private void open(Session session, Optional<String> requested) {
         session.hello = worker.hello();
         requireLive(session);
-        RepositorySnapshotExports.Export export = exports.create(session.principal, session.key.workspace(), requested);
+        RepositorySnapshotExports.Export export;
+        if (session.fullRead) {
+            export = exports.create(session.principal, session.key.workspace(), requested);
+        } else {
+            session.publicExport = exports.createPublic(session.principal, session.key.workspace());
+            export = session.publicExport.export();
+        }
         session.commit = export.commit();
         try {
             requireLive(session);
-            authorize(session.principal, session.key.workspace());
+            authorize(session);
             synchronized (session) {
                 requireLive(session);
                 session.openAttempted = true;
@@ -231,7 +243,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (!state.equals("INITIALIZING") || System.nanoTime() >= deadline)
                     throw new WorkerUnavailableException();
                 pause();
-                authorize(session.principal, session.key.workspace());
+                authorize(session);
                 response = requestLive(session, "RENEW", Map.of(), Duration.ofSeconds(3));
             }
         } catch (RuntimeException exception) {
@@ -246,10 +258,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void authorize(AuthPrincipal principal, WorkspaceId workspace) {
+    private io.github.core607.poketto.auth.WorkspaceAccess authorize(AuthPrincipal principal, WorkspaceId workspace) {
         if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY)
             throw new SecurityException("Execution requires an API key");
-        auth.authorize(principal, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
+        return auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
+    }
+
+    private void authorize(Session session) {
+        if (session.fullRead) {
+            auth.authorize(
+                    session.principal, session.key.workspace(), Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
+        } else if (session.publicExport != null) {
+            exports.requireCurrentPublic(session.principal, session.key.workspace(), session.publicExport);
+        } else {
+            authorize(session.principal, session.key.workspace());
+        }
     }
 
     private void renewDue() {
@@ -270,7 +293,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 controls.execute(() -> {
                     try {
                         if (session.stopping.get()) return;
-                        authorize(session.principal, session.key.workspace());
+                        authorize(session);
                         JsonNode response = requestLive(session, "RENEW", Map.of(), Duration.ofSeconds(3));
                         requireOk(response, session);
                         String state = response.path("state").asString("");
@@ -536,6 +559,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final class Session {
         private final SessionKey key;
         private final AuthPrincipal principal;
+        private final boolean fullRead;
+        private volatile RepositorySnapshotExports.PublicExport publicExport;
         private final UUID leaseId = UUID.randomUUID();
         private final AtomicBoolean busy = new AtomicBoolean();
         private final AtomicBoolean stopping = new AtomicBoolean();
@@ -550,9 +575,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private String closeReason;
         private volatile long nextRenew;
 
-        private Session(SessionKey key, AuthPrincipal principal) {
+        private Session(SessionKey key, AuthPrincipal principal, boolean fullRead) {
             this.key = key;
             this.principal = principal;
+            this.fullRead = fullRead;
         }
 
         private WorkerClient.Identity identity() {

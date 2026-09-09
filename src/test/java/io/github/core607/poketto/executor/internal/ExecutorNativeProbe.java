@@ -42,6 +42,14 @@ public final class ExecutorNativeProbe {
     private int tests;
 
     private ExecutorNativeProbe(Path configuration) throws Exception {
+        when(auth.authorize(any(), any(), eq(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.Set.of(
+                                io.github.core607.poketto.auth.Capability.READ_PRIVATE,
+                                io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)));
         config = JSON.readTree(Files.readString(configuration));
         Path master = path("bundle");
         String commit = config.path("commit").stringValue();
@@ -57,6 +65,16 @@ public final class ExecutorNativeProbe {
                 } catch (Exception exception) {
                     throw new IllegalStateException(exception);
                 }
+            }
+
+            @Override
+            public PublicExport createPublic(AuthPrincipal actor, WorkspaceId selected) {
+                throw new UnsupportedOperationException("native fixture provides full repository exports only");
+            }
+
+            @Override
+            public void requireCurrentPublic(AuthPrincipal actor, WorkspaceId selected, PublicExport exported) {
+                throw new UnsupportedOperationException("native fixture provides full repository exports only");
             }
 
             @Override

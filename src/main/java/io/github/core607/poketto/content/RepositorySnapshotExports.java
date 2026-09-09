@@ -9,7 +9,25 @@ import java.util.UUID;
 public interface RepositorySnapshotExports {
     Export create(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit);
 
+    /** Builds a fresh public reading baseline; original commits and configuration never enter its bundle. */
+    PublicExport createPublic(AuthPrincipal actor, WorkspaceId workspace);
+
+    /** Revalidates the current public projection; unrelated private changes do not revoke it. */
+    void requireCurrentPublic(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported);
+
     void release(UUID exportId);
 
     record Export(UUID exportId, String commit, String bundleSha256, long bundleBytes) {}
+
+    /** Authority identity and source mapping stay with the host, outside the writable projection. */
+    record PublicExport(
+            WorkspaceId workspaceId,
+            Export export,
+            String authorityCommit,
+            String projectionSha256,
+            java.util.Map<String, String> sourcePaths) {
+        public PublicExport {
+            sourcePaths = java.util.Map.copyOf(sourcePaths);
+        }
+    }
 }
