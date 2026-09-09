@@ -8,6 +8,7 @@ import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.content.RepositoryDocument;
 import io.github.core607.poketto.content.RepositoryFile;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryTree;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
@@ -63,6 +64,9 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 ObjectId tree = revisions
                         .parseCommit(ObjectId.fromString(resolved.orElseThrow()))
                         .getTree();
+                RepositoryMediaIndex media = readMediaIndex(repository, tree);
+                if (!media.files().isEmpty())
+                    return logicalDirectory(repository, workspaceId, resolved, tree, path, offset, limit, media);
                 if (!path.isEmpty()) {
                     try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
                         if (entry == null)
@@ -104,6 +108,104 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         if (FileMode.SYMLINK.equals(mode)) return RepositoryDirectoryPage.Kind.SYMLINK;
         if (FileMode.GITLINK.equals(mode)) return RepositoryDirectoryPage.Kind.SUBMODULE;
         return RepositoryDirectoryPage.Kind.OTHER;
+    }
+
+    static RepositoryMediaIndex readMediaIndex(Repository repository, ObjectId tree) throws IOException {
+        try (TreeWalk entry = TreeWalk.forPath(repository, RepositoryMediaIndex.PATH, tree)) {
+            if (entry == null) return RepositoryMediaIndex.empty();
+            if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0)))
+                throw new ContentRepositoryException("repository media index is not a regular file");
+            ObjectLoader blob = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+            if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES)
+                throw new ContentRepositoryException("repository media index exceeds its byte limit");
+            try {
+                return RepositoryMediaIndex.parse(blob.getBytes(RepositoryMediaIndex.MAX_BYTES));
+            } catch (IllegalArgumentException exception) {
+                throw new ContentRepositoryException("repository media index is invalid");
+            }
+        }
+    }
+
+    private static RepositoryDirectoryPage logicalDirectory(
+            Repository repository,
+            WorkspaceId workspace,
+            Optional<String> commit,
+            ObjectId tree,
+            String path,
+            int offset,
+            int limit,
+            RepositoryMediaIndex media)
+            throws IOException {
+        boolean exists = path.isEmpty();
+        if (!path.isEmpty()) {
+            try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
+                if (entry != null) {
+                    if (!FileMode.TREE.equals(entry.getFileMode(0)))
+                        throw new IllegalArgumentException("requested path is not a directory");
+                    exists = true;
+                }
+            }
+            if (media.files().containsKey(path))
+                throw new IllegalArgumentException("requested path is not a directory");
+        }
+        Map<String, RepositoryDirectoryPage.Entry> children = new HashMap<>();
+        List<String> gitPaths = new ArrayList<>();
+        try (TreeWalk entries = new TreeWalk(repository)) {
+            entries.addTree(tree);
+            entries.setRecursive(true);
+            while (entries.next()) {
+                if (gitPaths.size() == MAX_TREE_ENTRIES)
+                    throw new ContentRepositoryException("logical directory exceeds the repository entry bound");
+                if (entries.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4)
+                    throw new ContentRepositoryException("repository entry exceeds the path bound");
+                String entryPath = entries.getPathString();
+                gitPaths.add(entryPath);
+                addImmediate(children, path, entryPath, kind(entries.getFileMode(0)));
+            }
+        }
+        try {
+            media.requireNoGitCollisions(gitPaths);
+        } catch (IllegalArgumentException exception) {
+            throw new ContentRepositoryException("repository media paths collide with Git entries");
+        }
+        for (String entryPath : media.files().keySet())
+            addImmediate(children, path, entryPath, RepositoryDirectoryPage.Kind.FILE);
+        List<RepositoryDirectoryPage.Entry> ordered = new ArrayList<>(children.values());
+        ordered.sort((a, b) -> java.util.Arrays.compareUnsigned(directorySortKey(a), directorySortKey(b)));
+        exists |= !ordered.isEmpty();
+        int end = (int) Math.min(ordered.size(), (long) offset + limit);
+        Integer next = end < ordered.size() ? end : null;
+        if (next != null && next > MAX_TREE_ENTRIES)
+            throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
+        return new RepositoryDirectoryPage(
+                workspace,
+                commit,
+                path,
+                !exists,
+                offset >= ordered.size() ? List.of() : ordered.subList(offset, end),
+                next);
+    }
+
+    private static byte[] directorySortKey(RepositoryDirectoryPage.Entry entry) {
+        return (entry.path() + (entry.kind() == RepositoryDirectoryPage.Kind.DIRECTORY ? "/" : ""))
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static void addImmediate(
+            Map<String, RepositoryDirectoryPage.Entry> entries,
+            String parent,
+            String path,
+            RepositoryDirectoryPage.Kind kind) {
+        String prefix = parent.isEmpty() ? "" : parent + "/";
+        if (!path.startsWith(prefix)) return;
+        String relative = path.substring(prefix.length());
+        int slash = relative.indexOf('/');
+        String child = slash < 0 ? path : prefix + relative.substring(0, slash);
+        if (child.length() > ContentLimits.MAX_PATH_LENGTH)
+            throw new ContentRepositoryException("directory entry exceeds the repository path bound");
+        entries.putIfAbsent(
+                child,
+                new RepositoryDirectoryPage.Entry(child, slash < 0 ? kind : RepositoryDirectoryPage.Kind.DIRECTORY));
     }
 
     /** Caller holds the authority lock and supplies a server-resolved snapshot. Does not fetch. */
@@ -221,7 +323,19 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                         revisions
                                 .parseCommit(ObjectId.fromString(commit.orElseThrow()))
                                 .getTree())) {
-            if (entry == null) return absent(workspaceId, commit, path);
+            if (entry == null) {
+                ObjectId tree = revisions
+                        .parseCommit(ObjectId.fromString(commit.orElseThrow()))
+                        .getTree();
+                if (readMediaIndex(repository, tree).files().containsKey(path))
+                    return invalid(
+                            workspaceId,
+                            commit,
+                            path,
+                            "MANAGED_MEDIA",
+                            "path is an indexed media file; fetch its original through the media entrance");
+                return absent(workspaceId, commit, path);
+            }
             FileMode mode = entry.getFileMode(0);
             if (!FileMode.REGULAR_FILE.equals(mode) && !FileMode.EXECUTABLE_FILE.equals(mode))
                 return invalid(workspaceId, commit, path, "NOT_REGULAR_FILE", "path is not a regular file");

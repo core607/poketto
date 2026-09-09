@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,8 +19,69 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepositoryDirectoryReaderTests {
+    private static final RepositoryMediaIndex.Media MEDIA = new RepositoryMediaIndex.Media(
+            java.util.UUID.fromString("ae821d0c-f3e4-4a29-a1d9-ce4e73f75008"), "b".repeat(64), "video/mp4", 32_000_000);
+
     @TempDir
     Path directory;
+
+    @Test
+    void combinesGitAndIndexedMediaWithPinnedPagesAndVirtualDirectories() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var index = new RepositoryMediaIndex(Map.of("private/album/clip.mp4", MEDIA, "public/photo.bin", MEDIA));
+        var files = new LinkedHashMap<String, byte[]>();
+        files.put(RepositoryMediaIndex.PATH, index.encode());
+        files.put("private/album/note.md", bytes("# An album"));
+        var original = fixture.commitRemote(workspace, files);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        var root = reader.listDirectory(workspace, Optional.empty(), "", 0, 2);
+        assertThat(root.entries())
+                .extracting(RepositoryDirectoryPage.Entry::path)
+                .containsExactly(".poketto", "private");
+        assertThat(root.nextOffset()).isEqualTo(2);
+        files.put(RepositoryMediaIndex.PATH, RepositoryMediaIndex.empty().encode());
+        fixture.commitRemote(workspace, files);
+        var remainder = reader.listDirectory(workspace, root.commit(), "", 2, 2);
+        assertThat(remainder.entries()).containsExactly(entry("public", RepositoryDirectoryPage.Kind.DIRECTORY));
+        var virtual = reader.listDirectory(workspace, Optional.of(original.name()), "public", 0, 100);
+        assertThat(virtual.expectedAbsence()).isFalse();
+        assertThat(virtual.entries()).containsExactly(entry("public/photo.bin", RepositoryDirectoryPage.Kind.FILE));
+        var indexedFile = reader.getFile(workspace, Optional.of(original.name()), "public/photo.bin");
+        assertThat(indexedFile.expectedAbsence()).isFalse();
+        assertThat(indexedFile.source()).isEmpty();
+        assertThat(indexedFile.diagnostics())
+                .extracting(io.github.core607.poketto.content.RepositoryDiagnostic::code)
+                .containsExactly("MANAGED_MEDIA");
+        assertThat(reader.listDirectory(workspace, Optional.of(original.name()), "private/album", 0, 100)
+                        .entries())
+                .containsExactly(
+                        entry("private/album/clip.mp4", RepositoryDirectoryPage.Kind.FILE),
+                        entry("private/album/note.md", RepositoryDirectoryPage.Kind.FILE));
+        assertThat(reader.listDirectory(workspace, Optional.empty(), "public", 0, 100)
+                        .expectedAbsence())
+                .isTrue();
+        assertThatThrownBy(
+                        () -> reader.listDirectory(workspace, Optional.of(original.name()), "public/photo.bin", 0, 100))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(Files.exists(fixture.cache(workspace).resolve("private/album/clip.mp4")))
+                .isFalse();
+    }
+
+    @Test
+    void corruptOrCollidingMediaIndexCannotMasqueradeAsAnEmptyDirectory() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        fixture.commitRemote(workspace, Map.of(RepositoryMediaIndex.PATH, bytes("{not JSON}")));
+        assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.empty(), "", 0, 100))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessage("repository media index is invalid");
+        var index = new RepositoryMediaIndex(Map.of("private/album/clip.mp4", MEDIA));
+        fixture.commitRemote(
+                workspace, Map.of(RepositoryMediaIndex.PATH, index.encode(), "private/album", bytes("a file")));
+        assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.empty(), "", 0, 100))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessage("repository media paths collide with Git entries");
+    }
 
     private final WorkspaceId workspace = WorkspaceId.random();
 

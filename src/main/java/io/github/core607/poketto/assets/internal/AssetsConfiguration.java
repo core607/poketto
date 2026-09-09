@@ -2,15 +2,18 @@ package io.github.core607.poketto.assets.internal;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -40,21 +43,13 @@ class AssetsConfiguration {
     }
 
     @Bean
-    AssetService assetService(
-            AuthService auth,
-            RepositoryContentReader content,
-            RepositoryBlobReader blobs,
-            RepositoryMarkdownInspector markdown,
-            PublicContentSnapshots snapshots,
+    Supplier<ManagedBlobStore> managedOriginals(
             @Value("${poketto.data-dir}") Path directory,
-            @Value("${poketto.assets.cache-max-bytes:134217728}") long cacheBytes,
-            @Value("${poketto.assets.max-grants:2048}") int maxGrants,
-            @Value("${poketto.assets.max-file-bytes:134217728}") int maxFileBytes,
-            ImageMemoryAdmission memory) {
+            @Value("${poketto.assets.max-file-bytes:134217728}") int maxFileBytes) {
         if (maxFileBytes < 1 || maxFileBytes > ManagedBlobStore.MAX_FILE_BYTES)
             throw new IllegalArgumentException("managed file upload bound must be between 1 and 128 MiB");
         // Constructing ordinary application services must not require unsupported Windows directory fsync.
-        Supplier<ManagedBlobStore> managed = new Supplier<>() {
+        return new Supplier<>() {
             private ManagedBlobStore initialized;
 
             @Override
@@ -64,6 +59,34 @@ class AssetsConfiguration {
                 return initialized;
             }
         };
+    }
+
+    @Bean
+    RepositoryMediaValidator repositoryMediaValidator(
+            @Qualifier("managedOriginals") Supplier<ManagedBlobStore> originals) {
+        return (workspace, entries) -> {
+            for (var entry : entries) {
+                var stored = originals
+                        .get()
+                        .describe(workspace, new ManagedAssetReference(entry.assetId(), entry.revision()));
+                if (!stored.mediaType().equals(entry.mediaType()) || stored.size() != entry.size())
+                    throw new IllegalArgumentException("media index metadata does not match its workspace original");
+            }
+        };
+    }
+
+    @Bean
+    AssetService assetService(
+            AuthService auth,
+            RepositoryContentReader content,
+            RepositoryBlobReader blobs,
+            RepositoryMarkdownInspector markdown,
+            PublicContentSnapshots snapshots,
+            @Value("${poketto.data-dir}") Path directory,
+            @Value("${poketto.assets.cache-max-bytes:134217728}") long cacheBytes,
+            @Value("${poketto.assets.max-grants:2048}") int maxGrants,
+            @Qualifier("managedOriginals") Supplier<ManagedBlobStore> managed,
+            ImageMemoryAdmission memory) {
         return new AssetService(
                 auth,
                 content,

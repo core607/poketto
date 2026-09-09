@@ -4,10 +4,10 @@ import io.github.core607.poketto.content.ContentLimits;
 import java.util.Locale;
 import java.util.Objects;
 
-final class RepositoryPathRules {
+public final class RepositoryPathRules {
     private RepositoryPathRules() {}
 
-    static String validate(String path) {
+    public static String validate(String path) {
         Objects.requireNonNull(path, "repository path must not be null");
         if (path.isEmpty() || path.length() > ContentLimits.MAX_PATH_LENGTH || path.indexOf('\\') >= 0) {
             throw new IllegalArgumentException("repository path must be a bounded relative path");

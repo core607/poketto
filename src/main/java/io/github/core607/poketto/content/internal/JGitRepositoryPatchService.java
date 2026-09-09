@@ -8,6 +8,8 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PrincipalType;
 import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
@@ -56,18 +58,21 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
     private final Clock clock;
     private final BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> installAcknowledged;
     private final BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> closePublication;
+    private final RepositoryMediaValidator mediaValidator;
 
     JGitRepositoryPatchService(
             RepositoryAuthority authority,
             AuthService auth,
             Clock clock,
             BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> installAcknowledged,
-            BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> closePublication) {
+            BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> closePublication,
+            RepositoryMediaValidator mediaValidator) {
         this.authority = authority;
         this.auth = auth;
         this.clock = clock;
         this.installAcknowledged = installAcknowledged;
         this.closePublication = closePublication;
+        this.mediaValidator = java.util.Objects.requireNonNull(mediaValidator);
     }
 
     @Override
@@ -100,10 +105,20 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                             checkBase(repository, index, patch);
                             Map<String, OriginalEntry> untouched = untouchedEntries(index, patch);
                             RepositoryPublishingPolicy before = policy(repository, index);
+                            RepositoryMediaIndex mediaBefore;
+                            boolean invalidMediaBefore = false;
+                            try {
+                                mediaBefore = mediaIndex(repository, index);
+                            } catch (IllegalArgumentException exception) {
+                                // Repair requires publication authority because prior media eligibility is unknown.
+                                mediaBefore = RepositoryMediaIndex.empty();
+                                invalidMediaBefore = true;
+                            }
                             boolean needsPublish = patch.changes().stream()
                                     .anyMatch(change -> change.path().equals(RepositoryPublishingPolicy.PATH)
                                             || before.state() == RepositoryPublishingPolicy.State.INVALID
                                             || before.permitsPath(change.path()));
+                            needsPublish |= invalidMediaBefore;
                             Map<String, Optional<DocumentRevision>> revisions = new LinkedHashMap<>();
                             DirCacheEditor editor = index.editor();
                             for (RepositoryTextChange change : patch.changes()) {
@@ -114,7 +129,10 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                     byte[] bytes = replacements.get(change.path());
                                     ObjectId blob = inserter.insert(Constants.OBJ_BLOB, bytes);
                                     DirCacheEntry prior = index.getEntry(change.path());
-                                    FileMode mode = prior == null ? FileMode.REGULAR_FILE : prior.getFileMode();
+                                    FileMode mode =
+                                            prior == null || change.path().equals(RepositoryMediaIndex.PATH)
+                                                    ? FileMode.REGULAR_FILE
+                                                    : prior.getFileMode();
                                     editor.add(new DirCacheEditor.PathEdit(change.path()) {
                                         @Override
                                         public void apply(DirCacheEntry entry) {
@@ -131,9 +149,31 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                             requireUntouched(index, untouched);
                             checkCandidate(index, replacements, repository, patch);
                             RepositoryPublishingPolicy after = policy(repository, index);
+                            RepositoryMediaIndex mediaAfter = mediaIndex(repository, index);
+                            if (!mediaAfter.files().isEmpty())
+                                mediaAfter.requireNoGitCollisions(
+                                        java.util.stream.IntStream.range(0, index.getEntryCount())
+                                                .mapToObj(i -> index.getEntry(i).getPathString())
+                                                .toList());
+                            Set<String> mediaPaths =
+                                    new HashSet<>(mediaBefore.files().keySet());
+                            mediaPaths.addAll(mediaAfter.files().keySet());
+                            for (String path : mediaPaths) {
+                                if (!java.util.Objects.equals(
+                                        mediaBefore.files().get(path),
+                                        mediaAfter.files().get(path)))
+                                    needsPublish |= before.permitsPath(path) || after.permitsPath(path);
+                            }
                             needsPublish |=
                                     patch.changes().stream().anyMatch(change -> after.permitsPath(change.path()));
                             if (needsPublish) auth.authorize(principal, workspace, Capability.PUBLISH);
+                            if (patch.changes().stream()
+                                    .anyMatch(change -> change.path().equals(RepositoryMediaIndex.PATH)))
+                                mediaValidator.validate(
+                                        workspace,
+                                        mediaAfter.files().values().stream()
+                                                .distinct()
+                                                .toList());
                             ObjectId tree = index.writeTree(inserter);
                             if (!base.equals(ObjectId.zeroId())
                                     && tree.equals(
@@ -199,7 +239,9 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
             String path = RepositoryPathRules.validate(change.path());
             if (!paths.add(DocumentPathRules.collisionKey(path)))
                 throw new IllegalArgumentException("patch paths collide");
-            if (RepositoryPathRules.reserved(path) && !path.equals(RepositoryPublishingPolicy.PATH)) {
+            if (RepositoryPathRules.reserved(path)
+                    && !path.equals(RepositoryPublishingPolicy.PATH)
+                    && !path.equals(RepositoryMediaIndex.PATH)) {
                 throw new IllegalArgumentException("repository metadata cannot be changed through a text patch");
             }
             String extension = path.substring(path.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
@@ -213,6 +255,8 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                 if (RepositoryPublishingPolicy.parse(bytes).state() == RepositoryPublishingPolicy.State.INVALID) {
                     throw new IllegalArgumentException("replacement publication policy is invalid");
                 }
+            } else if (path.equals(RepositoryMediaIndex.PATH)) {
+                RepositoryMediaIndex.parse(bytes);
             } else if (RepositoryPathRules.markdown(path)) {
                 new RepositoryMarkdownParser().parse(path, change.content().orElseThrow());
             }
@@ -368,5 +412,16 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
         ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);
         if (blob.getSize() > RepositoryPublishingPolicy.MAX_BYTES) return RepositoryPublishingPolicy.parse(null);
         return RepositoryPublishingPolicy.parse(blob.getBytes(RepositoryPublishingPolicy.MAX_BYTES));
+    }
+
+    private static RepositoryMediaIndex mediaIndex(Repository repository, DirCache index) throws IOException {
+        DirCacheEntry entry = index.getEntry(RepositoryMediaIndex.PATH);
+        if (entry == null) return RepositoryMediaIndex.empty();
+        if (!FileMode.REGULAR_FILE.equals(entry.getFileMode()))
+            throw new IllegalArgumentException("repository media index must be a regular file");
+        ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);
+        if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES)
+            throw new IllegalArgumentException("repository media index exceeds its byte limit");
+        return RepositoryMediaIndex.parse(blob.getBytes(RepositoryMediaIndex.MAX_BYTES));
     }
 }

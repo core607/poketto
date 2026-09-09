@@ -37,6 +37,30 @@ class ManagedAssetDeliveryTests {
     Path directory;
 
     @Test
+    void indexValidationResolvesOnlyMatchingImmutableMetadataInItsWorkspace() {
+        var store = ManagedBlobStore.local(directory.resolve("originals"));
+        var workspace = WorkspaceId.random();
+        var asset = store.uploadFile(
+                workspace, "index-validation-01", "application/pdf", new ByteArrayInputStream(new byte[] {1, 2, 3}));
+        var entry = new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
+        var validator = new AssetsConfiguration().repositoryMediaValidator(() -> store);
+        validator.validate(workspace, List.of(entry));
+        assertThatThrownBy(() -> validator.validate(WorkspaceId.random(), List.of(entry)))
+                .isInstanceOfSatisfying(
+                        AssetStorageException.class,
+                        error -> assertThat(error.reason()).isEqualTo(AssetStorageException.Reason.NOT_FOUND));
+        var wrongType = new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                entry.assetId(), entry.revision(), "text/html", entry.size());
+        assertThatThrownBy(() -> validator.validate(workspace, List.of(wrongType)))
+                .isInstanceOf(IllegalArgumentException.class);
+        var wrongSize = new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                entry.assetId(), entry.revision(), entry.mediaType(), entry.size() + 1);
+        assertThatThrownBy(() -> validator.validate(workspace, List.of(wrongSize)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void publishedManagedReferenceReadsExactDurableOriginalWithoutGitMutation() throws Exception {
         Instant now = Instant.parse("2026-09-05T00:00:00Z");
         WorkspaceId workspace = WorkspaceId.random();

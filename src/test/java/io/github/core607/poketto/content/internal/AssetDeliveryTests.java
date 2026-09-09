@@ -612,7 +612,12 @@ class AssetDeliveryTests {
                 .images()
                 .get("image.png"));
         var patches = new JGitRepositoryPatchService(
-                fixture.authority(), auth, clock, snapshots::installAcknowledged, snapshots::closePublication);
+                fixture.authority(),
+                auth,
+                clock,
+                snapshots::installAcknowledged,
+                snapshots::closePublication,
+                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
         var change = new RepositoryTextChange(
                 RepositoryPublishingPolicy.PATH,
                 false,
@@ -655,7 +660,12 @@ class AssetDeliveryTests {
         snapshots.refresh(workspace);
         service(fixture, snapshots);
         var patches = new JGitRepositoryPatchService(
-                fixture.authority(), auth, clock, snapshots::installAcknowledged, snapshots::closePublication);
+                fixture.authority(),
+                auth,
+                clock,
+                snapshots::installAcknowledged,
+                snapshots::closePublication,
+                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
         Path blockedMarker = fixture.cache(workspace).resolve(".git/poketto-public-snapshot.tmp");
         Files.createDirectory(blockedMarker);
         var change = new RepositoryTextChange(

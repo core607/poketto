@@ -4,7 +4,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.List;
 import java.util.Optional;
 
-/** Immediate committed children in Git tree order; entries do not imply text or image readability. */
+/** Immediate committed Git and indexed-media children in Git tree order; entries do not imply readability. */
 public record RepositoryDirectoryPage(
         WorkspaceId workspaceId,
         Optional<String> commit,
