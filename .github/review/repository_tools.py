@@ -156,7 +156,9 @@ class RepositoryTools:
                     if len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
                         if not result["lines"]:
                             # A generated/minified line must not consume the entire context.
-                            raw = lines[i].encode("utf-8")[:TOOL_BYTES // 4]
+                            # JSON can expand one control byte to six bytes; reserve envelope fields too.
+                            prefix_bytes = max(0, (TOOL_BYTES - len(encode(result)) - 128) // 6)
+                            raw = lines[i].encode("utf-8")[:prefix_bytes]
                             item = {"line": i + 1, "text": raw.decode("utf-8", errors="ignore"), "truncated": True}
                             result["lines"].append(item)
                         break

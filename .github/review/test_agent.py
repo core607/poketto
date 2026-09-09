@@ -115,11 +115,13 @@ class AgentTests(unittest.TestCase):
         trace = json.loads((self.root / "probe-operations.json").read_bytes())
         self.assertEqual(800, trace[0]["prompt_cache_hit_tokens"])
         self.assertEqual(200, trace[0]["prompt_cache_miss_tokens"])
-        with patch.object(self.tools, "blob", return_value="猫" * 20000 + "\nsecond line\n"):
-            result = self.call("read", path="consumer.py", limit=1)
-        self.assertTrue(result["lines"][0]["truncated"])
-        self.assertEqual(1, result["next_offset"])
-        self.assertLessEqual(len(review.encoded(result)), TOOL_BYTES)
+        for character in ("猫", "\x01", "\\", '"'):
+            with patch.object(self.tools, "blob", return_value=character * 30000 + "\nsecond line\n"):
+                result = self.call("read", path="consumer.py", limit=1)
+            self.assertTrue(result["lines"][0]["truncated"])
+            self.assertTrue(result["lines"][0]["text"])
+            self.assertEqual(1, result["next_offset"])
+            self.assertLessEqual(len(review.encoded(result)), TOOL_BYTES)
 
     def test_source_line_numbers_follow_git_lf_and_blob_cache_reuses_objects(self):
         text = "one\rtwo\fthree\u2028four\nsecond\n"
