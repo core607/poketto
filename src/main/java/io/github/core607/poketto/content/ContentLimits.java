@@ -12,13 +12,13 @@ public final class ContentLimits {
     /** Largest frontmatter section between the delimiters, measured in UTF-8 bytes. */
     public static final int MAX_FRONTMATTER_BYTES = 16 * 1024;
 
-    /** Longest title after trimming, in Unicode code points. */
-    public static final int MAX_TITLE_LENGTH = 200;
+    /** Longest title after trimming, in Unicode code points; long CJK titles need the headroom. */
+    public static final int MAX_TITLE_LENGTH = 256;
 
     public static final int MAX_TAGS = 32;
 
     /** Longest tag after trimming, in Unicode code points. */
-    public static final int MAX_TAG_LENGTH = 64;
+    public static final int MAX_TAG_LENGTH = 80;
 
     /** Longest managed repository path, in characters. */
     public static final int MAX_PATH_LENGTH = 255;
