@@ -84,4 +84,22 @@ class RepositoryMediaIndexTests {
         }
         index.requireNoGitCollisions(List.of("private/album/note.md", RepositoryMediaIndex.PATH));
     }
+
+    @Test
+    void preservesAnIndexThatFitsCompactJsonWhenPrettyPrintingWouldExceedTheBound() {
+        Map<String, RepositoryMediaIndex.Media> entries = new LinkedHashMap<>();
+        for (int i = 0; i < 4_500; i++) entries.put("private/file-" + i + ".pdf", MEDIA);
+        var index = new RepositoryMediaIndex(entries);
+        byte[] encoded = index.encode();
+        assertThat(encoded.length).isLessThanOrEqualTo(RepositoryMediaIndex.MAX_BYTES);
+        assertThat(new String(encoded, StandardCharsets.UTF_8)).doesNotContain("\n");
+        assertThat(RepositoryMediaIndex.parse(encoded)).isEqualTo(index);
+    }
+
+    @Test
+    void followsTheRepositoryCaseFoldingRuleForExpandedUnicodeLetters() {
+        assertThatThrownBy(() ->
+                        new RepositoryMediaIndex(Map.of("private/straße.pdf", MEDIA, "private/strasse.pdf", MEDIA)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

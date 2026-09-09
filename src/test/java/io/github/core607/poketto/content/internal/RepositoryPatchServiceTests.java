@@ -52,6 +52,60 @@ class RepositoryPatchServiceTests {
             mock(io.github.core607.poketto.content.RepositoryMediaValidator.class);
 
     @Test
+    void corruptIndexAllowsInPlacePrivateTextMaintenanceButRepairRequiresPublish() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        byte[] broken = "{broken".getBytes(StandardCharsets.UTF_8);
+        byte[] note = "Original".getBytes(StandardCharsets.UTF_8);
+        var base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryMediaIndex.PATH,
+                        broken,
+                        "private/note.md",
+                        note,
+                        RepositoryPublishingPolicy.PATH,
+                        "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8)));
+        var service = service(fixture, (id, snapshot) -> {});
+        doThrow(new IllegalStateException("publish denied"))
+                .when(auth)
+                .authorize(principal, workspace, Capability.PUBLISH);
+        var result = service.apply(
+                principal,
+                workspace,
+                new RepositoryPatch(
+                        Optional.of(base.name()),
+                        List.of(new RepositoryTextChange(
+                                "private/note.md",
+                                false,
+                                Optional.of(DocumentRevision.sha256(note)),
+                                Optional.of("Updated")))));
+        verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), RepositoryMediaIndex.PATH)
+                        .source())
+                .contains("{broken");
+        var repair = new RepositoryPatch(
+                Optional.of(result.commit()),
+                List.of(new RepositoryTextChange(
+                        RepositoryMediaIndex.PATH,
+                        false,
+                        Optional.of(DocumentRevision.sha256(broken)),
+                        Optional.of(new String(RepositoryMediaIndex.empty().encode(), StandardCharsets.UTF_8)))));
+        assertThatThrownBy(() -> service.apply(principal, workspace, repair)).hasMessage("publish denied");
+        var create = new RepositoryPatch(
+                Optional.of(result.commit()),
+                List.of(new RepositoryTextChange("private/new.md", true, Optional.empty(), Optional.of("New"))));
+        assertThatThrownBy(() -> service.apply(principal, workspace, create))
+                .hasMessage("repair the media index before structural or publication changes");
+        org.mockito.Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
+        var repaired = service.apply(principal, workspace, repair);
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(repaired.commit());
+        assertThat(reader.listDirectory(workspace, Optional.empty(), "private", 0, 100)
+                        .entries())
+                .hasSize(1);
+    }
+
+    @Test
     void mediaIndexAndTextSaveTogetherAndPublicMediaChangesRequirePublish() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         byte[] initialIndex = RepositoryMediaIndex.empty().encode();

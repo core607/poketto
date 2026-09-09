@@ -118,7 +118,18 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                                     .anyMatch(change -> change.path().equals(RepositoryPublishingPolicy.PATH)
                                             || before.state() == RepositoryPublishingPolicy.State.INVALID
                                             || before.permitsPath(change.path()));
-                            needsPublish |= invalidMediaBefore;
+                            boolean changesMedia = patch.changes().stream()
+                                    .anyMatch(change -> change.path().equals(RepositoryMediaIndex.PATH));
+                            boolean preserveInvalidMedia = invalidMediaBefore && !changesMedia;
+                            if (preserveInvalidMedia
+                                    && (needsPublish
+                                            || patch.changes().stream()
+                                                    .anyMatch(change -> change.expectedAbsence()
+                                                            || change.content().isEmpty()
+                                                            || RepositoryPathRules.reserved(change.path()))))
+                                throw new IllegalArgumentException(
+                                        "repair the media index before structural or publication changes");
+                            needsPublish |= invalidMediaBefore && changesMedia;
                             Map<String, Optional<DocumentRevision>> revisions = new LinkedHashMap<>();
                             DirCacheEditor editor = index.editor();
                             for (RepositoryTextChange change : patch.changes()) {
@@ -149,7 +160,8 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                             requireUntouched(index, untouched);
                             checkCandidate(index, replacements, repository, patch);
                             RepositoryPublishingPolicy after = policy(repository, index);
-                            RepositoryMediaIndex mediaAfter = mediaIndex(repository, index);
+                            RepositoryMediaIndex mediaAfter =
+                                    preserveInvalidMedia ? RepositoryMediaIndex.empty() : mediaIndex(repository, index);
                             if (!mediaAfter.files().isEmpty())
                                 mediaAfter.requireNoGitCollisions(
                                         java.util.stream.IntStream.range(0, index.getEntryCount())
@@ -167,8 +179,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService {
                             needsPublish |=
                                     patch.changes().stream().anyMatch(change -> after.permitsPath(change.path()));
                             if (needsPublish) auth.authorize(principal, workspace, Capability.PUBLISH);
-                            if (patch.changes().stream()
-                                    .anyMatch(change -> change.path().equals(RepositoryMediaIndex.PATH)))
+                            if (changesMedia)
                                 mediaValidator.validate(
                                         workspace,
                                         mediaAfter.files().values().stream()

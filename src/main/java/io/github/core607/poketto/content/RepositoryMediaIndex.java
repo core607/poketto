@@ -123,6 +123,7 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
         });
         byte[] bytes = (JSON.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n")
                 .getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > MAX_BYTES) bytes = JSON.writeValueAsBytes(root);
         if (bytes.length > MAX_BYTES) throw invalid();
         return bytes;
     }
