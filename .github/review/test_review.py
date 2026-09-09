@@ -306,6 +306,19 @@ class ReviewTests(unittest.TestCase):
             with patch.object(provider.opener, "open", return_value=io.BytesIO(body)):
                 with self.assertRaises(review.Incomplete):
                     provider.review(b"{}")
+
+    def test_output_budget_and_failure_shape_preserve_diagnostics_without_model_text(self):
+        request = json.loads(review.payload("fixture", "rules", self.revision, "title", "diff"))
+        self.assertEqual(128000, request["max_tokens"])
+        provider = review.Provider("https://example.invalid", "fixture-key", review.Budget())
+        raw = review.encoded({"choices": [{"finish_reason": "length", "message": {
+            "content": "private output", "reasoning_content": "private reasoning"}}]})
+        with patch.object(provider.opener, "open", return_value=io.BytesIO(raw)):
+            with self.assertRaises(review.Incomplete) as failure:
+                provider.review(b"{}")
+        self.assertIn("finish=length; visible_characters=14", str(failure.exception))
+        self.assertNotIn("private output", str(failure.exception))
+        self.assertNotIn("private reasoning", str(failure.exception))
         with patch.object(provider.opener, "open", side_effect=urllib.error.URLError("fixture")):
             with self.assertRaisesRegex(review.Incomplete, "endpoint failed"):
                 provider.review(b"{}")
