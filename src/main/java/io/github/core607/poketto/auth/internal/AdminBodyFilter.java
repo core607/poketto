@@ -85,6 +85,7 @@ final class AdminBodyFilter extends OncePerRequestFilter {
         if (supplied == null) return false;
         try {
             var type = MediaType.parseMediaType(supplied);
+            if (path.equals("/api/admin/media")) return MediaType.APPLICATION_OCTET_STREAM.equals(type);
             return path.equals("/api/admin/assets")
                     ? MediaType.MULTIPART_FORM_DATA.includes(type)
                     : MediaType.APPLICATION_JSON.includes(type)

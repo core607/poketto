@@ -14,6 +14,8 @@ import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -108,6 +110,16 @@ public final class AssetService {
             AssetSource.Repository repositorySource = (AssetSource.Repository) source;
             String commit =
                     blobs.selectCommit(workspace, repositorySource.commit()).orElseThrow(AssetService::notFound);
+            RepositoryMediaSnapshot catalog = blobs.media(workspace, commit);
+            var indexed = catalog.index().files().get(repositorySource.path());
+            if (indexed != null)
+                return bytes(
+                        workspace,
+                        new Indexed(
+                                commit,
+                                repositorySource.path(),
+                                indexed,
+                                catalog.publicPaths().contains(repositorySource.path())));
             RepositoryBlob blob =
                     blobs.find(workspace, commit, repositorySource.path()).orElseThrow(AssetService::notFound);
             return bytes(workspace, new Git(blob));
@@ -228,9 +240,23 @@ public final class AssetService {
 
     public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
         Grant grant = grant(workspace, token, "");
+        requireCurrentIndexedPublication(grant);
         AssetBytes image = bytes(workspace, grant.key().target());
         grant(workspace, token, "");
+        requireCurrentIndexedPublication(grant);
         return image;
+    }
+
+    private void requireCurrentIndexedPublication(Grant grant) {
+        if (!(grant.key().target() instanceof Indexed indexed)) return;
+        snapshots.withCurrent(grant.key().workspace(), snapshot -> {
+            if (!indexed.publicPath()
+                    || !snapshot.commit().equals(Optional.of(grant.key().commit()))
+                    || snapshot.articles().stream()
+                            .noneMatch(article ->
+                                    article.repositoryPath().equals(grant.key().page()))) throw notFound();
+            return null;
+        });
     }
 
     /** An opaque private URL never substitutes for the current identity or current workspace authority. */
@@ -271,6 +297,20 @@ public final class AssetService {
             Map<String, String> routes,
             boolean publicOnly) {
         var destinations = MarkdownDestinations.parse(body);
+        RepositoryMediaSnapshot media = null;
+        if (commit != null
+                && (folder
+                        || destinations.links().stream()
+                                .anyMatch(authored -> MarkdownDestinations.path(path, authored)
+                                        .isPresent())
+                        || destinations.images().stream().anyMatch(authored -> !authored.startsWith("managed:")))) {
+            try {
+                media = java.util.Objects.requireNonNull(blobs.media(workspace, commit));
+            } catch (ContentRepositoryException unavailable) {
+                // Invalid media metadata must not make ordinary article text unavailable.
+            }
+        }
+        final RepositoryMediaSnapshot catalog = media;
         Map<String, String> links = new LinkedHashMap<>();
         for (String authored : destinations.links()) {
             if (authored.startsWith("#")
@@ -284,6 +324,12 @@ public final class AssetService {
                 if (selected == null) selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
                 if (selected == null) selected = routes.get(target + ".md");
                 if (selected == null && publicOnly && routes.containsValue("/" + target)) selected = "/" + target;
+                if (selected == null
+                        && catalog != null
+                        && catalog.index().files().containsKey(target)
+                        && (!publicOnly || catalog.publicPaths().contains(target))) {
+                    selected = downloadUrl(publicOnly, commit, routes.get(path), target);
+                }
                 if (selected != null) links.put(authored, selected + fragment(authored));
             });
         }
@@ -295,10 +341,11 @@ public final class AssetService {
         long[] bytes = {0};
         for (String authored : destinations.images()) {
             try {
-                Optional<Target> selected = target(workspace, commit, path, authored);
+                Optional<Target> selected = target(workspace, commit, path, authored, catalog);
                 if (selected.isEmpty()) continue;
                 Target target = selected.orElseThrow();
                 if (target instanceof Git git && publicOnly && !git.blob().publicPath()) continue;
+                if (target instanceof Indexed indexed && publicOnly && !indexed.publicPath()) continue;
                 if (prepareImage(workspace, target, resolved, bytes)) images.put(authored, target);
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
                 // An unavailable image retains its Markdown placeholder, without an authored URL fallback.
@@ -306,9 +353,11 @@ public final class AssetService {
         }
         List<PreparedGallery> gallery = new ArrayList<>();
         var galleryStatus = ResolvedMedia.GalleryStatus.COMPLETE;
+        int galleryCandidates = 0;
         if (folder && commit != null) {
             try {
                 var siblings = blobs.siblings(workspace, commit, path, 128, publicOnly, inlinePaths);
+                galleryCandidates = siblings.partial() ? 128 : siblings.items().size();
                 if (siblings.partial()) galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
                 for (RepositoryBlob blob : siblings.items()) {
                     if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) continue;
@@ -320,6 +369,31 @@ public final class AssetService {
                 }
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
                 galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
+            }
+            if (catalog == null) galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
+            else {
+                String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
+                int candidates = galleryCandidates;
+                for (var entry : catalog.index().files().entrySet()) {
+                    String name = entry.getKey();
+                    if (!name.startsWith(prefix)
+                            || name.substring(prefix.length()).contains("/")
+                            || inlinePaths.contains(name)
+                            || !entry.getValue().mediaType().startsWith("image/")
+                            || (publicOnly && !catalog.publicPaths().contains(name))) continue;
+                    if (candidates++ >= 128) {
+                        galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                        break;
+                    }
+                    Target target = new Indexed(
+                            commit,
+                            name,
+                            entry.getValue(),
+                            catalog.publicPaths().contains(name));
+                    if (prepareImage(workspace, target, resolved, bytes))
+                        gallery.add(new PreparedGallery(target, name.substring(prefix.length())));
+                    else galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                }
             }
         }
         return new PreparedMedia(body, commit, links, images, gallery, galleryStatus);
@@ -396,7 +470,8 @@ public final class AssetService {
         return url;
     }
 
-    private Optional<Target> target(WorkspaceId workspace, String commit, String path, String authored) {
+    private Optional<Target> target(
+            WorkspaceId workspace, String commit, String path, String authored, RepositoryMediaSnapshot catalog) {
         if (authored.startsWith("managed:")) {
             String[] fields = authored.split(":", -1);
             if (fields.length != 3) return Optional.empty();
@@ -408,14 +483,31 @@ public final class AssetService {
                 return Optional.empty();
             }
         }
-        if (commit == null) return Optional.empty();
+        if (commit == null || catalog == null) return Optional.empty();
         return MarkdownDestinations.path(path, authored)
                 .filter(value -> !value.isEmpty())
-                .flatMap(value -> blobs.find(workspace, commit, value))
-                .map(Git::new);
+                .flatMap(value -> {
+                    var media = catalog.index().files().get(value);
+                    if (media != null)
+                        return Optional.of(new Indexed(
+                                commit, value, media, catalog.publicPaths().contains(value)));
+                    return blobs.find(workspace, commit, value).map(Git::new).map(target -> (Target) target);
+                });
     }
 
     private AssetBytes bytes(WorkspaceId workspace, Target target) {
+        if (target instanceof Indexed value) {
+            var entry = value.media();
+            ManagedImage image =
+                    managed.get().read(workspace, new ManagedAssetReference(entry.assetId(), entry.revision()));
+            if (image.asset().size() != entry.size()
+                    || !image.asset().mediaType().equals(entry.mediaType())) throw notFound();
+            return new AssetBytes(
+                    new AssetSource.Repository(Optional.of(value.commit()), value.path()),
+                    entry.revision(),
+                    entry.mediaType(),
+                    image.bytes());
+        }
         if (target instanceof Managed value) {
             ManagedImage image = managed.get().read(workspace, value.reference());
             return new AssetBytes(
@@ -536,7 +628,19 @@ public final class AssetService {
         return new AssetStorageException(AssetStorageException.Reason.NOT_FOUND);
     }
 
-    private sealed interface Target permits Managed, Git {}
+    private sealed interface Target permits Managed, Git, Indexed {}
+
+    private record Indexed(String commit, String path, RepositoryMediaIndex.Media media, boolean publicPath)
+            implements Target {}
+
+    private static String downloadUrl(boolean publicOnly, String commit, String route, String path) {
+        String prefix = publicOnly ? "/api/public/media?" : "/api/admin/media?";
+        return prefix + "commit=" + commit + "&path=" + query(path) + (publicOnly ? "&route=" + query(route) : "");
+    }
+
+    private static String query(String value) {
+        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+    }
 
     private record Managed(ManagedAssetReference reference) implements Target {}
 

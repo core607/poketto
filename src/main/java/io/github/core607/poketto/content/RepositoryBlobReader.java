@@ -15,6 +15,9 @@ public interface RepositoryBlobReader {
     /** These cache-only methods require a server-selected commit, including a still-live earlier snapshot. */
     Optional<RepositoryBlob> find(WorkspaceId workspace, String commit, String path);
 
+    /** Cache-only catalog for a server-selected exact commit; includes private metadata. Never return it to public clients. */
+    RepositoryMediaSnapshot media(WorkspaceId workspace, String commit);
+
     /**
      * Non-recursive Java filename prefix. Normalized inline paths and public-policy exclusions do
      * not consume the 1–128 candidate limit. Oversized candidates mark partial without replacement;
