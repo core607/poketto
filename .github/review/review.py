@@ -236,7 +236,7 @@ class Provider:
             if choice["finish_reason"] != "stop" or not isinstance(text, str) or not text.strip():
                 reason = choice.get("finish_reason")
                 # Retain only bounded shape diagnostics; never echo provider text or reasoning.
-                reason = reason if reason in ("stop", "length", "tool_calls", "content_filter") else "unknown"
+                reason = reason if isinstance(reason, str) and re.fullmatch(r"[a-z_]{1,48}", reason) and reason != self.key else "unknown"
                 size = len(text) if isinstance(text, str) else 0
                 raise Incomplete(f"The model review is incomplete: finish={reason}; visible_characters={size}.")
         except (KeyError, IndexError, TypeError, ValueError):

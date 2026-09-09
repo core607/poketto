@@ -307,6 +307,10 @@ class ReviewTests(unittest.TestCase):
                 with self.assertRaises(review.Incomplete):
                     provider.review(b"{}")
 
+        with patch.object(provider.opener, "open", side_effect=urllib.error.URLError("fixture")):
+            with self.assertRaisesRegex(review.Incomplete, "endpoint failed"):
+                provider.review(b"{}")
+
     def test_output_budget_and_failure_shape_preserve_diagnostics_without_model_text(self):
         request = json.loads(review.payload("fixture", "rules", self.revision, "title", "diff"))
         self.assertEqual(128000, request["max_tokens"])
@@ -319,9 +323,6 @@ class ReviewTests(unittest.TestCase):
         self.assertIn("finish=length; visible_characters=14", str(failure.exception))
         self.assertNotIn("private output", str(failure.exception))
         self.assertNotIn("private reasoning", str(failure.exception))
-        with patch.object(provider.opener, "open", side_effect=urllib.error.URLError("fixture")):
-            with self.assertRaisesRegex(review.Incomplete, "endpoint failed"):
-                provider.review(b"{}")
 
     def test_provider_uses_bounded_request_and_does_not_follow_redirects(self):
         provider = review.Provider("https://example.invalid", "fixture", review.Budget())
