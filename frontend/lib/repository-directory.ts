@@ -22,8 +22,8 @@ export async function readDirectory(
 
 export function movablePath(path: string) {
   return (
-    path !== "public" &&
-    path !== "private" &&
+    path.toLowerCase() !== "public" &&
+    path.toLowerCase() !== "private" &&
     !path.split("/").some((part) => part.toLowerCase() === ".poketto")
   );
 }

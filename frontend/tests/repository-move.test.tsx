@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
+import { movablePath } from "../lib/repository-directory";
+
+test("move controls preserve case-insensitive reserved roots and allow their children", () => {
+  for (const path of [
+    "public",
+    "Public",
+    "private",
+    "Private",
+    ".POKETTO/assets.json",
+  ])
+    assert.equal(movablePath(path), false);
+  for (const path of ["Public/article.md", "Private/note.md", "notes/Public"])
+    assert.equal(movablePath(path), true);
+});
 
 test("folder selection cancels without writing and moves via the host service before rereading repaired text", async (t) => {
   const window = new Window({
