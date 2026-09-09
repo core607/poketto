@@ -12,6 +12,9 @@ from repository_tools import RepositoryTools, TOOL_BYTES
 
 class AgentTests(unittest.TestCase):
     def setUp(self):
+        clock = patch.object(review, "beijing_now", return_value=review.datetime(2026, 9, 9, 20, tzinfo=review.BEIJING))
+        clock.start()
+        self.addCleanup(clock.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -76,10 +79,12 @@ class AgentTests(unittest.TestCase):
         requests = [json.loads(call.args[0].data) for call in opener.call_args_list]
         self.assertEqual(128000, requests[0]["max_tokens"])
         self.assertEqual(128000, requests[1]["max_tokens"])
-        self.assertEqual("PRIVATE_REASONING_FIXTURE", requests[1]["messages"][-3]["reasoning_content"])
-        self.assertIn("head implementation", requests[1]["messages"][-2]["content"])
-        self.assertEqual("read_1", requests[1]["messages"][-2]["tool_call_id"])
-        self.assertEqual(requests[0]["messages"], requests[1]["messages"][:2])
+        assistant = next(item for item in requests[1]["messages"] if item["role"] == "assistant")
+        tool = next(item for item in requests[1]["messages"] if item["role"] == "tool")
+        self.assertEqual("PRIVATE_REASONING_FIXTURE", assistant["reasoning_content"])
+        self.assertIn("head implementation", tool["content"])
+        self.assertEqual("read_1", tool["tool_call_id"])
+        self.assertEqual(requests[0]["messages"], requests[1]["messages"][:len(requests[0]["messages"])])
         self.assertEqual(requests[0]["tools"], requests[1]["tools"])
         trace = (self.root / "probe-operations.json").read_text()
         self.assertNotIn("PRIVATE_REASONING_FIXTURE", trace)
@@ -148,7 +153,7 @@ class AgentTests(unittest.TestCase):
                 tool.assert_called_once()
                 final = json.loads(opener.call_args.args[0].data)
                 self.assertEqual("none", final["tool_choice"])
-                self.assertIn("Repeated tool request", final["messages"][-2]["content"])
+                self.assertIn("Repeated tool request", final["messages"][-3]["content"])
                 self.assertEqual(review.FINAL_INSTRUCTION, final["messages"][-1]["content"])
 
     def test_repository_script_is_returned_as_text_without_executing_its_side_effect(self):
@@ -157,7 +162,7 @@ class AgentTests(unittest.TestCase):
             self.response({"content": "Inspected script as data."})])
         self.assertEqual("Inspected script as data.", result)
         followup = json.loads(opener.call_args.args[0].data)
-        self.assertIn("write_text", followup["messages"][-2]["content"])
+        self.assertIn("write_text", followup["messages"][-3]["content"])
         self.assertFalse(self.marker.exists())
 
     def test_distinct_malformed_arguments_can_be_corrected_without_false_repeat_shutdown(self):
@@ -173,7 +178,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual("Inspected valid source.", result)
         second = json.loads(opener.call_args_list[1].args[0].data)
         self.assertNotEqual("none", second.get("tool_choice"))
-        self.assertTrue(all("not valid JSON" in item["content"] for item in second["messages"][-2:]))
+        self.assertTrue(all("not valid JSON" in item["content"] for item in second["messages"] if item["role"] == "tool"))
 
     def test_deep_argument_json_returns_tool_error_instead_of_crashing(self):
         message = self.tool_message()
@@ -182,7 +187,7 @@ class AgentTests(unittest.TestCase):
             self.response(message, "tool_calls"), self.response({"content": "Unable to verify that request."})])
         self.assertEqual("Unable to verify that request.", result)
         last = json.loads(opener.call_args.args[0].data)
-        self.assertIn("not valid JSON", last["messages"][-2]["content"])
+        self.assertIn("not valid JSON", last["messages"][-3]["content"])
 
     def test_cached_unreadable_blob_does_not_accumulate_exception_tracebacks(self):
         import traceback
@@ -268,7 +273,8 @@ class AgentTests(unittest.TestCase):
             result = review.AgentReview(self.provider, self.tools, lambda: None, self.root, "last", 1).review(body)
         self.assertEqual("Final summary.", result)
         trace = json.loads((self.root / "last-operations.json").read_bytes())
-        self.assertEqual(review.INPUT_TOKENS, trace[0]["input_token_upper_bound"])
+        self.assertLessEqual(trace[0]["input_token_upper_bound"], review.INPUT_TOKENS)
+        self.assertGreater(trace[0]["input_token_upper_bound"], review.INPUT_TOKENS - review.BUDGET_MESSAGE_BYTES)
 
     def test_non_utf8_git_path_does_not_hide_valid_source(self):
         blob = subprocess.check_output(["git", "hash-object", "-w", "--stdin"], cwd=self.repo,
