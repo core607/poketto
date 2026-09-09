@@ -88,6 +88,10 @@ class ReviewTests(unittest.TestCase):
         cls.fixture.cleanup()
 
     def setUp(self):
+        self.now = review.datetime(2026, 9, 9, 20, tzinfo=review.BEIJING)
+        clock = patch.object(review, "beijing_now", side_effect=lambda: self.now)
+        clock.start()
+        self.addCleanup(clock.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.output = Path(self.temp.name)
@@ -220,6 +224,94 @@ class ReviewTests(unittest.TestCase):
             self.assertEqual(expected, manifest["max_turns"])
             self.assertEqual("complete", manifest["state"])
             self.assertEqual(1, len(self.github.posts))
+
+    def use_loop_provider(self, change_time=None):
+        def complete(body, record=None):
+            self.provider.requests.append(body)
+            number = len(self.provider.requests)
+            if change_time:
+                change_time(number)
+            request = json.loads(body)
+            usage = {"prompt_tokens": 1000, "completion_tokens": 10}
+            if request.get("tool_choice") == "none":
+                return {"role": "assistant", "content": f"Final observed findings {number}."}, usage
+            return {"role": "assistant", "content": "", "tool_calls": [{
+                "id": f"read_{number}", "type": "function", "function": {
+                    "name": "repository", "arguments": json.dumps({"action": "read", "revision": "head",
+                    "path": "large.txt", "offset": number, "limit": 1})}}]}, usage
+        self.provider.complete = complete
+
+    def test_peak_small_pr_uses_three_total_calls_with_append_only_budget_hints(self):
+        self.now = self.now.replace(hour=16)
+        self.use_loop_provider()
+        data = b"diff --git a/base.txt b/base.txt\n@@ -1 +1 @@\n-base\n+changed\n"
+        self.run_review(data)
+        requests = [json.loads(body) for body in self.provider.requests]
+        self.assertEqual(3, len(requests))
+        self.assertIn(data.decode(), requests[0]["messages"][1]["content"])
+        for index, request in enumerate(requests):
+            hint = request["messages"][-2 if index == 2 else -1]["content"]
+            self.assertIn(f"本阶段剩余最多 {3 - index} 轮", hint)
+            self.assertIn("峰价", hint)
+            if index:
+                prefix = requests[index - 1]["messages"]
+                self.assertEqual(prefix, request["messages"][:len(prefix)])
+        self.assertEqual("none", requests[-1]["tool_choice"])
+        self.assertEqual(review.FINAL_INSTRUCTION, requests[-1]["messages"][-1]["content"])
+        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3."}], self.github.posts)
+        manifest = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual(3, manifest["max_turns"])
+        self.assertEqual(3, manifest["used_turns"])
+        self.assertEqual("complete", manifest["state"])
+        self.assertEqual("cross-contract", manifest["parts"][0]["review_stage"])
+        self.assertEqual((self.output / "cross-contract.md").read_bytes(), (self.output / "part-01.md").read_bytes())
+        trace = [json.loads(line) for line in (self.output / "agent-trace.jsonl").read_text().split("\n") if line]
+        budgets = [event for event in trace if event["event"] == "round_budget"]
+        self.assertEqual([3, 2, 1], [event["remaining_turns"] for event in budgets])
+
+    def test_peak_can_finish_early_and_large_diff_never_silently_loses_coverage(self):
+        self.now = self.now.replace(hour=10)
+        self.run_review(b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+x\n")
+        self.assertEqual(1, len(self.provider.requests))
+        self.github.posts.clear()
+        self.provider.requests.clear()
+        with self.assertRaisesRegex(review.Incomplete, "more calls than the PR turn budget"):
+            self.run_review()
+        self.assertEqual([], self.provider.requests)
+        self.assertEqual([], self.github.posts)
+        self.assertEqual("incomplete", json.loads((self.output / "manifest.json").read_bytes())["state"])
+
+    def test_two_peak_diff_parts_reserve_the_third_call_for_the_only_posted_summary(self):
+        self.now = self.now.replace(hour=10)
+        self.use_loop_provider()
+        data = b"".join(b"diff --git a/" + name + b" b/" + name + b"\n@@ -0,0 +1 @@\n"
+                        + b"+fixture\n" * 22000 for name in (b"one", b"two"))
+        self.run_review(data)
+        self.assertEqual(3, len(self.provider.requests))
+        self.assertTrue(all(json.loads(body)["tool_choice"] == "none" for body in self.provider.requests))
+        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3."}], self.github.posts)
+        manifest = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual(data, b"".join((self.output / f"part-{part['part']:02d}.diff").read_bytes()
+                                       for part in manifest["parts"]))
+
+    def test_entering_peak_mid_review_allows_only_three_more_calls_including_summary(self):
+        self.now = self.now.replace(hour=13, minute=59)
+        self.use_loop_provider(lambda number: setattr(self, "now", self.now.replace(hour=14)) if number == 5 else None)
+        data = b"".join(f"diff --git a/file{i} b/file{i}\n@@ -0,0 +1 @@\n+x\n".encode() for i in range(12))
+        self.run_review(data)
+        self.assertEqual(8, len(self.provider.requests))
+        manifest = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual(8, manifest["max_turns"])
+        self.assertEqual(8, manifest["used_turns"])
+        self.assertEqual("complete", manifest["state"])
+        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 8."}], self.github.posts)
+
+    def test_leaving_peak_does_not_grow_the_running_review_budget(self):
+        self.now = self.now.replace(hour=17, minute=59)
+        self.use_loop_provider(lambda number: setattr(self, "now", self.now.replace(hour=18)))
+        self.run_review(b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+x\n")
+        self.assertEqual(3, len(self.provider.requests))
+        self.assertIn("谷价", json.loads(self.provider.requests[-1])["messages"][-2]["content"])
 
     def test_head_drift_after_provider_before_post_blocks_stale_review(self):
         self.github.drift_after = 2

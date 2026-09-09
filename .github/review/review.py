@@ -1,6 +1,7 @@
 """Review immutable Git diffs as data using trusted main-branch code only."""
 
 import hashlib
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -21,11 +22,14 @@ OUTPUT_TOKENS_PER_CALL = 128_000
 FRAMING_ALLOWANCE = 4096
 TRANSPORT_BYTES = 4_000_000
 MAX_TURNS = 30
+PEAK_TURNS = 3
+BEIJING = timezone(timedelta(hours=8))
+BUDGET_MESSAGE_BYTES = 2048
 FINAL_INSTRUCTION = "不许再调工具，把目前看到的问题直接总结出来。明确标注尚未核实的内容。"
 # Reserve the complete final message, including JSON keys and UTF-8 escaping overhead.
 FINAL_MESSAGE = {"role": "user", "content": FINAL_INSTRUCTION}
 FINAL_BYTES = len(json.dumps(FINAL_MESSAGE, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-REQUEST_BYTES = INPUT_TOKENS - FRAMING_ALLOWANCE - FINAL_BYTES
+REQUEST_BYTES = INPUT_TOKENS - FRAMING_ALLOWANCE - FINAL_BYTES - BUDGET_MESSAGE_BYTES
 DIFF_BYTES = 8_000_000
 RESPONSE_BYTES = 2_000_000
 MAX_PARTS = 32
@@ -43,6 +47,30 @@ def encoded(value):
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def beijing_now():
+    return datetime.now(BEIJING)
+
+
+class RoundBudget:
+    """A run may shrink once on entering peak hours; unused calls never grow back."""
+
+    def __init__(self, maximum):
+        self.maximum, self.limit, self.used = maximum, maximum, 0
+        self.peak_seen = False
+        self.refresh()
+
+    def refresh(self):
+        now = beijing_now().astimezone(BEIJING)
+        peak = now.weekday() < 5 and (9 <= now.hour < 12 or 14 <= now.hour < 18)
+        if peak and not self.peak_seen:
+            self.limit = min(self.limit, self.used + PEAK_TURNS)
+            self.peak_seen = True
+        return {"beijing_time": now.isoformat(timespec="seconds"),
+                "tariff": "peak" if peak else "off_peak", "peak_seen": self.peak_seen,
+                "max_turns": self.limit, "used_turns": self.used,
+                "remaining_turns": self.limit - self.used}
 
 
 class Budget:
@@ -297,10 +325,11 @@ class Provider:
 
 
 class AgentReview:
-    def __init__(self, provider, repository, unchanged, output, label, turns):
+    def __init__(self, provider, repository, unchanged, output, label, turns, rounds=None, reserved=0):
         self.provider, self.repository, self.unchanged = provider, repository, unchanged
         self.output, self.label, self.turns = output, label, turns
         self.used = 0
+        self.rounds, self.reserved = rounds or RoundBudget(turns), reserved
         self.started = time.monotonic()
 
     def scrub(self, value):
@@ -339,7 +368,25 @@ class AgentReview:
         try:
             for turn in range(self.turns):
                 self.unchanged()
-                if turn == self.turns - 1 or finalize:
+                allowance = self.rounds.refresh()
+                remaining = min(self.turns - turn, allowance["remaining_turns"] - self.reserved)
+                if remaining < 1:
+                    raise Incomplete("The time-based PR call budget cannot cover all remaining review stages.")
+                final_call = remaining == 1 or finalize
+                hint = {"role": "user", "content": (
+                    f"运行预算更新（以本条为准）：北京时间 {allowance['beijing_time']}，"
+                    + ("当前为峰价时段。" if allowance["tariff"] == "peak" else "当前为谷价时段。")
+                    + f"整次评审剩余最多 {allowance['remaining_turns']} 轮，本阶段剩余最多 {1 if final_call else remaining} 轮，均包含本次请求和最终正文。"
+                    + f"为后续阶段保留 {self.reserved} 轮。可提前完成，不必用满；优先核实影响最大的疑点。"
+                    + "进入峰价会收紧预算，已收紧的预算不会恢复。")}
+                hint_bytes = len(encoded(hint))
+                if hint_bytes > BUDGET_MESSAGE_BYTES:
+                    raise Incomplete("The review budget reminder exceeds its reserved request space.")
+                request["messages"].append(hint)
+                self.record("round_budget", {**allowance, "stage_remaining_turns": 1 if final_call else remaining,
+                                             "reserved_turns": self.reserved, "message": hint})
+                upper_bound += hint_bytes
+                if final_call:
                     request["messages"].append(FINAL_MESSAGE)
                     self.record("finalization", {"message": FINAL_MESSAGE})
                     upper_bound += FINAL_BYTES
@@ -348,6 +395,7 @@ class AgentReview:
                     raise Incomplete("The review agent exhausted its input token budget.")
                 request["max_tokens"] = OUTPUT_TOKENS_PER_CALL
                 self.used += 1
+                self.rounds.used += 1
                 self.record("model_request", {"model": request["model"], "max_tokens": request["max_tokens"],
                             "tool_choice": request.get("tool_choice", "auto"), "input_token_upper_bound": upper_bound})
                 assistant, usage = self.provider.complete(encoded(request), self.record)
@@ -391,7 +439,7 @@ class AgentReview:
                 # Provider usage anchors the existing prefix. UTF-8 bytes conservatively bound
                 # appended text tokens; allowance covers chat/tool framing. No guessed chars/token.
                 upper_bound = usage["prompt_tokens"] + len(encoded(added)) + FRAMING_ALLOWANCE
-                if upper_bound + FINAL_BYTES > INPUT_TOKENS:
+                if upper_bound + FINAL_BYTES + BUDGET_MESSAGE_BYTES > INPUT_TOKENS:
                     raise Incomplete("New tool context leaves no input budget for a final review.")
             raise Incomplete("The review agent reached its turn limit without a final review.")
         except RecursionError:
@@ -410,15 +458,18 @@ def save_manifest(output, manifest):
 
 def complete_review(github, provider, revision, title, model, rules, merge, data, output, repository):
     changed_files = sum(line.startswith(b"diff --git ") for line in data.split(b"\n"))
-    turns = min(MAX_TURNS, 8 + 2 * changed_files)
+    rounds = RoundBudget(min(MAX_TURNS, 8 + 2 * changed_files))
     manifest = {**revision, "merge_base": merge, "model": model, "diff_bytes": len(data),
                 "diff_sha256": digest(data), "rules_sha256": digest(rules.encode("utf-8")),
                 "state": "incomplete", "parts": [], "input_tokens": INPUT_TOKENS,
-                "output_tokens_per_call": OUTPUT_TOKENS_PER_CALL, "max_turns": turns, "changed_files": changed_files, "trace": "agent-trace.jsonl"}
+                "output_tokens_per_call": OUTPUT_TOKENS_PER_CALL, "max_turns": rounds.limit,
+                "off_peak_max_turns": rounds.maximum, "round_budget": rounds.refresh(),
+                "changed_files": changed_files, "trace": "agent-trace.jsonl"}
     save_manifest(output, manifest)
     request = lambda text: payload(model, rules, revision, title, text)
     parts = split_diff(data, request)
-    if len(parts) + 1 > turns:
+    direct = rounds.peak_seen and len(parts) == 1
+    if (1 if direct else len(parts) + 1) > rounds.limit:
         raise Incomplete("The complete diff and final summary need more calls than the PR turn budget.")
     for part in parts:
         meta = {key: value for key, value in part.items() if key not in ["raw", "request"]}
@@ -430,21 +481,22 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
         if identity(github.current(), github.repository) != revision:
             raise Incomplete("The PR base/head changed; this review is stale and incomplete.")
 
-    used = 0
-
     def agent_review(body, label, reserved):
-        nonlocal used
         # Share remaining calls among stages; unused calls roll forward to subsequent stages.
-        agent = AgentReview(provider, repository, unchanged, output, label, (turns - used) // (reserved + 1))
+        available = rounds.refresh()["remaining_turns"]
+        if available <= reserved:
+            raise Incomplete("The time-based PR call budget cannot cover all remaining review stages.")
+        agent = AgentReview(provider, repository, unchanged, output, label,
+                            available // (reserved + 1), rounds, reserved)
         try:
             return agent.review(body)
         finally:
-            used += agent.used
-            manifest["used_turns"] = used
+            state = rounds.refresh()
+            manifest.update(used_turns=rounds.used, max_turns=rounds.limit, round_budget=state)
             save_manifest(output, manifest)
 
     reports = []
-    for part, meta in zip(parts, manifest["parts"]):
+    for part, meta in ([] if direct else zip(parts, manifest["parts"])):
         text = agent_review(part["request"], f"part-{part['part']:02d}", len(parts) - part["part"] + 1)
         (output / f"part-{part['part']:02d}.md").write_text(text, encoding="utf-8")
         reports.append(text)
@@ -456,10 +508,15 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                "所有原始分片结果均保留；本次至多三条的总结不撤销其他分片问题。\n<untrusted-reviews>\n"
                + encoded({"manifest": manifest, "reviews": reports}).decode("utf-8")
                + "\n</untrusted-reviews>")
-    cross_request = request(content)
+    cross_request = request("审查以下完整 PR diff，同时复核跨文件契约。可用 repository 工具核实固定提交源码。\n"
+                            + "<untrusted-diff>\n" + data.decode("utf-8") + "\n</untrusted-diff>") if direct else request(content)
     if len(cross_request) > REQUEST_BYTES:
         raise Incomplete("Cross-contract review exceeds the request cap; coverage remains incomplete.")
     cross = agent_review(cross_request, "cross-contract", 0)
+    if direct:
+        (output / "part-01.md").write_text(cross, encoding="utf-8")
+        manifest["parts"][0].update(state="reviewed", review_stage="cross-contract",
+                                     review_sha256=digest(cross.encode("utf-8")))
     (output / "cross-contract.md").write_text(cross, encoding="utf-8")
     unchanged()
     posted = github.post(revision["head"], cross.replace("@", "＠"))
