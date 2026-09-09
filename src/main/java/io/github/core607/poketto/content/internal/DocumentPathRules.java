@@ -45,11 +45,12 @@ final class DocumentPathRules {
             }
         }
         String fileName = segments[segments.length - 1];
-        if (!fileName.endsWith(".md")) {
-            throw new IllegalArgumentException("managed document path must end with lowercase .md: " + candidate);
+        if (!fileName.endsWith(".md") && !fileName.endsWith(".markdown")) {
+            throw new IllegalArgumentException(
+                    "managed document path must end with lowercase .md or .markdown: " + candidate);
         }
-        if (fileName.length() == ".md".length()) {
-            throw new IllegalArgumentException("managed document file name must not be empty before .md: " + candidate);
+        if (fileName.length() == ".md".length() || fileName.length() == ".markdown".length()) {
+            throw new IllegalArgumentException("managed document file name must not be empty before its extension: " + candidate);
         }
         return candidate;
     }
