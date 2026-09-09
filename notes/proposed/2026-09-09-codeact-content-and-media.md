@@ -37,6 +37,8 @@ Browser and CLI content exports produce portable ZIPs containing selected docume
 
 ## Implementation and acceptance
 
+[Local originals](../implemented/2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) and the [logical media index](../implemented/2026-09-09-logical-media-index.md) provide the storage and atomic-authoring foundations. The complete target remains proposed; logical-path delivery, public-root policy, CodeAct, moves, exports and content conversion still require their owning implementation and acceptance.
+
 Implement local media and workspace deduplication, then the logical index and public-root policy, CodeAct transport and selected-file saves, moves/browser interactions, and portable export. Remove redundant standalone MCP file-read/list/patch entrances when their behavior is covered; keep browser services and a narrow media transfer channel. Update the default repository template, root guidance, paired README/requirements and affected current-state records in the owning changes. Do not maintain a second agent CRUD architecture as a compatibility mode.
 
 Provide a one-time existing-content conversion from a verified publication snapshot: preserve the actual public set and existing routes where possible, move other content into private, import Git binaries into local originals, map existing managed references to logical paths and repair links. Keep source version and original backups; coordinate content-format and application cutover with writes paused and rebuild the public snapshot. Git mirroring remains unchanged and is not an originals backup. Live execution of migration or deployment requires operator authorization.

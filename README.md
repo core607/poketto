@@ -66,7 +66,7 @@ Authenticated `/api/admin/repository` endpoints provide tree, file, search, prev
 
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Withdrawal stops new grants, while private previews recheck the current identity. See the [foundations record](notes/implemented/2026-09-05-repository-authoring-foundations.md) for limits, storage guarantees and failure behavior.
 
-The storage port streams other original files up to 128 MiB and deduplicates bytes strictly within a workspace, with independent identities for separate uploads. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. Generalized browser/MCP media delivery and Git logical-path indexes remain part of the [CodeAct content plan](notes/proposed/2026-09-09-codeact-content-and-media.md).
+The storage port streams other original files up to 128 MiB and deduplicates bytes strictly within a workspace, with independent identities for separate uploads. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. Generalized browser/MCP media delivery remains part of the [CodeAct content plan](notes/proposed/2026-09-09-codeact-content-and-media.md).
 
 ## MCP and isolated execution
 

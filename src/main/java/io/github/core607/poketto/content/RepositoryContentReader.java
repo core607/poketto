@@ -9,13 +9,14 @@ public interface RepositoryContentReader {
     RepositoryTree readTree(WorkspaceId workspaceId, Optional<String> commit);
 
     /**
-     * Lists immediate children without reading blobs. Empty path selects root; an offset after zero
+     * Lists immediate Git and indexed-media children without reading original media bytes.
+     * Empty path selects root; an offset after zero
      * requires the commit returned by the first page. Missing directories return expected absence;
      * a non-directory path is invalid. Symlinks and submodules are listed but never traversed.
      */
     RepositoryDirectoryPage listDirectory(
             WorkspaceId workspaceId, Optional<String> commit, String path, int offset, int limit);
 
-    /** Reads original committed text, including malformed Markdown, without consulting a worktree. */
+    /** Reads committed text; indexed media reports MANAGED_MEDIA rather than absence or placeholder bytes. */
     RepositoryFile getFile(WorkspaceId workspaceId, Optional<String> commit, String path);
 }

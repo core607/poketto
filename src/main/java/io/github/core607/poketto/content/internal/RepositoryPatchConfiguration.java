@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,8 +20,16 @@ class RepositoryPatchConfiguration {
 
     @Bean
     RepositoryPatchService repositoryPatchService(
-            RepositoryAuthority authority, AuthService auth, JGitPublicContentSnapshots snapshots) {
+            RepositoryAuthority authority,
+            AuthService auth,
+            JGitPublicContentSnapshots snapshots,
+            RepositoryMediaValidator mediaValidator) {
         return new JGitRepositoryPatchService(
-                authority, auth, Clock.systemUTC(), snapshots::installAcknowledged, snapshots::closePublication);
+                authority,
+                auth,
+                Clock.systemUTC(),
+                snapshots::installAcknowledged,
+                snapshots::closePublication,
+                mediaValidator);
     }
 }

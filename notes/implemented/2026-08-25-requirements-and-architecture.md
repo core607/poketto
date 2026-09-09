@@ -58,7 +58,7 @@ Each workspace's document text and history ride its content repository's git rem
 
 The phase-one asset contract supersedes the original hash-only reference and image-index selection. Local managed originals live outside Git under workspace namespaces and use immutable asset-identity/revision references. Git images remain read-only and materialize into a disposable cache. Public grants bind the page snapshot and exact image version for at most five minutes, bounded by snapshot expiry; private reads recheck current authorization. All acknowledged managed originals are retained. Image transformations, pHash, descriptions, and persistent image indexes are outside this delivery.
 
-The [storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) supports bounded streaming of other original files and physical byte deduplication strictly within a workspace, preserving independent upload identities. Generalized media delivery and logical-path indexing remain proposed in [CodeAct content and media](../proposed/2026-09-09-codeact-content-and-media.md).
+The [storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) supports bounded streaming of other original files and physical byte deduplication strictly within a workspace, preserving independent upload identities. The [logical media index](2026-09-09-logical-media-index.md) owns path discovery and atomic index/text saves. Generalized media delivery remains proposed in [CodeAct content and media](../proposed/2026-09-09-codeact-content-and-media.md).
 
 ## Technology stack
 

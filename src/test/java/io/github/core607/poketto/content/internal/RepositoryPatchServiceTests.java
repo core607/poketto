@@ -17,6 +17,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryTextChange;
@@ -47,6 +48,153 @@ class RepositoryPatchServiceTests {
     private final WorkspaceId workspace = WorkspaceId.random();
     private final AuthPrincipal principal = mock(AuthPrincipal.class);
     private final AuthService auth = mock(AuthService.class);
+    private final io.github.core607.poketto.content.RepositoryMediaValidator mediaValidator =
+            mock(io.github.core607.poketto.content.RepositoryMediaValidator.class);
+
+    @Test
+    void corruptIndexAllowsInPlacePrivateTextMaintenanceButRepairRequiresPublish() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        byte[] broken = "{broken".getBytes(StandardCharsets.UTF_8);
+        byte[] note = "Original".getBytes(StandardCharsets.UTF_8);
+        var base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryMediaIndex.PATH,
+                        broken,
+                        "private/note.md",
+                        note,
+                        RepositoryPublishingPolicy.PATH,
+                        "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8)));
+        var service = service(fixture, (id, snapshot) -> {});
+        doThrow(new IllegalStateException("publish denied"))
+                .when(auth)
+                .authorize(principal, workspace, Capability.PUBLISH);
+        var result = service.apply(
+                principal,
+                workspace,
+                new RepositoryPatch(
+                        Optional.of(base.name()),
+                        List.of(new RepositoryTextChange(
+                                "private/note.md",
+                                false,
+                                Optional.of(DocumentRevision.sha256(note)),
+                                Optional.of("Updated")))));
+        verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), RepositoryMediaIndex.PATH)
+                        .source())
+                .contains("{broken");
+        var repair = new RepositoryPatch(
+                Optional.of(result.commit()),
+                List.of(new RepositoryTextChange(
+                        RepositoryMediaIndex.PATH,
+                        false,
+                        Optional.of(DocumentRevision.sha256(broken)),
+                        Optional.of(new String(RepositoryMediaIndex.empty().encode(), StandardCharsets.UTF_8)))));
+        assertThatThrownBy(() -> service.apply(principal, workspace, repair)).hasMessage("publish denied");
+        var create = new RepositoryPatch(
+                Optional.of(result.commit()),
+                List.of(new RepositoryTextChange("private/new.md", true, Optional.empty(), Optional.of("New"))));
+        assertThatThrownBy(() -> service.apply(principal, workspace, create))
+                .hasMessage("repair the media index before structural or publication changes");
+        org.mockito.Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
+        var repaired = service.apply(principal, workspace, repair);
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(repaired.commit());
+        assertThat(reader.listDirectory(workspace, Optional.empty(), "private", 0, 100)
+                        .entries())
+                .hasSize(1);
+    }
+
+    @Test
+    void mediaIndexAndTextSaveTogetherAndPublicMediaChangesRequirePublish() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        byte[] initialIndex = RepositoryMediaIndex.empty().encode();
+        byte[] initialNote = "# Original".getBytes(StandardCharsets.UTF_8);
+        var base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryMediaIndex.PATH,
+                        initialIndex,
+                        "private/note.md",
+                        initialNote,
+                        RepositoryPublishingPolicy.PATH,
+                        "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8)));
+        var service = service(fixture, (id, snapshot) -> {});
+        var media = new RepositoryMediaIndex.Media(UUID.randomUUID(), "c".repeat(64), "application/pdf", 128);
+        var privateIndex = new RepositoryMediaIndex(Map.of("private/source.pdf", media));
+        doThrow(new IllegalStateException("publish denied"))
+                .when(auth)
+                .authorize(principal, workspace, Capability.PUBLISH);
+        var result = service.apply(
+                principal,
+                workspace,
+                new RepositoryPatch(
+                        Optional.of(base.name()),
+                        List.of(
+                                new RepositoryTextChange(
+                                        RepositoryMediaIndex.PATH,
+                                        false,
+                                        Optional.of(DocumentRevision.sha256(initialIndex)),
+                                        Optional.of(new String(privateIndex.encode(), StandardCharsets.UTF_8))),
+                                new RepositoryTextChange(
+                                        "private/note.md",
+                                        false,
+                                        Optional.of(DocumentRevision.sha256(initialNote)),
+                                        Optional.of("# Updated\n[Source](source.pdf)")))));
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+        verify(mediaValidator).validate(workspace, List.of(media));
+        verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "private/note.md")
+                        .source())
+                .contains("# Updated\n[Source](source.pdf)");
+        assertThat(reader.listDirectory(workspace, Optional.empty(), "private", 0, 100)
+                        .entries())
+                .extracting(io.github.core607.poketto.content.RepositoryDirectoryPage.Entry::path)
+                .contains("private/source.pdf");
+        var publicIndex = new RepositoryMediaIndex(Map.of("public/source.pdf", media));
+        var publication = new RepositoryPatch(
+                Optional.of(result.commit()),
+                List.of(new RepositoryTextChange(
+                        RepositoryMediaIndex.PATH,
+                        false,
+                        Optional.of(DocumentRevision.sha256(privateIndex.encode())),
+                        Optional.of(new String(publicIndex.encode(), StandardCharsets.UTF_8)))));
+        assertThatThrownBy(() -> service.apply(principal, workspace, publication))
+                .hasMessage("publish denied");
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+    }
+
+    @Test
+    void invalidOriginalPreventsBothIndexAndTextFromAdvancingRemote() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var base =
+                fixture.commitRemote(workspace, Map.of("private/note.md", "Original".getBytes(StandardCharsets.UTF_8)));
+        var service = service(fixture, (id, snapshot) -> {});
+        var media = new RepositoryMediaIndex.Media(UUID.randomUUID(), "d".repeat(64), "application/pdf", 128);
+        var index = new RepositoryMediaIndex(Map.of("private/source.pdf", media));
+        doThrow(new IllegalArgumentException("original belongs to another workspace"))
+                .when(mediaValidator)
+                .validate(eq(workspace), any());
+        var patch = new RepositoryPatch(
+                Optional.of(base.name()),
+                List.of(
+                        new RepositoryTextChange(
+                                RepositoryMediaIndex.PATH,
+                                true,
+                                Optional.empty(),
+                                Optional.of(new String(index.encode(), StandardCharsets.UTF_8))),
+                        new RepositoryTextChange("private/new.md", true, Optional.empty(), Optional.of("A new note"))));
+        assertThatThrownBy(() -> service.apply(principal, workspace, patch))
+                .hasMessage("original belongs to another workspace");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "private/new.md").expectedAbsence())
+                .isTrue();
+        assertThat(reader.getFile(workspace, Optional.empty(), RepositoryMediaIndex.PATH)
+                        .expectedAbsence())
+                .isTrue();
+    }
 
     private JGitRepositoryPatchService service(
             RemoteRepositoryFixture fixture, BiConsumer<WorkspaceId, RepositoryAuthority.Snapshot> installed) {
@@ -56,7 +204,7 @@ class RepositoryPatchServiceTests {
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());
         return new JGitRepositoryPatchService(
-                fixture.authority(), auth, Clock.systemUTC(), installed, (id, snapshot) -> {});
+                fixture.authority(), auth, Clock.systemUTC(), installed, (id, snapshot) -> {}, mediaValidator);
     }
 
     @Test

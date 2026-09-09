@@ -83,7 +83,12 @@ class PublicSnapshotMarkerNativeTests {
             when(actor.kind()).thenReturn(AuthPrincipal.Kind.ACCOUNT);
             when(actor.subjectId()).thenReturn(UUID.randomUUID());
             var patches = new JGitRepositoryPatchService(
-                    fixture.authority(), auth, CLOCK, snapshots::installAcknowledged, snapshots::closePublication);
+                    fixture.authority(),
+                    auth,
+                    CLOCK,
+                    snapshots::installAcknowledged,
+                    snapshots::closePublication,
+                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
             var change = new RepositoryTextChange(
                     RepositoryPublishingPolicy.PATH,
                     false,

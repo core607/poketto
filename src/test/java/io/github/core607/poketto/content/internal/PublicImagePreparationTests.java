@@ -125,7 +125,8 @@ class PublicImagePreparationTests {
                 auth,
                 clock,
                 state.snapshots::installAcknowledged,
-                state.snapshots::closePublication);
+                state.snapshots::closePublication,
+                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
         try (var pool = Executors.newFixedThreadPool(2)) {
             var preparing = pool.submit(() -> state.service.publicDocument(workspace, "/article"));
             String committed;
