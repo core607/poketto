@@ -53,6 +53,34 @@ class RepositoryPatchServiceTests {
             mock(io.github.core607.poketto.content.RepositoryMediaValidator.class);
 
     @Test
+    void publicMovePreservesAnAlreadyIneligibleReferenceWithoutPublishingItsTarget() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        ObjectId base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "public/note.md",
+                        bytes("# Note\n[hidden](../private/hidden.md)"),
+                        "private/hidden.md",
+                        bytes("# Private"),
+                        RepositoryPublishingPolicy.PATH,
+                        bytes("enabled: true\nmode: public-by-default\n")));
+        var result = service(fixture, (id, snapshot) -> {})
+                .move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest(base.name(), "public/note.md", "public/folder/note.md"));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "public/folder/note.md")
+                        .source())
+                .contains("# Note\n[hidden](../../private/hidden.md)");
+        assertThat(reader.getFile(workspace, Optional.empty(), "private/hidden.md")
+                        .source())
+                .contains("# Private");
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+        verify(auth).authorize(principal, workspace, Capability.PUBLISH);
+    }
+
+    @Test
     void directoryMoveRejectsSymlinkObjectsWithoutAdvancingAuthority() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         ObjectId base = fixture.commitRemote(

@@ -95,10 +95,13 @@ final class RepositoryMovePlanner {
                 if (target == null) return authored;
                 String newTarget = relocated.getOrDefault(target, target);
                 if (!newPath.equals(oldPath) || !newTarget.equals(target)) {
-                    if (policy.permitsPath(newPath)
-                            && (!policy.permitsPath(newTarget)
-                                    || files.containsKey(target)
-                                            && !regular(files.get(target).mode())))
+                    boolean unsupportedTarget = files.containsKey(target)
+                            && !regular(files.get(target).mode());
+                    boolean invalidBefore =
+                            policy.permitsPath(oldPath) && (!policy.permitsPath(target) || unsupportedTarget);
+                    boolean invalidAfter =
+                            policy.permitsPath(newPath) && (!policy.permitsPath(newTarget) || unsupportedTarget);
+                    if (invalidAfter && !invalidBefore)
                         throw new IllegalArgumentException(
                                 "move would leave a public document referencing private content");
                     String fragment = authored.contains("#") ? authored.substring(authored.indexOf('#')) : "";
