@@ -193,7 +193,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
             created_users.append(user)
         app_account, exec_account = pwd.getpwnam(app_user), pwd.getpwnam(exec_user)
-        for name in ('exports', 'control', 'fake-inbox'):
+        for name in ('exports', 'control', 'fake-inbox', 'public-fixture'):
             directory = root / name
             directory.mkdir(mode=0o700)
             os.chown(directory, app_account.pw_uid, app_account.pw_gid)
@@ -245,6 +245,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         java_config.write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
+            'publicFixture': str(root / 'public-fixture'),
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)

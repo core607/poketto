@@ -38,6 +38,8 @@ public final class ExecutorNativeProbe {
     private final AuthService auth = mock(AuthService.class);
     private final AuthPrincipal principal = principal();
     private final AtomicInteger released = new AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicBoolean privateRead =
+            new java.util.concurrent.atomic.AtomicBoolean(true);
     private final RepositorySnapshotExports exports;
     private int tests;
 
@@ -47,9 +49,11 @@ public final class ExecutorNativeProbe {
                         call.getArgument(1),
                         call.getArgument(0),
                         io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.Set.of(
-                                io.github.core607.poketto.auth.Capability.READ_PRIVATE,
-                                io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)));
+                        privateRead.get()
+                                ? java.util.Set.of(
+                                        io.github.core607.poketto.auth.Capability.READ_PRIVATE,
+                                        io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)
+                                : java.util.Set.of(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)));
         config = JSON.readTree(Files.readString(configuration));
         Path master = path("bundle");
         String commit = config.path("commit").stringValue();
@@ -104,8 +108,14 @@ public final class ExecutorNativeProbe {
     }
 
     private IsolatedRepositoryExecutor adapter(Path socket, int maxSessions) {
+        return adapter(socket, maxSessions, exports);
+    }
+
+    private IsolatedRepositoryExecutor adapter(
+            Path socket, int maxSessions, RepositorySnapshotExports selectedExports) {
         return new ExecutorConfiguration()
-                .isolatedRepositoryExecutor(auth, exports, JSON, socket, path("privateKey"), maxSessions, 45, 8);
+                .isolatedRepositoryExecutor(
+                        auth, selectedExports, JSON, socket, path("privateKey"), maxSessions, 45, 8);
     }
 
     private void rejectNonRootPeer() throws Exception {
@@ -126,6 +136,7 @@ public final class ExecutorNativeProbe {
 
     private void run() throws Exception {
         rejectNonRootPeer();
+        publicProjection();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -251,6 +262,54 @@ public final class ExecutorNativeProbe {
                 classHash(IsolatedRepositoryExecutor.class),
                 "nativeProbeClassSha256",
                 classHash(ExecutorNativeProbe.class))));
+    }
+
+    private void publicProjection() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture"), path("exports"), auth, workspace);
+        privateRead.set(false);
+        try (var executor = adapter(path("socket"), 8, fixture.exports())) {
+            var result = executor.execute(
+                    principal,
+                    workspace,
+                    "public-native",
+                    Optional.empty(),
+                    "test $(git rev-list --count HEAD) = 1 && test ! -e private && "
+                            + "test ! -e .poketto/publishing.yml && cat article/index.md && "
+                            + "! grep -R -F 'secret-needle' --exclude-dir=.git . && "
+                            + "! git cat-file -e " + fixture.sourceCommit() + "^{commit}",
+                    Duration.ofSeconds(10),
+                    new Cancellation());
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout()).contains("public-native-body").doesNotContain("secret-needle");
+            assertThat(result.commit()).isNotEqualTo(fixture.sourceCommit());
+            passed("public-scope-real-projection-has-no-private-files-metadata-or-original-history");
+            privateRead.set(true);
+            var unchanged = executor.execute(
+                    principal,
+                    workspace,
+                    "public-native",
+                    Optional.empty(),
+                    "test ! -e private && test $(git rev-list --count HEAD) = 1",
+                    Duration.ofSeconds(5),
+                    new Cancellation());
+            assertThat(unchanged.exitCode()).isZero();
+            assertThat(unchanged.commit()).isEqualTo(result.commit());
+            passed("permission-increase-does-not-expand-existing-public-worker-files");
+            fixture.withdraw();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            workspace,
+                            "public-native",
+                            Optional.empty(),
+                            "printf output-after-withdrawal",
+                            Duration.ofSeconds(5),
+                            new Cancellation()))
+                    .isInstanceOf(RuntimeException.class);
+            passed("withdrawn-public-projection-denies-further-worker-output");
+        } finally {
+            privateRead.set(true);
+        }
     }
 
     private void abandon() throws Exception {
