@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "6763d6f502b9d744a2a5c1f936451c003a4d0f3e",
+  "fixtureCommit": "8ef4d5467af4b154d2683e323aa2f5802bae9430",
+  "downloadSha256": "891550bd859d982b7f25971f34793ffbf1a00ba04a6e2e0c51afb1ed7265732e",
+  "byteComparison": "HTTP response equals uploaded PDF original",
+  "privateMediaDenied": true,
+  "imageNaturalSize": [
+    320,
+    180
+  ],
+  "browserDownloadEvent": true,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Disposition": "attachment; filename=\"poketto-synthetic-media-6763d6f.pdf\"; filename*=UTF-8''poketto-synthetic-media-6763d6f.pdf",
+    "Content-Length": "1383",
+    "Content-Type": "application/octet-stream",
+    "X-Content-Type-Options": "nosniff"
+  }
+}
