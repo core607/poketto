@@ -144,7 +144,7 @@ def fetch_diff(directory, revision, github, budget):
 
 
 def payload(model, rules, revision, title, content):
-    return encoded({"model": model, "reasoning_effort": "high", "max_tokens": 64000,
+    return encoded({"model": model, "reasoning_effort": "high", "max_tokens": 128000,
                     "messages": [{"role": "system", "content": PERSONA + rules},
                                  {"role": "user", "content":
                                   f"PR 标题：{title}\n基准：{revision['base']}\n提交：{revision['head']}\n"
@@ -234,7 +234,11 @@ class Provider:
             choice = json.loads(raw)["choices"][0]
             text = choice["message"]["content"]
             if choice["finish_reason"] != "stop" or not isinstance(text, str) or not text.strip():
-                raise ValueError()
+                reason = choice.get("finish_reason")
+                # Retain only bounded shape diagnostics; never echo provider text or reasoning.
+                reason = reason if isinstance(reason, str) and re.fullmatch(r"[a-z_]{1,48}", reason) and reason != self.key else "unknown"
+                size = len(text) if isinstance(text, str) else 0
+                raise Incomplete(f"The model review is incomplete: finish={reason}; visible_characters={size}.")
         except (KeyError, IndexError, TypeError, ValueError):
             raise Incomplete("The model returned missing, incomplete, or truncated review text.") from None
         if len(text) > 50_000:
