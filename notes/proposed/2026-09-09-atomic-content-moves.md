@@ -23,7 +23,7 @@ Real Git fixtures cover a folder exceeding the external patch's file limit, exac
 
 ## Alternatives and related records
 
-[Browser recording and source provenance](https://github.com/core607/poketto/blob/2c46c5798fcd8fde41660c28b058a23ba2c3e64f/README.md) retain the isolated real-service acceptance separately from product history. The recording covers an actual concurrent save as well as a rejected destination; mocked HTTP component tests do not substitute for it.
+[Browser recording and source provenance](https://github.com/core607/poketto/blob/19a35eb913d169db25735ed1992aeadd868d8bf4/README.md) retain the isolated real-service acceptance separately from product history. The recording covers an actual concurrent save as well as a rejected destination; mocked HTTP component tests do not substitute for it.
 
 Sending delete/create text pairs through the external patch API limits ordinary folders to small text batches and cannot move arbitrary binary objects. Letting the agent edit the index and every backlink separately leaves repair incomplete and creates multiple authorization commit points. One host-prepared candidate avoids both problems without adding another persistence engine.
 
