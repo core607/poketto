@@ -174,7 +174,10 @@ export function FolderPicker({
           value={name}
           maxLength={255}
           disabled={moving}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setError("");
+          }}
         />
       </label>
       <label>
@@ -183,7 +186,10 @@ export function FolderPicker({
           value={newFolder}
           maxLength={255}
           disabled={moving}
-          onChange={(event) => setNewFolder(event.target.value)}
+          onChange={(event) => {
+            setNewFolder(event.target.value);
+            setError("");
+          }}
         />
       </label>
       <p className="move-destination">目标：{destination}</p>

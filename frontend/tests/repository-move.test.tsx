@@ -41,7 +41,7 @@ test("folder selection cancels without writing and moves via the host service be
   globalThis.fetch = async (input, options) => {
     const url = new URL(String(input), "http://localhost");
     const commit = moved ? "after" : "before";
-    const path = moved ? "public/note.md" : "private/note.md";
+    const path = moved ? "public/renamed.md" : "private/note.md";
     if (url.pathname === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
     if (url.pathname === "/api/admin/repository/tree")
@@ -87,6 +87,7 @@ test("folder selection cancels without writing and moves via the host service be
       assert.equal(options?.method, "POST");
       assert.equal(new Headers(options.headers).get("X-CSRF"), "fixture");
       writes.push(JSON.parse(String(options.body)));
+      if (writes.length === 1) return new Response(null, { status: 409 });
       moved = true;
       return Response.json({
         commit: "after",
@@ -159,11 +160,36 @@ test("folder selection cancels without writing and moves via the host service be
   await act(async () =>
     button("移动到这里", dialog! as typeof container).click(),
   );
+  assert.equal(
+    writes.length,
+    1,
+    "A failed move is never retried automatically",
+  );
+  assert.ok(container.querySelector("dialog[open]"));
+  assert.match(dialog!.textContent!, /冲突/);
+  const name = dialog!.querySelector("input");
+  assert.ok(name);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(name, "renamed.md");
+    name.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  assert.ok(!button("移动到这里", dialog! as typeof container).disabled);
+  await act(async () =>
+    button("移动到这里", dialog! as typeof container).click(),
+  );
   assert.deepEqual(writes, [
     {
       baseCommit: "before",
       source: "private/note.md",
       destination: "public/note.md",
+    },
+    {
+      baseCommit: "before",
+      source: "private/note.md",
+      destination: "public/renamed.md",
     },
   ]);
   assert.equal(
