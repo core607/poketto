@@ -13,6 +13,7 @@ import io.github.core607.poketto.assets.ManagedImage;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -42,9 +43,17 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
     }
 
     private final Path root;
+    private final int maxFileBytes;
 
     public LocalManagedBlobStore(Path root) {
+        this(root, MAX_FILE_BYTES);
+    }
+
+    public LocalManagedBlobStore(Path root, int maxFileBytes) {
         Objects.requireNonNull(root, "managed storage root is required");
+        if (maxFileBytes < 1 || maxFileBytes > MAX_FILE_BYTES)
+            throw new IllegalArgumentException("managed file upload bound must be between 1 and 128 MiB");
+        this.maxFileBytes = maxFileBytes;
         if (!root.isAbsolute()) throw new IllegalArgumentException("managed storage root must be absolute");
         this.root = root.normalize();
         try {
@@ -57,8 +66,20 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
 
     @Override
     public ManagedAsset upload(WorkspaceId workspace, String operationKey, InputStream original) {
+        return uploadOriginal(workspace, operationKey, null, original);
+    }
+
+    @Override
+    public ManagedAsset uploadFile(WorkspaceId workspace, String operationKey, String mediaType, InputStream original) {
+        ManagedAsset.validateMediaType(mediaType);
+        return uploadOriginal(workspace, operationKey, mediaType, original);
+    }
+
+    private ManagedAsset uploadOriginal(
+            WorkspaceId workspace, String operationKey, String declaredType, InputStream original) {
         Objects.requireNonNull(workspace, "workspace is required");
-        Objects.requireNonNull(original, "original image stream is required");
+        Objects.requireNonNull(original, "original file stream is required");
+        int limit = declaredType == null ? Math.min(MAX_UPLOAD_BYTES, maxFileBytes) : maxFileBytes;
         if (operationKey == null || !operationKey.matches("[A-Za-z0-9_-]{16,128}")) {
             throw new IllegalArgumentException(
                     "upload operation key must contain 16 to 128 ASCII letters, digits, hyphens or underscores");
@@ -74,15 +95,15 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 Path objects = directory(space.resolve("objects"));
                 Path operations = directory(space.resolve("operations"));
                 Path pending = directory(space.resolve("pending"));
+                Path digests = directory(space.resolve("digests"));
                 temporary = directory(pending.resolve(UUID.randomUUID().toString()));
                 Path blob = temporary.resolve("bytes");
                 MessageDigest digest = sha256();
                 long size = 0;
                 try (FileChannel out = FileChannel.open(blob, CREATE_NEW, WRITE, NOFOLLOW_LINKS)) {
                     byte[] buffer = new byte[8192];
-                    while (size <= MAX_UPLOAD_BYTES) {
-                        int count =
-                                original.read(buffer, 0, (int) Math.min(buffer.length, MAX_UPLOAD_BYTES + 1L - size));
+                    while (size <= limit) {
+                        int count = original.read(buffer, 0, (int) Math.min(buffer.length, limit + 1L - size));
                         if (count < 0) break;
                         if (count == 0) {
                             int single = original.read();
@@ -91,7 +112,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                             count = 1;
                         }
                         size += count;
-                        if (size > MAX_UPLOAD_BYTES) throw new AssetStorageException(TOO_LARGE);
+                        if (size > limit) throw new AssetStorageException(TOO_LARGE);
                         digest.update(buffer, 0, count);
                         ByteBuffer bytes = ByteBuffer.wrap(buffer, 0, count);
                         while (bytes.hasRemaining()) out.write(bytes);
@@ -99,17 +120,33 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                     out.force(true);
                 }
                 String revision = HexFormat.of().formatHex(digest.digest());
+                if (size == 0) throw new IllegalArgumentException("original file must not be empty");
+                String mediaType = declaredType;
+                if (mediaType == null) mediaType = ImagePolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
                 Path operation = operations.resolve(hash(operationKey.getBytes(StandardCharsets.US_ASCII)));
                 if (Files.exists(operation, NOFOLLOW_LINKS)) {
                     ManagedAsset existing = metadata(operation);
-                    if (!existing.reference().revision().equals(revision)) {
+                    if (!existing.reference().revision().equals(revision)
+                            || !existing.mediaType().equals(mediaType)) {
                         throw new AssetStorageException(IDEMPOTENCY_CONFLICT);
                     }
-                    if (!read(workspace, existing.reference()).asset().equals(existing)) throw unavailable();
+                    if (!copyTo(workspace, existing.reference(), OutputStream.nullOutputStream())
+                            .equals(existing)) throw unavailable();
                     syncDirectory(operations);
                     return existing;
                 }
-                String mediaType = ImagePolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
+                Path digestEntry = digests.resolve(revision);
+                if (Files.exists(digestEntry, NOFOLLOW_LINKS)) {
+                    ManagedAsset canonical = metadata(digestEntry);
+                    if (!canonical.reference().revision().equals(revision) || canonical.size() != size)
+                        throw unavailable();
+                    copyTo(workspace, canonical.reference(), OutputStream.nullOutputStream());
+                    Path canonicalBytes = objects.resolve(
+                                    canonical.reference().assetId().toString())
+                            .resolve("bytes");
+                    Files.delete(blob);
+                    Files.createLink(blob, canonicalBytes);
+                }
                 ManagedAsset asset =
                         new ManagedAsset(new ManagedAssetReference(UUID.randomUUID(), revision), mediaType, size);
                 byte[] manifest = encode(asset);
@@ -121,6 +158,16 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 temporary = null;
                 syncDirectory(objects);
                 syncDirectory(pending);
+                if (!Files.exists(digestEntry, NOFOLLOW_LINKS)) {
+                    Path digestTemp = digests.resolve("pending-" + UUID.randomUUID());
+                    try {
+                        writeNew(digestTemp, manifest);
+                        Files.move(digestTemp, digestEntry, StandardCopyOption.ATOMIC_MOVE);
+                        syncDirectory(digests);
+                    } finally {
+                        Files.deleteIfExists(digestTemp);
+                    }
+                }
                 Path ledgerTemp = operations.resolve("pending-" + UUID.randomUUID());
                 try {
                     writeNew(ledgerTemp, manifest);
@@ -152,6 +199,8 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
 
     @Override
     public ManagedImage read(WorkspaceId workspace, ManagedAssetReference reference) {
+        ManagedAsset described = describe(workspace, reference);
+        if (described.size() > MAX_UPLOAD_BYTES) throw new AssetStorageException(TOO_LARGE);
         Objects.requireNonNull(workspace, "workspace is required");
         Objects.requireNonNull(reference, "asset reference is required");
         Path object = root.resolve(workspace.toString())
@@ -167,6 +216,64 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                     || !hash(bytes).equals(reference.revision())
                     || !ImagePolicy.validate(bytes).equals(asset.mediaType())) throw unavailable();
             return new ManagedImage(asset, bytes);
+        } catch (IOException exception) {
+            throw unavailable();
+        }
+    }
+
+    @Override
+    public ManagedAsset describe(WorkspaceId workspace, ManagedAssetReference reference) {
+        Objects.requireNonNull(workspace, "workspace is required");
+        Objects.requireNonNull(reference, "asset reference is required");
+        Path object = root.resolve(workspace.toString())
+                .resolve("objects")
+                .resolve(reference.assetId().toString());
+        try {
+            checkDirectory(root);
+            if (!Files.exists(object, NOFOLLOW_LINKS)) throw new AssetStorageException(NOT_FOUND);
+            checkDirectory(object);
+            ManagedAsset asset = metadata(object.resolve("metadata"));
+            if (!asset.reference().equals(reference)) throw new AssetStorageException(NOT_FOUND);
+            return asset;
+        } catch (IOException exception) {
+            throw unavailable();
+        }
+    }
+
+    @Override
+    public ManagedAsset copyTo(WorkspaceId workspace, ManagedAssetReference reference, OutputStream output) {
+        Objects.requireNonNull(output, "output is required");
+        ManagedAsset asset = describe(workspace, reference);
+        Path bytes = root.resolve(workspace.toString())
+                .resolve("objects")
+                .resolve(reference.assetId().toString())
+                .resolve("bytes");
+        try {
+            checkDirectory(bytes.getParent());
+            if (!Files.isRegularFile(bytes, NOFOLLOW_LINKS)) throw unavailable();
+            try (FileChannel channel = FileChannel.open(bytes, READ, NOFOLLOW_LINKS)) {
+                MessageDigest digest = sha256();
+                ByteBuffer buffer = ByteBuffer.allocate(8192);
+                long count = 0;
+                while (channel.read(buffer) != -1) {
+                    count += buffer.position();
+                    if (count > asset.size()) throw unavailable();
+                    digest.update(buffer.array(), 0, buffer.position());
+                    buffer.clear();
+                }
+                if (count != asset.size()
+                        || !HexFormat.of().formatHex(digest.digest()).equals(reference.revision())) throw unavailable();
+                channel.position(0);
+                long remaining = asset.size();
+                while (remaining > 0) {
+                    buffer.clear().limit((int) Math.min(buffer.capacity(), remaining));
+                    int copied = channel.read(buffer);
+                    if (copied < 0) throw unavailable();
+                    output.write(buffer.array(), 0, copied);
+                    remaining -= copied;
+                }
+            }
+            return asset;
         } catch (IOException exception) {
             throw unavailable();
         }

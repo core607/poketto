@@ -49,14 +49,18 @@ class AssetsConfiguration {
             @Value("${poketto.data-dir}") Path directory,
             @Value("${poketto.assets.cache-max-bytes:134217728}") long cacheBytes,
             @Value("${poketto.assets.max-grants:2048}") int maxGrants,
+            @Value("${poketto.assets.max-file-bytes:134217728}") int maxFileBytes,
             ImageMemoryAdmission memory) {
+        if (maxFileBytes < 1 || maxFileBytes > ManagedBlobStore.MAX_FILE_BYTES)
+            throw new IllegalArgumentException("managed file upload bound must be between 1 and 128 MiB");
         // Constructing ordinary application services must not require unsupported Windows directory fsync.
         Supplier<ManagedBlobStore> managed = new Supplier<>() {
             private ManagedBlobStore initialized;
 
             @Override
             public synchronized ManagedBlobStore get() {
-                if (initialized == null) initialized = ManagedBlobStore.local(directory.resolve("managed-originals"));
+                if (initialized == null)
+                    initialized = ManagedBlobStore.local(directory.resolve("managed-originals"), maxFileBytes);
                 return initialized;
             }
         };

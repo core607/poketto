@@ -58,6 +58,8 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 第一阶段资产契约取代最初仅用 hash 引用与图片索引的选型。本地托管原图在 Git 之外按工作空间存储，使用不可变的资产标识与 revision 引用。Git 图片保持只读，按需物化到可丢弃缓存。公开授权绑定页面快照和精确图片版本，最长五分钟且不超过快照有效期；私有读取重新验证当前权限。所有已确认的托管原图均保留。图片加工、pHash、图片描述与持久化图片索引不在本次交付范围内。
 
+[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。通用媒体传输和逻辑路径索引仍由 [CodeAct 内容与媒体提案](../proposed/2026-09-09-codeact-content-and-media.md)定义。
+
 ## 技术栈
 
 构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[博客前端](2026-09-06-blog-browser-interface.md)使用 Next.js App Router、React、TypeScript 与 Tailwind，锁定 Node.js 24.19.0 和 npm 12.0.2。它取代 JTE + htmx，业务 API 与持久化仍归 Spring。

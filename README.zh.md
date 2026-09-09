@@ -66,6 +66,8 @@ exclude:
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 
+存储端口以流式方式保存其他原始文件，默认最多 128 MiB，字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。浏览器/MCP 的通用媒体传输与 Git 逻辑路径索引仍属于 [CodeAct 内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
+
 ## MCP 与隔离执行
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。
