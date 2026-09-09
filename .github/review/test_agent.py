@@ -223,7 +223,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(200, first["next_offset"])
         self.assertEqual(30, len(self.call("read", path="lines", offset=200, limit=100)["lines"]))
         search = self.call("search", query="head implementation")
-        self.assertIn({"path": "consumer.py", "line": 2, "text": "return 'head implementation'"}, search["entries"])
+        self.assertIn({"path": "consumer.py", "line": 2, "text": "    return 'head implementation'"}, search["entries"])
         self.assertTrue(search["unsearched"])
         self.assertTrue(all(set(e) == {"path", "line", "text"} for e in search["entries"]))
         first_search = self.call("search", path="lines", query="needle")
@@ -272,12 +272,19 @@ class AgentTests(unittest.TestCase):
                     self.assertEqual(1, len(page["entries"]))
                     self.assertIsNotNone(page["next_cursor"])
 
-    def test_search_snippet_is_trimmed_and_marked_when_the_line_is_long(self):
-        with patch.object(self.tools, "blob", return_value="   short needle   \n" + "x" * 5000 + " needle\n"):
+    def test_search_snippet_of_a_long_line_is_a_window_that_contains_the_match(self):
+        # A read of an oversized line returns only its prefix, so the window is the only way to see
+        # a match deep inside a generated or minified line.
+        deep = "x" * 5000 + " needle " + "y" * 3000
+        with patch.object(self.tools, "blob", return_value="   short needle   \n" + deep + "\n" + "needle" + "z" * 500 + "\n"):
             entries = self.call("search", path="consumer.py", query="needle")["entries"]
-        self.assertEqual({"path": "consumer.py", "line": 1, "text": "short needle"}, entries[0])
+        self.assertEqual({"path": "consumer.py", "line": 1, "text": "   short needle   "}, entries[0])
         self.assertEqual(200, len(entries[1]["text"]))
+        self.assertIn(" needle ", entries[1]["text"])
+        self.assertEqual(40, entries[1]["text"].index("needle"))
         self.assertTrue(entries[1]["truncated"])
+        self.assertTrue(entries[2]["text"].startswith("needle"))
+        self.assertEqual(200, len(entries[2]["text"]))
         self.assertLessEqual(len(review.encoded(entries)), TOOL_BYTES)
 
     def test_oversized_read_limit_is_clamped_instead_of_costing_a_round(self):
