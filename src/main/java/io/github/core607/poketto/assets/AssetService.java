@@ -1,11 +1,11 @@
 package io.github.core607.poketto.assets;
 
-import io.github.core607.poketto.assets.internal.MarkdownDestinations;
 import io.github.core607.poketto.assets.internal.RepositoryImageCache;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.MarkdownDestinations;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;

@@ -1,6 +1,5 @@
-package io.github.core607.poketto.assets.internal;
+package io.github.core607.poketto.content;
 
-import io.github.core607.poketto.content.ContentLimits;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;

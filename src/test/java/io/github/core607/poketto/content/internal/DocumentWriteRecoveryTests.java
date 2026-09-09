@@ -108,7 +108,7 @@ class DocumentWriteRecoveryTests {
     }
 
     @Test
-    void concurrentProcessesAdvancingTheSameBaseProduceOneSuccessAndOneConflict() throws Exception {
+    void concurrentCachesAdvancingTheSameBaseAcknowledgeOnlyOneWriter() throws Exception {
         CountDownLatch bothPushing = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
         RemoteGitTransport firstTransport = new ParkPush(new JGitRemoteGitTransport(), bothPushing, release);
@@ -131,24 +131,55 @@ class DocumentWriteRecoveryTests {
             release.countDown();
 
             int successes = 0;
-            int conflicts = 0;
+            int refusals = 0;
+            String acknowledged = null;
             for (Future<DocumentWriteResult> result : List.of(one, two)) {
                 try {
-                    assertThat(result.get(10, TimeUnit.SECONDS).committed()).isTrue();
+                    var completed = result.get(10, TimeUnit.SECONDS);
+                    assertThat(completed.committed()).isTrue();
+                    acknowledged = completed.commitId();
                     successes++;
                 } catch (ExecutionException exception) {
-                    assertThat(exception.getCause()).isInstanceOf(RepositoryConflictException.class);
-                    conflicts++;
+                    Throwable cause = exception.getCause();
+                    if (!(cause instanceof RepositoryConflictException)) {
+                        // The loser can be refused while the winner still holds the remote ref lock.
+                        // Reconciliation then observes the old main: a definite refusal, not yet a stale-base conflict.
+                        assertThat(cause)
+                                .isExactlyInstanceOf(ContentRepositoryException.class)
+                                .hasMessageContaining("rejected by the remote")
+                                .hasMessageContaining("main did not advance");
+                    }
+                    refusals++;
                 }
             }
             assertThat(successes).isOne();
-            assertThat(conflicts).isOne();
+            assertThat(refusals).isOne();
+            assertThat(first.remoteHead(workspace).name()).isEqualTo(acknowledged);
         } finally {
             release.countDown();
             threads.shutdownNow();
         }
 
         assertThat(first.store().scan(workspace)).hasSize(1);
+    }
+
+    @Test
+    void heldRemoteRefLockProducesADefiniteRefusalWithoutAcknowledgingACommit() throws Exception {
+        var repositories = new RemoteRepositoryFixture(root);
+        WorkspaceId workspace = WorkspaceId.random();
+        Path lock = repositories.provision(workspace).resolve("refs/heads/main.lock");
+        Files.createDirectories(lock.getParent());
+        Files.writeString(lock, "fixture holds the remote ref lock");
+        try {
+            assertThatThrownBy(() ->
+                            repositories.writes(new TestClock()).create(workspace, OWNER, draft("documents/note.md")))
+                    .isExactlyInstanceOf(ContentRepositoryException.class)
+                    .hasMessageContaining("rejected by the remote")
+                    .hasMessageContaining("main did not advance");
+            assertThat(repositories.remoteHead(workspace)).isEqualTo(ObjectId.zeroId());
+        } finally {
+            Files.delete(lock);
+        }
     }
 
     @Test

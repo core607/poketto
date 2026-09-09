@@ -18,6 +18,7 @@ import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryTextChange;
@@ -50,6 +51,175 @@ class RepositoryPatchServiceTests {
     private final AuthService auth = mock(AuthService.class);
     private final io.github.core607.poketto.content.RepositoryMediaValidator mediaValidator =
             mock(io.github.core607.poketto.content.RepositoryMediaValidator.class);
+
+    @Test
+    void publicMovePreservesAnAlreadyIneligibleReferenceWithoutPublishingItsTarget() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        ObjectId base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "public/note.md",
+                        bytes("# Note\n[hidden](../private/hidden.md)"),
+                        "private/hidden.md",
+                        bytes("# Private"),
+                        RepositoryPublishingPolicy.PATH,
+                        bytes("enabled: true\nmode: public-by-default\n")));
+        var result = service(fixture, (id, snapshot) -> {})
+                .move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest(base.name(), "public/note.md", "public/folder/note.md"));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "public/folder/note.md")
+                        .source())
+                .contains("# Note\n[hidden](../../private/hidden.md)");
+        assertThat(reader.getFile(workspace, Optional.empty(), "private/hidden.md")
+                        .source())
+                .contains("# Private");
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+        verify(auth).authorize(principal, workspace, Capability.PUBLISH);
+    }
+
+    @Test
+    void directoryMoveRejectsSymlinkObjectsWithoutAdvancingAuthority() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        ObjectId base = fixture.commitRemote(
+                workspace,
+                Map.of("private/box/link", bytes("/outside/secret"), "private/box/note.md", bytes("# Note")),
+                Map.of("private/box/link", org.eclipse.jgit.lib.FileMode.SYMLINK));
+        assertThatThrownBy(() -> service(fixture, (id, snapshot) -> {})
+                        .move(
+                                principal,
+                                workspace,
+                                new RepositoryMoveRequest(base.name(), "private/box", "private/new")))
+                .hasMessageContaining("symlinks or submodules");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+    }
+
+    @Test
+    void directoryMoveRepairsReferencesAndReusesLargeGitAndIndexedMediaInOneCommit() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var original = new RepositoryMediaIndex.Media(UUID.randomUUID(), "e".repeat(64), "application/pdf", 123);
+        var source = new java.util.LinkedHashMap<String, byte[]>();
+        source.put(
+                "private/box/note.md",
+                bytes("---\r\ntitle: Note\r\n---\r\n[outside](../other.md) ![media](scan.pdf)\r\n`../other.md`\r\n"));
+        source.put("private/other.md", bytes("[note](box/note.md#part)\n\n[asset][pdf]\n\n[pdf]: box/scan.pdf\n"));
+        source.put(
+                RepositoryMediaIndex.PATH, new RepositoryMediaIndex(Map.of("private/box/scan.pdf", original)).encode());
+        source.put("private/box/legacy.bin", new byte[2 * 1024 * 1024]);
+        for (int i = 0; i < 100; i++) source.put("private/box/n" + i + ".md", bytes("# " + i));
+        ObjectId base = fixture.commitRemote(workspace, source);
+        AtomicInteger installed = new AtomicInteger();
+        var service = service(fixture, (id, snapshot) -> installed.incrementAndGet());
+        var result = service.move(
+                principal, workspace, new RepositoryMoveRequest(base.name(), "private/box", "private/deeper/box"));
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+        assertThat(installed).hasValue(1);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "private/deeper/box/note.md")
+                        .source())
+                .contains(
+                        "---\r\ntitle: Note\r\n---\r\n[outside](../../other.md) ![media](scan.pdf)\r\n`../other.md`\r\n");
+        assertThat(reader.getFile(workspace, Optional.empty(), "private/other.md")
+                        .source())
+                .contains("[note](deeper/box/note.md#part)\n\n[asset][pdf]\n\n[pdf]: deeper/box/scan.pdf\n");
+        var movedIndex =
+                RepositoryMediaIndex.parse(reader.getFile(workspace, Optional.empty(), RepositoryMediaIndex.PATH)
+                        .source()
+                        .orElseThrow()
+                        .getBytes(StandardCharsets.UTF_8));
+        assertThat(movedIndex.files()).containsExactlyEntriesOf(Map.of("private/deeper/box/scan.pdf", original));
+        verify(mediaValidator).validate(workspace, List.of(original));
+        verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
+        try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace);
+                var walk = new org.eclipse.jgit.revwalk.RevWalk(repository)) {
+            var after = walk.parseCommit(ObjectId.fromString(result.commit()));
+            assertThat(after.getParentCount()).isEqualTo(1);
+            assertThat(after.getParent(0).getId()).isEqualTo(base);
+            try (var beforeFile = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                            repository,
+                            "private/box/legacy.bin",
+                            walk.parseCommit(base).getTree());
+                    var afterFile = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                            repository, "private/deeper/box/legacy.bin", after.getTree())) {
+                assertThat(afterFile.getObjectId(0)).isEqualTo(beforeFile.getObjectId(0));
+            }
+            assertThat(org.eclipse.jgit.treewalk.TreeWalk.forPath(repository, "private/box/note.md", after.getTree()))
+                    .isNull();
+        }
+    }
+
+    @Test
+    void publishingAFileDoesNotRelocatePrivateDependenciesAndFolderPublishRequiresAuthority() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var original = new RepositoryMediaIndex.Media(UUID.randomUUID(), "e".repeat(64), "image/png", 123);
+        ObjectId base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "private/box/note.md",
+                        bytes("# Note\n![photo](photo.png)"),
+                        RepositoryMediaIndex.PATH,
+                        new RepositoryMediaIndex(Map.of("private/box/photo.png", original)).encode(),
+                        RepositoryPublishingPolicy.PATH,
+                        bytes("enabled: true\nmode: public-by-default\n")));
+        var service = service(fixture, (id, snapshot) -> {});
+        assertThatThrownBy(() -> service.move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest(base.name(), "private/box/note.md", "public/note.md")))
+                .hasMessageContaining("public document referencing private");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+        doThrow(new IllegalStateException("publish denied"))
+                .when(auth)
+                .authorize(principal, workspace, Capability.PUBLISH);
+        var folder = new RepositoryMoveRequest(base.name(), "private/box", "public/box");
+        assertThatThrownBy(() -> service.move(principal, workspace, folder)).hasMessage("publish denied");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+        org.mockito.Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
+        var result = service.move(principal, workspace, folder);
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "public/box/note.md")
+                        .source())
+                .contains("# Note\n![photo](photo.png)");
+    }
+
+    @Test
+    void movesRejectOccupiedDestinationStaleBaseAndDanglingPublicReferencesWithoutPartialWrites() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        ObjectId base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "public/article.md",
+                        bytes("[other](other.md)"),
+                        "public/other.md",
+                        bytes("# Other"),
+                        "private/existing.md/item.md",
+                        bytes("# Existing"),
+                        RepositoryPublishingPolicy.PATH,
+                        bytes("enabled: true\nmode: public-by-default\n")));
+        var service = service(fixture, (id, snapshot) -> {});
+        assertThatThrownBy(() -> service.move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest(base.name(), "public/other.md", "private/other.md")))
+                .hasMessageContaining("public document referencing private");
+        assertThatThrownBy(() -> service.move(
+                        principal, workspace, new RepositoryMoveRequest(base.name(), "public", "private/existing")))
+                .hasMessageContaining("roots");
+        assertThatThrownBy(() -> service.move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest(base.name(), "public/article.md", "private/EXISTING.md")))
+                .hasMessageContaining("destination already exists");
+        assertThatThrownBy(() -> service.move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest("a".repeat(40), "public/article.md", "public/new.md")))
+                .isInstanceOf(RepositoryConflictException.class);
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+    }
 
     @Test
     void corruptIndexAllowsInPlacePrivateTextMaintenanceButRepairRequiresPublish() throws Exception {
