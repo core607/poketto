@@ -143,7 +143,7 @@ class AgentTests(unittest.TestCase):
             result = self.call("read", path="consumer.py", offset=1, limit=1)
             self.assertEqual([{"line": 2, "text": "second"}], result["lines"])
             search = self.call("search", path="consumer.py", query="four")
-            self.assertEqual([{"path": "consumer.py", "line": 1}], search["entries"])
+            self.assertEqual([{"path": "consumer.py", "line": 1, "text": "one\rtwo\fthree\u2028four"}], search["entries"])
         with patch.object(self.tools, "git", wraps=review.git) as git:
             self.call("read", path="consumer.py", limit=1)
             count = git.call_count
@@ -223,9 +223,9 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(200, first["next_offset"])
         self.assertEqual(30, len(self.call("read", path="lines", offset=200, limit=100)["lines"]))
         search = self.call("search", query="head implementation")
-        self.assertTrue(any(e.get("path") == "consumer.py" and e.get("line") == 2 for e in search["entries"]))
+        self.assertIn({"path": "consumer.py", "line": 2, "text": "return 'head implementation'"}, search["entries"])
         self.assertTrue(search["unsearched"])
-        self.assertTrue(all(set(e) == {"path", "line"} for e in search["entries"]))
+        self.assertTrue(all(set(e) == {"path", "line", "text"} for e in search["entries"]))
         first_search = self.call("search", path="lines", query="needle")
         self.assertEqual(200, len(first_search["entries"]))
         second_search = self.call("search", path="lines", query="needle", cursor=first_search["next_cursor"])
@@ -258,7 +258,7 @@ class AgentTests(unittest.TestCase):
         with patch.object(self.tools, "tree", return_value=entries):
             with patch.object(self.tools, "blob", side_effect=lambda entry: texts[entry[2]]):
                 found = self.call("search", query="late needle")
-                self.assertEqual([{"path": "zzz/target.py", "line": 2}], found["entries"])
+                self.assertEqual([{"path": "zzz/target.py", "line": 2, "text": "late needle"}], found["entries"])
                 self.assertIsNone(found["next_cursor"])
                 with patch("repository_tools.SEARCH_PAGE_FILES", 100):
                     paged, cursor = [], ""
@@ -271,6 +271,14 @@ class AgentTests(unittest.TestCase):
                     page = self.call("search", query="filler")
                     self.assertEqual(1, len(page["entries"]))
                     self.assertIsNotNone(page["next_cursor"])
+
+    def test_search_snippet_is_trimmed_and_marked_when_the_line_is_long(self):
+        with patch.object(self.tools, "blob", return_value="   short needle   \n" + "x" * 5000 + " needle\n"):
+            entries = self.call("search", path="consumer.py", query="needle")["entries"]
+        self.assertEqual({"path": "consumer.py", "line": 1, "text": "short needle"}, entries[0])
+        self.assertEqual(200, len(entries[1]["text"]))
+        self.assertTrue(entries[1]["truncated"])
+        self.assertLessEqual(len(review.encoded(entries)), TOOL_BYTES)
 
     def test_oversized_read_limit_is_clamped_instead_of_costing_a_round(self):
         result = self.call("read", path="lines", limit=280)
