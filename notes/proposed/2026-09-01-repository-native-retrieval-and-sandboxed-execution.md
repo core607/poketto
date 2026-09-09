@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Proposed
 
+[CodeAct workspaces](2026-09-09-codeact-workspaces.md) take priority for the next agent contract, including permission-scoped exports and saving session files through a service bridge. They replace the separate structured agent write path and mandatory private-read execution described below when implemented; repository-native retrieval and sandbox isolation remain applicable.
+
 The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
 
 [Phase-one delivery](2026-09-05-phase-one-daily-use.md) specifies the delivery scope, excludes visitor Q&A, and limits initial transport to ordinary history fetch with incremental reuse. It does not promise selective cold object transfer. Runtime isolation remains subject to real-host acceptance.

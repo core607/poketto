@@ -3,6 +3,10 @@
 Date: 2026-09-05
 Status: Proposed
 
+## Next development priority
+
+[CodeAct content and media](2026-09-09-codeact-content-and-media.md) are the assigned repository-agent development priority. Implement workspace-scoped local media, public/private roots, coherent execution and a service-mediated save bridge before expanding specialized MCP tools. That proposal owns the replacement agent contract; the delivery contracts below describe the existing baseline until its cutover. Installation acceptance remains required.
+
 The [identity HTTP backend](../implemented/2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. This phase remains proposed until the other functionality and final installation acceptance are complete.
 
 The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](../implemented/2026-09-06-blog-browser-interface.md) provides public pages and the editor. Final integrated installation acceptance remains open.

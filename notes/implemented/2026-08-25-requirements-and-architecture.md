@@ -58,6 +58,8 @@ Each workspace's document text and history ride its content repository's git rem
 
 The phase-one asset contract supersedes the original hash-only reference and image-index selection. Local managed originals live outside Git under workspace namespaces and use immutable asset-identity/revision references. Git images remain read-only and materialize into a disposable cache. Public grants bind the page snapshot and exact image version for at most five minutes, bounded by snapshot expiry; private reads recheck current authorization. All acknowledged managed originals are retained. Image transformations, pHash, descriptions, and persistent image indexes are outside this delivery.
 
+The [storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) supports bounded streaming of other original files and physical byte deduplication strictly within a workspace, preserving independent upload identities. Generalized media delivery and logical-path indexing remain proposed in [CodeAct content and media](../proposed/2026-09-09-codeact-content-and-media.md).
+
 ## Technology stack
 
 The build requires JDK 26 and pins Spring Boot 4.1.1 and Spring AI 2.0.1. Spring Security owns browser authentication; Spring Modulith defines application module boundaries. JGit owns repository access, commonmark-java and Jackson YAML parse content, and [official PostgreSQL 17](2026-09-05-stock-postgresql.md) stores relational application state. The [blog frontend](2026-09-06-blog-browser-interface.md) uses Next.js App Router, React, TypeScript and Tailwind, with Node.js 24.19.0 and npm 12.0.2. It replaces JTE + htmx while Spring retains business APIs and persistence.

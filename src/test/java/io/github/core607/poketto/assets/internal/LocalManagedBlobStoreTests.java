@@ -34,6 +34,194 @@ class LocalManagedBlobStoreTests {
     Path temp;
 
     @Test
+    void streamsLargeOriginalsWithExactBytesAndDoesNotCloseCallerStreams() throws Exception {
+        var workspace = WorkspaceId.random();
+        var root = temp.resolve("originals");
+        var store = ManagedBlobStore.local(root);
+        long size = ManagedBlobStore.MAX_FILE_BYTES;
+        var input = new InputStream() {
+            long remaining = size;
+            boolean closed;
+
+            @Override
+            public int read() {
+                return remaining-- > 0 ? 42 : -1;
+            }
+
+            @Override
+            public int read(byte[] buffer, int offset, int length) {
+                if (remaining == 0) return -1;
+                int count = (int) Math.min(length, remaining);
+                java.util.Arrays.fill(buffer, offset, offset + count, (byte) 42);
+                remaining -= count;
+                return count;
+            }
+
+            @Override
+            public void close() {
+                closed = true;
+            }
+        };
+        var asset = store.uploadFile(workspace, KEY, "video/mp4", input);
+        assertThat(input.closed).isFalse();
+        assertThat(asset.size()).isEqualTo(size);
+        var output = new java.io.OutputStream() {
+            long count;
+            boolean closed;
+
+            @Override
+            public void write(int value) {
+                assertThat(value).isEqualTo(42);
+                count++;
+            }
+
+            @Override
+            public void write(byte[] bytes, int offset, int length) {
+                for (int i = offset; i < offset + length; i++) {
+                    if (bytes[i] != 42) throw new AssertionError("original bytes changed");
+                }
+                count += length;
+            }
+
+            @Override
+            public void close() {
+                closed = true;
+            }
+        };
+        assertThat(ManagedBlobStore.local(root).copyTo(workspace, asset.reference(), output))
+                .isEqualTo(asset);
+        assertThat(output.count).isEqualTo(size);
+        assertThat(output.closed).isFalse();
+        assertReason(AssetStorageException.Reason.TOO_LARGE, () -> store.read(workspace, asset.reference()));
+    }
+
+    @Test
+    void deduplicatesPhysicalBytesOnlyWithinWorkspaceAndKeepsIndependentIdentities() throws Exception {
+        var root = temp.resolve("originals");
+        var store = ManagedBlobStore.local(root);
+        var first = WorkspaceId.random();
+        var second = WorkspaceId.random();
+        byte[] bytes = "synthetic attachment".getBytes(StandardCharsets.UTF_8);
+        var a = store.uploadFile(first, KEY, "application/pdf", new ByteArrayInputStream(bytes));
+        var b = store.uploadFile(first, KEY + "-other", "application/octet-stream", new ByteArrayInputStream(bytes));
+        var c = store.uploadFile(second, KEY, "application/pdf", new ByteArrayInputStream(bytes));
+        Path aBytes = root.resolve(first.toString())
+                .resolve("objects")
+                .resolve(a.reference().assetId().toString())
+                .resolve("bytes");
+        Path bBytes = root.resolve(first.toString())
+                .resolve("objects")
+                .resolve(b.reference().assetId().toString())
+                .resolve("bytes");
+        Path cBytes = root.resolve(second.toString())
+                .resolve("objects")
+                .resolve(c.reference().assetId().toString())
+                .resolve("bytes");
+        assertThat(a.reference()).isNotEqualTo(b.reference()).isNotEqualTo(c.reference());
+        assertThat(Files.isSameFile(aBytes, bBytes)).isTrue();
+        assertThat(Files.isSameFile(aBytes, cBytes)).isFalse();
+        assertReason(AssetStorageException.Reason.NOT_FOUND, () -> store.describe(second, a.reference()));
+        assertReason(
+                AssetStorageException.Reason.NOT_FOUND,
+                () -> store.copyTo(second, a.reference(), new ByteArrayOutputStream()));
+        assertThat(ManagedBlobStore.local(root)
+                        .uploadFile(first, KEY, "application/pdf", new ByteArrayInputStream(bytes)))
+                .isEqualTo(a);
+        assertReason(
+                AssetStorageException.Reason.IDEMPOTENCY_CONFLICT,
+                () -> store.uploadFile(first, KEY, "application/octet-stream", new ByteArrayInputStream(bytes)));
+        assertThat(store.list(first, 0, 100).items()).containsExactlyInAnyOrder(a, b);
+        assertThat(store.list(second, 0, 100).items()).containsExactly(c);
+    }
+
+    @Test
+    void declaredMediaTypeDoesNotMakeAnAttachmentSafeForImagePreview() {
+        var store = ManagedBlobStore.local(temp.resolve("originals"));
+        var workspace = WorkspaceId.random();
+        byte[] bytes = "<svg onload='alert(1)'/>".getBytes(StandardCharsets.UTF_8);
+        for (String type : List.of("image/svg+xml", "image/png", "application/octet-stream")) {
+            var asset = store.uploadFile(
+                    workspace, KEY + type.replaceAll("[^a-z]", ""), type, new ByteArrayInputStream(bytes));
+            var output = new ByteArrayOutputStream();
+            store.copyTo(workspace, asset.reference(), output);
+            assertThat(output.toByteArray()).isEqualTo(bytes);
+            assertReason(AssetStorageException.Reason.INVALID_IMAGE, () -> store.read(workspace, asset.reference()));
+        }
+    }
+
+    @Test
+    void refusesCorruptOriginalBeforeWritingOutputAndRejectsCorruptDedupIndex() throws Exception {
+        var root = temp.resolve("originals");
+        var store = ManagedBlobStore.local(root);
+        var workspace = WorkspaceId.random();
+        byte[] bytes = "attachment".getBytes(StandardCharsets.UTF_8);
+        var asset = store.uploadFile(workspace, KEY, "audio/mpeg", new ByteArrayInputStream(bytes));
+        Path space = root.resolve(workspace.toString());
+        Path original = space.resolve("objects")
+                .resolve(asset.reference().assetId().toString())
+                .resolve("bytes");
+        Files.writeString(original, "corruption");
+        var output = new ByteArrayOutputStream();
+        assertReason(
+                AssetStorageException.Reason.UNAVAILABLE, () -> store.copyTo(workspace, asset.reference(), output));
+        assertThat(output.size()).isZero();
+        Files.write(original, bytes);
+        Files.writeString(space.resolve("digests").resolve(asset.reference().revision()), "corruption");
+        assertReason(
+                AssetStorageException.Reason.UNAVAILABLE,
+                () -> store.uploadFile(workspace, KEY + "-second", "audio/mpeg", new ByteArrayInputStream(bytes)));
+        assertThat(store.list(workspace, 0, 100).items()).containsExactly(asset);
+    }
+
+    @Test
+    void uploadBoundReadsOnlyOneDetectionByteAndDoesNotRemoveEarlierOriginals() throws Exception {
+        var root = temp.resolve("originals");
+        var workspace = WorkspaceId.random();
+        var store = ManagedBlobStore.local(root, 32);
+        byte[] bytes = new byte[32];
+        var original = store.uploadFile(workspace, KEY, "application/pdf", new ByteArrayInputStream(bytes));
+        var input = new InputStream() {
+            int reads;
+
+            @Override
+            public int read() {
+                reads++;
+                return 1;
+            }
+        };
+        assertReason(
+                AssetStorageException.Reason.TOO_LARGE,
+                () -> store.uploadFile(workspace, KEY + "-large", "application/pdf", input));
+        assertThat(input.reads).isEqualTo(33);
+        assertThat(store.list(workspace, 0, 100).items()).containsExactly(original);
+        try (var pending = Files.list(root.resolve(workspace.toString()).resolve("pending"))) {
+            assertThat(pending.count()).isZero();
+        }
+        var output = new ByteArrayOutputStream();
+        ManagedBlobStore.local(root, 1).copyTo(workspace, original.reference(), output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
+    }
+
+    @Test
+    void failedConsumerCanRetryWithoutChangingTheOriginal() {
+        var store = ManagedBlobStore.local(temp.resolve("originals"));
+        var workspace = WorkspaceId.random();
+        byte[] bytes = "attachment".getBytes(StandardCharsets.UTF_8);
+        var asset = store.uploadFile(workspace, KEY, "application/pdf", new ByteArrayInputStream(bytes));
+        var failure = new java.io.OutputStream() {
+            @Override
+            public void write(int value) throws IOException {
+                throw new IOException("synthetic consumer failure");
+            }
+        };
+        assertReason(
+                AssetStorageException.Reason.UNAVAILABLE, () -> store.copyTo(workspace, asset.reference(), failure));
+        var output = new ByteArrayOutputStream();
+        store.copyTo(workspace, asset.reference(), output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
+    }
+
+    @Test
     void maximumOriginalIsExactAndLaterTruncationOrGrowthIsRejected() throws Exception {
         var root = temp.resolve("originals");
         var workspace = WorkspaceId.random();
