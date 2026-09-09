@@ -221,14 +221,25 @@ class AgentTests(unittest.TestCase):
 
     def test_listing_resumes_without_omitting_paths(self):
         with patch("repository_tools.TOOL_BYTES", 280):
-            cursor, names = 0, []
+            cursor, names = "", []
             while cursor is not None:
                 page = self.call("list", cursor=cursor)
                 names.extend(e["path"] for e in page["entries"])
                 following = page["next_cursor"]
-                self.assertTrue(following is None or following > cursor)
+                self.assertTrue(following is None or following != cursor)
                 cursor = following
         self.assertEqual(sorted(self.tools.tree("head")), names)
+
+    def test_pagination_rejects_cursor_reused_for_another_selection(self):
+        first = self.call("search", path="lines", query="needle")
+        token = first["next_cursor"]
+        self.assertIsInstance(token, str)
+        for changes in ({"query": "other"}, {"path": ""}, {"revision": "base"}, {"action": "list"}):
+            args = {"action": "search", "revision": "head", "path": "lines", "query": "needle", "cursor": token}
+            args.update(changes)
+            self.assertIn("does not belong", json.loads(self.tools.call("repository", args))["error"])
+        restarted = self.call("search", path="lines", query="needle")
+        self.assertEqual(first, restarted)
 
     def test_each_call_has_128k_output_without_a_pr_total_cap(self):
         for index in range(2):
