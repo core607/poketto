@@ -3,7 +3,7 @@
 Date: 2026-09-09
 Status: Proposed
 
-[CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns the expanded implementation target: public/private roots, local indexed media, workspace-only deduplication, original history for full-read sessions, portable exports and deterministic service authorization without a mandatory reviewer agent.
+[CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md) owns the expanded implemented contract: public/private roots, local indexed media, workspace-only deduplication, original history for full-read sessions, portable exports and deterministic service authorization without a mandatory reviewer agent.
 
 ## Priority and problem
 

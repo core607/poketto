@@ -32,6 +32,7 @@ The host-mediated `poketto` CLI provides persistence and result delivery:
 | `poketto recover` | Reconcile a pending save or move using its original commit and completion receipt |
 | `poketto move` | Move saved files, folders and indexed media with Markdown reference repair |
 | `poketto media list` / `import` / `fetch` | Discover indexed media, store originals or materialize referenced files |
+| `poketto export` | Package saved documents and required originals as a private or public ZIP |
 | `poketto artifact create` | Retain a temporary result for image, text or binary delivery through MCP |
 
 Repository credentials and original storage remain outside the sandbox. Ordinary edits stay in the execution session until saved. Conflicts retain local work; an uncertain acknowledgement must be reconciled before another save. Unsaved session files can be discarded on expiry or restart.
@@ -60,7 +61,7 @@ API capabilities govern reads, writes, publishing and execution. An agent grante
 
 Poketto is under active development. Repository authoring, local media, browser moves and the CodeAct save/media workflow are implemented. [Client acceptance](acceptance/clients/README.md) records real Codex and Claude Code workflows in an isolated environment; [native executor verification](executor-native/README.md) exercises the Linux isolation boundary. Final HTTPS installation and deployed-topology acceptance remain open.
 
-The [content plan](notes/proposed/2026-09-09-codeact-content-and-media.md) still includes default-private `public/` and `private/` roots, content conversion and removal of redundant MCP file tools. The current publication policy and tool interfaces are documented in the [usage reference](docs/usage.md). Those planned changes are not available yet. The browser and CodeAct sessions can export saved documents and media as private or public ZIP packages with actual originals and relative links.
+Content uses default-private `public/` and `private/` roots. The browser and CodeAct CLI support scope-aware moves and ZIP exports with actual originals and relative links. MCP file work uses the isolated workspace and host CLI. The [content contract](notes/implemented/2026-09-09-codeact-content-and-media.md) defines the format; existing repositories need a coordinated content/application conversion before upgrading. Current interfaces and limits are in the [usage reference](docs/usage.md).
 
 The primary deployment is a self-hosted Linux server. Hosted workspace provisioning, backups, visitor Q&A and the [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) are outside the current delivery scope.
 

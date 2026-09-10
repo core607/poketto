@@ -40,8 +40,8 @@ The content format uses independent `public/` and `private/` roots with new cont
 private by default. Only eligible paths under exact `public/` can publish under
 an enabled `public-root` policy; exclusions, guides and hidden paths remain private.
 Default article routes omit the root prefix, while explicit routes do not grant
-publication. The [content plan](../proposed/2026-09-09-codeact-content-and-media.md)
-owns the coordinated conversion and remaining delivery requirements.
+publication. The [content contract](2026-09-09-codeact-content-and-media.md)
+owns the coordinated conversion and format boundaries.
 
 The phase-one contract supersedes the original UUID-based document tool selection. `/mcp` uses Streamable HTTP and workspace Bearer API keys independently of browser sessions. Its tools are `list_directory`, `get_file`, `get_asset`, `put_asset`, and `repo_patch`, with `repo_exec` and the session-bound `get_artifact` return channel registered only when the isolated execution adapter is enabled. The [local worker](../../executor-service/README.md) is a separate Linux service; enabling the adapter does not substitute for verifying the real process boundary.
 
@@ -65,7 +65,7 @@ Each workspace's document text and history ride its content repository's git rem
 
 The phase-one asset contract supersedes the original hash-only reference and image-index selection. Local managed originals live outside Git under workspace namespaces and use immutable asset-identity/revision references. Git images remain read-only and materialize into a disposable cache. Public grants bind the page snapshot and exact image version for at most five minutes, bounded by snapshot expiry; private reads recheck current authorization. All acknowledged managed originals are retained. Image transformations, pHash, descriptions, and persistent image indexes are outside this delivery.
 
-The [storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) supports bounded streaming of other original files and physical byte deduplication strictly within a workspace, preserving independent upload identities. The [logical media index](2026-09-09-logical-media-index.md) owns path discovery and atomic index/text saves. [Indexed media delivery](2026-09-09-indexed-media-delivery.md) adds raw HTTP uploads, relative image rendering and authorized original attachment downloads with bounded concurrency and repeated authorization. Portable exports remain proposed in [CodeAct content and media](../proposed/2026-09-09-codeact-content-and-media.md).
+The [storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) supports bounded streaming of other original files and physical byte deduplication strictly within a workspace, preserving independent upload identities. The [logical media index](2026-09-09-logical-media-index.md) owns path discovery and atomic index/text saves. [Indexed media delivery](2026-09-09-indexed-media-delivery.md) adds raw HTTP uploads, relative image rendering and authorized original attachment downloads with bounded concurrency and repeated authorization. [Portable exports](2026-09-10-portable-content-exports.md) package saved documents and actual originals with scoped authorization.
 
 ## Technology stack
 

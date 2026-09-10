@@ -30,6 +30,7 @@ Markdown、目录结构与媒体引用保存在远程 Git 仓库中。远端 `ma
 | `poketto recover` | 使用原始提交和完成回执核实待处理的保存或移动 |
 | `poketto move` | 移动已保存的文件、目录和索引媒体，并修复 Markdown 引用 |
 | `poketto media list` / `import` / `fetch` | 发现索引中的媒体、存储原件，或把引用的文件取到工作区 |
+| `poketto export` | 将已保存文档和所需原件打包为私人或公开 ZIP |
 | `poketto artifact create` | 保留临时结果，通过 MCP 返回图片、文本或二进制 |
 
 仓库凭证和原件存储留在沙箱之外。普通编辑在保存前只存在于执行会话中。冲突保留本地工作；保存是否成功尚不明确时，须先核实，再继续保存。会话过期或重启可能丢弃未保存的文件。
@@ -58,7 +59,7 @@ API 权限分别约束读取、写入、发布和执行。Agent 如果同时拥�
 
 Poketto 正在开发中。仓库创作、本地媒体、浏览器移动，以及 CodeAct 的保存和媒体流程已实现。[客户端验收](acceptance/clients/README.md)记录了隔离环境中的真实 Codex 和 Claude Code 工作流；[原生执行验证](executor-native/README.md)覆盖 Linux 隔离边界。最终 HTTPS 安装与部署拓扑验收仍待完成。
 
-[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。浏览器和 CodeAct 会话已支持将已保存文档与媒体导出为私人或公开 ZIP，包含实际原件和相对链接。
+内容采用默认私密的 `public/`、`private/` 双根目录。浏览器和 CodeAct CLI 支持切换公开范围的移动，以及包含实际原件和相对链接的 ZIP 导出。MCP 文件操作统一通过隔离工作区和宿主 CLI 完成。[内容契约](notes/implemented/2026-09-09-codeact-content-and-media.md)定义仓库格式；已有仓库升级前需要协调转换内容与应用版本。当前接口及限制见[使用文档](docs/usage.zh.md)。
 
 主要部署形态是自托管 Linux 服务器。托管工作空间供应、备份、访客问答和[可选 serverless 方案](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)不在当前交付范围内。
 
