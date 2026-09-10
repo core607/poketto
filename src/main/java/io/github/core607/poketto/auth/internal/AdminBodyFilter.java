@@ -31,6 +31,11 @@ final class AdminBodyFilter extends OncePerRequestFilter {
             return;
         }
         int limit = OriginAndBodyFilter.bodyLimit(path);
+        if (request.getMethod().equals("GET") || request.getMethod().equals("HEAD")) {
+            // Download lifetime must not occupy the separate upload/request-body reservation.
+            OriginAndBodyFilter.filterBody(request, response, chain, OriginAndBodyFilter.MAX_AUTH_BODY);
+            return;
+        }
         if (limit == OriginAndBodyFilter.MAX_AUTH_BODY) {
             OriginAndBodyFilter.filterBody(request, response, chain, limit);
             return;

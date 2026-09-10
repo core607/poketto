@@ -19,6 +19,27 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 class AdminBodyFilterTests {
     @Test
+    void mediaDownloadsNeitherOccupyNorRequireRequestBodyCapacity() throws Exception {
+        var filter = new AdminBodyFilter(1);
+        for (String method : java.util.List.of("GET", "HEAD")) {
+            var download = new MockHttpServletRequest(method, "/api/admin/media");
+            download.setServletPath("/api/admin/media");
+            filter.doFilter(download, new MockHttpServletResponse(), (req, res) -> {
+                var called = new AtomicBoolean();
+                filter.doFilter(
+                        request(false, false), new MockHttpServletResponse(), (write, result) -> called.set(true));
+                assertThat(called).isTrue();
+            });
+            filter.doFilter(request(false, false), new MockHttpServletResponse(), (write, result) -> {
+                var called = new AtomicBoolean();
+                filter.doFilter(download, new MockHttpServletResponse(), (req, res) -> called.set(true));
+                assertThat(called).isTrue();
+                rejected(filter);
+            });
+        }
+    }
+
+    @Test
     void rawMediaDispatchDoesNotPrebufferItsBodyAndRejectsFormParsingTypes() throws Exception {
         var filter = new AdminBodyFilter(1);
         for (String type : java.util.List.of(
