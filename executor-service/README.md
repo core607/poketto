@@ -240,4 +240,3 @@ isolated aggregate-budget test, not an SRT or production-capacity acceptance.
 The [recorded result](resource-pool-evidence.json) contains source hashes and
 synthetic counters from a Linux cgroup v2 run; it does not include operator paths
 or production limits.
-
