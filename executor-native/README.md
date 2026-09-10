@@ -37,6 +37,13 @@ preserves newer local edits. An injected installation refusal exercises
 through the actual CLI. All 30 scenarios, process-loss expiry and cleanup pass;
 the evidence distinguishes injected faults from real worker behavior.
 
+The [CLI export run](evidence/2026-09-10-cli-exports.json) verifies private/public
+ZIP bytes, projection path translation, local collision protection, retained edits,
+unchanged remote Git and package cleanup through the real worker. All 32 Java
+scenarios, process-loss lease expiry and cleanup pass. The separate
+[HTTP MCP client run](../acceptance/clients/evidence/2026-09-10-cli-exports.json)
+adds real PostgreSQL identity checks, MCP sessions and artifact byte return.
+
 Build the reproducible runtime with Java 26:
 
 ```sh
@@ -54,6 +61,11 @@ can be used; `prepare-jdk.sh NEW_DIRECTORY` instead downloads an isolated
 Temurin 26.0.2+10 archive and verifies its pinned SHA-256 without installing it
 globally. Runtime classes and JARs must be readable by the probe's temporary
 application account.
+
+`--scenario exports` selects only the real private/public CLI ZIP flows for
+focused diagnosis. The default `--scenario all` includes them with the complete
+adapter lifecycle checks and process-loss expiry. A focused result does not prove
+the omitted scenarios. Each mode uses a fresh native fixture and checks cleanup.
 
 ```sh
 sudo env PYTHONPATH=/prepared/tools/python python3 probe.py \

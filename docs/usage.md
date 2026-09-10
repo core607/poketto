@@ -41,7 +41,7 @@ Authenticated `/api/admin/repository` endpoints provide the Markdown index, pagi
 
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Withdrawal stops new grants, while private previews recheck the current identity. See the [foundations record](../notes/implemented/2026-09-05-repository-authoring-foundations.md) for limits, storage guarantees and failure behavior.
 
-`POST /api/admin/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes. ZIP exports remain part of the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
+`POST /api/admin/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes.
 
 ## Export HTTP interface
 
@@ -76,8 +76,17 @@ under `poketto.exports` set `max-zip-bytes` (800 MiB), `max-retained-bytes` (2 G
 `build-seconds` (120). A build reserves its full ZIP allowance before preparation;
 only its actual size remains charged after success. Capacity exhaustion returns
 429; missing, expired or differently owned handles return 404. Filesystems without
-POSIX permission support return 503 before reading export content. CLI
-materialization remains in the [export plan](../notes/proposed/2026-09-10-portable-content-exports.md).
+POSIX permission support return 503 before reading export content.
+
+In a CodeAct session, use `poketto export PATH... --output FILE [--public]`.
+Selections use repository-relative files or folders; `.` selects the visible workspace.
+Public-only sessions always export the host-approved public projection. The ZIP
+contains latest saved content and originals; local edits are excluded. Different
+existing output files are preserved. Use `get_artifact` after `poketto artifact
+create FILE --type application/zip` when the result fits the artifact limits.
+The [worker reference](../executor-service/README.md) owns deadlines, size bounds,
+installation ordering and error codes; [real HTTP MCP acceptance](../acceptance/clients/evidence/2026-09-10-cli-exports.json)
+verifies the authenticated export and artifact path.
 
 ## MCP and isolated execution
 
@@ -91,7 +100,7 @@ Oversized MCP bodies receive 413 before tools run; transport errors contain prot
 
 Full-read execution sessions retain authorized current files and original Git history; public-only sessions receive a fresh current-public projection without original history or private metadata. Each client has a separate directory even when clients share a key. Ordinary edits stay local. `poketto save` commits selected files and explicit deletions through the shared atomic writer while retaining unselected edits; `poketto sync` reconciles one file against its own baseline, and `poketto recover` reconciles a pending save or move without replaying newer edits. `get_file` always reads authoritative Git objects. Cancellation, revocation and failed renewal close execution authority. A missing worker, mismatched CodeAct protocol or unsupported isolation cannot fall back to an ordinary subprocess.
 
-`poketto media import` stores a workspace-owned immutable original and updates its local logical index; save that index with referring text to persist the references. `poketto media fetch` uses the local index or an explicitly selected historical commit in full-read sessions, and the host-owned approved mapping in public sessions. CLI paths are repository-relative; use `poketto --help` for commands and file lifetime. The [worker reference](../executor-service/README.md) owns limits, permissions, conflict behavior and coordinated worker installation. Portable exports and removal of redundant MCP tools remain in the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
+`poketto media import` stores a workspace-owned immutable original and updates its local logical index; save that index with referring text to persist the references. `poketto media fetch` uses the local index or an explicitly selected historical commit in full-read sessions, and the host-owned approved mapping in public sessions. CLI paths are repository-relative; use `poketto --help` for commands and file lifetime. The [worker reference](../executor-service/README.md) owns limits, permissions, conflict behavior and coordinated worker installation. Removal of redundant MCP tools remains in the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
 
 `poketto move SOURCE DESTINATION` moves saved files, directories and indexed media,
 repairing Markdown references in one remote commit. Unselected local edits and

@@ -14,7 +14,8 @@ import uuid
 
 from session_files import CaptureRejected, MAX_CHUNK_BYTES, selected_paths
 
-MAX_FILE_BYTES = 128 * 1024 * 1024
+# ZIP exports share this streaming channel; the lease tmpfs still enforces the actual disk quota.
+MAX_FILE_BYTES = 1024 * 1024 * 1024
 
 
 def _hash(value):
