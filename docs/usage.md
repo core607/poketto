@@ -62,6 +62,9 @@ unsaved imports in full-read sessions; public sessions use only the host-owned
 approved mapping. Use `--prefix` to filter paths and continue pages with the
 returned `nextOffset` and `indexVersion`. Full readers can select `--commit` for a
 historical index. Metadata is checked against original storage when fetched.
+Keep `--prefix` and `--commit` unchanged between pages; restart at offset zero
+when changing the selection. Historical listing shares original-read concurrency
+limits and can return `MEDIA_UNAVAILABLE` while that capacity is occupied.
 
 `poketto artifact create FILE --type MIME` retains an immutable, temporary result
 for the originating MCP session. `get_artifact` renders validated raster images

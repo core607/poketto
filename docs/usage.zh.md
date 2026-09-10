@@ -60,6 +60,8 @@ exclude:
 `poketto media list` 列出索引中的媒体，不会下载原件。完整读取会话也能看到尚未保存的导入，
 公开会话只使用宿主持有的已批准映射。可用 `--prefix` 筛选路径，并使用返回的 `nextOffset`
 和 `indexVersion` 继续翻页。完整读取者可用 `--commit` 选择历史索引。获取原件时才会核对存储中的实际对象。
+分页时保持 `--prefix` 和 `--commit` 不变；更换范围时从偏移零重新开始。
+历史列表共用原件读取的并发限制，名额占满时可能返回 `MEDIA_UNAVAILABLE`。
 
 `poketto artifact create FILE --type MIME` 为当前 MCP 会话保留不可变的临时结果。
 `get_artifact` 可展示通过校验的位图，或分页返回文本、二进制；长命令输出也会附带制品句柄。

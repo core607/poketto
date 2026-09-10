@@ -176,10 +176,15 @@ public list. Metadata does not prove that original bytes remain available.
 
 Pages are sorted by path and bounded to 12 KiB of compact JSON, with a default
 of 100 entries and a maximum of 200. A byte-limited page can contain fewer entries;
-continue with its `nextOffset` and `indexVersion`. A changed version returns
+continue with its `nextOffset` and `indexVersion`, keeping the same `--prefix`
+and `--commit` selection. The version identifies the index, not the query;
+restart at offset zero when changing the selection. A changed version returns
 `MEDIA_INDEX_CHANGED` without stale items. A null `nextOffset` means EOF. The
 prefix is a literal string, so use a trailing slash to select a directory tree.
 Listing does not materialize, upload, save or publish files.
+Historical catalog reads share the private original-read admission pool: four
+concurrent operations globally and two per workspace. Saturation returns
+`MEDIA_UNAVAILABLE`; retry the read after capacity is available.
 
 `poketto media fetch PATH [--commit COMMIT] [--output PATH]` materializes an indexed original into the worktree. Full-read sessions use their current local index, including unsaved imports, or select an authorized historical commit explicitly. The host resolves every original within the admitted workspace. Public sessions use only the admitted projection's host-owned media mapping and exact asset metadata; they expose no original commit identity. Transfer uses the shared original-file authorization and admission limits, bounded chunks and quarantined staging. An identical local file is retained; a different local file is not overwritten. Fetch does not upload, commit or update the index.
 

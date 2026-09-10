@@ -18,8 +18,9 @@ mutable local index metadata. Results expose logical paths, media types and size
 they never disclose source mappings or original identities to public callers.
 
 Pagination has both entry and serialized-byte bounds. The returned index version
-lets a caller reject changed indexes between pages rather than silently skip or
-repeat entries. Discovery does not fetch original bytes and does not assert their
+lets a caller reject changed indexes between pages of the same prefix and history
+selection rather than silently skip or repeat entries. A different selection starts
+at offset zero. Discovery does not fetch original bytes and does not assert their
 availability. Current authorization is checked before delivery, and withdrawal
 invalidates the public session. The [worker reference](../../executor-service/README.md)
 owns CLI arguments and limits; the [CodeAct plan](../proposed/2026-09-09-codeact-workspaces.md)
