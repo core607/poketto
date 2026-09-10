@@ -607,8 +607,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return Map.of("ok", false, "code", "INVALID_ARTIFACT");
             }
         }
-        if (operation.equals("media_fetch") || operation.equals("media_import")) {
+        if (operation.equals("media_fetch") || operation.equals("media_import") || operation.equals("media_list")) {
             try {
+                if (operation.equals("media_list")) return listMedia(session, executionId, arguments);
                 return operation.equals("media_fetch")
                         ? fetchMedia(session, executionId, arguments)
                         : importMedia(session, executionId, arguments);
@@ -808,6 +809,37 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         false,
                         "conflicted",
                         plan.conflicted()));
+    }
+
+    private Map<String, ?> listMedia(Session session, String executionId, JsonNode arguments) {
+        var query = MediaListing.Query.parse(arguments);
+        Map<String, RepositoryMediaIndex.Media> files;
+        String version, source;
+        if (session.fullRead) {
+            if (query.commit() == null) {
+                var index = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
+                source = "worktree";
+                files = index.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+                        .orElseGet(RepositoryMediaIndex::empty)
+                        .files();
+                version = hash(index.orElse(""));
+            } else {
+                var catalog =
+                        media.privateCatalog(session.principal, session.key.workspace(), Optional.of(query.commit()));
+                files = catalog.index().files();
+                source = "repository";
+                version = hash(catalog.commit());
+            }
+        } else {
+            if (query.commit() != null)
+                throw new IllegalArgumentException("public media uses only its current projection");
+            files = new LinkedHashMap<>();
+            session.publicExport.media().forEach((path, media) -> files.put(path, media.original()));
+            source = "public-projection";
+            version = session.publicExport.projectionSha256();
+        }
+        authorize(session);
+        return MediaListing.page(files, query, version, source);
     }
 
     private Map<String, ?> fetchMedia(Session session, String executionId, JsonNode arguments) {

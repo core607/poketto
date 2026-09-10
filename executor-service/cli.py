@@ -108,6 +108,12 @@ def main():
     removed.add_argument('artifact_id')
     media = commands.add_parser('media', help='Import or fetch indexed original media')
     media_commands = media.add_subparsers(dest='media_operation', required=True)
+    listing = media_commands.add_parser('list', help='List indexed media paths without fetching originals')
+    listing.add_argument('--prefix', default='', help='Literal logical-path prefix, such as private/music/')
+    listing.add_argument('--offset', type=int, default=0)
+    listing.add_argument('--limit', type=int, default=100)
+    listing.add_argument('--index-version', help='Use the returned version when continuing a page; changed indexes fail explicitly')
+    listing.add_argument('--commit', help='Read a historical index in a full-read session')
     fetch = media_commands.add_parser('fetch', help='Fetch an indexed original into the repository worktree')
     fetch.add_argument('path')
     fetch.add_argument('--commit')
@@ -131,7 +137,10 @@ def main():
         arguments = ({'path': args.path, 'mediaType': args.media_type} if args.artifact_operation == 'create'
                      else {'artifactId': args.artifact_id})
     if operation == 'media':
-        if args.media_operation == 'fetch':
+        if args.media_operation == 'list':
+            operation = 'media_list'
+            arguments = {'prefix': args.prefix, 'offset': args.offset, 'limit': args.limit, 'indexVersion': args.index_version, 'commit': args.commit}
+        elif args.media_operation == 'fetch':
             operation = 'media_fetch'
             arguments = {'path': args.path, 'commit': args.commit, 'output': args.output}
         else:
