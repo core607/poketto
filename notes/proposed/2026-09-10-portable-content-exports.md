@@ -80,8 +80,10 @@ workspace/principal/client handles, download integrity checks and session cleanu
 The content-owned `RepositoryOriginalTransfers` port keeps media storage behind
 its assets implementation without a module dependency cycle. The authenticated
 [HTTP contract](../../docs/usage.md#export-http-interface) exposes creation, download
-and release. Native HTTP acceptance, browser controls and CLI materialization remain
-required before the complete export feature is delivered.
+and release. [Native HTTP acceptance](../../acceptance/evidence/2026-09-10-export-http.json)
+verifies actual ZIP bytes and scoped delivery through the real application.
+Browser controls and CLI materialization remain required before the complete export
+feature is delivered.
 
 Reusing Git bundles would expose history and omit original media. Asking the
 agent to assemble every package duplicates authorization, reference rewriting and

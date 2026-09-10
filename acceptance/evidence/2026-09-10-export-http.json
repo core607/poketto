@@ -1,0 +1,102 @@
+{
+  "result": "PASS",
+  "sourceCommit": "182e907c6729e42b1358d30565f383f1d739bf28",
+  "environment": "native Linux, real Spring authentication, PostgreSQL, remote synthetic Git and local immutable originals",
+  "archives": [
+    {
+      "scope": "public",
+      "entries": [
+        "content/article-1.md",
+        "media/original-1.pdf"
+      ],
+      "bytes": 409,
+      "sha256": "2b0efd12fe8082b668ae93d4d6a28dd8dda83c9aaf1ad3485b71a786c018b3da",
+      "originalSha256": "2f87beacb6a71f75e3243ce005faf5d99405e02b5e729c7c9c216ef2e2a0544a"
+    },
+    {
+      "scope": "private",
+      "entries": [
+        "content/private/export-probe.md",
+        "content/public/export-probe.md",
+        "media/original-1.pdf"
+      ],
+      "bytes": 705,
+      "sha256": "62b33d275a680610973f22adb013b9a47c3ca90a93d1f3e76b6a76e6836789f8",
+      "originalSha256": "2f87beacb6a71f75e3243ce005faf5d99405e02b5e729c7c9c216ef2e2a0544a"
+    }
+  ],
+  "checks": [
+    {
+      "operation": "csrf_create_denied",
+      "status": 403
+    },
+    {
+      "operation": "public_create",
+      "status": 200
+    },
+    {
+      "operation": "private_create",
+      "status": 200
+    },
+    {
+      "operation": "public_download",
+      "status": 200
+    },
+    {
+      "operation": "private_download",
+      "status": 200
+    },
+    {
+      "operation": "anonymous_download_denied",
+      "status": 401
+    },
+    {
+      "operation": "api_key_is_not_a_browser_identity",
+      "status": 401
+    },
+    {
+      "operation": "private_selection_in_public_export_denied",
+      "status": 503
+    },
+    {
+      "operation": "csrf_release_denied",
+      "status": 403
+    },
+    {
+      "operation": "changed_publication_stops_public_download",
+      "status": 503
+    },
+    {
+      "operation": "private_archive_survives_public_change",
+      "status": 200
+    },
+    {
+      "operation": "release",
+      "status": 204
+    },
+    {
+      "operation": "released_handle_denied",
+      "status": 404
+    },
+    {
+      "operation": "release",
+      "status": 204
+    },
+    {
+      "operation": "released_handle_denied",
+      "status": 404
+    }
+  ],
+  "remoteInitial": "a6968c972f5fbddd8a069d292e2dec987f2453de",
+  "remoteSaved": "c201e72cb59109b67d8856a4630f441f40cabca1",
+  "remoteFinal": "b318809cece3bd5e659597e10e1db7dee6a628ff",
+  "limitations": "HTTP backend acceptance only; browser controls and CLI export are not exercised.",
+  "runtimeManifestSha256": "d92f3ed8159c5278c7c6a1b8653208c0f1869a8b6f607c14b4e1cd01bb4ee1f1",
+  "cleanup": "PASS",
+  "testedClasses": {
+    "content/internal/PortableContentPlanner": "428acde57115e2ffc95f4beb2eecae622e5ccea4012393ef95c084986d5a6ac3",
+    "content/internal/LocalPortableContentExports": "44767a94d134e3b355ba2c4fcd505773f467419afda10c2c19377f8082f5bc61",
+    "web/internal/ContentExportController": "cdec09355061dc178890a6fecd56770588258bd4817f1e6636d8a5e3a4d8ff78",
+    "assets/ManagedOriginalTransfers": "a6ed48ab1824a06d42a14be21305fcdc70d84905523c03180215528191b76c06"
+  }
+}
