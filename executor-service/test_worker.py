@@ -5,6 +5,7 @@ import unittest
 import uuid
 import os
 import tempfile
+import time
 from unittest.mock import patch
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -211,6 +212,30 @@ class ProtocolTests(unittest.TestCase):
             finally:
                 self.backend.wait.set()
                 running.result(timeout=3)
+                session.bridge.close()
+
+    def test_bridge_poll_during_command_input_cleanup_does_not_cancel_the_lease(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id = 'RUNNING', uid()
+        with tempfile.TemporaryDirectory() as temporary:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            try:
+                # reset_command owns reader while draining completed command input.
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    with session.bridge.reader:
+                        pending = pool.submit(self.send, self.payload('BRIDGE_POLL', {}))
+                        deadline = time.monotonic() + 1
+                        while not pending.done() and not session.cancelled.is_set() and time.monotonic() < deadline:
+                            threading.Event().wait(.01)
+                    result = pending.result(timeout=2)
+                self.assertTrue(result['ok'], result)
+                self.assertIsNone(result['bridgeRequest'])
+                self.assertFalse(session.cancelled.is_set())
+                self.assertEqual('RUNNING', session.state)
+                self.assertTrue(self.send(self.payload('BRIDGE_POLL', {}))['ok'])
+                self.assertFalse(session.bridge.closed)
+            finally:
                 session.bridge.close()
 
     def setUp(self):

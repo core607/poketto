@@ -103,9 +103,12 @@ class LeaseBridge:
             return value
 
     def poll(self, timeout=0.2):
-        if not self.reader.acquire(blocking=False):
-            raise BridgeRejected('Bridge poll already active')
-        deadline = time.monotonic() + min(max(timeout, 0), 2)
+        wait = min(max(timeout, 0), 2)
+        deadline = time.monotonic() + wait
+        # Command cleanup drains the same input while holding reader. Contention
+        # with cleanup or another bounded poll is not a malformed sandbox request.
+        if not self.reader.acquire(timeout=wait):
+            return None
         try:
             while True:
                 if self.closed:
