@@ -138,10 +138,11 @@ export function ExportDialog({
         <div className="export-ready" role="status">
           <p>
             ZIP 已准备好 ·{" "}
-            {(receipt.bytes / 1024 / 1024).toLocaleString("zh-CN", {
-              maximumFractionDigits: 2,
-            })}{" "}
-            MiB
+            {receipt.bytes < 1024
+              ? `${receipt.bytes} B`
+              : receipt.bytes < 1024 * 1024
+                ? `${(receipt.bytes / 1024).toLocaleString("zh-CN", { maximumFractionDigits: 2 })} KiB`
+                : `${(receipt.bytes / 1024 / 1024).toLocaleString("zh-CN", { maximumFractionDigits: 2 })} MiB`}
           </p>
           <p>
             下载有效期至{" "}
@@ -149,7 +150,7 @@ export function ExportDialog({
             。链接仅当前账号可用。
           </p>
           <a
-            className="button-primary"
+            className="button"
             href={`/api/admin/exports/${encodeURIComponent(receipt.handle)}`}
             download
           >
