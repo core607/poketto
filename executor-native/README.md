@@ -1,5 +1,12 @@
 # Java and sandbox execution acceptance
 
+The [combined CodeAct delivery run](evidence/2026-09-10-codeact-delivery.json)
+verifies the public-root format with both CLI export scopes and the complete
+adapter lifecycle. All 32 Java scenarios, process-loss lease expiry and cleanup
+pass. Its export fixture uses the same public article path as the root-format
+repository; private/public ZIP contents, unselected edits and package cleanup
+remain asserted through the real worker.
+
 The [content-root run](evidence/2026-09-10-content-roots.json) uses the explicit
 `public-root` publication format. All 30 Java scenarios, process-loss lease expiry
 and controller cleanup pass with real native worker/SRT execution. Full sessions
