@@ -6,6 +6,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -437,15 +438,28 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "writeOutcomeUnknown",
                             session.saveState.uncertain,
                             "lastSave",
-                            session.saveState.lastSave));
+                            session.saveState.lastSave,
+                            "lastImport",
+                            session.lastImport));
         String operation = request.path("operation").asString("");
-        if (operation.equals("media_fetch")) {
+        if (operation.equals("media_fetch") || operation.equals("media_import")) {
             try {
-                return fetchMedia(session, executionId, arguments);
+                return operation.equals("media_fetch")
+                        ? fetchMedia(session, executionId, arguments)
+                        : importMedia(session, executionId, arguments);
             } catch (IllegalArgumentException invalid) {
                 return Map.of("ok", false, "code", "INVALID_MEDIA_REQUEST");
-            } catch (io.github.core607.poketto.assets.AssetStorageException
-                    | io.github.core607.poketto.content.ContentRepositoryException unavailable) {
+            } catch (AuthException denied) {
+                return Map.of("ok", false, "code", "ACCESS_DENIED");
+            } catch (io.github.core607.poketto.assets.AssetStorageException unavailable) {
+                return Map.of(
+                        "ok",
+                        false,
+                        "code",
+                        "MEDIA_UNAVAILABLE",
+                        "reason",
+                        unavailable.reason().name());
+            } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
                 return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
             }
         }
@@ -646,12 +660,25 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 ? Optional.empty()
                 : Optional.of(arguments.path("commit").stringValue());
         MediaFileService.Download download;
-        String commit;
+        String commit = null;
+        String indexSource;
         if (session.fullRead) {
-            commit = requested.orElseGet(
-                    () -> session.saveState.baseline(io.github.core607.poketto.content.RepositoryMediaIndex.PATH));
-            if (!commit.matches("[0-9a-f]{40}")) throw new IllegalArgumentException();
-            download = media.privateDownload(session.principal, session.key.workspace(), Optional.of(commit), path);
+            if (requested.isPresent()) {
+                commit = requested.orElseThrow();
+                if (!commit.matches("[0-9a-f]{40}")) throw new IllegalArgumentException();
+                download = media.privateDownload(session.principal, session.key.workspace(), Optional.of(commit), path);
+                indexSource = "repository";
+            } else {
+                var source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
+                var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+                        .orElseGet(RepositoryMediaIndex::empty);
+                download = media.privateOriginal(
+                        session.principal,
+                        session.key.workspace(),
+                        path,
+                        index.files().get(path));
+                indexSource = "worktree";
+            }
         } else {
             if (requested.isPresent())
                 throw new IllegalArgumentException("public media uses only its current projection");
@@ -669,6 +696,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || !asset.mediaType().equals(expected.mediaType()))
                 return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
             commit = session.commit;
+            indexSource = "public-projection";
         }
         var asset = download.asset();
         boolean installed = materialize(
@@ -689,23 +717,173 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     "LOCAL_FILE_EXISTS",
                     "message",
                     "A different local file exists; keep it or choose another --output path.");
+        var result = new LinkedHashMap<String, Object>();
+        result.put("path", destination);
+        result.put("sourcePath", path);
+        result.put("indexSource", indexSource);
+        if (commit != null) result.put("commit", commit);
+        result.put("sha256", asset.reference().revision());
+        result.put("mediaType", asset.mediaType());
+        result.put("bytes", asset.size());
+        return Map.of("ok", true, "result", result);
+    }
+
+    private Optional<String> captureOptional(Session session, String executionId, String path) {
+        JsonNode manifest = requestLive(
+                session, "CAPTURE_OPTIONAL", Map.of("executionId", executionId, "path", path), Duration.ofSeconds(5));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
+        requireOk(manifest, session);
+        List<String> absent = selectedPaths(manifest.path("absent"));
+        if (!absent.isEmpty() && !absent.equals(List.of(path))) throw new WorkerUnavailableException();
+        return Optional.ofNullable(
+                readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of())
+                        .get(path));
+    }
+
+    private Map<String, ?> importMedia(Session session, String executionId, JsonNode arguments) {
+        if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        if (arguments.size() != 5
+                || !arguments.path("file").isString()
+                || !arguments.path("path").isString()
+                || !arguments.path("mediaType").isString()
+                || !arguments.path("key").isString()
+                || !arguments.path("replace").isBoolean()) throw new IllegalArgumentException();
+        String file = arguments.path("file").stringValue(),
+                path = arguments.path("path").stringValue();
+        String mediaType = arguments.path("mediaType").stringValue(),
+                key = arguments.path("key").stringValue();
+        boolean replace = arguments.path("replace").booleanValue();
+        if (!key.matches("[A-Za-z0-9_-]{16,128}")) throw new IllegalArgumentException();
+        io.github.core607.poketto.assets.ManagedAsset.validateMediaType(mediaType);
+        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
+        if (source.isEmpty()
+                && !saves.baselineFile(
+                                session.principal,
+                                session.key.workspace(),
+                                session.saveState,
+                                RepositoryMediaIndex.PATH)
+                        .expectedAbsence())
+            return Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "INDEX_MISSING",
+                    "message",
+                    "Restore or intentionally recreate the local media index before importing.");
+        var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+                .orElseGet(RepositoryMediaIndex::empty);
+        var entries = new LinkedHashMap<>(index.files());
+        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
+        new RepositoryMediaIndex(entries); // Validate the complete logical namespace before uploading.
+        var existingGit = saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
+        if (!existingGit.expectedAbsence()
+                && existingGit.diagnostics().stream()
+                        .noneMatch(value -> value.code().equals("MANAGED_MEDIA")))
+            return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
+        JsonNode manifest = requestLive(
+                session, "CAPTURE_BINARY", Map.of("executionId", executionId, "path", file), Duration.ofSeconds(8));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
+        requireOk(manifest, session);
+        String captureId = manifest.path("captureId").asString("");
+        if (!UUID.fromString(captureId).toString().equals(captureId)) throw new WorkerUnavailableException();
+        Map<String, ?> reference = Map.of("executionId", executionId, "captureId", captureId);
+        io.github.core607.poketto.assets.ManagedAsset asset;
+        try {
+            JsonNode files = manifest.path("writes");
+            if (!files.isArray()
+                    || files.size() != 1
+                    || !files.get(0).path("path").asString("").equals(file)) throw new WorkerUnavailableException();
+            long size = files.get(0).path("bytes").asLong(-1);
+            String digest = files.get(0).path("sha256").asString("");
+            var previous = index.files().get(path);
+            if (!replace
+                    && previous != null
+                    && (previous.size() != size
+                            || !previous.revision().equals(digest)
+                            || !previous.mediaType().equals(mediaType)))
+                return Map.of("ok", false, "code", "MEDIA_PATH_EXISTS");
+            try (var input = new CapturedBinaryInput(size, digest, (offset, limit) -> {
+                authorize(session);
+                JsonNode chunk = requestLive(
+                        session,
+                        "CAPTURE_READ",
+                        Map.of(
+                                "executionId",
+                                executionId,
+                                "captureId",
+                                captureId,
+                                "index",
+                                0,
+                                "offset",
+                                offset,
+                                "limit",
+                                limit),
+                        Duration.ofSeconds(3));
+                requireOk(chunk, session);
+                if (!captureId.equals(chunk.path("captureId").asString(""))
+                        || chunk.path("index").asInt(-1) != 0
+                        || chunk.path("offset").asLong(-1) != offset) throw new WorkerUnavailableException();
+                return Base64.getDecoder().decode(chunk.path("data").asString(""));
+            })) {
+                asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
+                if (!input.verified()
+                        || asset.size() != size
+                        || !asset.reference().revision().equals(digest)
+                        || !asset.mediaType().equals(mediaType)) throw new WorkerUnavailableException();
+            }
+        } finally {
+            try {
+                requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3));
+            } catch (RuntimeException cleanupFailure) {
+                log.warn("Binary capture release was not acknowledged; command cleanup will release its staging file");
+            }
+        }
+        session.lastImport = importReceipt(path, asset, false);
+        var entry = new RepositoryMediaIndex.Media(
+                asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
+        var previous = index.files().get(path);
+        if (previous != null && !previous.equals(entry) && !replace)
+            return Map.of("ok", false, "code", "MEDIA_PATH_EXISTS", "result", session.lastImport);
+        entries.put(path, entry);
+        byte[] changed = entry.equals(previous)
+                ? source.orElseThrow().getBytes(StandardCharsets.UTF_8)
+                : new RepositoryMediaIndex(entries).encode();
+        String text = new String(changed, StandardCharsets.UTF_8);
+        if (!materialize(
+                session,
+                executionId,
+                RepositoryMediaIndex.PATH,
+                changed.length,
+                hash(text),
+                source.map(IsolatedRepositoryExecutor::hash).orElse(null),
+                false,
+                false,
+                output -> output.write(changed)))
+            return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+        session.lastImport = importReceipt(path, asset, true);
+        return Map.of("ok", true, "result", session.lastImport);
+    }
+
+    private static Map<String, ?> importReceipt(
+            String path, io.github.core607.poketto.assets.ManagedAsset asset, boolean indexed) {
         return Map.of(
-                "ok",
+                "path",
+                path,
+                "assetId",
+                asset.reference().assetId().toString(),
+                "sha256",
+                asset.reference().revision(),
+                "mediaType",
+                asset.mediaType(),
+                "bytes",
+                asset.size(),
+                "originalStored",
                 true,
-                "result",
-                Map.of(
-                        "path",
-                        destination,
-                        "sourcePath",
-                        path,
-                        "commit",
-                        commit,
-                        "sha256",
-                        asset.reference().revision(),
-                        "mediaType",
-                        asset.mediaType(),
-                        "bytes",
-                        asset.size()));
+                "indexUpdated",
+                indexed,
+                "saved",
+                false);
     }
 
     @FunctionalInterface
@@ -1030,6 +1208,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
+        private Map<String, ?> lastImport = Map.of();
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

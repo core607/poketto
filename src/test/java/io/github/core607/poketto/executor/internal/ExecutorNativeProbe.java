@@ -150,6 +150,7 @@ public final class ExecutorNativeProbe {
         selectedSaves();
         uncertainSaveRecovery();
         mediaFetch();
+        mediaImport();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -296,6 +297,111 @@ public final class ExecutorNativeProbe {
                 classHash(ExecutorNativeProbe.class))));
     }
 
+    private void mediaImport() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("import"), path("exports"), auth, workspace);
+        String initial = fixture.seedMedia(auth, principal, new byte[] {1, 2}, new byte[] {3, 4});
+        var reader = fixture.reader(auth);
+        byte[] bytes = new byte[256 * 700];
+        for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) i;
+        try (var executor = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        fixture.media(auth),
+                        reader,
+                        fixture.patches(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8)) {
+            var imported = executor.execute(
+                    principal,
+                    workspace,
+                    "media-import",
+                    Optional.empty(),
+                    "set -eu; python3 -c \"from pathlib import Path; Path('private/generated.bin').write_bytes(bytes(range(256))*700)\"; "
+                            + "poketto media import private/generated.bin --as private/generated.pdf --type application/pdf --key native_import_original_01; "
+                            + "poketto media fetch private/generated.pdf; sha256sum private/generated.pdf; "
+                            + "printf '[Generated](generated.pdf)\\n' > private/with-media.md",
+                    Duration.ofSeconds(35),
+                    new Cancellation());
+            assertThat(imported.exitCode())
+                    .as("import stdout=%s stderr=%s", imported.stdout(), imported.stderr())
+                    .isZero();
+            assertThat(imported.stdout())
+                    .contains(hash(bytes), "\"indexUpdated\": true", "\"indexSource\": \"worktree\"");
+            String identity = JSON.readTree(imported.stdout()
+                            .lines()
+                            .filter(line -> line.startsWith("{"))
+                            .findFirst()
+                            .orElseThrow())
+                    .path("result")
+                    .path("assetId")
+                    .asString();
+            var beforeSave = reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json");
+            assertThat(beforeSave.commit()).contains(initial);
+            assertThat(beforeSave.source().orElseThrow()).doesNotContain("private/generated.pdf");
+            var repeated = executor.execute(
+                    principal,
+                    workspace,
+                    "media-import",
+                    Optional.empty(),
+                    "set -eu; python3 -c \"from pathlib import Path; p=Path('.poketto/assets.json'); p.write_bytes(b' \\n'+p.read_bytes()+b'\\n')\"; "
+                            + "before=$(sha256sum .poketto/assets.json); "
+                            + "poketto media import private/generated.bin --as private/generated.pdf --type application/pdf --key native_import_original_01; "
+                            + "test \"$before\" = \"$(sha256sum .poketto/assets.json)\"; poketto save .poketto/assets.json private/with-media.md",
+                    Duration.ofSeconds(35),
+                    new Cancellation());
+            assertThat(repeated.exitCode())
+                    .as("repeat stdout=%s stderr=%s", repeated.stdout(), repeated.stderr())
+                    .isZero();
+            assertThat(repeated.stdout()).contains(identity);
+            var saved = reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json");
+            assertThat(saved.source().orElseThrow())
+                    .contains("private/generated.pdf", "public/manual.pdf", "private/manual.pdf");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/with-media.md")
+                            .source())
+                    .contains("[Generated](generated.pdf)\n");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/generated.bin")
+                            .expectedAbsence())
+                    .isTrue();
+            var conflictingKey = executor.execute(
+                    principal,
+                    workspace,
+                    "media-import",
+                    Optional.empty(),
+                    "printf 'changed-original' > private/generated.bin; "
+                            + "poketto media import private/generated.bin --as private/generated.pdf --type application/pdf --key native_import_original_01 --replace",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(conflictingKey.exitCode()).isEqualTo(1);
+            assertThat(conflictingKey.stdout()).contains("IDEMPOTENCY_CONFLICT");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json")
+                            .commit())
+                    .isEqualTo(saved.commit());
+            var replacement = executor.execute(
+                    principal,
+                    workspace,
+                    "media-import",
+                    Optional.empty(),
+                    "set -eu; poketto media import private/generated.bin --as private/generated.pdf --type application/pdf --key native_import_original_02 --replace; "
+                            + "poketto media fetch private/generated.pdf --output private/new-version.pdf; cat private/new-version.pdf; "
+                            + "poketto media fetch private/generated.pdf --commit "
+                            + saved.commit().orElseThrow()
+                            + " --output private/historical-version.pdf; sha256sum private/historical-version.pdf",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(replacement.exitCode())
+                    .as("replace stdout=%s stderr=%s", replacement.stdout(), replacement.stderr())
+                    .isZero();
+            assertThat(replacement.stdout()).contains("changed-original", hash(bytes));
+            passed("media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically");
+        }
+    }
+
     private void mediaFetch() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture").resolve("media"), path("exports"), auth, workspace);
@@ -408,6 +514,16 @@ public final class ExecutorNativeProbe {
                     new Cancellation());
             assertThat(denied.exitCode()).isEqualTo(1);
             assertThat(denied.stdout()).contains("MEDIA_UNAVAILABLE").doesNotContain(hash(updated));
+            var uploadDenied = executor.execute(
+                    principal,
+                    workspace,
+                    "media-public",
+                    Optional.empty(),
+                    "printf 'data' > created.bin; poketto media import created.bin --as public/created.bin --key native_public_denied_01",
+                    Duration.ofSeconds(10),
+                    new Cancellation());
+            assertThat(uploadDenied.exitCode()).isEqualTo(1);
+            assertThat(uploadDenied.stdout()).contains("READ_ONLY_SCOPE");
             passed("public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history");
         } finally {
             privateRead.set(true);

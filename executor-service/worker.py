@@ -25,6 +25,7 @@ from resource_pool import ResourcePool
 from bridge import BridgeRejected, LeaseBridge
 from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
 from materialize import IncomingFile
+from binary_capture import BinaryCapture
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -144,7 +145,7 @@ class Service:
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
         if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
-                                  'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_READ', 'CAPTURE_RELEASE', 'MATERIALIZE_BEGIN',
+                                  'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE', 'MATERIALIZE_BEGIN',
                                   'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT') or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
         return p, hashlib.sha256(raw).hexdigest()
@@ -196,7 +197,7 @@ class Service:
         op, d = p['operation'], p['data']
         if op in ('MATERIALIZE_BEGIN', 'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT'):
             return self.materialize_dispatch(p)
-        if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_READ', 'CAPTURE_RELEASE'):
+        if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE'):
             return self.capture_dispatch(p)
         if op in ('BRIDGE_POLL', 'BRIDGE_COMPLETE'):
             return self.bridge_dispatch(p)
@@ -359,7 +360,7 @@ class Service:
     def capture_dispatch(self, p):
         op, data = p['operation'], p['data']
         keys = {'executionId', 'writes', 'deletes'} if op == 'CAPTURE_BEGIN' else {'executionId', 'captureId'}
-        if op == 'CAPTURE_OPTIONAL':
+        if op in ('CAPTURE_OPTIONAL', 'CAPTURE_BINARY'):
             keys = {'executionId', 'path'}
         if op == 'CAPTURE_READ':
             keys |= {'index', 'offset', 'limit'}
@@ -380,16 +381,20 @@ class Service:
             if s.cancelled.is_set() or s.execution_id != data['executionId'] or not s.unit:
                 raise Rejected('SESSION_NOT_READY')
             try:
-                if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL'):
+                if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY'):
                     if s.capture is not None:
                         raise Rejected('CAPTURE_IN_PROGRESS')
-                    if op == 'CAPTURE_BEGIN':
+                    if op == 'CAPTURE_BINARY':
+                        selected_paths([data['path']], [])
+                        s.capture = self.backend.capture_binary(s, data['path'])
+                    elif op == 'CAPTURE_BEGIN':
                         selected_paths(data['writes'], data['deletes'])
                         captured = self.backend.capture(s, data['writes'], data['deletes'])
+                        s.capture = CaptureSnapshot(captured)
                     else:
                         selected_paths([data['path']], [])
                         captured = self.backend.capture_optional(s, data['path'])
-                    s.capture = CaptureSnapshot(captured)
+                        s.capture = CaptureSnapshot(captured)
                     result = s.capture.manifest()
                 else:
                     if s.capture is None or s.capture.id != data['captureId']:
@@ -397,6 +402,7 @@ class Service:
                     if op == 'CAPTURE_READ':
                         result = s.capture.chunk(data['index'], data['offset'], data['limit'])
                     else:
+                        s.capture.close()
                         s.capture = None
                         result = {}
             except CaptureRejected:
@@ -596,6 +602,10 @@ class SystemdBackend:
         with self.frozen(s):
             return capture_optional(self.mount_path(s), path)
 
+    def capture_binary(self, s, path):
+        with self.frozen(s):
+            return BinaryCapture(self.mount_path(s), path, s.cancelled.is_set)
+
     def install(self, s, incoming):
         with self.frozen(s):
             return incoming.install(self.user.pw_uid, self.user.pw_gid)
@@ -718,7 +728,9 @@ class SystemdBackend:
                 record.unlink(missing_ok=True)
                 settings.unlink(missing_ok=True)
                 s.unit = ''
-                s.capture = None
+                if s.capture is not None:
+                    s.capture.close()
+                    s.capture = None
                 if s.incoming is not None:
                     s.incoming.close()
                     s.incoming = None
@@ -742,7 +754,9 @@ class SystemdBackend:
             if s.incoming is not None:
                 s.incoming.close()
                 s.incoming = None
-            s.capture = None
+            if s.capture is not None:
+                s.capture.close()
+                s.capture = None
             target = self.mount_path(s)
             if target.is_symlink():
                 raise RuntimeError('Unsafe mountpoint')

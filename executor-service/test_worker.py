@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from bridge import LeaseBridge
 from cli import call
 from session_files import capture_text
+from binary_capture import BinaryCapture
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from worker import Service
@@ -49,6 +50,9 @@ class Backend:
     def capture(self, session, writes, deletes):
         return capture_text(self.root, writes, deletes)
 
+    def capture_binary(self, session, path):
+        return BinaryCapture(self.root, path)
+
     def mount_path(self, session):
         return self.root
 
@@ -57,6 +61,25 @@ class Backend:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_signed_binary_capture_releases_its_protected_file(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            source = bytes(range(256))
+            (repository / 'source').write_bytes(source)
+            captured = self.send(self.payload('CAPTURE_BINARY', {'executionId': session.execution_id, 'path': 'source'}))
+            self.assertTrue(captured['ok'], captured)
+            reference = {'executionId': session.execution_id, 'captureId': captured['captureId']}
+            (repository / 'source').write_bytes(b'later edit')
+            chunk = self.send(self.payload('CAPTURE_READ', {**reference, 'index': 0, 'offset': 0, 'limit': 65536}))
+            self.assertEqual(source, base64.b64decode(chunk['data']))
+            self.assertTrue(self.send(self.payload('CAPTURE_RELEASE', reference))['ok'])
+            self.assertFalse(list(self.backend.root.glob('outgoing-*')))
+
     def test_signed_materialization_is_scoped_and_retains_an_acknowledged_install(self):
         import hashlib
         self.opened()

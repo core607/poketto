@@ -96,6 +96,20 @@ public final class MediaFileService {
         }
     }
 
+    /** Full-read callers may use a mutable local index; its entry never grants access outside this workspace. */
+    public Download privateOriginal(
+            AuthPrincipal actor, WorkspaceId workspace, String path, RepositoryMediaIndex.Media entry) {
+        Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        check.run();
+        try (var admission = admit(workspace, false)) {
+            ManagedAsset asset = resolve(workspace, entry);
+            check.run();
+            return new Download(workspace, path, asset, check, false);
+        } catch (RuntimeException failure) {
+            throw checkedFailure(check, failure);
+        }
+    }
+
     public Download publicDownload(WorkspaceId workspace, String commit, String route, String path) {
         PublicArticle article = snapshots.withCurrent(workspace, snapshot -> publicArticle(snapshot, commit, route));
         Runnable check = () -> snapshots.withCurrent(workspace, snapshot -> {

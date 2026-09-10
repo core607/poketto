@@ -41,6 +41,9 @@ class CaptureSnapshot:
         return {'captureId': self.id, 'index': index, 'offset': offset,
                 'data': base64.b64encode(content[offset:offset + limit]).decode('ascii')}
 
+    def close(self):
+        pass
+
 
 def selected_paths(writes, deletes):
     if not isinstance(writes, list) or not isinstance(deletes, list):

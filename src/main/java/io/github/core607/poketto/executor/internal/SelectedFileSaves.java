@@ -187,6 +187,11 @@ final class SelectedFileSaves {
                 merged.conflicted());
     }
 
+    io.github.core607.poketto.content.RepositoryFile baselineFile(
+            AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
+        return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
+    }
+
     void acknowledgeSync(State state, SyncPlan plan) {
         if (state.uncertain
                 || !state.baseCommit.equals(plan.previousCommit())

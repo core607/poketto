@@ -101,6 +101,12 @@ def main():
     fetch.add_argument('path')
     fetch.add_argument('--commit')
     fetch.add_argument('--output')
+    imported = media_commands.add_parser('import', help='Store a local original and update its unsaved logical index entry')
+    imported.add_argument('file')
+    imported.add_argument('--as', dest='logical_path', required=True)
+    imported.add_argument('--type', dest='media_type', default='application/octet-stream')
+    imported.add_argument('--key', required=True, help='Stable 16-128 character idempotency key for these original bytes')
+    imported.add_argument('--replace', action='store_true', help='Replace an existing logical index entry; originals remain immutable')
     save = commands.add_parser('save', help='Commit explicitly selected text files through the host')
     save.add_argument('paths', nargs='*')
     save.add_argument('--delete', action='append', default=[])
@@ -110,8 +116,12 @@ def main():
         arguments = {'path': args.path}
     operation = args.operation
     if operation == 'media':
-        operation = 'media_fetch'
-        arguments = {'path': args.path, 'commit': args.commit, 'output': args.output}
+        if args.media_operation == 'fetch':
+            operation = 'media_fetch'
+            arguments = {'path': args.path, 'commit': args.commit, 'output': args.output}
+        else:
+            operation = 'media_import'
+            arguments = {'file': args.file, 'path': args.logical_path, 'mediaType': args.media_type, 'key': args.key, 'replace': args.replace}
     if args.operation == 'save' and not args.paths and not args.delete:
         parser.error('save requires selected files or explicit --delete paths')
     root = os.environ.get('POKETTO_BRIDGE')

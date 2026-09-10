@@ -171,7 +171,7 @@ final class RepositoryMcpTools {
         if (executors.getIfAvailable() != null) {
             tools.add(tool(
                     "repo_exec",
-                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the pinned revision. Execution never writes repository authority.",
+                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority.",
                     object(
                             Map.of(
                                     "command",
@@ -182,7 +182,7 @@ final class RepositoryMcpTools {
                                     Map.of("type", "integer", "minimum", 1, "maximum", 60)),
                             List.of("command")),
                     false,
-                    false,
+                    true,
                     false,
                     this::execute));
         }
