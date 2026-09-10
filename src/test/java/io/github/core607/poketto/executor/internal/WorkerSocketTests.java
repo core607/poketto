@@ -1118,9 +1118,16 @@ class WorkerSocketTests {
                     if (response == null) return;
                 }
                 byte[] bytes = json.writeValueAsBytes(response);
-                output.writeInt(bytes.length);
-                output.write(bytes);
-                output.flush();
+                try {
+                    output.writeInt(bytes.length);
+                    output.write(bytes);
+                    output.flush();
+                } catch (java.io.IOException disconnected) {
+                    // A stale-boot poll can reject first and cancel the simultaneous EXEC socket.
+                    // Only that obsolete reply may lose its receiver; parsing and assertions still fail.
+                    if (!(response instanceof Map<?, ?> fields) || !"WORKER_RESTARTED".equals(fields.get("code")))
+                        throw disconnected;
+                }
             } catch (Throwable exception) {
                 recordFailure(exception);
             }
