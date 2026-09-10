@@ -9,6 +9,8 @@ owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime
 
+The application's HELLO check requires `codeActProtocol: 1` before exporting content or opening a lease. The marker covers the synchronous bridge, frozen text/binary capture and guarded materialization contract. Missing or different values reject execution. Install the complete worker source set and restart its service before deploying the CodeAct application; existing leases end on restart. The outer signed envelope remains version 1.
+
 Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
 and the toolchain prepared by [the native spike](../executor-spike/README.md)
 is required. Install [requirements.txt](requirements.txt) into a root-owned

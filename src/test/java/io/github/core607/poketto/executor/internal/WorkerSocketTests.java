@@ -51,6 +51,31 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void incompatibleWorkerIsRejectedBeforeOpeningOrExportingContent() throws Exception {
+        var exports = exports();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports, peer)) {
+            peer.codeActProtocol = 0;
+            assertThatThrownBy(() -> executor.execute(
+                            principal(),
+                            WORKSPACE,
+                            "unsupported",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).isEmpty();
+            verify(exports, never()).create(any(), any(), any());
+            verify(exports, never()).createPublic(any(), any());
+            peer.codeActProtocol = 2;
+            assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
+            peer.codeActProtocol = 1;
+            assertThat(peer.client().hello().workerBootId()).isEqualTo(peer.boot);
+        }
+    }
+
+    @Test
     void publicReadersOpenOnlyProjectionAndCannotSelectSourceHistoryOrSilentlyUpgrade() throws Exception {
         AuthService auth = fullAuth();
         when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
@@ -995,6 +1020,7 @@ class WorkerSocketTests {
         private volatile boolean assertOnHelloShutdown;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
+        private volatile int codeActProtocol = 1;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
@@ -1055,6 +1081,8 @@ class WorkerSocketTests {
                             true,
                             "version",
                             1,
+                            "codeActProtocol",
+                            codeActProtocol,
                             "workerBootId",
                             boot,
                             "maxFrameBytes",

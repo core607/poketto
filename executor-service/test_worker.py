@@ -61,6 +61,11 @@ class Backend:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_hello_advertises_the_codeact_bridge_contract(self):
+        response = self.service.hello()
+        self.assertEqual(1, response['version'])
+        self.assertEqual(1, response['codeActProtocol'])
+
     def test_signed_binary_capture_releases_its_protected_file(self):
         self.opened()
         session = self.service.sessions[self.identity['leaseId']]
