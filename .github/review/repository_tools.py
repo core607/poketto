@@ -8,6 +8,8 @@ import re
 
 
 TOOL_BYTES = 24_000
+# Final metadata includes the commit, unreadable-path count and up to a 77-byte cursor.
+RESULT_HEADROOM = 256
 FILE_BYTES = 1_000_000
 TREE_BYTES = 16_000_000
 MAX_ENTRIES = 100_000
@@ -166,11 +168,11 @@ class RepositoryTools:
                     raise ToolInputError("Line offset exceeds the file.")
                 for i in range(offset, min(len(lines), offset + limit)):
                     item = {"line": i + 1, "text": lines[i]}
-                    if len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
+                    if len(encode(result)) + len(encode(item)) > TOOL_BYTES - RESULT_HEADROOM:
                         if not result["lines"]:
                             # A generated/minified line must not consume the entire context.
                             # JSON can expand one control byte to six bytes; reserve envelope fields too.
-                            prefix_bytes = max(0, (TOOL_BYTES - len(encode(result)) - 128) // 6)
+                            prefix_bytes = max(0, (TOOL_BYTES - len(encode(result)) - RESULT_HEADROOM) // 6)
                             raw = lines[i].encode("utf-8")[:prefix_bytes]
                             item = {"line": i + 1, "text": raw.decode("utf-8", errors="ignore"), "truncated": True}
                             result["lines"].append(item)
@@ -198,7 +200,7 @@ class RepositoryTools:
                     end = cursor
                     for n in names[cursor:cursor + 200]:
                         item = {"path": n, "mode": entries[n][0]}
-                        if len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
+                        if len(encode(result)) + len(encode(item)) > TOOL_BYTES - RESULT_HEADROOM:
                             if end == cursor:
                                 raise ToolInputError("One repository entry exceeds the tool result limit.")
                             break
@@ -239,7 +241,7 @@ class RepositoryTools:
                 lines = self.lines(text)
             except ToolInputError as error:
                 item = {"path": name, "reason": str(error)}
-                if len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
+                if len(encode(result)) + len(encode(item)) > TOOL_BYTES - RESULT_HEADROOM:
                     result["next_cursor"] = index * stride
                     return result
                 result["unsearched"].append(item)
@@ -256,7 +258,7 @@ class RepositoryTools:
                 if len(text) > width:
                     begin = min(max(0, text.index(query) - SNIPPET_LEAD), len(text) - width)
                     item.update(text=text[begin:begin + width], truncated=True)
-                if len(result["entries"]) >= 200 or len(encode(result)) + len(encode(item)) > TOOL_BYTES - 128:
+                if len(result["entries"]) >= 200 or len(encode(result)) + len(encode(item)) > TOOL_BYTES - RESULT_HEADROOM:
                     result["next_cursor"] = index * stride + line
                     return result
                 result["entries"].append(item)

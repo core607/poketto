@@ -151,6 +151,23 @@ class AgentTests(unittest.TestCase):
             self.call("search", path="consumer.py", query="head")
             self.assertEqual(count, git.call_count)
 
+    def test_full_list_pages_fit_with_commit_and_opaque_cursor(self):
+        for length in range(140, 190):
+            entries = {"p" * length + f"{i:03}": ("100644", "blob", "a" * 40) for i in range(250)}
+            self.tools.trees["head"] = entries
+            self.tools.unreadable_paths["head"] = 99999
+            seen, cursor = [], ""
+            while True:
+                page = self.call("list", cursor=cursor)
+                self.assertNotIn("error", page, f"path length {length}: {page}")
+                self.assertLessEqual(len(review.encoded(page)), TOOL_BYTES)
+                self.assertEqual(self.revision["head"], page["commit"])
+                seen.extend(item["path"] for item in page["entries"])
+                cursor = page["next_cursor"]
+                if cursor is None:
+                    break
+            self.assertEqual(sorted(entries), seen)
+
     def test_repeated_arguments_with_new_call_id_warn_then_finalize_without_rereading(self):
         second = self.tool_message("another_id", {"path": "consumer.py", "revision": "head", "action": "read"})
         with patch.object(self.tools, "call", wraps=self.tools.call) as tool:
@@ -238,10 +255,11 @@ class AgentTests(unittest.TestCase):
         self.assertLessEqual(len(review.encoded(search)), TOOL_BYTES)
 
     def test_listing_resumes_without_omitting_paths(self):
-        with patch("repository_tools.TOOL_BYTES", 280):
+        with patch("repository_tools.TOOL_BYTES", 480):
             cursor, names = "", []
             while cursor is not None:
                 page = self.call("list", cursor=cursor)
+                self.assertLessEqual(len(review.encoded(page)), 480)
                 names.extend(e["path"] for e in page["entries"])
                 following = page["next_cursor"]
                 self.assertTrue(following is None or following != cursor)
