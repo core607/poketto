@@ -33,7 +33,15 @@ Production and integration tests select the same [official PostgreSQL 17 image](
 
 Without a configured target the workflow succeeds after publication. The `deploy` job runs only when the repository variable `POKETTO_DEPLOY_ENABLED` is `true`; it uses the GitHub `production` environment, a fixed `production-deploy` concurrency group that never cancels an in-progress deployment, and workflow-level cancellation only for pull requests. Open-source CI never depends on a maintainer's private server.
 
-The deployment job allows 90 minutes because a full image archive can make steady progress on a slow SSH link without reaching the host within 30 minutes. This is a transfer allowance, not a longer container-health grace period: updater command and health deadlines remain unchanged. A stalled connection can occupy the serialized deployment slot longer, so operators should inspect transfer progress before retrying; increasing the job deadline does not itself repair a failed route.
+The deployment job allows 180 minutes for archive transfer and installation.
+A measured SSH transfer at roughly 38 KiB/s continued making progress but reached
+the [90-minute job limit](https://github.com/core607/poketto/actions/runs/34437762983)
+before installation. The supplied `transfer.sh` adds no separate total transfer
+deadline; updater command and health deadlines remain unchanged. A slower or
+stalled transfer can still time out and occupy the serialized deployment slot
+longer. Inspect progress before retrying: increasing the deadline does not repair
+a failed route or make an incomplete archive deployable. Interrupted archives
+are not resumed by the supplied transfer script.
 
 The environment supplies the variables `POKETTO_DEPLOY_ROOT` and optional `POKETTO_DEPLOY_MODE` (`pull` by default, or `transfer`) and the secrets `POKETTO_DEPLOY_TARGET` (`user@host`, a secret because it names the private host), `POKETTO_DEPLOY_SSH_KEY`, `POKETTO_DEPLOY_HOST_KEY` holding the pinned `known_hosts` line, and optionally `POKETTO_REPOSITORY_PASSWORD`. Missing configuration fails with the list of what is absent. The job uses `StrictHostKeyChecking=yes` and `BatchMode`, never a personal key, and never a self-hosted runner on the production host. When the repository credential secret is set, the job streams it to the entrance's standard input, which records it into the host's `.env` once the deployment is healthy; it never appears as a command-line argument or in the summary. The summary records the commit, image, mode, and result.
 
