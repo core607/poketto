@@ -153,10 +153,10 @@ OPEN, RENEW, CLOSE, and EXEC success responses contain `ok: true`, `requestId`,
 `leaseId`, `state`, and `commit`. EXEC also returns `result`:
 
 ```json
-{"commit":"40_HEX","exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,"stderrTruncated":false,"timedOut":false,"terminationReason":"normal"}
+{"commit":"40_HEX","exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,"stderrTruncated":false,"timedOut":false,"terminationReason":"normal","artifacts":{},"artifactErrors":{}}
 ```
 
-Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py` and `materialize.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply. Command cleanup discards abandoned requests before another command can start.
+Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply. Command cleanup discards abandoned requests before another command can start.
 
 `poketto save PATH... --delete PATH` sends selections, not file contents. The application captures those files, checks authoritative revisions at its own baseline and uses the shared atomic Git writer. Success advances only the host save baseline; the worker's original history and all unselected local edits remain. Public-only sessions reject saves. Conflicts retain local files and the prior baseline; an ambiguous write blocks subsequent saves. `poketto status` exposes the host baseline and last save receipt.
 
@@ -234,7 +234,7 @@ actual signed socket entry point and cleans units, mounts, and the account in
 production `UMask=0077`; this prevents the private `/tmp` write grant from
 concealing a production filesystem-mount error. Use a new disposable root
 directory containing worker.py, resource_pool.py, native_pool.py,
-launcher.py, bridge.py, cli.py, session_files.py, binary_capture.py, materialize.py, native_probe.py, and a prepared `tools` directory. Install the
+launcher.py, bridge.py, cli.py, session_files.py, binary_capture.py, materialize.py, artifacts.py, native_probe.py, and a prepared `tools` directory. Install the
 pinned Python dependencies into `tools/python`; the probe's supervisor uses
 that directory. `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike` creates
 the pinned SRT toolchain without installing global packages.
