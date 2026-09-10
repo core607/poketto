@@ -1,8 +1,8 @@
 {
-  "sourceCommit": "d9f349aae022e7ef91e8f065d945e4cbc3f85b02",
+  "sourceCommit": "9ef41f5409005987d232ac589aa2de20c5f471cb",
   "fixtureParent": "/var/lib",
   "authentication": "synthetic stub; not PostgreSQL or HTTP MCP client acceptance",
-  "dependencies": "real Git authority, publication/export/atomic patch services, Java adapter, signed capture bridge, synchronous CLI and SRT on native Linux",
+  "dependencies": "real Git authority, publication/export/atomic patch services, local managed originals, Java adapter, signed capture/materialization bridge, synchronous CLI and SRT on native Linux",
   "observations": [
     {
       "test": "root-owned-socket-rejects-non-root-peer",
@@ -43,8 +43,18 @@
       "result": "PASS"
     },
     {
+      "test": "full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
       "test": "signed-open-through-production-socket-and-signature-checks",
-      "milliseconds": 1792.680021,
+      "milliseconds": 1857.9786,
       "result": "PASS"
     },
     {
@@ -55,7 +65,7 @@
     {
       "test": "twenty-adapter-session-reuses",
       "result": "PASS",
-      "meanMilliseconds": 933.10799145
+      "meanMilliseconds": 929.44459205
     },
     {
       "test": "same-key-clients-cannot-read-or-write-another-lease-bridge",
@@ -90,9 +100,9 @@
     {
       "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
       "summary": "PASS",
-      "tests": 16,
-      "adapterClassSha256": "3bb83ea976c20ed355a9f61023e4e64a533045f28a31af5d1cd19f4bdbb34b14",
-      "nativeProbeClassSha256": "f2b337375548c7145a09120b44736aac44e745a55182d0ab546ef38d98d9ddc2"
+      "tests": 18,
+      "adapterClassSha256": "d059ec3cd43abc6ac9e4da8df1726d449b16d3a7e477ad80d9d874ba264f30c5",
+      "nativeProbeClassSha256": "488410a1da6e625a6d4c1f50c353f8e7e3d648b9471c5a880acd43774fa9549d"
     },
     {
       "test": "java-process-loss-expires-real-worker-lease",
@@ -100,15 +110,15 @@
     },
     {
       "nativeCombined": "PASS",
-      "runtimeManifestSha256": "8f558f550a8d6a8f978437cb2c6c7f50b6eee4ab7df0ec90419c112fbc278e26",
+      "runtimeManifestSha256": "daba07083c979ad99a682a19ef106d2a674734213980580f38049f84d077102f",
       "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
       "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
-      "workerSha256": "08e744fe70c607668c3a668ae7c45a8ce39196e22d5b12f107764ec45e586c48",
+      "workerSha256": "4875f5e7fec2fa4647cd9745acc62744998366a1d95f6f4c97feb92faa449504",
       "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
       "bridgeSha256": "9c6898c129a2cd2b403f6ad4a0b0a00c49d7f8939c4ba4f59c42015f351a23cb",
-      "cliSha256": "eb6908f0b9067c633385e2a91dc7b39b2a7c28fbba43606411611d722a3abec8",
+      "cliSha256": "9c4c628b9b4b386ee837c8517e1693b875d7a73d61f45fd51e8a9aa6abb5586b",
       "sessionFilesSha256": "0cd9705e9bcddb488d064424855a1cc53b26d3b1734ee74acb11f0f3a6eb89a6",
-      "materializeSha256": "53c2d882393b7fa54dfe02c610db52078726957cccfee8200b6f2af50e0daa7d",
+      "materializeSha256": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692",
       "nativeScriptSha256": "517291fc501f6c4a54818edff25f8368b9458ba8ab4e1327691a6782c1887d55",
       "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
       "source": "synthetic-only"
