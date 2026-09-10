@@ -183,6 +183,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(1, response['codeActProtocol'])
         self.assertEqual(1, response['artifactProtocol'])
         self.assertEqual(1, response['moveProtocol'])
+        self.assertEqual(1, response['exportProtocol'])
 
     def test_signed_binary_capture_releases_its_protected_file(self):
         self.opened()

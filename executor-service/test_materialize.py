@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from materialize import IncomingFile, LocalMove
+from materialize import IncomingFile, LocalMove, MAX_FILE_BYTES
 from session_files import CaptureRejected
 
 
@@ -46,6 +46,17 @@ class MaterializeTests(unittest.TestCase):
         path.write_text('new edit after acknowledgement')
         self.assertEqual(result, self.install(incoming))
         self.assertEqual('new edit after acknowledgement', path.read_text())
+
+    def test_export_size_admission_still_rejects_overflow_and_cleans_incomplete_staging(self):
+        incoming = IncomingFile(self.root, 'large.zip', 128 * 1024 * 1024 + 1, 'a' * 64, None)
+        self.assertTrue(incoming.stage.exists())
+        with self.assertRaises(CaptureRejected):
+            incoming.install(os.getuid(), os.getgid())
+        incoming.close()
+        self.assertFalse(incoming.stage.exists())
+        self.assertFalse((self.repository / 'large.zip').exists())
+        with self.assertRaises(CaptureRejected):
+            IncomingFile(self.root, 'overflow.zip', MAX_FILE_BYTES + 1, 'a' * 64, None)
 
     def test_changed_target_and_invalid_chunks_do_not_replace_local_files(self):
         path = self.repository / 'note.md'

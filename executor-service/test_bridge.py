@@ -79,6 +79,10 @@ class LeaseBridgeTests(unittest.TestCase):
         for command, operation, arguments in (
                 (['recover', '--skip-local'], 'recover', {'skipLocal': True}),
                 (['move', 'private/a.md', 'private/b.md'], 'move', {'source': 'private/a.md', 'destination': 'private/b.md'}),
+                (['export', 'articles', 'media', '--output', 'bundle.zip', '--public'], 'export',
+                 {'paths': ['articles', 'media'], 'output': 'bundle.zip', 'publicOnly': True}),
+                (['export', '.', '--output', 'all.zip'], 'export',
+                 {'paths': ['.'], 'output': 'all.zip', 'publicOnly': False}),
                 (['artifact', 'create', 'result.bin', '--type', 'application/pdf'],
                  'artifact_create', {'path': 'result.bin', 'mediaType': 'application/pdf'}),
                 (['artifact', 'remove', identifier], 'artifact_remove', {'artifactId': identifier})):

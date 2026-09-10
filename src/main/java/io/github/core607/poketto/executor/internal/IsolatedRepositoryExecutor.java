@@ -46,6 +46,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
     private final AuthService auth;
     private final RepositorySnapshotExports exports;
+    private final io.github.core607.poketto.content.PortableContentExports packages;
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
     private final MediaFileService media;
@@ -73,6 +74,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
+            io.github.core607.poketto.content.PortableContentExports packages,
             MediaFileService media,
             SelectedFileSaves saves,
             AuthService auth,
@@ -81,6 +83,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
+        this.packages = packages;
         this.media = media;
         this.saves = saves;
         this.auth = auth;
@@ -576,6 +579,19 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "lastImport",
                             session.lastImport));
         String operation = request.path("operation").asString("");
+        if (operation.equals("export")) {
+            try {
+                return exportPackage(session, executionId, arguments);
+            } catch (IllegalArgumentException invalid) {
+                return Map.of("ok", false, "code", "INVALID_EXPORT_SELECTION");
+            } catch (io.github.core607.poketto.content.ContentExportException unavailable) {
+                return Map.of(
+                        "ok", false, "code", "EXPORT_" + unavailable.reason().name());
+            } catch (io.github.core607.poketto.content.ContentRepositoryException
+                    | io.github.core607.poketto.assets.AssetStorageException unavailable) {
+                return Map.of("ok", false, "code", "EXPORT_UNAVAILABLE");
+            }
+        }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
             try {
                 Map<String, Object> data;
@@ -1208,6 +1224,65 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         void writeTo(java.io.OutputStream output) throws java.io.IOException;
     }
 
+    private Map<String, ?> exportPackage(Session session, String executionId, JsonNode arguments) {
+        if (arguments.size() != 3
+                || !arguments.path("paths").isArray()
+                || !arguments.path("output").isString()
+                || !arguments.path("publicOnly").isBoolean()) throw new IllegalArgumentException();
+        var selections = new ArrayList<String>();
+        for (JsonNode path : arguments.path("paths")) {
+            if (!path.isString()) throw new IllegalArgumentException();
+            selections.add(path.stringValue());
+        }
+        String output = arguments.path("output").stringValue();
+        SessionExportSelection.validate(output);
+        synchronized (session) {
+            requireLive(session);
+        }
+        authorize(session);
+        var selected = SessionExportSelection.resolve(selections, session.fullRead ? null : session.publicExport);
+        boolean publicOnly = !session.fullRead || arguments.path("publicOnly").booleanValue();
+        var client = Optional.of(session.key.sessionHash());
+        try {
+            var receipt = packages.create(session.principal, session.key.workspace(), selected, publicOnly, client);
+            synchronized (session) {
+                requireLive(session);
+            }
+            authorize(session);
+            if (!materialize(
+                    session,
+                    executionId,
+                    output,
+                    receipt.bytes(),
+                    receipt.sha256(),
+                    null,
+                    false,
+                    true,
+                    sink -> packages.copyTo(
+                            session.principal, session.key.workspace(), receipt.handle(), client, sink)))
+                return Map.of("ok", false, "code", "LOCAL_FILE_CHANGED");
+            return Map.of(
+                    "ok",
+                    true,
+                    "result",
+                    Map.of(
+                            "path",
+                            output,
+                            "bytes",
+                            receipt.bytes(),
+                            "sha256",
+                            receipt.sha256(),
+                            "scope",
+                            publicOnly ? "public" : "private",
+                            "saved",
+                            false));
+        } finally {
+            // Covers a close event that raced before create registered its build. No package handle
+            // is exposed to the sandbox; every command owns only its materialized local result.
+            packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
+        }
+    }
+
     private boolean materialize(
             Session session,
             String executionId,
@@ -1313,6 +1388,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (session.capacityReleased) return CompletableFuture.completedFuture(null);
             if (!session.stopping.compareAndSet(false, true)) return session.stopped;
             session.closeReason = reason;
+            packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
             if (!session.openAttempted) {
                 releaseCapacity(session);
                 session.stopped.complete(null);
