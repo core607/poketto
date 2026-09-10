@@ -46,6 +46,9 @@ public final class ExecutorNativeProbe {
     private int tests;
 
     private ExecutorNativeProbe(Path configuration) throws Exception {
+        doAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
         when(auth.authorize(any(), any(), eq(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)))
                 .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
                         call.getArgument(1),
@@ -101,6 +104,7 @@ public final class ExecutorNativeProbe {
         var probe = new ExecutorNativeProbe(Path.of(args[0]));
         if (args[1].equals("abandon")) probe.abandon();
         else if (args[1].equals("main")) probe.run();
+        else if (args[1].equals("exports")) probe.portableExports();
         else if (args[1].equals("peer-only")) probe.rejectNonRootPeer();
         else throw new IllegalArgumentException();
     }
@@ -119,6 +123,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         selectedExports,
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         mock(io.github.core607.poketto.assets.MediaFileService.class),
                         org.mockito.Mockito.mock(io.github.core607.poketto.content.AuthorizedRepositoryReader.class),
                         org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryPatchService.class),
@@ -157,6 +162,7 @@ public final class ExecutorNativeProbe {
         moves();
         lostLocalMoveReply();
         uncertainMoveRecovery();
+        portableExports();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -375,6 +381,159 @@ public final class ExecutorNativeProbe {
         return output.toByteArray();
     }
 
+    private void portableExports() throws Exception {
+        try (var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("portable"), path("exports"), auth, workspace)) {
+            byte[] publicBytes = "public-export-original".getBytes(StandardCharsets.UTF_8);
+            byte[] privateBytes = "private-export-original".getBytes(StandardCharsets.UTF_8);
+            fixture.seedMedia(auth, principal, publicBytes, privateBytes);
+            var article = fixture.reader(auth).getFile(principal, workspace, Optional.empty(), "article.md");
+            // The generic media fixture intentionally links a private dependency. This scenario
+            // needs an exportable public article and a private frontmatter sentinel of its own.
+            String before = fixture.patches(auth)
+                    .apply(
+                            principal,
+                            workspace,
+                            new io.github.core607.poketto.content.RepositoryPatch(
+                                    article.commit(),
+                                    List.of(new io.github.core607.poketto.content.RepositoryTextChange(
+                                            "article.md",
+                                            false,
+                                            article.revision(),
+                                            Optional.of(
+                                                    "---\ntitle: Portable native article\nsecret: metadata-secret-needle\n---\n"
+                                                            + "public-native-body\n[Manual](public/manual.pdf)\n")))))
+                    .commit();
+            for (boolean full : List.of(true, false)) {
+                privateRead.set(full);
+                String session = full ? "export-full" : "export-public";
+                try (var executor = new ExecutorConfiguration()
+                        .isolatedRepositoryExecutor(
+                                auth,
+                                fixture.exports(),
+                                fixture.packages(auth),
+                                fixture.media(auth),
+                                fixture.reader(auth),
+                                fixture.patches(auth),
+                                fixture.moves(auth),
+                                JSON,
+                                path("socket"),
+                                path("privateKey"),
+                                8,
+                                45,
+                                8)) {
+                    String command = "set -eu; printf 'unsaved-export-needle' > scratch.txt; "
+                            + (full ? "printf '\\nunsaved-export-needle' >> article.md; " : "")
+                            + "poketto export . --output bundle.zip";
+                    var exported = executor.execute(
+                            principal,
+                            workspace,
+                            session,
+                            Optional.empty(),
+                            command,
+                            Duration.ofSeconds(25),
+                            new Cancellation());
+                    assertThat(exported.exitCode()).isZero();
+                    JsonNode receipt = JSON.readTree(exported.stdout());
+                    assertThat(receipt.path("result").path("scope").stringValue())
+                            .isEqualTo(full ? "private" : "public");
+                    var artifact = execute(
+                            executor,
+                            session,
+                            "poketto artifact create bundle.zip --type application/zip",
+                            new Cancellation());
+                    String id = JSON.readTree(artifact.stdout())
+                            .path("artifact")
+                            .path("artifactId")
+                            .stringValue();
+                    byte[] zip = readArtifact(executor, session, id);
+                    assertThat(hash(zip))
+                            .isEqualTo(receipt.path("result").path("sha256").stringValue());
+                    var files = new java.util.LinkedHashMap<String, byte[]>();
+                    try (var input = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(zip))) {
+                        for (var entry = input.getNextEntry(); entry != null; entry = input.getNextEntry())
+                            files.put(entry.getName(), input.readAllBytes());
+                    }
+                    assertThat(files.values())
+                            .anySatisfy(bytes -> assertThat(bytes).containsExactly(publicBytes));
+                    String text = files.entrySet().stream()
+                            .filter(entry -> entry.getKey().endsWith(".md"))
+                            .map(entry -> new String(entry.getValue(), StandardCharsets.UTF_8))
+                            .collect(java.util.stream.Collectors.joining("\n"));
+                    assertThat(text)
+                            .doesNotContain(
+                                    "unsaved-export-needle", "historic-secret-needle", "operator-secret-needle");
+                    if (full) {
+                        assertThat(text).contains("current-secret-needle", "metadata-secret-needle");
+                        assertThat(files.values())
+                                .anySatisfy(bytes -> assertThat(bytes).containsExactly(privateBytes));
+                    } else {
+                        assertThat(text)
+                                .doesNotContain(
+                                        "current-secret-needle", "metadata-secret-needle", "private-export-original");
+                        assertThat(files.keySet()).noneMatch(name -> name.contains("private"));
+                        var denied = execute(
+                                executor,
+                                session,
+                                "poketto export private/secret.md --output denied.zip",
+                                new Cancellation());
+                        assertThat(denied.exitCode()).isEqualTo(1);
+                        assertThat(denied.stdout()).contains("INVALID_EXPORT_SELECTION");
+                    }
+                    if (full) {
+                        var capacity = execute(
+                                executor,
+                                session,
+                                "python3 -c \"import os; s=os.statvfs('.'); f=os.open('fill.bin',os.O_CREAT|os.O_RDWR,0o600); "
+                                        + "os.posix_fallocate(f,0,max(0,s.f_bavail*s.f_frsize-512*1024)); os.close(f)\"; "
+                                        + "poketto export . --output no-space.zip",
+                                new Cancellation());
+                        assertThat(capacity.exitCode()).isEqualTo(1);
+                        assertThat(capacity.stdout()).contains("MATERIALIZE_CAPACITY");
+                        assertThat(fixture.retainedPackages()).isZero();
+                        assertThat(execute(
+                                                executor,
+                                                session,
+                                                "rm fill.bin; cat scratch.txt; test ! -e no-space.zip",
+                                                new Cancellation())
+                                        .stdout())
+                                .isEqualTo("unsaved-export-needle");
+                        var repeated =
+                                execute(executor, session, "poketto export . --output bundle.zip", new Cancellation());
+                        assertThat(repeated.exitCode()).isZero();
+                        assertThat(JSON.readTree(repeated.stdout())
+                                        .path("result")
+                                        .path("sha256"))
+                                .isEqualTo(receipt.path("result").path("sha256"));
+                    }
+                    var conflict = execute(
+                            executor,
+                            session,
+                            "printf 'keep-local-file' > occupied.zip; poketto export . --output occupied.zip",
+                            new Cancellation());
+                    assertThat(conflict.exitCode()).isEqualTo(1);
+                    assertThat(conflict.stdout()).contains("LOCAL_FILE_CHANGED");
+                    assertThat(execute(executor, session, "cat occupied.zip; cat scratch.txt", new Cancellation())
+                                    .stdout())
+                            .isEqualTo("keep-local-fileunsaved-export-needle");
+                    assertThat(fixture.retainedPackages()).isZero();
+                    assertThat(fixture.reader(auth)
+                                    .getFile(principal, workspace, Optional.empty(), "article.md")
+                                    .commit())
+                            .contains(before);
+                    close(executor, session);
+                    assertThat(fixture.retainedPackages()).isZero();
+                    passed(
+                            full
+                                    ? "private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority"
+                                    : "public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files");
+                }
+            }
+        } finally {
+            privateRead.set(true);
+        }
+    }
+
     private void mediaImport() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture").resolve("import"), path("exports"), auth, workspace);
@@ -386,6 +545,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -518,6 +678,32 @@ public final class ExecutorNativeProbe {
                     .as("replace stdout=%s stderr=%s", replacement.stdout(), replacement.stderr())
                     .isZero();
             assertThat(replacement.stdout()).contains("changed-original", hash(bytes));
+            var capacity = execute(
+                    executor,
+                    "media-import",
+                    "printf 'capacity-original' > private/capacity.bin; "
+                            + "python3 -c \"import os; s=os.statvfs('.'); f=os.open('capacity-fill.bin',os.O_CREAT|os.O_RDWR,0o600); "
+                            + "os.posix_fallocate(f,0,max(0,s.f_bavail*s.f_frsize-512*1024)); os.close(f)\"; "
+                            + "poketto media import private/capacity.bin --as private/capacity.dat --type application/octet-stream --key native_import_capacity_01",
+                    new Cancellation());
+            assertThat(capacity.exitCode()).isEqualTo(1);
+            JsonNode stored = JSON.readTree(capacity.stdout());
+            assertThat(stored.path("code").asString()).isEqualTo("MATERIALIZE_CAPACITY");
+            assertThat(stored.path("result").path("originalStored").asBoolean()).isTrue();
+            assertThat(stored.path("result").path("indexUpdated").asBoolean()).isFalse();
+            var recovered = execute(
+                    executor,
+                    "media-import",
+                    "rm capacity-fill.bin; poketto media import private/capacity.bin --as private/capacity.dat --type application/octet-stream --key native_import_capacity_01",
+                    new Cancellation());
+            assertThat(recovered.exitCode()).isZero();
+            JsonNode recoveredReceipt = JSON.readTree(recovered.stdout()).path("result");
+            assertThat(recoveredReceipt.path("assetId"))
+                    .isEqualTo(stored.path("result").path("assetId"));
+            assertThat(recoveredReceipt.path("indexUpdated").asBoolean()).isTrue();
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json")
+                            .commit())
+                    .isEqualTo(saved.commit());
             passed("media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically");
         }
     }
@@ -534,6 +720,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -603,6 +790,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -680,6 +868,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         fixture.media(auth),
                         fixture.reader(auth),
                         fixture.patches(auth),
@@ -955,6 +1144,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -1012,14 +1202,12 @@ public final class ExecutorNativeProbe {
     private void selectedSaves() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture").resolve("saves"), path("exports"), auth, workspace);
-        doAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get())
-                .when(auth)
-                .withAuthorization(any(), any(), anySet(), any());
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),

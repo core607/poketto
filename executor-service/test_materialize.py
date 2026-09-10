@@ -1,11 +1,13 @@
 import hashlib
+import errno
 import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
-from materialize import IncomingFile, LocalMove
+from materialize import IncomingFile, LocalMove, MAX_FILE_BYTES
 from session_files import CaptureRejected
 
 
@@ -47,6 +49,19 @@ class MaterializeTests(unittest.TestCase):
         self.assertEqual(result, self.install(incoming))
         self.assertEqual('new edit after acknowledgement', path.read_text())
 
+    def test_export_size_admission_still_rejects_overflow_and_cleans_incomplete_staging(self):
+        # Exercise the protocol ceiling separately from this test container's small tmpfs.
+        with patch('materialize.os.statvfs', return_value=SimpleNamespace(f_bavail=1048576, f_frsize=4096)):
+            incoming = IncomingFile(self.root, 'large.zip', 128 * 1024 * 1024 + 1, 'a' * 64, None)
+        self.assertTrue(incoming.stage.exists())
+        with self.assertRaises(CaptureRejected):
+            incoming.install(os.getuid(), os.getgid())
+        incoming.close()
+        self.assertFalse(incoming.stage.exists())
+        self.assertFalse((self.repository / 'large.zip').exists())
+        with self.assertRaises(CaptureRejected):
+            IncomingFile(self.root, 'overflow.zip', MAX_FILE_BYTES + 1, 'a' * 64, None)
+
     def test_changed_target_and_invalid_chunks_do_not_replace_local_files(self):
         path = self.repository / 'note.md'
         path.write_bytes(b'later edit')
@@ -70,6 +85,30 @@ class MaterializeTests(unittest.TestCase):
         with self.assertRaises(CaptureRejected):
             self.install(corrupted)
         self.assertFalse((self.repository / 'corrupt.md').exists())
+
+    def test_transfer_admission_keeps_space_for_the_command_bridge(self):
+        (self.repository / 'scratch.md').write_bytes(b'unsaved')
+        created = []
+        try:
+            with patch('materialize.os.statvfs', return_value=SimpleNamespace(f_bavail=512, f_frsize=4096)):
+                with self.assertRaisesRegex(CaptureRejected, 'Insufficient session space'):
+                    created.append(IncomingFile(self.root, 'large.zip', 2 * 1024 * 1024, 'a' * 64, None))
+        finally:
+            for incoming in created:
+                incoming.close()
+        self.assertFalse(list(self.root.glob('incoming-*')))
+        self.assertEqual(b'unsaved', (self.repository / 'scratch.md').read_bytes())
+
+    def test_disk_exhaustion_during_transfer_discards_only_staging(self):
+        path = self.repository / 'note.md'
+        path.write_bytes(b'local')
+        incoming = IncomingFile(self.root, 'note.md', 1, digest(b'x'), digest(b'local'))
+        self.addCleanup(incoming.close)
+        with patch('materialize.os.write', side_effect=OSError(errno.ENOSPC, 'fixture full')):
+            with self.assertRaisesRegex(CaptureRejected, 'Insufficient session space'):
+                incoming.append(0, b'x')
+        self.assertFalse(incoming.stage.exists())
+        self.assertEqual(b'local', path.read_bytes())
 
     def test_absence_and_explicit_deletions_have_separate_preconditions(self):
         created = self.incoming('new/folder/empty.md', b'')

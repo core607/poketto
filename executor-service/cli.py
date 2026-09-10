@@ -103,6 +103,10 @@ def main():
     move = commands.add_parser('move', help='Atomically move saved content and repair references; unselected edits stay local')
     move.add_argument('source')
     move.add_argument('destination')
+    exported = commands.add_parser('export', help='Export latest saved documents and media as ZIP; unsaved edits are excluded and publication is unchanged')
+    exported.add_argument('paths', nargs='+', help='Selected files or folders; . selects the visible workspace')
+    exported.add_argument('--output', required=True, help='Repository-relative ZIP destination; a different existing file is preserved')
+    exported.add_argument('--public', action='store_true', dest='public_only', help='Use approved public content only; public-read sessions always use this scope')
     artifacts = commands.add_parser('artifact', help='Create or remove an expiring artifact for this MCP session')
     artifact_commands = artifacts.add_subparsers(dest='artifact_operation', required=True)
     created = artifact_commands.add_parser('create', help='Capture a local file for get_artifact; does not save or publish')
@@ -139,6 +143,8 @@ def main():
         arguments = {'skipLocal': True}
     if args.operation == 'move':
         arguments = {'source': args.source, 'destination': args.destination}
+    if args.operation == 'export':
+        arguments = {'paths': args.paths, 'output': args.output, 'publicOnly': args.public_only}
     operation = args.operation
     if operation == 'artifact':
         operation = 'artifact_' + args.artifact_operation

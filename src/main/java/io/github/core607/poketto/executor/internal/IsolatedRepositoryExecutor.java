@@ -46,6 +46,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
     private final AuthService auth;
     private final RepositorySnapshotExports exports;
+    private final io.github.core607.poketto.content.PortableContentExports packages;
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
     private final MediaFileService media;
@@ -73,6 +74,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
+            io.github.core607.poketto.content.PortableContentExports packages,
             MediaFileService media,
             SelectedFileSaves saves,
             AuthService auth,
@@ -81,6 +83,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
+        this.packages = packages;
         this.media = media;
         this.saves = saves;
         this.auth = auth;
@@ -549,6 +552,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private Map<String, ?> bridgeReply(Session session, String executionId, JsonNode request) {
+        try {
+            return bridgeOperation(session, executionId, request);
+        } catch (MaterializationCapacity failure) {
+            return Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "MATERIALIZE_CAPACITY",
+                    "message",
+                    "Insufficient session space. Free local space or export fewer files; existing files were preserved.");
+        }
+    }
+
+    private Map<String, ?> bridgeOperation(Session session, String executionId, JsonNode request) {
         JsonNode arguments = request.path("arguments");
         if (!arguments.isObject()) throw new WorkerUnavailableException();
         if (request.path("operation").asString("").equals("status") && arguments.isEmpty())
@@ -576,6 +593,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "lastImport",
                             session.lastImport));
         String operation = request.path("operation").asString("");
+        if (operation.equals("export")) {
+            try {
+                return exportPackage(session, executionId, arguments);
+            } catch (io.github.core607.poketto.auth.AuthException denied) {
+                return Map.of("ok", false, "code", "ACCESS_DENIED");
+            } catch (IllegalArgumentException invalid) {
+                return Map.of("ok", false, "code", "INVALID_EXPORT_SELECTION");
+            } catch (io.github.core607.poketto.content.ContentExportException unavailable) {
+                return Map.of(
+                        "ok", false, "code", "EXPORT_" + unavailable.reason().name());
+            } catch (io.github.core607.poketto.content.ContentRepositoryException
+                    | io.github.core607.poketto.assets.AssetStorageException unavailable) {
+                return Map.of("ok", false, "code", "EXPORT_UNAVAILABLE");
+            }
+        }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
             try {
                 Map<String, Object> data;
@@ -1167,17 +1199,29 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 ? source.orElseThrow().getBytes(StandardCharsets.UTF_8)
                 : new RepositoryMediaIndex(entries).encode();
         String text = new String(changed, StandardCharsets.UTF_8);
-        if (!materialize(
-                session,
-                executionId,
-                RepositoryMediaIndex.PATH,
-                changed.length,
-                hash(text),
-                source.map(IsolatedRepositoryExecutor::hash).orElse(null),
-                false,
-                false,
-                output -> output.write(changed)))
-            return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+        try {
+            if (!materialize(
+                    session,
+                    executionId,
+                    RepositoryMediaIndex.PATH,
+                    changed.length,
+                    hash(text),
+                    source.map(IsolatedRepositoryExecutor::hash).orElse(null),
+                    false,
+                    false,
+                    output -> output.write(changed)))
+                return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+        } catch (MaterializationCapacity capacity) {
+            return Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "MATERIALIZE_CAPACITY",
+                    "result",
+                    session.lastImport,
+                    "message",
+                    "Original stored; local index was not updated. Free session space and retry the same bytes, type and key.");
+        }
         session.lastImport = importReceipt(path, asset, true);
         return Map.of("ok", true, "result", session.lastImport);
     }
@@ -1208,6 +1252,71 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         void writeTo(java.io.OutputStream output) throws java.io.IOException;
     }
 
+    private Map<String, ?> exportPackage(Session session, String executionId, JsonNode arguments) {
+        if (arguments.size() != 3
+                || !arguments.path("paths").isArray()
+                || !arguments.path("output").isString()
+                || !arguments.path("publicOnly").isBoolean()) throw new IllegalArgumentException();
+        var selections = new ArrayList<String>();
+        for (JsonNode path : arguments.path("paths")) {
+            if (!path.isString()) throw new IllegalArgumentException();
+            selections.add(path.stringValue());
+        }
+        String output = arguments.path("output").stringValue();
+        SessionExportSelection.validate(output);
+        synchronized (session) {
+            requireLive(session);
+        }
+        authorize(session);
+        var selected = SessionExportSelection.resolve(selections, session.fullRead ? null : session.publicExport);
+        boolean publicOnly = !session.fullRead || arguments.path("publicOnly").booleanValue();
+        var client = Optional.of(session.key.sessionHash());
+        try {
+            var receipt = packages.create(session.principal, session.key.workspace(), selected, publicOnly, client);
+            synchronized (session) {
+                requireLive(session);
+            }
+            authorize(session);
+            if (!materialize(
+                    session,
+                    executionId,
+                    output,
+                    receipt.bytes(),
+                    receipt.sha256(),
+                    null,
+                    false,
+                    true,
+                    sink -> packages.copyTo(
+                            session.principal, session.key.workspace(), receipt.handle(), client, sink)))
+                return Map.of(
+                        "ok",
+                        false,
+                        "code",
+                        "LOCAL_FILE_CHANGED",
+                        "message",
+                        "The output path is unavailable or contains different local bytes. Keep it or choose another --output.");
+            return Map.of(
+                    "ok",
+                    true,
+                    "result",
+                    Map.of(
+                            "path",
+                            output,
+                            "bytes",
+                            receipt.bytes(),
+                            "sha256",
+                            receipt.sha256(),
+                            "scope",
+                            publicOnly ? "public" : "private",
+                            "saved",
+                            false));
+        } finally {
+            // Covers a close event that raced before create registered its build. No package handle
+            // is exposed to the sandbox; every command owns only its materialized local result.
+            packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
+        }
+    }
+
     private boolean materialize(
             Session session,
             String executionId,
@@ -1227,6 +1336,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         metadata.put("delete", delete);
         metadata.put("allowIdentical", allowIdentical);
         JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
+        checkMaterialization(begun);
         if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) throw new IllegalArgumentException();
         requireOk(begun, session);
         String transferId = begun.path("transferId").asString("");
@@ -1264,6 +1374,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                                 .encodeToString(
                                                         java.util.Arrays.copyOfRange(bytes, offset, offset + count))),
                                 Duration.ofSeconds(3));
+                        checkMaterialization(chunk);
                         requireOk(chunk, session);
                         sent += count;
                         if (chunk.path("receivedBytes").asLong(-1) != sent) throw new WorkerUnavailableException();
@@ -1280,6 +1391,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             authorize(session);
             JsonNode committed = requestLive(session, "MATERIALIZE_COMMIT", reference, Duration.ofSeconds(5));
             if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED")) return false;
+            checkMaterialization(committed);
             requireOk(committed, session);
             JsonNode installed = committed.path("installed");
             if (!installed.path("path").asString("").equals(path)
@@ -1313,6 +1425,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (session.capacityReleased) return CompletableFuture.completedFuture(null);
             if (!session.stopping.compareAndSet(false, true)) return session.stopped;
             session.closeReason = reason;
+            packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
             if (!session.openAttempted) {
                 releaseCapacity(session);
                 session.stopped.complete(null);
@@ -1535,6 +1648,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private record SessionKey(UUID principal, WorkspaceId workspace, String sessionHash) {}
+
+    private static void checkMaterialization(JsonNode response) {
+        String code = response.path("code").asString("");
+        if (code.equals("MATERIALIZE_CAPACITY")) throw new MaterializationCapacity();
+    }
+
+    private static final class MaterializationCapacity extends RuntimeException {}
 
     private static final class Session {
         private final SessionKey key;
