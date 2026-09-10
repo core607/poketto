@@ -5,7 +5,6 @@ import io
 import json
 import re
 import zipfile
-from urllib.parse import quote
 
 
 SCHEMA = 1
@@ -33,13 +32,14 @@ def decode(raw, repository, number):
     return state
 
 
-def restore(github, command, current_run, branch):
+def restore(github, command, current_run):
     # Listing by the trusted workflow ID excludes same-named artifacts from ordinary PR CI.
     # Bounded pagination degrades to a fresh review when no retained conversation is found.
     for page in range(1, 6):
-        runs = github.api(f"actions/workflows/ai-review.yml/runs?status=success&per_page=100&page={page}&branch={quote(branch, safe='')}")["workflow_runs"]
+        runs = github.api(f"actions/workflows/ai-review.yml/runs?status=success&per_page=100&page={page}")["workflow_runs"]
         for run in runs:
-            if str(run["id"]) == current_run or run["event"] not in {"pull_request_target", "workflow_dispatch"}:
+            if (str(run["id"]) == current_run or run["event"] not in {"workflow_run", "workflow_dispatch"}
+                    or run["display_title"] != f"AI Review PR #{github.number}"):
                 continue
             if run["event"] == "workflow_dispatch" and run["head_branch"] != "main":
                 continue

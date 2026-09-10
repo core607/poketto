@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
     branches:
       - main
@@ -17,6 +18,8 @@ concurrency:
 
 jobs:
   verify:
+    # Title/body edits do not rerun verification; retargeting changes the tested base.
+    if: github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 

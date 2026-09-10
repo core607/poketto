@@ -400,7 +400,8 @@ class ReviewTests(unittest.TestCase):
         with patch.dict(os.environ, env), patch.object(review, "GitHub", return_value=self.github), \
                 patch.object(review, "Provider", return_value=self.provider), \
                 patch.object(review, "fetch_diff", return_value=(self.merge, self.data)), \
-                patch.object(review.review_session, "restore", return_value=None):
+                patch.object(review.review_session, "restore", return_value=None), \
+                patch.object(review, "verified_ci", return_value=True):
             self.assertEqual(1, review.main())
         self.assertIn("INCOMPLETE", (self.output / "summary").read_text())
         self.assertEqual("incomplete", json.loads((self.output / "manifest.json").read_bytes())["state"])
@@ -436,6 +437,7 @@ class ReviewTests(unittest.TestCase):
                 patch.object(review, "Provider", return_value=self.provider), \
                 patch.object(review, "fetch_diff", return_value=(self.merge, small)), \
                 patch.object(review.review_session, "restore", return_value=None), \
+                patch.object(review, "verified_ci", return_value=True), \
                 patch.object(review, "RUN_SECONDS", 0.1):
             self.assertEqual(1, review.main())
         self.assertLess(time.monotonic() - start, 2)
@@ -463,12 +465,15 @@ class ReviewTests(unittest.TestCase):
         workflow = (root / ".github/workflows/ai-review.yml").read_text(encoding="utf-8")
         self.assertIn("ref: main", workflow)
         self.assertIn("persist-credentials: false", workflow)
-        self.assertIn("github.event.changes.base != null", workflow)
+        self.assertIn("workflows: [CI]", workflow)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
+        self.assertNotIn("pull_request_target:", workflow)
         self.assertIn("github.ref == 'refs/heads/main'", workflow)
         self.assertNotIn("continue-on-error", workflow)
         self.assertNotIn("application/vnd.github.v3.diff", workflow)
         self.assertNotIn("ref: ${{ github.event.pull_request.head", workflow)
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("github.event.changes.base != null", ci)
         self.assertIn('unittest discover -s .github/review -p "test_*.py"', ci)
 
     def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):

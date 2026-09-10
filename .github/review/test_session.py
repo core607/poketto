@@ -199,7 +199,8 @@ class SessionTests(unittest.TestCase):
             def api(self, path):
                 if "workflows/" in path:
                     return {"workflow_runs": [{"id": 3, "event": "pull_request", "head_branch": "feature"},
-                                              {"id": 2, "event": "pull_request_target", "head_branch": "feature"}]}
+                                              {"id": 2, "event": "workflow_run", "head_branch": "main",
+                                               "display_title": "AI Review PR #25"}]}
                 self.assert_path = path
                 return {"artifacts": [{"id": 4, "name": "ai-review-session-26-2-1", "expired": False},
                                       {"id": 5, "name": "ai-review-session-25-2-1", "expired": False},
@@ -208,7 +209,7 @@ class SessionTests(unittest.TestCase):
         def download(args, budget, **kwargs):
             calls.append(args)
             return buf.getvalue()
-        restored = review_session.restore(GitHub(), download, "9", "feature")
+        restored = review_session.restore(GitHub(), download, "9")
         self.assertEqual(state, restored)
         self.assertEqual(1, len(calls))
         self.assertIn("artifacts/5/zip", calls[0][-1])

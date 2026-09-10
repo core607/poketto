@@ -1,9 +1,10 @@
 name: AI Review
+run-name: 'AI Review PR #${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || ''unresolved'' }}'
 
 on:
-  pull_request_target:
-    branches: [main, 'codex/phase-one-*']
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -17,20 +18,18 @@ permissions:
   pull-requests: write
 
 concurrency:
-  # Metadata-only edits skip review and must not cancel an active source review.
-  group: ai-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && github.run_id || 'source' }}
+  group: ai-review-${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   review:
     # Only main supplies executable code and rules, including when a PR targets a stack branch.
-    # Editing a title or body does not spend provider tokens. Retargeting a PR does need review.
+    # A PR's verify job must finish successfully before any provider request.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request_target' &&
-       github.event.pull_request.draft == false &&
-       github.event.pull_request.author_association == 'OWNER' &&
-       (github.event.action != 'edited' || github.event.changes.base != null))
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 65
     steps:
@@ -46,6 +45,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Review fixed-commit diff and inspect repository code
+        id: review
         env:
           AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
           AI_REVIEW_BASE_URL: ${{ vars.AI_REVIEW_BASE_URL || 'https://api.deepseek.com' }}
@@ -58,7 +58,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ai-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ai-review-${{ steps.review.outputs.pr_number || 'unresolved' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/ai-review-results/
             !${{ runner.temp }}/ai-review-results/session.json
@@ -69,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ai-review-session-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ai-review-session-${{ steps.review.outputs.pr_number || 'unresolved' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ai-review-results/session.json
           if-no-files-found: ignore
           retention-days: 90

@@ -644,6 +644,31 @@ def scoped_review(github, provider_factory, revision, title, model, rules, merge
     return f"AI review: core runtime coverage complete ({mode}); inspect the reported findings."
 
 
+def verified_ci(github, revision, run_id=None):
+    """Only successful verification of this PR's exact base/head permits paid review."""
+    if run_id is not None:
+        if not re.fullmatch(r"[1-9][0-9]*", str(run_id)):
+            raise Incomplete("Invalid upstream CI run identity.")
+        runs = [github.api(f"actions/runs/{run_id}")]
+    else:
+        runs = github.api("actions/workflows/ci.yml/runs?event=pull_request&per_page=100&head_sha="
+                          + revision["head"])["workflow_runs"]
+    for run in runs:
+        if (run["path"] != ".github/workflows/ci.yml" or run["event"] != "pull_request"
+                or run["head_sha"] != revision["head"]
+                or run["repository"]["full_name"] != github.repository):
+            continue
+        if not any(str(pr["number"]) == github.number and pr["base"]["sha"] == revision["base"]
+                   and pr["base"]["ref"] == revision["base_ref"] and pr["head"]["sha"] == revision["head"]
+                   for pr in run["pull_requests"]):
+            continue
+        if run["status"] != "completed" or run["conclusion"] != "success":
+            return False
+        jobs = github.api(f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100")["jobs"]
+        return any(job["name"] == "verify" and job["conclusion"] == "success" for job in jobs)
+    return False
+
+
 def main():
     output = Path(os.environ["REVIEW_OUTPUT"])
     output.mkdir(parents=True, exist_ok=True)
@@ -658,14 +683,34 @@ def main():
     try:
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
         dispatch = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch"
-        if dispatch and os.environ["GITHUB_REF"] != "refs/heads/main":
+        if os.environ["GITHUB_REF"] != "refs/heads/main":
             raise Incomplete("Manual review must run the trusted main workflow.")
-        number = event["inputs"]["pr_number"] if dispatch else event["pull_request"]["number"]
+        upstream = None
+        if dispatch:
+            number = event["inputs"]["pr_number"]
+        elif os.environ["GITHUB_EVENT_NAME"] == "workflow_run":
+            upstream = event["workflow_run"]
+            candidates = upstream.get("pull_requests", [])
+            if (upstream.get("event") != "pull_request" or upstream.get("conclusion") != "success"
+                    or len(candidates) != 1):
+                save_manifest(output, {"state": "exempt", "reason": "No successful single-PR CI run to review."})
+                print("AI review: no eligible completed PR verification.")
+                return 0
+            number = candidates[0]["number"]
+        else:
+            raise Incomplete("AI review requires completed CI or an explicit dispatch.")
         github = GitHub(os.environ["GITHUB_REPOSITORY"], number, budget)
+        if os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+                stream.write(f"pr_number={github.number}\n")
         pr = github.current()
+        if upstream and (pr["draft"] or pr["state"] != "open" or pr["author_association"] != "OWNER"):
+            save_manifest(output, {"state": "exempt", "reason": "The PR is not eligible for AI review."})
+            print("AI review: draft, closed or non-owner PR; no model call.")
+            return 0
         revision = identity(pr, github.repository)
-        if not dispatch and identity(event["pull_request"], github.repository) != revision:
-            raise Incomplete("The triggering PR identity is stale.")
+        if not verified_ci(github, revision, upstream["id"] if upstream else None):
+            raise Incomplete("The current PR base/head has no successful verify job; no model call is allowed.")
         trusted = Path(__file__).resolve().parents[2]
         rules = "\n\n".join((trusted / name).read_text(encoding="utf-8") for name in
                               ["AGENTS.md", ".agents/skills/review/SKILL.md"])
@@ -673,7 +718,7 @@ def main():
         with tempfile.TemporaryDirectory() as directory:
             merge, data = fetch_diff(directory, revision, github, budget, scoped=True)
             repository = RepositoryTools(directory, revision, merge, budget, git)
-            previous = review_session.restore(github, command, os.environ["GITHUB_RUN_ID"], pr["head"]["ref"])
+            previous = review_session.restore(github, command, os.environ["GITHUB_RUN_ID"])
             provider = lambda: Provider(os.environ.get("AI_REVIEW_BASE_URL", "https://api.deepseek.com"),
                                         os.environ.get("AI_REVIEW_API_KEY", ""), budget)
             summary = scoped_review(github, provider, revision, pr["title"], model, rules, merge, data,
