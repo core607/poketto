@@ -3,7 +3,7 @@
 Date: 2026-09-01
 Status: Implemented
 
-[Core review sessions](2026-09-10-review-scope-and-sessions.md) owns runtime-only scope, no-call exemptions and persistent PR conversations.
+[Core review sessions](2026-09-10-review-scope-and-sessions.md) owns runtime-only scope, no-call exemptions and persistent PR conversations. It replaces the historical `pull_request_target` trigger described below with `workflow_run` after CI; executable review code remains pinned to trusted `main`.
 
 [Complete review coverage](2026-09-06-complete-pr-review.md) supersedes the single-request transport, truncation, warning-only failure, and rule-loading mechanisms below. The provider configuration, persona, owner-only access, and advisory review role remain current.
 

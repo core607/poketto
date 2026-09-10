@@ -468,6 +468,9 @@ class ReviewTests(unittest.TestCase):
         self.assertIn("persist-credentials: false", workflow)
         self.assertIn("workflows: [CI]", workflow)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
+        concurrency = workflow.split("concurrency:", 1)[1].split("jobs:", 1)[0]
+        self.assertIn("(github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&", concurrency)
+        self.assertIn("|| github.run_id }}", concurrency)
         self.assertNotIn("pull_request_target:", workflow)
         self.assertIn("github.ref == 'refs/heads/main'", workflow)
         self.assertNotIn("continue-on-error", workflow)

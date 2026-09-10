@@ -60,6 +60,7 @@ class SessionTests(unittest.TestCase):
     def run_at(self, head, previous=None, rules="rules", force=False, base=None):
         revision = {"base": base or self.base, "head": head, "base_ref": "main"}
         github = FakeGitHub(revision)
+        self.last_github = github
         tools = review.RepositoryTools(self.root, revision, revision["base"], review.Budget(), review.git)
         data, _ = core_diff(self.root, revision["base"], head, tools.budget, review.git)
         # Give each run its own artifact directory, as Actions does in production.
@@ -194,8 +195,51 @@ class SessionTests(unittest.TestCase):
         self.assertIn("value = 3", result["lines"][0]["text"])
 
     def test_checkpoint_never_silently_drops_older_findings(self):
-        with self.assertRaises(ValueError):
-            review_session.checkpoint({"reports": ["x" * 180_000]}, review.encoded)
+        state = {"reports": [{"body": "猫" * 30_000, "revision": i} for i in range(4)], "dropped_reports": 3}
+        raw = review_session.checkpoint(state, review.encoded)
+        result = json.loads(raw)
+        self.assertLessEqual(len(raw.encode("utf-8")), review_session.HISTORY_BYTES)
+        self.assertEqual([3], [report["revision"] for report in result["reports"]])
+        self.assertEqual(6, result["dropped_reports"])
+        oversized = json.loads(review_session.checkpoint({"reports": ["x" * 180_000]}, review.encoded))
+        self.assertEqual({"reports": [], "dropped_reports": 1}, oversized)
+
+    def test_checkpoint_count_and_byte_limits_are_independent(self):
+        result = json.loads(review_session.checkpoint({"reports": list(range(12))}, review.encoded))
+        self.assertEqual(list(range(4, 12)), result["reports"])
+        self.assertEqual(4, result["dropped_reports"])
+
+    def test_overgrown_history_can_be_reviewed_automatically_and_by_dispatch(self):
+        _, first, _, _ = self.run_at(self.first)
+        first["reports"] = [{"body": "猫" * 50_000, "parts": ["猫" * 50_000]} for _ in range(3)]
+        for force in [False, True]:
+            with self.subTest(force=force):
+                _, state, github, manifest = self.run_at(self.third, first, force=force)
+                self.assertEqual("complete", manifest["state"])
+                self.assertEqual(1, len(github.posts))
+                self.assertEqual(3, state["dropped_reports"])
+                self.assertEqual(1, len(state["reports"]))
+
+    def test_retention_fallback_is_prepared_before_posting(self):
+        original = FakeGitHub.post
+        def post(github, head, body):
+            pending = next(self.output.glob("*/session.pending.json"))
+            raw = pending.read_bytes()
+            self.assertLessEqual(len(raw), 5000)
+            self.assertEqual({}, json.loads(raw)["requests"])
+            self.assertEqual("incomplete", json.loads((pending.parent / "manifest.json").read_bytes())["state"])
+            return original(github, head, body)
+        with patch.object(review_session, "SESSION_BYTES", 5000), patch.object(FakeGitHub, "post", post):
+            _, _, github, manifest = self.run_at(self.first)
+        self.assertEqual(1, len(github.posts))
+        self.assertEqual("complete", manifest["state"])
+
+    def test_storage_bound_failure_cannot_follow_a_posted_review(self):
+        with patch.object(review_session, "SESSION_BYTES", 1), self.assertRaises(ValueError):
+            self.run_at(self.first)
+        self.assertEqual([], self.last_github.posts)
+        manifest = json.loads(next(self.output.glob("*/manifest.json")).read_bytes())
+        self.assertEqual("incomplete", manifest["state"])
 
     def test_restore_only_uses_matching_trusted_run_artifacts_and_checks_identity(self):
         _, state, _, _ = self.run_at(self.first)

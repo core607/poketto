@@ -18,7 +18,9 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ai-review-${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || github.run_id }}
+  # Failed, skipped and superseded CI completions must not cancel a paid review. Workflow
+  # concurrency is evaluated before the job-level condition below.
+  group: ai-review-${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && (github.event.workflow_run.pull_requests[0].number || inputs.pr_number || github.run_id) || github.run_id }}
   cancel-in-progress: true
 
 jobs:

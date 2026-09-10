@@ -10,6 +10,7 @@ import zipfile
 SCHEMA = 1
 SESSION_BYTES = 16_000_000
 HISTORY_BYTES = 180_000
+HISTORY_REPORTS = 8
 
 
 def contract(request, digest, encoded):
@@ -29,6 +30,8 @@ def decode(raw, repository, number):
         raise ValueError("Review session commits are invalid.")
     if not isinstance(state.get("reports"), list) or not isinstance(state.get("requests"), dict):
         raise ValueError("Review session data is invalid.")
+    if type(state.get("dropped_reports", 0)) is not int or state.get("dropped_reports", 0) < 0:
+        raise ValueError("Review session omission count is invalid.")
     return state
 
 
@@ -81,10 +84,26 @@ def continuation(previous, fresh, message, encoded, input_limit, framing, previo
 
 
 def checkpoint(state, encoded):
-    # Retain every prior final finding instead of silently discarding unresolved findings when
-    # dropping bulky reasoning/source transcripts. Historical reports are evidence, not rules.
-    value = {"reports": state.get("reports", [])}
-    raw = encoded(value)
-    if len(raw) > HISTORY_BYTES:
-        raise ValueError("The review checkpoint is too large; earlier findings cannot be silently dropped.")
-    return raw.decode("utf-8")
+    # Keep whole, recent reports. Explicit omission counts prevent an incomplete history from
+    # being represented as evidence that old findings were resolved. Full logs remain artifacts.
+    reports = state.get("reports", [])
+    dropped = state.get("dropped_reports", 0) + len(reports)
+    value = {"reports": [], "dropped_reports": dropped}
+    for report in reversed(reports[-HISTORY_REPORTS:]):
+        candidate = {"reports": [report, *value["reports"]], "dropped_reports": value["dropped_reports"] - 1}
+        if len(encoded(candidate)) > HISTORY_BYTES:
+            break
+        value = candidate
+    return encoded(value).decode("utf-8")
+
+
+def pack(state, encoded):
+    """Finish all retention and size decisions before publishing a GitHub review."""
+    state = {**state, **json.loads(checkpoint(state, encoded))}
+    raw = encoded(state)
+    if len(raw) > SESSION_BYTES:
+        state.update(requests={}, context_tokens={})
+        raw = encoded(state)
+    if len(raw) > SESSION_BYTES:
+        raise ValueError("The prepared review session exceeds its storage bound.")
+    return raw
