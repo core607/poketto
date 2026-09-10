@@ -1,108 +1,113 @@
 {
-  "sourceCommit": "9ef41f5409005987d232ac589aa2de20c5f471cb",
+  "sourceCommit": "88e55c76dbfafd455519c2b856043a3a8ec62909",
   "fixtureParent": "/var/lib",
   "authentication": "synthetic stub; not PostgreSQL or HTTP MCP client acceptance",
   "dependencies": "real Git authority, publication/export/atomic patch services, local managed originals, Java adapter, signed capture/materialization bridge, synchronous CLI and SRT on native Linux",
   "observations": [
     {
-      "test": "root-owned-socket-rejects-non-root-peer",
       "result": "PASS",
       "observation": {
         "accepted": true,
         "requestBytes": 0
-      }
+      },
+      "test": "root-owned-socket-rejects-non-root-peer"
     },
     {
+      "result": "PASS",
       "test": "public-scope-real-projection-has-no-private-files-metadata-or-original-history",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "permission-increase-does-not-expand-existing-public-worker-files",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "withdrawn-public-projection-denies-further-worker-output",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "selected-cli-saves-freeze-chunk-and-commit-real-git-with-host-baseline-and-retained-conflicts",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "single-file-cli-sync-merges-conflicts-and-keeps-unselected-baselines-and-local-deletions",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "uncertain-cli-save-recovers-original-commit-without-replaying-new-local-edits",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
       "test": "public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
+      "test": "media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically",
+      "source": "synthetic-only"
+    },
+    {
+      "result": "PASS",
       "test": "signed-open-through-production-socket-and-signature-checks",
-      "milliseconds": 1857.9786,
-      "result": "PASS"
+      "milliseconds": 1771.190512
     },
     {
+      "result": "PASS",
       "test": "synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
-      "test": "twenty-adapter-session-reuses",
       "result": "PASS",
-      "meanMilliseconds": 929.44459205
+      "meanMilliseconds": 979.2753878,
+      "test": "twenty-adapter-session-reuses"
     },
     {
+      "result": "PASS",
       "test": "same-key-clients-cannot-read-or-write-another-lease-bridge",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
-      "test": "same-key-clients-have-separate-pinned-workdirs",
-      "source": "synthetic-only",
-      "result": "PASS"
-    },
-    {
-      "test": "command-mutations-preserve-authority-bundle-and-source",
-      "source": "synthetic-only",
-      "result": "PASS"
-    },
-    {
-      "test": "callback-cancellation-kills-detached-descendants",
-      "source": "synthetic-only",
-      "result": "PASS"
-    },
-    {
-      "test": "revocation-closes-active-process-tree",
       "result": "PASS",
-      "reason": "CANCELLED"
+      "test": "same-key-clients-have-separate-pinned-workdirs",
+      "source": "synthetic-only"
     },
     {
+      "result": "PASS",
+      "test": "command-mutations-preserve-authority-bundle-and-source",
+      "source": "synthetic-only"
+    },
+    {
+      "result": "PASS",
+      "test": "callback-cancellation-kills-detached-descendants",
+      "source": "synthetic-only"
+    },
+    {
+      "result": "PASS",
+      "reason": "CANCELLED",
+      "test": "revocation-closes-active-process-tree"
+    },
+    {
+      "result": "PASS",
       "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client",
-      "source": "synthetic-only",
-      "result": "PASS"
+      "source": "synthetic-only"
     },
     {
-      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
       "summary": "PASS",
-      "tests": 18,
-      "adapterClassSha256": "d059ec3cd43abc6ac9e4da8df1726d449b16d3a7e477ad80d9d874ba264f30c5",
-      "nativeProbeClassSha256": "488410a1da6e625a6d4c1f50c353f8e7e3d648b9471c5a880acd43774fa9549d"
+      "tests": 19,
+      "adapterClassSha256": "18bd7c43cde99c211fd6d08d3b7a4aeb9305358b1dd02db43bb2849857978fe8",
+      "nativeProbeClassSha256": "daccd5e73d9f9e7270d74064f2f0407b66d77c3112395de84a3bc62ccea16b54",
+      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance"
     },
     {
       "test": "java-process-loss-expires-real-worker-lease",
@@ -110,16 +115,17 @@
     },
     {
       "nativeCombined": "PASS",
-      "runtimeManifestSha256": "daba07083c979ad99a682a19ef106d2a674734213980580f38049f84d077102f",
+      "runtimeManifestSha256": "d24d76cfbc11d2231faec47332ea7cdf1650198e4af916c5d610160292d4307c",
       "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
       "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
-      "workerSha256": "4875f5e7fec2fa4647cd9745acc62744998366a1d95f6f4c97feb92faa449504",
+      "workerSha256": "ee01ebf768cfa03b614bea0b0f4e8e196121eb8b330352d2f510d680de4985bd",
       "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
       "bridgeSha256": "9c6898c129a2cd2b403f6ad4a0b0a00c49d7f8939c4ba4f59c42015f351a23cb",
-      "cliSha256": "9c4c628b9b4b386ee837c8517e1693b875d7a73d61f45fd51e8a9aa6abb5586b",
-      "sessionFilesSha256": "0cd9705e9bcddb488d064424855a1cc53b26d3b1734ee74acb11f0f3a6eb89a6",
+      "cliSha256": "77864095496134f0584ccf7e3d717c0265cb58810879e225926e183d80af4aea",
+      "sessionFilesSha256": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
       "materializeSha256": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692",
-      "nativeScriptSha256": "517291fc501f6c4a54818edff25f8368b9458ba8ab4e1327691a6782c1887d55",
+      "binaryCaptureSha256": "0ecce5965cc28f4cff601ada8dd284803e90c487f2efaa1e1bdd39964b6b2c76",
+      "nativeScriptSha256": "22bf395c486e0cda8e5b8e3cffe7231eb7520b2bd95709a2380cc79c2525953c",
       "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
       "source": "synthetic-only"
     },
