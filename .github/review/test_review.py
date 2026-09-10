@@ -30,7 +30,7 @@ class FakeGitHub:
             head = "f" * 40
         return {"state": "open", "draft": False, "author_association": "OWNER", "title": "fixture",
                 "number": 25, "base": {"sha": self.revision["base"], "ref": "main",
-                "repo": {"full_name": self.repository}}, "head": {"sha": head}}
+                "repo": {"full_name": self.repository}}, "head": {"sha": head, "ref": "fixture-branch"}}
 
     def post(self, head, body):
         self.posts.append({"commit_id": head, "body": body})
@@ -395,10 +395,12 @@ class ReviewTests(unittest.TestCase):
         self.provider.fail_at = 1
         env = {"REVIEW_OUTPUT": str(self.output), "GITHUB_EVENT_PATH": str(event_path),
                "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
-               "GITHUB_REPOSITORY": self.github.repository, "GITHUB_STEP_SUMMARY": str(self.output / "summary")}
+               "GITHUB_REPOSITORY": self.github.repository, "GITHUB_RUN_ID": "1",
+               "GITHUB_STEP_SUMMARY": str(self.output / "summary")}
         with patch.dict(os.environ, env), patch.object(review, "GitHub", return_value=self.github), \
                 patch.object(review, "Provider", return_value=self.provider), \
-                patch.object(review, "fetch_diff", return_value=(self.merge, self.data)):
+                patch.object(review, "fetch_diff", return_value=(self.merge, self.data)), \
+                patch.object(review.review_session, "restore", return_value=None):
             self.assertEqual(1, review.main())
         self.assertIn("INCOMPLETE", (self.output / "summary").read_text())
         self.assertEqual("incomplete", json.loads((self.output / "manifest.json").read_bytes())["state"])
@@ -426,13 +428,14 @@ class ReviewTests(unittest.TestCase):
         event.write_text('{"inputs":{"pr_number":"25"}}')
         env = {"REVIEW_OUTPUT": str(self.output), "GITHUB_EVENT_PATH": str(event),
                "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
-               "GITHUB_REPOSITORY": self.github.repository}
+               "GITHUB_REPOSITORY": self.github.repository, "GITHUB_RUN_ID": "1"}
         self.provider.complete = lambda body, record=None: time.sleep(10)
         small = b"diff --git a/a b/a\n@@ -0,0 +1 @@\n+new\n"
         start = time.monotonic()
         with patch.dict(os.environ, env), patch.object(review, "GitHub", return_value=self.github), \
                 patch.object(review, "Provider", return_value=self.provider), \
                 patch.object(review, "fetch_diff", return_value=(self.merge, small)), \
+                patch.object(review.review_session, "restore", return_value=None), \
                 patch.object(review, "RUN_SECONDS", 0.1):
             self.assertEqual(1, review.main())
         self.assertLess(time.monotonic() - start, 2)
