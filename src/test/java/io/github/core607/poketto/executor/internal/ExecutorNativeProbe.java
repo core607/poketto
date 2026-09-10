@@ -326,7 +326,7 @@ public final class ExecutorNativeProbe {
                             + "poketto media import private/generated.bin --as private/generated.pdf --type application/pdf --key native_import_original_01; "
                             + "poketto media fetch private/generated.pdf; sha256sum private/generated.pdf; "
                             + "printf '[Generated](generated.pdf)\\n' > private/with-media.md",
-                    Duration.ofSeconds(35),
+                    Duration.ofSeconds(30),
                     new Cancellation());
             assertThat(imported.exitCode())
                     .as("import stdout=%s stderr=%s", imported.stdout(), imported.stderr())
@@ -353,7 +353,7 @@ public final class ExecutorNativeProbe {
                             + "before=$(sha256sum .poketto/assets.json); "
                             + "poketto media import private/generated.bin --as private/generated.pdf --type application/pdf --key native_import_original_01; "
                             + "test \"$before\" = \"$(sha256sum .poketto/assets.json)\"; poketto save .poketto/assets.json private/with-media.md",
-                    Duration.ofSeconds(35),
+                    Duration.ofSeconds(30),
                     new Cancellation());
             assertThat(repeated.exitCode())
                     .as("repeat stdout=%s stderr=%s", repeated.stdout(), repeated.stderr())
