@@ -431,7 +431,8 @@ final class RepositoryMcpTools {
         if (found.isEmpty())
             return error("ARTIFACT_UNAVAILABLE", "Artifact is unavailable in this execution session or has expired.");
         var first = found.orElseThrow();
-        if (format.equals("auto") && first.mediaType().startsWith("image/")) {
+        if (format.equals("auto")
+                && Set.of("image/png", "image/jpeg", "image/gif", "image/webp").contains(first.mediaType())) {
             if (offset != 0 || first.size() > ManagedBlobStore.MAX_UPLOAD_BYTES) throw new IllegalArgumentException();
             byte[] content = new byte[Math.toIntExact(first.size())];
             byte[] initial = first.bytes();

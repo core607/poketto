@@ -60,6 +60,7 @@ exclude:
 `poketto artifact create FILE --type MIME` 为当前 MCP 会话保留不可变的临时结果。
 `get_artifact` 可展示通过校验的位图，或分页返回文本、二进制；长命令输出也会附带制品句柄。
 句柄在五分钟后或会话关闭时失效，不会上传、保存或发布文件。
+超时、资源限制或取消会关闭会话，此时长输出只保留预览，并明确报告制品不可用。
 [worker 参考文档](../executor-service/README.md#returned-artifacts)定义配额、按字节分页和授权规则。
 
 ## 部署

@@ -55,8 +55,22 @@ class McpArtifactTests {
     }
 
     @Test
-    void invalidImageOrChangedDigestNeverReturnsAnImage() throws Exception {
+    void unsupportedImageTypesReturnExactBinaryPagesWithoutRenderingActiveContent() throws Exception {
         try (var fixture = new Fixture("<svg onload='bad()'/>".getBytes(StandardCharsets.UTF_8), "image/svg+xml")) {
+            var result = fixture.call(Map.of("artifactId", fixture.id));
+            assertThat(result.isError()).isFalse();
+            assertThat(result.content()).noneMatch(McpSchema.ImageContent.class::isInstance);
+            var resource = (McpSchema.EmbeddedResource) result.content().get(1);
+            var blob = (McpSchema.BlobResourceContents) resource.resource();
+            assertThat(blob.mimeType()).isEqualTo("application/octet-stream");
+            assertThat(Base64.getDecoder().decode(blob.blob()))
+                    .isEqualTo("<svg onload='bad()'/>".getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void invalidImageOrChangedDigestNeverReturnsAnImage() throws Exception {
+        try (var fixture = new Fixture("not a PNG".getBytes(StandardCharsets.UTF_8), "image/png")) {
             var result = fixture.call(Map.of("artifactId", fixture.id));
             assertThat(result.isError()).isTrue();
             assertThat(result.content()).noneMatch(McpSchema.ImageContent.class::isInstance);

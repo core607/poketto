@@ -65,18 +65,12 @@ The [native bridge evidence](../../executor-native/evidence/2026-09-10-public-pr
 
 These steps do not add per-file ACLs, choose a new publication format, implement a folder picker, or enable public arbitrary execution. CodeAct becoming the agent file entrance makes the worker a prerequisite for that workflow; account for cold-start and resident resource costs in the existing capacity acceptance rather than maintaining a second agent CRUD architecture.
 
-## Artifact lifetime and delivery
+## Artifact returns
 
-The worker captures regular files into immutable protected storage under the admitted lease. This keeps artifact identity, deduplication and lifetime local to one workspace and session without a second persistent blob registry. The host returns them through `get_artifact` after checking the original session and current authorization. Public projection withdrawal also blocks retained output. Handles cannot be transferred to another client, key or workspace, and they never publish or save repository content.
-
-A lease retains at most 16 artifacts and 256 MiB, subject to its existing tmpfs quota, with a 128 MiB per-file bound and five-minute expiry. `poketto artifact remove` releases a copy early. Image delivery reuses the raster validation and memory admission policy; text and arbitrary binaries use bounded byte pages. This preserves an actual image input for the model without printing base64 into command output or granting a public download URL.
-
-Commands retain up to 4 MiB of combined output and return 16 KiB previews per stream. Longer output becomes an artifact, with a separate flag distinguishing incomplete captured bytes from a shortened preview. Exceeding the capture bound kills the process tree but preserves the lease and unsaved work after cleanup. Quota or storage failures expose per-stream errors instead of silently claiming complete output. Cancellation, revocation and expiry retain their existing authority termination behavior. The [worker reference](../../executor-service/README.md#returned-artifacts) owns the transport contract and limits.
-
-The [native artifact evidence](../../executor-native/evidence/2026-09-10-scoped-artifacts.json)
-records immutable capture, scope isolation, publication withdrawal, long-output
-retention and process/storage cleanup through the real worker. Actual-client
-artifact delivery over HTTP MCP is recorded separately in the [focused client evidence](../../acceptance/clients/evidence/2026-09-10-artifacts.json).
+[Session artifacts](../implemented/2026-09-10-session-artifacts.md) implement
+immutable lease-owned file results, bounded long output and authorized MCP image,
+text and binary delivery. That record owns the decision, consequences and native
+and actual-client evidence. It does not complete the remaining workspace plan.
 
 ## Acceptance
 

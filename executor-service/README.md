@@ -47,7 +47,10 @@ while `stdoutTruncated` and `stderrTruncated` describe the previews. An output
 limit preserves the lease and local files after process cleanup. Artifact quota
 or storage failures return explicit per-stream `artifactErrors`. UTF-8 decoding
 replaces malformed preview bytes; use binary artifact pages for exact bytes.
-The complete framed response has a separate 1 MiB bound.
+The complete framed response has a separate 1 MiB bound. Timeout, resource-limit,
+cancelled and revoked sessions close under the existing lifecycle policy: they
+cannot retain or deliver artifact handles. Their shortened output reports
+`ARTIFACT_UNAVAILABLE`; the accompanying `terminationReason` identifies the cause.
 
 Install [resource_pool.py](resource_pool.py) with the worker at
 `/opt/poketto-executor/resource_pool.py`, and install
@@ -181,7 +184,9 @@ the session invalidates handles and cleans up their storage.
 The `get_artifact` MCP tool returns artifacts only to the originating execution
 session after current authorization. Its default `auto` format renders validated
 PNG, JPEG, GIF or WebP images up to 16 MiB in full, pages UTF-8 text, and returns
-other files as exact binary resource pages. `format=bytes` always returns binary
+other files, including SVG, as exact binary resource pages. Invalid raster bytes
+or a mismatched image digest fail preview validation; use `format=bytes` to read
+those original bytes without rendering them. `format=bytes` always returns binary
 pages. Page `offset` and `nextOffset` count bytes; `limit` is 4–8192 bytes, and a
 null `nextOffset` means EOF. Image previews require offset zero and ignore the
 page limit. Public-scope reads recheck the admitted publication before delivery.

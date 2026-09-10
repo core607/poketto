@@ -61,7 +61,9 @@ Full-read execution sessions retain authorized current files and original Git hi
 for the originating MCP session. `get_artifact` renders validated raster images
 or returns text/binary pages; long command output also supplies artifact handles.
 Handles expire after five minutes or session closure and do not upload, save or
-publish files. The [worker reference](../executor-service/README.md#returned-artifacts)
+publish files. Timeout, resource limits and cancellation close the session, so
+long output then has only its preview and an explicit artifact-unavailable error.
+The [worker reference](../executor-service/README.md#returned-artifacts)
 defines quotas, byte paging and authorization.
 
 ## Deployment
