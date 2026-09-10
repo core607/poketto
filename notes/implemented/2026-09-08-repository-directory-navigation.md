@@ -2,6 +2,10 @@
 
 Date: 2026-09-08
 
+The current agent file entrance is [CodeAct](2026-09-10-codeact-mcp-entrance.md). Standalone MCP file
+CRUD described here is superseded; the shared domain and browser HTTP contracts
+remain applicable.
+
 ## Problem
 
 An agent without a known path cannot discover content through `get_file`. The optional executor supports exploration, but ordinary directory browsing should also work with a read-only key and no worker. The browser's structured Markdown tree excludes non-Markdown files and parses document bodies; it is not a filesystem listing.
