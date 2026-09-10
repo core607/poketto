@@ -19,7 +19,9 @@ final class PortableArchiveWriter {
 
     record Entry(String path, long bytes, Source source) {
         Entry {
-            RepositoryPathRules.validate(path);
+            if (path == null || path.isEmpty() || path.length() > 1024)
+                throw new IllegalArgumentException("invalid export path");
+            for (String segment : path.split("/", -1)) RepositoryPathRules.validate(segment);
             if (RepositoryPathRules.reserved(path) || bytes < 0)
                 throw new IllegalArgumentException("invalid export entry");
             Objects.requireNonNull(source);

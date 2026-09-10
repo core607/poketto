@@ -63,6 +63,21 @@ expose storage locations.
 
 ## Alternatives and verification
 
+The prepared `PortableContentPlanner` selects committed Markdown and indexed
+media, resolves required managed originals and Git attachments, and produces
+host-only entries for `PortableArchiveWriter`. Private source retains frontmatter;
+public packages use approved fields, sanitized bodies and generated article names.
+Reference discovery is shared within a plan, bounded to 100,000 unique public
+destinations, and public Markdown rendering enforces node and depth bounds.
+Publication checks include referenced Git object identities and path eligibility,
+so unchanged article text cannot keep an excluded image authorized.
+
+Real Git and native local-storage tests verify mixed media bytes, relative links,
+private metadata removal, missing dependencies, cross-workspace identity denial,
+private-only updates and image withdrawal. Protected staging, expiring handles,
+download authorization, browser and CLI integration remain required before the
+export feature is available.
+
 Reusing Git bundles would expose history and omit original media. Asking the
 agent to assemble every package duplicates authorization, reference rewriting and
 failure handling across clients. A permanent public download URL would turn an
