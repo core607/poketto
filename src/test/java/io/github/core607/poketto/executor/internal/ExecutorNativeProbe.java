@@ -165,6 +165,18 @@ public final class ExecutorNativeProbe {
             assertThat(execute(executor, "second", "test ! -e only-first", new Cancellation())
                             .exitCode())
                     .isZero();
+            String firstBridge = execute(executor, "first", "printf '%s' \"$POKETTO_BRIDGE\"", new Cancellation())
+                    .stdout();
+            assertThat(firstBridge).startsWith("/").endsWith("/bridge");
+            String quotedBridge = "'" + firstBridge.replace("'", "'\"'\"'") + "'";
+            assertThat(execute(
+                                    executor,
+                                    "second",
+                                    "test ! -r " + quotedBridge + "/lock && test ! -w " + quotedBridge + "/requests",
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            passed("same-key-clients-cannot-read-or-write-another-lease-bridge");
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,

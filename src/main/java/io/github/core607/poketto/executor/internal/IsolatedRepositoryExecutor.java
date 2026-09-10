@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -357,12 +358,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
         try {
             while (!running.isDone()) {
-                requireLive(session);
+                if (session.stopping.get()) break;
                 authorize(session);
                 if (System.nanoTime() >= deadline) throw new WorkerUnavailableException();
-                JsonNode polled = requestLive(session, "BRIDGE_POLL", Map.of(), Duration.ofSeconds(3));
+                JsonNode polled;
+                try {
+                    polled = requestLive(session, "BRIDGE_POLL", Map.of(), Duration.ofSeconds(3));
+                } catch (RuntimeException failed) {
+                    if (session.stopping.get()) break;
+                    throw failed;
+                }
+                if (running.isDone() || session.stopping.get()) break;
+                if (!polled.path("ok").asBoolean(false)
+                        && Set.of("LEASE_EXPIRED", "BRIDGE_UNAVAILABLE", "AUTH_REVOKED")
+                                .contains(polled.path("code").asString(""))) break;
                 requireOk(polled, session);
-                if (running.isDone()) break;
                 JsonNode request = polled.path("bridgeRequest");
                 if (request.isMissingNode() || request.isNull()) continue;
                 if (!executionId.equals(polled.path("executionId").asString("")))
@@ -382,12 +392,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 Duration.ofSeconds(3)),
                         session);
             }
-            return running.get();
+            // The EXEC reply owns its terminal result; closing the mailbox during cancellation
+            // must not turn a confirmed cancelled command into an unknown transport outcome.
+            return running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new WorkerUnavailableException();
         } catch (java.util.concurrent.ExecutionException failed) {
             if (failed.getCause() instanceof RuntimeException failure) throw failure;
+            throw new WorkerUnavailableException();
+        } catch (java.util.concurrent.TimeoutException expired) {
             throw new WorkerUnavailableException();
         } finally {
             running.cancel(true);

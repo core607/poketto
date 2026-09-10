@@ -420,6 +420,29 @@ class WorkerSocketTests {
     }
 
     @Test
+    void closedBridgeDoesNotReplaceTheConfirmedCancelledCommandResult() throws Exception {
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.stallExec = true;
+            peer.terminationReason = "cancelled";
+            var cancellation = new Cancellation();
+            var running = CompletableFuture.supplyAsync(() -> executor.execute(
+                    principal(),
+                    WORKSPACE,
+                    "cancel-bridge",
+                    Optional.empty(),
+                    "sleep 10",
+                    Duration.ofSeconds(2),
+                    cancellation));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(peer.bridgeEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            cancellation.cancel();
+            assertThat(running.get(5, TimeUnit.SECONDS).terminationReason())
+                    .isEqualTo(io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason.CANCELLED);
+        }
+    }
+
+    @Test
     void workerLeaseAndLifecycleReasonsMapToExplicitPortResults() throws Exception {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
@@ -897,6 +920,8 @@ class WorkerSocketTests {
         private final CountDownLatch openEntered = new CountDownLatch(1);
         private final CountDownLatch openRelease = new CountDownLatch(1);
         private final CountDownLatch renewEntered = new CountDownLatch(1);
+        private final CountDownLatch execEntered = new CountDownLatch(1);
+        private final CountDownLatch bridgeEntered = new CountDownLatch(1);
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
         private volatile boolean closeForever;
@@ -1040,10 +1065,16 @@ class WorkerSocketTests {
                     response.put("state", states.getOrDefault(lease, "INITIALIZING"));
                 }
                 case "BRIDGE_POLL" -> {
+                    bridgeEntered.countDown();
                     Thread.sleep(50);
                     response.put("bridgeRequest", null);
+                    if (states.getOrDefault(lease, "").equals("CLOSED")) {
+                        response.put("ok", false);
+                        response.put("code", "BRIDGE_UNAVAILABLE");
+                    }
                 }
                 case "EXEC" -> {
+                    execEntered.countDown();
                     if (dropExec) return null;
                     if (stallExec) Thread.sleep(500);
                     response.put(
