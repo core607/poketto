@@ -114,6 +114,42 @@ class WorkerSocketTests {
     }
 
     @Test
+    void closingAnMcpSessionCleansOnlyItsHostOwnedPackageIdentity() throws Exception {
+        var packages = mock(io.github.core607.poketto.content.PortableContentExports.class);
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        packages,
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        8,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "package-client",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            executor.closed(new io.github.core607.poketto.mcp.McpSessionClosed(
+                    WORKSPACE,
+                    actor.subjectId(),
+                    "package-client",
+                    io.github.core607.poketto.mcp.McpSessionClosed.Reason.CLIENT_DELETE));
+            String expected = java.util.HexFormat.of()
+                    .formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                            .digest("package-client".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            verify(packages).closeClient(actor, WORKSPACE, expected);
+            assertThat(peer.operations("CLOSE")).isNotEmpty();
+        }
+    }
+
+    @Test
     void publicReadersOpenOnlyProjectionAndCannotSelectSourceHistoryOrSilentlyUpgrade() throws Exception {
         AuthService auth = fullAuth();
         when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))

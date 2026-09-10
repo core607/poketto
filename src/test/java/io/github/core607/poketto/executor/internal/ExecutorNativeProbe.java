@@ -101,6 +101,7 @@ public final class ExecutorNativeProbe {
         var probe = new ExecutorNativeProbe(Path.of(args[0]));
         if (args[1].equals("abandon")) probe.abandon();
         else if (args[1].equals("main")) probe.run();
+        else if (args[1].equals("exports")) probe.portableExports();
         else if (args[1].equals("peer-only")) probe.rejectNonRootPeer();
         else throw new IllegalArgumentException();
     }
@@ -382,7 +383,24 @@ public final class ExecutorNativeProbe {
                 path("publicFixture").resolve("portable"), path("exports"), auth, workspace)) {
             byte[] publicBytes = "public-export-original".getBytes(StandardCharsets.UTF_8);
             byte[] privateBytes = "private-export-original".getBytes(StandardCharsets.UTF_8);
-            String before = fixture.seedMedia(auth, principal, publicBytes, privateBytes);
+            fixture.seedMedia(auth, principal, publicBytes, privateBytes);
+            var article = fixture.reader(auth).getFile(principal, workspace, Optional.empty(), "article.md");
+            // The generic media fixture intentionally links a private dependency. This scenario
+            // needs an exportable public article and a private frontmatter sentinel of its own.
+            String before = fixture.patches(auth)
+                    .apply(
+                            principal,
+                            workspace,
+                            new io.github.core607.poketto.content.RepositoryPatch(
+                                    article.commit(),
+                                    List.of(new io.github.core607.poketto.content.RepositoryTextChange(
+                                            "article.md",
+                                            false,
+                                            article.revision(),
+                                            Optional.of(
+                                                    "---\ntitle: Portable native article\nsecret: metadata-secret-needle\n---\n"
+                                                            + "public-native-body\n[Manual](public/manual.pdf)\n")))))
+                    .commit();
             for (boolean full : List.of(true, false)) {
                 privateRead.set(full);
                 String session = full ? "export-full" : "export-public";

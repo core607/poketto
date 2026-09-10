@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
+    parser.add_argument('--scenario', choices=('all', 'exports'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -249,8 +250,9 @@ with socket.socket(socket.AF_UNIX) as connection:
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
-        execute_java('main')
-        execute_java('abandon')
+        execute_java('main' if args.scenario == 'all' else 'exports')
+        if args.scenario == 'all':
+            execute_java('abandon')
         no_processes(wait=22)
         passed('java-process-loss-expires-real-worker-lease')
         control({'operation': 'assert-source-unchanged'})
@@ -264,7 +266,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'artifactsSha256': digest(root / 'artifacts.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
-            'source': 'synthetic-only'}), flush=True)
+            'source': 'synthetic-only', 'scenario': args.scenario}), flush=True)
     finally:
         try:
             diagnostic = root / 'initialization.json'
