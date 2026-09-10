@@ -1,5 +1,12 @@
 # Java and sandbox execution acceptance
 
+The [content-root run](evidence/2026-09-10-content-roots.json) uses the explicit
+`public-root` publication format. All 30 Java scenarios, process-loss lease expiry
+and controller cleanup pass with real native worker/SRT execution. Full sessions
+retain original history; public sessions expose only the current approved
+projection and host-owned media mapping. Authorization in this probe is a
+synthetic stub, so it does not replace authenticated HTTP MCP client acceptance.
+
 This probe exercises the production Java executor adapter, Unix peer checks,
 Ed25519 requests, the Python worker, and SRT on a real Linux systemd host. It uses
 a synthetic Git bundle and an explicit authentication stub. It does not replace
