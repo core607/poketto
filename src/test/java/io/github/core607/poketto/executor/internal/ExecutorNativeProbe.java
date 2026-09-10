@@ -416,6 +416,30 @@ public final class ExecutorNativeProbe {
             var beforeSave = reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json");
             assertThat(beforeSave.commit()).contains(initial);
             assertThat(beforeSave.source().orElseThrow()).doesNotContain("private/generated.pdf");
+            var listed = execute(
+                    executor, "media-import", "poketto media list --prefix private/ --limit 1", new Cancellation());
+            assertThat(listed.exitCode())
+                    .as("%s %s", listed.stdout(), listed.stderr())
+                    .isZero();
+            var page = JSON.readTree(listed.stdout()).path("result");
+            assertThat(page.path("indexSource").stringValue()).isEqualTo("worktree");
+            assertThat(page.path("items").get(0).path("path").stringValue()).isEqualTo("private/generated.pdf");
+            assertThat(page.path("total").intValue()).isEqualTo(2);
+            assertThat(page.path("nextOffset").intValue()).isEqualTo(1);
+            String indexVersion = page.path("indexVersion").stringValue();
+            var nextPage = execute(
+                    executor,
+                    "media-import",
+                    "poketto media list --prefix private/ --offset 1 --limit 1 --index-version " + indexVersion,
+                    new Cancellation());
+            assertThat(nextPage.exitCode()).isZero();
+            assertThat(JSON.readTree(nextPage.stdout())
+                            .path("result")
+                            .path("items")
+                            .get(0)
+                            .path("path")
+                            .stringValue())
+                    .isEqualTo("private/manual.pdf");
             var repeated = executor.execute(
                     principal,
                     workspace,
@@ -431,6 +455,23 @@ public final class ExecutorNativeProbe {
                     .as("repeat stdout=%s stderr=%s", repeated.stdout(), repeated.stderr())
                     .isZero();
             assertThat(repeated.stdout()).contains(identity);
+            var changedPage = execute(
+                    executor,
+                    "media-import",
+                    "poketto media list --offset 1 --index-version " + indexVersion,
+                    new Cancellation());
+            assertThat(changedPage.exitCode()).isEqualTo(1);
+            assertThat(changedPage.stdout()).contains("MEDIA_INDEX_CHANGED");
+            var historicalPage = execute(
+                    executor,
+                    "media-import",
+                    "poketto media list --prefix private/ --commit " + initial,
+                    new Cancellation());
+            assertThat(historicalPage.exitCode()).isZero();
+            assertThat(historicalPage.stdout())
+                    .contains("repository", "private/manual.pdf", initial)
+                    .doesNotContain("private/generated.pdf");
+            passed("media-list-sees-unsaved-imports-pages-current-index-and-retains-historical-catalogs");
             var saved = reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json");
             assertThat(saved.source().orElseThrow())
                     .contains("private/generated.pdf", "public/manual.pdf", "private/manual.pdf");
@@ -576,6 +617,24 @@ public final class ExecutorNativeProbe {
                     .as("public media stdout=%s stderr=%s", fetched.stdout(), fetched.stderr())
                     .isZero();
             assertThat(fetched.stdout()).contains(hash(original)).doesNotContain(originalCommit);
+            var publicList = execute(
+                    executor,
+                    "media-public",
+                    "printf 'invalid-local-index' > .poketto/assets.json; poketto media list",
+                    new Cancellation());
+            assertThat(publicList.exitCode())
+                    .as("%s %s", publicList.stdout(), publicList.stderr())
+                    .isZero();
+            var approvedPage = JSON.readTree(publicList.stdout()).path("result");
+            assertThat(approvedPage.path("indexSource").stringValue()).isEqualTo("public-projection");
+            assertThat(approvedPage.path("total").intValue()).isEqualTo(1);
+            assertThat(approvedPage.path("items").get(0).propertyNames())
+                    .containsExactlyInAnyOrder("path", "mediaType", "size");
+            assertThat(publicList.stdout()).doesNotContain("private/manual.pdf", originalCommit, "assetId", "revision");
+            var historicalDenied = execute(
+                    executor, "media-public", "poketto media list --commit " + originalCommit, new Cancellation());
+            assertThat(historicalDenied.exitCode()).isEqualTo(1);
+            assertThat(historicalDenied.stdout()).contains("INVALID_MEDIA_REQUEST");
             var denied = executor.execute(
                     principal,
                     workspace,
@@ -597,6 +656,10 @@ public final class ExecutorNativeProbe {
             assertThat(uploadDenied.exitCode()).isEqualTo(1);
             assertThat(uploadDenied.stdout()).contains("READ_ONLY_SCOPE");
             passed("public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history");
+            fixture.withdraw();
+            assertThatThrownBy(() -> execute(executor, "media-public", "poketto media list", new Cancellation()))
+                    .isInstanceOf(RuntimeException.class);
+            passed("public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal");
         } finally {
             privateRead.set(true);
         }

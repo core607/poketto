@@ -97,6 +97,26 @@ class LeaseBridgeTests(unittest.TestCase):
                         process.kill()
                         process.wait(timeout=3)
 
+    def test_media_list_cli_passes_paging_and_version_through_the_actual_fifo(self):
+        process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')),
+            'media', 'list', '--prefix', 'private/music/', '--offset', '2', '--limit', '3',
+            '--index-version', 'a' * 64, '--commit', 'b' * 40],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})
+        try:
+            request = self.bridge.poll(timeout=2)
+            self.assertEqual('media_list', request['operation'])
+            self.assertEqual({'prefix': 'private/music/', 'offset': 2, 'limit': 3,
+                              'indexVersion': 'a' * 64, 'commit': 'b' * 40}, request['arguments'])
+            self.bridge.complete(request['requestId'], {'ok': True, 'result': {'items': [], 'nextOffset': None}})
+            stdout, stderr = process.communicate(timeout=3)
+            self.assertEqual(0, process.returncode, stderr)
+            self.assertEqual([], json.loads(stdout)['result']['items'])
+            self.bridge.poll(timeout=0.05)
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=3)
+
     def test_other_lease_cannot_complete_request_and_close_unblocks_waiter(self):
         with ThreadPoolExecutor() as pool:
             pending = pool.submit(call, self.path, 'save', {'writes': ['a.md'], 'deletes': []}, 3)

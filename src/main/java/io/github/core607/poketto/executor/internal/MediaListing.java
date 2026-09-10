@@ -1,0 +1,93 @@
+package io.github.core607.poketto.executor.internal;
+
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/** Lists logical index metadata, not proof that an original is currently available. */
+final class MediaListing {
+    static final int MAX_PAGE_BYTES = 12 * 1024;
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    record Query(String prefix, int offset, int limit, String version, String commit) {
+        static Query parse(JsonNode arguments) {
+            if (!arguments.isObject()
+                    || !Set.copyOf(arguments.propertyNames())
+                            .equals(Set.of("prefix", "offset", "limit", "indexVersion", "commit"))
+                    || !arguments.path("prefix").isString()
+                    || !arguments.path("offset").isIntegralNumber()
+                    || !arguments.path("offset").canConvertToInt()
+                    || !arguments.path("limit").isIntegralNumber()
+                    || !arguments.path("limit").canConvertToInt()) throw new IllegalArgumentException();
+            String prefix = arguments.path("prefix").stringValue();
+            int offset = arguments.path("offset").intValue(),
+                    limit = arguments.path("limit").intValue();
+            if (prefix.getBytes(StandardCharsets.UTF_8).length > 4096
+                    || prefix.indexOf('\0') >= 0
+                    || offset < 0
+                    || offset > RepositoryMediaIndex.MAX_FILES
+                    || limit < 1
+                    || limit > 200) throw new IllegalArgumentException();
+            return new Query(
+                    prefix,
+                    offset,
+                    limit,
+                    optionalHash(arguments.path("indexVersion"), 64),
+                    optionalHash(arguments.path("commit"), 40));
+        }
+
+        private static String optionalHash(JsonNode value, int length) {
+            if (value.isNull()) return null;
+            if (!value.isString() || !value.stringValue().matches("[0-9a-f]{" + length + "}"))
+                throw new IllegalArgumentException();
+            return value.stringValue();
+        }
+    }
+
+    static Map<String, ?> page(
+            Map<String, RepositoryMediaIndex.Media> files, Query query, String version, String source) {
+        if (query.version() != null && !query.version().equals(version))
+            return Map.of("ok", false, "code", "MEDIA_INDEX_CHANGED", "indexVersion", version);
+        var matches = files.entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith(query.prefix()))
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+        var items = new ArrayList<Map<String, Object>>();
+        var result = new LinkedHashMap<String, Object>();
+        result.put("indexSource", source);
+        result.put("indexVersion", version);
+        if (query.commit() != null) result.put("commit", query.commit());
+        result.put("items", items);
+        result.put("total", matches.size());
+        result.put("offset", query.offset());
+        result.put("nextOffset", null);
+        Map<String, Object> response = Map.of("ok", true, "result", result);
+        int next = Math.min(query.offset(), matches.size());
+        while (next < matches.size() && items.size() < query.limit()) {
+            var entry = matches.get(next);
+            items.add(Map.of(
+                    "path",
+                    entry.getKey(),
+                    "mediaType",
+                    entry.getValue().mediaType(),
+                    "size",
+                    entry.getValue().size()));
+            result.put("nextOffset", next + 1 < matches.size() ? next + 1 : null);
+            if (JSON.writeValueAsBytes(response).length > MAX_PAGE_BYTES) {
+                items.removeLast();
+                if (items.isEmpty()) throw new IllegalArgumentException("Media entry exceeds page bound");
+                break;
+            }
+            next++;
+        }
+        result.put("nextOffset", next < matches.size() ? next : null);
+        return response;
+    }
+
+    private MediaListing() {}
+}

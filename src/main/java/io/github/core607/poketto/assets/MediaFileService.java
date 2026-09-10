@@ -81,6 +81,21 @@ public final class MediaFileService {
         }
     }
 
+    /** Authorized exact-commit logical metadata; original availability is checked only when fetched. */
+    public io.github.core607.poketto.content.RepositoryMediaSnapshot privateCatalog(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested) {
+        Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        check.run();
+        try (var admission = admit(workspace, false)) {
+            String commit = repository.selectCommit(workspace, requested).orElseThrow(MediaFileService::missing);
+            var catalog = repository.media(workspace, commit);
+            check.run();
+            return catalog;
+        } catch (RuntimeException failure) {
+            throw checkedFailure(check, failure);
+        }
+    }
+
     public Download privateDownload(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, String path) {
         Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);

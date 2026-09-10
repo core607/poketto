@@ -26,7 +26,7 @@ The host-mediated `poketto` CLI provides persistence and result delivery:
 | `poketto save` | Commit selected files and explicit deletions, retaining other local edits |
 | `poketto sync` | Reconcile one file against its own baseline and current remote content |
 | `poketto recover` | Resolve an uncertain save using the original retained commit |
-| `poketto media import` / `fetch` | Store immutable originals or materialize the referenced media |
+| `poketto media list` / `import` / `fetch` | Discover indexed media, store originals or materialize referenced files |
 | `poketto artifact create` | Retain a temporary result for image, text or binary delivery through MCP |
 
 Repository credentials and original storage remain outside the sandbox. Ordinary edits stay in the execution session until saved. Conflicts retain local work; an uncertain acknowledgement must be reconciled before another save. Unsaved session files can be discarded on expiry or restart.

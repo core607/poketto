@@ -26,7 +26,7 @@ Markdown、目录结构与媒体引用保存在远程 Git 仓库中。远端 `ma
 | `poketto save` | 提交选定文件和明确删除，保留其他本地编辑 |
 | `poketto sync` | 按单个文件的基线与远端当前内容进行合并 |
 | `poketto recover` | 使用保留的原始提交核实不确定的保存结果 |
-| `poketto media import` / `fetch` | 存储不可变原件，或把引用的媒体取到工作区 |
+| `poketto media list` / `import` / `fetch` | 发现索引中的媒体、存储原件，或把引用的文件取到工作区 |
 | `poketto artifact create` | 保留临时结果，通过 MCP 返回图片、文本或二进制 |
 
 仓库凭证和原件存储留在沙箱之外。普通编辑在保存前只存在于执行会话中。冲突保留本地工作；保存是否成功尚不明确时，须先核实，再继续保存。会话过期或重启可能丢弃未保存的文件。
