@@ -1,5 +1,12 @@
 # Actual MCP client acceptance
 
+The [four-tool entrance run](evidence/2026-09-10-codeact-mcp-entrance.json)
+uses an independent Python HTTP MCP client with real authentication, PostgreSQL
+and native SRT. It verifies image transfer, selected CLI saves, atomic moves,
+scratch retention, artifact bytes, public projection isolation, capability denial
+and revocation. Authoritative HTTP readback and controller cleanup pass. This
+deterministic protocol run supplements the model-driven workflows below.
+
 The [focused CLI move run](evidence/2026-09-10-cli-moves.json) verifies actual
 Codex calls through real Spring authentication, PostgreSQL, HTTP MCP and native
 SRT. A folder move repairs inbound and outbound links and relocates its indexed

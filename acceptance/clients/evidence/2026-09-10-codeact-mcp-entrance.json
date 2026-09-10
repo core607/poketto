@@ -1,0 +1,34 @@
+{
+  "result": "PASS",
+  "sourceCommit": "e8572e517d2444dec2c6fe54fea3d31d86e31649",
+  "client": "independent Python Streamable HTTP MCP client",
+  "environment": "real Spring authentication, PostgreSQL, native worker/SRT, synthetic repository and local originals",
+  "tools": [
+    "get_artifact",
+    "get_asset",
+    "put_asset",
+    "repo_exec"
+  ],
+  "checks": [
+    "Four-tool catalog and exact idempotent image transfer PASS",
+    "Real shell discovery, selected CLI save, atomic CLI move, scratch retention and artifact bytes PASS",
+    "Public projection/history boundary, cross-session artifact denial and required execution capability PASS",
+    "Revoked key rejected, remaining sessions deleted and all keys revoked PASS"
+  ],
+  "imageSha256": "32128cc81d175dc976f46b3d3de5844f12263fa60ac01e0ff78750fb1eebe600",
+  "limitations": "Independent deterministic HTTP client acceptance, not a language-model benchmark or final production HTTPS/corpus acceptance.",
+  "runtimeManifestSha256": "9ef17b1df12f889cd661fb2e4dfc04ecf95228fc8b3c1e8f53ae021b9023359b",
+  "workerSources": {
+    "worker.py": "1f3b451ae8924e37f263f0faf1862f233a7ba10ecefb9f273b1b23935c7a33e2",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "87e929e107ed7b268ba76247f31ff0139ad343f4aeb27eaa2300752139c9e06c",
+    "cli.py": "b5a164cef2250ea2102982c61ece701d3bd98737954b389eba17bf139d990758",
+    "session_files.py": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+    "binary_capture.py": "7c8e5760978821effc7804b273c3f852572314a78a5fa38db3e83bccda4477be",
+    "materialize.py": "2d29a5092aeea938cb48b82d4c281b7e4711d60e913bc6789a85d89032ce9507",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd"
+  },
+  "fixturePolicy": "The synthetic repository uses public-by-default with drafts/** and root AGENTS.md explicitly excluded. This run verifies the MCP entrance, not the separate public-root format.",
+  "cleanup": "PASS"
+}
