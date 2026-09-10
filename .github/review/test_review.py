@@ -474,6 +474,8 @@ class ReviewTests(unittest.TestCase):
         self.assertNotIn("ref: ${{ github.event.pull_request.head", workflow)
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("github.event.changes.base != null", ci)
+        self.assertIn("github.event.changes.base == null && github.run_id || 'source'", ci)
+        self.assertIn("'metadata-only' || 'verify'", ci)
         self.assertIn('unittest discover -s .github/review -p "test_*.py"', ci)
 
     def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):
