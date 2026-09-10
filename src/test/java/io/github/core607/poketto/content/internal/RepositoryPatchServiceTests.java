@@ -729,6 +729,82 @@ class RepositoryPatchServiceTests {
     }
 
     @Test
+    void moveRecoveryPreservesTheOriginalCommitAndRejectsChangedDestinations() throws Exception {
+        for (String outcome : List.of("not-delivered", "delivered", "diverged")) {
+            boolean delivered = outcome.equals("delivered");
+            var offline = new java.util.concurrent.atomic.AtomicBoolean();
+            var candidates = new java.util.ArrayList<ObjectId>();
+            var delegate = new JGitRemoteGitTransport();
+            var fixture = new RemoteRepositoryFixture(directory.resolve(outcome), new RemoteGitTransport() {
+                @Override
+                public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                    if (offline.get()) throw new RemoteGitTransportException("offline after lost move reply");
+                    return delegate.fetchMain(repository, binding);
+                }
+
+                @Override
+                public PushStatus pushMain(
+                        Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
+                    candidates.add(candidate);
+                    if (candidates.size() == 1) {
+                        if (delivered) delegate.pushMain(repository, binding, expected, candidate);
+                        offline.set(true);
+                        throw new RemoteGitTransportException("lost move reply");
+                    }
+                    return delegate.pushMain(repository, binding, expected, candidate);
+                }
+            });
+            ObjectId base = fixture.commitRemote(
+                    workspace,
+                    Map.of(
+                            "private/folder/note.md", bytes("# Note"),
+                            "private/backlink.md", bytes("[note](folder/note.md)")));
+            var request = new RepositoryMoveRequest(base.name(), "private/folder", "private/renamed");
+            var service = service(fixture, (id, snapshot) -> {});
+            var unknown = org.assertj.core.api.Assertions.catchThrowableOfType(
+                    RepositoryWriteAmbiguousException.class, () -> service.move(principal, workspace, request));
+            assertThat(unknown).isNotNull();
+            var retained = unknown.attempt().orElseThrow();
+            offline.set(false);
+            assertThatThrownBy(() -> service.recover(
+                            principal,
+                            workspace,
+                            new RepositoryMoveRequest(base.name(), "private/folder", "private/other"),
+                            retained))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(candidates).hasSize(1);
+            if (outcome.equals("diverged")) {
+                ObjectId competing =
+                        fixture.commitRemote(workspace, Map.of("private/competing.md", bytes("competing")));
+                assertThatThrownBy(() -> service.recover(principal, workspace, request, retained))
+                        .isInstanceOf(RepositoryConflictException.class);
+                assertThat(fixture.remoteHead(workspace)).isEqualTo(competing);
+                assertThat(candidates).hasSize(1);
+                continue;
+            }
+            if (delivered) fixture.commitRemote(workspace, Map.of("private/later.md", bytes("later")));
+            ObjectId beforeRecovery = fixture.remoteHead(workspace);
+            var result = service.recover(principal, workspace, request, retained);
+            assertThat(result.commit()).isEqualTo(retained.commit());
+            assertThat(candidates).hasSize(delivered ? 1 : 2);
+            if (delivered) assertThat(fixture.remoteHead(workspace)).isEqualTo(beforeRecovery);
+            else assertThat(candidates).containsExactly(candidates.getFirst(), candidates.getFirst());
+            var reader = new JGitRepositoryContentReader(fixture.authority());
+            assertThat(reader.getFile(workspace, Optional.of(result.commit()), "private/backlink.md")
+                            .source())
+                    .contains("[note](renamed/note.md)");
+            assertThat(reader.getFile(workspace, Optional.of(result.commit()), "private/folder/note.md")
+                            .expectedAbsence())
+                    .isTrue();
+            assertThat(reader.getFile(workspace, Optional.of(result.commit()), "private/renamed/note.md")
+                            .source())
+                    .contains("# Note");
+            service.recover(principal, workspace, request, retained);
+            assertThat(candidates).hasSize(delivered ? 1 : 2);
+        }
+    }
+
+    @Test
     void lostSuccessfulReplyWithLockedLocalRefStillReportsRemoteAcknowledgement() throws Exception {
         AtomicInteger pushes = new AtomicInteger();
         var delegate = new JGitRemoteGitTransport();

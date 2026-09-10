@@ -11,4 +11,11 @@ import io.github.core607.poketto.workspace.WorkspaceId;
  */
 public interface RepositoryMoveService {
     RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request);
+
+    /** Reconciles or retries the identical host-retained move commit under current authorization. */
+    RepositoryPatchResult recover(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteAttempt attempt);
 }

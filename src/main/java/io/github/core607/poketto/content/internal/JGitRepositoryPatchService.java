@@ -118,12 +118,29 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
 
     @Override
     public RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
+        return move(principal, workspace, request, Optional.empty());
+    }
+
+    @Override
+    public RepositoryPatchResult recover(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteAttempt attempt) {
+        return move(principal, workspace, request, Optional.of(attempt));
+    }
+
+    private RepositoryPatchResult move(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            Optional<RepositoryWriteAttempt> recovery) {
         return write(
                 principal,
                 workspace,
                 Optional.of(request.baseCommit()),
                 Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE),
-                Optional.empty(),
+                recovery,
                 (repository, index) -> RepositoryMovePlanner.prepare(
                         repository, index, request, policy(repository, index), mediaIndex(repository, index)));
     }

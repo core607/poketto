@@ -13,6 +13,15 @@ The [CodeAct content plan](2026-09-09-codeact-content-and-media.md) requires one
 
 The service requires `READ_PRIVATE` and `WRITE_PRIVATE` before accessing repository state. It uses the same remote-ref writer as text patches, including atomic compare-and-swap, current publication authorization, withdrawal before an uncertain outcome, reconciliation, attribution and separate snapshot-installation acknowledgement. Public changes and repaired inbound references require `PUBLISH`. A move that creates a public-to-private reference fails before authority advances. Invalid publication or media configuration must be repaired first.
 
+`RepositoryMoveService.recover` accepts the original request and host-retained
+commit bytes after an uncertain acknowledgement. It recomputes the candidate from
+the original immutable base under current authorization and requires the exact
+tree, parent and attribution. If remote history already contains that commit,
+recovery acknowledges it without another push and retains later remote changes.
+Otherwise only the same commit can be retried from the unchanged base; a changed
+destination or diverged remote is rejected. CLI dispatch and local move recovery
+remain part of the session integration below.
+
 Reference repair scans bounded Markdown at the same immutable base, resolves existing file/media paths and unambiguous document routes, and computes relative destinations with preserved fragments. CommonMark source spans identify links, images and reference definitions. Only destination tokens change; frontmatter, labels, titles, code, HTML and line endings remain intact. Missing or external targets remain authored text. Unsupported repair syntax fails the whole operation instead of silently rewriting prose. The existing document, node, reference and workspace byte bounds apply. Copying objects avoids the 64-file/4-MiB external text-patch limit while retaining the repository tree bound.
 
 ## Delivery and evidence
