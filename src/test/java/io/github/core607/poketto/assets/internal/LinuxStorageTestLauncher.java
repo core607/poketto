@@ -28,6 +28,7 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.content.internal.RepositoryHistoryDatesTests",
             "io.github.core607.poketto.content.internal.RepositorySnapshotExportsTests",
             "io.github.core607.poketto.content.internal.RepositoryPatchServiceTests",
+            "io.github.core607.poketto.executor.internal.SelectedFileSavesTests",
             "io.github.core607.poketto.content.internal.DocumentWriteRecoveryTests");
 
     private LinuxStorageTestLauncher() {}

@@ -8,7 +8,7 @@ client acceptance required by [phase one](../notes/proposed/2026-09-05-phase-one
 
 The signed-open result checks production socket ownership, peer identity and signatures. Its authentication stub supplies the allowed principal; that result does not validate database permissions. Recorded evidence retains its original labels and source hashes.
 
-The public-scope scenario uses a separate synthetic Git authority with the production publication and export services. It searches the actual worker copy for private metadata and content, checks that source commit objects are absent, preserves the public scope after a permission increase, and rejects execution after publication withdrawal. The real `poketto status` command exchanges FIFO requests with the host while Unix socket creation stays blocked. Separate clients cannot access each other's bridge, and replies remain read-only. The [recorded projection and bridge run](evidence/2026-09-10-public-projection.json) identifies the tested classes and runtime manifest. Durable save, media materialization and HTTP MCP client acceptance remain separate requirements.
+The public-scope scenario uses a separate synthetic Git authority with the production publication and export services. It searches the actual worker copy for private metadata and content, checks that source commit objects are absent, preserves the public scope after a permission increase, and rejects execution after publication withdrawal. The real `poketto status` command exchanges FIFO requests with the host while Unix socket creation stays blocked. Separate clients cannot access each other's bridge, and replies remain read-only. The [recorded projection and bridge run](evidence/2026-09-10-public-projection.json) identifies the tested classes and runtime manifest. The selected-save scenario freezes the actual cgroup, transfers UTF-8 bytes in chunks, and commits through real synthetic Git authority despite tampered sandbox Git state. It covers repeated saves, explicit deletion, unselected local edits and remote conflicts. Uncertain-write reconciliation, media materialization and HTTP MCP client acceptance remain separate requirements.
 
 Build the reproducible runtime with Java 26:
 
@@ -18,7 +18,7 @@ Build the reproducible runtime with Java 26:
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs,
 and a SHA-256 manifest. Copy that directory, `probe.py`, `rejected_peer.py`, and the corresponding
-worker, launcher, `resource_pool.py`, `native_pool.py`, `bridge.py` and `cli.py` sources to isolated host staging. The probe verifies every
+worker, launcher, `resource_pool.py`, `native_pool.py`, `bridge.py`, `cli.py` and `session_files.py` sources to isolated host staging. The probe verifies every
 manifest entry before running. It never stages operator settings or credentials.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's

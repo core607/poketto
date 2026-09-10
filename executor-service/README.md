@@ -127,6 +127,9 @@ JSON keys. Every payload contains exactly these fields:
 | `RENEW` | Empty object. Extends an unexpired INITIALIZING, READY, or RUNNING lease to `expiresAt`. Other operations do not renew it. |
 | `BRIDGE_POLL` | Empty object. Claims one CLI request, or returns null after a bounded wait; includes the current `executionId`. Does not acquire the command operation lock. |
 | `BRIDGE_COMPLETE` | `executionId`, `bridgeRequestId` and `response` object. Publishes one bounded reply only for that running execution and pending request. |
+| `CAPTURE_BEGIN` | `executionId`, `writes` and `deletes` path lists. Freezes the command cgroup, captures up to 64 selected UTF-8 files and 4 MiB, then thaws. Returns a worker-owned capture ID, ordered path/length/SHA-256 manifest and explicit deletions. One capture per command; mount cleanup waits for capture. |
+| `CAPTURE_READ` | `executionId`, `captureId`, zero-based file `index`, byte `offset`, and `limit` from 1 to 65536. Returns a base64 chunk from that immutable capture, never a fresh read of the mutable worktree. |
+| `CAPTURE_RELEASE` | `executionId` and `captureId`. Drops the retained capture; command cleanup also drops it. Capture operations require the matching running execution and current lease authority. |
 | `CLOSE` | Empty object or `reason`: `cancelled`, `session_closed`, or `client_shutdown`. May return CLOSING until cleanup finishes. A CLOSE arriving before OPEN creates a tombstone and returns CLOSED with null commit. |
 | `REVOKE` | `keyIds` and `accountIds`, each a list of at most 1000 UUIDs. Targets the payload workspace. Control identity fields may be zero UUIDs and a zero hash. Tombstones precede cancellation. |
 
@@ -137,7 +140,9 @@ OPEN, RENEW, CLOSE, and EXEC success responses contain `ok: true`, `requestId`,
 {"commit":"40_HEX","exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,"stderrTruncated":false,"timedOut":false,"terminationReason":"normal"}
 ```
 
-Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py` and `cli.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply. Command cleanup discards abandoned requests before another command can start. `poketto status` returns host-owned scope and baseline; durable save and media dispatch remain part of the proposed CodeAct integration.
+Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py`, `cli.py` and `session_files.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply. Command cleanup discards abandoned requests before another command can start.
+
+`poketto save PATH... --delete PATH` sends selections, not file contents. The application captures those files, checks authoritative revisions at its own baseline and uses the shared atomic Git writer. Success advances only the host save baseline; the worker's original history and all unselected local edits remain. Public-only sessions reject saves. Conflicts retain local files and the prior baseline; an ambiguous write blocks subsequent saves. `poketto status` exposes the host baseline and last save receipt. Conflict rebasing, uncertain-outcome reconciliation, media dispatch and actual MCP-client acceptance remain part of the proposed CodeAct integration.
 
 `terminationReason` is `normal`, `timeout`, `resource_limit`, `output_limit`,
 `cancelled`, `session_closed`, `client_shutdown`, `lease_expired`, or `revoked`.
@@ -183,7 +188,7 @@ actual signed socket entry point and cleans units, mounts, and the account in
 production `UMask=0077`; this prevents the private `/tmp` write grant from
 concealing a production filesystem-mount error. Use a new disposable root
 directory containing worker.py, resource_pool.py, native_pool.py,
-launcher.py, bridge.py, cli.py, native_probe.py, and a prepared `tools` directory. Install the
+launcher.py, bridge.py, cli.py, session_files.py, native_probe.py, and a prepared `tools` directory. Install the
 pinned Python dependencies into `tools/python`; the probe's supervisor uses
 that directory. `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike` creates
 the pinned SRT toolchain without installing global packages.
