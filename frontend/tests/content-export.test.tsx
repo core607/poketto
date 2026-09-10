@@ -111,6 +111,16 @@ test("export dialog uses scoped CSRF requests, native downloads, and safe cancel
 
   await open();
   response = () => new Response(null, { status: 503 });
+  await act(async () => button("生成 ZIP").click());
+  assert.equal(requests.at(-1)?.publicOnly, false);
+  assert.match(
+    container.querySelector('[role="alert"]')!.textContent!,
+    /文档或媒体索引中的附件/,
+  );
+  assert.doesNotMatch(
+    container.querySelector('[role="alert"]')!.textContent!,
+    /已公开/,
+  );
   await act(async () => container.querySelectorAll("input")[1].click());
   await act(async () => button("生成 ZIP").click());
   assert.equal(requests.at(-1)?.publicOnly, true);

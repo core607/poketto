@@ -65,7 +65,9 @@ export function ExportDialog({
       const result = await api<Receipt>("/api/admin/exports", {
         method: "POST",
         body: { paths: [source], publicOnly },
-        timeoutMs: 125000,
+        // The server accepts build-seconds up to 600; allow the response to arrive
+        // after that deadline without abandoning a valid configured build early.
+        timeoutMs: 610000,
       });
       if (!alive.current) {
         // This handle was never offered for download. Delivered handles expire normally,
@@ -85,7 +87,9 @@ export function ExportDialog({
         status === 429
           ? "导出空间不足或已有任务正在处理，请稍后再试。"
           : status === 503
-            ? "无法导出所选内容。请确认公开副本中的文件及附件均已公开，且原件可用。"
+            ? publicOnly
+              ? "无法导出所选内容。请确认所选内容包含文档或媒体索引中的附件，文件及附件均已公开，且原件可用。"
+              : "无法导出所选内容。请确认所选内容包含文档或媒体索引中的附件，且附件原件可用。"
             : status === 401 || status === 403
               ? "当前会话无权导出这些内容，请确认登录状态和权限。"
               : "未能取得导出文件，请稍后重试。已生成但未领取的临时文件会自动过期。",
