@@ -70,7 +70,7 @@ The [storage port](2026-09-05-repository-authoring-foundations.md#managed-origin
 ## Technology stack
 
 The build requires JDK 26 and pins Spring Boot 4.1.1 and Spring AI 2.0.1. Spring Security owns browser authentication; Spring Modulith defines application module boundaries. JGit owns repository access, commonmark-java and Jackson YAML parse content, and [official PostgreSQL 17](2026-09-05-stock-postgresql.md) stores relational application state. The [blog frontend](2026-09-06-blog-browser-interface.md) uses Next.js App Router, React, TypeScript and Tailwind, with Node.js 24.19.0 and npm 12.0.2. It replaces JTE + htmx while Spring retains business APIs and persistence.
-CI: GitHub Actions + Testcontainers; images publish to GHCR. A docker-save-over-SSH deployment script is provided for networks with restricted registry access. GraalVM Native Image and JDK structured concurrency (preview) stay on the experimental track.
+CI: GitHub Actions + Testcontainers; images publish to GHCR. An optional [delivery mirror](2026-09-10-mirror-registry-delivery.md) copies canonical digests to another registry for host pulls. A docker-save-over-SSH deployment script remains available for networks with restricted registry access. GraalVM Native Image and JDK structured concurrency (preview) stay on the experimental track.
 The MCP protocol version follows the pinned SDK. Static API keys are a deliberate phase-one simplification without a claim to standard MCP OAuth. Streamable HTTP validates supplied Origin headers.
 
 ## Non-goals (v1)

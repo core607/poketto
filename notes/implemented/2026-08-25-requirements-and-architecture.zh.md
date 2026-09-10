@@ -65,7 +65,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 ## 技术栈
 
 构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[博客前端](2026-09-06-blog-browser-interface.md)使用 Next.js App Router、React、TypeScript 与 Tailwind，锁定 Node.js 24.19.0 和 npm 12.0.2。它取代 JTE + htmx，业务 API 与持久化仍归 Spring。
-CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。另提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
+CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。可选的[交付镜像仓库](2026-09-10-mirror-registry-delivery.md)把规范发布的 digest 复制到另一仓库，供服务器拉取。仍提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随固定 SDK 确定。第一阶段使用静态 API key 是有意识的简化，不宣称实现 MCP 标准 OAuth；Streamable HTTP 校验传入的 Origin header。
 
 ## 不做清单
