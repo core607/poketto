@@ -11,7 +11,7 @@ This is the next development priority for repository agent access, ahead of expa
 
 The [execution service](../../executor-service/README.md) provides full-read workspaces with original Git history and public-only workspaces built from the approved projection. Both require `EXECUTE_REPOSITORY`. Its host bridge supports selected-file saves, per-file synchronization, uncertain-write recovery and media import/fetch. The authoritative browser services and structured MCP tools share the same underlying writer.
 
-A permitted search scans the files present in the admitted workspace, including private articles when the identity has private-read authority. The remaining target includes actual-client artifact acceptance, bootstrap guidance and completion of the agent-entrance cutover. This proposal retains the full contract until those parts are delivered; implemented CLI behavior and its limits are documented in the execution-service reference.
+A permitted search scans the files present in the admitted workspace, including private articles when the identity has private-read authority. The remaining target includes bootstrap guidance and completion of the agent-entrance cutover. This proposal retains the full contract until those parts are delivered; implemented CLI behavior and its limits are documented in the execution-service reference.
 
 ## Workspace admission and contents
 
@@ -76,11 +76,11 @@ Commands retain up to 4 MiB of combined output and return 16 KiB previews per st
 The [native artifact evidence](../../executor-native/evidence/2026-09-10-scoped-artifacts.json)
 records immutable capture, scope isolation, publication withdrawal, long-output
 retention and process/storage cleanup through the real worker. Actual-client
-artifact delivery over HTTP MCP remains unverified by that fixture.
+artifact delivery over HTTP MCP is recorded separately in the [focused client evidence](../../acceptance/clients/evidence/2026-09-10-artifacts.json).
 
 ## Acceptance
 
-The [recorded real-client workflow](../../acceptance/clients/evidence/2026-09-10-codeact.json) exercises Codex and Claude Code against real Spring authentication, PostgreSQL, HTTP MCP and native SRT with synthetic content. Both clients import and fetch original media, save index/text together, preserve unselected edits, resolve an actual competing-write conflict, and move/delete their own sample through selected saves. Independent Git inspection confirms the durable outcomes and unchanged original files. The worker advertises `codeActProtocol: 1`; the application rejects missing or incompatible readiness before exporting files. Actual-client artifact acceptance, dedicated move/export dispatch, root-guide delivery and final installation acceptance remain outstanding.
+The [recorded real-client workflow](../../acceptance/clients/evidence/2026-09-10-codeact.json) exercises Codex and Claude Code against real Spring authentication, PostgreSQL, HTTP MCP and native SRT with synthetic content. Both clients import and fetch original media, save index/text together, preserve unselected edits, resolve an actual competing-write conflict, and move/delete their own sample through selected saves. Independent Git inspection confirms the durable outcomes and unchanged original files. The worker advertises `codeActProtocol: 1`; the application rejects missing or incompatible readiness before exporting files. Dedicated move/export dispatch, root-guide delivery and final installation acceptance remain outstanding.
 
 Use focused behavioral evidence and the required repository checks, not repeated model comparisons or a new benchmark program:
 

@@ -4,6 +4,15 @@ For CodeAct on a native systemd host, `native-host.py` holds the real synthetic 
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
 
+The [focused artifact acceptance](evidence/2026-09-10-artifacts.json) verifies both
+clients receive actual PNG image content, read the exact end of a long text
+artifact, receive four exact binary bytes and reject a removed handle. Raw image
+and resource bytes are independently compared with returned hashes. Claude Code
+writes binary resources to local files instead of exposing their base64 directly
+to the model; the verifier reads that file to confirm delivery. The synthetic
+remote remains at its initial commit and fixture cleanup completes. This workflow
+does not repeat the separate save/media acceptance or establish final HTTPS delivery.
+
 Codex supports Streamable HTTP with a bearer token read from an environment variable; its [official configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) documents connection and tool timeouts. The adjacent TOML fragment supplies the isolated endpoint. For a single CLI run, pass the same fields with `codex exec -c` overrides rather than changing global configuration.
 
 Claude Code accepts the adjacent JSON with `--mcp-config` and `--strict-mcp-config`. Its [official MCP documentation](https://code.claude.com/docs/en/mcp#environment-variable-expansion-in-mcp-json) specifies environment expansion in URLs and authentication headers. A connected status establishes only discovery, not tool acceptance.
