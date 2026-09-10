@@ -313,6 +313,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 + Duration.ofSeconds(session.hello.renewAfterSeconds())
                                         .toNanos();
                     } catch (RuntimeException exception) {
+                        log.warn(
+                                "Worker lease renewal failed ({})",
+                                exception.getClass().getSimpleName());
                         stop(session, "cancelled");
                     } finally {
                         session.renewing.set(false);

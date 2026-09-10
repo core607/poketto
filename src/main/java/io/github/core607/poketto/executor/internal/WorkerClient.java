@@ -17,11 +17,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** One bounded Unix-socket exchange per operation; EXEC is never replayed after an uncertain response. */
 final class WorkerClient {
+    private static final Logger log = LoggerFactory.getLogger(WorkerClient.class);
     static final int MAX_FRAME = 1024 * 1024;
     private final Path socket;
     private final PrivateKey signingKey;
@@ -117,13 +120,16 @@ final class WorkerClient {
         byte[] bytes = json.writeValueAsBytes(request);
         require(bytes.length > 0 && bytes.length <= MAX_FRAME);
         long deadline = System.nanoTime() + timeout.toNanos();
+        String phase = "connect";
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX);
                 Selector selector = Selector.open()) {
             channel.configureBlocking(false);
             if (!channel.connect(UnixDomainSocketAddress.of(socket))) {
                 while (!channel.finishConnect()) ready(channel, selector, SelectionKey.OP_CONNECT, deadline);
             }
+            phase = "peer-verification";
             verifyPeer.accept(channel);
+            phase = "request-write";
             ByteBuffer output = ByteBuffer.allocate(4 + bytes.length)
                     .putInt(bytes.length)
                     .put(bytes)
@@ -132,14 +138,21 @@ final class WorkerClient {
                 deadline(deadline);
                 if (channel.write(output) == 0) ready(channel, selector, SelectionKey.OP_WRITE, deadline);
             }
+            phase = "response-header";
             ByteBuffer prefix = ByteBuffer.allocate(4);
             read(channel, selector, prefix, deadline);
             int length = prefix.flip().getInt();
             require(length > 0 && length <= MAX_FRAME);
+            phase = "response-body";
             ByteBuffer body = ByteBuffer.allocate(length);
             read(channel, selector, body, deadline);
+            phase = "response-decode";
             return json.readTree(body.array());
         } catch (IOException | RuntimeException exception) {
+            log.warn(
+                    "Worker exchange failed during {} ({})",
+                    phase,
+                    exception.getClass().getSimpleName());
             throw new WorkerUnavailableException();
         }
     }
