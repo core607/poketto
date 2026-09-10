@@ -5,6 +5,7 @@ import unittest
 import uuid
 import os
 import tempfile
+from unittest.mock import patch
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from bridge import LeaseBridge
@@ -117,6 +118,38 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual('subsequent local edit', (repository / 'new.md').read_text())
             self.assertTrue(self.send(self.payload('MATERIALIZE_ABORT', reference))['ok'])
             self.assertIsNone(session.incoming)
+            self.assertFalse(list(self.backend.root.glob('incoming-*')))
+
+    def test_materialization_io_failures_are_classified_without_losing_local_edits(self):
+        import errno
+        import hashlib
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            (repository / 'retained.md').write_bytes(b'unsaved local edit')
+            data = {'executionId': session.execution_id, 'path': 'new.md', 'bytes': 1,
+                    'sha256': hashlib.sha256(b'x').hexdigest(), 'expectedSha256': None,
+                    'delete': False, 'allowIdentical': False}
+            with patch('materialize.os.open', side_effect=OSError(errno.ENOSPC, 'fixture full')):
+                failed = self.send(self.payload('MATERIALIZE_BEGIN', data))
+            self.assertEqual('MATERIALIZE_REJECTED', failed['code'])
+            self.assertIsNone(session.incoming)
+            created = self.send(self.payload('MATERIALIZE_BEGIN', data))
+            self.assertTrue(created['ok'], created)
+            reference = {'executionId': session.execution_id, 'transferId': created['transferId']}
+            self.assertTrue(self.send(self.payload('MATERIALIZE_CHUNK',
+                {**reference, 'offset': 0, 'data': base64.b64encode(b'x').decode()}))['ok'])
+            with patch('materialize.os.pread', side_effect=OSError(errno.EIO, 'fixture read failure')):
+                failed = self.send(self.payload('MATERIALIZE_COMMIT', reference))
+            self.assertEqual('MATERIALIZE_REJECTED', failed['code'])
+            self.assertTrue(self.send(self.payload('MATERIALIZE_ABORT', reference))['ok'])
+            self.assertFalse(session.cancelled.is_set())
+            self.assertEqual(b'unsaved local edit', (repository / 'retained.md').read_bytes())
+            self.assertFalse((repository / 'new.md').exists())
             self.assertFalse(list(self.backend.root.glob('incoming-*')))
 
     def test_selected_capture_is_immutable_chunked_and_bound_to_execution_and_identity(self):

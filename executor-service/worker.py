@@ -347,7 +347,7 @@ class Service:
                     else:
                         s.incoming.close()
                         s.incoming = None
-            except CaptureRejected:
+            except (CaptureRejected, OSError):
                 raise Rejected('MATERIALIZE_REJECTED') from None
         with self.lock:
             self.authorized(p)
