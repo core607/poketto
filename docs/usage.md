@@ -45,6 +45,14 @@ Managed originals live under `<data-dir>/managed-originals` and are retained; `<
 
 ## Export HTTP interface
 
+In the editor, use **Export** beside a file or inside an expanded folder, or the
+file sidebar's export action for the whole workspace. Choose a private copy or a
+public copy, generate the ZIP, then download it. Exports use the latest saved
+content; unsaved editor changes stay outside the package. Public copies reject
+private selections rather than changing publication. Downloads use the browser's
+download manager. Closing the dialog leaves an already offered package available
+until expiry, so an active download can finish.
+
 On native Linux, `POST /api/admin/exports` accepts `paths` (explicit Markdown,
 indexed-media paths or directory prefixes) and an explicit `publicOnly` boolean.
 It returns a temporary handle, ZIP size, SHA-256 and expiry. `GET
@@ -68,8 +76,8 @@ under `poketto.exports` set `max-zip-bytes` (800 MiB), `max-retained-bytes` (2 G
 `build-seconds` (120). A build reserves its full ZIP allowance before preparation;
 only its actual size remains charged after success. Capacity exhaustion returns
 429; missing, expired or differently owned handles return 404. Filesystems without
-POSIX permission support return 503 before reading export content. Browser export
-controls and CLI materialization remain in the [export plan](../notes/proposed/2026-09-10-portable-content-exports.md).
+POSIX permission support return 503 before reading export content. CLI
+materialization remains in the [export plan](../notes/proposed/2026-09-10-portable-content-exports.md).
 
 ## MCP and isolated execution
 

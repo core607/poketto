@@ -15,6 +15,7 @@ export async function api<T>(
     form?: URLSearchParams;
     multipart?: FormData;
     headers?: Record<string, string>;
+    timeoutMs?: number;
   } = {},
 ): Promise<T> {
   const method = options.method ?? "GET";
@@ -47,7 +48,7 @@ export async function api<T>(
         (options.body !== undefined ? JSON.stringify(options.body) : undefined),
       credentials: "same-origin",
       cache: "no-store",
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 30000),
     });
   } catch {
     throw new ApiError(
