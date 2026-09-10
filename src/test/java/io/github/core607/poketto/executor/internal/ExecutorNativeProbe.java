@@ -275,7 +275,7 @@ public final class ExecutorNativeProbe {
                     "public-native",
                     Optional.empty(),
                     "test $(git rev-list --count HEAD) = 1 && test ! -e private && "
-                            + "test ! -e .poketto/publishing.yml && cat article/index.md && "
+                            + "test ! -e .poketto/publishing.yaml && cat article/index.md && "
                             + "! grep -R -F 'secret-needle' --exclude-dir=.git . && "
                             + "! git cat-file -e " + fixture.sourceCommit() + "^{commit}",
                     Duration.ofSeconds(10),
