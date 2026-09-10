@@ -60,8 +60,8 @@ class PublicSnapshotMarkerModeTests {
     static Map<String, byte[]> files() {
         return Map.of(
                 RepositoryPublishingPolicy.PATH,
-                "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8),
-                "hello.md",
+                "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8),
+                "public/hello.md",
                 "# Hello".getBytes(StandardCharsets.UTF_8));
     }
 

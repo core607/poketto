@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Poketto is a repository-native personal knowledge service whose public face is a blog. Every production workspace uses [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md); the primary single-server profile keeps a disposable local repository cache and will use an authoritative local ManagedBlobStore for Poketto uploads, a disposable cache for read-only repository images, and local SRT. The [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) selects authoritative OSS, derived image caching, and remote SRT through configuration. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted target decisions while they await implementation and must not be described as shipped.
+Poketto is a repository-native personal knowledge service whose public face is a blog. Every production workspace uses [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md); the primary single-server profile keeps a disposable local repository cache and uses an authoritative local ManagedBlobStore for Poketto uploads, a disposable cache for read-only repository images, and local SRT. The [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) selects authoritative OSS, derived image caching, and remote SRT through configuration. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted target decisions while they await implementation and must not be described as shipped.
 
 The public README, requirements note and [usage reference](docs/usage.md) have .zh.md counterparts; edit both sides in the same change (see [translate-docs](.agents/skills/translate-docs/SKILL.md)). Agent instructions and skills are English-only.
 
@@ -8,7 +8,7 @@ The public README, requirements note and [usage reference](docs/usage.md) have .
 
 Current phase: development. The executable baseline is established; product capabilities are implemented only from an assigned, settled task.
 
-The assigned repository-agent development priority is [CodeAct content and media](notes/proposed/2026-09-09-codeact-content-and-media.md); its implementation plan remains proposed until delivered.
+The [CodeAct content and media contract](notes/implemented/2026-09-09-codeact-content-and-media.md) defines the current content boundary. New product work requires an assigned, settled task.
 
 An agent arriving for the first time:
 

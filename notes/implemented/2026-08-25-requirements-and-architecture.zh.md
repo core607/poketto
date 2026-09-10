@@ -36,6 +36,8 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 ## 当前 MCP 契约
 
+内容格式采用独立的 `public/` 和 `private/` 根目录，新内容默认私有。只有精确 `public/` 下符合条件的路径才能在已启用的 `public-root` 策略下发布；排除路径、指引和隐藏路径保持私有。默认文章路由省略根目录前缀，显式路由不赋予公开权限。[内容契约](2026-09-09-codeact-content-and-media.md)定义协调转换与格式边界。
+
 `/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`get_artifact`、`get_asset` 和 `put_asset`。没有独立文件 CRUD 回退入口；文件访问要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
 
 Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐层读取内容仓库自己的 `AGENTS.md`。服务端不解释这些指引。[目录导航](2026-09-08-repository-directory-navigation.md)仍通过共享读取服务向浏览器 HTTP 提供功能，无须执行器。
@@ -58,7 +60,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 第一阶段资产契约取代最初仅用 hash 引用与图片索引的选型。本地托管原图在 Git 之外按工作空间存储，使用不可变的资产标识与 revision 引用。Git 图片保持只读，按需物化到可丢弃缓存。公开授权绑定页面快照和精确图片版本，最长五分钟且不超过快照有效期；私有读取重新验证当前权限。所有已确认的托管原图均保留。图片加工、pHash、图片描述与持久化图片索引不在本次交付范围内。
 
-[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。可移植导出仍由 [CodeAct 内容与媒体提案](../proposed/2026-09-09-codeact-content-and-media.md)定义。
+[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。[可移植导出](2026-09-10-portable-content-exports.md)按授权范围打包已保存文档和实际原件。
 
 ## 技术栈
 

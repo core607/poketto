@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.MarkdownDestinations;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMoveDependencyException;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -101,9 +102,7 @@ final class RepositoryMovePlanner {
                             policy.permitsPath(oldPath) && (!policy.permitsPath(target) || unsupportedTarget);
                     boolean invalidAfter =
                             policy.permitsPath(newPath) && (!policy.permitsPath(newTarget) || unsupportedTarget);
-                    if (invalidAfter && !invalidBefore)
-                        throw new IllegalArgumentException(
-                                "move would leave a public document referencing private content");
+                    if (invalidAfter && !invalidBefore) throw new RepositoryMoveDependencyException();
                     String fragment = authored.contains("#") ? authored.substring(authored.indexOf('#')) : "";
                     return relative(newPath, newTarget) + fragment;
                 }

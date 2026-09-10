@@ -1,7 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
-import { movablePath } from "../lib/repository-directory";
+import {
+  contentRoot,
+  inContentRoot,
+  movablePath,
+} from "../lib/repository-directory";
+
+test("scope switches preserve categories and only interpret the exact content root", () => {
+  assert.equal(
+    inContentRoot("private/reading/novels", "public"),
+    "public/reading/novels",
+  );
+  assert.equal(
+    inContentRoot("public/private/album", "private"),
+    "private/private/album",
+  );
+  assert.equal(inContentRoot("private", "public"), "public");
+  assert.equal(
+    inContentRoot("notes/public", "private"),
+    "private/notes/public",
+  );
+  assert.equal(inContentRoot("Public/notes", "public"), "public/Public/notes");
+  assert.equal(contentRoot("Public/notes"), null);
+  assert.equal(contentRoot("private/public/notes"), "private");
+});
 
 test("move controls preserve case-insensitive reserved roots and allow their children", () => {
   for (const path of [
@@ -154,6 +177,10 @@ test("folder selection cancels without writing and moves via the host service be
     return item;
   };
   const trigger = button("移动…");
+  assert.equal(
+    container.querySelector('input[name="path"]')?.getAttribute("value"),
+    "private/",
+  );
   await act(async () => trigger.click());
   let dialog = container.querySelector("dialog[open]");
   assert.ok(dialog);
@@ -173,9 +200,23 @@ test("folder selection cancels without writing and moves via the host service be
   await act(async () => trigger.click());
   dialog = container.querySelector("dialog[open]");
   assert.ok(dialog);
-  await act(async () => button("根目录", dialog! as typeof container).click());
   await act(async () =>
-    button("▸ public", dialog! as typeof container).click(),
+    button("公开目录", dialog! as typeof container).click(),
+  );
+  assert.match(dialog.textContent!, /目标：public\/note.md/);
+  assert.equal(
+    button("公开目录", dialog! as typeof container).getAttribute(
+      "aria-pressed",
+    ),
+    "true",
+  );
+  await act(async () =>
+    button("私有目录", dialog! as typeof container).click(),
+  );
+  assert.match(dialog.textContent!, /目标：private\/note.md/);
+  assert.ok(button("移动到这里", dialog! as typeof container).disabled);
+  await act(async () =>
+    button("公开目录", dialog! as typeof container).click(),
   );
   assert.equal(writes.length, 0);
   await act(async () =>
@@ -237,11 +278,18 @@ test("folder selection cancels without writing and moves via the host service be
   await act(async () => button("移动…").click());
   dialog = container.querySelector("dialog[open]");
   assert.ok(dialog);
-  await act(async () => button("根目录", dialog! as typeof container).click());
+  await act(async () =>
+    button("私有目录", dialog! as typeof container).click(),
+  );
   await act(async () =>
     button("移动到这里", dialog! as typeof container).click(),
   );
   assert.equal(writes.length, 3, "A stale base is not retried automatically");
+  assert.deepEqual(writes[2], {
+    baseCommit: "after",
+    source: "public/renamed.md",
+    destination: "private/renamed.md",
+  });
   assert.ok(!container.querySelector("dialog[open]"));
   assert.match(container.textContent!, /仓库内容已改变，目录已刷新/);
   assert.equal(container.querySelector("textarea"), null);

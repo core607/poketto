@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Scope
 
-The [content plan](../proposed/2026-09-09-codeact-content-and-media.md) requires browser and
+The [content plan](2026-09-09-codeact-content-and-media.md) requires browser and
 CLI exports that work outside Poketto. A repository ZIP alone omits indexed
 originals; a worker archive can include private history, unsaved files and runtime
 metadata. A host-owned export service selects committed documents and streams

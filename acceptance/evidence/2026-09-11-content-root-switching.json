@@ -1,0 +1,28 @@
+{
+  "result": "PASS",
+  "sourceCommit": "78d97c48afb0e8688220ad6ca9f7610f9f6df4ae",
+  "browser": "153.0.8010.36",
+  "viewport": {
+    "width": 1440,
+    "height": 1050
+  },
+  "checks": [
+    "New path starts at private root; initial document is not publicly readable",
+    "Scope selection preserves category; Escape restores focus without a write",
+    "Single-file publication with a private dependency is refused atomically",
+    "Folder publication moves logical media unchanged; original bytes download anonymously at preserved route",
+    "Folder withdrawal preserves media identity and invalidates public article and old media URL"
+  ],
+  "fixtureCommits": {
+    "initialCommit": "bebba8d6881d6fe1a16d779f3ff67c8ede246cd4",
+    "publicationCommit": "fc2f5a4ed5121999e33faefecdf3034f20590477",
+    "withdrawalCommit": "4eec1ce8ba152e517d2b3dccd059c0d37066b256"
+  },
+  "originalSha256": "607bb42171d7fef571dd6bc01e17a211d544d85e5909a5f5c2d9725a3d819a8a",
+  "cleanup": "PASS",
+  "environment": "Real Spring, pinned PostgreSQL, production Next.js and Caddy, fresh synthetic Git/originals and Chrome",
+  "limitations": "Synthetic workspace and HTTP loopback; not production content, HTTPS or a model benchmark.",
+  "recordingSha256": "fa751f0468dd27919c919c5da811dd280109921a2deb95910adcb3dd033fa59c",
+  "gifSha256": "eba5eb8663a5e194e13e3f966c5f46d29f40f75229b58b3c6ccfd8d3ff56b048",
+  "artifactCommit": "24f609639d42e62cd9cdd17e04a548301b88fded"
+}

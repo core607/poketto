@@ -79,7 +79,7 @@ final class RepositoryPublishingPolicy {
             if (!(loaded instanceof Map<?, ?> fields)
                     || !FIELDS.containsAll(fields.keySet())
                     || !(fields.get("enabled") instanceof Boolean enabled)
-                    || !"public-by-default".equals(fields.get("mode"))) {
+                    || !"public-root".equals(fields.get("mode"))) {
                 return invalid();
             }
             Object configured = fields.containsKey("exclude") ? fields.get("exclude") : List.of();

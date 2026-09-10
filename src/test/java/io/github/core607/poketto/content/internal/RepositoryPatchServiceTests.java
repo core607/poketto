@@ -63,7 +63,7 @@ class RepositoryPatchServiceTests {
                         "private/hidden.md",
                         bytes("# Private"),
                         RepositoryPublishingPolicy.PATH,
-                        bytes("enabled: true\nmode: public-by-default\n")));
+                        bytes("enabled: true\nmode: public-root\n")));
         var result = service(fixture, (id, snapshot) -> {})
                 .move(
                         principal,
@@ -181,7 +181,7 @@ class RepositoryPatchServiceTests {
                         RepositoryMediaIndex.PATH,
                         new RepositoryMediaIndex(Map.of("private/box/photo.png", original)).encode(),
                         RepositoryPublishingPolicy.PATH,
-                        bytes("enabled: true\nmode: public-by-default\n")));
+                        bytes("enabled: true\nmode: public-root\n")));
         var service = service(fixture, (id, snapshot) -> {});
         assertThatThrownBy(() -> service.move(
                         principal,
@@ -217,7 +217,7 @@ class RepositoryPatchServiceTests {
                         "private/existing.md/item.md",
                         bytes("# Existing"),
                         RepositoryPublishingPolicy.PATH,
-                        bytes("enabled: true\nmode: public-by-default\n")));
+                        bytes("enabled: true\nmode: public-root\n")));
         var service = service(fixture, (id, snapshot) -> {});
         assertThatThrownBy(() -> service.move(
                         principal,
@@ -253,7 +253,7 @@ class RepositoryPatchServiceTests {
                         "private/note.md",
                         note,
                         RepositoryPublishingPolicy.PATH,
-                        "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8)));
+                        "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8)));
         var service = service(fixture, (id, snapshot) -> {});
         doThrow(new IllegalStateException("publish denied"))
                 .when(auth)
@@ -307,7 +307,7 @@ class RepositoryPatchServiceTests {
                         "private/note.md",
                         initialNote,
                         RepositoryPublishingPolicy.PATH,
-                        "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8)));
+                        "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8)));
         var service = service(fixture, (id, snapshot) -> {});
         var media = new RepositoryMediaIndex.Media(UUID.randomUUID(), "c".repeat(64), "application/pdf", 128);
         var privateIndex = new RepositoryMediaIndex(Map.of("private/source.pdf", media));
@@ -544,20 +544,20 @@ class RepositoryPatchServiceTests {
     @Test
     void requiresPublishForPublicChangesAndPolicyChangesButNotExcludedText() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
-        String policy = "enabled: true\nmode: public-by-default\nexclude: ['drafts/**']\n";
+        String policy = "enabled: true\nmode: public-root\nexclude: ['public/drafts/**']\n";
         ObjectId base = fixture.commitRemote(
                 workspace,
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
                         bytes(policy),
-                        "article.md",
+                        "public/article.md",
                         bytes("# Article"),
                         "private/note.md",
                         bytes("# Private")));
         var service = service(fixture, (id, snapshot) -> {});
         doThrow(new SecurityException("publish denied")).when(auth).authorize(principal, workspace, Capability.PUBLISH);
         assertThatThrownBy(() -> service.apply(
-                        principal, workspace, patch(base, update("article.md", "# Article", "# Changed"))))
+                        principal, workspace, patch(base, update("public/article.md", "# Article", "# Changed"))))
                 .isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> service.apply(
                         principal, workspace, patch(base, delete(RepositoryPublishingPolicy.PATH, policy))))
@@ -568,7 +568,7 @@ class RepositoryPatchServiceTests {
                 workspace,
                 patch(
                         base,
-                        create("drafts/new.md", "# Draft"),
+                        create("public/drafts/new.md", "# Draft"),
                         update("private/note.md", "# Private", "# Private update")));
         assertThat(saved.committed()).isTrue();
     }

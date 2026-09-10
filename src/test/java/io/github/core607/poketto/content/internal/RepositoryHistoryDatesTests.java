@@ -259,8 +259,7 @@ class RepositoryHistoryDatesTests {
                     "publishing.yaml",
                     FileMode.REGULAR_FILE,
                     inserter.insert(
-                            Constants.OBJ_BLOB,
-                            "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8)));
+                            Constants.OBJ_BLOB, "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8)));
             entries.put(".poketto", inserter.insert(policy));
             ObjectId head = null;
             // Distinct roots exercise real differences. One inserter avoids thousands of tiny
@@ -269,12 +268,14 @@ class RepositoryHistoryDatesTests {
                 entries.put(
                         "counter.txt",
                         inserter.insert(Constants.OBJ_BLOB, ("counter " + i).getBytes(StandardCharsets.UTF_8)));
+                var publicTree = new org.eclipse.jgit.lib.TreeFormatter();
+                for (var entry : entries.entrySet()) {
+                    if (!entry.getKey().equals(".poketto"))
+                        publicTree.append(entry.getKey(), FileMode.REGULAR_FILE, entry.getValue());
+                }
                 var tree = new org.eclipse.jgit.lib.TreeFormatter();
-                for (var entry : entries.entrySet())
-                    tree.append(
-                            entry.getKey(),
-                            entry.getKey().equals(".poketto") ? FileMode.TREE : FileMode.REGULAR_FILE,
-                            entry.getValue());
+                tree.append(".poketto", FileMode.TREE, entries.get(".poketto"));
+                tree.append("public", FileMode.TREE, inserter.insert(publicTree));
                 var commit = new CommitBuilder();
                 commit.setTreeId(inserter.insert(tree));
                 if (head != null) commit.setParentId(head);

@@ -5,7 +5,7 @@ Status: Proposed
 
 ## Scope
 
-This mechanism implements the public-reading boundary in [CodeAct content and media](2026-09-09-codeact-content-and-media.md). That record owns the repository format, media bridge, authoring, exports, and migration. [CodeAct workspaces](2026-09-09-codeact-workspaces.md) retains the full-reader save contract. The [local supervisor](2026-09-05-local-execution-supervisor.md) owns process isolation and lease termination.
+This mechanism implements the public-reading boundary in [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md). That record owns the repository format, media bridge, authoring, exports, and migration. [CodeAct workspaces](2026-09-09-codeact-workspaces.md) retains the full-reader save contract. The [local supervisor](2026-09-05-local-execution-supervisor.md) owns process isolation and lease termination.
 
 ## Decision
 

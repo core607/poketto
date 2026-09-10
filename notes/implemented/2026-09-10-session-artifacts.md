@@ -46,8 +46,8 @@ The application requires the additive `artifactProtocol: 1` readiness marker.
 Install the complete worker before the application; an incompatible worker
 rejects admission. Restarting the worker ends existing leases. The broader
 [workspace plan](../proposed/2026-09-09-codeact-workspaces.md) and
-[content plan](../proposed/2026-09-09-codeact-content-and-media.md) retain bootstrap,
-root-format, move, export and tool-cutover work. The [local supervisor](../proposed/2026-09-05-local-execution-supervisor.md)
+[content contract](2026-09-09-codeact-content-and-media.md) own bootstrap,
+root-format, move, export and tool boundaries. The [local supervisor](../proposed/2026-09-05-local-execution-supervisor.md)
 still owns process isolation and resource topology; immutable uploaded originals
 remain a separate [storage contract](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery).
 

@@ -26,18 +26,22 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 ## 内容与图片
 
-要发布内容，在内容仓创建 `.poketto/publishing.yaml`：
+空内容仓可使用 [content-template](../content-template/AGENTS.md) 初始化。模板提供各自组织的 `private/` 和 `public/`，默认禁用发布。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
 
 ```yaml
 enabled: true
-mode: public-by-default
+mode: public-root
 exclude:
-  - drafts/**
+  - public/drafts/**
 ```
 
-策略缺失或禁用时不发布任何内容；策略无效时关闭公开服务。根目录 `private/` 与配置的排除路径保持私有。Markdown 元数据可选，未修改的源码字节保持原样。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由，并提供不递归、不重复正文图片的同目录图库。
+只有精确根目录 `public/` 下的路径才有资格公开。排除规则使用完整仓库相对路径并优先生效；任意大小写的 `AGENTS.md` 和含隐藏路径段的文件保持私有。两个根目录内部的名称都是普通分类。策略缺失或禁用时不发布任何内容；策略无效时关闭公开服务。采用旧默认公开格式的仓库须在升级前完成[协调内容转换](../notes/implemented/2026-09-09-codeact-content-and-media.md#implementation-and-acceptance)；直接覆盖模板不能替代转换。
+
+Markdown 元数据可选，未修改的源码字节保持原样。默认路由省略 `public/` 和 `.md`；显式路由保持不变，但不能赋予公开权限。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由（`public/index.md` 对应 `/`），并提供不递归、不重复正文图片的同目录图库。
 
 认证后的 `/api/admin/repository` 入口提供 Markdown 索引、分页目录列表、文件读取、搜索、预览、原子补丁与移动。浏览器目标选择器可以移动文件或文件夹，并在同一次提交中修复 Markdown 引用。文本变更须在 base commit 下携带 revision 或明确的缺失条件；移动在该版本检查来源和目标。冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
+
+新建路径输入框默认从 `private/` 开始。移动选择器中的私有／公开目录按钮在切换根目录时保留分类路径；选定目标后，提交移动才会写入仓库。移动目录包含其中的索引媒体，单独移动文档不会带走共享依赖。
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 

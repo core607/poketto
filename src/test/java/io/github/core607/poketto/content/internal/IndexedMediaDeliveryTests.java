@@ -65,8 +65,7 @@ class IndexedMediaDeliveryTests {
         var files = new LinkedHashMap<String, byte[]>();
         files.put(RepositoryMediaIndex.PATH, index.encode());
         files.put(
-                RepositoryPublishingPolicy.PATH,
-                "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8));
+                RepositoryPublishingPolicy.PATH, "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8));
         files.put("public/index.md", body.getBytes(StandardCharsets.UTF_8));
         files.put("public/oversized.png", new byte[(int) RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
         var firstCommit = fixture.commitRemote(workspace, files);
@@ -93,7 +92,7 @@ class IndexedMediaDeliveryTests {
                 128,
                 Clock.systemUTC(),
                 admission);
-        var page = assets.publicDocument(workspace, "/public").orElseThrow();
+        var page = assets.publicDocument(workspace, "/").orElseThrow();
         assertThat(page.media().images()).containsKey("picture.png").doesNotContainKey("../private/picture.png");
         assertThat(page.media().gallery()).hasSize(1);
         assertThat(page.media().galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
@@ -109,16 +108,16 @@ class IndexedMediaDeliveryTests {
         assertThat(assets.readPublicImage(workspace, token).bytes()).isEqualTo(image);
         var media = new MediaFileService(auth, blobs, snapshots, () -> store);
         var downloaded = new ByteArrayOutputStream();
-        media.publicDownload(workspace, firstCommit.name(), "/public", "public/source.pdf")
+        media.publicDownload(workspace, firstCommit.name(), "/", "public/source.pdf")
                 .writeTo(downloaded);
         assertThat(downloaded.toString(StandardCharsets.UTF_8)).isEqualTo("PDF original");
         files.put(
                 RepositoryPublishingPolicy.PATH,
-                "enabled: false\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8));
+                "enabled: false\nmode: public-root\n".getBytes(StandardCharsets.UTF_8));
         fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
         assertThatThrownBy(() -> assets.readPublicImage(workspace, token)).isInstanceOf(AssetStorageException.class);
-        assertThatThrownBy(() -> media.publicDownload(workspace, firstCommit.name(), "/public", "public/source.pdf"))
+        assertThatThrownBy(() -> media.publicDownload(workspace, firstCommit.name(), "/", "public/source.pdf"))
                 .isInstanceOf(AssetStorageException.class);
         var lease = admission.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
         try (var producer = lease.producer()) {
@@ -147,15 +146,14 @@ class IndexedMediaDeliveryTests {
         byte[] image = imageOutput.toByteArray();
         var files = new LinkedHashMap<String, byte[]>();
         files.put(
-                RepositoryPublishingPolicy.PATH,
-                "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8));
+                RepositoryPublishingPolicy.PATH, "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8));
         files.put(RepositoryMediaIndex.PATH, "{broken".getBytes(StandardCharsets.UTF_8));
         files.put(
-                "album/index.md",
-                "# Album\n![Visible](photo.png)\n![Hidden](../private/photo.png)\n![Missing](indexed.png)"
+                "public/album/index.md",
+                "# Album\n![Visible](photo.png)\n![Hidden](../../private/photo.png)\n![Missing](indexed.png)"
                         .getBytes(StandardCharsets.UTF_8));
-        files.put("album/photo.png", image);
-        files.put("album/gallery.png", image);
+        files.put("public/album/photo.png", image);
+        files.put("public/album/gallery.png", image);
         files.put("private/photo.png", image);
         fixture.commitRemote(workspace, files);
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofMinutes(5));

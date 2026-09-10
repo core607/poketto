@@ -139,7 +139,7 @@ class GitImageGrantRetentionTests {
         var real = new JGitRepositoryBlobReader(fixture.authority());
         var blobs = mock(RepositoryBlobReader.class, delegatesTo(real));
         var service = service(fixture, snapshots(fixture), blobs);
-        service.readExact(actor, workspace, new AssetSource.Repository(Optional.empty(), "image.png"));
+        service.readExact(actor, workspace, new AssetSource.Repository(Optional.empty(), "public/image.png"));
         clearInvocations(blobs);
         doAnswer(invocation -> {
                     // Preview has already resolved the source descriptor and read its derived cache hit.
@@ -149,7 +149,7 @@ class GitImageGrantRetentionTests {
                 })
                 .when(blobs)
                 .protect(any(), any());
-        var preview = service.preview(actor, workspace, "article.md", BODY, Optional.empty());
+        var preview = service.preview(actor, workspace, "public/article.md", BODY, Optional.empty());
         assertThat(preview.body()).isEqualTo(BODY);
         assertThat(preview.images()).isEmpty();
         assertThat(fixture.cache(workspace)).doesNotExist();
@@ -281,7 +281,7 @@ class GitImageGrantRetentionTests {
                     })
                     .when(blobs)
                     .protect(any(), any());
-            var preview = service.preview(actor, workspace, "article.md", BODY, Optional.empty());
+            var preview = service.preview(actor, workspace, "public/article.md", BODY, Optional.empty());
             assertThat(preview.body()).isEqualTo(BODY);
             assertThat(preview.images()).isEmpty();
         }
@@ -313,7 +313,12 @@ class GitImageGrantRetentionTests {
                 new RepositoryBlob(
                         workspace, "1".repeat(40), descriptor.path(), descriptor.objectId(), descriptor.size(), true),
                 new RepositoryBlob(
-                        workspace, descriptor.commit(), "absent.png", descriptor.objectId(), descriptor.size(), true),
+                        workspace,
+                        descriptor.commit(),
+                        "public/absent.png",
+                        descriptor.objectId(),
+                        descriptor.size(),
+                        true),
                 new RepositoryBlob(
                         workspace, descriptor.commit(), descriptor.path(), "1".repeat(40), descriptor.size(), true),
                 new RepositoryBlob(
@@ -344,7 +349,7 @@ class GitImageGrantRetentionTests {
         String commit = fixture.authority()
                 .readObjects(workspace, snapshot -> snapshot.commitId().orElseThrow());
         return new JGitRepositoryBlobReader(fixture.authority())
-                .find(workspace, commit, "image.png")
+                .find(workspace, commit, "public/image.png")
                 .orElseThrow();
     }
 
@@ -409,10 +414,10 @@ class GitImageGrantRetentionTests {
     private static Map<String, byte[]> files(int color) throws Exception {
         return Map.of(
                 RepositoryPublishingPolicy.PATH,
-                "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8),
-                "article.md",
+                "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8),
+                "public/article.md",
                 BODY.getBytes(StandardCharsets.UTF_8),
-                "image.png",
+                "public/image.png",
                 png(color));
     }
 

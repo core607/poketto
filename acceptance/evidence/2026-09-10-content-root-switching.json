@@ -1,0 +1,36 @@
+{
+  "result": "PASS",
+  "sourceCommit": "7123e8e045a86e9e9298d07a706539ed665b7e69",
+  "browser": "153.0.8010.36",
+  "viewport": {
+    "width": 1440,
+    "height": 1050
+  },
+  "checks": [
+    "New path starts at private root; initial document is not publicly readable",
+    "Scope selection preserves category; Escape restores focus without a write",
+    "Single-file publication with a private dependency is refused atomically",
+    "Folder publication moves logical media unchanged; original bytes download anonymously at preserved route",
+    "Folder withdrawal preserves media identity and invalidates public article and old media URL"
+  ],
+  "fixtureCommits": {
+    "initialCommit": "162c1fe6da6966f8af499c12a80ef25a41d6667a",
+    "publicationCommit": "bef23f0145bf525ec4975a808ad4704a5ccea25a",
+    "withdrawalCommit": "4e63faa9d7a7c7f3f395391d1c870c77b6903559"
+  },
+  "originalSha256": "607bb42171d7fef571dd6bc01e17a211d544d85e5909a5f5c2d9725a3d819a8a",
+  "entry": "Gradle stageAcceptanceRuntime; Docker Compose acceptance/compose.yaml; production Next.js and Spring; real PostgreSQL, synthetic remote Git and native local originals; Chrome browser controls",
+  "cleanup": "PASS: isolated application, frontend, database, gateway and their volumes removed; project container and volume inventories empty",
+  "limitations": [
+    "Synthetic local HTTP acceptance; not the production corpus or final HTTPS deployment",
+    "Does not replace complete native storage/executor suites or actual MCP client acceptance",
+    "General-media behavior exercised with an immutable text attachment; this run does not exercise image/video/PDF originals"
+  ],
+  "recording": {
+    "root-switching.webm": "b966f71a478fb54db3f2fb5e790df6f1b3bc4475284b790304a6c6e506251aef",
+    "root-switching.gif": "e76e989ed2c3828b5908d6da4f798cf738421d36cf84b7e8b933c61ed647797a",
+    "private-dependency-refused.png": "a3670dcaaf9e335573532cd57eb4c2739fa46090a3bdfbff95994dc5207fce8c",
+    "folder-public.png": "214be858ff925ce16b3f6c51cd83d762adfbcaddcbaff8a1d0ac991f564b2779",
+    "folder-private.png": "bbe0ff328fecf7086acfb8da2cc41fdc1188775a04f89bc5957cb597f09fe01c"
+  }
+}

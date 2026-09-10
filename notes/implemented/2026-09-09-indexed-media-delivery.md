@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Contract
 
-The [logical media index](2026-09-09-logical-media-index.md) and [original storage](2026-09-05-repository-authoring-foundations.md) support browser and host-service transfers. The [CodeAct content plan](../proposed/2026-09-09-codeact-content-and-media.md) remains the complete delivery target.
+The [logical media index](2026-09-09-logical-media-index.md) and [original storage](2026-09-05-repository-authoring-foundations.md) support browser and host-service transfers. The [CodeAct content contract](2026-09-09-codeact-content-and-media.md) owns the complete content boundary.
 
 `POST /api/admin/media` accepts raw `application/octet-stream` bytes, an idempotency key and optional `X-Media-Type` metadata. It acknowledges only durable workspace originals; an index/text save is separate. The body passes through current identity and bounded request admission before streaming. Form and multipart types are rejected on this entrance to prevent implicit servlet form parsing. The existing multipart image entrance retains its image validation contract.
 

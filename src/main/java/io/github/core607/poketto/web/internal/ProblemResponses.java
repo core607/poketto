@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentNotFoundException;
 import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryMoveDependencyException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,13 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 class ProblemResponses extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ProblemResponses.class);
+
+    @ExceptionHandler(RepositoryMoveDependencyException.class)
+    ProblemDetail moveDependency(RepositoryMoveDependencyException exception) {
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Move dependency unavailable", exception.getMessage());
+        problem.setProperty("code", "MOVE_UNPUBLISHABLE_DEPENDENCY");
+        return problem;
+    }
 
     @ExceptionHandler(io.github.core607.poketto.content.ContentExportException.class)
     ProblemDetail exportFailure(io.github.core607.poketto.content.ContentExportException exception) {

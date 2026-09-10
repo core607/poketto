@@ -322,6 +322,7 @@ export function Editor({
         <FolderPicker
           {...moveSelection}
           fallbackFocus={editorRoot.current}
+          canPublish={identity.capabilities.includes("PUBLISH")}
           onClose={() => setMoveSelection(null)}
           onMove={move}
         />
@@ -390,6 +391,7 @@ export function Editor({
             打开或新建路径
             <input
               name="path"
+              defaultValue="private/"
               placeholder="private/笔记/新文章.md"
               required
               maxLength={255}

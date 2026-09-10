@@ -257,10 +257,10 @@ class RepositoryAdminIntegrationIT {
                 "a b.md",
                 "a%20b.md"
             }) {
-                routes.put(path, "/" + path.substring(0, path.length() - 3));
+                routes.put("public/" + path, "/" + path.substring(0, path.length() - 3));
             }
-            routes.put("目录 空格%#/index.md", "/目录 空格%#");
-            routes.put("custom.md", "/explicit ?%# ");
+            routes.put("public/目录 空格%#/index.md", "/目录 空格%#");
+            routes.put("public/custom.md", "/explicit ?%# ");
             Map<String, String> sources = new LinkedHashMap<>();
             var changes = new ArrayList<Map<String, Object>>();
             changes.add(Map.of(
@@ -269,9 +269,9 @@ class RepositoryAdminIntegrationIT {
                     "expectedAbsence",
                     true,
                     "content",
-                    "enabled: true\nmode: public-by-default\n"));
+                    "enabled: true\nmode: public-root\n"));
             for (var entry : routes.entrySet()) {
-                String source = entry.getKey().equals("custom.md")
+                String source = entry.getKey().equals("public/custom.md")
                         ? "---\nroute: '/explicit ?%# '\n---\n# 原文\n"
                         : "# " + entry.getKey() + "\r\n保留原文。\r\n";
                 sources.put(entry.getKey(), source);
@@ -304,7 +304,7 @@ class RepositoryAdminIntegrationIT {
                         http(client, "GET", "/api/public/document?route=" + encode(entry.getValue()), null, null, 200);
                 assertThat(document.get("route").stringValue()).isEqualTo(entry.getValue());
                 assertThat(document.get("body").stringValue())
-                        .contains(entry.getKey().equals("custom.md") ? "原文" : entry.getKey());
+                        .contains(entry.getKey().equals("public/custom.md") ? "原文" : entry.getKey());
             }
             http(client, "GET", "/api/public/document?route=" + encode("/private/隐藏 %#"), null, null, 404);
             http(client, "GET", "/api/public/document?route=" + encode("/explicit ?%#"), null, null, 404);
@@ -321,16 +321,17 @@ class RepositoryAdminIntegrationIT {
                 .setURI(directory.resolve("remote.git").toUri().toString())
                 .setDirectory(checkout.toFile())
                 .call()) {
-            Files.createDirectories(checkout.resolve("album"));
+            Files.createDirectories(checkout.resolve("public/album"));
             Files.createDirectories(checkout.resolve("private"));
-            Files.writeString(checkout.resolve("album/index.md"), source);
+            Files.writeString(checkout.resolve("public/album/index.md"), source);
             Files.writeString(checkout.resolve("private/index.md"), "# Private album");
             Files.writeString(
                     checkout.resolve(".poketto/publishing.yaml"),
-                    "enabled: true\nmode: public-by-default\nexclude: ['album/hidden-*.png']\n");
+                    "enabled: true\nmode: public-root\nexclude: ['public/album/hidden-*.png']\n");
             var image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
             for (int i = 0; i < 129; i++) {
-                for (String name : List.of("album/photo-%03d.png", "album/hidden-%03d.png", "private/image-%03d.png"))
+                for (String name : List.of(
+                        "public/album/photo-%03d.png", "public/album/hidden-%03d.png", "private/image-%03d.png"))
                     ImageIO.write(
                             image, "png", checkout.resolve(name.formatted(i)).toFile());
             }
@@ -355,7 +356,7 @@ class RepositoryAdminIntegrationIT {
                         .build(),
                 HttpResponse.BodyHandlers.ofByteArray());
         assertThat(image.statusCode()).isEqualTo(200);
-        assertThat(image.body()).isEqualTo(Files.readAllBytes(checkout.resolve("album/photo-000.png")));
+        assertThat(image.body()).isEqualTo(Files.readAllBytes(checkout.resolve("public/album/photo-000.png")));
         http(client, "GET", "/api/public/document?route=/private", null, null, 404);
         JsonNode preview = http(
                 client,

@@ -93,7 +93,7 @@ class PublicSnapshotMarkerNativeTests {
                     RepositoryPublishingPolicy.PATH,
                     false,
                     Optional.of(DocumentRevision.sha256(files().get(RepositoryPublishingPolicy.PATH))),
-                    Optional.of("enabled: false\nmode: public-by-default\n"));
+                    Optional.of("enabled: false\nmode: public-root\n"));
             assertThatThrownBy(() -> patches.apply(
                             actor, workspace, new RepositoryPatch(Optional.of(base.name()), List.of(change))))
                     .isInstanceOf(ContentRepositoryException.class)
@@ -182,8 +182,8 @@ class PublicSnapshotMarkerNativeTests {
     private static Map<String, byte[]> files() {
         return Map.of(
                 RepositoryPublishingPolicy.PATH,
-                "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8),
-                "hello.md",
+                "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8),
+                "public/hello.md",
                 "# Hello".getBytes(StandardCharsets.UTF_8));
     }
 }

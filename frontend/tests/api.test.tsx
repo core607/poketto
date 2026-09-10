@@ -3,6 +3,32 @@ import test from "node:test";
 import { api, ApiError } from "../lib/browser-api";
 import { allArticles, articles, PublicApiError } from "../lib/public-api";
 
+test("move dependency failures have an actionable message without exposing arbitrary problem details", async () => {
+  const previous = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      Response.json(
+        { code: "MOVE_UNPUBLISHABLE_DEPENDENCY", detail: "private diagnostic" },
+        { status: 400 },
+      );
+    await assert.rejects(
+      api("/api/admin/repository/move"),
+      (error) =>
+        error instanceof ApiError &&
+        error.status === 400 &&
+        error.message.includes("检查依赖") &&
+        !error.message.includes("private diagnostic"),
+    );
+    globalThis.fetch = async () =>
+      Response.json({ detail: "private diagnostic" }, { status: 400 });
+    await assert.rejects(api("/api/admin/repository/move"), /输入格式有误/);
+    globalThis.fetch = async () => new Response("not JSON", { status: 400 });
+    await assert.rejects(api("/api/admin/repository/move"), /输入格式有误/);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test("browser writes get fresh CSRF tokens and preserve upload idempotency headers", async () => {
   const previous = globalThis.fetch;
   const calls: { path: string; options?: RequestInit }[] = [];
