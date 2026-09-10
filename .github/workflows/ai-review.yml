@@ -59,6 +59,17 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ai-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ai-review-results/
+          path: |
+            ${{ runner.temp }}/ai-review-results/
+            !${{ runner.temp }}/ai-review-results/session.json
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Retain the resumable PR conversation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ai-review-session-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ai-review-results/session.json
+          if-no-files-found: ignore
           retention-days: 90

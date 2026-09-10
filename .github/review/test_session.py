@@ -201,8 +201,9 @@ class SessionTests(unittest.TestCase):
                     return {"workflow_runs": [{"id": 3, "event": "pull_request", "head_branch": "feature"},
                                               {"id": 2, "event": "pull_request_target", "head_branch": "feature"}]}
                 self.assert_path = path
-                return {"artifacts": [{"id": 4, "name": "ai-review-26-2-1", "expired": False},
-                                      {"id": 5, "name": "ai-review-25-2-1", "expired": False}]}
+                return {"artifacts": [{"id": 4, "name": "ai-review-session-26-2-1", "expired": False},
+                                      {"id": 5, "name": "ai-review-session-25-2-1", "expired": False},
+                                      {"id": 6, "name": "ai-review-25-2-1", "expired": False}]}
         calls = []
         def download(args, budget, **kwargs):
             calls.append(args)

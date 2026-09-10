@@ -44,7 +44,7 @@ def restore(github, command, current_run, branch):
             if run["event"] == "workflow_dispatch" and run["head_branch"] != "main":
                 continue
             artifacts = github.api(f"actions/runs/{run['id']}/artifacts?per_page=100")["artifacts"]
-            prefix = f"ai-review-{github.number}-{run['id']}-"
+            prefix = f"ai-review-session-{github.number}-{run['id']}-"
             for artifact in sorted(artifacts, key=lambda a: a["id"], reverse=True):
                 if not artifact["name"].startswith(prefix) or artifact["expired"]:
                     continue
