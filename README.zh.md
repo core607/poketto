@@ -56,7 +56,7 @@ API 权限分别约束读取、写入、发布和执行。Agent 如果同时拥�
 
 Poketto 正在开发中。仓库创作、本地媒体、浏览器移动，以及 CodeAct 的保存和媒体流程已实现。[客户端验收](acceptance/clients/README.md)记录了隔离环境中的真实 Codex 和 Claude Code 工作流；[原生执行验证](executor-native/README.md)覆盖 Linux 隔离边界。最终 HTTPS 安装与部署拓扑验收仍待完成。
 
-[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、可移植 ZIP 导出、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。
+[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。CodeAct 会话已支持将已保存文档与媒体导出为私人或公开 ZIP，包含实际原件和相对链接；浏览器导出控件另行交付。
 
 主要部署形态是自托管 Linux 服务器。托管工作空间供应、备份、访客问答和[可选 serverless 方案](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)不在当前交付范围内。
 

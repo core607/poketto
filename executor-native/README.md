@@ -37,6 +37,13 @@ preserves newer local edits. An injected installation refusal exercises
 through the actual CLI. All 30 scenarios, process-loss expiry and cleanup pass;
 the evidence distinguishes injected faults from real worker behavior.
 
+The [CLI export run](evidence/2026-09-10-cli-exports.json) verifies private/public
+ZIP bytes, projection path translation, local collision protection, retained edits,
+unchanged remote Git and package cleanup through the real worker. All 32 Java
+scenarios, process-loss lease expiry and cleanup pass. The separate
+[HTTP MCP client run](../acceptance/clients/evidence/2026-09-10-cli-exports.json)
+adds real PostgreSQL identity checks, MCP sessions and artifact byte return.
+
 Build the reproducible runtime with Java 26:
 
 ```sh

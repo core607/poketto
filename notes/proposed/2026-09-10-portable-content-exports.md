@@ -87,10 +87,17 @@ its assets implementation without a module dependency cycle. The authenticated
 [HTTP contract](../../docs/usage.md#export-http-interface) exposes creation, download
 and release. [Native HTTP acceptance](../../acceptance/evidence/2026-09-10-export-http.json)
 verifies actual ZIP bytes and scoped delivery through the real application.
-Browser controls and CLI materialization remain required before the complete export
-feature is delivered. The `closeClient` lifecycle callback is prepared and tested;
-its production MCP session hookup belongs to the pending CLI entrance. Browser
-handles use owner/workspace/expiry binding and do not claim MCP-session cleanup.
+The CLI implements `poketto export PATH... --output FILE [--public]`, with
+host-owned public path translation, protected ZIP materialization and per-attempt
+and session-close cleanup. Public directory selection expands to at most 128
+approved source paths. The transfer protocol permits up to 1 GiB while the
+server's ZIP limit, ordinary command deadline and lease disk quota remain active.
+Different local files are preserved; handles and source coordinates never enter
+the command reply. [Native execution](../../executor-native/evidence/2026-09-10-cli-exports.json)
+and [HTTP MCP client acceptance](../../acceptance/clients/evidence/2026-09-10-cli-exports.json)
+verify the flow. Browser controls remain required before the complete feature is
+delivered. Browser handles use owner/workspace/expiry binding and do not claim
+MCP-session cleanup.
 
 Reusing Git bundles would expose history and omit original media. Asking the
 agent to assemble every package duplicates authorization, reference rewriting and
