@@ -1,0 +1,29 @@
+{
+  "result": "PASS",
+  "sourceCommit": "829153d28e55b78065a46c2277a83418252040e8",
+  "sourcePatch": "export-ui-followup.patch",
+  "browser": "153.0.8010.36",
+  "viewport": {
+    "width": 1440,
+    "height": 1050
+  },
+  "checks": [
+    "Escape restores file trigger focus",
+    "public ZIP downloaded by Chrome download manager",
+    "unsaved editor text retained",
+    "public export refuses private selection without offering ZIP",
+    "private ZIP succeeds after public refusal without closing dialog",
+    "folder export selection and cancellation",
+    "workspace export selection and cancellation",
+    "private missing-attachment failure does not ask to publish"
+  ],
+  "zipInspection": "PASS",
+  "cleanup": "PASS",
+  "committedSource": "ea804633e7db40084b09dd076c04a13cb1102ec6",
+  "hashes": {
+    "public.zip": "df0e81db4a3ff33bcf8a029014b422ed5d9e3cd032a9bab23910815d24b74d0d",
+    "private.zip": "5436ab6099c23b17625371c8b3678faf8d36b20861bd7cdffba07820d72137d9",
+    "export-flow.webm": "ea6d637af948a2e7c7040370216ec9f3df4f33b75e23104411dcd205ffb471c7",
+    "export-flow.gif": "431425f6e19a6d5c325351780f033550831efe91cba4be376df2dc20cd4bec70"
+  }
+}
