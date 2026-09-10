@@ -410,7 +410,7 @@ public final class ExecutorNativeProbe {
                             session,
                             Optional.empty(),
                             command,
-                            Duration.ofSeconds(40),
+                            Duration.ofSeconds(25),
                             new Cancellation());
                     assertThat(exported.exitCode()).isZero();
                     JsonNode receipt = JSON.readTree(exported.stdout());
