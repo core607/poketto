@@ -14,14 +14,6 @@ The [Compose stack](../../deploy/compose.yaml) runs Spring, PostgreSQL, Next.js 
 
 Candidate pins reach the private `.env` only after all application, frontend and gateway containers are healthy, Spring's loopback health entrance answers, and certificate-verified HTTPS requests to the local gateway serve both the website and public API. The previous application, frontend, database and gateway pins are retained together. A failed candidate leaves recorded pins unchanged; there is no automatic rollback or data-volume replacement. A Compose wait timeout bounds startup before the separate entrance checks. Those checks share a `POKETTO_HEALTH_TIMEOUT` deadline (default 180 seconds). HTTPS failures retry once per second to allow asynchronous certificate issuance; each request is capped by both 15 seconds and the remaining deadline. Timeout preserves the failure diagnostics and unconfirmed pins, without disabling certificate verification or replacing containers again.
 
-The CI deployment job allows 180 minutes for archive transfer and installation.
-The separate startup and health deadlines remain short. A measured SSH transfer
-at roughly 38 KiB/s continued making progress but reached the
-[90-minute job limit](https://github.com/core607/poketto/actions/runs/34437762983)
-before installation. The larger outer bound accommodates that link without
-treating an incomplete archive as deployable. A slower transfer can still time
-out, and the longer job occupies the serialized deployment queue for longer.
-
 ## Origin and credentials
 
 [Caddyfile](../../deploy/Caddyfile) sends `/api`, `/api/*`, `/mcp` and `/mcp/*` to Spring, blocks `/actuator` and its descendants, and sends other paths to Next.js. Only Caddy exposes public ports. Frontend startup depends on the Spring process rather than public snapshot readiness, and its health checks the administration page; an invalid publication policy therefore does not prevent opening the repair interface. Spring's host port is loopback-only; Next.js has no published host port. The deployment domain is a validated DNS name supplied through private operator configuration. DNS and reachable ports 80/443 are prerequisites for automatic HTTPS. Certificate data has a separate persistent directory; deployment never cleans it as derived content.
