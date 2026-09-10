@@ -167,7 +167,7 @@ class McpArtifactTests {
                         return Optional.of(new RepositoryExecutor.ArtifactChunk(
                                 id, "artifact.bin", type, content.length, digest, false, 299, offset, part));
                     });
-            tool = new RepositoryMcpTools(sessions, null, null, null, assets, provider, json)
+            tool = new RepositoryMcpTools(sessions, null, assets, provider, json)
                     .specifications().stream()
                             .filter(value -> value.tool().name().equals("get_artifact"))
                             .findFirst()

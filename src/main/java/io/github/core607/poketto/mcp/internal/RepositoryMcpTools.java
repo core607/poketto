@@ -11,13 +11,8 @@ import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
-import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
-import io.github.core607.poketto.content.RepositoryPatch;
-import io.github.core607.poketto.content.RepositoryPatchService;
-import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -44,8 +39,6 @@ final class RepositoryMcpTools {
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
     private final McpSessions sessions;
     private final AuthService auth;
-    private final AuthorizedRepositoryReader reader;
-    private final RepositoryPatchService patches;
     private final ObjectProvider<AssetService> assets;
     private final ObjectProvider<RepositoryExecutor> executors;
     private final ObjectMapper json;
@@ -53,15 +46,11 @@ final class RepositoryMcpTools {
     RepositoryMcpTools(
             McpSessions sessions,
             AuthService auth,
-            AuthorizedRepositoryReader reader,
-            RepositoryPatchService patches,
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
             ObjectMapper json) {
         this.sessions = sessions;
         this.auth = auth;
-        this.reader = reader;
-        this.patches = patches;
         this.assets = assets;
         this.executors = executors;
         this.json = json;
@@ -69,53 +58,6 @@ final class RepositoryMcpTools {
 
     List<McpServerFeatures.SyncToolSpecification> specifications() {
         List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
-        tools.add(tool(
-                "list_directory",
-                "List immediate committed files and directories without execution access. Omit path or use an empty path for root. Read relevant AGENTS.md files for repository guidance. Continue with nextOffset and the returned commit; entry kinds do not grant file readability. Missing directories return expectedAbsence=true; non-directory paths are invalid.",
-                object(
-                        Map.of(
-                                "path", text(255),
-                                "commit", nullableCommit(),
-                                "offset", Map.of("type", "integer", "minimum", 0, "maximum", 100000),
-                                "limit", Map.of("type", "integer", "minimum", 1, "maximum", 200)),
-                        List.of()),
-                true,
-                false,
-                true,
-                this::listDirectory));
-        tools.add(tool(
-                "get_file",
-                "Read exact original UTF-8 text from authoritative Git. Omit commit for current main; preserve the returned opaque revision when editing. Missing paths return expectedAbsence=true.",
-                object(Map.of("path", text(255), "commit", nullableCommit()), List.of("path")),
-                true,
-                false,
-                true,
-                this::getFile));
-        Map<String, Object> change = object(
-                Map.of(
-                        "path",
-                        text(255),
-                        "expectedAbsence",
-                        Map.of("type", "boolean"),
-                        "expectedRevision",
-                        nullableText(128),
-                        "content",
-                        nullableText(1024 * 1024)),
-                List.of("path", "expectedAbsence", "content"));
-        tools.add(tool(
-                "repo_patch",
-                "Atomically create, update, move or delete text. Supply exact baseCommit (null only for unborn main) and revision or expected absence per path. Move uses a deletion plus creation. Re-read conflicts; never blindly retry an indeterminate result.",
-                object(
-                        Map.of(
-                                "baseCommit",
-                                nullableCommit(),
-                                "changes",
-                                Map.of("type", "array", "minItems", 1, "maxItems", 64, "items", change)),
-                        List.of("baseCommit", "changes")),
-                false,
-                true,
-                false,
-                this::patch));
         if (assets.getIfAvailable() != null) {
             Map<String, Object> source = Map.of(
                     "oneOf",
@@ -190,7 +132,7 @@ final class RepositoryMcpTools {
                     this::getArtifact));
             tools.add(tool(
                     "repo_exec",
-                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority. Use poketto artifact create FILE --type MIME to return files through get_artifact. Long output includes artifact handles; inspect their truncated flags and read needed pages before they expire.",
+                    "Use shell, Python, Git, file listings and search as the main file entrance in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority. Use poketto artifact create FILE --type MIME to return files through get_artifact. Long output includes artifact handles; inspect their truncated flags and read needed pages before they expire.",
                     object(
                             Map.of(
                                     "command",
@@ -229,10 +171,7 @@ final class RepositoryMcpTools {
             try {
                 sessions.resolve(exchange);
                 var arguments = request.arguments();
-                if (arguments == null) {
-                    if (!name.equals("list_directory")) throw new IllegalArgumentException();
-                    arguments = Map.of();
-                }
+                if (arguments == null) throw new IllegalArgumentException();
                 if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
                     try (var producer = scope.producer()) {
                         return operation.apply(exchange, arguments);
@@ -250,7 +189,7 @@ final class RepositoryMcpTools {
             } catch (AssetStorageException exception) {
                 return error(exception.reason().name(), "Image operation could not be completed.");
             } catch (IllegalArgumentException exception) {
-                return error("INVALID_INPUT", "Use the documented bounded fields and server-issued revisions.");
+                return error("INVALID_INPUT", "Use the documented bounded fields.");
             } catch (ContentRepositoryException exception) {
                 return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
             } catch (RuntimeException exception) {
@@ -261,25 +200,6 @@ final class RepositoryMcpTools {
         });
     }
 
-    private McpSchema.CallToolResult listDirectory(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("path", "commit", "offset", "limit"));
-        var identity = sessions.resolve(exchange);
-        var page = reader.listDirectory(
-                identity.principal(),
-                identity.workspace(),
-                optionalText(input, "commit", 40),
-                optionalText(input, "path", 255).orElse(""),
-                boundedInteger(input, "offset", 0, 0, 100000),
-                boundedInteger(input, "limit", 100, 1, 200));
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("commit", page.commit().orElse(null));
-        result.put("path", page.path());
-        result.put("expectedAbsence", page.expectedAbsence());
-        result.put("entries", page.entries());
-        result.put("nextOffset", page.nextOffset());
-        return textResult(result);
-    }
-
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
         if (!input.containsKey(field)) return fallback;
         if (!(input.get(field) instanceof Number number)
@@ -287,62 +207,6 @@ final class RepositoryMcpTools {
                 || number.intValue() < minimum
                 || number.intValue() > maximum) throw new IllegalArgumentException();
         return number.intValue();
-    }
-
-    private McpSchema.CallToolResult getFile(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("path", "commit"));
-        var identity = sessions.resolve(exchange);
-        var file = reader.getFile(
-                identity.principal(),
-                identity.workspace(),
-                optionalText(input, "commit", 40),
-                requiredText(input, "path", 255));
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("path", file.path());
-        result.put("commit", file.commit().orElse(null));
-        result.put("revision", file.revision().map(DocumentRevision::value).orElse(null));
-        result.put("source", file.source().orElse(null));
-        result.put("expectedAbsence", file.expectedAbsence());
-        result.put("diagnostics", file.diagnostics());
-        return textResult(result);
-    }
-
-    private McpSchema.CallToolResult patch(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("baseCommit", "changes"));
-        if (!input.containsKey("baseCommit")
-                || !(input.get("changes") instanceof List<?> changes)
-                || changes.isEmpty()
-                || changes.size() > 64) throw new IllegalArgumentException();
-        List<RepositoryTextChange> edits = new ArrayList<>();
-        for (Object value : changes) {
-            Map<String, Object> change = mapping(value);
-            fields(change, Set.of("path", "expectedAbsence", "expectedRevision", "content"));
-            if (!(change.get("expectedAbsence") instanceof Boolean absence) || !change.containsKey("content"))
-                throw new IllegalArgumentException();
-            edits.add(new RepositoryTextChange(
-                    requiredText(change, "path", 255),
-                    absence,
-                    optionalText(change, "expectedRevision", 128).map(DocumentRevision::new),
-                    optionalText(change, "content", 1024 * 1024)));
-        }
-        var identity = sessions.resolve(exchange);
-        var result = patches.apply(
-                identity.principal(),
-                identity.workspace(),
-                new RepositoryPatch(optionalText(input, "baseCommit", 40), edits));
-        Map<String, Object> revisions = new LinkedHashMap<>();
-        result.revisions()
-                .forEach((path, revision) -> revisions.put(
-                        path, revision.map(DocumentRevision::value).orElse(null)));
-        return textResult(Map.of(
-                "commit",
-                result.commit(),
-                "committed",
-                result.committed(),
-                "snapshotUpdated",
-                result.snapshotUpdated(),
-                "revisions",
-                revisions));
     }
 
     private McpSchema.CallToolResult getAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
@@ -588,10 +452,6 @@ final class RepositoryMcpTools {
 
     private static Map<String, Object> text(int maximum) {
         return Map.of("type", "string", "maxLength", maximum);
-    }
-
-    private static Map<String, Object> nullableText(int maximum) {
-        return Map.of("type", List.of("string", "null"), "maxLength", maximum);
     }
 
     private static Map<String, Object> nullableCommit() {

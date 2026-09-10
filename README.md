@@ -20,7 +20,7 @@ Content stays inspectable with ordinary file and Git tools. PostgreSQL holds acc
 
 ## CodeAct over MCP
 
-Connect an MCP client to Poketto and give it a scoped API key. With execution enabled, `repo_exec` provides an isolated workspace with shell, Python and Git. The agent can inspect the directory tree, follow repository-owned `AGENTS.md` files, search existing material and edit files in place.
+Connect an MCP client to Poketto and give it a scoped API key. File access requires an enabled executor and the `EXECUTE_REPOSITORY` capability. `repo_exec` provides an isolated workspace with shell, Python and Git. The agent can inspect the directory tree, follow repository-owned `AGENTS.md` files, search existing material and edit files in place.
 
 The host-mediated `poketto` CLI provides persistence and result delivery:
 

@@ -1,6 +1,10 @@
 # Document Write Operations
 
 Date: 2026-08-29
+
+The current agent file entrance is [CodeAct](2026-09-10-codeact-mcp-entrance.md). Standalone MCP file
+CRUD described here is superseded; the shared domain and browser HTTP contracts
+remain applicable.
 Status: Implemented
 
 ## Problem
