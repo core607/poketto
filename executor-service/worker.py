@@ -21,6 +21,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from resource_pool import ResourcePool
+from bridge import BridgeRejected, LeaseBridge
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -88,6 +89,8 @@ class Session:
     cancelled: threading.Event = field(default_factory=threading.Event)
     operation: threading.Lock = field(default_factory=threading.Lock)
     unit: str = ''
+    bridge: object = None
+    execution_id: str = ''
 
 
 class Service:
@@ -134,7 +137,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE') or not isinstance(p['data'], dict):
+        if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE') or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
         return p, hashlib.sha256(raw).hexdigest()
 
@@ -183,6 +186,8 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op in ('BRIDGE_POLL', 'BRIDGE_COMPLETE'):
+            return self.bridge_dispatch(p)
         with self.lock:
             if op == 'REVOKE':
                 if set(d) != {'keyIds', 'accountIds'} or any(not isinstance(d[k], list) or len(d[k]) > 1000 for k in d):
@@ -256,6 +261,7 @@ class Service:
                     raise Rejected('EXECUTION_CAPACITY')
                 self.executions.add(execution_key)
                 s.state = 'RUNNING'
+                s.execution_id = d['executionId']
         try:
             with s.operation:
                 if s.cancelled.is_set():
@@ -271,6 +277,7 @@ class Service:
                         s.state = 'CLOSED'
                     else:
                         s.state = 'READY'
+                        s.execution_id = ''
                     answer = self.response(s)
                     if result is not None:
                         answer['result'] = result
@@ -282,6 +289,46 @@ class Service:
                 self.cancel(s, 'sandbox_failed')
             raise
 
+    def bridge_dispatch(self, p):
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.bridge is None or s.state not in ('READY', 'RUNNING'):
+                raise Rejected('SESSION_NOT_READY')
+            data = p['data']
+            if p['operation'] == 'BRIDGE_POLL':
+                if data:
+                    raise Rejected('INVALID_REQUEST')
+            elif set(data) != {'bridgeRequestId', 'executionId', 'response'} or not isinstance(data['response'], dict):
+                raise Rejected('INVALID_REQUEST')
+            else:
+                identifier(data['bridgeRequestId'])
+                if not s.execution_id or data['executionId'] != s.execution_id:
+                    raise Rejected('EXECUTION_MISMATCH')
+            execution_id = s.execution_id
+        # Polling must not hold the service lock or the command operation lock.
+        try:
+            if p['operation'] == 'BRIDGE_POLL':
+                request = s.bridge.poll()
+            else:
+                s.bridge.complete(data['bridgeRequestId'], data['response'])
+                request = None
+        except BridgeRejected:
+            with self.lock:
+                self.cancel(s, 'sandbox_failed')
+            raise Rejected('BRIDGE_UNAVAILABLE') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if execution_id != s.execution_id:
+                request = None
+            return {**self.response(s), 'executionId': execution_id, 'bridgeRequest': request}
+
     def cancel(self, s, reason):
         if s.state == 'CLOSED':
             return
@@ -289,6 +336,8 @@ class Service:
             s.reason = reason
         s.state = 'CLOSING'
         s.cancelled.set()
+        if s.bridge is not None:
+            s.bridge.close()
         # The executor loop observes cancellation. No unmount can race initialization.
         if s.operation.acquire(blocking=False):
             try:
@@ -376,6 +425,10 @@ class SystemdBackend:
             path = target / name
             path.mkdir(mode=0o700)
             os.chown(path, self.user.pw_uid, self.user.pw_gid)
+        s.bridge = LeaseBridge(target / 'bridge', self.user.pw_gid)
+        cli = bootstrap / 'poketto'
+        cli.write_bytes(Path(self.c['launcher']).with_name('cli.py').read_bytes())
+        cli.chmod(0o555)
         exports = os.open(self.c['exportRoot'], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             fd = os.open(data['exportId'] + '.bundle', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=exports)
@@ -411,7 +464,9 @@ class SystemdBackend:
         (target / 'snapshot.bundle').unlink()
 
     def execute(self, s, data):
-        return self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
+        result = self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
+        s.bridge.reset_command()
+        return result
 
     def run(self, s, payload, timeout_ms):
         self.pool.verify()
@@ -420,12 +475,13 @@ class SystemdBackend:
         record = self.records / (operation + '.json')
         settings = self.records / (operation + '.srt.json')
         read_paths = ['/usr', '/bin', '/lib', '/lib64', '/dev', '/proc',
-                      '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap')]
+                      '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap'),
+                      str(target / 'bridge/lock'), str(target / 'bridge/state'), str(target / 'bridge/responses')]
         if payload['mode'] == 'initialize':
             read_paths.append(str(target / 'snapshot.bundle'))
         settings.write_text(json.dumps({'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
             'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
-            'allowWrite': [str(target / 'work'), str(target / 'home'), '/tmp'], 'denyWrite': []},
+            'allowWrite': [str(target / 'work'), str(target / 'home'), str(target / 'bridge/requests'), '/tmp'], 'denyWrite': []},
             'enableWeakerNestedSandbox': False}))
         record.write_text(json.dumps({**payload, 'root': str(target), 'tools': self.c['toolsRoot'], 'settings': str(settings)}))
         for file in (record, settings):
@@ -515,6 +571,8 @@ class SystemdBackend:
                 raise RuntimeError('Execution descendants remain')
 
     def close(self, s):
+        if s.bridge is not None:
+            s.bridge.close()
         if s.unit:
             checked(['systemctl', 'stop', s.unit])
             self.assert_empty(s.unit)

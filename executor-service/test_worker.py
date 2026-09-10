@@ -3,6 +3,12 @@ import json
 import threading
 import unittest
 import uuid
+import os
+import tempfile
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from bridge import LeaseBridge
+from cli import call
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from worker import Service
@@ -22,6 +28,7 @@ class Backend:
         self.executed = []
         self.closed = []
         self.wait = None
+        self.entered = threading.Event()
 
     def open(self, session, data):
         self.opened.append(session.id)
@@ -30,6 +37,7 @@ class Backend:
 
     def execute(self, session, data):
         self.executed.append(data)
+        self.entered.set()
         if self.wait:
             self.wait.wait(3)
         return {'exitCode': 0, 'terminationReason': session.reason}
@@ -39,6 +47,33 @@ class Backend:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_signed_bridge_poll_and_completion_work_while_command_holds_operation_lock(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        with tempfile.TemporaryDirectory() as temporary, ThreadPoolExecutor() as pool:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            self.backend.wait = threading.Event()
+            execution = self.execution()
+            running = pool.submit(self.send, execution)
+            try:
+                self.assertTrue(self.backend.entered.wait(2))
+                client = pool.submit(call, session.bridge.path, 'status', {}, 3)
+                polled = self.send(self.payload('BRIDGE_POLL'))
+                self.assertTrue(polled['ok'])
+                self.assertEqual('RUNNING', polled['state'])
+                self.assertEqual(execution['data']['executionId'], polled['executionId'])
+                self.assertTrue(self.send(self.payload('RENEW'))['ok'])
+                completion = {'bridgeRequestId': polled['bridgeRequest']['requestId'],
+                    'executionId': uid(), 'response': {'ok': True}}
+                self.assertEqual('EXECUTION_MISMATCH', self.send(self.payload('BRIDGE_COMPLETE', completion))['code'])
+                completion['executionId'] = execution['data']['executionId']
+                self.assertTrue(self.send(self.payload('BRIDGE_COMPLETE', completion))['ok'])
+                self.assertEqual({'ok': True}, client.result(timeout=3))
+            finally:
+                self.backend.wait.set()
+                running.result(timeout=3)
+                session.bridge.close()
+
     def setUp(self):
         self.key = Ed25519PrivateKey.generate()
         self.backend = Backend()

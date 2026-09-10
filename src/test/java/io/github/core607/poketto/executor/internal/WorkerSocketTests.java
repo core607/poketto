@@ -1039,6 +1039,10 @@ class WorkerSocketTests {
                     renewEntered.countDown();
                     response.put("state", states.getOrDefault(lease, "INITIALIZING"));
                 }
+                case "BRIDGE_POLL" -> {
+                    Thread.sleep(50);
+                    response.put("bridgeRequest", null);
+                }
                 case "EXEC" -> {
                     if (dropExec) return null;
                     if (stallExec) Thread.sleep(500);

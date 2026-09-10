@@ -58,12 +58,12 @@ def call(root, operation, arguments, timeout=55):
     root = Path(root)
     request_id = str(uuid.uuid4())
     deadline = time.monotonic() + timeout
-    if (root / 'closed').exists():
+    if (root / 'state').read_bytes():
         raise BridgeUnavailable('Execution bridge is closed')
     _send(root, {'requestId': request_id, 'operation': operation, 'arguments': arguments}, deadline)
     result = root / 'responses' / (request_id + '.json')
     while True:
-        if (root / 'closed').exists():
+        if (root / 'state').read_bytes():
             raise BridgeUnavailable('Execution bridge closed; write outcome may be unknown')
         try:
             fd = os.open(result, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)

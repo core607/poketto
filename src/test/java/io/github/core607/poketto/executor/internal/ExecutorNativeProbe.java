@@ -141,11 +141,18 @@ public final class ExecutorNativeProbe {
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
             var first = execute(
-                    executor, "first", "git rev-parse HEAD; git log --oneline; cat article.md", new Cancellation());
+                    executor,
+                    "first",
+                    "set -eu; git rev-parse HEAD; git log --oneline; cat article.md; "
+                            + "test -p \"$POKETTO_BRIDGE/requests\"; test ! -w \"$POKETTO_BRIDGE/responses\"; "
+                            + "if python3 -c 'import socket; socket.socket(socket.AF_UNIX)' 2>/dev/null; then exit 99; fi; poketto status",
+                    new Cancellation());
             assertThat(first.exitCode()).isZero();
             assertThat(first.commit()).isEqualTo(config.path("commit").stringValue());
             assertThat(first.stdout()).contains(first.commit(), "Synthetic native history", "searchable");
+            assertThat(first.stdout()).contains("\"scope\": \"full\"", "\"baseCommit\": \"" + first.commit() + "\"");
             passed("signed-open-through-production-socket-and-signature-checks", "milliseconds", millis(start));
+            passed("synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies");
             start = System.nanoTime();
             for (int i = 0; i < 20; i++)
                 assertThat(execute(executor, "first", "git rev-parse HEAD; test -f article.md", new Cancellation())
@@ -277,11 +284,13 @@ public final class ExecutorNativeProbe {
                     "test $(git rev-list --count HEAD) = 1 && test ! -e private && "
                             + "test ! -e .poketto/publishing.yaml && cat article/index.md && "
                             + "! grep -R -F 'secret-needle' --exclude-dir=.git . && "
-                            + "! git cat-file -e " + fixture.sourceCommit() + "^{commit}",
+                            + "! git cat-file -e " + fixture.sourceCommit() + "^{commit} && poketto status",
                     Duration.ofSeconds(10),
                     new Cancellation());
             assertThat(result.exitCode()).isZero();
             assertThat(result.stdout()).contains("public-native-body").doesNotContain("secret-needle");
+            assertThat(result.stdout())
+                    .contains("\"scope\": \"public\"", "\"baseCommit\": \"" + result.commit() + "\"");
             assertThat(result.commit()).isNotEqualTo(fixture.sourceCommit());
             passed("public-scope-real-projection-has-no-private-files-metadata-or-original-history");
             privateRead.set(true);

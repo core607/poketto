@@ -18,7 +18,7 @@ Build the reproducible runtime with Java 26:
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs,
 and a SHA-256 manifest. Copy that directory, `probe.py`, `rejected_peer.py`, and the corresponding
-worker, launcher, `resource_pool.py` and `native_pool.py` sources to isolated host staging. The probe verifies every
+worker, launcher, `resource_pool.py`, `native_pool.py`, `bridge.py` and `cli.py` sources to isolated host staging. The probe verifies every
 manifest entry before running. It never stages operator settings or credentials.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's

@@ -71,6 +71,10 @@ class LeaseBridge:
         os.close(lock)
         os.chown(self.path / 'lock', -1, gid)
         os.chmod(self.path / 'lock', 0o440)
+        state = os.open(self.path / 'state', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
+        os.close(state)
+        os.chown(self.path / 'state', -1, gid)
+        os.chmod(self.path / 'state', 0o640)
         self.input = os.open(self.path / 'requests', os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW)
 
     def _message(self, value):
@@ -166,7 +170,23 @@ class LeaseBridge:
                 for request_id in self.pending:
                     (self.responses / (request_id + '.json')).unlink(missing_ok=True)
                 self.pending.clear()
-            marker = os.open(self.path / 'closed', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o440)
-            os.close(marker)
-            os.chown(self.path / 'closed', -1, self.gid)
-            os.chmod(self.path / 'closed', 0o440)
+            # Update the existing inode: native SRT exposes this file through a read-only bind.
+            (self.path / 'state').write_bytes(b'closed\n')
+
+    def reset_command(self):
+        """Call after the command cgroup is empty; abandoned requests cannot enter a later command."""
+        with self.reader:
+            with self.condition:
+                if self.closed:
+                    return
+                for request_id in self.pending:
+                    (self.responses / (request_id + '.json')).unlink(missing_ok=True)
+                self.pending.clear()
+                self.buffer.clear()
+                self.frame_started = None
+                while True:
+                    try:
+                        if not os.read(self.input, 65536):
+                            break
+                    except BlockingIOError:
+                        break

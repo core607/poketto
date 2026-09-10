@@ -44,6 +44,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final Duration closeTimeout;
     private final Map<SessionKey, Session> sessions = new LinkedHashMap<>();
     private final Semaphore executions = new Semaphore(4);
+    private final ThreadPoolExecutor commandIo = new ThreadPoolExecutor(
+            4,
+            4,
+            0,
+            TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(4),
+            Thread.ofPlatform().daemon().name("poketto-command-io-", 0).factory());
     private final ThreadPoolExecutor controls = new ThreadPoolExecutor(
             4,
             4,
@@ -130,19 +137,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (!session.ready) open(session, requestedCommit);
                 requireLive(session);
                 authorize(session);
-                JsonNode response = requestLive(
-                        session,
-                        "EXEC",
-                        Map.of(
-                                "executionId",
-                                UUID.randomUUID(),
-                                "commit",
-                                session.commit,
-                                "command",
-                                command,
-                                "timeoutMillis",
-                                timeout.toMillis()),
-                        timeout.plusSeconds(5));
+                JsonNode response = executeWithBridge(session, command, timeout);
                 requireOk(response, session);
                 authorize(session);
                 ExecutionResult result = result(response.path("result"), session.commit);
@@ -344,6 +339,73 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    private JsonNode executeWithBridge(Session session, String command, Duration timeout) {
+        String executionId = UUID.randomUUID().toString();
+        var running = commandIo.submit(() -> requestLive(
+                session,
+                "EXEC",
+                Map.of(
+                        "executionId",
+                        executionId,
+                        "commit",
+                        session.commit,
+                        "command",
+                        command,
+                        "timeoutMillis",
+                        timeout.toMillis()),
+                timeout.plusSeconds(5)));
+        long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
+        try {
+            while (!running.isDone()) {
+                requireLive(session);
+                authorize(session);
+                if (System.nanoTime() >= deadline) throw new WorkerUnavailableException();
+                JsonNode polled = requestLive(session, "BRIDGE_POLL", Map.of(), Duration.ofSeconds(3));
+                requireOk(polled, session);
+                if (running.isDone()) break;
+                JsonNode request = polled.path("bridgeRequest");
+                if (request.isMissingNode() || request.isNull()) continue;
+                if (!executionId.equals(polled.path("executionId").asString("")))
+                    throw new WorkerUnavailableException();
+                String requestId = request.path("requestId").stringValue();
+                if (!UUID.fromString(requestId).toString().equals(requestId)) throw new WorkerUnavailableException();
+                requireLive(session);
+                authorize(session);
+                Map<String, ?> reply = bridgeReply(session, request);
+                requireLive(session);
+                authorize(session);
+                requireOk(
+                        requestLive(
+                                session,
+                                "BRIDGE_COMPLETE",
+                                Map.of("executionId", executionId, "bridgeRequestId", requestId, "response", reply),
+                                Duration.ofSeconds(3)),
+                        session);
+            }
+            return running.get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new WorkerUnavailableException();
+        } catch (java.util.concurrent.ExecutionException failed) {
+            if (failed.getCause() instanceof RuntimeException failure) throw failure;
+            throw new WorkerUnavailableException();
+        } finally {
+            running.cancel(true);
+        }
+    }
+
+    private Map<String, ?> bridgeReply(Session session, JsonNode request) {
+        JsonNode arguments = request.path("arguments");
+        if (!arguments.isObject()) throw new WorkerUnavailableException();
+        if (request.path("operation").asString("").equals("status") && arguments.isEmpty())
+            return Map.of(
+                    "ok",
+                    true,
+                    "result",
+                    Map.of("scope", session.fullRead ? "full" : "public", "baseCommit", session.commit));
+        return Map.of("ok", false, "code", "OPERATION_UNAVAILABLE");
+    }
+
     private JsonNode requestLive(Session session, String operation, Map<String, ?> data, Duration timeout) {
         WorkerClient.PreparedRequest request;
         synchronized (session) {
@@ -478,6 +540,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
         }
         controls.shutdownNow();
+        commandIo.shutdownNow();
     }
 
     private static void requireLive(Session session) {
