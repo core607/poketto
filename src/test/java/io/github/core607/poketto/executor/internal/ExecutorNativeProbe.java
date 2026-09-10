@@ -717,7 +717,7 @@ public final class ExecutorNativeProbe {
                     "native-moves",
                     Optional.empty(),
                     setup,
-                    Duration.ofSeconds(40),
+                    Duration.ofSeconds(30),
                     new Cancellation());
             assertThat(prepared.exitCode())
                     .as("setup stdout=%s stderr=%s", prepared.stdout(), prepared.stderr())
@@ -745,7 +745,7 @@ public final class ExecutorNativeProbe {
                     assert Path('private/deeper/box/note.md').read_text() == '[ref](../../ref.md) ![media](present.pdf)'
                     PY
                     """,
-                    Duration.ofSeconds(40),
+                    Duration.ofSeconds(30),
                     new Cancellation());
             assertThat(moved.exitCode())
                     .as("move stdout=%s stderr=%s", moved.stdout(), moved.stderr())
