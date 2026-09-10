@@ -1,7 +1,5 @@
 package io.github.core607.poketto.content.internal;
 
-import io.github.core607.poketto.assets.ManagedAssetReference;
-import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
@@ -10,7 +8,6 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.function.Supplier;
 import org.commonmark.node.*;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.markdown.MarkdownRenderer;
@@ -24,7 +21,7 @@ final class PortableContentPlanner {
     private final RepositoryContentReader reader;
     private final RepositoryBlobReader blobs;
     private final PublicContentSnapshots snapshots;
-    private final Supplier<ManagedBlobStore> originals;
+    private final RepositoryOriginalTransfers originals;
     private final Map<Revision, String> fingerprints = Collections.synchronizedMap(new LinkedHashMap<>(64, .75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<Revision, String> eldest) {
@@ -45,7 +42,7 @@ final class PortableContentPlanner {
             RepositoryContentReader reader,
             RepositoryBlobReader blobs,
             PublicContentSnapshots snapshots,
-            Supplier<ManagedBlobStore> originals) {
+            RepositoryOriginalTransfers originals) {
         this.auth = auth;
         this.reader = reader;
         this.blobs = blobs;
@@ -190,23 +187,19 @@ final class PortableContentPlanner {
                 throw unavailable();
             var entry = media.index().files().get(path);
             if (entry == null) throw unavailable();
-            return managed(
-                    "indexed:" + path,
-                    new ManagedAssetReference(entry.assetId(), entry.revision()),
-                    entry.size(),
-                    entry.mediaType());
+            return managed("indexed:" + path, entry.assetId(), entry.revision(), entry.size(), entry.mediaType());
         }
 
-        String managed(String key, ManagedAssetReference reference, long expectedSize, String expectedType) {
+        String managed(String key, UUID identity, String revision, long expectedSize, String expectedType) {
             if (originalPaths.containsKey(key)) return originalPaths.get(key);
-            var asset = originals.get().describe(workspace, reference);
+            var asset = originals.describe(workspace, identity, revision);
             if (expectedSize >= 0 && (expectedSize != asset.size() || !expectedType.equals(asset.mediaType())))
                 throw unavailable();
             String target = nextMedia(asset.size(), extension(asset.mediaType()));
             entries.put(
                     target,
                     new PortableArchiveWriter.Entry(
-                            target, asset.size(), output -> originals.get().copyTo(workspace, reference, output)));
+                            target, asset.size(), output -> originals.copyTo(workspace, identity, revision, output)));
             originalPaths.put(key, target);
             bound();
             return target;
@@ -218,7 +211,7 @@ final class PortableContentPlanner {
             if (raw.startsWith("managed:")) {
                 String[] fields = raw.split(":", -1);
                 if (fields.length != 3) throw unavailable();
-                String target = managed(raw, new ManagedAssetReference(UUID.fromString(fields[1]), fields[2]), -1, "");
+                String target = managed(raw, UUID.fromString(fields[1]), fields[2], -1, "");
                 return relative(archive, target) + fragment;
             }
             var resolved = MarkdownDestinations.path(source, authored);

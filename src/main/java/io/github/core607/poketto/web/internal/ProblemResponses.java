@@ -28,6 +28,17 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ProblemResponses.class);
 
+    @ExceptionHandler(io.github.core607.poketto.content.ContentExportException.class)
+    ProblemDetail exportFailure(io.github.core607.poketto.content.ContentExportException exception) {
+        HttpStatus status =
+                switch (exception.reason()) {
+                    case CAPACITY -> HttpStatus.TOO_MANY_REQUESTS;
+                    case NOT_FOUND -> HttpStatus.NOT_FOUND;
+                    case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+                };
+        return problem(status, "Export unavailable", exception.getMessage());
+    }
+
     @ExceptionHandler(AssetStorageException.class)
     ProblemDetail assetFailure(AssetStorageException exception) {
         HttpStatus status =

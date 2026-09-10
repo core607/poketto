@@ -35,7 +35,7 @@ class PortableContentPlannerTests {
                 new JGitRepositoryContentReader(fixture.authority()),
                 new JGitRepositoryBlobReader(fixture.authority()),
                 snapshots,
-                () -> store);
+                new ManagedOriginalTransfers(() -> store));
     }
 
     private Map<String, byte[]> archive(PortableContentPlanner.Plan plan) throws Exception {
@@ -195,7 +195,8 @@ class PortableContentPlannerTests {
         var snapshots = mock(PublicContentSnapshots.class);
         var store = mock(ManagedBlobStore.class);
         doThrow(new SecurityException("denied")).when(auth).authorize(actor, workspace, Capability.READ_PRIVATE);
-        var service = new PortableContentPlanner(auth, reader, blobs, snapshots, () -> store);
+        var service =
+                new PortableContentPlanner(auth, reader, blobs, snapshots, new ManagedOriginalTransfers(() -> store));
         assertThatThrownBy(() -> service.prepare(actor, workspace, List.of("private"), false))
                 .isInstanceOf(SecurityException.class);
         verifyNoInteractions(reader, blobs, snapshots, store);

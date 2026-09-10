@@ -487,6 +487,64 @@ class RepositoryAdminIntegrationIT {
                     null,
                     404);
         }
+        portableExportsOverHttp(client, csrf, bytes);
+    }
+
+    private void portableExportsOverHttp(HttpClient client, JsonNode csrf, byte[] original) throws Exception {
+        var selection = Map.of("paths", List.of("public/http-media.md"), "publicOnly", true);
+        http(client, "POST", "/api/admin/exports", null, selection, 403);
+        var receipt = http(client, "POST", "/api/admin/exports", csrf, selection, 200);
+        String handle = receipt.path("handle").stringValue();
+        try (var anonymous = HttpClient.newHttpClient()) {
+            http(anonymous, "GET", "/api/admin/exports/" + handle, null, null, 401);
+        }
+        var downloaded = client.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/admin/exports/" + handle))
+                        .timeout(Duration.ofSeconds(15))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(downloaded.statusCode()).isEqualTo(200);
+        assertThat(downloaded.headers().firstValue("Content-Type").orElseThrow())
+                .isEqualTo("application/zip");
+        assertThat(downloaded.headers().firstValue("Content-Disposition").orElseThrow())
+                .contains("attachment", "poketto-public.zip");
+        assertThat(downloaded.headers().firstValue("Cache-Control").orElseThrow())
+                .isEqualTo("no-store");
+        assertThat(downloaded.body().length).isEqualTo(receipt.path("bytes").longValue());
+        assertThat(java.util.HexFormat.of()
+                        .formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(downloaded.body())))
+                .isEqualTo(receipt.path("sha256").stringValue());
+        var entries = new java.util.TreeMap<String, byte[]>();
+        try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(downloaded.body()))) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry())
+                entries.put(entry.getName(), zip.readAllBytes());
+        }
+        assertThat(entries).hasSize(2);
+        assertThat(entries.get("media/original-1.pdf")).containsExactly(original);
+        assertThat(new String(entries.get("content/article-1.md"), StandardCharsets.UTF_8))
+                .contains("../media/original-1.pdf")
+                .doesNotContain("managed:", "private/", ".poketto/");
+        http(
+                client,
+                "POST",
+                "/api/admin/exports",
+                csrf,
+                Map.of("paths", List.of("private/source.pdf"), "publicOnly", true),
+                503);
+        http(client, "POST", "/api/admin/exports/" + handle + "/release", null, Map.of(), 403);
+        var release = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/api/admin/exports/" + handle + "/release"))
+                .header(
+                        csrf.path("headerName").stringValue(),
+                        csrf.path("token").stringValue())
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        assertThat(client.send(release, HttpResponse.BodyHandlers.discarding()).statusCode())
+                .isEqualTo(204);
+        http(client, "GET", "/api/admin/exports/" + handle + "/metadata", null, null, 404);
     }
 
     private JsonNode http(HttpClient client, String method, String path, JsonNode csrf, Object payload, int status)

@@ -74,9 +74,14 @@ so unchanged article text cannot keep an excluded image authorized.
 
 Real Git and native local-storage tests verify mixed media bytes, relative links,
 private metadata removal, missing dependencies, cross-workspace identity denial,
-private-only updates and image withdrawal. Protected staging, expiring handles,
-download authorization, browser and CLI integration remain required before the
-export feature is available.
+private-only updates and image withdrawal. `LocalPortableContentExports` owns
+protected staging, exclusive root ownership, bounded reservations, expiring
+workspace/principal/client handles, download integrity checks and session cleanup.
+The content-owned `RepositoryOriginalTransfers` port keeps media storage behind
+its assets implementation without a module dependency cycle. The authenticated
+[HTTP contract](../../docs/usage.md#export-http-interface) exposes creation, download
+and release. Native HTTP acceptance, browser controls and CLI materialization remain
+required before the complete export feature is delivered.
 
 Reusing Git bundles would expose history and omit original media. Asking the
 agent to assemble every package duplicates authorization, reference rewriting and
