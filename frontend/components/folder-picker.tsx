@@ -113,6 +113,9 @@ export function FolderPicker({
           type="button"
           disabled={moving || loading}
           aria-pressed={contentRoot(folder) === "private"}
+          className={
+            contentRoot(folder) === "private" ? undefined : "button-secondary"
+          }
           onClick={() => setFolder(inContentRoot(folder, "private"))}
         >
           私有目录
@@ -121,6 +124,9 @@ export function FolderPicker({
           type="button"
           disabled={moving || loading || !canPublish}
           aria-pressed={contentRoot(folder) === "public"}
+          className={
+            contentRoot(folder) === "public" ? undefined : "button-secondary"
+          }
           title={canPublish ? "保留分类路径，移到 public" : "需要发布权限"}
           onClick={() => setFolder(inContentRoot(folder, "public"))}
         >

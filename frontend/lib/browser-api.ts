@@ -58,6 +58,14 @@ export async function api<T>(
     );
   }
   if (!response.ok) {
+    if (response.status === 400) {
+      const problem = await response.json().catch(() => null);
+      if (problem?.code === "MOVE_UNPUBLISHABLE_DEPENDENCY")
+        throw new ApiError(
+          400,
+          "移动后公开文档会引用私有或不支持的内容。请检查依赖，或连同所需媒体一起移动文件夹。",
+        );
+    }
     const messages: Record<number, string> = {
       400: "输入格式有误，请检查后重试。",
       401: "登录信息无效或会话已过期。",
