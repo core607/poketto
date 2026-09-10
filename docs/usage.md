@@ -67,7 +67,8 @@ under `poketto.exports` set `max-zip-bytes` (800 MiB), `max-retained-bytes` (2 G
 `max-workspace-bytes` (1600 MiB), `max-packages` (8), `lifetime-seconds` (600), and
 `build-seconds` (120). A build reserves its full ZIP allowance before preparation;
 only its actual size remains charged after success. Capacity exhaustion returns
-429; missing, expired or differently owned handles return 404. Browser export
+429; missing, expired or differently owned handles return 404. Filesystems without
+POSIX permission support return 503 before reading export content. Browser export
 controls and CLI materialization remain in the [export plan](../notes/proposed/2026-09-10-portable-content-exports.md).
 
 ## MCP and isolated execution

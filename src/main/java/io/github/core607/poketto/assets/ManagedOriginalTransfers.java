@@ -3,6 +3,7 @@ package io.github.core607.poketto.assets;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryOriginalTransfers;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -25,5 +26,12 @@ public final class ManagedOriginalTransfers implements RepositoryOriginalTransfe
     @Override
     public void copyTo(WorkspaceId workspace, UUID identity, String revision, OutputStream output) {
         originals.get().copyTo(workspace, new ManagedAssetReference(identity, revision), output);
+    }
+
+    @Override
+    public void copyImageTo(WorkspaceId workspace, UUID identity, String revision, OutputStream output)
+            throws IOException {
+        var image = originals.get().read(workspace, new ManagedAssetReference(identity, revision));
+        output.write(image.bytes());
     }
 }

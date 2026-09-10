@@ -71,6 +71,11 @@ Reference discovery is shared within a plan, bounded to 100,000 unique public
 destinations, and public Markdown rendering enforces node and depth bounds.
 Publication checks include referenced Git object identities and path eligibility,
 so unchanged article text cannot keep an excluded image authorized.
+Legacy `managed:` images use exact immutable references in published article bodies
+as their publication authority, matching the public image service. Public exports
+apply the same image-preview validation before copying those originals; arbitrary
+files require indexed-media authorization. Removing or changing the article reference
+invalidates outstanding public packages through the article fingerprint.
 
 Real Git and native local-storage tests verify mixed media bytes, relative links,
 private metadata removal, missing dependencies, cross-workspace identity denial,
@@ -83,7 +88,9 @@ its assets implementation without a module dependency cycle. The authenticated
 and release. [Native HTTP acceptance](../../acceptance/evidence/2026-09-10-export-http.json)
 verifies actual ZIP bytes and scoped delivery through the real application.
 Browser controls and CLI materialization remain required before the complete export
-feature is delivered.
+feature is delivered. The `closeClient` lifecycle callback is prepared and tested;
+its production MCP session hookup belongs to the pending CLI entrance. Browser
+handles use owner/workspace/expiry binding and do not claim MCP-session cleanup.
 
 Reusing Git bundles would expose history and omit original media. Asking the
 agent to assemble every package duplicates authorization, reference rewriting and

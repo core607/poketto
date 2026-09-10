@@ -61,7 +61,8 @@ exclude:
 10,000 个条目。`poketto.exports` 下可配置 `max-zip-bytes`（800 MiB）、
 `max-retained-bytes`（2 GiB）、`max-workspace-bytes`（1600 MiB）、`max-packages`（8）、
 `lifetime-seconds`（600）与 `build-seconds`（120）。构建前预留完整 ZIP 额度，成功后仅计入实际大小。
-容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404。浏览器导出控件和 CLI 文件落地仍属于
+容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404。不支持 POSIX 权限的文件系统会在读取
+导出内容前返回 503。浏览器导出控件和 CLI 文件落地仍属于
 [导出计划](../notes/proposed/2026-09-10-portable-content-exports.md)。
 
 ## MCP 与隔离执行

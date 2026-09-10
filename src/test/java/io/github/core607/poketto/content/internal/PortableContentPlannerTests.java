@@ -150,6 +150,54 @@ class PortableContentPlannerTests {
 
     @Test
     @EnabledOnOs(OS.LINUX)
+    void legacyPublicImagesUsePreviewValidationAndWithdrawWithTheirArticleReference() throws Exception {
+        var fixture = new RemoteRepositoryFixture(root.resolve("git"));
+        var store = ManagedBlobStore.local(root.resolve("originals").toAbsolutePath());
+        var imageBytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(
+                new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", imageBytes);
+        var image =
+                store.upload(workspace, "export_legacy_image_001", new ByteArrayInputStream(imageBytes.toByteArray()));
+        var files = new LinkedHashMap<String, byte[]>();
+        files.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-by-default\n"));
+        String reference = "managed:" + image.reference().assetId() + ":"
+                + image.reference().revision();
+        files.put("article.md", text("# Public\n![image](" + reference + ")\n"));
+        files.put("private/hidden.md", text("private\n"));
+        fixture.commitRemote(workspace, files);
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = planner(fixture, snapshots, store);
+        var plan = service.prepare(actor, workspace, List.of("article.md"), true);
+        assertThat(archive(plan).get("media/original-1.png")).containsExactly(imageBytes.toByteArray());
+        files.put("private/hidden.md", text("private edit\n"));
+        fixture.commitRemote(workspace, files);
+        snapshots.refresh(workspace);
+        plan.authorize().run();
+        files.put("article.md", text("# Public\nImage removed.\n"));
+        fixture.commitRemote(workspace, files);
+        snapshots.refresh(workspace);
+        assertThatThrownBy(plan.authorize()::run).isInstanceOf(ContentRepositoryException.class);
+
+        var binary = store.uploadFile(
+                workspace, "export_legacy_binary_001", "application/pdf", new ByteArrayInputStream(new byte[] {0, -1, 2
+                }));
+        files.put(
+                "article.md",
+                text("# Public\n![image](managed:" + binary.reference().assetId() + ":"
+                        + binary.reference().revision() + ")\n"));
+        fixture.commitRemote(workspace, files);
+        snapshots.refresh(workspace);
+        var invalid = service.prepare(actor, workspace, List.of("article.md"), true);
+        assertThatThrownBy(() -> archive(invalid)).isInstanceOf(AssetStorageException.class);
+        // An authorized private copy can still contain an arbitrary original.
+        assertThat(archive(service.prepare(actor, workspace, List.of("article.md"), false))
+                        .get("media/original-1.pdf"))
+                .containsExactly(0, -1, 2);
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
     void indexedIdentityCannotBorrowAnotherWorkspacesOriginal() throws Exception {
         var fixture = new RemoteRepositoryFixture(root.resolve("git"));
         var store = ManagedBlobStore.local(root.resolve("originals").toAbsolutePath());

@@ -196,10 +196,13 @@ final class PortableContentPlanner {
             if (expectedSize >= 0 && (expectedSize != asset.size() || !expectedType.equals(asset.mediaType())))
                 throw unavailable();
             String target = nextMedia(asset.size(), extension(asset.mediaType()));
-            entries.put(
-                    target,
-                    new PortableArchiveWriter.Entry(
-                            target, asset.size(), output -> originals.copyTo(workspace, identity, revision, output)));
+            entries.put(target, new PortableArchiveWriter.Entry(target, asset.size(), output -> {
+                // Legacy managed images are published by exact article references, not index paths.
+                // They retain the same image-only admission policy as the public rendering service.
+                if (publicOnly && key.startsWith("managed:"))
+                    originals.copyImageTo(workspace, identity, revision, output);
+                else originals.copyTo(workspace, identity, revision, output);
+            }));
             originalPaths.put(key, target);
             bound();
             return target;

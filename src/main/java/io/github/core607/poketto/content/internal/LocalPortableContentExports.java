@@ -195,7 +195,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                 ready = null;
             }
             return receipt;
-        } catch (IOException error) {
+        } catch (IOException | UnsupportedOperationException error) {
             throw failure(ContentExportException.Reason.UNAVAILABLE);
         } finally {
             try {

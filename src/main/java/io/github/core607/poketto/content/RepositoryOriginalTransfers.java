@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.util.UUID;
 
@@ -10,4 +11,7 @@ public interface RepositoryOriginalTransfers {
 
     /** Verifies original bytes and leaves caller output open. A failed transfer must not publish its destination. */
     void copyTo(WorkspaceId workspace, UUID identity, String revision, OutputStream output);
+
+    /** Validates a legacy public image through the image-preview policy before writing any bytes. */
+    void copyImageTo(WorkspaceId workspace, UUID identity, String revision, OutputStream output) throws IOException;
 }
