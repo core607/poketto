@@ -718,9 +718,10 @@ def main():
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
                 stream.write(f"pr_number={github.number}\n")
         pr = github.current()
-        if upstream and (pr["draft"] or pr["state"] != "open" or pr["author_association"] != "OWNER"):
+        if upstream and (pr["draft"] or pr["state"] != "open" or pr["author_association"] != "OWNER"
+                         or not (pr["base"]["ref"] == "main" or pr["base"]["ref"].startswith("codex/phase-one-"))):
             save_manifest(output, {"state": "exempt", "reason": "The PR is not eligible for AI review."})
-            print("AI review: draft, closed or non-owner PR; no model call.")
+            print("AI review: ineligible PR state, author or target branch; no model call.")
             return 0
         revision = identity(pr, github.repository)
         if not verified_ci(github, revision, upstream["id"] if upstream else None):
