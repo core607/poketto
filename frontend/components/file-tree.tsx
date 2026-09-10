@@ -11,7 +11,14 @@ type Props = {
   busy: boolean;
   onOpen: (path: string) => void;
   onMove?: (path: string, commit: string, trigger: HTMLElement) => void;
+  onExport?: (path: string, trigger: HTMLElement) => void;
 };
+
+function exportablePath(path: string) {
+  return !path
+    .split("/")
+    .some((part) => part.startsWith(".") || part.toUpperCase() === "AGENTS.MD");
+}
 
 export function FileTree(props: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -140,6 +147,21 @@ function DirectoryBranch({
                     移动
                   </button>
                 )}
+              {entry.kind === "FILE" &&
+                props.onExport &&
+                exportablePath(entry.path) && (
+                  <button
+                    type="button"
+                    className="tree-move"
+                    aria-label={`导出 ${entry.path}`}
+                    disabled={props.busy}
+                    onClick={(event) =>
+                      props.onExport!(entry.path, event.currentTarget)
+                    }
+                  >
+                    导出
+                  </button>
+                )}
             </div>
           ),
         )}
@@ -193,6 +215,17 @@ function DirectoryBranch({
         </button>
       )}
       <div>{opened && content}</div>
+      {opened && props.onExport && exportablePath(path) && (
+        <button
+          type="button"
+          className="tree-move"
+          aria-label={`导出文件夹 ${path}`}
+          disabled={props.busy}
+          onClick={(event) => props.onExport!(path, event.currentTarget)}
+        >
+          导出文件夹
+        </button>
+      )}
     </details>
   );
 }

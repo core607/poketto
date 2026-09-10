@@ -10,7 +10,7 @@ import java.time.Duration;
 import java.util.Map;
 
 /** Synthetic Git authority and real projection service for the native worker acceptance. */
-public final class PublicExecutionNativeFixture {
+public final class PublicExecutionNativeFixture implements AutoCloseable {
     private final RemoteRepositoryFixture repository;
     private final WorkspaceId workspace;
     private final JGitPublicContentSnapshots snapshots;
@@ -18,6 +18,7 @@ public final class PublicExecutionNativeFixture {
     private final String sourceCommit;
     private final Path fixtureRoot;
     private io.github.core607.poketto.assets.ManagedBlobStore originals;
+    private LocalPortableContentExports packages;
     private final java.util.concurrent.atomic.AtomicBoolean offline = new java.util.concurrent.atomic.AtomicBoolean();
     private final java.util.concurrent.atomic.AtomicInteger pushes = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -86,6 +87,44 @@ public final class PublicExecutionNativeFixture {
                                 fixtureRoot.resolve("originals"));
                     return originals;
                 });
+    }
+
+    public io.github.core607.poketto.content.PortableContentExports packages(AuthService auth) {
+        if (packages == null) {
+            if (originals == null)
+                originals = io.github.core607.poketto.assets.ManagedBlobStore.local(fixtureRoot.resolve("originals"));
+            var planner = new PortableContentPlanner(
+                    auth,
+                    new JGitRepositoryContentReader(repository.authority()),
+                    new JGitRepositoryBlobReader(repository.authority()),
+                    snapshots,
+                    new io.github.core607.poketto.assets.ManagedOriginalTransfers(() -> originals));
+            packages = new LocalPortableContentExports(
+                    auth,
+                    planner,
+                    fixtureRoot.resolve("packages"),
+                    Clock.systemUTC(),
+                    new LocalPortableContentExports.Limits(
+                            16 * 1024 * 1024,
+                            32 * 1024 * 1024,
+                            16 * 1024 * 1024,
+                            4,
+                            Duration.ofMinutes(2),
+                            Duration.ofSeconds(20)));
+        }
+        return packages;
+    }
+
+    public long retainedPackages() throws java.io.IOException {
+        try (var paths = java.nio.file.Files.walk(fixtureRoot.resolve("packages"))) {
+            return paths.filter(path -> path.getFileName().toString().endsWith(".zip"))
+                    .count();
+        }
+    }
+
+    @Override
+    public void close() {
+        if (packages != null) packages.close();
     }
 
     public String seedMedia(
