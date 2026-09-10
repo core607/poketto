@@ -95,10 +95,10 @@ class RepositoryPatchIntegrationIT {
         assertThat(draft.committed()).isTrue();
         assertThat(draft.snapshotUpdated()).isTrue();
         assertThat(snapshots.current(workspace).articles()).isEmpty();
-        String policy = "enabled: true\nmode: public-by-default\n";
+        String policy = "enabled: true\nmode: public-root\n";
         var publish = new RepositoryPatch(
                 Optional.of(draft.commit()),
-                List.of(create(RepositoryPublishingPolicy.PATH, policy), create("article.md", "# Public")));
+                List.of(create(RepositoryPublishingPolicy.PATH, policy), create("public/article.md", "# Public")));
         assertThatThrownBy(() -> patches.apply(agent, workspace, publish)).isInstanceOf(AuthException.class);
         var published = patches.apply(owner, workspace, publish);
         assertThat(published.snapshotUpdated()).isTrue();
@@ -128,7 +128,7 @@ class RepositoryPatchIntegrationIT {
         assertThat(files.getFile(workspace, Optional.empty(), "private/lists/draft.md")
                         .source())
                 .contains("---\nroute: /article\n---\n# Private alias");
-        var publicMove = new RepositoryMoveRequest(relocated.commit(), "article.md", "moved-article.md");
+        var publicMove = new RepositoryMoveRequest(relocated.commit(), "public/article.md", "public/moved-article.md");
         assertThatThrownBy(() -> moves.move(agent, workspace, publicMove)).isInstanceOf(AuthException.class);
         var movedPublic = moves.move(owner, workspace, publicMove);
         assertThat(snapshots.current(workspace).commit()).contains(movedPublic.commit());
