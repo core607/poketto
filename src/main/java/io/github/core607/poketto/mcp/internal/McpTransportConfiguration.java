@@ -52,7 +52,7 @@ class McpTransportConfiguration {
             @Value("${poketto.mcp.session-idle-seconds:1800}") long idleSeconds,
             @Value("${poketto.mcp.max-sessions:128}") int maxSessions) {
         return WebMvcStreamableServerTransportProvider.builder()
-                // Map nulls are protocol values: repo_patch distinguishes deletion from a missing field.
+                // Preserve explicit null protocol fields, including optional repository source commits.
                 .jsonMapper(new JacksonMcpJsonMapper(mapper.rebuild()
                         .changeDefaultPropertyInclusion(
                                 inclusion -> inclusion.withContentInclusion(JsonInclude.Include.ALWAYS))

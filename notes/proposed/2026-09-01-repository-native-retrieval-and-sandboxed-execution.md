@@ -1,6 +1,10 @@
 # Repository-Native Retrieval and Sandboxed Agent Execution
 
 Date: 2026-09-01
+
+The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
+standalone agent file-read, list and patch tool selections in this record. Shared
+service contracts and outstanding delivery requirements remain applicable.
 Status: Proposed
 
 [CodeAct workspaces](2026-09-09-codeact-workspaces.md) take priority for the next agent contract, including permission-scoped exports and saving session files through a service bridge. They replace the separate structured agent write path and mandatory private-read execution described below when implemented; repository-native retrieval and sandbox isolation remain applicable.
