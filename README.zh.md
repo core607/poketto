@@ -52,7 +52,7 @@ API 权限分别约束读取、写入、发布和执行。Agent 如果同时拥�
 
 ## 开发状态
 
-Poketto 正在开发中。仓库创作、本地媒体、浏览器移动，以及 CodeAct 的保存和媒体流程已实现。[客户端验收](acceptance/clients/README.md)包含真实 Codex 和 Claude Code 工作流；[原生执行验证](executor-native/README.md)覆盖 Linux 隔离边界。最终 HTTPS 安装与部署拓扑验收仍待完成。
+Poketto 正在开发中。仓库创作、本地媒体、浏览器移动，以及 CodeAct 的保存和媒体流程已实现。[客户端验收](acceptance/clients/README.md)记录了隔离环境中的真实 Codex 和 Claude Code 工作流；[原生执行验证](executor-native/README.md)覆盖 Linux 隔离边界。最终 HTTPS 安装与部署拓扑验收仍待完成。
 
 [内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、会话制品返回、专用 CLI 移动、可移植 ZIP 导出、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。
 

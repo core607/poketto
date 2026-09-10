@@ -52,7 +52,7 @@ API capabilities govern reads, writes, publishing and execution. An agent grante
 
 ## Development status
 
-Poketto is under active development. Repository authoring, local media, browser moves and the CodeAct save/media workflow are implemented. [Client acceptance](acceptance/clients/README.md) includes real Codex and Claude Code workflows; [native executor verification](executor-native/README.md) exercises the Linux isolation boundary. Final HTTPS installation and deployed-topology acceptance remain open.
+Poketto is under active development. Repository authoring, local media, browser moves and the CodeAct save/media workflow are implemented. [Client acceptance](acceptance/clients/README.md) records real Codex and Claude Code workflows in an isolated environment; [native executor verification](executor-native/README.md) exercises the Linux isolation boundary. Final HTTPS installation and deployed-topology acceptance remain open.
 
 The [content plan](notes/proposed/2026-09-09-codeact-content-and-media.md) still includes default-private `public/` and `private/` roots, scoped artifact returns, dedicated CLI moves, portable ZIP exports, content conversion and removal of redundant MCP file tools. The current publication policy and tool interfaces are documented in the [usage reference](docs/usage.md). Those planned changes are not available yet.
 

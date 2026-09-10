@@ -58,7 +58,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 
 ## Rules
 
-- Agent instructions and skills are English-only. The requirements note and public README retain .zh.md counterparts; other notes are English by default and do not require a Chinese counterpart.
+- Agent instructions and skills are English-only. Notes are English by default unless covered by the bilingual pairs declared above.
 - Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
 - Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report it and block actions and completion claims that depend on it; continue only authorized work whose outcome does not depend on that check, without claiming the check passed.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
