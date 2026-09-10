@@ -10,6 +10,13 @@ The signed-open result checks production socket ownership, peer identity and sig
 
 The public-scope scenario uses a separate synthetic Git authority with the production publication and export services. It searches the actual worker copy for private metadata and content, checks that source commit objects are absent, preserves the public scope after a permission increase, and rejects execution after publication withdrawal. The real `poketto status` command exchanges FIFO requests with the host while Unix socket creation stays blocked. Separate clients cannot access each other's bridge, and replies remain read-only. The [recorded projection and bridge run](evidence/2026-09-10-public-projection.json) identifies the tested classes and runtime manifest. The selected-save scenario freezes the actual cgroup, transfers UTF-8 bytes in chunks, and commits through real synthetic Git authority despite tampered sandbox Git state. It covers repeated saves, explicit deletion, unselected local edits and remote conflicts. A lost-response scenario confirms the original commit through `poketto recover` without replaying newer local edits or issuing a duplicate push. Single-file synchronization exercises the signed incoming-file channel, frozen compare-and-replace, three-way conflict markers, explicit local deletions and independent per-file baselines. Indexed-media scenarios fetch exact local originals in the same command, retain historical versions, preserve local edits and restrict public sessions to their host-owned projection mapping. Media import captures binary bytes through the frozen cgroup, preserves idempotent local index formatting, saves the index and referring text atomically, and retains old original versions after replacement. Returned artifacts and HTTP MCP client acceptance remain separate requirements.
 
+The [scoped artifact run](evidence/2026-09-10-scoped-artifacts.json) verifies
+immutable file capture, protected artifact storage, isolation by workspace/key/client,
+public withdrawal, complete long-output delivery, and output-limit preservation of
+the captured prefix and unsaved work. It includes the lifecycle suite and successful
+lease/storage cleanup. Actual-client image and binary delivery remains a separate
+acceptance requirement.
+
 Build the reproducible runtime with Java 26:
 
 ```sh

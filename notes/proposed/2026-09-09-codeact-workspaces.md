@@ -73,6 +73,11 @@ A lease retains at most 16 artifacts and 256 MiB, subject to its existing tmpfs 
 
 Commands retain up to 4 MiB of combined output and return 16 KiB previews per stream. Longer output becomes an artifact, with a separate flag distinguishing incomplete captured bytes from a shortened preview. Exceeding the capture bound kills the process tree but preserves the lease and unsaved work after cleanup. Quota or storage failures expose per-stream errors instead of silently claiming complete output. Cancellation, revocation and expiry retain their existing authority termination behavior. The [worker reference](../../executor-service/README.md#returned-artifacts) owns the transport contract and limits.
 
+The [native artifact evidence](../../executor-native/evidence/2026-09-10-scoped-artifacts.json)
+records immutable capture, scope isolation, publication withdrawal, long-output
+retention and process/storage cleanup through the real worker. Actual-client
+artifact delivery over HTTP MCP remains unverified by that fixture.
+
 ## Acceptance
 
 The [recorded real-client workflow](../../acceptance/clients/evidence/2026-09-10-codeact.json) exercises Codex and Claude Code against real Spring authentication, PostgreSQL, HTTP MCP and native SRT with synthetic content. Both clients import and fetch original media, save index/text together, preserve unselected edits, resolve an actual competing-write conflict, and move/delete their own sample through selected saves. Independent Git inspection confirms the durable outcomes and unchanged original files. The worker advertises `codeActProtocol: 1`; the application rejects missing or incompatible readiness before exporting files. Actual-client artifact acceptance, dedicated move/export dispatch, root-guide delivery and final installation acceptance remain outstanding.
