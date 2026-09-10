@@ -23,6 +23,13 @@ despite local index tampering. Publication withdrawal prevents further listing.
 Its 25 Java scenarios, process-loss lease expiry and fixture cleanup pass on native
 Linux; authentication remains the explicit synthetic stub described above.
 
+The [CLI move run](evidence/2026-09-10-cli-moves.json) verifies reference repair,
+retention of unselected index edits, materialized and absent originals, refusal
+of dirty selected files, and recovery of the original uncertain commit without
+a duplicate push. All 28 Java scenarios, process-loss lease expiry and cleanup
+pass. The [actual-client run](../acceptance/clients/evidence/2026-09-10-cli-moves.json)
+separately covers real HTTP MCP and database authentication.
+
 Build the reproducible runtime with Java 26:
 
 ```sh

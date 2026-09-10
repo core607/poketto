@@ -53,9 +53,14 @@ exclude:
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
-完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实不确定的保存结果，不会重放后续编辑。`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
+完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
 
-`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。专用 CLI 移动、可移植导出和冗余 MCP 工具移除仍属于[内容计划](../notes/proposed/2026-09-09-codeact-content-and-media.md)。
+`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。可移植导出和冗余 MCP 工具移除仍属于[内容计划](../notes/proposed/2026-09-09-codeact-content-and-media.md)。
+
+`poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复
+Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本地。选定文件存在未保存修改或目标已占用时，
+移动会被拒绝。提交成功但本地安装尚未完成时，先使用 `poketto recover`，再继续保存、移动或同步；
+恢复会保留原始操作，也会保留本地安装完成后产生的新编辑。
 
 `poketto media list` 列出索引中的媒体，不会下载原件。完整读取会话也能看到尚未保存的导入，
 公开会话只使用宿主持有的已批准映射。可用 `--prefix` 筛选路径，并使用返回的 `nextOffset`

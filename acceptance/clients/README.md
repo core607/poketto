@@ -1,5 +1,14 @@
 # Actual MCP client acceptance
 
+The [focused CLI move run](evidence/2026-09-10-cli-moves.json) verifies actual
+Codex calls through real Spring authentication, PostgreSQL, HTTP MCP and native
+SRT. A folder move repairs inbound and outbound links and relocates its indexed
+original, which is fetched after the move. Unselected scratch and index edits
+remain local; a dirty selected file prevents another move. Independent remote Git
+and authenticated HTTP readback confirm exactly two new commits (save and move),
+with no unrelated edits included. Fixture cleanup passes. Lost acknowledgements
+and lease isolation are covered by the separate native and protocol tests.
+
 The [focused media-list run](evidence/2026-09-10-media-list.json) verifies one
 actual Codex client discovers two unsaved imports, follows versioned pages,
 rejects a changed index and reads an empty historical catalog. Independent

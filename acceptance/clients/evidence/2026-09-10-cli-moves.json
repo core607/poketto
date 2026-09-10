@@ -1,0 +1,54 @@
+{
+  "sourceCommit": "2d3eaa6e380bf7cce396e1566e9c3bbbded085af",
+  "runtimeManifestSha256": "beae19f8050d304802af75df8bcf1bc2ecf9613eccb1a1d82f4e99a534e1cd8c",
+  "workerSources": {
+    "worker.py": "1f3b451ae8924e37f263f0faf1862f233a7ba10ecefb9f273b1b23935c7a33e2",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "87e929e107ed7b268ba76247f31ff0139ad343f4aeb27eaa2300752139c9e06c",
+    "cli.py": "4ae2a5dbf1baf8148e9ef004d1a59e44d358f09b9b79175b37b0f7e81abdc10a",
+    "session_files.py": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+    "binary_capture.py": "7c8e5760978821effc7804b273c3f852572314a78a5fa38db3e83bccda4477be",
+    "materialize.py": "2d29a5092aeea938cb48b82d4c281b7e4711d60e913bc6789a85d89032ce9507",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd"
+  },
+  "environment": "isolated real Spring authentication, PostgreSQL, HTTP MCP and native Linux SRT with synthetic authority",
+  "client": {
+    "name": "codex",
+    "version": "codex-cli 0.153.4",
+    "exitCode": 0,
+    "completedMcpCalls": 15,
+    "unexpectedToolFailures": 0,
+    "observedWorkflow": "CLI help, create/import/save, leave unselected file and index edits, atomic move, inspect repaired paths, fetch original, refuse dirty move, authoritative reads",
+    "transcriptSha256": "be4ff1945f508f84f890435cd94ebbd5d5b620bdd0503c1371ffd61f57648567"
+  },
+  "move": {
+    "snapshotUpdated": true,
+    "commit": "22785b0124ffe92101972cd34afdbaaa53827c8f",
+    "destination": "private/client-move-archive/box",
+    "committed": true,
+    "source": "private/client-move-box",
+    "worktreeUpdated": true
+  },
+  "media": {
+    "bytes": 4,
+    "sha256": "2f87beacb6a71f75e3243ce005faf5d99405e02b5e729c7c9c216ef2e2a0544a",
+    "initiallyMaterialized": false,
+    "fetchedAfterMove": true
+  },
+  "unselectedEdits": {
+    "localScratchRetained": true,
+    "unsavedIndexEntryRetained": true,
+    "neitherCommitted": true,
+    "dirtySelectedEditRetainedAfterRefusal": true
+  },
+  "authority": {
+    "initial": "44487c8e8457c7bf923aed6118a48be9aa445bea",
+    "final": "22785b0124ffe92101972cd34afdbaaa53827c8f",
+    "commitCount": 3,
+    "newCommits": 2,
+    "independentReadback": "Remote Git and authenticated HTTP agree; initial save and move are the only new commits, links match, old path is absent, unrelated initial content is unchanged."
+  },
+  "scope": "Focused CLI move acceptance. Lost acknowledgements and lease isolation are additionally covered by unit/protocol/native evidence. Final HTTPS delivery is not established here.",
+  "cleanup": "PASS"
+}

@@ -25,7 +25,8 @@ The host-mediated `poketto` CLI provides persistence and result delivery:
 | `poketto status` | Inspect the session scope, save baseline and pending write outcome |
 | `poketto save` | Commit selected files and explicit deletions, retaining other local edits |
 | `poketto sync` | Reconcile one file against its own baseline and current remote content |
-| `poketto recover` | Resolve an uncertain save using the original retained commit |
+| `poketto recover` | Reconcile a pending save or move using its original commit and completion receipt |
+| `poketto move` | Move saved files, folders and indexed media with Markdown reference repair |
 | `poketto media list` / `import` / `fetch` | Discover indexed media, store originals or materialize referenced files |
 | `poketto artifact create` | Retain a temporary result for image, text or binary delivery through MCP |
 
@@ -55,7 +56,7 @@ API capabilities govern reads, writes, publishing and execution. An agent grante
 
 Poketto is under active development. Repository authoring, local media, browser moves and the CodeAct save/media workflow are implemented. [Client acceptance](acceptance/clients/README.md) records real Codex and Claude Code workflows in an isolated environment; [native executor verification](executor-native/README.md) exercises the Linux isolation boundary. Final HTTPS installation and deployed-topology acceptance remain open.
 
-The [content plan](notes/proposed/2026-09-09-codeact-content-and-media.md) still includes default-private `public/` and `private/` roots, dedicated CLI moves, portable ZIP exports, content conversion and removal of redundant MCP file tools. The current publication policy and tool interfaces are documented in the [usage reference](docs/usage.md). Those planned changes are not available yet.
+The [content plan](notes/proposed/2026-09-09-codeact-content-and-media.md) still includes default-private `public/` and `private/` roots, portable ZIP exports, content conversion and removal of redundant MCP file tools. The current publication policy and tool interfaces are documented in the [usage reference](docs/usage.md). Those planned changes are not available yet.
 
 The primary deployment is a self-hosted Linux server. Hosted workspace provisioning, backups, visitor Q&A and the [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) are outside the current delivery scope.
 
