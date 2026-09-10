@@ -128,6 +128,50 @@ class MediaFileServiceTests {
     }
 
     @Test
+    void completedDownloadDoesNotRecheckAfterItsLastByteAndFailuresKeepTheirCause() {
+        var revoked = new AtomicBoolean();
+        doAnswer(call -> {
+                    if (revoked.get()) throw new IllegalStateException("revoked");
+                    return null;
+                })
+                .when(auth)
+                .authorize(actor, workspace, Capability.READ_PRIVATE);
+        var count = new AtomicLong();
+        service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
+                .writeTo(new OutputStream() {
+                    @Override
+                    public void write(int value) {
+                        if (count.incrementAndGet() == bytes.length) revoked.set(true);
+                    }
+
+                    @Override
+                    public void write(byte[] data, int offset, int length) {
+                        if (count.addAndGet(length) == bytes.length) revoked.set(true);
+                    }
+                });
+        assertThat(count).hasValue(bytes.length);
+        assertThatThrownBy(() -> service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf"))
+                .hasMessage("revoked");
+        revoked.set(false);
+        var download = service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf");
+        assertThatThrownBy(() -> download.writeTo(new OutputStream() {
+                    @Override
+                    public void write(int value) throws java.io.IOException {
+                        revoked.set(true);
+                        throw new java.io.IOException("synthetic write failure");
+                    }
+
+                    @Override
+                    public void write(byte[] data, int offset, int length) throws java.io.IOException {
+                        write(0);
+                    }
+                }))
+                .hasMessage("revoked")
+                .satisfies(error -> assertThat(error.getSuppressed())
+                        .anyMatch(failure -> failure instanceof AssetStorageException));
+    }
+
+    @Test
     void activeTransfersEnforceWorkspaceAndInstanceLimitsAndReleaseCapacity() throws Exception {
         var other = WorkspaceId.random();
         var otherAsset =
@@ -260,9 +304,11 @@ class MediaFileServiceTests {
                                 .writeTo(blocked)));
                 assertThat(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
                         .isTrue();
+                clearInvocations(repository);
                 for (var selected : workspaces)
                     assertUnavailable(() -> service.publicDownload(selected, commit, "/note", "public/source.pdf")
                             .writeTo(OutputStream.nullOutputStream()));
+                verifyNoInteractions(repository);
                 for (var selected : workspaces.subList(0, 2)) {
                     var uploaded = service.upload(
                             actor, selected, "reserved-upload-01", "application/pdf", new ByteArrayInputStream(bytes));

@@ -77,8 +77,7 @@ public final class MediaFileService {
             check.run();
             return asset;
         } catch (RuntimeException failure) {
-            check.run();
-            throw failure;
+            throw checkedFailure(check, failure);
         }
     }
 
@@ -86,15 +85,14 @@ public final class MediaFileService {
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, String path) {
         Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);
         check.run();
-        try {
+        try (var admission = admit(workspace, false)) {
             String commit = repository.selectCommit(workspace, requested).orElseThrow(MediaFileService::missing);
             var catalog = repository.media(workspace, commit);
             ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
             check.run();
             return new Download(workspace, path, asset, check, false);
         } catch (RuntimeException failure) {
-            check.run();
-            throw failure;
+            throw checkedFailure(check, failure);
         }
     }
 
@@ -104,15 +102,14 @@ public final class MediaFileService {
             if (!publicArticle(snapshot, commit, route).equals(article)) throw missing();
             return null;
         });
-        try {
+        try (var admission = admit(workspace, true)) {
             var catalog = repository.media(workspace, commit);
             if (!catalog.publicPaths().contains(path) || !references(article, path)) throw missing();
             ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
             check.run();
             return new Download(workspace, path, asset, check, true);
         } catch (RuntimeException failure) {
-            check.run();
-            throw failure;
+            throw checkedFailure(check, failure);
         }
     }
 
@@ -190,12 +187,21 @@ public final class MediaFileService {
                         }
                     }
                 });
-                check.run();
             } catch (RuntimeException failure) {
-                check.run();
-                throw failure;
+                throw checkedFailure(check, failure);
             }
         }
+    }
+
+    private static RuntimeException checkedFailure(Runnable check, RuntimeException failure) {
+        try {
+            check.run();
+        } catch (RuntimeException denied) {
+            // Preserve the diagnostic while keeping the current authorization failure client-visible.
+            if (denied != failure) denied.addSuppressed(failure);
+            return denied;
+        }
+        return failure;
     }
 
     private synchronized Admission admit(WorkspaceId workspace, boolean publicTransfer) {
