@@ -8,6 +8,7 @@ mkdir -p "$FAKE_STATE"
 command="${*: -1}"
 printf '%s\n' "$*" >> "$FAKE_STATE/ssh.log"
 case "$command" in
+    "bash -c "*) bash -c "$command" ;;
     *"image inspect"*) [ -f "$FAKE_STATE/remote-has-image" ] ;;
     *"[ -e "*) [ -f "$FAKE_STATE/remote-has-entrance" ] ;;
     *"mv -f"*) echo "$command" >> "$FAKE_STATE/sync.log"; exit 0 ;;

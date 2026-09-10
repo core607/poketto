@@ -3,6 +3,8 @@
 Date: 2026-09-06
 Status: Implemented
 
+[Core review sessions](2026-09-10-review-scope-and-sessions.md) replaces all-file coverage with runtime-code coverage and defines test/document exemptions and versioned continuation. Transport completeness still applies to every selected core change.
+
 [Repository-aware review](2026-09-09-review-agent-loop.md) supersedes the request budgets, single-response stages, per-part posting, and reasoning-retention rules below with bounded code-reading loops and diagnostic traces. Immutable diff coverage, trusted execution, commit-bound results, and failure rules remain current.
 
 ## Problem
