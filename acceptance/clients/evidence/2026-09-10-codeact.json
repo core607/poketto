@@ -99,5 +99,11 @@
     "Move used local rename and selected save; dedicated CLI move/export and returned artifacts remain unimplemented.",
     "No AGENTS.md existed in the synthetic fixture; this run does not prove bootstrap-guide delivery.",
     "The following CLI help refinement was verified separately on Linux: repository-relative paths, transient /tmp, and python3."
-  ]
+  ],
+  "cleanupHarnessVerification": {
+    "sourceCommit": "b53708ab64e29e319d2849dae7098d3abb347103",
+    "runtimeManifestSha256": "e32faac564a8e123dea0c002855b8f064fd4870cf8fe853e46829454248713c5",
+    "result": "PASS",
+    "scope": "Native host startup, health and full resource cleanup; no repeated model calls"
+  }
 }
