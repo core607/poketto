@@ -1,16 +1,16 @@
 {
-  "sourceCommit": "b53708ab64e29e319d2849dae7098d3abb347103",
+  "sourceCommit": "3cc06e5fadf96c933ad82f9a27c3cfb25583bf90",
   "fixtureParent": "/var/lib",
   "authentication": "synthetic stub; not PostgreSQL or HTTP MCP client acceptance",
   "dependencies": "real Git authority, publication/export/atomic patch services, local managed originals, Java adapter, signed capture/materialization bridge, synchronous CLI and SRT on native Linux",
   "observations": [
     {
-      "result": "PASS",
-      "test": "root-owned-socket-rejects-non-root-peer",
       "observation": {
         "requestBytes": 0,
         "accepted": true
-      }
+      },
+      "result": "PASS",
+      "test": "root-owned-socket-rejects-non-root-peer"
     },
     {
       "result": "PASS",
@@ -59,7 +59,7 @@
     },
     {
       "result": "PASS",
-      "milliseconds": 2134.163584,
+      "milliseconds": 1976.514891,
       "test": "signed-open-through-production-socket-and-signature-checks"
     },
     {
@@ -68,9 +68,9 @@
       "test": "synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies"
     },
     {
+      "meanMilliseconds": 939.0193723,
       "result": "PASS",
-      "test": "twenty-adapter-session-reuses",
-      "meanMilliseconds": 953.17951885
+      "test": "twenty-adapter-session-reuses"
     },
     {
       "result": "PASS",
@@ -93,9 +93,9 @@
       "test": "callback-cancellation-kills-detached-descendants"
     },
     {
+      "reason": "CANCELLED",
       "result": "PASS",
-      "test": "revocation-closes-active-process-tree",
-      "reason": "CANCELLED"
+      "test": "revocation-closes-active-process-tree"
     },
     {
       "result": "PASS",
@@ -103,11 +103,11 @@
       "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client"
     },
     {
+      "adapterClassSha256": "79b9360340dd1651b57d31d2f7749ccf68cbb54076bd3ebf675584d9359aaa81",
+      "tests": 19,
       "summary": "PASS",
       "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
-      "nativeProbeClassSha256": "daccd5e73d9f9e7270d74064f2f0407b66d77c3112395de84a3bc62ccea16b54",
-      "adapterClassSha256": "18bd7c43cde99c211fd6d08d3b7a4aeb9305358b1dd02db43bb2849857978fe8",
-      "tests": 19
+      "nativeProbeClassSha256": "daccd5e73d9f9e7270d74064f2f0407b66d77c3112395de84a3bc62ccea16b54"
     },
     {
       "test": "java-process-loss-expires-real-worker-lease",
@@ -115,12 +115,12 @@
     },
     {
       "nativeCombined": "PASS",
-      "runtimeManifestSha256": "7d7e5bab16efc49060f7735e0a9030e1372db2dbc96681eaad42cf6154b1e629",
+      "runtimeManifestSha256": "6959de3e6063125ed7a9fbf952e2822518dff16f8303b87bdc68f378c5fb044b",
       "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
       "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
-      "workerSha256": "a0bbc43f9252aa54cc288f1a81477cccf397ff87da20c7d7e9537128a150e2cd",
+      "workerSha256": "1313c15fa75f7788c665098c822752e2c84a8bd0b51216d84f1f47ee4c4505d5",
       "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
-      "bridgeSha256": "b6543b235c12c5fd5fdf5fd512b42b6fa23323ad5c88c25927a032b2ec789abc",
+      "bridgeSha256": "0d9da34a5ba5629bcdf27b32afec40b49309149427d0e3b9a74514811deb0167",
       "cliSha256": "ed6520937db3b80c5e8c69c77ddb8111ee4b161f9c6faabfc44ef965442ec1d9",
       "sessionFilesSha256": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
       "materializeSha256": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692",
@@ -133,5 +133,20 @@
       "cleanup": "PASS"
     }
   ],
-  "diagnostics": "JGit could not persist an optional filesystem-attribute cache under the deliberately absent synthetic account home. Export, worker execution and all required cleanup assertions succeeded."
+  "diagnostics": "JGit could not persist an optional filesystem-attribute cache under the deliberately absent synthetic account home. Export, worker execution and all required cleanup assertions succeeded.",
+  "additionalObservation": {
+    "sourceCommit": "ec17b869347986a347984f952448de3428dd5ffa",
+    "result": "FAIL",
+    "scenario": "twenty-adapter-session-reuses",
+    "error": "WorkerUnavailableException at requireLive; session had stopped",
+    "cleanup": "PASS",
+    "cause": "Cleanup owns the bridge reader while draining completed input. A concurrent poll treated contention as malformed input and cancelled the lease. The original native failure did not record its cancellation reason; a deterministic signed-protocol regression independently confirms this shutdown defect."
+  },
+  "regression": {
+    "test": "test_bridge_poll_during_command_input_cleanup_does_not_cancel_the_lease",
+    "beforeCommit": "d903c583aa8a024283d9ea1ee6e952c4df7b383d",
+    "beforeResult": "FAIL: signed BRIDGE_POLL returned BRIDGE_UNAVAILABLE and cancelled the lease",
+    "afterCommit": "3cc06e5fadf96c933ad82f9a27c3cfb25583bf90",
+    "afterResult": "PASS: empty bounded poll preserves lease; all 46 worker tests passed"
+  }
 }
