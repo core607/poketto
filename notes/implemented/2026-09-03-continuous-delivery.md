@@ -3,6 +3,8 @@
 Date: 2026-09-03
 
 [Existing-installation delivery](2026-09-08-existing-installation-delivery.md) adds an image-only layout for operator-owned Compose installations. The standard synchronization and configuration contract below remains applicable to the generic stack.
+
+[Mirror registry delivery](2026-09-10-mirror-registry-delivery.md) adds an optional independent copy job after GHCR publication. `POKETTO_DEPLOY_MODE=mirror` pulls those same digests from the configured delivery registry in either layout; registry failure leaves canonical publication intact and does not silently fall back to archive transfer.
 Status: Implemented
 
 The [phase-one delivery boundary](../proposed/2026-09-05-phase-one-daily-use.md) explicitly excludes backup prerequisites. Its installation may enable deployment without the backup freshness gate described below; backup and recovery work remains a separate proposal.
@@ -43,7 +45,7 @@ longer. Inspect progress before retrying: increasing the deadline does not repai
 a failed route or make an incomplete archive deployable. Interrupted archives
 are not resumed by the supplied transfer script.
 
-The environment supplies the variables `POKETTO_DEPLOY_ROOT` and optional `POKETTO_DEPLOY_MODE` (`pull` by default, or `transfer`) and the secrets `POKETTO_DEPLOY_TARGET` (`user@host`, a secret because it names the private host), `POKETTO_DEPLOY_SSH_KEY`, `POKETTO_DEPLOY_HOST_KEY` holding the pinned `known_hosts` line, and optionally `POKETTO_REPOSITORY_PASSWORD`. Missing configuration fails with the list of what is absent. The job uses `StrictHostKeyChecking=yes` and `BatchMode`, never a personal key, and never a self-hosted runner on the production host. When the repository credential secret is set, the job streams it to the entrance's standard input, which records it into the host's `.env` once the deployment is healthy; it never appears as a command-line argument or in the summary. The summary records the commit, image, mode, and result.
+The environment supplies the variables `POKETTO_DEPLOY_ROOT` and optional `POKETTO_DEPLOY_MODE` (`pull` by default, `transfer`, or configured `mirror`) and the secrets `POKETTO_DEPLOY_TARGET` (`user@host`, a secret because it names the private host), `POKETTO_DEPLOY_SSH_KEY`, `POKETTO_DEPLOY_HOST_KEY` holding the pinned `known_hosts` line, and optionally `POKETTO_REPOSITORY_PASSWORD`. Missing configuration fails with the list of what is absent. The job uses `StrictHostKeyChecking=yes` and `BatchMode`, never a personal key, and never a self-hosted runner on the production host. When the repository credential secret is set, the job streams it to the entrance's standard input, which records it into the host's `.env` once the deployment is healthy; it never appears as a command-line argument or in the summary. The summary records the commit, image, mode, and result.
 
 ### Compose and SSH scripts
 

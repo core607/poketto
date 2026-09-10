@@ -11,7 +11,9 @@ Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检
 
 如果这些细节分别在后续功能中自行成形，同一份文档就会在 content、projection、web 和 MCP 模块中得到互不兼容的表示。
 
-[远程仓库权威](2026-09-01-remote-repository-authority.md)取代了本文最初的本地初始化边界，并持有当前的物化与确认语义。下文的文档格式与 revision 决策仍然有效。
+[远程仓库权威](2026-09-01-remote-repository-authority.md)取代了本文最初的本地初始化边界，并持有当前的物化与确认语义。下文的 revision 决策仍然有效。
+
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现不依赖 `documents/` 布局与 frontmatter 标识的任意路径读取和原子补丁；下文的 UUID 写入路径是等待移除的过渡性内部实现。路径安全规则、归一化碰撞检测与精确 blob revision 仍然有效。
 
 ## 决策
 
@@ -72,7 +74,7 @@ Markdown 正文。
 
 content 模块绑定数据目录，把各工作空间的远程权威解析为一次性缓存，解析并规范序列化文档，对外提供内容值类型，并扫描 commit-pinned `main` tree。文档写入已经建立在本边界之上；投影、HTTP 与 MCP 入口仍在边界之外。
 
-[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仅按 hash 引用图片的要求，改为任意层级 Markdown、仓库发布策略、不可变受管引用与只读同目录图片图库。在该提案实现之前，本文仍描述可执行基线；这项反转不会被倒写成当前解析器或仓库布局已经具备的行为。
+[仓库原生发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仅按 hash 引用图片的要求，改为任意层级 Markdown、仓库发布策略、不可变受管引用与只读同目录图片图库。[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现这一替换；本文记录过渡期的 UUID 布局以及沿用至今的规则。
 
 ## 备选方案
 
