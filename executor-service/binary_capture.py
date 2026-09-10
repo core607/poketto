@@ -20,8 +20,10 @@ class BinaryCapture:
     charged to the lease tmpfs, not accumulated in worker process memory.
     """
 
-    def __init__(self, root, path, cancelled=lambda: False):
+    def __init__(self, root, path, cancelled=lambda: False, maximum=MAX_BINARY_BYTES):
         selected_paths([path], [])
+        if type(maximum) is not int or not 0 <= maximum <= MAX_BINARY_BYTES:
+            raise CaptureRejected('Invalid binary capture bound')
         self.id, self.path = str(uuid.uuid4()), path
         self.stage = Path(root) / ('outgoing-' + self.id)
         self.fd = None
@@ -38,7 +40,7 @@ class BinaryCapture:
                 source = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
                 handles.callback(os.close, source)
                 before = os.fstat(source)
-                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > MAX_BINARY_BYTES:
+                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > maximum:
                     raise CaptureRejected('Binary source must be one bounded regular file')
                 self.fd = os.open(self.stage, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 self.created = True
@@ -47,7 +49,7 @@ class BinaryCapture:
                     if cancelled():
                         raise CaptureRejected('Binary capture was cancelled')
                     self.size += len(block)
-                    if self.size > MAX_BINARY_BYTES:
+                    if self.size > maximum:
                         raise CaptureRejected('Binary source exceeds its bound')
                     digest.update(block)
                     remaining = memoryview(block)
@@ -71,6 +73,14 @@ class BinaryCapture:
     def manifest(self):
         return {'captureId': self.id, 'writes': [{'path': self.path, 'bytes': self.size, 'sha256': self.digest}],
                 'deletes': [], 'absent': []}
+
+    def transfer(self, destination):
+        """Transfer ownership to protected storage supplied by the supervisor."""
+        if self.fd is None:
+            raise CaptureRejected('Binary snapshot is unavailable')
+        os.rename(self.stage, destination)
+        fd, self.fd, self.created = self.fd, None, False
+        return fd
 
     def chunk(self, index, offset, limit):
         if (self.fd is None or type(index) is not int or index != 0

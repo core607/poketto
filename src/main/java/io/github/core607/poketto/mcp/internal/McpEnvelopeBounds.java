@@ -42,7 +42,8 @@ final class McpEnvelopeBounds {
                     var name = new NameCounter();
                     parser.readString(name);
                     if (toolName
-                            && name.value.toString().equals("get_asset")
+                            && (name.value.toString().equals("get_asset")
+                                    || name.value.toString().equals("get_artifact"))
                             && length > McpBodyLimitFilter.MAX_INITIALIZE_BYTES) return Result.TOO_COMPLEX;
                 }
                 if (depth == 1 && token == JsonToken.PROPERTY_NAME) rootField = parser.currentName();

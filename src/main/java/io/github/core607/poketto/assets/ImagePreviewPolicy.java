@@ -1,14 +1,14 @@
-package io.github.core607.poketto.assets.internal;
+package io.github.core607.poketto.assets;
 
-import io.github.core607.poketto.assets.AssetStorageException;
 import java.nio.charset.StandardCharsets;
 import java.util.zip.CRC32;
 
-/** Header, structural-envelope and dimension validation without decoding or transforming pixels. */
-final class ImagePolicy {
-    private ImagePolicy() {}
+/** Bounded image-preview validation; callers separately authorize the source and reserve response memory. */
+public final class ImagePreviewPolicy {
+    private ImagePreviewPolicy() {}
 
-    static String validate(byte[] bytes) {
+    public static String validate(byte[] bytes) {
+        if (bytes == null || bytes.length > ManagedBlobStore.MAX_UPLOAD_BYTES) invalid();
         try {
             if (bytes.length >= 45
                     && bytes[0] == (byte) 137

@@ -1112,6 +1112,8 @@ class WorkerSocketTests {
                             1,
                             "codeActProtocol",
                             codeActProtocol,
+                            "artifactProtocol",
+                            1,
                             "workerBootId",
                             boot,
                             "maxFrameBytes",

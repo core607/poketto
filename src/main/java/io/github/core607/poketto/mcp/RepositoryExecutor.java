@@ -23,6 +23,37 @@ public interface RepositoryExecutor {
             Duration timeout,
             ExecutionCancellation cancellation);
 
+    /** Reads one bounded chunk from this live MCP session; unknown or expired artifacts return empty. */
+    Optional<ArtifactChunk> readArtifact(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            String serverSessionId,
+            String artifactId,
+            long offset,
+            int limit,
+            ExecutionCancellation cancellation);
+
+    record ArtifactChunk(
+            String artifactId,
+            String name,
+            String mediaType,
+            long size,
+            String sha256,
+            boolean truncated,
+            int expiresInSeconds,
+            long offset,
+            byte[] bytes) {
+        public ArtifactChunk {
+            if (bytes.length > 65536) throw new IllegalArgumentException("Artifact chunk exceeds its bound");
+            bytes = bytes.clone();
+        }
+
+        @Override
+        public byte[] bytes() {
+            return bytes.clone();
+        }
+    }
+
     record ExecutionResult(
             String commit,
             int exitCode,
