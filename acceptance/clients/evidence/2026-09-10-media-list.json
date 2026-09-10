@@ -1,0 +1,77 @@
+{
+  "sourceCommit": "6d1986d2e079f04ee499c34a814d1bc79cee149f",
+  "runtimeManifestSha256": "fcee18517632db2afeb153d3d4e88ae397fbc5c3a4aeeb3ff80fd098e216b998",
+  "workerSources": {
+    "worker.py": "ef1ade1bd5e557dcceeae6a388071c97f8941614d3995b270ad45b59ed08a68d",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "87e929e107ed7b268ba76247f31ff0139ad343f4aeb27eaa2300752139c9e06c",
+    "cli.py": "5d610105e42f63791113abbbb71432c44d7c80875433b8d9e89cc1cfa9a00672",
+    "session_files.py": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+    "binary_capture.py": "7c8e5760978821effc7804b273c3f852572314a78a5fa38db3e83bccda4477be",
+    "materialize.py": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd"
+  },
+  "environment": "isolated real Spring authentication, PostgreSQL, Streamable HTTP MCP and native Linux SRT with synthetic repository",
+  "client": {
+    "name": "codex",
+    "version": "codex-cli 0.153.4",
+    "exitCode": 0,
+    "completedMcpCalls": 6,
+    "unexpectedToolFailures": 0,
+    "transcriptSha256": "f322ec30f14875de4897373787ab5ad5c92fd40299ab4b06a90b65d95bd3fd6f"
+  },
+  "observations": {
+    "unsavedImports": 2,
+    "firstPage": {
+      "indexSource": "worktree",
+      "indexVersion": "8dfe023bf0a3b48a6ba20f8a0821e91f56d574b0d5b70651f606e8bfcf1d675e",
+      "items": [
+        {
+          "path": "private/media-list-test/a.txt",
+          "mediaType": "text/plain",
+          "size": 2
+        }
+      ],
+      "total": 2,
+      "offset": 0,
+      "nextOffset": 1
+    },
+    "secondPage": {
+      "indexSource": "worktree",
+      "indexVersion": "8dfe023bf0a3b48a6ba20f8a0821e91f56d574b0d5b70651f606e8bfcf1d675e",
+      "items": [
+        {
+          "path": "private/media-list-test/b.txt",
+          "mediaType": "text/plain",
+          "size": 3
+        }
+      ],
+      "total": 2,
+      "offset": 1,
+      "nextOffset": null
+    },
+    "changedIndex": {
+      "ok": false,
+      "code": "MEDIA_INDEX_CHANGED",
+      "indexVersion": "1584ee5f64cf3ee8b43e62e40a63896f4eb2bd5a85af7d2b31a346105953f50e"
+    },
+    "historical": {
+      "indexSource": "repository",
+      "indexVersion": "3d788d686044b46492c1538779a8788b02af58d60e06e8305911db48b1eeb3e4",
+      "commit": "0e0b4761f5e776ec91a3b42754e0d625015aa480",
+      "items": [],
+      "total": 0,
+      "offset": 0,
+      "nextOffset": null
+    }
+  },
+  "authority": {
+    "headBeforeAndAfter": "0e0b4761f5e776ec91a3b42754e0d625015aa480",
+    "remoteMainCommitCount": 1,
+    "newCommits": 0,
+    "indexAndImportedPathsAbsent": true
+  },
+  "scope": "Focused media-list acceptance. Public projection isolation and withdrawal are covered by the separately recorded native probe. No final HTTPS deployment claim.",
+  "cleanup": "PASS; client key revoked, forwarding process closed, synthetic services/database/users/mounts removed"
+}

@@ -17,6 +17,12 @@ the captured prefix and unsaved work. It includes the lifecycle suite and succes
 lease/storage cleanup. Actual-client image and binary delivery remains a separate
 acceptance requirement.
 
+The [media-list run](evidence/2026-09-10-media-list.json) verifies unsaved import
+discovery, versioned pagination, historical catalogs and public metadata isolation
+despite local index tampering. Publication withdrawal prevents further listing.
+Its 25 Java scenarios, process-loss lease expiry and fixture cleanup pass on native
+Linux; authentication remains the explicit synthetic stub described above.
+
 Build the reproducible runtime with Java 26:
 
 ```sh

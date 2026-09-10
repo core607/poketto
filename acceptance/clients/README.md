@@ -1,5 +1,12 @@
 # Actual MCP client acceptance
 
+The [focused media-list run](evidence/2026-09-10-media-list.json) verifies one
+actual Codex client discovers two unsaved imports, follows versioned pages,
+rejects a changed index and reads an empty historical catalog. Independent
+inspection confirms the synthetic remote still contains only its initial commit.
+This run uses real Spring authentication, PostgreSQL, HTTP MCP and native SRT;
+public projection isolation remains covered by the native executor probe.
+
 For CodeAct on a native systemd host, `native-host.py` holds the real synthetic Spring application, a pinned disposable PostgreSQL container and the real root worker for external clients. It takes `--runtime`, `--worker-source`, `--tools`, and `--java` paths plus an optional loopback `--port`. Stage `stageAcceptanceRuntime` with a `manifest.sha256` covering every runtime file, as in the native executor entrance. Run the controller as root with the worker's Python dependencies available. It prints a ready receipt with the generated fixture root; only root can read the disposable password from that root's `client.json`. Obtain client keys through normal HTTP administration. Forward only the loopback application port when the clients run elsewhere. Create `stop` in the reported fixture root when finished; the controller also enforces a bounded lifetime and removes its services, database, accounts, mounts and secrets. Require its `cleanup: PASS` result. A ready receipt is setup evidence, not a successful model-driven workflow.
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
