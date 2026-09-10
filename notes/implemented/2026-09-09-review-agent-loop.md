@@ -3,6 +3,8 @@
 Date: 2026-09-09
 Status: Implemented
 
+[Core review sessions](2026-09-10-review-scope-and-sessions.md) narrows the submitted diff to runtime code and configuration, adds cross-run conversation recovery and checkpoint rollover, and extends artifact retention. The tool loop and tariff budgets below remain current.
+
 ## Problem
 
 Complete diff coverage does not show every caller, configuration, or existing implementation. A reviewer that cannot retrieve surrounding code can mistake missing context for a missing implementation. The [complete review transport](2026-09-06-complete-pr-review.md) remains responsible for immutable commit identity, complete diff coverage, retained results, and explicit failure. This record replaces its single-response review stages and request budgets.

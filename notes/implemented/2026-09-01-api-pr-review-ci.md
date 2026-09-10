@@ -3,6 +3,8 @@
 Date: 2026-09-01
 Status: Implemented
 
+[Core review sessions](2026-09-10-review-scope-and-sessions.md) owns runtime-only scope, no-call exemptions and persistent PR conversations.
+
 [Complete review coverage](2026-09-06-complete-pr-review.md) supersedes the single-request transport, truncation, warning-only failure, and rule-loading mechanisms below. The provider configuration, persona, owner-only access, and advisory review role remain current.
 
 [Repository-aware review](2026-09-09-review-agent-loop.md) adds bounded read-only tools and replaces the diff-only evidence restriction. Reviewed source remains data and never supplies executable runner code or trusted instructions.

@@ -15,6 +15,7 @@ import review
 
 class FakeGitHub:
     repository = "owner/project"
+    number = "25"
 
     def __init__(self, revision):
         self.revision = revision
