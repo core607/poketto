@@ -2,7 +2,7 @@
 
 Poketto is a repository-native personal knowledge service whose public face is a blog. Every production workspace uses [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md); the primary single-server profile keeps a disposable local repository cache and will use an authoritative local ManagedBlobStore for Poketto uploads, a disposable cache for read-only repository images, and local SRT. The [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) selects authoritative OSS, derived image caching, and remote SRT through configuration. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted target decisions while they await implementation and must not be described as shipped.
 
-The public README and requirements note have .zh.md counterparts; edit both sides in the same change (see [translate-docs](.agents/skills/translate-docs/SKILL.md)). Agent instructions and skills are English-only.
+The public README, requirements note and [usage reference](docs/usage.md) have .zh.md counterparts; edit both sides in the same change (see [translate-docs](.agents/skills/translate-docs/SKILL.md)). Agent instructions and skills are English-only.
 
 ## Arrival guide
 
@@ -58,7 +58,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 
 ## Rules
 
-- Agent instructions and skills are English-only. The requirements note and public README retain .zh.md counterparts; other notes are English by default and do not require a Chinese counterpart.
+- Agent instructions and skills are English-only. Notes are English by default unless covered by the bilingual pairs declared above.
 - Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
 - Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report it and block actions and completion claims that depend on it; continue only authorized work whose outcome does not depend on that check, without claiming the check passed.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
