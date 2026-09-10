@@ -87,8 +87,10 @@ its assets implementation without a module dependency cycle. The authenticated
 [HTTP contract](../../docs/usage.md#export-http-interface) exposes creation, download
 and release. [Native HTTP acceptance](../../acceptance/evidence/2026-09-10-export-http.json)
 verifies actual ZIP bytes and scoped delivery through the real application.
-Browser controls and CLI materialization remain required before the complete export
-feature is delivered. The `closeClient` lifecycle callback is prepared and tested;
+The editor provides file, folder and workspace export selection, scope choice,
+native browser downloads and focus restoration. [Browser acceptance](https://github.com/core607/poketto/blob/a0d4fd4ef01dd940d2457b15162f566a8d3d37ff/README.md)
+records the real application flow and independently verified ZIP contents. CLI
+materialization remains required before the complete export feature is delivered. The `closeClient` lifecycle callback is prepared and tested;
 its production MCP session hookup belongs to the pending CLI entrance. Browser
 handles use owner/workspace/expiry binding and do not claim MCP-session cleanup.
 
