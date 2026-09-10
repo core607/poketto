@@ -131,4 +131,69 @@ class IndexedMediaDeliveryTests {
         return new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
     }
+
+    @Test
+    void invalidMediaIndexKeepsIndependentlyAuthorizedGitImagesAndMarksGalleryIncomplete() throws Exception {
+        var workspace = WorkspaceId.random();
+        var fixture = new RemoteRepositoryFixture(directory.resolve("invalid-index"));
+        var imageOutput = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", imageOutput);
+        byte[] image = imageOutput.toByteArray();
+        var files = new LinkedHashMap<String, byte[]>();
+        files.put(
+                RepositoryPublishingPolicy.PATH,
+                "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8));
+        files.put(RepositoryMediaIndex.PATH, "{broken".getBytes(StandardCharsets.UTF_8));
+        files.put(
+                "album/index.md",
+                "# Album\n![Visible](photo.png)\n![Hidden](../private/photo.png)\n![Missing](indexed.png)"
+                        .getBytes(StandardCharsets.UTF_8));
+        files.put("album/photo.png", image);
+        files.put("album/gallery.png", image);
+        files.put("private/photo.png", image);
+        fixture.commitRemote(workspace, files);
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofMinutes(5));
+        snapshots.refresh(workspace);
+        var auth = mock(AuthService.class);
+        doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        var admission = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 4, Duration.ZERO);
+        var assets = new AssetService(
+                auth,
+                new JGitRepositoryContentReader(fixture.authority()),
+                new JGitRepositoryBlobReader(fixture.authority()),
+                new RepositoryMarkdownConfiguration().repositoryMarkdownInspector(),
+                snapshots,
+                () -> ManagedBlobStore.local(directory.resolve("unused-originals")),
+                directory.resolve("git-cache"),
+                16 * 1024 * 1024,
+                128,
+                Clock.systemUTC(),
+                admission);
+        var page = assets.publicDocument(workspace, "/album").orElseThrow();
+        assertThat(page.media().images()).containsOnlyKeys("photo.png");
+        assertThat(page.media().gallery()).hasSize(1);
+        assertThat(page.media().galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
+        assertThat(page.media().downloads()).isEmpty();
+        String imageUrl = page.media().images().get("photo.png");
+        assertThat(assets.readPublicImage(workspace, imageUrl.substring("/api/public/assets/".length()))
+                        .bytes())
+                .isEqualTo(image);
+        String galleryUrl = page.media().gallery().getFirst().src();
+        assertThat(assets.readPublicImage(workspace, galleryUrl.substring("/api/public/assets/".length()))
+                        .bytes())
+                .isEqualTo(image);
+        var lease = admission.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        try (var producer = lease.producer()) {
+            assertThat(assets.readExact(
+                                    mock(AuthPrincipal.class),
+                                    workspace,
+                                    new AssetSource.Repository(Optional.empty(), "private/photo.png"))
+                            .bytes())
+                    .isEqualTo(image);
+        } finally {
+            lease.responseComplete();
+        }
+    }
 }

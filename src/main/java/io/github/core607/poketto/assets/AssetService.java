@@ -110,8 +110,8 @@ public final class AssetService {
             AssetSource.Repository repositorySource = (AssetSource.Repository) source;
             String commit =
                     blobs.selectCommit(workspace, repositorySource.commit()).orElseThrow(AssetService::notFound);
-            RepositoryMediaSnapshot catalog = blobs.media(workspace, commit);
-            var indexed = catalog.index().files().get(repositorySource.path());
+            RepositoryMediaSnapshot catalog = availableMedia(workspace, commit);
+            var indexed = catalog == null ? null : catalog.index().files().get(repositorySource.path());
             if (indexed != null)
                 return bytes(
                         workspace,
@@ -304,11 +304,7 @@ public final class AssetService {
                                 .anyMatch(authored -> MarkdownDestinations.path(path, authored)
                                         .isPresent())
                         || destinations.images().stream().anyMatch(authored -> !authored.startsWith("managed:")))) {
-            try {
-                media = java.util.Objects.requireNonNull(blobs.media(workspace, commit));
-            } catch (ContentRepositoryException unavailable) {
-                // Invalid media metadata must not make ordinary article text unavailable.
-            }
+            media = availableMedia(workspace, commit);
         }
         final RepositoryMediaSnapshot catalog = media;
         Map<String, String> links = new LinkedHashMap<>();
@@ -372,8 +368,9 @@ public final class AssetService {
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
                 galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
             }
-            if (catalog == null) galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
-            else {
+            if (catalog == null && galleryStatus != ResolvedMedia.GalleryStatus.UNAVAILABLE)
+                galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+            if (catalog != null) {
                 String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
                 int candidates = galleryCandidates;
                 for (var entry : catalog.index().files().entrySet()) {
@@ -486,16 +483,25 @@ public final class AssetService {
                 return Optional.empty();
             }
         }
-        if (commit == null || catalog == null) return Optional.empty();
+        if (commit == null) return Optional.empty();
         return MarkdownDestinations.path(path, authored)
                 .filter(value -> !value.isEmpty())
                 .flatMap(value -> {
-                    var media = catalog.index().files().get(value);
+                    var media = catalog == null ? null : catalog.index().files().get(value);
                     if (media != null)
                         return Optional.of(new Indexed(
                                 commit, value, media, catalog.publicPaths().contains(value)));
                     return blobs.find(workspace, commit, value).map(Git::new).map(target -> (Target) target);
                 });
+    }
+
+    private RepositoryMediaSnapshot availableMedia(WorkspaceId workspace, String commit) {
+        try {
+            return java.util.Objects.requireNonNull(blobs.media(workspace, commit));
+        } catch (ContentRepositoryException unavailable) {
+            // Git paths retain their independent immutable-object and publication checks.
+            return null;
+        }
     }
 
     private AssetBytes bytes(WorkspaceId workspace, Target target) {
