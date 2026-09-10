@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from resource_pool import ResourcePool
 from bridge import BridgeRejected, LeaseBridge
 from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
-from materialize import IncomingFile, IncomingMove
+from materialize import IncomingFile, IncomingMove, MaterializationCapacity
 from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 
@@ -118,7 +118,7 @@ class Service:
         self.lock = threading.RLock()
 
     def hello(self):
-        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'workerBootId': self.boot,
+        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1, 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
 
@@ -396,6 +396,8 @@ class Service:
                     else:
                         s.incoming.close()
                         s.incoming = None
+            except MaterializationCapacity:
+                raise Rejected('MATERIALIZE_CAPACITY') from None
             except (CaptureRejected, OSError):
                 raise Rejected('MATERIALIZE_REJECTED') from None
         with self.lock:

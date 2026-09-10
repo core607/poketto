@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
+    parser.add_argument('--scenario', choices=('all', 'exports'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -152,7 +153,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         agent, = list((runtime / 'jars').glob('byte-buddy-agent-*.jar'))
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', app_unit,
                    '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64', '-p', 'RuntimeMaxSec=240',
-                   str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m',
+                   str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(root / 'home'),
                    '-javaagent:' + str(agent), '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
                    'io.github.core607.poketto.executor.internal.ExecutorNativeProbe', str(root / 'java.json'), mode]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -184,6 +185,10 @@ with socket.socket(socket.AF_UNIX) as connection:
         parsed = [json.loads(line) for line in output if line.startswith('{')]
         if mode == 'main':
             assert any(item.get('summary') == 'PASS' for item in parsed)
+        elif mode == 'exports':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority',
+                'public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files'}
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -193,7 +198,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
             created_users.append(user)
         app_account, exec_account = pwd.getpwnam(app_user), pwd.getpwnam(exec_user)
-        for name in ('exports', 'control', 'fake-inbox', 'public-fixture'):
+        for name in ('exports', 'control', 'fake-inbox', 'public-fixture', 'home'):
             directory = root / name
             directory.mkdir(mode=0o700)
             os.chown(directory, app_account.pw_uid, app_account.pw_gid)
@@ -249,8 +254,9 @@ with socket.socket(socket.AF_UNIX) as connection:
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
-        execute_java('main')
-        execute_java('abandon')
+        execute_java('main' if args.scenario == 'all' else 'exports')
+        if args.scenario == 'all':
+            execute_java('abandon')
         no_processes(wait=22)
         passed('java-process-loss-expires-real-worker-lease')
         control({'operation': 'assert-source-unchanged'})
@@ -264,7 +270,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'artifactsSha256': digest(root / 'artifacts.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
-            'source': 'synthetic-only'}), flush=True)
+            'source': 'synthetic-only', 'scenario': args.scenario}), flush=True)
     finally:
         try:
             diagnostic = root / 'initialization.json'

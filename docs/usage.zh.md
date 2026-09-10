@@ -41,7 +41,7 @@ exclude:
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 
-`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。ZIP 导出仍属于[内容计划](../notes/proposed/2026-09-09-codeact-content-and-media.md)。
+`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
 
 ## 导出 HTTP 接口
 
@@ -67,8 +67,16 @@ exclude:
 `max-retained-bytes`（2 GiB）、`max-workspace-bytes`（1600 MiB）、`max-packages`（8）、
 `lifetime-seconds`（600）与 `build-seconds`（120）。构建前预留完整 ZIP 额度，成功后仅计入实际大小。
 容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404。不支持 POSIX 权限的文件系统会在读取
-导出内容前返回 503。CLI 文件落地仍属于
-[导出计划](../notes/proposed/2026-09-10-portable-content-exports.md)。
+导出内容前返回 503。包内容与生命周期见
+[导出决策](../notes/implemented/2026-09-10-portable-content-exports.md)。
+
+在 CodeAct 会话中使用 `poketto export PATH... --output FILE [--public]`。
+选择仓库相对路径的文件或文件夹，`.` 表示可见工作空间。仅公开读取的会话始终导出宿主批准的公开投影。
+ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位置已有不同内容时保留原文件。
+结果符合 artifact 限额时，可执行 `poketto artifact create FILE --type application/zip`，再通过
+`get_artifact` 取回。[worker 文档](../executor-service/README.md)定义时限、大小边界、安装顺序和错误码；
+[真实 HTTP MCP 验收](../acceptance/clients/evidence/2026-09-10-cli-exports.json)验证了身份认证后的导出与 artifact 回传。
+`MATERIALIZE_CAPACITY` 会保留会话和已有文件：清理本地空间、缩小选择范围，或改用浏览器导出超出 worker 容量的 ZIP。
 
 ## MCP 与隔离执行
 
@@ -82,7 +90,7 @@ exclude:
 
 完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
 
-`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。可移植导出仍属于[内容计划](../notes/proposed/2026-09-09-codeact-content-and-media.md)。
+`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。
 
 `poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复
 Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本地。选定文件存在未保存修改或目标已占用时，
