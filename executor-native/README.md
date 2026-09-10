@@ -44,6 +44,13 @@ scenarios, process-loss lease expiry and cleanup pass. The separate
 [HTTP MCP client run](../acceptance/clients/evidence/2026-09-10-cli-exports.json)
 adds real PostgreSQL identity checks, MCP sessions and artifact byte return.
 
+The [export-capacity run](evidence/2026-09-11-export-capacity.json) fills a real
+lease filesystem until only 512 KiB remain. Export returns `MATERIALIZE_CAPACITY`
+without losing the session's unsaved files; freeing space permits another command
+and identical ZIP reuse. All 32 native scenarios, process-loss expiry and cleanup
+pass on the updated worker and adapter. The [authenticated HTTP replay](../acceptance/clients/evidence/2026-09-11-export-capacity.json)
+also verifies this recovery through real PostgreSQL identity and MCP sessions.
+
 Build the reproducible runtime with Java 26:
 
 ```sh
