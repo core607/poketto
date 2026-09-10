@@ -97,6 +97,12 @@ uses real database authentication and HTTP MCP. Independent Git and HTTP readbac
 confirm the move and repaired links, exclude unselected local edits, and verify
 that the refused dirty move adds no commit. Fixture cleanup passes.
 
+The [recovery run](../../executor-native/evidence/2026-09-10-cli-move-recovery.json)
+adds adapter-boundary reply loss and installation refusal. Real CLI recovery
+preserves subsequent local edits; skipping confirmed installation permits explicit
+synchronization while conservative baselines prevent an unsafe save. All 30 native
+scenarios and cleanup pass. Worker tests separately exercise dirty preconditions.
+
 The worker advertises `moveProtocol: 1`; the application requires it before
 opening a lease. Deploy the matching worker before enabling the application
 version that requires this protocol. Completed move receipts remain in the
