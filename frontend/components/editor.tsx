@@ -15,6 +15,7 @@ import { AssetPicker } from "./asset-picker";
 import { Gallery } from "./gallery";
 import { FileTree } from "./file-tree";
 import { FolderPicker } from "./folder-picker";
+import { ExportDialog } from "./export-dialog";
 import { DiagnosticMessage } from "./diagnostic";
 
 type Preview = {
@@ -42,6 +43,10 @@ export function Editor({
     { path: string; title: string; snippet: string }[] | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [exportSelection, setExportSelection] = useState<{
+    source: string;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
   const [moveSelection, setMoveSelection] = useState<{
     source: string;
     commit: string;
@@ -306,6 +311,13 @@ export function Editor({
   }
   return (
     <div className="editor-layout" ref={editorRoot} tabIndex={-1}>
+      {exportSelection && (
+        <ExportDialog
+          {...exportSelection}
+          fallbackFocus={editorRoot.current}
+          onClose={() => setExportSelection(null)}
+        />
+      )}
       {moveSelection && (
         <FolderPicker
           {...moveSelection}
@@ -317,6 +329,19 @@ export function Editor({
       <aside className="file-sidebar">
         <div className="sidebar-title">
           <h2>文件</h2>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy || !tree?.commit}
+            onClick={(event) =>
+              setExportSelection({
+                source: "",
+                returnFocus: event.currentTarget,
+              })
+            }
+          >
+            导出…
+          </button>
           <button
             className="text-button"
             disabled={busy}
@@ -345,6 +370,9 @@ export function Editor({
               busy={busy}
               onOpen={(path) => void open(path)}
               onMove={writable ? chooseMove : undefined}
+              onExport={(source, returnFocus) =>
+                setExportSelection({ source, returnFocus })
+              }
             />
           )}
         </nav>
