@@ -119,6 +119,16 @@ class CiGateTests(unittest.TestCase):
         self.assertEqual(0, status)
         factory.assert_not_called()
 
+    def test_unsupported_base_is_exempt_after_automatic_ci(self):
+        current = self.github.current
+        pr = current()
+        pr["base"]["ref"] = "codex/unrelated-stack"
+        self.github.current = lambda: pr
+        status, factory = self.run_main()
+        self.assertEqual(0, status)
+        factory.assert_not_called()
+        self.assertEqual("exempt", json.loads((self.output / "manifest.json").read_text())["state"])
+
     def test_wrong_run_head_workflow_repository_or_skipped_verify_is_rejected(self):
         original = copy.deepcopy(self.run)
         for key, value in [("head_sha", "c" * 40), ("path", ".github/workflows/other.yml"),
