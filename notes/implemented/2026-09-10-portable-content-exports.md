@@ -93,6 +93,10 @@ host-owned public path translation, protected ZIP materialization and per-attemp
 and session-close cleanup. Public directory selection expands to at most 128
 approved source paths. The transfer protocol permits up to 1 GiB while the
 server's ZIP limit, ordinary command deadline and lease disk quota remain active.
+The worker admits transfers against current free space with 1 MiB of bridge
+headroom and repeats the space check while streaming. Known disk-capacity
+failures return controlled errors, release staging and retain existing session
+files; unexpected transfer/storage failures still close the session.
 Different local files are preserved; handles and source coordinates never enter
 the command reply. [Native execution](../../executor-native/evidence/2026-09-10-cli-exports.json)
 and [HTTP MCP client acceptance](../../acceptance/clients/evidence/2026-09-10-cli-exports.json)

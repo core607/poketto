@@ -480,6 +480,32 @@ public final class ExecutorNativeProbe {
                         assertThat(denied.exitCode()).isEqualTo(1);
                         assertThat(denied.stdout()).contains("INVALID_EXPORT_SELECTION");
                     }
+                    if (full) {
+                        var capacity = execute(
+                                executor,
+                                session,
+                                "python3 -c \"import os; s=os.statvfs('.'); f=os.open('fill.bin',os.O_CREAT|os.O_RDWR,0o600); "
+                                        + "os.posix_fallocate(f,0,max(0,s.f_bavail*s.f_frsize-512*1024)); os.close(f)\"; "
+                                        + "poketto export . --output no-space.zip",
+                                new Cancellation());
+                        assertThat(capacity.exitCode()).isEqualTo(1);
+                        assertThat(capacity.stdout()).contains("MATERIALIZE_CAPACITY");
+                        assertThat(fixture.retainedPackages()).isZero();
+                        assertThat(execute(
+                                                executor,
+                                                session,
+                                                "rm fill.bin; cat scratch.txt; test ! -e no-space.zip",
+                                                new Cancellation())
+                                        .stdout())
+                                .isEqualTo("unsaved-export-needle");
+                        var repeated =
+                                execute(executor, session, "poketto export . --output bundle.zip", new Cancellation());
+                        assertThat(repeated.exitCode()).isZero();
+                        assertThat(JSON.readTree(repeated.stdout())
+                                        .path("result")
+                                        .path("sha256"))
+                                .isEqualTo(receipt.path("result").path("sha256"));
+                    }
                     var conflict = execute(
                             executor,
                             session,

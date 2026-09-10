@@ -254,10 +254,17 @@ class ProtocolTests(unittest.TestCase):
                     'delete': False, 'allowIdentical': False}
             with patch('materialize.os.open', side_effect=OSError(errno.ENOSPC, 'fixture full')):
                 failed = self.send(self.payload('MATERIALIZE_BEGIN', data))
-            self.assertEqual('MATERIALIZE_REJECTED', failed['code'])
+            self.assertEqual('MATERIALIZE_CAPACITY', failed['code'])
             self.assertIsNone(session.incoming)
             created = self.send(self.payload('MATERIALIZE_BEGIN', data))
             self.assertTrue(created['ok'], created)
+            reference = {'executionId': session.execution_id, 'transferId': created['transferId']}
+            with patch('materialize.os.write', side_effect=OSError(errno.ENOSPC, 'fixture full')):
+                failed = self.send(self.payload('MATERIALIZE_CHUNK',
+                    {**reference, 'offset': 0, 'data': base64.b64encode(b'x').decode()}))
+            self.assertEqual('MATERIALIZE_CAPACITY', failed['code'])
+            self.assertTrue(self.send(self.payload('MATERIALIZE_ABORT', reference))['ok'])
+            created = self.send(self.payload('MATERIALIZE_BEGIN', data))
             reference = {'executionId': session.execution_id, 'transferId': created['transferId']}
             self.assertTrue(self.send(self.payload('MATERIALIZE_CHUNK',
                 {**reference, 'offset': 0, 'data': base64.b64encode(b'x').decode()}))['ok'])

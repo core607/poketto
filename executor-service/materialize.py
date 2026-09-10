@@ -1,6 +1,7 @@
 """Bounded host-to-worktree transfers with frozen compare-and-replace installation."""
 from contextlib import ExitStack
 from bisect import bisect_left
+import errno
 import hashlib
 import base64
 import json
@@ -16,6 +17,23 @@ from session_files import CaptureRejected, MAX_CHUNK_BYTES, selected_paths
 
 # ZIP exports share this streaming channel; the lease tmpfs still enforces the actual disk quota.
 MAX_FILE_BYTES = 1024 * 1024 * 1024
+TRANSFER_HEADROOM = 1024 * 1024
+
+
+class MaterializationCapacity(CaptureRejected):
+    pass
+
+
+def _capacity(root, size):
+    available = os.statvfs(root)
+    # The command bridge and final path installation share the lease filesystem.
+    if available.f_bavail * available.f_frsize - size < TRANSFER_HEADROOM:
+        raise MaterializationCapacity('Insufficient session space for materialization')
+
+
+def _storage_error(error):
+    if error.errno in (errno.ENOSPC, errno.EDQUOT):
+        raise MaterializationCapacity('Insufficient session space for materialization') from error
 
 
 def _hash(value):
@@ -72,8 +90,14 @@ class IncomingFile:
         self.hasher = hashlib.sha256()
         self.result = None
         self.closed = False
+        if not delete:
+            _capacity(self.root, size)
         self.stage = self.root / ('incoming-' + self.id)
-        self.fd = os.open(self.stage, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            self.fd = os.open(self.stage, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except OSError as error:
+            _storage_error(error)
+            raise
 
     def append(self, offset, content):
         if (self.closed or self.result is not None or type(offset) is not int or offset != self.received
@@ -82,6 +106,7 @@ class IncomingFile:
             raise CaptureRejected('Invalid materialization chunk')
         view = memoryview(content)
         try:
+            _capacity(self.root, len(content))
             while view:
                 count = os.write(self.fd, view)
                 if count <= 0:
@@ -89,7 +114,11 @@ class IncomingFile:
                 view = view[count:]
         except OSError as error:
             self.close()
+            _storage_error(error)
             raise CaptureRejected('Materialization staging write failed') from error
+        except MaterializationCapacity:
+            self.close()
+            raise
         self.hasher.update(content)
         self.received += len(content)
 
@@ -145,6 +174,7 @@ class IncomingFile:
                     os.replace(self.stage.name, parts[-1], src_dir_fd=root, dst_dir_fd=parent)
                 return self._finished(current is not None if self.delete else current != self.digest)
         except OSError as error:
+            _storage_error(error)
             raise CaptureRejected('Materialization target is unavailable or unsafe') from error
 
     def _finished(self, changed):

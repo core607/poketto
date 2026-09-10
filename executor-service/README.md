@@ -224,6 +224,14 @@ The ZIP is verified before the protected incoming-file channel installs it. A di
 
 Temporary host packages are released after each export attempt, including failed installation, and on execution-session shutdown. Cancellation does not authorize completing a transfer after the session has stopped. Worker installation must precede application deployment because older workers lack the export protocol marker.
 
+Incoming files must also fit the session's currently available filesystem space,
+leaving 1 MiB for bridge replies and path installation. Space is checked again
+while streaming; `MATERIALIZE_CAPACITY` reports admission failure or disk/quota
+exhaustion without discarding the session's existing files. Free local space,
+select fewer files, or use browser export for packages exceeding the worker's
+capacity or ordinary command deadline. Unexpected transfer/storage failures still
+require session cleanup. Export authorization failures return `ACCESS_DENIED`.
+
 ### Returned artifacts
 
 `poketto artifact create FILE [--type MIME]` returns an immutable snapshot of a

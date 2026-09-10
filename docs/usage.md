@@ -86,6 +86,8 @@ Public-only sessions always export the host-approved public projection. The ZIP
 contains latest saved content and originals; local edits are excluded. Different
 existing output files are preserved. Use `get_artifact` after `poketto artifact
 create FILE --type application/zip` when the result fits the artifact limits.
+`MATERIALIZE_CAPACITY` preserves the session and existing files: free local space,
+select fewer files, or use browser export when the ZIP exceeds the worker's capacity.
 The [worker reference](../executor-service/README.md) owns deadlines, size bounds,
 installation ordering and error codes; [real HTTP MCP acceptance](../acceptance/clients/evidence/2026-09-10-cli-exports.json)
 verifies the authenticated export and artifact path.

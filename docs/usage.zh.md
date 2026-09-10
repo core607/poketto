@@ -76,6 +76,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 结果符合 artifact 限额时，可执行 `poketto artifact create FILE --type application/zip`，再通过
 `get_artifact` 取回。[worker 文档](../executor-service/README.md)定义时限、大小边界、安装顺序和错误码；
 [真实 HTTP MCP 验收](../acceptance/clients/evidence/2026-09-10-cli-exports.json)验证了身份认证后的导出与 artifact 回传。
+`MATERIALIZE_CAPACITY` 会保留会话和已有文件：清理本地空间、缩小选择范围，或改用浏览器导出超出 worker 容量的 ZIP。
 
 ## MCP 与隔离执行
 
