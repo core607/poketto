@@ -33,7 +33,7 @@ class SelectedFileSavesTests {
                 .withAuthorization(any(), any(), anySet(), any());
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
         var reader = fixture.reader(auth);
-        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth));
+        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         var result = saves.save(
                 actor, workspace, state, Map.of("private/secret.md", "first\r\n", "private/new.md", "new"), List.of());
@@ -67,7 +67,7 @@ class SelectedFileSavesTests {
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
         var patches = mock(RepositoryPatchService.class);
         when(patches.apply(any(), any(), any())).thenThrow(new RepositoryWriteAmbiguousException("offline"));
-        var saves = new SelectedFileSaves(auth, fixture.reader(auth), patches);
+        var saves = new SelectedFileSaves(auth, fixture.reader(auth), patches, fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "uncertain"), List.of())
                         .get("code"))
@@ -97,7 +97,7 @@ class SelectedFileSavesTests {
                 .withAuthorization(any(), any(), anySet(), any());
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
         var reader = fixture.reader(auth);
-        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth));
+        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         fixture.competingWrite(auth, actor);
         var plan = saves.prepareSync(actor, workspace, state, "private/secret.md", Optional.of("local secret edit"));
@@ -130,7 +130,7 @@ class SelectedFileSavesTests {
                 .withAuthorization(any(), any(), anySet(), any());
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace, true);
         var reader = fixture.reader(auth);
-        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth));
+        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "original-attempt"), List.of())
                         .get("code"))

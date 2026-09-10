@@ -103,6 +103,9 @@ class WorkerSocketTests {
             peer.artifactProtocol = 0;
             assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
             peer.artifactProtocol = 1;
+            peer.moveProtocol = 0;
+            assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
+            peer.moveProtocol = 1;
             assertThat(peer.client().hello().workerBootId()).isEqualTo(peer.boot);
         }
     }
@@ -1054,6 +1057,7 @@ class WorkerSocketTests {
         private volatile boolean oversizedHello;
         private volatile int codeActProtocol = 1;
         private volatile int artifactProtocol = 1;
+        private volatile int moveProtocol = 1;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
@@ -1118,6 +1122,8 @@ class WorkerSocketTests {
                             codeActProtocol,
                             "artifactProtocol",
                             artifactProtocol,
+                            "moveProtocol",
+                            moveProtocol,
                             "workerBootId",
                             boot,
                             "maxFrameBytes",

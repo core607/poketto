@@ -78,6 +78,15 @@ requires closing the lease. The primitive assumes the caller holds the lease
 filesystem lock and freezes the command cgroup; signed worker dispatch and CLI
 integration must establish those conditions before using it.
 
+The signed `MOVE_*` dispatch and CLI session coordinator connect these operations.
+`IncomingMove` validates a bounded host-generated plan and reserves a protected
+receipt before the authority write. Receipts bind a fresh host operation ID and
+the full plan hash, so retrying an acknowledged local installation preserves later
+edits and a new cyclic move cannot reuse an older completion. Pending moves retain
+the original request, plan and uncertain commit separately from local completion.
+Actual native and client acceptance remain required before this proposal moves
+to implemented status.
+
 ## Alternatives and related records
 
 [Browser recording and source provenance](https://github.com/core607/poketto/blob/19a35eb913d169db25735ed1992aeadd868d8bf4/README.md) retain the isolated real-service acceptance separately from product history. The recording covers an actual concurrent save as well as a rejected destination; mocked HTTP component tests do not substitute for it.

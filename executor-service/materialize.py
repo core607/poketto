@@ -2,6 +2,8 @@
 from contextlib import ExitStack
 from bisect import bisect_left
 import hashlib
+import base64
+import json
 import os
 from pathlib import Path
 import re
@@ -93,6 +95,10 @@ class IncomingFile:
     def install(self, uid, gid):
         if self.result is not None:
             return self.result
+        self.verify()
+        return self._install_verified(uid, gid)
+
+    def verify(self):
         if self.closed or self.received != self.size or self.hasher.hexdigest() != self.digest:
             raise CaptureRejected('Materialization bytes are incomplete or corrupt')
         if os.fstat(self.fd).st_size != self.size:
@@ -102,6 +108,8 @@ class IncomingFile:
             verified.update(os.pread(self.fd, min(MAX_CHUNK_BYTES, self.size - offset), offset))
         if verified.hexdigest() != self.digest:
             raise CaptureRejected('Materialization staging bytes changed')
+
+    def _install_verified(self, uid, gid):
         try:
             with ExitStack() as handles:
                 root = _directory(handles, None, self.root)
@@ -148,6 +156,149 @@ class IncomingFile:
             self.closed = True
             os.close(self.fd)
             self.stage.unlink(missing_ok=True)
+
+
+class IncomingMove(IncomingFile):
+    MAX_PLAN_BYTES = 64 * 1024 * 1024
+    MAX_RECEIPTS = 256
+    RECEIPT_BYTES = 4096
+
+    def __init__(self, root, size, digest):
+        if type(size) is not int or not 0 < size <= self.MAX_PLAN_BYTES:
+            raise CaptureRejected('Move plan exceeds transfer capacity')
+        super().__init__(root, '__move_plan__', size, digest, None)
+        self.local = None
+        self.receipt = None
+
+    def _local(self):
+        if self.local is not None:
+            return self.local
+        self.verify()
+
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError('Duplicate move plan field')
+                result[key] = value
+            return result
+
+        try:
+            value = json.loads(os.pread(self.fd, self.size, 0), object_pairs_hook=unique)
+            if (not isinstance(value, dict)
+                    or set(value) != {'operationId', 'source', 'destination', 'originals', 'relocations', 'replacements'}
+                    or not isinstance(value['replacements'], dict)):
+                raise ValueError('Invalid move plan schema')
+            operation_id = str(uuid.UUID(value['operationId']))
+            if operation_id != value['operationId']:
+                raise ValueError('Invalid move operation identity')
+            self.receipt = self.root / ('move-result-' + operation_id + '.json')
+            replacements = {}
+            total = 0
+            for path, content in value['replacements'].items():
+                if not isinstance(content, str):
+                    raise ValueError('Invalid move replacement')
+                decoded = base64.b64decode(content, validate=True)
+                total += len(decoded)
+                if total > LocalMove.MAX_REPLACEMENTS:
+                    raise ValueError('Move replacement capacity exceeded')
+                replacements[path] = decoded
+            self.local = LocalMove(self.root, value['source'], value['destination'],
+                                   value['originals'], value['relocations'], replacements)
+            return self.local
+        except (ValueError, TypeError, KeyError, RecursionError, UnicodeError) as error:
+            raise CaptureRejected('Invalid move plan') from error
+
+    def check(self):
+        move = self._local()
+        receipt = self._receipt()
+        if receipt is not None and receipt['state'] == 'complete':
+            return {'ready': True}
+        move.check()
+        space = os.statvfs(self.root)
+        required = sum(((len(content) + space.f_frsize - 1) // space.f_frsize) * space.f_frsize
+                       for content in move.replacements.values()) + space.f_frsize
+        if required > space.f_bavail * space.f_frsize or len(move.replacements) + 1 > space.f_favail:
+            raise CaptureRejected('Insufficient move staging capacity')
+        self._reserve()
+        return {'ready': True}
+
+    def install(self, uid, gid):
+        if self.result is None:
+            move = self._local()
+            receipt = self._receipt()
+            if receipt is not None and receipt['state'] == 'complete':
+                self.result = receipt['result']
+                return self.result
+            self._reserve()
+            result = move.install(uid, gid)
+            completed = self._receipt_bytes('complete', result)
+            try:
+                fd = os.open(self.receipt, os.O_WRONLY | os.O_NOFOLLOW)
+                try:
+                    if os.pwrite(fd, completed, 0) != len(completed):
+                        raise OSError('Incomplete move receipt')
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+            except OSError as error:
+                raise RuntimeError('Move receipt failed after installation; close the lease') from error
+            self.result = result
+        return self.result
+
+    def _receipt(self):
+        try:
+            fd = os.open(self.receipt, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except FileNotFoundError:
+            return None
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != self.RECEIPT_BYTES
+                    or info.st_uid != os.geteuid() or info.st_mode & 0o077):
+                raise CaptureRejected('Invalid protected move receipt')
+            try:
+                value = json.loads(stream.read(self.RECEIPT_BYTES))
+            except (ValueError, UnicodeError) as error:
+                raise CaptureRejected('Invalid protected move receipt') from error
+        if (not isinstance(value, dict) or set(value) != {'sha256', 'state', 'result'} or value['sha256'] != self.digest
+                or value['state'] not in ('prepared', 'complete')
+                or not isinstance(value['result'], dict)):
+            raise CaptureRejected('Move receipt does not match its plan')
+        return value
+
+    def _receipt_bytes(self, state, result):
+        raw = json.dumps({'sha256': self.digest, 'state': state, 'result': result}, separators=(',', ':')).encode()
+        if len(raw) > self.RECEIPT_BYTES:
+            raise CaptureRejected('Move receipt exceeds its bound')
+        return raw.ljust(self.RECEIPT_BYTES, b' ')
+
+    def _reserve(self):
+        if self._receipt() is not None:
+            return
+        if len(list(self.root.glob('move-result-*.json'))) >= self.MAX_RECEIPTS:
+            raise CaptureRejected('Move receipt capacity exhausted for this lease')
+        fd = os.open(self.receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            raw = self._receipt_bytes('prepared', {})
+            if os.write(fd, raw) != len(raw):
+                raise OSError('Incomplete move receipt reservation')
+        except BaseException:
+            self.receipt.unlink(missing_ok=True)
+            raise
+        finally:
+            os.close(fd)
+
+    def close(self):
+        super().close()
+        if self.receipt is not None:
+            try:
+                receipt = self._receipt()
+                if receipt is not None and receipt['state'] == 'prepared':
+                    self.receipt.unlink()
+            except (CaptureRejected, OSError):
+                # A damaged receipt must not prevent lease cleanup or authorize a replay.
+                pass
+        self.local = None
 
 
 class LocalMove:

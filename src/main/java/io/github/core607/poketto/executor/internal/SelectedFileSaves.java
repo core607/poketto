@@ -23,16 +23,27 @@ final class SelectedFileSaves {
     private final AuthService auth;
     private final AuthorizedRepositoryReader reader;
     private final RepositoryPatchService patches;
+    private final SessionMoves moves;
 
-    SelectedFileSaves(AuthService auth, AuthorizedRepositoryReader reader, RepositoryPatchService patches) {
+    SelectedFileSaves(
+            AuthService auth,
+            AuthorizedRepositoryReader reader,
+            RepositoryPatchService patches,
+            io.github.core607.poketto.content.RepositoryMoveService moves) {
         this.auth = auth;
         this.reader = reader;
         this.patches = patches;
+        this.moves = new SessionMoves(reader, moves);
+    }
+
+    SessionMoves moves() {
+        return moves;
     }
 
     Map<String, ?> save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
+        if (state.move != null) return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
         if (state.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
         var paths = new HashSet<>(writes.keySet());
         if (writes.size() + deletes.size() < 1
@@ -143,6 +154,7 @@ final class SelectedFileSaves {
         RepositoryPatch pending;
         Optional<RepositoryWriteAttempt> attempt = Optional.empty();
         Map<String, ?> lastSave = Map.of();
+        SessionMoves.Pending move;
 
         State(String baseCommit) {
             this.originalCommit = baseCommit;
@@ -151,6 +163,13 @@ final class SelectedFileSaves {
 
         String baseline(String path) {
             return baselines.getOrDefault(path, originalCommit);
+        }
+
+        void acknowledgeMove(String commit, java.util.Set<String> paths) {
+            requireTracking(paths);
+            paths.forEach(path -> baselines.put(path, commit));
+            baseCommit = commit;
+            move = null;
         }
 
         void requireTracking(java.util.Collection<String> paths) {
@@ -165,7 +184,8 @@ final class SelectedFileSaves {
 
     SyncPlan prepareSync(AuthPrincipal actor, WorkspaceId workspace, State state, String path, Optional<String> local) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        if (state.uncertain) throw new IllegalArgumentException("recover the uncertain save before synchronizing");
+        if (state.uncertain || state.move != null)
+            throw new IllegalArgumentException("recover the pending write before synchronizing");
         state.requireTracking(List.of(path));
         String previous = state.baseline(path);
         var original = reader.getFile(actor, workspace, Optional.of(previous), path);

@@ -9,7 +9,7 @@ owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime
 
-The application's HELLO check requires `codeActProtocol: 1` and `artifactProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization and retained artifact contracts. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
+The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1` and `moveProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts and atomic local moves. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
 
 Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
 and the toolchain prepared by [the native spike](../executor-spike/README.md)
@@ -146,6 +146,11 @@ JSON keys. Every payload contains exactly these fields:
 | `MATERIALIZE_CHUNK` | `executionId`, `transferId`, exact next byte `offset`, and base64 `data` of at most 65536 decoded bytes. Stages outside sandbox-readable paths. |
 | `MATERIALIZE_COMMIT` | `executionId` and `transferId`. Verifies staged length/hash, freezes the cgroup, compares the current target with the captured precondition, then atomically replaces or explicitly deletes it. Repeated completion returns its retained receipt without modifying a newer local edit. |
 | `MATERIALIZE_ABORT` | `executionId` and `transferId`. Releases the transfer slot and any staging file; never undoes an acknowledged installation. Command cleanup also releases them. |
+| `MOVE_BEGIN` | `executionId`, plan `bytes` (1 through 64 MiB) and `sha256`. Allocates the lease's protected incoming slot and returns `transferId`. |
+| `MOVE_CHUNK` | `executionId`, `transferId`, exact next byte `offset` and base64 `data` of at most 65536 decoded bytes. |
+| `MOVE_CHECK` | `executionId` and `transferId`. Validates the complete plan and checks local preconditions with the cgroup frozen. Reserves a protected completion receipt before Git is changed. |
+| `MOVE_COMMIT` | `executionId` and `transferId`. Rechecks local preconditions while frozen, renames the source and installs repaired text. Installation failure rolls back; rollback or completion-receipt failure closes the lease. A completed operation returns its protected receipt without overwriting later local edits. |
+| `MOVE_ABORT` | `executionId` and `transferId`. Releases incoming bytes and an unused receipt reservation. Completed receipts remain private to the lease until it closes. |
 | `ARTIFACT_CREATE` | `executionId`, `path`, and `mediaType`. Freezes the matching running command and copies one regular, single-link file into protected lease storage. Returns immutable artifact metadata. |
 | `ARTIFACT_READ` | `artifactId`, byte `offset`, and `limit` from 1 to 65536. Returns a bounded base64 page and metadata from this lease's private artifact map. Works after command completion; never selects a host path. |
 | `ARTIFACT_REMOVE` | `artifactId`. Releases the retained object early; an unknown ID is harmless. Every artifact operation requires the signed lease identity and current authority. |
@@ -164,6 +169,23 @@ Bridge responses carry the same lease fields plus `executionId` and `bridgeReque
 `poketto save PATH... --delete PATH` sends selections, not file contents. The application captures those files, checks authoritative revisions at its own baseline and uses the shared atomic Git writer. Success advances only the host save baseline; the worker's original history and all unselected local edits remain. Public-only sessions reject saves. Conflicts retain local files and the prior baseline; an ambiguous write blocks subsequent saves. `poketto status` exposes the host baseline and last save receipt.
 
 `poketto recover` reconciles the exact host-retained commit against current remote history. An observed commit is acknowledged without another push; otherwise recovery retries that same commit only while the original remote base still matches. It revalidates the original patch and current authorization, retains newer local edits, and returns a conflict on divergence. A further lost reply retains the same attempt.
+
+`poketto move SOURCE DESTINATION` moves saved files, folders and indexed media
+through the shared atomic writer and repairs Markdown references. A full-read
+session and write authority are required; public changes also require publication
+authority. Dirty selected files, changed selected media mappings, unexpected
+source entries and occupied destinations are refused before the remote move.
+Unselected local files and unrelated unsaved media-index entries remain local.
+Materialized originals move with their directory; absent originals stay absent.
+
+Remote acknowledgement and local installation are separate. A pending local move
+reports its commit with `worktreeUpdated: false`; another save, move or sync waits
+for `poketto recover`. Recovery uses the retained request and completion receipt,
+including when a successful installation reply was lost before later local edits.
+Plans include a fresh host operation ID, at most 16,384 affected paths, 32 MiB of
+replacement text and 64 MiB of serialized transfer data. Each lease retains at most
+256 protected 4-KiB completion receipts. Staging and receipts consume the lease's
+disk and inode quotas; failure to reserve capacity rejects preflight.
 
 `poketto sync PATH` performs a bounded three-way text merge against that file's host-owned baseline and current remote version. It rechecks the local bytes while frozen before installation, retains deletion intent, and updates only the selected file's baseline after acknowledgement. Overlapping changes produce LOCAL/BASE/REMOTE conflict markers and exit unsuccessfully; the agent edits them and saves separately. Unselected files retain their previous expected revisions, so a later save cannot silently overwrite changes that another author made to them. Synchronization does not commit remote changes.
 

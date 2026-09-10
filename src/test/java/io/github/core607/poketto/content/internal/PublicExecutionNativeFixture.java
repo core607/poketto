@@ -157,6 +157,14 @@ public final class PublicExecutionNativeFixture {
     }
 
     public io.github.core607.poketto.content.RepositoryPatchService patches(AuthService auth) {
+        return writeService(auth);
+    }
+
+    public io.github.core607.poketto.content.RepositoryMoveService moves(AuthService auth) {
+        return writeService(auth);
+    }
+
+    private JGitRepositoryPatchService writeService(AuthService auth) {
         return new JGitRepositoryPatchService(
                 repository.authority(),
                 auth,

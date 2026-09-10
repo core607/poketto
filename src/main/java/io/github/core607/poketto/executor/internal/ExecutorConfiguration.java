@@ -30,6 +30,7 @@ class ExecutorConfiguration {
             io.github.core607.poketto.assets.MediaFileService media,
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
+            io.github.core607.poketto.content.RepositoryMoveService moves,
             ObjectMapper json,
             @Value("${poketto.executor.socket}") Path socket,
             @Value("${poketto.executor.signing-key}") Path key,
@@ -62,7 +63,7 @@ class ExecutorConfiguration {
                 Clock.systemUTC());
         return new IsolatedRepositoryExecutor(
                 media,
-                new SelectedFileSaves(auth, reader, patches),
+                new SelectedFileSaves(auth, reader, patches, moves),
                 auth,
                 exports,
                 client,
