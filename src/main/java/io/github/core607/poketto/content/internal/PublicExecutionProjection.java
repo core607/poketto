@@ -35,10 +35,14 @@ final class PublicExecutionProjection {
             An absent local media file is not a deletion. This projection cannot be saved to source.
             """;
 
-    record Projection(Map<String, byte[]> files, Map<String, String> sourcePaths) {
+    record Projection(
+            Map<String, byte[]> files,
+            Map<String, String> sourcePaths,
+            Map<String, io.github.core607.poketto.content.RepositorySnapshotExports.PublicMedia> media) {
         Projection {
             files = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(files));
             sourcePaths = Map.copyOf(sourcePaths);
+            media = Map.copyOf(media);
         }
     }
 
@@ -54,6 +58,11 @@ final class PublicExecutionProjection {
                 digest.update((byte) 'S');
                 hashField(digest, path.getBytes(StandardCharsets.UTF_8));
                 hashField(digest, source.getBytes(StandardCharsets.UTF_8));
+            });
+            new TreeMap<>(projection.media()).forEach((path, source) -> {
+                digest.update((byte) 'M');
+                hashField(digest, path.getBytes(StandardCharsets.UTF_8));
+                hashField(digest, source.route().getBytes(StandardCharsets.UTF_8));
             });
             return java.util.HexFormat.of().formatHex(digest.digest());
         } catch (java.security.NoSuchAlgorithmException exception) {
@@ -114,17 +123,22 @@ final class PublicExecutionProjection {
         while (overlaps(normalized, mediaPrefix)) mediaPrefix = mediaRootPrefix(++suffix);
         String mediaRoot = mediaPrefix.substring(0, mediaPrefix.length() - 1);
         Map<String, RepositoryMediaIndex.Media> referenced = new TreeMap<>();
+        Map<String, String> referrers = new HashMap<>();
         for (PublicArticle article : articles) {
             var references = MarkdownDestinations.parse(article.body());
             java.util.stream.Stream.concat(references.links().stream(), references.images().stream())
                     .forEach(authored -> MarkdownDestinations.path(article.repositoryPath(), authored)
                             .ifPresent(path -> {
                                 var media = originals.files().get(path);
-                                if (media != null && policy.permitsPath(path)) referenced.put(path, media);
+                                if (media != null && policy.permitsPath(path)) {
+                                    referenced.put(path, media);
+                                    referrers.putIfAbsent(path, article.route());
+                                }
                             }));
         }
         Map<String, String> mediaPaths = new HashMap<>();
         Map<String, RepositoryMediaIndex.Media> projectedMedia = new TreeMap<>();
+        Map<String, io.github.core607.poketto.content.RepositorySnapshotExports.PublicMedia> media = new TreeMap<>();
         int sequence = 0;
         for (var entry : referenced.entrySet()) {
             String source = entry.getKey();
@@ -132,6 +146,10 @@ final class PublicExecutionProjection {
             RepositoryPathRules.validate(path);
             mediaPaths.put(source, path);
             projectedMedia.put(path, entry.getValue());
+            media.put(
+                    path,
+                    new io.github.core607.poketto.content.RepositorySnapshotExports.PublicMedia(
+                            referrers.get(source), entry.getValue()));
         }
         Map<String, byte[]> files = new TreeMap<>();
         Map<String, String> sourcePaths = new HashMap<>();
@@ -164,7 +182,7 @@ final class PublicExecutionProjection {
         files.put(RepositoryMediaIndex.PATH, index);
         files.put("AGENTS.md", guide);
         mediaPaths.forEach((source, projected) -> sourcePaths.put(projected, source));
-        return new Projection(files, sourcePaths);
+        return new Projection(files, sourcePaths, media);
     }
 
     private static String mediaRootPrefix(int suffix) {

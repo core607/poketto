@@ -65,7 +65,8 @@ class WorkerSocketTests {
                 new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128),
                 "c".repeat(40),
                 "d".repeat(64),
-                Map.of("article/index.md", "public/article.md"));
+                Map.of("article/index.md", "public/article.md"),
+                Map.of());
         when(exports.createPublic(any(), eq(WORKSPACE))).thenReturn(projection);
         try (var peer = new Peer();
                 var executor = executor(auth, exports, peer)) {
@@ -120,6 +121,7 @@ class WorkerSocketTests {
                 new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128),
                 "c".repeat(40),
                 "d".repeat(64),
+                Map.of(),
                 Map.of());
         when(exports.createPublic(any(), any())).thenReturn(projection);
         try (var peer = new Peer();
@@ -357,6 +359,7 @@ class WorkerSocketTests {
 
     private static IsolatedRepositoryExecutor executor(AuthService auth, RepositorySnapshotExports exports, Peer peer) {
         return new IsolatedRepositoryExecutor(
+                mock(io.github.core607.poketto.assets.MediaFileService.class),
                 mock(SelectedFileSaves.class),
                 auth,
                 exports,
@@ -478,6 +481,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         fullAuth(),
                         exports(),
@@ -526,6 +530,7 @@ class WorkerSocketTests {
                 .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         fullAuth(),
                         exports,
@@ -561,6 +566,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         fullAuth(),
                         exports(),
@@ -601,6 +607,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         fullAuth(),
                         exports(),
@@ -644,6 +651,7 @@ class WorkerSocketTests {
         var auth = fullAuth();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         auth,
                         exports(),
@@ -719,6 +727,7 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
+                            mock(io.github.core607.poketto.assets.MediaFileService.class),
                             mock(SelectedFileSaves.class),
                             fullAuth(),
                             exports(),
@@ -797,6 +806,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         fullAuth(),
                         exports(),
@@ -856,6 +866,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         mock(SelectedFileSaves.class),
                         fullAuth(),
                         exports(),

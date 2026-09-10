@@ -113,6 +113,13 @@ public final class MediaFileService {
         }
     }
 
+    /** Resolves only a currently referenced public original; callers must not return the source commit as public history. */
+    public Download publicDownload(WorkspaceId workspace, String route, String path) {
+        String commit =
+                snapshots.withCurrent(workspace, value -> value.commit().orElseThrow(MediaFileService::missing));
+        return publicDownload(workspace, commit, route, path);
+    }
+
     private ManagedAsset resolve(WorkspaceId workspace, RepositoryMediaIndex.Media entry) {
         if (entry == null) throw missing();
         var asset = originals.get().describe(workspace, new ManagedAssetReference(entry.assetId(), entry.revision()));
@@ -158,6 +165,10 @@ public final class MediaFileService {
 
         public long size() {
             return asset.size();
+        }
+
+        public ManagedAsset asset() {
+            return asset;
         }
 
         /** Leaves output open; consumers discard partial output after failure or authorization loss. */

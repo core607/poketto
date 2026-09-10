@@ -117,6 +117,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         selectedExports,
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
                         org.mockito.Mockito.mock(io.github.core607.poketto.content.AuthorizedRepositoryReader.class),
                         org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryPatchService.class),
                         JSON,
@@ -148,6 +149,7 @@ public final class ExecutorNativeProbe {
         publicProjection();
         selectedSaves();
         uncertainSaveRecovery();
+        mediaFetch();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -294,6 +296,124 @@ public final class ExecutorNativeProbe {
                 classHash(ExecutorNativeProbe.class))));
     }
 
+    private void mediaFetch() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("media"), path("exports"), auth, workspace);
+        byte[] original = new byte[192 * 1024];
+        for (int i = 0; i < original.length; i++) original[i] = (byte) (i % 251);
+        byte[] updated = "new-private-original".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String originalCommit = fixture.seedMedia(auth, principal, original, original);
+        var reader = fixture.reader(auth);
+        try (var executor = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        fixture.media(auth),
+                        reader,
+                        fixture.patches(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8)) {
+            var first = executor.execute(
+                    principal,
+                    workspace,
+                    "media-full",
+                    Optional.empty(),
+                    "set -eu; test ! -e private/manual.pdf; poketto media fetch private/manual.pdf; "
+                            + "poketto media fetch private/manual.pdf; sha256sum private/manual.pdf",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(first.exitCode())
+                    .as("media stdout=%s stderr=%s", first.stdout(), first.stderr())
+                    .isZero();
+            assertThat(first.stdout()).contains(hash(original));
+            String latest = fixture.seedMedia(auth, principal, original, updated);
+            var historical = executor.execute(
+                    principal,
+                    workspace,
+                    "media-full",
+                    Optional.empty(),
+                    "set -eu; poketto media fetch private/manual.pdf --commit " + originalCommit
+                            + " --output private/history.pdf; "
+                            + "poketto media fetch private/manual.pdf --commit " + latest
+                            + " --output private/latest.pdf; "
+                            + "sha256sum private/history.pdf private/latest.pdf",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(historical.exitCode())
+                    .as("media stdout=%s stderr=%s", historical.stdout(), historical.stderr())
+                    .isZero();
+            assertThat(historical.stdout()).contains(hash(original), hash(updated));
+            var preserved = executor.execute(
+                    principal,
+                    workspace,
+                    "media-full",
+                    Optional.empty(),
+                    "printf 'local-edit' > private/manual.pdf; poketto media fetch private/manual.pdf",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(preserved.exitCode()).isEqualTo(1);
+            assertThat(preserved.stdout()).contains("LOCAL_FILE_EXISTS");
+            var local = executor.execute(
+                    principal,
+                    workspace,
+                    "media-full",
+                    Optional.empty(),
+                    "cat private/manual.pdf",
+                    Duration.ofSeconds(5),
+                    new Cancellation());
+            assertThat(local.stdout()).isEqualTo("local-edit");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json")
+                            .commit())
+                    .contains(latest);
+            passed("full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits");
+        }
+        privateRead.set(false);
+        try (var executor = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        fixture.media(auth),
+                        reader,
+                        fixture.patches(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8)) {
+            var fetched = executor.execute(
+                    principal,
+                    workspace,
+                    "media-public",
+                    Optional.empty(),
+                    "set -eu; p=$(python3 -c 'import json; print(next(iter(json.load(open(\".poketto/assets.json\"))[\"files\"])))'); "
+                            + "poketto media fetch \"$p\"; sha256sum \"$p\"",
+                    Duration.ofSeconds(25),
+                    new Cancellation());
+            assertThat(fetched.exitCode())
+                    .as("public media stdout=%s stderr=%s", fetched.stdout(), fetched.stderr())
+                    .isZero();
+            assertThat(fetched.stdout()).contains(hash(original)).doesNotContain(originalCommit);
+            var denied = executor.execute(
+                    principal,
+                    workspace,
+                    "media-public",
+                    Optional.empty(),
+                    "poketto media fetch private/manual.pdf",
+                    Duration.ofSeconds(10),
+                    new Cancellation());
+            assertThat(denied.exitCode()).isEqualTo(1);
+            assertThat(denied.stdout()).contains("MEDIA_UNAVAILABLE").doesNotContain(hash(updated));
+            passed("public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history");
+        } finally {
+            privateRead.set(true);
+        }
+    }
+
     private void uncertainSaveRecovery() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture").resolve("recovery"), path("exports"), auth, workspace, true);
@@ -302,6 +422,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        fixture.media(auth),
                         reader,
                         fixture.patches(auth),
                         JSON,
@@ -365,6 +486,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
+                        fixture.media(auth),
                         reader,
                         fixture.patches(auth),
                         JSON,

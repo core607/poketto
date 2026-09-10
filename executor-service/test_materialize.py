@@ -94,3 +94,20 @@ class MaterializeTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(CaptureRejected):
                 self.install(self.incoming(path, b'replacement', digest(b'secret')))
         self.assertEqual(b'secret', (outside / 'secret').read_bytes())
+
+    def test_fetch_can_reuse_identical_bytes_but_cannot_overwrite_a_different_local_file(self):
+        path = self.repository / 'original.pdf'
+        path.write_bytes(b'original')
+        before = path.stat()
+        fetched = IncomingFile(self.root, 'original.pdf', 8, digest(b'original'), None, allow_identical=True)
+        self.addCleanup(fetched.close)
+        fetched.append(0, b'original')
+        self.assertFalse(self.install(fetched)['changed'])
+        self.assertEqual(before.st_ino, path.stat().st_ino)
+        path.write_bytes(b'local edit')
+        again = IncomingFile(self.root, 'original.pdf', 8, digest(b'original'), None, allow_identical=True)
+        self.addCleanup(again.close)
+        again.append(0, b'original')
+        with self.assertRaises(CaptureRejected):
+            self.install(again)
+        self.assertEqual(b'local edit', path.read_bytes())

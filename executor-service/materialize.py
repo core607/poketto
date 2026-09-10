@@ -50,16 +50,18 @@ class IncomingFile:
     Remote authority and the host baseline change separately, after acknowledgement.
     """
 
-    def __init__(self, root, path, size, digest, expected, delete=False):
+    def __init__(self, root, path, size, digest, expected, delete=False, allow_identical=False):
         selected_paths([path], [])
         _hash(digest)
         _hash(expected)
         if (type(size) is not int or not 0 <= size <= MAX_FILE_BYTES or digest is None
-                or type(delete) is not bool or (delete and size != 0)):
+                or type(delete) is not bool or type(allow_identical) is not bool
+                or (delete and (size != 0 or allow_identical))):
             raise CaptureRejected('Invalid materialization size or operation')
         self.id = str(uuid.uuid4())
         self.root = Path(root)
         self.path, self.size, self.digest, self.expected, self.delete = path, size, digest, expected, delete
+        self.allow_identical = allow_identical
         self.received = 0
         self.hasher = hashlib.sha256()
         self.result = None
@@ -116,6 +118,8 @@ class IncomingFile:
                         os.fchown(child, uid, gid)
                     parent = child
                 current, mode = _current(parent, parts[-1])
+                if self.allow_identical and current == self.digest:
+                    return self._finished(False)
                 if current != self.expected:
                     raise CaptureRejected('Local file changed before materialization')
                 if not self.delete and current == self.digest:

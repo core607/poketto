@@ -27,6 +27,7 @@ class ExecutorConfiguration {
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
             AuthService auth,
             RepositorySnapshotExports exports,
+            io.github.core607.poketto.assets.MediaFileService media,
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             ObjectMapper json,
@@ -60,6 +61,7 @@ class ExecutorConfiguration {
                 json,
                 Clock.systemUTC());
         return new IsolatedRepositoryExecutor(
+                media,
                 new SelectedFileSaves(auth, reader, patches),
                 auth,
                 exports,

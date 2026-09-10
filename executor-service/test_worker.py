@@ -68,7 +68,7 @@ class ProtocolTests(unittest.TestCase):
             repository.mkdir(parents=True)
             content = b'host selected contents'
             request = self.payload('MATERIALIZE_BEGIN', {'executionId': session.execution_id, 'path': 'new.md',
-                'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'expectedSha256': None, 'delete': False})
+                'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'expectedSha256': None, 'delete': False, 'allowIdentical': False})
             result = self.send(request)
             self.assertTrue(result['ok'], result)
             reference = {'executionId': session.execution_id, 'transferId': result['transferId']}

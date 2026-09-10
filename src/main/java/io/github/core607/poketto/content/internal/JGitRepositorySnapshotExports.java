@@ -158,7 +158,8 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                         new Export(id, commit.name(), HexFormat.of().formatHex(digest.digest()), size),
                         authorityCommit,
                         fingerprint,
-                        projection.sourcePaths());
+                        projection.sourcePaths(),
+                        projection.media());
             }
         } catch (Exception exception) {
             try {

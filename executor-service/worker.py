@@ -303,7 +303,7 @@ class Service:
 
     def materialize_dispatch(self, p):
         op, data = p['operation'], p['data']
-        keys = {'executionId', 'path', 'bytes', 'sha256', 'expectedSha256', 'delete'} if op == 'MATERIALIZE_BEGIN' else {'executionId', 'transferId'}
+        keys = {'executionId', 'path', 'bytes', 'sha256', 'expectedSha256', 'delete', 'allowIdentical'} if op == 'MATERIALIZE_BEGIN' else {'executionId', 'transferId'}
         if op == 'MATERIALIZE_CHUNK':
             keys |= {'offset', 'data'}
         if set(data) != keys:
@@ -325,7 +325,7 @@ class Service:
                     if s.incoming is not None:
                         raise Rejected('MATERIALIZE_IN_PROGRESS')
                     s.incoming = IncomingFile(self.backend.mount_path(s), data['path'], data['bytes'],
-                                              data['sha256'], data['expectedSha256'], data['delete'])
+                                              data['sha256'], data['expectedSha256'], data['delete'], data['allowIdentical'])
                     result = {'transferId': s.incoming.id}
                 else:
                     if s.incoming is None or s.incoming.id != data['transferId']:

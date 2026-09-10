@@ -16,6 +16,8 @@ public final class PublicExecutionNativeFixture {
     private final JGitPublicContentSnapshots snapshots;
     private final RepositorySnapshotExports exports;
     private final String sourceCommit;
+    private final Path fixtureRoot;
+    private io.github.core607.poketto.assets.ManagedBlobStore originals;
     private final java.util.concurrent.atomic.AtomicBoolean offline = new java.util.concurrent.atomic.AtomicBoolean();
     private final java.util.concurrent.atomic.AtomicInteger pushes = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -27,6 +29,7 @@ public final class PublicExecutionNativeFixture {
     public PublicExecutionNativeFixture(
             Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply) throws Exception {
         this.workspace = workspace;
+        this.fixtureRoot = root;
         var delegate = new JGitRemoteGitTransport();
         repository = new RemoteRepositoryFixture(root, new RemoteGitTransport() {
             @Override
@@ -73,6 +76,71 @@ public final class PublicExecutionNativeFixture {
 
     public RepositorySnapshotExports exports() {
         return exports;
+    }
+
+    public io.github.core607.poketto.assets.MediaFileService media(AuthService auth) {
+        return new io.github.core607.poketto.assets.MediaFileService(
+                auth, new JGitRepositoryBlobReader(repository.authority()), snapshots, () -> {
+                    if (originals == null)
+                        originals = io.github.core607.poketto.assets.ManagedBlobStore.local(
+                                fixtureRoot.resolve("originals"));
+                    return originals;
+                });
+    }
+
+    public String seedMedia(
+            AuthService auth,
+            io.github.core607.poketto.auth.AuthPrincipal actor,
+            byte[] publicBytes,
+            byte[] privateBytes) {
+        var files = new java.util.LinkedHashMap<String, io.github.core607.poketto.content.RepositoryMediaIndex.Media>();
+        for (var entry : Map.of("public/manual.pdf", publicBytes, "private/manual.pdf", privateBytes)
+                .entrySet()) {
+            var asset = media(auth)
+                    .upload(
+                            actor,
+                            workspace,
+                            "native-" + java.util.UUID.randomUUID(),
+                            "application/pdf",
+                            new java.io.ByteArrayInputStream(entry.getValue()));
+            files.put(
+                    entry.getKey(),
+                    new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                            asset.reference().assetId(),
+                            asset.reference().revision(),
+                            asset.mediaType(),
+                            asset.size()));
+        }
+        var reader = reader(auth);
+        var index = reader.getFile(
+                actor,
+                workspace,
+                java.util.Optional.empty(),
+                io.github.core607.poketto.content.RepositoryMediaIndex.PATH);
+        var article = reader.getFile(actor, workspace, index.commit(), "article.md");
+        return patches(auth)
+                .apply(
+                        actor,
+                        workspace,
+                        new io.github.core607.poketto.content.RepositoryPatch(
+                                index.commit(),
+                                java.util.List.of(
+                                        new io.github.core607.poketto.content.RepositoryTextChange(
+                                                index.path(),
+                                                index.expectedAbsence(),
+                                                index.revision(),
+                                                java.util.Optional.of(new String(
+                                                        new io.github.core607.poketto.content.RepositoryMediaIndex(
+                                                                        files)
+                                                                .encode(),
+                                                        StandardCharsets.UTF_8))),
+                                        new io.github.core607.poketto.content.RepositoryTextChange(
+                                                article.path(),
+                                                false,
+                                                article.revision(),
+                                                java.util.Optional.of(
+                                                        "# Media fixture\n[Manual](public/manual.pdf)\n[Hidden](private/manual.pdf)\n")))))
+                .commit();
     }
 
     public void restoreTransport() {

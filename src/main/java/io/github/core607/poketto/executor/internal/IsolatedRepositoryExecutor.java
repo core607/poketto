@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
@@ -46,6 +47,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final RepositorySnapshotExports exports;
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
+    private final MediaFileService media;
     private final int maxSessions;
     private final Duration openTimeout;
     private final Duration closeTimeout;
@@ -70,6 +72,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
+            MediaFileService media,
             SelectedFileSaves saves,
             AuthService auth,
             RepositorySnapshotExports exports,
@@ -77,6 +80,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
+        this.media = media;
         this.saves = saves;
         this.auth = auth;
         this.exports = exports;
@@ -435,6 +439,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "lastSave",
                             session.saveState.lastSave));
         String operation = request.path("operation").asString("");
+        if (operation.equals("media_fetch")) {
+            try {
+                return fetchMedia(session, executionId, arguments);
+            } catch (IllegalArgumentException invalid) {
+                return Map.of("ok", false, "code", "INVALID_MEDIA_REQUEST");
+            } catch (io.github.core607.poketto.assets.AssetStorageException
+                    | io.github.core607.poketto.content.ContentRepositoryException unavailable) {
+                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+            }
+        }
         if (operation.equals("save") || operation.equals("recover") || operation.equals("sync")) {
             if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
             try {
@@ -588,72 +602,203 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private Map<String, ?> synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
         byte[] content = plan.content().orElse("").getBytes(StandardCharsets.UTF_8);
-        String digest = hash(plan.content().orElse(""));
+        boolean installed = materialize(
+                session,
+                executionId,
+                plan.path(),
+                content.length,
+                hash(plan.content().orElse("")),
+                plan.expectedLocalSha256().orElse(null),
+                plan.content().isEmpty(),
+                false,
+                output -> output.write(content));
+        if (!installed) return Map.of("ok", false, "code", "LOCAL_UPDATE_REJECTED");
+        saves.acknowledgeSync(session.saveState, plan);
+        return Map.of(
+                "ok",
+                !plan.conflicted(),
+                "code",
+                plan.conflicted() ? "MERGE_CONFLICT" : "SYNCHRONIZED",
+                "result",
+                Map.of(
+                        "path",
+                        plan.path(),
+                        "baseCommit",
+                        plan.remoteCommit(),
+                        "saved",
+                        false,
+                        "conflicted",
+                        plan.conflicted()));
+    }
+
+    private Map<String, ?> fetchMedia(Session session, String executionId, JsonNode arguments) {
+        if (arguments.size() != 3
+                || !arguments.path("path").isString()
+                || !(arguments.path("commit").isNull()
+                        || arguments.path("commit").isString())
+                || !(arguments.path("output").isNull()
+                        || arguments.path("output").isString())) throw new IllegalArgumentException();
+        String path = arguments.path("path").stringValue();
+        String destination = arguments.path("output").isNull()
+                ? path
+                : arguments.path("output").stringValue();
+        Optional<String> requested = arguments.path("commit").isNull()
+                ? Optional.empty()
+                : Optional.of(arguments.path("commit").stringValue());
+        MediaFileService.Download download;
+        String commit;
+        if (session.fullRead) {
+            commit = requested.orElseGet(
+                    () -> session.saveState.baseline(io.github.core607.poketto.content.RepositoryMediaIndex.PATH));
+            if (!commit.matches("[0-9a-f]{40}")) throw new IllegalArgumentException();
+            download = media.privateDownload(session.principal, session.key.workspace(), Optional.of(commit), path);
+        } else {
+            if (requested.isPresent())
+                throw new IllegalArgumentException("public media uses only its current projection");
+            var approved = session.publicExport.media().get(path);
+            if (approved == null) return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+            download = media.publicDownload(
+                    session.key.workspace(),
+                    approved.route(),
+                    session.publicExport.sourcePaths().get(path));
+            var expected = approved.original();
+            var asset = download.asset();
+            if (!asset.reference().assetId().equals(expected.assetId())
+                    || !asset.reference().revision().equals(expected.revision())
+                    || asset.size() != expected.size()
+                    || !asset.mediaType().equals(expected.mediaType()))
+                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+            commit = session.commit;
+        }
+        var asset = download.asset();
+        boolean installed = materialize(
+                session,
+                executionId,
+                destination,
+                asset.size(),
+                asset.reference().revision(),
+                null,
+                false,
+                true,
+                download::writeTo);
+        if (!installed)
+            return Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "LOCAL_FILE_EXISTS",
+                    "message",
+                    "A different local file exists; keep it or choose another --output path.");
+        return Map.of(
+                "ok",
+                true,
+                "result",
+                Map.of(
+                        "path",
+                        destination,
+                        "sourcePath",
+                        path,
+                        "commit",
+                        commit,
+                        "sha256",
+                        asset.reference().revision(),
+                        "mediaType",
+                        asset.mediaType(),
+                        "bytes",
+                        asset.size()));
+    }
+
+    @FunctionalInterface
+    private interface FileSource {
+        void writeTo(java.io.OutputStream output) throws java.io.IOException;
+    }
+
+    private boolean materialize(
+            Session session,
+            String executionId,
+            String path,
+            long size,
+            String digest,
+            String expected,
+            boolean delete,
+            boolean allowIdentical,
+            FileSource source) {
         var metadata = new LinkedHashMap<String, Object>();
         metadata.put("executionId", executionId);
-        metadata.put("path", plan.path());
-        metadata.put("bytes", content.length);
+        metadata.put("path", path);
+        metadata.put("bytes", size);
         metadata.put("sha256", digest);
-        metadata.put("expectedSha256", plan.expectedLocalSha256().orElse(null));
-        metadata.put("delete", plan.content().isEmpty());
+        metadata.put("expectedSha256", expected);
+        metadata.put("delete", delete);
+        metadata.put("allowIdentical", allowIdentical);
         JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
+        if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) throw new IllegalArgumentException();
         requireOk(begun, session);
         String transferId = begun.path("transferId").asString("");
         if (!UUID.fromString(transferId).toString().equals(transferId)) throw new WorkerUnavailableException();
         Map<String, ?> reference = Map.of("executionId", executionId, "transferId", transferId);
         try {
-            for (int offset = 0; offset < content.length; offset += 65536) {
-                authorize(session);
-                int end = Math.min(content.length, offset + 65536);
-                JsonNode chunk = requestLive(
-                        session,
-                        "MATERIALIZE_CHUNK",
-                        Map.of(
-                                "executionId",
-                                executionId,
-                                "transferId",
-                                transferId,
-                                "offset",
-                                offset,
-                                "data",
-                                Base64.getEncoder().encodeToString(java.util.Arrays.copyOfRange(content, offset, end))),
-                        Duration.ofSeconds(3));
-                requireOk(chunk, session);
-                if (chunk.path("receivedBytes").asInt(-1) != end) throw new WorkerUnavailableException();
-            }
+            var sink = new java.io.OutputStream() {
+                long sent;
+
+                @Override
+                public void write(int value) {
+                    write(new byte[] {(byte) value}, 0, 1);
+                }
+
+                @Override
+                public void write(byte[] bytes, int offset, int length) {
+                    java.util.Objects.checkFromIndexSize(offset, length, bytes.length);
+                    if (length > size - sent)
+                        throw new IllegalArgumentException("media source exceeds its declared size");
+                    while (length > 0) {
+                        authorize(session);
+                        int count = Math.min(65536, length);
+                        JsonNode chunk = requestLive(
+                                session,
+                                "MATERIALIZE_CHUNK",
+                                Map.of(
+                                        "executionId",
+                                        executionId,
+                                        "transferId",
+                                        transferId,
+                                        "offset",
+                                        sent,
+                                        "data",
+                                        Base64.getEncoder()
+                                                .encodeToString(
+                                                        java.util.Arrays.copyOfRange(bytes, offset, offset + count))),
+                                Duration.ofSeconds(3));
+                        requireOk(chunk, session);
+                        sent += count;
+                        if (chunk.path("receivedBytes").asLong(-1) != sent) throw new WorkerUnavailableException();
+                        offset += count;
+                        length -= count;
+                    }
+                }
+            };
+            var output = new java.io.BufferedOutputStream(sink, 65536);
+            // Flush only after the source succeeds. Closing on failure could replay a buffered chunk.
+            source.writeTo(output);
+            output.flush();
+            if (sink.sent != size) throw new IllegalArgumentException("media source is incomplete");
             authorize(session);
             JsonNode committed = requestLive(session, "MATERIALIZE_COMMIT", reference, Duration.ofSeconds(5));
-            if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED"))
-                return Map.of("ok", false, "code", "LOCAL_UPDATE_REJECTED");
+            if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED")) return false;
             requireOk(committed, session);
             JsonNode installed = committed.path("installed");
-            if (!installed.path("path").asString("").equals(plan.path())
-                    || (plan.content().isEmpty()
+            if (!installed.path("path").asString("").equals(path)
+                    || (delete
                             ? !installed.path("sha256").isNull()
                             : !installed.path("sha256").asString("").equals(digest)))
                 throw new WorkerUnavailableException();
-            saves.acknowledgeSync(session.saveState, plan);
-            return Map.of(
-                    "ok",
-                    !plan.conflicted(),
-                    "code",
-                    plan.conflicted() ? "MERGE_CONFLICT" : "SYNCHRONIZED",
-                    "result",
-                    Map.of(
-                            "path",
-                            plan.path(),
-                            "baseCommit",
-                            plan.remoteCommit(),
-                            "saved",
-                            false,
-                            "conflicted",
-                            plan.conflicted()));
+            return true;
+        } catch (java.io.IOException failure) {
+            throw new WorkerUnavailableException();
         } finally {
             try {
                 requestLive(session, "MATERIALIZE_ABORT", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                // Completed installs already closed their staging file. Command cleanup releases
-                // an unacknowledged transfer slot without changing its observed file outcome.
                 log.warn("Worker transfer cleanup was not acknowledged; command cleanup will release its slot");
             }
         }

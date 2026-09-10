@@ -25,9 +25,15 @@ public interface RepositorySnapshotExports {
             Export export,
             String authorityCommit,
             String projectionSha256,
-            java.util.Map<String, String> sourcePaths) {
+            java.util.Map<String, String> sourcePaths,
+            java.util.Map<String, PublicMedia> media) {
         public PublicExport {
             sourcePaths = java.util.Map.copyOf(sourcePaths);
+            media = java.util.Map.copyOf(media);
+            if (!sourcePaths.keySet().containsAll(media.keySet()))
+                throw new IllegalArgumentException("public media requires a source mapping");
         }
     }
+
+    record PublicMedia(String route, RepositoryMediaIndex.Media original) {}
 }

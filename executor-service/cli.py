@@ -95,6 +95,12 @@ def main():
     commands.add_parser('recover', help='Reconcile an uncertain save and, if necessary, retry only its retained commit')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
     sync.add_argument('path')
+    media = commands.add_parser('media', help='Materialize indexed original media')
+    media_commands = media.add_subparsers(dest='media_operation', required=True)
+    fetch = media_commands.add_parser('fetch', help='Fetch an indexed original into the repository worktree')
+    fetch.add_argument('path')
+    fetch.add_argument('--commit')
+    fetch.add_argument('--output')
     save = commands.add_parser('save', help='Commit explicitly selected text files through the host')
     save.add_argument('paths', nargs='*')
     save.add_argument('--delete', action='append', default=[])
@@ -102,13 +108,17 @@ def main():
     arguments = {'writes': args.paths, 'deletes': args.delete} if args.operation == 'save' else {}
     if args.operation == 'sync':
         arguments = {'path': args.path}
+    operation = args.operation
+    if operation == 'media':
+        operation = 'media_fetch'
+        arguments = {'path': args.path, 'commit': args.commit, 'output': args.output}
     if args.operation == 'save' and not args.paths and not args.delete:
         parser.error('save requires selected files or explicit --delete paths')
     root = os.environ.get('POKETTO_BRIDGE')
     if not root:
         parser.error('this command requires an admitted Poketto execution session')
     try:
-        result = call(root, args.operation, arguments)
+        result = call(root, operation, arguments)
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result['ok'] else 1
     except (BridgeUnavailable, OSError, ValueError) as error:
