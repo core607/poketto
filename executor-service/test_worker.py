@@ -49,8 +49,48 @@ class Backend:
     def capture(self, session, writes, deletes):
         return capture_text(self.root, writes, deletes)
 
+    def mount_path(self, session):
+        return self.root
+
+    def install(self, session, incoming):
+        return incoming.install(os.getuid(), os.getgid())
+
 
 class ProtocolTests(unittest.TestCase):
+    def test_signed_materialization_is_scoped_and_retains_an_acknowledged_install(self):
+        import hashlib
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            content = b'host selected contents'
+            request = self.payload('MATERIALIZE_BEGIN', {'executionId': session.execution_id, 'path': 'new.md',
+                'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'expectedSha256': None, 'delete': False})
+            result = self.send(request)
+            self.assertTrue(result['ok'], result)
+            reference = {'executionId': session.execution_id, 'transferId': result['transferId']}
+            self.assertEqual('MATERIALIZE_IN_PROGRESS', self.send(self.payload('MATERIALIZE_BEGIN', request['data']))['code'])
+            chunk = self.payload('MATERIALIZE_CHUNK', {**reference, 'offset': 0, 'data': base64.b64encode(content).decode()})
+            foreign = {**chunk, 'requestId': uid(), 'serverSessionHash': 'f' * 64}
+            self.assertEqual('SESSION_NOT_FOUND', self.send(foreign)['code'])
+            wrong = self.payload('MATERIALIZE_COMMIT', {**reference, 'executionId': uid()})
+            self.assertEqual('EXECUTION_MISMATCH', self.send(wrong)['code'])
+            self.assertTrue(self.send(chunk)['ok'])
+            self.assertFalse((repository / 'new.md').exists())
+            installed = self.send(self.payload('MATERIALIZE_COMMIT', reference))
+            self.assertTrue(installed['ok'], installed)
+            self.assertEqual(content, (repository / 'new.md').read_bytes())
+            (repository / 'new.md').write_text('subsequent local edit')
+            repeated = self.send(self.payload('MATERIALIZE_COMMIT', reference))
+            self.assertEqual(installed['installed'], repeated['installed'])
+            self.assertEqual('subsequent local edit', (repository / 'new.md').read_text())
+            self.assertTrue(self.send(self.payload('MATERIALIZE_ABORT', reference))['ok'])
+            self.assertIsNone(session.incoming)
+            self.assertFalse(list(self.backend.root.glob('incoming-*')))
+
     def test_selected_capture_is_immutable_chunked_and_bound_to_execution_and_identity(self):
         self.opened()
         session = self.service.sessions[self.identity['leaseId']]

@@ -7,7 +7,7 @@ val executorServiceWindows = System.getProperty("os.name").startsWith("Windows",
 
 val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests") {
     from(executorServiceSource) {
-        include("worker.py", "resource_pool.py", "session_files.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests")
+        include("worker.py", "resource_pool.py", "session_files.py", "materialize.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests")
     }
     into(executorServiceBuild.map { it.dir("source") })
 }

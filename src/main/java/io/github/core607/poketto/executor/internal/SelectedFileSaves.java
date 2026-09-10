@@ -40,9 +40,11 @@ final class SelectedFileSaves {
                 || deletes.stream().anyMatch(path -> !paths.add(path)))
             throw new IllegalArgumentException("Select distinct files within the save bound");
         var changes = new ArrayList<RepositoryTextChange>();
+        state.requireTracking(paths);
         for (String path : paths) {
-            var baseline = reader.getFile(actor, workspace, Optional.of(state.baseCommit), path);
-            if (!baseline.commit().equals(Optional.of(state.baseCommit))
+            String expectedCommit = state.baseline(path);
+            var baseline = reader.getFile(actor, workspace, Optional.of(expectedCommit), path);
+            if (!baseline.commit().equals(Optional.of(expectedCommit))
                     || (!baseline.expectedAbsence() && baseline.revision().isEmpty()))
                 throw new IllegalArgumentException("Selected path has no writable text baseline");
             changes.add(new RepositoryTextChange(
@@ -111,6 +113,7 @@ final class SelectedFileSaves {
 
     private static void completed(State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
         state.baseCommit = result.commit();
+        paths.forEach(path -> state.baselines.put(path, result.commit()));
         state.uncertain = false;
         state.pending = null;
         state.attempt = Optional.empty();
@@ -132,6 +135,8 @@ final class SelectedFileSaves {
     }
 
     static final class State {
+        private final String originalCommit;
+        private final Map<String, String> baselines = new java.util.HashMap<>();
         String baseCommit;
         boolean uncertain;
         RepositoryPatch pending;
@@ -139,7 +144,65 @@ final class SelectedFileSaves {
         Map<String, ?> lastSave = Map.of();
 
         State(String baseCommit) {
+            this.originalCommit = baseCommit;
             this.baseCommit = baseCommit;
         }
+
+        String baseline(String path) {
+            return baselines.getOrDefault(path, originalCommit);
+        }
+
+        void requireTracking(java.util.Collection<String> paths) {
+            long additional = paths.stream()
+                    .distinct()
+                    .filter(path -> !baselines.containsKey(path))
+                    .count();
+            if (baselines.size() + additional > 16384)
+                throw new IllegalArgumentException("session baseline capacity exhausted");
+        }
     }
+
+    SyncPlan prepareSync(AuthPrincipal actor, WorkspaceId workspace, State state, String path, Optional<String> local) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        if (state.uncertain) throw new IllegalArgumentException("recover the uncertain save before synchronizing");
+        state.requireTracking(List.of(path));
+        String previous = state.baseline(path);
+        var original = reader.getFile(actor, workspace, Optional.of(previous), path);
+        var remote = reader.getFile(actor, workspace, Optional.empty(), path);
+        if ((!original.expectedAbsence() && original.source().isEmpty())
+                || (!remote.expectedAbsence() && remote.source().isEmpty())
+                || remote.commit().isEmpty())
+            throw new IllegalArgumentException("synchronization requires a text path and an existing remote commit");
+        var merged = TextReconciliation.merge(original.source(), local, remote.source());
+        return new SyncPlan(
+                path,
+                state.baseCommit,
+                previous,
+                remote.commit().orElseThrow(),
+                local.map(value -> io.github.core607.poketto.content.DocumentRevision.sha256(
+                                value.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        .value()
+                        .substring(7)),
+                merged.content(),
+                merged.conflicted());
+    }
+
+    void acknowledgeSync(State state, SyncPlan plan) {
+        if (state.uncertain
+                || !state.baseCommit.equals(plan.previousCommit())
+                || !state.baseline(plan.path()).equals(plan.previousPathCommit()))
+            throw new IllegalStateException("session baseline changed during synchronization");
+        state.requireTracking(List.of(plan.path()));
+        state.baselines.put(plan.path(), plan.remoteCommit());
+        state.baseCommit = plan.remoteCommit();
+    }
+
+    record SyncPlan(
+            String path,
+            String previousCommit,
+            String previousPathCommit,
+            String remoteCommit,
+            Optional<String> expectedLocalSha256,
+            Optional<String> content,
+            boolean conflicted) {}
 }

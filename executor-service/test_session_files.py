@@ -3,10 +3,20 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from session_files import CaptureRejected, MAX_TEXT_BYTES, capture_text, selected_paths
+from session_files import CaptureRejected, MAX_TEXT_BYTES, capture_text, capture_optional, selected_paths
 
 
 class SelectedFileCaptureTests(unittest.TestCase):
+    def test_optional_capture_distinguishes_absence_empty_files_and_invalid_roots(self):
+        self.assertEqual(('missing/child.md',), capture_optional(self.root, 'missing/child.md')['absent'])
+        (self.repository / 'empty.md').write_bytes(b'')
+        self.assertEqual({'empty.md': ''}, capture_optional(self.root, 'empty.md')['writes'])
+        (self.repository / 'link').symlink_to(self.root / 'missing')
+        with self.assertRaises(CaptureRejected):
+            capture_optional(self.root, 'link')
+        with self.assertRaises(CaptureRejected):
+            capture_optional(self.root / 'not-a-lease', 'note.md')
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

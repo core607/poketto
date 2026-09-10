@@ -25,11 +25,12 @@ class CaptureSnapshot:
         self.id = str(uuid.uuid4())
         self.files = tuple((path, text.encode('utf-8')) for path, text in captured['writes'].items())
         self.deletes = captured['deletes']
+        self.absent = captured.get('absent', ())
 
     def manifest(self):
         return {'captureId': self.id, 'writes': [
             {'path': path, 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
-            for path, content in self.files], 'deletes': self.deletes}
+            for path, content in self.files], 'deletes': self.deletes, 'absent': self.absent}
 
     def chunk(self, index, offset, limit):
         if (type(index) is not int or not 0 <= index < len(self.files)
@@ -124,3 +125,22 @@ def capture_text(session_root, writes, deletes):
     except OSError as error:
         raise CaptureRejected('Selected file is unavailable or unsafe') from error
     return {'writes': captured, 'deletes': deletes}
+
+
+def capture_optional(session_root, path):
+    """Captures one possibly deleted file under the same frozen/mount lifetime contract."""
+    selected_paths([path], [])
+    # A missing selected path is valid; a missing or substituted repository mount is not.
+    try:
+        with ExitStack() as handles:
+            root = _directory(handles, None, session_root)
+            work = _directory(handles, root, 'work')
+            _directory(handles, work, 'repository')
+    except OSError as error:
+        raise CaptureRejected('Repository root is unavailable or unsafe') from error
+    try:
+        return capture_text(session_root, [path], [])
+    except CaptureRejected as error:
+        if isinstance(error.__cause__, FileNotFoundError):
+            return {'writes': {}, 'deletes': (), 'absent': (path,)}
+        raise

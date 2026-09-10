@@ -440,6 +440,76 @@ public final class ExecutorNativeProbe {
                     new Cancellation());
             assertThat(retained.stdout()).contains("retain-conflicting-edit", "local-unselected");
             passed("selected-cli-saves-freeze-chunk-and-commit-real-git-with-host-baseline-and-retained-conflicts");
+            var aligned = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "set -eu; poketto sync private/secret.md; poketto save private/secret.md",
+                    Duration.ofSeconds(25),
+                    new Cancellation());
+            assertThat(aligned.exitCode())
+                    .as("sync stdout=%s stderr=%s", aligned.stdout(), aligned.stderr())
+                    .isZero();
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "AGENTS.md")
+                            .source())
+                    .contains("externally-updated-guide");
+            var unselected = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "poketto save AGENTS.md",
+                    Duration.ofSeconds(15),
+                    new Cancellation());
+            assertThat(unselected.exitCode()).isEqualTo(1);
+            assertThat(unselected.stdout()).contains("REPOSITORY_CONFLICT");
+            var merged = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "poketto sync AGENTS.md",
+                    Duration.ofSeconds(15),
+                    new Cancellation());
+            assertThat(merged.exitCode())
+                    .as("sync stdout=%s stderr=%s", merged.stdout(), merged.stderr())
+                    .isEqualTo(1);
+            assertThat(merged.stdout()).contains("MERGE_CONFLICT");
+            var versions = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "cat AGENTS.md",
+                    Duration.ofSeconds(5),
+                    new Cancellation());
+            assertThat(versions.stdout())
+                    .contains(
+                            "<<<<<<< LOCAL",
+                            "||||||| BASE",
+                            "operator-secret-needle",
+                            "local-unselected",
+                            "externally-updated-guide");
+            var resolved = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "set -eu; printf 'resolved-guide' > AGENTS.md; poketto save AGENTS.md; "
+                            + "rm private/secret.md; poketto sync private/secret.md; test ! -e private/secret.md; poketto save --delete private/secret.md",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(resolved.exitCode())
+                    .as("resolved stdout=%s stderr=%s", resolved.stdout(), resolved.stderr())
+                    .isZero();
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "AGENTS.md")
+                            .source())
+                    .contains("resolved-guide");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
+                            .expectedAbsence())
+                    .isTrue();
+            passed("single-file-cli-sync-merges-conflicts-and-keeps-unselected-baselines-and-local-deletions");
         }
     }
 

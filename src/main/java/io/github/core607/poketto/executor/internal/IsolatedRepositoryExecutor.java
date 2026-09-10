@@ -435,15 +435,42 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "lastSave",
                             session.saveState.lastSave));
         String operation = request.path("operation").asString("");
-        if (operation.equals("save") || operation.equals("recover")) {
+        if (operation.equals("save") || operation.equals("recover") || operation.equals("sync")) {
             if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
             try {
-                auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+                auth.authorize(
+                        session.principal,
+                        session.key.workspace(),
+                        operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
                 if (operation.equals("recover")) {
                     if (!arguments.isEmpty()) throw new IllegalArgumentException();
                     return saves.recover(session.principal, session.key.workspace(), session.saveState);
                 }
                 if (session.saveState.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+                if (operation.equals("sync")) {
+                    if (arguments.size() != 1 || !arguments.path("path").isString())
+                        throw new IllegalArgumentException();
+                    String path = arguments.path("path").stringValue();
+                    JsonNode manifest = requestLive(
+                            session,
+                            "CAPTURE_OPTIONAL",
+                            Map.of("executionId", executionId, "path", path),
+                            Duration.ofSeconds(5));
+                    if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+                        throw new IllegalArgumentException();
+                    requireOk(manifest, session);
+                    List<String> absent = selectedPaths(manifest.path("absent"));
+                    if (!absent.isEmpty() && !absent.equals(List.of(path))) throw new WorkerUnavailableException();
+                    var captured = readCapture(
+                            session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of());
+                    var plan = saves.prepareSync(
+                            session.principal,
+                            session.key.workspace(),
+                            session.saveState,
+                            path,
+                            Optional.ofNullable(captured.get(path)));
+                    return synchronizeFile(session, executionId, plan);
+                }
                 if (arguments.size() != 2 || !arguments.has("writes") || !arguments.has("deletes"))
                     throw new IllegalArgumentException();
                 List<String> writes = selectedPaths(arguments.path("writes"));
@@ -485,6 +512,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 "CAPTURE_BEGIN",
                 Map.of("executionId", executionId, "writes", writes, "deletes", deletes),
                 Duration.ofSeconds(5));
+        return readCapture(session, executionId, manifest, writes, deletes);
+    }
+
+    private Map<String, String> readCapture(
+            Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
         requireOk(manifest, session);
         String captureId = manifest.path("captureId").asString("");
@@ -551,6 +583,79 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return result;
         } finally {
             requireOk(requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3)), session);
+        }
+    }
+
+    private Map<String, ?> synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
+        byte[] content = plan.content().orElse("").getBytes(StandardCharsets.UTF_8);
+        String digest = hash(plan.content().orElse(""));
+        var metadata = new LinkedHashMap<String, Object>();
+        metadata.put("executionId", executionId);
+        metadata.put("path", plan.path());
+        metadata.put("bytes", content.length);
+        metadata.put("sha256", digest);
+        metadata.put("expectedSha256", plan.expectedLocalSha256().orElse(null));
+        metadata.put("delete", plan.content().isEmpty());
+        JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
+        requireOk(begun, session);
+        String transferId = begun.path("transferId").asString("");
+        if (!UUID.fromString(transferId).toString().equals(transferId)) throw new WorkerUnavailableException();
+        Map<String, ?> reference = Map.of("executionId", executionId, "transferId", transferId);
+        try {
+            for (int offset = 0; offset < content.length; offset += 65536) {
+                authorize(session);
+                int end = Math.min(content.length, offset + 65536);
+                JsonNode chunk = requestLive(
+                        session,
+                        "MATERIALIZE_CHUNK",
+                        Map.of(
+                                "executionId",
+                                executionId,
+                                "transferId",
+                                transferId,
+                                "offset",
+                                offset,
+                                "data",
+                                Base64.getEncoder().encodeToString(java.util.Arrays.copyOfRange(content, offset, end))),
+                        Duration.ofSeconds(3));
+                requireOk(chunk, session);
+                if (chunk.path("receivedBytes").asInt(-1) != end) throw new WorkerUnavailableException();
+            }
+            authorize(session);
+            JsonNode committed = requestLive(session, "MATERIALIZE_COMMIT", reference, Duration.ofSeconds(5));
+            if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED"))
+                return Map.of("ok", false, "code", "LOCAL_UPDATE_REJECTED");
+            requireOk(committed, session);
+            JsonNode installed = committed.path("installed");
+            if (!installed.path("path").asString("").equals(plan.path())
+                    || (plan.content().isEmpty()
+                            ? !installed.path("sha256").isNull()
+                            : !installed.path("sha256").asString("").equals(digest)))
+                throw new WorkerUnavailableException();
+            saves.acknowledgeSync(session.saveState, plan);
+            return Map.of(
+                    "ok",
+                    !plan.conflicted(),
+                    "code",
+                    plan.conflicted() ? "MERGE_CONFLICT" : "SYNCHRONIZED",
+                    "result",
+                    Map.of(
+                            "path",
+                            plan.path(),
+                            "baseCommit",
+                            plan.remoteCommit(),
+                            "saved",
+                            false,
+                            "conflicted",
+                            plan.conflicted()));
+        } finally {
+            try {
+                requestLive(session, "MATERIALIZE_ABORT", reference, Duration.ofSeconds(3));
+            } catch (RuntimeException cleanupFailure) {
+                // Completed installs already closed their staging file. Command cleanup releases
+                // an unacknowledged transfer slot without changing its observed file outcome.
+                log.warn("Worker transfer cleanup was not acknowledged; command cleanup will release its slot");
+            }
         }
     }
 

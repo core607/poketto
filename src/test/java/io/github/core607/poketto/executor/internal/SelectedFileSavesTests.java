@@ -88,6 +88,39 @@ class SelectedFileSavesTests {
     }
 
     @Test
+    void synchronizingOnePathNeverAcceptsNewRemoteRevisionsForUnselectedLocalFiles() throws Exception {
+        var auth = mock(AuthService.class);
+        var actor = actor();
+        var workspace = WorkspaceId.random();
+        doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
+        var reader = fixture.reader(auth);
+        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth));
+        var state = new SelectedFileSaves.State(fixture.sourceCommit());
+        fixture.competingWrite(auth, actor);
+        var plan = saves.prepareSync(actor, workspace, state, "private/secret.md", Optional.of("local secret edit"));
+        assertThat(state.baseCommit).isEqualTo(fixture.sourceCommit());
+        assertThat(plan.content()).contains("local secret edit");
+        assertThat(plan.conflicted()).isFalse();
+        saves.acknowledgeSync(state, plan);
+        assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "local secret edit"), List.of())
+                        .get("ok"))
+                .isEqualTo(true);
+        assertThat(saves.save(actor, workspace, state, Map.of("AGENTS.md", "old local guide edit"), List.of())
+                        .get("code"))
+                .isEqualTo("REPOSITORY_CONFLICT");
+        assertThat(reader.getFile(actor, workspace, Optional.empty(), "AGENTS.md")
+                        .source())
+                .contains("externally-updated-guide");
+        var guide = saves.prepareSync(actor, workspace, state, "AGENTS.md", Optional.of("old local guide edit"));
+        assertThat(guide.conflicted()).isTrue();
+        assertThat(guide.content().orElseThrow())
+                .contains("operator-secret-needle", "old local guide edit", "externally-updated-guide");
+    }
+
+    @Test
     void recoveryAcknowledgesTheOriginalSaveAndAllowsLaterLocalEditsToBeSavedSeparately() throws Exception {
         var auth = mock(AuthService.class);
         var actor = actor();
