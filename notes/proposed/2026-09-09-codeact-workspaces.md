@@ -9,9 +9,9 @@ Status: Proposed
 
 This is the next development priority for repository agent access, ahead of expanding specialized MCP tools. Implement the workspace and authorization boundary before replacing the agent authoring entrance. The implementation steps below describe one target architecture, not compatibility modes or separate experimental products.
 
-The [current executor](2026-09-05-local-execution-supervisor.md) requires both `READ_PRIVATE` and `EXECUTE_REPOSITORY`. It exports a credential-free Git bundle with reachable history into a disposable session. Commands can change session files, but authoritative reads and `repo_patch` operate separately. An agent cannot save those files without sending their contents through the structured write interface. A key without private-read authority cannot execute at all.
+The [execution service](../../executor-service/README.md) provides full-read workspaces with original Git history and public-only workspaces built from the approved projection. Both require `EXECUTE_REPOSITORY`. Its host bridge supports selected-file saves, per-file synchronization, uncertain-write recovery and media import/fetch. The authoritative browser services and structured MCP tools share the same underlying writer.
 
-Poketto will provide a coherent CodeAct workspace: ordinary files, shell and Python tools, bounded execution, and a small service bridge for durable saves and managed assets. A permitted search scans the files present in that workspace, including private articles when the identity has private-read authority.
+A permitted search scans the files present in the admitted workspace, including private articles when the identity has private-read authority. The remaining target includes scoped artifact delivery, bootstrap guidance and completion of the agent-entrance cutover. This proposal retains the full contract until those parts are delivered; implemented CLI behavior and its limits are documented in the execution-service reference.
 
 ## Workspace admission and contents
 
