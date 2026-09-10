@@ -10,6 +10,7 @@ import io.github.core607.poketto.content.PrincipalType;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryMediaValidator;
+import io.github.core607.poketto.content.RepositoryMovePlan;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
@@ -114,6 +115,84 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                                     || RepositoryPathRules.reserved(change.path()));
                     return new RepositoryCandidateChanges(replacements, Map.of(), deletions, structural);
                 });
+    }
+
+    @Override
+    public RepositoryMovePlan plan(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
+        return auth.withAuthorization(
+                principal,
+                workspace,
+                Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE),
+                () -> authority.readObjects(workspace, snapshot -> {
+                    if (!snapshot.commitId().equals(Optional.of(request.baseCommit())))
+                        throw new RepositoryConflictException("repository base changed before preparing move");
+                    try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspace);
+                            RevWalk walk = new RevWalk(repository);
+                            var reader = repository.newObjectReader()) {
+                        ObjectId base = ObjectId.fromString(request.baseCommit());
+                        requireBoundedTree(repository, base);
+                        DirCache index =
+                                DirCache.read(reader, walk.parseCommit(base).getTree());
+                        var media = mediaIndex(repository, index);
+                        var changes = RepositoryMovePlanner.prepare(
+                                repository, index, request, policy(repository, index), media);
+                        var namespace = new HashSet<>(media.files().keySet());
+                        for (int i = 0; i < index.getEntryCount(); i++)
+                            namespace.add(index.getEntry(i).getPathString());
+                        var relocations = RepositoryMovePlanner.relocate(namespace, request);
+                        var affected = new HashSet<>(changes.paths());
+                        affected.addAll(relocations.keySet());
+                        affected.addAll(relocations.values());
+                        if (affected.size() > RepositoryMovePlan.MAX_CHANGED_PATHS)
+                            throw new IllegalArgumentException("move exceeds session path capacity");
+                        var originals = new LinkedHashMap<String, RepositoryMovePlan.Original>();
+                        long originalBytes = 0;
+                        for (String path : changes.paths()) {
+                            var entry = index.getEntry(path);
+                            if (entry != null) {
+                                originalBytes += repository
+                                        .open(entry.getObjectId(), Constants.OBJ_BLOB)
+                                        .getSize();
+                                if (originalBytes > ContentLimits.MAX_WORKSPACE_BYTES)
+                                    throw new IllegalArgumentException(
+                                            "move fingerprinting exceeds workspace byte capacity");
+                                originals.put(path, moveOriginal(repository, entry.getObjectId()));
+                            }
+                        }
+                        for (String path : relocations.keySet()) {
+                            var original = media.files().get(path);
+                            if (original != null)
+                                originals.put(
+                                        path,
+                                        new RepositoryMovePlan.Original(original.revision(), original.size(), true));
+                        }
+                        return new RepositoryMovePlan(
+                                workspace, request, originals, relocations, changes.replacements());
+                    } catch (IOException error) {
+                        throw new ContentRepositoryException("move preconditions could not be prepared", error);
+                    }
+                }));
+    }
+
+    private static RepositoryMovePlan.Original moveOriginal(Repository repository, ObjectId id) throws IOException {
+        var blob = repository.open(id, Constants.OBJ_BLOB);
+        if (blob.getSize() > RepositoryMovePlan.MAX_ORIGINAL_BYTES)
+            throw new IllegalArgumentException("move original exceeds session file capacity");
+        try (var stream = blob.openStream()) {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[65536];
+            long bytes = 0;
+            int count;
+            while ((count = stream.read(buffer)) != -1) {
+                bytes += count;
+                if (bytes > blob.getSize()) throw new IOException("move original size changed");
+                digest.update(buffer, 0, count);
+            }
+            if (bytes != blob.getSize()) throw new IOException("move original is incomplete");
+            return new RepositoryMovePlan.Original(java.util.HexFormat.of().formatHex(digest.digest()), bytes, false);
+        } catch (java.security.NoSuchAlgorithmException unavailable) {
+            throw new IllegalStateException(unavailable);
+        }
     }
 
     @Override

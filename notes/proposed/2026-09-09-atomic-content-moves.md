@@ -11,6 +11,15 @@ The [CodeAct content plan](2026-09-09-codeact-content-and-media.md) requires one
 
 `RepositoryMoveService` accepts exact source and destination paths at an expected authority commit. A folder destination must be absent; moves do not merge directories, replace workspace roots or metadata, follow symlinks, traverse submodules, or convert Markdown into another file type. Collision checks include normalized case, directory ancestors, Git entries and logical media. Directory moves reuse existing Git object identities and relocate media index entries without loading original bytes. Selecting one file never implicitly relocates its dependencies.
 
+`RepositoryMoveService.plan` prepares host-owned local preconditions without
+advancing authority. It shares the move planner, identifies every relocation and
+repaired text file, and fingerprints affected Git originals. Indexed originals
+carry their immutable content hashes and may be absent from the sandbox; preparing
+the plan does not fetch them from media storage. Plans retain their workspace and
+exact authority base, bound affected paths to 16,384, replacement text to 32 MiB,
+each Git original to 128 MiB and aggregate Git fingerprint reads to the workspace
+byte limit. Worker staging and installation remain part of the CLI target below.
+
 The service requires `READ_PRIVATE` and `WRITE_PRIVATE` before accessing repository state. It uses the same remote-ref writer as text patches, including atomic compare-and-swap, current publication authorization, withdrawal before an uncertain outcome, reconciliation, attribution and separate snapshot-installation acknowledgement. Public changes and repaired inbound references require `PUBLISH`. A move that creates a public-to-private reference fails before authority advances. Invalid publication or media configuration must be repaired first.
 
 `RepositoryMoveService.recover` accepts the original request and host-retained

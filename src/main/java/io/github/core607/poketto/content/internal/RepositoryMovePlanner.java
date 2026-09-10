@@ -123,7 +123,7 @@ final class RepositoryMovePlanner {
         return new RepositoryCandidateChanges(replacements, copies, deletions, true);
     }
 
-    private static Map<String, String> relocate(Set<String> namespace, RepositoryMoveRequest request) {
+    static Map<String, String> relocate(Set<String> namespace, RepositoryMoveRequest request) {
         Map<String, String> moved = new LinkedHashMap<>();
         String source = request.source();
         String destination = request.destination();

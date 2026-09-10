@@ -112,6 +112,25 @@ class RepositoryPatchServiceTests {
         ObjectId base = fixture.commitRemote(workspace, source);
         AtomicInteger installed = new AtomicInteger();
         var service = service(fixture, (id, snapshot) -> installed.incrementAndGet());
+        var plan = service.plan(
+                principal, workspace, new RepositoryMoveRequest(base.name(), "private/box", "private/deeper/box"));
+        assertThat(plan.workspace()).isEqualTo(workspace);
+        assertThat(plan.relocations())
+                .hasSize(103)
+                .containsEntry("private/box/scan.pdf", "private/deeper/box/scan.pdf");
+        assertThat(plan.originals().get("private/box/scan.pdf").optional()).isTrue();
+        assertThat(plan.originals().get("private/box/scan.pdf").sha256()).isEqualTo(original.revision());
+        assertThat(plan.originals().get("private/box/legacy.bin").optional()).isFalse();
+        assertThat(plan.originals().get("private/box/legacy.bin").sha256())
+                .isEqualTo(DocumentRevision.sha256(source.get("private/box/legacy.bin"))
+                        .value()
+                        .substring(7));
+        assertThat(new String(plan.replacements().get("private/other.md"), StandardCharsets.UTF_8))
+                .contains("[note](deeper/box/note.md#part)");
+        plan.replacements().get("private/other.md")[0] = 'X';
+        assertThat(plan.replacements().get("private/other.md")[0]).isEqualTo((byte) '[');
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+        assertThat(installed).hasValue(0);
         var result = service.move(
                 principal, workspace, new RepositoryMoveRequest(base.name(), "private/box", "private/deeper/box"));
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
