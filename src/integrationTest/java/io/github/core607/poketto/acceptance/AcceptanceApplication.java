@@ -54,26 +54,27 @@ public final class AcceptanceApplication {
             write(
                     directory,
                     ".poketto/publishing.yaml",
-                    "enabled: true\nmode: public-by-default\nexclude: [drafts/**]\n");
-            write(directory, "index.md", "# 窗边的知识站\n\n这是一份隔离验收样例，用于检查真实的阅读、图片和编辑流程。\n\n[翻开第一篇](随记/雨后.md)\n");
+                    "enabled: true\nmode: public-root\nexclude: [public/drafts/**]\n");
+            write(directory, "public/index.md", "# 窗边的知识站\n\n这是一份隔离验收样例，用于检查真实的阅读、图片和编辑流程。\n\n[翻开第一篇](随记/雨后.md)\n");
             write(
                     directory,
-                    "随记/雨后.md",
+                    "public/随记/雨后.md",
                     "---\ntitle: 雨停之后，留一页给散步\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
-            write(directory, "手册/index.md", "# 使用手册\n\n文件夹页面附带同目录的图片画廊。\n");
+            write(directory, "public/手册/index.md", "# 使用手册\n\n文件夹页面附带同目录的图片画廊。\n");
             write(
                     directory,
-                    "手册/写作.md",
+                    "public/手册/写作.md",
                     "---\ntags: [手册]\ncreated_at: 2026-08-30T08:00:00Z\n---\n# 从一段 Markdown 开始\n\n正文无需补齐元数据即可读取。修改时保留未改动的内容。\n");
             write(directory, "private/日记.md", "# 私有验收样例\n\nPRIVATE_ACCEPTANCE_SENTINEL\n\n![私有图片](hidden.png)\n");
-            write(directory, "drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
+            write(directory, "public/drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
             BufferedImage image = new BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB);
             for (int y = 0; y < image.getHeight(); y++) {
                 for (int x = 0; x < image.getWidth(); x++)
                     image.setRGB(x, y, ((120 + x / 4) << 16) | ((150 + y / 3) << 8) | 160);
             }
-            ImageIO.write(image, "png", directory.resolve("sample.png").toFile());
-            ImageIO.write(image, "png", directory.resolve("手册/gallery.png").toFile());
+            ImageIO.write(image, "png", directory.resolve("public/sample.png").toFile());
+            ImageIO.write(
+                    image, "png", directory.resolve("public/手册/gallery.png").toFile());
             ImageIO.write(image, "png", directory.resolve("private/hidden.png").toFile());
             git.add().addFilepattern(".").call();
             git.commit()

@@ -36,6 +36,13 @@ Repository-derived and optional metadata [routes](2026-09-06-logical-repository-
 
 ## Current MCP contract
 
+The content format uses independent `public/` and `private/` roots with new content
+private by default. Only eligible paths under exact `public/` can publish under
+an enabled `public-root` policy; exclusions, guides and hidden paths remain private.
+Default article routes omit the root prefix, while explicit routes do not grant
+publication. The [content plan](../proposed/2026-09-09-codeact-content-and-media.md)
+owns the coordinated conversion and remaining delivery requirements.
+
 The phase-one contract supersedes the original UUID-based document tool selection. `/mcp` uses Streamable HTTP and workspace Bearer API keys independently of browser sessions. Its tools are `list_directory`, `get_file`, `get_asset`, `put_asset`, and `repo_patch`, with `repo_exec` and the session-bound `get_artifact` return channel registered only when the isolated execution adapter is enabled. The [local worker](../../executor-service/README.md) is a separate Linux service; enabling the adapter does not substitute for verifying the real process boundary.
 
 [Directory navigation](2026-09-08-repository-directory-navigation.md) supplies paged immediate Git entries under read authorization without an executor. Content-owned `AGENTS.md` files provide optional progressive guidance; the server does not interpret their prose.

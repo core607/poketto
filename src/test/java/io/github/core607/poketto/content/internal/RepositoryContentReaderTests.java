@@ -214,7 +214,7 @@ class RepositoryContentReaderTests {
         assertThat(tree.documents())
                 .extracting(document -> document.file().path())
                 .containsExactly("nested/private/open.md", "private/secret.md");
-        assertThat(tree.documents().getFirst().privatePath()).isFalse();
+        assertThat(tree.documents().getFirst().privatePath()).isTrue();
         assertThat(tree.documents().getLast().privatePath()).isTrue();
         assertThat(tree.diagnostics().stream()
                         .filter(diagnostic -> diagnostic.code().equals("ROUTE_COLLISION")))

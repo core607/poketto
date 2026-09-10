@@ -1,6 +1,19 @@
 import { api, ApiError } from "./browser-api";
 import type { RepositoryDirectory } from "./types";
 
+export function contentRoot(path: string): "public" | "private" | null {
+  const root = path.split("/")[0];
+  return root === "public" || root === "private" ? root : null;
+}
+
+export function inContentRoot(path: string, root: "public" | "private") {
+  const current = contentRoot(path);
+  const relative = current
+    ? path.slice(current.length).replace(/^\//, "")
+    : path;
+  return relative ? `${root}/${relative}` : root;
+}
+
 export async function readDirectory(
   commit: string | null,
   path: string,

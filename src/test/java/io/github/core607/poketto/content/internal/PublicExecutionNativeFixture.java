@@ -60,8 +60,8 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                         workspace,
                         Map.of(
                                 RepositoryPublishingPolicy.PATH,
-                                text("enabled: true\nmode: public-by-default\n"),
-                                "article.md",
+                                text("enabled: true\nmode: public-root\n"),
+                                "public/article.md",
                                 text("---\ntitle: Public native article\nsecret: metadata-secret-needle\n---\n"
                                         + "public-native-body\n\n<!-- comment-secret-needle -->\n"),
                                 "private/secret.md",
@@ -156,7 +156,7 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                 workspace,
                 java.util.Optional.empty(),
                 io.github.core607.poketto.content.RepositoryMediaIndex.PATH);
-        var article = reader.getFile(actor, workspace, index.commit(), "article.md");
+        var article = reader.getFile(actor, workspace, index.commit(), "public/article.md");
         return patches(auth)
                 .apply(
                         actor,
@@ -178,7 +178,7 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                                                 false,
                                                 article.revision(),
                                                 java.util.Optional.of(
-                                                        "# Media fixture\n[Manual](public/manual.pdf)\n[Hidden](private/manual.pdf)\n")))))
+                                                        "# Media fixture\n[Manual](manual.pdf)\n[Hidden](../private/manual.pdf)\n")))))
                 .commit();
     }
 
@@ -234,7 +234,7 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public void withdraw() throws Exception {
         repository.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-by-default\n")));
+                workspace, Map.of(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-root\n")));
         snapshots.refresh(workspace);
     }
 

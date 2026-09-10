@@ -26,18 +26,28 @@ On Windows, `check` also runs `linuxStorageTest` in a pinned Linux container usi
 
 ## Content and images
 
-To publish, create `.poketto/publishing.yaml` in the content repository:
+Initialize an empty content repository from [content-template](../content-template/AGENTS.md).
+It contains independent `private/` and `public/` trees and keeps publication disabled.
+Create new content under `private/`. To publish selected content, move it and its
+required media into `public/`, then configure `.poketto/publishing.yaml`:
 
 ```yaml
 enabled: true
-mode: public-by-default
+mode: public-root
 exclude:
-  - drafts/**
+  - public/drafts/**
 ```
 
-Missing or disabled policy publishes nothing; invalid policy closes public service. Root `private/` and configured exclusions remain private. Markdown metadata is optional, and unchanged source bytes are retained. The public detail endpoint is `GET /api/public/document?route=...`; list/search and tags include snapshot metadata. `index.md` owns its folder route and supplies a non-recursive sibling-image gallery without repeating body images.
+Only paths below the exact root `public/` are eligible. Exclusions use full repository-relative paths and win; guides named `AGENTS.md` in any letter case and hidden path segments stay private. Names below either root are ordinary categories. Missing or disabled policy publishes nothing; invalid policy closes public service. Existing default-public repositories need the [coordinated content conversion](../notes/proposed/2026-09-09-codeact-content-and-media.md#implementation-and-acceptance) before upgrading; copying the template over an existing repository is not a conversion.
+
+Markdown metadata is optional, and unchanged source bytes are retained. Default routes omit `public/` and `.md`; an explicit route is preserved but cannot grant publication rights. The public detail endpoint is `GET /api/public/document?route=...`; list/search and tags include snapshot metadata. `index.md` owns its folder route (`public/index.md` owns `/`) and supplies a non-recursive sibling-image gallery without repeating body images.
 
 Authenticated `/api/admin/repository` endpoints provide the Markdown index, paginated directory listing, file reads, search, preview, atomic patches and moves. The browser destination picker moves files or folders and repairs Markdown references in the same commit. Text changes carry revisions or explicit absence against the base commit; moves check the source and destination at that base. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
+
+The new-path field starts at `private/`. In the move picker, the private/public
+directory buttons retain the category path while switching roots. Selecting a
+destination does not write until the move is submitted. Moving a directory includes
+its indexed media; moving one document does not move shared dependencies.
 
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Withdrawal stops new grants, while private previews recheck the current identity. See the [foundations record](../notes/implemented/2026-09-05-repository-authoring-foundations.md) for limits, storage guarantees and failure behavior.
 

@@ -1,6 +1,10 @@
 "use client";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { readDirectory } from "../lib/repository-directory";
+import {
+  contentRoot,
+  inContentRoot,
+  readDirectory,
+} from "../lib/repository-directory";
 import type { RepositoryDirectory } from "../lib/types";
 import { message } from "./admin";
 
@@ -9,6 +13,7 @@ export function FolderPicker({
   commit,
   returnFocus,
   fallbackFocus,
+  canPublish = false,
   onClose,
   onMove,
 }: {
@@ -16,6 +21,7 @@ export function FolderPicker({
   commit: string;
   returnFocus: HTMLElement | null;
   fallbackFocus: HTMLElement | null;
+  canPublish?: boolean;
   onClose: () => void;
   onMove: (destination: string) => Promise<boolean>;
 }) {
@@ -102,6 +108,36 @@ export function FolderPicker({
     >
       <h2 id={title}>移动到文件夹</h2>
       <p className="muted">{source}</p>
+      <div className="folder-navigation" role="group" aria-label="存放范围">
+        <button
+          type="button"
+          disabled={moving || loading}
+          aria-pressed={contentRoot(folder) === "private"}
+          className={
+            contentRoot(folder) === "private" ? undefined : "button-secondary"
+          }
+          onClick={() => setFolder(inContentRoot(folder, "private"))}
+        >
+          私有目录
+        </button>
+        <button
+          type="button"
+          disabled={moving || loading || !canPublish}
+          aria-pressed={contentRoot(folder) === "public"}
+          className={
+            contentRoot(folder) === "public" ? undefined : "button-secondary"
+          }
+          title={canPublish ? "保留分类路径，移到 public" : "需要发布权限"}
+          onClick={() => setFolder(inContentRoot(folder, "public"))}
+        >
+          公开目录
+        </button>
+      </div>
+      <p className="muted">
+        {contentRoot(folder) === "public"
+          ? "移入公开目录后，启用发布且未被排除的内容会在网站展示。单独移动文件不会带走它引用的媒体。"
+          : "私有目录中的内容不会在网站展示。移动文件夹会保留内部分类，并带上其中的媒体。"}
+      </p>
       <nav className="folder-navigation" aria-label="目标文件夹">
         <button
           type="button"
@@ -149,8 +185,13 @@ export function FolderPicker({
               ▸ {entry.path.split("/").at(-1)}
             </button>
           ))}
-        {page && !page.entries.some((entry) => entry.kind === "DIRECTORY") && (
-          <p className="muted">没有子文件夹，可以选择当前文件夹。</p>
+        {page?.expectedAbsence ? (
+          <p className="muted">此目录将在移动时创建。</p>
+        ) : (
+          page &&
+          !page.entries.some((entry) => entry.kind === "DIRECTORY") && (
+            <p className="muted">没有子文件夹，可以选择当前文件夹。</p>
+          )
         )}
         {page?.nextOffset != null && (
           <button

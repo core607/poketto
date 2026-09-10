@@ -138,7 +138,8 @@ class PostgresIntegrationIT {
                 .call()) {
             Files.createDirectories(author.resolve("private"));
             Files.writeString(author.resolve("private/secret.md"), "# Secret\nprivate body");
-            Files.writeString(author.resolve("hello.md"), "# Hello\n\nPublic body");
+            Files.createDirectories(author.resolve("public"));
+            Files.writeString(author.resolve("public/hello.md"), "# Hello\n\nPublic body");
             git.add().addFilepattern(".").call();
             git.commit()
                     .setAuthor("Test Author", "test@invalid")
@@ -154,7 +155,7 @@ class PostgresIntegrationIT {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.total").value(0));
             Files.createDirectories(author.resolve(".poketto"));
-            Files.writeString(author.resolve(".poketto/publishing.yaml"), "enabled: true\nmode: public-by-default\n");
+            Files.writeString(author.resolve(".poketto/publishing.yaml"), "enabled: true\nmode: public-root\n");
             git.add().addFilepattern(".").call();
             git.commit()
                     .setAuthor("Test Author", "test@invalid")

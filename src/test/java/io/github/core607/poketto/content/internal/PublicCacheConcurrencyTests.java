@@ -56,8 +56,8 @@ class PublicCacheConcurrencyTests {
         var state = state();
         var gate = transport.arm();
         try (var pool = Executors.newFixedThreadPool(2)) {
-            var preview = pool.submit(
-                    () -> state.service.preview(state.actor, workspace, "article.md", "# Draft", Optional.empty()));
+            var preview = pool.submit(() ->
+                    state.service.preview(state.actor, workspace, "public/article.md", "# Draft", Optional.empty()));
             try {
                 await(gate.entered);
                 assertThat(pool.submit(() -> state.service.publicDocument(workspace, "/"))
@@ -74,7 +74,7 @@ class PublicCacheConcurrencyTests {
     @Test
     void exactExistingBlobDoesNotWaitForRemoteFetch() throws Exception {
         var state = state();
-        var blob = state.blobs.find(workspace, state.commit, "image.png").orElseThrow();
+        var blob = state.blobs.find(workspace, state.commit, "public/image.png").orElseThrow();
         var gate = transport.arm();
         try (var pool = Executors.newFixedThreadPool(2)) {
             var refresh = pool.submit(() -> state.snapshots.refresh(workspace));
@@ -145,7 +145,7 @@ class PublicCacheConcurrencyTests {
                 workspace,
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
-                        text(invalid ? "enabled: [broken" : "enabled: false\nmode: public-by-default\n")));
+                        text(invalid ? "enabled: [broken" : "enabled: false\nmode: public-root\n")));
         pauseClosed.set(true);
         try (var pool = Executors.newFixedThreadPool(2)) {
             var closing = pool.submit(() -> state.snapshots.refresh(workspace));
@@ -183,7 +183,7 @@ class PublicCacheConcurrencyTests {
     @Test
     void finalPublicationGateCanProtectSourcesWhileAnInstallerOwnsTheAuthorityMutex() throws Exception {
         var state = state();
-        var blob = state.blobs.find(workspace, state.commit, "image.png").orElseThrow();
+        var blob = state.blobs.find(workspace, state.commit, "public/image.png").orElseThrow();
         state.fixture.commitRemote(workspace, Map.of("private/closed.md", text("# Closed")));
         var gate = transport.arm();
         var publishing = new Gate();
@@ -269,10 +269,10 @@ class PublicCacheConcurrencyTests {
                         workspace,
                         Map.of(
                                 RepositoryPublishingPolicy.PATH,
-                                text("enabled: true\nmode: public-by-default\n"),
-                                "article.md",
+                                text("enabled: true\nmode: public-root\n"),
+                                "public/article.md",
                                 text("# Article\n![image](image.png)"),
-                                "image.png",
+                                "public/image.png",
                                 png()))
                 .name();
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), clock, Duration.ofHours(1), marker);

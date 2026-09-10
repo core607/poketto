@@ -108,16 +108,16 @@ class AssetDeliveryTests {
                 [private](/private/hidden%20%25%23.md)
                 ![image](photo%20%25%23.png)
                 """;
-        var files = files(folder + "/index.md", source);
+        var files = files("public/" + folder + "/index.md", source);
         for (String name : new String[] {
             "100%.md", "note#part.md", "literal%2Fslash.md", "literal/slash.md", "%E9%9B%A8.md", "雨.md"
         }) {
-            files.put(folder + "/" + name, text("# " + name));
+            files.put("public/" + folder + "/" + name, text("# " + name));
         }
-        files.put(folder + "/custom.md", text("---\nroute: '/chosen ?%# '\n---\n# Custom"));
-        files.put(folder + "/photo %#.png", png(1));
-        files.put(folder + "/other %#.png", png(2));
-        files.put(folder + "/nested/image.png", png(3));
+        files.put("public/" + folder + "/custom.md", text("---\nroute: '/chosen ?%# '\n---\n# Custom"));
+        files.put("public/" + folder + "/photo %#.png", png(1));
+        files.put("public/" + folder + "/other %#.png", png(2));
+        files.put("public/" + folder + "/nested/image.png", png(3));
         files.put("private/hidden %#.md", text("# Private"));
         var commit = fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
@@ -147,12 +147,14 @@ class AssetDeliveryTests {
         assertThat(service.publicDocument(workspace, "/chosen ?%# ")).isPresent();
         assertThat(service.publicDocument(workspace, "/chosen ?%#")).isEmpty();
         assertThat(service.publicDocument(workspace, "/private/hidden %#")).isEmpty();
-        var preview = service.preview(actor, workspace, folder + "/index.md", source, Optional.of(commit.name()));
+        var preview =
+                service.preview(actor, workspace, "public/" + folder + "/index.md", source, Optional.of(commit.name()));
         assertThat(preview.body()).isEqualTo(source);
         assertThat(preview.links())
                 .containsEntry(
                         "100%25.md",
-                        "/admin?path=" + java.net.URLEncoder.encode(folder + "/100%.md", StandardCharsets.UTF_8));
+                        "/admin?path="
+                                + java.net.URLEncoder.encode("public/" + folder + "/100%.md", StandardCharsets.UTF_8));
         assertThat(service.readPrivateImage(
                                 actor, workspace, token(preview.images().get("photo%20%25%23.png")))
                         .bytes())
@@ -162,23 +164,23 @@ class AssetDeliveryTests {
     @Test
     void publicResolutionUsesAstPathsPolicyAndSortedNonrecursiveGallery() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        Map<String, byte[]> files = files("notes/index.md", """
+        Map<String, byte[]> files = files("public/notes/index.md", """
                 # Gallery
                 ![inline](./a.png)
                 ![encoded](/%70rivate/secret.png)
                 ![excluded](excluded.png)
-                ![escape](../../escape.png)
+                ![escape](../../../escape.png)
                 [article](article.md#section)
-                [secret](../private/secret.md)
+                [secret](../../private/secret.md)
                 `![code](b.png)`
                 """);
-        files.put("notes/a.png", png(1));
-        files.put("notes/b.png", png(2));
-        files.put("notes/c.png", png(3));
-        files.put("notes/sub/nested.png", png(4));
-        files.put("notes/excluded.png", png(5));
+        files.put("public/notes/a.png", png(1));
+        files.put("public/notes/b.png", png(2));
+        files.put("public/notes/c.png", png(3));
+        files.put("public/notes/sub/nested.png", png(4));
+        files.put("public/notes/excluded.png", png(5));
         files.put("private/secret.png", png(6));
-        files.put("notes/article.md", text("---\nroute: /custom\n---\n# Article"));
+        files.put("public/notes/article.md", text("---\nroute: /custom\n---\n# Article"));
         files.put("private/secret.md", text("# Secret"));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
@@ -188,13 +190,13 @@ class AssetDeliveryTests {
         assertThat(result.media().images()).containsOnlyKeys("./a.png");
         assertThat(result.media().links())
                 .containsEntry("article.md#section", "/custom#section")
-                .doesNotContainKey("../private/secret.md");
+                .doesNotContainKey("../../private/secret.md");
         assertThat(result.media().gallery()).extracting(item -> item.alt()).containsExactly("b.png", "c.png");
         assertThat(service.readPublicImage(
                                 workspace, token(result.media().images().get("./a.png")))
                         .bytes())
                 .isEqualTo(png(1));
-        assertThat(fixture.cache(workspace).resolve("notes/a.png")).doesNotExist();
+        assertThat(fixture.cache(workspace).resolve("public/notes/a.png")).doesNotExist();
         assertThat(result.media().images().toString() + result.media().gallery())
                 .doesNotContain("private/secret.png", "excluded.png", "escape.png");
     }
@@ -202,8 +204,8 @@ class AssetDeliveryTests {
     @Test
     void overflowingGalleryPreservesTheDocumentAndFirst128Images() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("index.md", "# Still readable");
-        for (int i = 0; i < 129; i++) files.put("image-%03d.png".formatted(i), png(i));
+        var files = files("public/index.md", "# Still readable");
+        for (int i = 0; i < 129; i++) files.put("public/image-%03d.png".formatted(i), png(i));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -220,10 +222,10 @@ class AssetDeliveryTests {
     @Test
     void exactly128ImagesRemainCompleteAndUnicodeTruncationKeepsJavaFilenameOrder() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("目录/index.md", "# Gallery");
-        for (int i = 0; i < 126; i++) files.put("目录/image-%03d.png".formatted(i), png(i));
-        files.put("目录/中文.png", png(1));
-        files.put("目录/\ue000.png", png(2));
+        var files = files("public/目录/index.md", "# Gallery");
+        for (int i = 0; i < 126; i++) files.put("public/目录/image-%03d.png".formatted(i), png(i));
+        files.put("public/目录/中文.png", png(1));
+        files.put("public/目录/\ue000.png", png(2));
         var commit = fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -233,11 +235,11 @@ class AssetDeliveryTests {
                 .media();
         assertThat(complete.gallery()).hasSize(128);
         assertThat(complete.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.COMPLETE);
-        files.put("目录/😀.png", png(3));
+        files.put("public/目录/😀.png", png(3));
         commit = fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
         var reader = new JGitRepositoryBlobReader(fixture.authority());
-        var result = reader.siblings(workspace, commit.name(), "目录/index.md", 128, true, Set.of());
+        var result = reader.siblings(workspace, commit.name(), "public/目录/index.md", 128, true, Set.of());
         var expected = files.keySet().stream()
                 .filter(path -> path.endsWith(".png"))
                 .sorted()
@@ -245,25 +247,25 @@ class AssetDeliveryTests {
                 .toList();
         assertThat(result.partial()).isTrue();
         assertThat(result.items()).extracting(RepositoryBlob::path).containsExactlyElementsOf(expected);
-        assertThat(result.items().getLast().path()).isEqualTo("目录/😀.png");
+        assertThat(result.items().getLast().path()).isEqualTo("public/目录/😀.png");
     }
 
     @Test
     void normalizedInlineAndExcludedPathsDoNotConsumeSlotsOrRevealTruncation() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var source = new StringBuilder("# Body\n");
-        var files = files("notes/index.md", "");
+        var files = files("public/notes/index.md", "");
         for (int i = 0; i < 129; i++) {
             String name = "inline-%03d.png".formatted(i);
             files.put(
-                    "notes/" + name,
+                    "public/notes/" + name,
                     i == 128 ? new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1] : text("invalid image"));
             source.append("![already referenced](./")
                     .append(name.replace("inline", "%69nline"))
                     .append(")\n");
         }
-        files.put("notes/visible.png", png(1));
-        files.put("notes/index.md", text(source.toString()));
+        files.put("public/notes/visible.png", png(1));
+        files.put("public/notes/index.md", text(source.toString()));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -274,11 +276,11 @@ class AssetDeliveryTests {
         assertThat(before.galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.COMPLETE);
         files.put(
                 RepositoryPublishingPolicy.PATH,
-                text("enabled: true\nmode: public-by-default\nexclude: ['notes/hidden-*.png']\n"));
+                text("enabled: true\nmode: public-root\nexclude: ['public/notes/hidden-*.png']\n"));
         for (int i = 0; i < 129; i++) {
-            files.put("notes/hidden-%03d.png".formatted(i), png(i));
+            files.put("public/notes/hidden-%03d.png".formatted(i), png(i));
             files.put("private/image-%03d.png".formatted(i), png(i));
-            files.put("notes/nested/image-%03d.png".formatted(i), png(i));
+            files.put("public/notes/nested/image-%03d.png".formatted(i), png(i));
         }
         var commit = fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
@@ -297,11 +299,11 @@ class AssetDeliveryTests {
     @Test
     void corruptAndOversizedSiblingsYieldPartialWithoutFailingTextOrRefillingCandidates() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("index.md", "# Still readable");
-        files.put("a.png", new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
-        files.put("b.png", text("not a PNG"));
-        files.put("c.png", png(1));
-        for (int i = 3; i < 129; i++) files.put("z-%03d.png".formatted(i), png(i));
+        var files = files("public/index.md", "# Still readable");
+        files.put("public/a.png", new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
+        files.put("public/b.png", text("not a PNG"));
+        files.put("public/c.png", png(1));
+        for (int i = 3; i < 129; i++) files.put("public/z-%03d.png".formatted(i), png(i));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -324,10 +326,10 @@ class AssetDeliveryTests {
                 workspace,
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
-                        text("enabled: true\nmode: public-by-default\n"),
-                        "index.md",
+                        text("enabled: true\nmode: public-root\n"),
+                        "public/index.md",
                         text("# Text"),
-                        "invalid.png",
+                        "public/invalid.png",
                         text("invalid")));
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -344,8 +346,8 @@ class AssetDeliveryTests {
     @Test
     void imageCacheFailureProducesUnavailableGalleryWhileSnapshotExpiryStillFailsClosed() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("index.md", "# Readable");
-        files.put("image.png", png(1));
+        var files = files("public/index.md", "# Readable");
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -551,10 +553,10 @@ class AssetDeliveryTests {
     @Test
     void ordinaryArticlesHaveNoGalleryAndExplicitSymlinkIsNotAnImage() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("article.md", "# Article\n![symlink](link.png)");
-        files.put("a.png", png(1));
-        files.put("link.png", text("a.png"));
-        fixture.commitRemote(workspace, files, Map.of("link.png", FileMode.SYMLINK));
+        var files = files("public/article.md", "# Article\n![symlink](link.png)");
+        files.put("public/a.png", png(1));
+        files.put("public/link.png", text("a.png"));
+        fixture.commitRemote(workspace, files, Map.of("public/link.png", FileMode.SYMLINK));
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
         var result = service(fixture, snapshots)
@@ -567,8 +569,8 @@ class AssetDeliveryTests {
     @Test
     void oldGrantKeepsExactBytesAfterWithdrawalAndDerivedCacheDeletion() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var oldFiles = files("article.md", "# Article\n![image](image.png)");
-        oldFiles.put("image.png", png(1));
+        var oldFiles = files("public/article.md", "# Article\n![image](image.png)");
+        oldFiles.put("public/image.png", png(1));
         String old = fixture.commitRemote(workspace, oldFiles).name();
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -623,9 +625,9 @@ class AssetDeliveryTests {
             }
         };
         var fixture = new RemoteRepositoryFixture(directory, transport, clock);
-        var files = files("article.md", "# Public\n![image](image.png)");
-        files.put("other.md", text("# Another public page\n![image](image.png)"));
-        files.put("image.png", png(1));
+        var files = files("public/article.md", "# Public\n![image](image.png)");
+        files.put("public/other.md", text("# Another public page\n![image](image.png)"));
+        files.put("public/image.png", png(1));
         var base = fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -646,7 +648,7 @@ class AssetDeliveryTests {
                 RepositoryPublishingPolicy.PATH,
                 false,
                 Optional.of(DocumentRevision.sha256(files.get(RepositoryPublishingPolicy.PATH))),
-                Optional.of("enabled: false\nmode: public-by-default\n"));
+                Optional.of("enabled: false\nmode: public-root\n"));
         assertThatThrownBy(() ->
                         patches.apply(actor, workspace, new RepositoryPatch(Optional.of(base.name()), List.of(change))))
                 .isInstanceOf(RepositoryWriteAmbiguousException.class)
@@ -678,7 +680,7 @@ class AssetDeliveryTests {
     @Test
     void failureToPersistClosedPublicationPreventsSubmittingThePublicPatch() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("article.md", "# Original");
+        var files = files("public/article.md", "# Original");
         var base = fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -693,9 +695,9 @@ class AssetDeliveryTests {
         Path blockedMarker = fixture.cache(workspace).resolve(".git/poketto-public-snapshot.tmp");
         Files.createDirectory(blockedMarker);
         var change = new RepositoryTextChange(
-                "article.md",
+                "public/article.md",
                 false,
-                Optional.of(DocumentRevision.sha256(files.get("article.md"))),
+                Optional.of(DocumentRevision.sha256(files.get("public/article.md"))),
                 Optional.of("# Edited"));
         assertThatThrownBy(() ->
                         patches.apply(actor, workspace, new RepositoryPatch(Optional.of(base.name()), List.of(change))))
@@ -711,8 +713,8 @@ class AssetDeliveryTests {
     @Test
     void grantCannotOutliveTheIssuingSnapshot() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("article.md", "![image](image.png)");
-        files.put("image.png", png(1));
+        var files = files("public/article.md", "![image](image.png)");
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofSeconds(10));
         snapshots.refresh(workspace);
@@ -731,8 +733,8 @@ class AssetDeliveryTests {
     @Test
     void healthyGrantsAreReusedAndRenewalKeepsOldLinksUntilTheirOriginalExpiry() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("article.md", "![image](image.png)");
-        files.put("image.png", png(1));
+        var files = files("public/article.md", "![image](image.png)");
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -760,8 +762,8 @@ class AssetDeliveryTests {
     @Test
     void snapshotExpiryRemainsTheLimitWhenRenewalCannotImproveTheLifetime() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("article.md", "![image](image.png)");
-        files.put("image.png", png(1));
+        var files = files("public/article.md", "![image](image.png)");
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofSeconds(10));
         snapshots.refresh(workspace);
@@ -780,14 +782,14 @@ class AssetDeliveryTests {
     @ExtendWith(OutputCaptureExtension.class)
     void capacityOmitsOnlyNewImagesAndPreservesExistingGrantsAcrossWorkspaces(CapturedOutput output) throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("plain.md", "# Still readable");
-        for (int i = 0; i < 128; i++) files.put("article-" + i + ".md", text("![image](image.png)"));
-        files.put("image.png", png(1));
+        var files = files("public/plain.md", "# Still readable");
+        for (int i = 0; i < 128; i++) files.put("public/article-" + i + ".md", text("![image](image.png)"));
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         WorkspaceId other = WorkspaceId.random();
-        var otherFiles = files("article.md", "# Other workspace\n![known](known.png)\n![new](new.png)");
-        otherFiles.put("known.png", png(2));
-        otherFiles.put("new.png", png(3));
+        var otherFiles = files("public/article.md", "# Other workspace\n![known](known.png)\n![new](new.png)");
+        otherFiles.put("public/known.png", png(2));
+        otherFiles.put("public/new.png", png(3));
         fixture.commitRemote(other, otherFiles);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -844,14 +846,14 @@ class AssetDeliveryTests {
     @Test
     void aBlockedCapacityWarningDoesNotBlockAnotherWorkspacesIssuedImage() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        var files = files("article-0.md", "![image](image.png)");
-        for (int i = 1; i < 128; i++) files.put("article-" + i + ".md", text("![image](image.png)"));
-        files.put("image.png", png(1));
+        var files = files("public/article-0.md", "![image](image.png)");
+        for (int i = 1; i < 128; i++) files.put("public/article-" + i + ".md", text("![image](image.png)"));
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         WorkspaceId other = WorkspaceId.random();
-        var otherFiles = files("article.md", "![other](image.png)");
+        var otherFiles = files("public/article.md", "![other](image.png)");
         byte[] otherImage = png(2);
-        otherFiles.put("image.png", otherImage);
+        otherFiles.put("public/image.png", otherImage);
         fixture.commitRemote(other, otherFiles);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -928,15 +930,15 @@ class AssetDeliveryTests {
             }
         };
         var fixture = new RemoteRepositoryFixture(directory, transport, clock);
-        var files = files("article.md", "![image](image.png)");
-        files.put("image.png", png(1));
+        var files = files("public/article.md", "![image](image.png)");
+        files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
         var service = service(fixture, snapshots);
         String original = articleToken(service, workspace, "/article", "image.png");
         clock.now = clock.now.plusSeconds(299);
-        files.put(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-by-default\n"));
+        files.put(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-root\n"));
         fixture.commitRemote(workspace, files);
         pauseFetch.set(true);
         String renewed;
@@ -999,9 +1001,9 @@ class AssetDeliveryTests {
     void imagePressurePreservesTextAndSkipsImageValidationWithoutWaitingUnderRepositoryLocks() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         String body = "# Body survives\n![image](image.png)\n[next](next.md)";
-        var files = files("article.md", body);
-        files.put("next.md", text("# Next"));
-        files.put("image.png", png(7));
+        var files = files("public/article.md", body);
+        files.put("public/next.md", text("# Next"));
+        files.put("public/image.png", png(7));
         String commit = fixture.commitRemote(workspace, files).name();
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -1013,7 +1015,7 @@ class AssetDeliveryTests {
             assertThat(article.media().body()).isEqualTo(body);
             assertThat(article.media().links()).containsEntry("next.md", "/next");
             assertThat(article.media().images()).isEmpty();
-            var preview = service.preview(actor, workspace, "article.md", body, Optional.of(commit));
+            var preview = service.preview(actor, workspace, "public/article.md", body, Optional.of(commit));
             assertThat(preview.body()).isEqualTo(body);
             assertThat(preview.images()).isEmpty();
             var inventory = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30);
@@ -1032,7 +1034,7 @@ class AssetDeliveryTests {
                         .media()
                         .images())
                 .containsOnlyKeys("image.png");
-        assertThat(service.preview(actor, workspace, "article.md", body, Optional.of(commit))
+        assertThat(service.preview(actor, workspace, "public/article.md", body, Optional.of(commit))
                         .images())
                 .containsOnlyKeys("image.png");
         assertThat(service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30)
@@ -1047,7 +1049,7 @@ class AssetDeliveryTests {
         var files = files("private/article.md", "# Private");
         files.put("private/image.png", png(7));
         files.put("private/broken.jpg", text("not a JPEG"));
-        files.put("other.png", png(1));
+        files.put("public/other.png", png(1));
         String commit = fixture.commitRemote(workspace, files).name();
         var service = service(fixture, snapshots(fixture, Duration.ofHours(1)));
         var inventory = service.repositoryImages(actor, workspace, Optional.of(commit), "private/", 0, 30);
@@ -1064,7 +1066,7 @@ class AssetDeliveryTests {
     @Test
     void currentCallbackSerializesImageMintingWithSnapshotInstallation() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
-        fixture.commitRemote(workspace, files("article.md", "# Public"));
+        fixture.commitRemote(workspace, files("public/article.md", "# Public"));
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
         fixture.commitRemote(workspace, files("private/article.md", "# Private"));
@@ -1132,7 +1134,7 @@ class AssetDeliveryTests {
         var files = new LinkedHashMap<String, byte[]>();
         files.put(
                 RepositoryPublishingPolicy.PATH,
-                text("enabled: true\nmode: public-by-default\nexclude: ['notes/excluded.png']\n"));
+                text("enabled: true\nmode: public-root\nexclude: ['public/notes/excluded.png']\n"));
         files.put(path, text(body));
         return files;
     }

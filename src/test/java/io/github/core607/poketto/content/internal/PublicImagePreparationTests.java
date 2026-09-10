@@ -135,7 +135,7 @@ class PublicImagePreparationTests {
                 var patch = new RepositoryPatch(
                         Optional.of(original),
                         List.of(new RepositoryTextChange(
-                                "article.md",
+                                "public/article.md",
                                 false,
                                 Optional.of(DocumentRevision.sha256(text(body(1)))),
                                 Optional.of(body(2)))));
@@ -351,14 +351,14 @@ class PublicImagePreparationTests {
     private static Map<String, byte[]> files(int article) throws Exception {
         return Map.of(
                 RepositoryPublishingPolicy.PATH,
-                text("enabled: true\nmode: public-by-default\n"),
-                "article.md",
+                text("enabled: true\nmode: public-root\n"),
+                "public/article.md",
                 text(body(article)),
-                "image-1.png",
+                "public/image-1.png",
                 png(1),
-                "image-2.png",
+                "public/image-2.png",
                 png(2),
-                "image-3.png",
+                "public/image-3.png",
                 png(3));
     }
 

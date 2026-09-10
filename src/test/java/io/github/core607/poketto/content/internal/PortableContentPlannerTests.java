@@ -115,24 +115,24 @@ class PortableContentPlannerTests {
     void publicPackageDropsPrivateMetadataAndHtmlAndRevalidatesGitImageEligibility() throws Exception {
         var fixture = new RemoteRepositoryFixture(root.resolve("git"));
         var files = new LinkedHashMap<String, byte[]>();
-        files.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-by-default\n"));
+        files.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-root\n"));
         files.put(
-                "article.md",
+                "public/article.md",
                 text(
                         "---\ntitle: Public\nprivate_note: secret-metadata\n---\n# Public\n![pic](images/pic.png)\n[unsafe](javascript:alert)\n<script>secret-html</script>\n"));
-        files.put("images/pic.png", new byte[] {0, -1, 2});
+        files.put("public/images/pic.png", new byte[] {0, -1, 2});
         files.put("private/hidden.md", text("# Secret\nprivate-body\n"));
         fixture.commitRemote(workspace, files);
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
         snapshots.refresh(workspace);
         var service = planner(fixture, snapshots, mock(ManagedBlobStore.class));
-        var plan = service.prepare(actor, workspace, List.of("article.md"), true);
+        var plan = service.prepare(actor, workspace, List.of("public/article.md"), true);
         var contents = archive(plan);
         assertThat(contents).hasSize(2);
         String article = new String(contents.get("content/article-1.md"), StandardCharsets.UTF_8);
         assertThat(article)
                 .contains("title: \"Public\"", "../media/original-1.png")
-                .doesNotContain("secret-metadata", "secret-html", "javascript:", "private-body", "article.md");
+                .doesNotContain("secret-metadata", "secret-html", "javascript:", "private-body", "public/article.md");
         assertThat(contents.get("media/original-1.png")).containsExactly(0, -1, 2);
         assertThatThrownBy(() -> service.prepare(actor, workspace, List.of("private/hidden.md"), true))
                 .isInstanceOf(ContentRepositoryException.class);
@@ -142,7 +142,7 @@ class PortableContentPlannerTests {
         plan.authorize().run();
         files.put(
                 RepositoryPublishingPolicy.PATH,
-                text("enabled: true\nmode: public-by-default\nexclude:\n  - images/**\n"));
+                text("enabled: true\nmode: public-root\nexclude:\n  - public/images/**\n"));
         fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
         assertThatThrownBy(plan.authorize()::run).isInstanceOf(ContentRepositoryException.class);
@@ -159,22 +159,22 @@ class PortableContentPlannerTests {
         var image =
                 store.upload(workspace, "export_legacy_image_001", new ByteArrayInputStream(imageBytes.toByteArray()));
         var files = new LinkedHashMap<String, byte[]>();
-        files.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-by-default\n"));
+        files.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-root\n"));
         String reference = "managed:" + image.reference().assetId() + ":"
                 + image.reference().revision();
-        files.put("article.md", text("# Public\n![image](" + reference + ")\n"));
+        files.put("public/article.md", text("# Public\n![image](" + reference + ")\n"));
         files.put("private/hidden.md", text("private\n"));
         fixture.commitRemote(workspace, files);
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
         snapshots.refresh(workspace);
         var service = planner(fixture, snapshots, store);
-        var plan = service.prepare(actor, workspace, List.of("article.md"), true);
+        var plan = service.prepare(actor, workspace, List.of("public/article.md"), true);
         assertThat(archive(plan).get("media/original-1.png")).containsExactly(imageBytes.toByteArray());
         files.put("private/hidden.md", text("private edit\n"));
         fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
         plan.authorize().run();
-        files.put("article.md", text("# Public\nImage removed.\n"));
+        files.put("public/article.md", text("# Public\nImage removed.\n"));
         fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
         assertThatThrownBy(plan.authorize()::run).isInstanceOf(ContentRepositoryException.class);
@@ -183,15 +183,15 @@ class PortableContentPlannerTests {
                 workspace, "export_legacy_binary_001", "application/pdf", new ByteArrayInputStream(new byte[] {0, -1, 2
                 }));
         files.put(
-                "article.md",
+                "public/article.md",
                 text("# Public\n![image](managed:" + binary.reference().assetId() + ":"
                         + binary.reference().revision() + ")\n"));
         fixture.commitRemote(workspace, files);
         snapshots.refresh(workspace);
-        var invalid = service.prepare(actor, workspace, List.of("article.md"), true);
+        var invalid = service.prepare(actor, workspace, List.of("public/article.md"), true);
         assertThatThrownBy(() -> archive(invalid)).isInstanceOf(AssetStorageException.class);
         // An authorized private copy can still contain an arbitrary original.
-        assertThat(archive(service.prepare(actor, workspace, List.of("article.md"), false))
+        assertThat(archive(service.prepare(actor, workspace, List.of("public/article.md"), false))
                         .get("media/original-1.pdf"))
                 .containsExactly(0, -1, 2);
     }

@@ -36,8 +36,8 @@ class RepositorySnapshotExportsTests {
     void publicValidityIgnoresPrivateCommitsButRejectsChangedPublicationAndOtherWorkspaces() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var tree = new java.util.LinkedHashMap<String, byte[]>();
-        tree.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-by-default\n"));
-        tree.put("article.md", text("# Public\nContent"));
+        tree.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-root\n"));
+        tree.put("public/article.md", text("# Public\nContent"));
         fixture.commitRemote(workspace, tree);
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -57,7 +57,7 @@ class RepositorySnapshotExportsTests {
         exports.requireCurrentPublic(actor, workspace, published);
         assertThatThrownBy(() -> exports.requireCurrentPublic(actor, WorkspaceId.random(), published))
                 .isInstanceOf(ContentRepositoryException.class);
-        tree.put("article.md", text("# Public\nChanged publication"));
+        tree.put("public/article.md", text("# Public\nChanged publication"));
         fixture.commitRemote(workspace, tree);
         snapshots.refresh(workspace);
         assertThatThrownBy(() -> exports.requireCurrentPublic(actor, workspace, published))
@@ -85,8 +85,8 @@ class RepositorySnapshotExportsTests {
                 workspace,
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
-                        text("enabled: true\nmode: public-by-default\n"),
-                        "article.md",
+                        text("enabled: true\nmode: public-root\n"),
+                        "public/article.md",
                         text("# Public\nContent")));
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -102,9 +102,7 @@ class RepositorySnapshotExportsTests {
                     if (calls.incrementAndGet() == 2) {
                         fixture.commitRemote(
                                 workspace,
-                                Map.of(
-                                        RepositoryPublishingPolicy.PATH,
-                                        text("enabled: false\nmode: public-by-default\n")));
+                                Map.of(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-root\n")));
                         snapshots.refresh(workspace);
                     }
                     return null;
@@ -127,16 +125,17 @@ class RepositorySnapshotExportsTests {
                 workspace,
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
-                        text("enabled: true\nmode: public-by-default\n"),
+                        text("enabled: true\nmode: public-root\n"),
                         RepositoryMediaIndex.PATH,
-                        new RepositoryMediaIndex(Map.of("report.pdf", publicMedia, "private/secret.png", hiddenMedia))
+                        new RepositoryMediaIndex(
+                                        Map.of("public/report.pdf", publicMedia, "private/secret.png", hiddenMedia))
                                 .encode(),
-                        "hello.md",
+                        "public/hello.md",
                         text("---\ntitle: Hello\nprivate_field: hidden frontmatter needle\n---\n"
                                 + "Public body\n\n<!-- hidden comment needle -->\n\n"
-                                + "[Report](report.pdf) [Other](other.md#heading) [Secret](private/secret.md)\n\n"
-                                + "![hidden](private/secret.png)\n"),
-                        "other.md",
+                                + "[Report](report.pdf) [Other](other.md#heading) [Secret](../private/secret.md)\n\n"
+                                + "![hidden](../private/secret.png)\n"),
+                        "public/other.md",
                         text("# Other\nPublic second article"),
                         "AGENTS.md",
                         text("private operator instructions needle")));
@@ -152,7 +151,7 @@ class RepositorySnapshotExportsTests {
         var value = exports.createPublic(actor, workspace);
         assertThat(value.authorityCommit()).isEqualTo(source.name());
         assertThat(value.export().commit()).isNotEqualTo(source.name());
-        assertThat(value.sourcePaths()).containsEntry("hello/index.md", "hello.md");
+        assertThat(value.sourcePaths()).containsEntry("hello/index.md", "public/hello.md");
         Path bundle = directory.resolve("exports").resolve(value.export().exportId() + ".bundle");
         Path copy = directory.resolve("public-copy");
         try (Git clone = Git.cloneRepository()

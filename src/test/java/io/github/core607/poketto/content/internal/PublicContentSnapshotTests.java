@@ -27,6 +27,41 @@ class PublicContentSnapshotTests {
     private final SwitchableTransport transport = new SwitchableTransport();
 
     @Test
+    void rootPublicationPreservesRoutesAndNeverPromotesGuidesOrPrivateRouteOverrides() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, transport);
+        fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryPublishingPolicy.PATH,
+                        policy(true),
+                        "public/index.md",
+                        text("# Home"),
+                        "public/notes/article.md",
+                        text("# Article"),
+                        "public/renamed.md",
+                        text("---\nroute: /old-address\n---\n# Preserved"),
+                        "public/AGENTS.md",
+                        text("# Agent instructions"),
+                        "public/notes/AGENTS.md",
+                        text("# Nested instructions"),
+                        "outside.md",
+                        text("---\nroute: /old-address\n---\n# Outside"),
+                        "private/public/leak.md",
+                        text("---\nroute: /\n---\n# Secret"),
+                        "PUBLIC/leak.md",
+                        text("# Wrong case"),
+                        "public/.hidden/leak.md",
+                        text("# Hidden")));
+        var snapshot = snapshots(fixture).refresh(workspace);
+        assertThat(snapshot.articles())
+                .extracting(article -> article.route())
+                .containsExactlyInAnyOrder("/", "/notes/article", "/old-address");
+        assertThat(snapshot.articles())
+                .extracting(article -> article.repositoryPath())
+                .containsExactlyInAnyOrder("public/index.md", "public/notes/article.md", "public/renamed.md");
+    }
+
+    @Test
     void applicationInitializationKeepsRetryingWhenContentCannotBeServed() throws Exception {
         var retries = new java.util.concurrent.CountDownLatch(1);
         var snapshots = org.mockito.Mockito.mock(io.github.core607.poketto.content.PublicContentSnapshots.class);
@@ -50,7 +85,7 @@ class PublicContentSnapshotTests {
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
                         policy(true),
-                        "article.md",
+                        "public/article.md",
                         text("# Public"),
                         "private/secret.md",
                         text("---\nroute: /article\n---\n# Private")));
@@ -59,7 +94,8 @@ class PublicContentSnapshotTests {
                 .extracting(article -> article.title())
                 .containsExactly("Public");
         fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "article.md", text("# Public")));
+                workspace,
+                Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/article.md", text("# Public")));
         assertThat(snapshots.refresh(workspace).articles())
                 .extracting(article -> article.title())
                 .containsExactly("Public");
@@ -68,11 +104,11 @@ class PublicContentSnapshotTests {
     @Test
     void unconfiguredAndDisabledPoliciesPublishNothing() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
-        fixture.commitRemote(workspace, Map.of("hello.md", text("# Hello")));
+        fixture.commitRemote(workspace, Map.of("public/hello.md", text("# Hello")));
         var snapshots = snapshots(fixture);
         assertThat(snapshots.refresh(workspace).articles()).isEmpty();
         fixture.commitRemote(
-                workspace, Map.of("hello.md", text("# Hello"), RepositoryPublishingPolicy.PATH, policy(false)));
+                workspace, Map.of("public/hello.md", text("# Hello"), RepositoryPublishingPolicy.PATH, policy(false)));
         assertThat(snapshots.refresh(workspace).articles()).isEmpty();
         assertThat(new PublicSnapshotHealthIndicator(snapshots, () -> workspace)
                         .health()
@@ -88,20 +124,20 @@ class PublicContentSnapshotTests {
                 workspace,
                 Map.of(
                         RepositoryPublishingPolicy.PATH,
-                        text("enabled: true\nmode: public-by-default\nexclude: ['drafts/**']\n"),
-                        "hello.md",
+                        text("enabled: true\nmode: public-root\nexclude: ['public/drafts/**']\n"),
+                        "public/hello.md",
                         text("---\ntitle: Hello\nprivate_field: keep-secret\n---\nPublic body"),
                         "private/secret.md",
                         text("# Secret\nprivate body"),
                         "PRIVATE/another.md",
                         text("# Case secret"),
-                        "drafts/work.md",
+                        "public/drafts/work.md",
                         text("# Draft"),
-                        "nested/.poketto/state.md",
+                        "public/nested/.poketto/state.md",
                         text("# Internal"),
-                        "documents/bad.md",
+                        "public/documents/bad.md",
                         text("---\nbroken: [\n---\n"),
-                        "image.png",
+                        "public/image.png",
                         new byte[2_000_000]));
         var snapshots = snapshots(fixture);
         var snapshot = snapshots.refresh(workspace);
@@ -111,7 +147,7 @@ class PublicContentSnapshotTests {
         assertThat(snapshot.articles().getFirst().body()).isEqualTo("Public body");
         assertThat(snapshot.articles().toString())
                 .doesNotContain("keep-secret", "private body", "Draft", "Internal", "broken");
-        assertThat(fixture.cache(workspace).resolve("image.png")).doesNotExist();
+        assertThat(fixture.cache(workspace).resolve("public/image.png")).doesNotExist();
         snapshots.current(workspace);
         assertThat(transport.fetches).isOne();
     }
@@ -120,12 +156,17 @@ class PublicContentSnapshotTests {
     void aConcurrentRemoteAdvanceCannotMixNewPolicyWithEarlierDocuments() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         var old = fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "hello.md", text("# Old public")));
+                workspace,
+                Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Old public")));
         transport.afterFetch = () -> {
             try {
                 fixture.commitRemote(
                         workspace,
-                        Map.of(RepositoryPublishingPolicy.PATH, policy(false), "hello.md", text("# New private")));
+                        Map.of(
+                                RepositoryPublishingPolicy.PATH,
+                                policy(false),
+                                "public/hello.md",
+                                text("# New private")));
             } catch (Exception exception) {
                 throw new RuntimeException(exception);
             }
@@ -142,12 +183,12 @@ class PublicContentSnapshotTests {
     void invalidPolicyRevokesOldSnapshotImmediatelyAndSurvivesOfflineRestart() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "hello.md", text("# Hello")));
+                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Hello")));
         var snapshots = snapshots(fixture);
         snapshots.refresh(workspace);
         fixture.commitRemote(
                 workspace,
-                Map.of(RepositoryPublishingPolicy.PATH, text("enabled: [secret"), "hello.md", text("# Hello")));
+                Map.of(RepositoryPublishingPolicy.PATH, text("enabled: [secret"), "public/hello.md", text("# Hello")));
         assertThatThrownBy(() -> snapshots.refresh(workspace)).isInstanceOf(ContentRepositoryException.class);
         assertThatThrownBy(() -> snapshots.current(workspace)).isInstanceOf(ContentRepositoryException.class);
         transport.offline = true;
@@ -160,7 +201,7 @@ class PublicContentSnapshotTests {
     void outageNeverRenewsExpiryAndBoundaryTurnsReadinessUnavailable() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "hello.md", text("# Hello")));
+                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Hello")));
         var snapshots = snapshots(fixture);
         Instant verifiedAt = snapshots.refresh(workspace).verifiedAt();
         transport.offline = true;
@@ -187,7 +228,7 @@ class PublicContentSnapshotTests {
     void offlineRestartRestoresOriginalVerificationTimeAndRejectsExpiredCache() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "hello.md", text("# Hello")));
+                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Hello")));
         var original = snapshots(fixture).refresh(workspace);
         transport.offline = true;
         clock.now = clock.now.plusSeconds(1800);
@@ -209,10 +250,11 @@ class PublicContentSnapshotTests {
     void crashAfterObservingNewMainCannotRestoreEarlierPublicationMarker() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "hello.md", text("# Hello")));
+                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Hello")));
         snapshots(fixture).refresh(workspace);
         fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(false), "hello.md", text("# Withdrawn")));
+                workspace,
+                Map.of(RepositoryPublishingPolicy.PATH, policy(false), "public/hello.md", text("# Withdrawn")));
         fixture.authority().readObjects(workspace, ignored -> null);
         transport.offline = true;
         assertThatThrownBy(() -> snapshots(fixture).ensureReady(workspace))
@@ -223,7 +265,7 @@ class PublicContentSnapshotTests {
     void acknowledgedSnapshotInstallDoesNotFetchAndDoesNotChangeOriginalObjects() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         var commit = fixture.commitRemote(
-                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "hello.md", text("# Hello")));
+                workspace, Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Hello")));
         var snapshots = snapshots(fixture);
         fixture.authority().readObjects(workspace, snapshot -> snapshots.installAcknowledged(workspace, snapshot));
         assertThat(transport.fetches).isOne();
@@ -236,7 +278,7 @@ class PublicContentSnapshotTests {
     }
 
     private static byte[] policy(boolean enabled) {
-        return text("enabled: " + enabled + "\nmode: public-by-default\n");
+        return text("enabled: " + enabled + "\nmode: public-root\n");
     }
 
     private static byte[] text(String source) {

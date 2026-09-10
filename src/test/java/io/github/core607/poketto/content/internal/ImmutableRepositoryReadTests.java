@@ -52,7 +52,7 @@ class ImmutableRepositoryReadTests {
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
         assertThat(snapshots.refresh(workspace).articles()).hasSize(1);
         var descriptor = new JGitRepositoryBlobReader(fixture.authority())
-                .find(workspace, commit.name(), "image.png")
+                .find(workspace, commit.name(), "public/image.png")
                 .orElseThrow();
         var gate = new PayloadGate(fixture.authority(), descriptor);
         fixture.commitRemote(workspace, Map.of("private/withdrawn.md", text("# Withdrawn")));
@@ -96,7 +96,7 @@ class ImmutableRepositoryReadTests {
         var fixture = new RemoteRepositoryFixture(directory);
         var descriptor = load(fixture);
         fixture.authority().read(workspace, snapshot -> snapshot.commitId());
-        assertThat(fixture.cache(workspace).resolve("image.png")).exists();
+        assertThat(fixture.cache(workspace).resolve("public/image.png")).exists();
         var gate = new PayloadGate(fixture.authority(), descriptor);
         try (var remote = fixture.openRemote(workspace)) {
             var update = remote.updateRef(Constants.R_HEADS + "main");
@@ -111,7 +111,7 @@ class ImmutableRepositoryReadTests {
                                 () -> fixture.authority().readObjects(workspace, snapshot -> snapshot.commitId()))
                         .get(5, TimeUnit.SECONDS);
                 assertThat(empty).isEmpty();
-                assertThat(fixture.cache(workspace).resolve("image.png")).doesNotExist();
+                assertThat(fixture.cache(workspace).resolve("public/image.png")).doesNotExist();
                 try (var cache = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
                     assertThat(cache.resolve(Constants.R_HEADS + "main")).isNull();
                     assertThat(cache.readDirCache().getEntryCount()).isZero();
@@ -123,7 +123,7 @@ class ImmutableRepositoryReadTests {
         }
         assertThat(new JGitRepositoryBlobReader(fixture.authority()).read(descriptor))
                 .isEqualTo(image);
-        var replacement = fixture.commitRemote(workspace, Map.of("new.md", text("# New root")));
+        var replacement = fixture.commitRemote(workspace, Map.of("public/new.md", text("# New root")));
         fixture.authority().readObjects(workspace, snapshot -> snapshot.commitId());
         assertThat(replacement.name()).isNotEqualTo(descriptor.commit());
         assertThat(new JGitRepositoryBlobReader(fixture.authority()).read(descriptor))
@@ -216,12 +216,12 @@ class ImmutableRepositoryReadTests {
         assertThat(blobs.find(workspace, descriptor.commit(), descriptor.path()))
                 .contains(descriptor);
         assertThat(blobs.images(workspace, descriptor.commit(), "")).containsExactly(descriptor);
-        assertThat(blobs.siblings(workspace, descriptor.commit(), "article.md", 128, false, java.util.Set.of())
+        assertThat(blobs.siblings(workspace, descriptor.commit(), "public/article.md", 128, false, java.util.Set.of())
                         .items())
                 .containsExactly(descriptor);
         assertThat(blobs.read(descriptor)).isEqualTo(image);
         assertThat(Files.readString(head)).isEqualTo(before);
-        assertThat(fixture.cache(workspace).resolve("image.png")).doesNotExist();
+        assertThat(fixture.cache(workspace).resolve("public/image.png")).doesNotExist();
     }
 
     @Test
@@ -375,7 +375,12 @@ class ImmutableRepositoryReadTests {
                 new RepositoryBlob(
                         workspace, "1".repeat(40), descriptor.path(), descriptor.objectId(), descriptor.size(), true),
                 new RepositoryBlob(
-                        workspace, descriptor.commit(), "absent.png", descriptor.objectId(), descriptor.size(), true),
+                        workspace,
+                        descriptor.commit(),
+                        "public/absent.png",
+                        descriptor.objectId(),
+                        descriptor.size(),
+                        true),
                 new RepositoryBlob(
                         workspace, descriptor.commit(), descriptor.path(), "1".repeat(40), descriptor.size(), true),
                 new RepositoryBlob(
@@ -393,7 +398,7 @@ class ImmutableRepositoryReadTests {
         var commit = fixture.commitRemote(workspace, files());
         fixture.authority().readObjects(workspace, snapshot -> snapshot.commitId());
         return new JGitRepositoryBlobReader(fixture.authority())
-                .find(workspace, commit.name(), "image.png")
+                .find(workspace, commit.name(), "public/image.png")
                 .orElseThrow();
     }
 
@@ -406,10 +411,10 @@ class ImmutableRepositoryReadTests {
     private Map<String, byte[]> files() {
         return Map.of(
                 RepositoryPublishingPolicy.PATH,
-                text("enabled: true\nmode: public-by-default\n"),
-                "article.md",
+                text("enabled: true\nmode: public-root\n"),
+                "public/article.md",
                 text("# Article\n![image](image.png)"),
-                "image.png",
+                "public/image.png",
                 image);
     }
 
