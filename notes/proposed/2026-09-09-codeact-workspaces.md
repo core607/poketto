@@ -67,6 +67,8 @@ These steps do not add per-file ACLs, choose a new publication format, implement
 
 ## Acceptance
 
+The [recorded real-client workflow](../../acceptance/clients/evidence/2026-09-10-codeact.json) exercises Codex and Claude Code against real Spring authentication, PostgreSQL, HTTP MCP and native SRT with synthetic content. Both clients import and fetch original media, save index/text together, preserve unselected edits, resolve an actual competing-write conflict, and move/delete their own sample through selected saves. Independent Git inspection confirms the durable outcomes and unchanged original files. The worker advertises `codeActProtocol: 1`; the application rejects missing or incompatible readiness before exporting files. Artifact returns, dedicated move/export dispatch, root-guide delivery and final installation acceptance remain outstanding.
+
 Use focused behavioral evidence and the required repository checks, not repeated model comparisons or a new benchmark program:
 
 - A full-scope search finds authorized public and private articles. A public-only search sees only public documents; neither shell traversal, local Git inspection, artifacts nor bridge requests recover hidden files, metadata or history.

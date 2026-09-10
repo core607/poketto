@@ -89,21 +89,25 @@ def call(root, operation, arguments, timeout=55):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog='poketto')
+    parser = argparse.ArgumentParser(
+        prog='poketto',
+        description='Host operations use repository-relative paths, independent of the shell working directory. '
+                    'Create files in the repository to retain them between commands; /tmp is reset for every command. '
+                    'Use python3 for Python scripts.')
     commands = parser.add_subparsers(dest='operation', required=True)
     commands.add_parser('status', help='Read the host-owned session baseline and scope')
     commands.add_parser('recover', help='Reconcile an uncertain save and, if necessary, retry only its retained commit')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
     sync.add_argument('path')
-    media = commands.add_parser('media', help='Materialize indexed original media')
+    media = commands.add_parser('media', help='Import or fetch indexed original media')
     media_commands = media.add_subparsers(dest='media_operation', required=True)
     fetch = media_commands.add_parser('fetch', help='Fetch an indexed original into the repository worktree')
     fetch.add_argument('path')
     fetch.add_argument('--commit')
     fetch.add_argument('--output')
     imported = media_commands.add_parser('import', help='Store a local original and update its unsaved logical index entry')
-    imported.add_argument('file')
-    imported.add_argument('--as', dest='logical_path', required=True)
+    imported.add_argument('file', help='Existing regular file, relative to the repository root; absolute and /tmp paths are not accepted')
+    imported.add_argument('--as', dest='logical_path', required=True, help='Repository-relative logical path stored in the media index')
     imported.add_argument('--type', dest='media_type', default='application/octet-stream')
     imported.add_argument('--key', required=True, help='Stable 16-128 character idempotency key for these original bytes')
     imported.add_argument('--replace', action='store_true', help='Replace an existing logical index entry; originals remain immutable')

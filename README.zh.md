@@ -66,7 +66,7 @@ exclude:
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 
-`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。CodeAct 按需取件与 ZIP 导出仍属于[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
+`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。ZIP 导出仍属于[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
 
 ## MCP 与隔离执行
 
@@ -78,7 +78,9 @@ exclude:
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
-每个客户端执行会话固定于选定的 commit，即使共用 key 也有独立目录。补丁返回新 commit，不会切换旧执行目录；`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。[集成记录](notes/proposed/2026-09-05-local-execution-supervisor.md)区分可执行检查、已有合成证据和最终客户端与部署验收。
+完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实不确定的保存结果，不会重放后续编辑。`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
+
+`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](executor-service/README.md)定义限制、权限、冲突处理和配套安装。制品返回、专用 CLI 移动、可移植导出和冗余 MCP 工具移除仍属于[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
 
 ## 部署
 
