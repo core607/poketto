@@ -53,9 +53,20 @@ Oversized MCP bodies receive 413 before tools run; transport errors contain prot
 
 `repo_exec` requires explicit `EXECUTE_REPOSITORY` capability and `POKETTO_EXECUTOR_ENABLED=true`. Configure `POKETTO_EXECUTOR_SOCKET`, `POKETTO_EXECUTOR_SIGNING_KEY` and `POKETTO_EXECUTOR_STAGING_DIRECTORY` on the Linux application, then install and verify the separate root supervisor and unprivileged SRT account as described by the [worker reference](../executor-service/README.md). Defaults admit two sessions and 128 MiB bundles; align application admission and export bounds with the worker and measure production limits before use.
 
-Full-read execution sessions retain authorized current files and original Git history; public-only sessions receive a fresh current-public projection without original history or private metadata. Each client has a separate directory even when clients share a key. Ordinary edits stay local. `poketto save` commits selected files and explicit deletions through the shared atomic writer while retaining unselected edits; `poketto sync` reconciles one file against its own baseline, and `poketto recover` reconciles an uncertain save without replaying newer edits. `get_file` always reads authoritative Git objects. Cancellation, revocation and failed renewal close execution authority. A missing worker, mismatched CodeAct protocol or unsupported isolation cannot fall back to an ordinary subprocess.
+Full-read execution sessions retain authorized current files and original Git history; public-only sessions receive a fresh current-public projection without original history or private metadata. Each client has a separate directory even when clients share a key. Ordinary edits stay local. `poketto save` commits selected files and explicit deletions through the shared atomic writer while retaining unselected edits; `poketto sync` reconciles one file against its own baseline, and `poketto recover` reconciles a pending save or move without replaying newer edits. `get_file` always reads authoritative Git objects. Cancellation, revocation and failed renewal close execution authority. A missing worker, mismatched CodeAct protocol or unsupported isolation cannot fall back to an ordinary subprocess.
 
-`poketto media import` stores a workspace-owned immutable original and updates its local logical index; save that index with referring text to persist the references. `poketto media fetch` uses the local index or an explicitly selected historical commit in full-read sessions, and the host-owned approved mapping in public sessions. CLI paths are repository-relative; use `poketto --help` for commands and file lifetime. The [worker reference](../executor-service/README.md) owns limits, permissions, conflict behavior and coordinated worker installation. Dedicated CLI moves, portable exports and removal of redundant MCP tools remain in the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
+`poketto media import` stores a workspace-owned immutable original and updates its local logical index; save that index with referring text to persist the references. `poketto media fetch` uses the local index or an explicitly selected historical commit in full-read sessions, and the host-owned approved mapping in public sessions. CLI paths are repository-relative; use `poketto --help` for commands and file lifetime. The [worker reference](../executor-service/README.md) owns limits, permissions, conflict behavior and coordinated worker installation. Portable exports and removal of redundant MCP tools remain in the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
+
+`poketto move SOURCE DESTINATION` moves saved files, directories and indexed media,
+repairing Markdown references in one remote commit. Unselected local edits and
+unsaved index entries remain local. Dirty selected files and occupied destinations
+are refused. If the commit succeeds but local installation is pending, use
+`poketto recover` before another save, move or sync; it retains the original
+operation and preserves edits made after an acknowledged local installation.
+If local changes prevent installation, `poketto recover --skip-local` confirms
+the remote move and keeps local files untouched. It releases the pending move
+without advancing file baselines; use `poketto sync` on affected paths before
+saving them.
 
 `poketto media list` discovers indexed media without fetching bytes. It includes
 unsaved imports in full-read sessions; public sessions use only the host-owned

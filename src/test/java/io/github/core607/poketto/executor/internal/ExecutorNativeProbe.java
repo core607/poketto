@@ -7,11 +7,13 @@ import static org.mockito.Mockito.*;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -120,6 +122,7 @@ public final class ExecutorNativeProbe {
                         mock(io.github.core607.poketto.assets.MediaFileService.class),
                         org.mockito.Mockito.mock(io.github.core607.poketto.content.AuthorizedRepositoryReader.class),
                         org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryPatchService.class),
+                        org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMoveService.class),
                         JSON,
                         socket,
                         path("privateKey"),
@@ -151,6 +154,9 @@ public final class ExecutorNativeProbe {
         uncertainSaveRecovery();
         mediaFetch();
         mediaImport();
+        moves();
+        lostLocalMoveReply();
+        uncertainMoveRecovery();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -383,6 +389,7 @@ public final class ExecutorNativeProbe {
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
+                        fixture.moves(auth),
                         JSON,
                         path("socket"),
                         path("privateKey"),
@@ -530,6 +537,7 @@ public final class ExecutorNativeProbe {
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
+                        fixture.moves(auth),
                         JSON,
                         path("socket"),
                         path("privateKey"),
@@ -598,6 +606,7 @@ public final class ExecutorNativeProbe {
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
+                        fixture.moves(auth),
                         JSON,
                         path("socket"),
                         path("privateKey"),
@@ -665,6 +674,279 @@ public final class ExecutorNativeProbe {
         }
     }
 
+    private IsolatedRepositoryExecutor moveAdapter(
+            io.github.core607.poketto.content.internal.PublicExecutionNativeFixture fixture) {
+        return new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        fixture.media(auth),
+                        fixture.reader(auth),
+                        fixture.patches(auth),
+                        fixture.moves(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8);
+    }
+
+    private void lostLocalMoveReply() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("local-move-reply"), path("exports"), auth, workspace);
+        try (var executor = moveAdapter(fixture)) {
+            // Drop one confirmed real worker reply at the adapter boundary, after installation.
+            var field = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
+            field.setAccessible(true);
+            var original = (WorkerClient) field.get(executor);
+            var intercepted = spy(original);
+            var dropped = new java.util.concurrent.atomic.AtomicBoolean();
+            var refuseInstall = new java.util.concurrent.atomic.AtomicBoolean();
+            doAnswer(call -> {
+                        WorkerClient.PreparedRequest request = call.getArgument(0);
+                        var payload = JSON.readTree(java.util.Base64.getUrlDecoder()
+                                .decode(request.envelope().get("payload")));
+                        if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get())
+                            return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
+                        var response = original.send(request, call.getArgument(1));
+                        if (payload.path("operation").asString("").equals("MOVE_COMMIT")
+                                && dropped.compareAndSet(false, true)) {
+                            assertThat(response.path("ok").asBoolean(false)).isTrue();
+                            throw new WorkerUnavailableException();
+                        }
+                        return response;
+                    })
+                    .when(intercepted)
+                    .send(any(), any());
+            field.set(executor, intercepted);
+            var moved = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    "poketto move private/secret.md private/moved.md",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(dropped).isTrue();
+            assertThat(moved.exitCode()).isNotZero();
+            assertThat(moved.stdout()).contains("LOCAL_MOVE_PENDING", "\"committed\": true");
+            String commit = fixture.reader(auth)
+                    .getFile(principal, workspace, Optional.empty(), "private/moved.md")
+                    .commit()
+                    .orElseThrow();
+            var recovered = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    test ! -e private/secret.md
+                    printf 'later local edit' > private/moved.md
+                    poketto recover
+                    test "$(cat private/moved.md)" = 'later local edit'
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(recovered.exitCode())
+                    .as("%s %s", recovered.stdout(), recovered.stderr())
+                    .isZero();
+            assertThat(recovered.stdout()).contains("\"worktreeUpdated\": true");
+            assertThat(fixture.reader(auth)
+                            .getFile(principal, workspace, Optional.empty(), "private/moved.md")
+                            .commit()
+                            .orElseThrow())
+                    .isEqualTo(commit);
+            assertThat(fixture.reader(auth)
+                            .getFile(principal, workspace, Optional.empty(), "private/moved.md")
+                            .source()
+                            .orElseThrow())
+                    .doesNotContain("later local edit");
+            passed("lost-worker-move-reply-retains-session-and-recovers-without-overwriting-new-edits");
+            // Model a local precondition refusal; the shared worker tests own the refusal itself.
+            refuseInstall.set(true);
+            var pending = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    poketto save private/moved.md
+                    poketto move private/moved.md private/skipped.md
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(pending.exitCode()).isNotZero();
+            assertThat(pending.stdout()).contains("LOCAL_MOVE_CONFLICT");
+            String remote = fixture.reader(auth)
+                    .getFile(principal, workspace, Optional.empty(), "private/skipped.md")
+                    .commit()
+                    .orElseThrow();
+            var skipped = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    poketto recover --skip-local
+                    test "$(cat private/moved.md)" = 'later local edit'
+                    test ! -e private/skipped.md
+                    if poketto save private/moved.md; then exit 99; fi
+                    poketto sync private/moved.md
+                    poketto sync private/skipped.md
+                    test ! -e private/moved.md
+                    test "$(cat private/skipped.md)" = 'later local edit'
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(skipped.exitCode())
+                    .as("%s %s", skipped.stdout(), skipped.stderr())
+                    .isZero();
+            assertThat(skipped.stdout()).contains("\"localInstallationSkipped\": true", "REPOSITORY_CONFLICT");
+            assertThat(fixture.reader(auth)
+                            .getFile(principal, workspace, Optional.empty(), "private/skipped.md")
+                            .commit())
+                    .contains(remote);
+            passed("skip-confirmed-local-move-keeps-files-and-baselines-and-allows-explicit-sync");
+        }
+    }
+
+    private void moves() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("moves"), path("exports"), auth, workspace);
+        try (var executor = moveAdapter(fixture)) {
+            String setup = """
+                    set -eu
+                    mkdir -p private/box
+                    printf 'first-original' > private/source.bin
+                    poketto media import private/source.bin --as private/box/present.pdf --type application/pdf --key native_move_present_001
+                    printf 'second-original' > private/source.bin
+                    poketto media import private/source.bin --as private/box/absent.pdf --type application/pdf --key native_move_absent_001
+                    rm private/source.bin
+                    printf '[ref](../ref.md) ![media](present.pdf)' > private/box/note.md
+                    printf '[note](box/note.md)' > private/ref.md
+                    poketto save private/box/note.md private/ref.md .poketto/assets.json
+                    printf 'unselected' > private/scratch.md
+                    printf 'draft-original' > private/draft.bin
+                    poketto media import private/draft.bin --as private/unsaved.pdf --type application/pdf --key native_move_unsaved_001
+                    poketto media fetch private/box/present.pdf
+                    """;
+            var prepared = executor.execute(
+                    principal,
+                    workspace,
+                    "native-moves",
+                    Optional.empty(),
+                    setup,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(prepared.exitCode())
+                    .as("setup stdout=%s stderr=%s", prepared.stdout(), prepared.stderr())
+                    .isZero();
+            var moved = executor.execute(
+                    principal,
+                    workspace,
+                    "native-moves",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    poketto move private/box private/deeper/box
+                    test ! -e private/box
+                    test ! -e private/deeper/box/absent.pdf
+                    test "$(cat private/deeper/box/present.pdf)" = first-original
+                    test "$(cat private/scratch.md)" = unselected
+                    python3 - <<'PY'
+                    import json
+                    from pathlib import Path
+                    index=json.loads(Path('.poketto/assets.json').read_text())['files']
+                    assert 'private/unsaved.pdf' in index
+                    assert 'private/deeper/box/absent.pdf' in index
+                    assert 'private/box/present.pdf' not in index
+                    assert Path('private/ref.md').read_text() == '[note](deeper/box/note.md)'
+                    assert Path('private/deeper/box/note.md').read_text() == '[ref](../../ref.md) ![media](present.pdf)'
+                    PY
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(moved.exitCode())
+                    .as("move stdout=%s stderr=%s", moved.stdout(), moved.stderr())
+                    .isZero();
+            assertThat(moved.stdout()).contains("\"worktreeUpdated\": true");
+            var reader = fixture.reader(auth);
+            var remoteIndex = reader.getFile(principal, workspace, Optional.empty(), RepositoryMediaIndex.PATH);
+            assertThat(RepositoryMediaIndex.parse(
+                                    remoteIndex.source().orElseThrow().getBytes(StandardCharsets.UTF_8))
+                            .files())
+                    .containsKeys("private/deeper/box/present.pdf", "private/deeper/box/absent.pdf")
+                    .doesNotContainKeys("private/box/present.pdf", "private/unsaved.pdf");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/ref.md")
+                            .source())
+                    .contains("[note](deeper/box/note.md)");
+            var refused = executor.execute(
+                    principal,
+                    workspace,
+                    "native-moves",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    printf 'edited locally' > private/deeper/box/note.md
+                    if poketto move private/deeper/box private/refused; then exit 99; fi
+                    test "$(cat private/deeper/box/note.md)" = 'edited locally'
+                    test ! -e private/refused
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(refused.exitCode()).isZero();
+            assertThat(refused.stdout()).contains("LOCAL_MOVE_REJECTED");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), RepositoryMediaIndex.PATH)
+                            .commit())
+                    .isEqualTo(remoteIndex.commit());
+            passed("cli-move-repairs-references-preserves-unsaved-index-and-retains-optional-media");
+            passed("dirty-move-preflight-preserves-local-edits-and-remote-authority");
+        }
+    }
+
+    private void uncertainMoveRecovery() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("move-recovery"), path("exports"), auth, workspace, true);
+        try (var executor = moveAdapter(fixture)) {
+            var unknown = executor.execute(
+                    principal,
+                    workspace,
+                    "recover-move",
+                    Optional.empty(),
+                    "printf 'unselected' > private/scratch.md; poketto move private/secret.md private/renamed.md",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(unknown.exitCode()).isEqualTo(1);
+            assertThat(unknown.stdout()).contains("WRITE_OUTCOME_UNKNOWN");
+            fixture.restoreTransport();
+            var recovered = executor.execute(
+                    principal,
+                    workspace,
+                    "recover-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    poketto status
+                    poketto recover
+                    test ! -e private/secret.md
+                    test -f private/renamed.md
+                    test "$(cat private/scratch.md)" = unselected
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(recovered.exitCode())
+                    .as("recovery stdout=%s stderr=%s", recovered.stdout(), recovered.stderr())
+                    .isZero();
+            assertThat(recovered.stdout()).contains("\"movePending\": true", "\"worktreeUpdated\": true");
+            assertThat(fixture.pushes()).isEqualTo(1);
+            passed("uncertain-cli-move-recovers-the-original-commit-and-installs-once");
+        }
+    }
+
     private void uncertainSaveRecovery() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture").resolve("recovery"), path("exports"), auth, workspace, true);
@@ -676,6 +958,7 @@ public final class ExecutorNativeProbe {
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
+                        fixture.moves(auth),
                         JSON,
                         path("socket"),
                         path("privateKey"),
@@ -740,6 +1023,7 @@ public final class ExecutorNativeProbe {
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
+                        fixture.moves(auth),
                         JSON,
                         path("socket"),
                         path("privateKey"),

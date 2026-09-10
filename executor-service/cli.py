@@ -96,9 +96,13 @@ def main():
                     'Use python3 for Python scripts.')
     commands = parser.add_subparsers(dest='operation', required=True)
     commands.add_parser('status', help='Read the host-owned session baseline and scope')
-    commands.add_parser('recover', help='Reconcile an uncertain save and, if necessary, retry only its retained commit')
+    recover = commands.add_parser('recover', help='Recover a pending save or move using its retained commit and local completion receipt')
+    recover.add_argument('--skip-local', action='store_true', help='For a confirmed move, keep local files untouched and release pending installation; sync affected files before saving')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
     sync.add_argument('path')
+    move = commands.add_parser('move', help='Atomically move saved content and repair references; unselected edits stay local')
+    move.add_argument('source')
+    move.add_argument('destination')
     artifacts = commands.add_parser('artifact', help='Create or remove an expiring artifact for this MCP session')
     artifact_commands = artifacts.add_subparsers(dest='artifact_operation', required=True)
     created = artifact_commands.add_parser('create', help='Capture a local file for get_artifact; does not save or publish')
@@ -131,6 +135,10 @@ def main():
     arguments = {'writes': args.paths, 'deletes': args.delete} if args.operation == 'save' else {}
     if args.operation == 'sync':
         arguments = {'path': args.path}
+    if args.operation == 'recover' and args.skip_local:
+        arguments = {'skipLocal': True}
+    if args.operation == 'move':
+        arguments = {'source': args.source, 'destination': args.destination}
     operation = args.operation
     if operation == 'artifact':
         operation = 'artifact_' + args.artifact_operation

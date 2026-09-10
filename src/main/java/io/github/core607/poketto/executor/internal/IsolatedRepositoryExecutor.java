@@ -562,7 +562,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "baseCommit",
                             session.saveState.baseCommit,
                             "writeOutcomeUnknown",
-                            session.saveState.uncertain,
+                            session.saveState.uncertain
+                                    || (session.saveState.move != null && session.saveState.move.result == null),
+                            "movePending",
+                            session.saveState.move != null,
+                            "move",
+                            session.saveState.move == null
+                                    ? Map.of()
+                                    : SessionMoves.pendingResult(session.saveState.move, "PENDING")
+                                            .get("result"),
                             "lastSave",
                             session.saveState.lastSave,
                             "lastImport",
@@ -629,7 +637,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
             }
         }
-        if (operation.equals("save") || operation.equals("recover") || operation.equals("sync")) {
+        if (operation.equals("save")
+                || operation.equals("recover")
+                || operation.equals("sync")
+                || operation.equals("move")) {
             if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
             try {
                 auth.authorize(
@@ -637,10 +648,36 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         session.key.workspace(),
                         operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
                 if (operation.equals("recover")) {
-                    if (!arguments.isEmpty()) throw new IllegalArgumentException();
+                    boolean skipLocal =
+                            arguments.size() == 1 && arguments.path("skipLocal").asBoolean(false);
+                    if (!arguments.isEmpty() && !skipLocal) throw new IllegalArgumentException();
+                    if (session.saveState.move != null) {
+                        var recovered =
+                                saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
+                        if (session.saveState.move == null || session.saveState.move.result == null) return recovered;
+                        if (skipLocal) return saves.moves().skipLocal(session.saveState);
+                        return moveFiles(session, executionId, session.saveState.move, true);
+                    }
+                    if (skipLocal) throw new IllegalArgumentException("no confirmed move to skip");
                     return saves.recover(session.principal, session.key.workspace(), session.saveState);
                 }
+                if (session.saveState.move != null)
+                    return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
                 if (session.saveState.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+                if (operation.equals("move")) {
+                    if (arguments.size() != 2
+                            || !arguments.path("source").isString()
+                            || !arguments.path("destination").isString()) throw new IllegalArgumentException();
+                    var pending = saves.moves()
+                            .prepare(
+                                    session.principal,
+                                    session.key.workspace(),
+                                    session.saveState,
+                                    arguments.path("source").stringValue(),
+                                    arguments.path("destination").stringValue(),
+                                    captureOptional(session, executionId, RepositoryMediaIndex.PATH));
+                    return moveFiles(session, executionId, pending, false);
+                }
                 if (operation.equals("sync")) {
                     if (arguments.size() != 1 || !arguments.path("path").isString())
                         throw new IllegalArgumentException();
@@ -697,6 +734,89 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             paths.add(value.stringValue());
         }
         return paths;
+    }
+
+    private Map<String, ?> moveFiles(
+            Session session, String executionId, SessionMoves.Pending pending, boolean recovery) {
+        byte[] payload = pending.payload;
+        JsonNode begun = requestLive(
+                session,
+                "MOVE_BEGIN",
+                Map.of(
+                        "executionId",
+                        executionId,
+                        "bytes",
+                        payload.length,
+                        "sha256",
+                        io.github.core607.poketto.content.DocumentRevision.sha256(payload)
+                                .value()
+                                .substring(7)),
+                Duration.ofSeconds(3));
+        if (begun.path("code").asString("").equals("MOVE_REJECTED")) {
+            if (recovery) return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+            return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+        }
+        requireOk(begun, session);
+        String transfer = begun.path("transferId").asString("");
+        if (!UUID.fromString(transfer).toString().equals(transfer)) throw new WorkerUnavailableException();
+        var reference = Map.of("executionId", executionId, "transferId", transfer);
+        try {
+            for (int offset = 0; offset < payload.length; offset += 65536) {
+                authorize(session);
+                int end = Math.min(offset + 65536, payload.length);
+                JsonNode chunk = requestLive(
+                        session,
+                        "MOVE_CHUNK",
+                        Map.of(
+                                "executionId",
+                                executionId,
+                                "transferId",
+                                transfer,
+                                "offset",
+                                offset,
+                                "data",
+                                Base64.getEncoder().encodeToString(java.util.Arrays.copyOfRange(payload, offset, end))),
+                        Duration.ofSeconds(3));
+                if (chunk.path("code").asString("").equals("MOVE_REJECTED")) {
+                    if (recovery) return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+                    return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+                }
+                requireOk(chunk, session);
+                if (chunk.path("receivedBytes").asInt(-1) != end) throw new WorkerUnavailableException();
+            }
+            if (!recovery) {
+                JsonNode checked = requestLive(session, "MOVE_CHECK", reference, Duration.ofSeconds(15));
+                if (checked.path("code").asString("").equals("MOVE_REJECTED"))
+                    return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+                requireOk(checked, session);
+                if (!checked.path("checked").path("ready").asBoolean(false)) throw new WorkerUnavailableException();
+                authorize(session);
+                var committed =
+                        saves.moves().commit(session.principal, session.key.workspace(), session.saveState, pending);
+                if (session.saveState.move == null || pending.result == null) return committed;
+            }
+            authorize(session);
+            JsonNode installed;
+            try {
+                installed = requestLive(session, "MOVE_COMMIT", reference, Duration.ofSeconds(15));
+            } catch (WorkerUnavailableException uncertainInstallation) {
+                // Git is acknowledged. Keep the plan so a live worker can reconcile its receipt.
+                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+            }
+            if (installed.path("code").asString("").equals("MOVE_REJECTED"))
+                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
+            requireOk(installed, session);
+            if (installed.path("installed").path("changedPaths").asInt(-1) != pending.paths.size()
+                    || !installed.path("installed").path("alreadyApplied").isBoolean())
+                throw new WorkerUnavailableException();
+            return saves.moves().installed(session.saveState);
+        } finally {
+            try {
+                requestLive(session, "MOVE_ABORT", reference, Duration.ofSeconds(3));
+            } catch (RuntimeException cleanupFailure) {
+                log.warn("Worker move staging cleanup was not acknowledged; command cleanup will release its slot");
+            }
+        }
     }
 
     private Map<String, String> capture(

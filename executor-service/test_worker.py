@@ -65,8 +65,64 @@ class Backend:
     def install(self, session, incoming):
         return incoming.install(os.getuid(), os.getgid())
 
+    def check_move(self, session, incoming):
+        return incoming.check()
+
 
 class ProtocolTests(unittest.TestCase):
+    def test_signed_move_transfer_preflight_install_and_release_keep_identity_and_local_edits(self):
+        import hashlib
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            (repository / 'private/box').mkdir(parents=True)
+            (repository / 'private/box/a.md').write_bytes(b'before')
+            (repository / 'private/scratch.md').write_bytes(b'unselected')
+            plan = {'operationId': uid(), 'source': 'private/box', 'destination': 'private/new',
+                    'originals': {'private/box/a.md': {'sha256': hashlib.sha256(b'before').hexdigest(),
+                                                       'bytes': 6, 'optional': False}},
+                    'relocations': {'private/box/a.md': 'private/new/a.md'},
+                    'replacements': {'private/new/a.md': base64.b64encode(b'after').decode()}}
+            raw = json.dumps(plan).encode()
+            result = self.send(self.payload('MOVE_BEGIN', {'executionId': session.execution_id,
+                'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}))
+            self.assertTrue(result['ok'], result)
+            reference = {'executionId': session.execution_id, 'transferId': result['transferId']}
+            chunk = self.payload('MOVE_CHUNK', {**reference, 'offset': 0, 'data': base64.b64encode(raw).decode()})
+            foreign = {**chunk, 'requestId': uid(), 'serverSessionHash': 'f' * 64}
+            self.assertEqual('SESSION_NOT_FOUND', self.send(foreign)['code'])
+            self.assertEqual('EXECUTION_MISMATCH', self.send(self.payload('MOVE_CHECK', {**reference, 'executionId': uid()}))['code'])
+            self.assertTrue(self.send(chunk)['ok'])
+            self.assertTrue(self.send(self.payload('MOVE_CHECK', reference))['checked']['ready'])
+            self.assertEqual(b'before', (repository / 'private/box/a.md').read_bytes())
+            self.assertEqual('MATERIALIZE_NOT_FOUND', self.send(self.payload('MATERIALIZE_ABORT', reference))['code'])
+            installed = self.send(self.payload('MOVE_COMMIT', reference))
+            self.assertTrue(installed['ok'], installed)
+            self.assertEqual(b'after', (repository / 'private/new/a.md').read_bytes())
+            self.assertFalse((repository / 'private/box').exists())
+            (repository / 'private/new/a.md').write_bytes(b'new edit after acknowledgement')
+            self.assertEqual(installed['installed'], self.send(self.payload('MOVE_COMMIT', reference))['installed'])
+            self.assertEqual(b'new edit after acknowledgement', (repository / 'private/new/a.md').read_bytes())
+            self.assertEqual(b'unselected', (repository / 'private/scratch.md').read_bytes())
+            self.assertTrue(self.send(self.payload('MOVE_ABORT', reference))['ok'])
+            self.assertIsNone(session.incoming)
+            self.assertFalse(list(self.backend.root.glob('incoming-*')))
+            session.execution_id = uid()
+            retry = self.send(self.payload('MOVE_BEGIN', {'executionId': session.execution_id,
+                'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}))
+            reference = {'executionId': session.execution_id, 'transferId': retry['transferId']}
+            self.assertTrue(self.send(self.payload('MOVE_CHUNK', {**reference, 'offset': 0, 'data': base64.b64encode(raw).decode()}))['ok'])
+            repeated = self.send(self.payload('MOVE_COMMIT', reference))
+            self.assertEqual(installed['installed'], repeated['installed'])
+            self.assertEqual(b'new edit after acknowledgement', (repository / 'private/new/a.md').read_bytes())
+            self.assertTrue(self.send(self.payload('MOVE_ABORT', reference))['ok'])
+            receipts = list(self.backend.root.glob('move-result-*.json'))
+            self.assertEqual(1, len(receipts))
+            self.assertEqual(0o600, receipts[0].stat().st_mode & 0o777)
+
     def test_artifact_frames_bind_identity_and_preserve_bytes_after_command_completion(self):
         self.opened()
         session = self.service.sessions[self.identity['leaseId']]
@@ -126,6 +182,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(1, response['version'])
         self.assertEqual(1, response['codeActProtocol'])
         self.assertEqual(1, response['artifactProtocol'])
+        self.assertEqual(1, response['moveProtocol'])
 
     def test_signed_binary_capture_releases_its_protected_file(self):
         self.opened()

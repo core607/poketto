@@ -77,6 +77,8 @@ class LeaseBridgeTests(unittest.TestCase):
     def test_artifact_cli_operations_cross_the_actual_fifo_allowlist(self):
         identifier = str(uuid.uuid4())
         for command, operation, arguments in (
+                (['recover', '--skip-local'], 'recover', {'skipLocal': True}),
+                (['move', 'private/a.md', 'private/b.md'], 'move', {'source': 'private/a.md', 'destination': 'private/b.md'}),
                 (['artifact', 'create', 'result.bin', '--type', 'application/pdf'],
                  'artifact_create', {'path': 'result.bin', 'mediaType': 'application/pdf'}),
                 (['artifact', 'remove', identifier], 'artifact_remove', {'artifactId': identifier})):

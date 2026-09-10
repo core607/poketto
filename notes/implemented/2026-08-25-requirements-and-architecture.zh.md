@@ -40,7 +40,7 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 [目录导航](2026-09-08-repository-directory-navigation.md)在读取授权下分页返回 Git 的直接子条目，无须执行服务。内容仓库自己的 `AGENTS.md` 提供可选的渐进式指引，服务端不解释其正文。
 
-文件使用仓库相对路径，无须 frontmatter ID。`get_file` 将权威 UTF-8 字节作为文本返回，并提供解析出的 commit、服务端 revision、诊断与明确的 expected-absence。`repo_patch` 检查 base commit，以及每个变更路径的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通文件编辑留在本地，由服务端介入的 `poketto` CLI 对媒体操作、选定文件保存、单文件合并和不确定写入恢复执行授权。保存使用各文件独立的基线并保留未选中的本地编辑；权威读取不会读取沙箱副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
+文件使用仓库相对路径，无须 frontmatter ID。`get_file` 将权威 UTF-8 字节作为文本返回，并提供解析出的 commit、服务端 revision、诊断与明确的 expected-absence。`repo_patch` 检查 base commit，以及每个变更路径的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通文件编辑留在本地，由服务端介入的 `poketto` CLI 对媒体操作、选定文件保存、含引用修复的原子移动、单文件合并和不确定写入恢复执行授权。保存使用各文件独立的基线并保留未选中的本地编辑；权威读取不会读取沙箱副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
 
 ## 后续访客问答设计
 

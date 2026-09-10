@@ -10,5 +10,15 @@ import io.github.core607.poketto.workspace.WorkspaceId;
  * before a later text edit. Repository conflicts and uncertain acknowledgements follow patch semantics.
  */
 public interface RepositoryMoveService {
+    /** Prepares bounded local preconditions from current authority; does not mutate the repository. */
+    RepositoryMovePlan plan(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request);
+
     RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request);
+
+    /** Reconciles or retries the identical host-retained move commit under current authorization. */
+    RepositoryPatchResult recover(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteAttempt attempt);
 }

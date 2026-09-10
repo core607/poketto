@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from resource_pool import ResourcePool
 from bridge import BridgeRejected, LeaseBridge
 from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
-from materialize import IncomingFile
+from materialize import IncomingFile, IncomingMove
 from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 
@@ -118,7 +118,7 @@ class Service:
         self.lock = threading.RLock()
 
     def hello(self):
-        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'workerBootId': self.boot,
+        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
 
@@ -148,6 +148,7 @@ class Service:
             raise Rejected('LEASE_EXPIRED')
         if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
                                   'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
+                                  'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
                                   'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE', 'MATERIALIZE_BEGIN',
                                   'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT') or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
@@ -198,6 +199,8 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op in ('MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT'):
+            return self.move_dispatch(p)
         if op in ('ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE'):
             return self.artifact_dispatch(p)
         if op in ('MATERIALIZE_BEGIN', 'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT'):
@@ -375,7 +378,7 @@ class Service:
                                               data['sha256'], data['expectedSha256'], data['delete'], data['allowIdentical'])
                     result = {'transferId': s.incoming.id}
                 else:
-                    if s.incoming is None or s.incoming.id != data['transferId']:
+                    if type(s.incoming) is not IncomingFile or s.incoming.id != data['transferId']:
                         raise Rejected('MATERIALIZE_NOT_FOUND')
                     result = {'transferId': s.incoming.id}
                     if op == 'MATERIALIZE_CHUNK':
@@ -395,6 +398,66 @@ class Service:
                         s.incoming = None
             except (CaptureRejected, OSError):
                 raise Rejected('MATERIALIZE_REJECTED') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.execution_id != data['executionId']:
+                raise Rejected('EXECUTION_MISMATCH')
+            return {**self.response(s), **result}
+
+    def move_dispatch(self, p):
+        op, data = p['operation'], p['data']
+        keys = {'executionId', 'bytes', 'sha256'} if op == 'MOVE_BEGIN' else {'executionId', 'transferId'}
+        if op == 'MOVE_CHUNK':
+            keys |= {'offset', 'data'}
+        if set(data) != keys:
+            raise Rejected('INVALID_REQUEST')
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
+                raise Rejected('EXECUTION_MISMATCH')
+        with s.files_lock:
+            if s.cancelled.is_set() or s.execution_id != data['executionId'] or not s.unit:
+                raise Rejected('SESSION_NOT_READY')
+            try:
+                if op == 'MOVE_BEGIN':
+                    if s.incoming is not None:
+                        raise Rejected('MATERIALIZE_IN_PROGRESS')
+                    s.incoming = IncomingMove(self.backend.mount_path(s), data['bytes'], data['sha256'])
+                    result = {'transferId': s.incoming.id}
+                else:
+                    if not isinstance(s.incoming, IncomingMove) or s.incoming.id != data['transferId']:
+                        raise Rejected('MOVE_NOT_FOUND')
+                    result = {'transferId': s.incoming.id}
+                    if op == 'MOVE_CHUNK':
+                        encoded = data['data']
+                        if not isinstance(encoded, str) or len(encoded) > 87384:
+                            raise CaptureRejected('Invalid move chunk')
+                        try:
+                            block = base64.b64decode(encoded, validate=True)
+                        except (ValueError, UnicodeError):
+                            raise CaptureRejected('Invalid move chunk') from None
+                        s.incoming.append(data['offset'], block)
+                        result['receivedBytes'] = s.incoming.received
+                    elif op == 'MOVE_CHECK':
+                        result['checked'] = self.backend.check_move(s, s.incoming)
+                    elif op == 'MOVE_COMMIT':
+                        result['installed'] = self.backend.install(s, s.incoming)
+                    else:
+                        s.incoming.close()
+                        s.incoming = None
+            except (CaptureRejected, OSError):
+                raise Rejected('MOVE_REJECTED') from None
+            except RuntimeError:
+                s.reason = 'sandbox_failed'
+                s.cancelled.set()
+                raise Rejected('MOVE_INSTALL_FAILED') from None
         with self.lock:
             self.authorized(p)
             if s.cancelled.is_set() or s.deadline <= self.clock():
@@ -673,7 +736,16 @@ class SystemdBackend:
 
     def install(self, s, incoming):
         with self.frozen(s):
-            return incoming.install(self.user.pw_uid, self.user.pw_gid)
+            try:
+                return incoming.install(self.user.pw_uid, self.user.pw_gid)
+            except RuntimeError:
+                s.reason = 'sandbox_failed'
+                s.cancelled.set()
+                raise
+
+    def check_move(self, s, incoming):
+        with self.frozen(s):
+            return incoming.check()
 
     @contextmanager
     def frozen(self, s):
