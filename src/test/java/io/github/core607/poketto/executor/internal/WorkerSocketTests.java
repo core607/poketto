@@ -100,6 +100,9 @@ class WorkerSocketTests {
             peer.codeActProtocol = 2;
             assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
             peer.codeActProtocol = 1;
+            peer.artifactProtocol = 0;
+            assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
+            peer.artifactProtocol = 1;
             assertThat(peer.client().hello().workerBootId()).isEqualTo(peer.boot);
         }
     }
@@ -509,7 +512,7 @@ class WorkerSocketTests {
     void workerLeaseAndLifecycleReasonsMapToExplicitPortResults() throws Exception {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
-            for (String reason : List.of("session_closed", "client_shutdown", "lease_expired")) {
+            for (String reason : List.of("session_closed", "client_shutdown", "lease_expired", "sandbox_failed")) {
                 peer.terminationReason = reason;
                 var result = executor.execute(
                         principal(),
@@ -521,12 +524,12 @@ class WorkerSocketTests {
                         new Cancellation());
                 assertThat(result.terminationReason())
                         .isEqualTo(
-                                reason.equals("lease_expired")
+                                Set.of("lease_expired", "sandbox_failed").contains(reason)
                                         ? io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason
                                                 .SANDBOX_FAILURE
                                         : io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason.CANCELLED);
             }
-            assertThat(peer.operations("CLOSE")).hasSize(3);
+            assertThat(peer.operations("CLOSE")).hasSize(4);
         }
     }
 
@@ -1050,6 +1053,7 @@ class WorkerSocketTests {
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
         private volatile int codeActProtocol = 1;
+        private volatile int artifactProtocol = 1;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
@@ -1113,7 +1117,7 @@ class WorkerSocketTests {
                             "codeActProtocol",
                             codeActProtocol,
                             "artifactProtocol",
-                            1,
+                            artifactProtocol,
                             "workerBootId",
                             boot,
                             "maxFrameBytes",
@@ -1226,7 +1230,11 @@ class WorkerSocketTests {
                                     "timedOut",
                                     false,
                                     "terminationReason",
-                                    terminationReason));
+                                    terminationReason,
+                                    "artifacts",
+                                    Map.of(),
+                                    "artifactErrors",
+                                    Map.of()));
                 }
                 case "CLOSE" -> {
                     if (dropClose) return null;

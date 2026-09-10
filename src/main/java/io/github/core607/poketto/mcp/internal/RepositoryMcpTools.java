@@ -190,7 +190,7 @@ final class RepositoryMcpTools {
                     this::getArtifact));
             tools.add(tool(
                     "repo_exec",
-                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority.",
+                    "Run bounded Git, search, shell or Python in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority. Use poketto artifact create FILE --type MIME to return files through get_artifact. Long output includes artifact handles; inspect their truncated flags and read needed pages before they expire.",
                     object(
                             Map.of(
                                     "command",

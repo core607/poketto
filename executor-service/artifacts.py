@@ -17,6 +17,27 @@ from session_files import CaptureRejected, MAX_CHUNK_BYTES
 MAX_ARTIFACTS = 16
 MAX_TOTAL_BYTES = 256 * 1024 * 1024
 LIFETIME_SECONDS = 300
+MAX_OUTPUT_BYTES = 4 * 1024 * 1024
+MAX_PREVIEW_BYTES = 16 * 1024
+
+
+def retain_output(store, streams, truncated):
+    """Keep bounded previews in EXEC and expose longer captured output by handle."""
+    if len(streams) != 2 or len(truncated) != 2 or sum(len(value) for value in streams) > MAX_OUTPUT_BYTES:
+        raise ArtifactRejected('ARTIFACT_CAPACITY')
+    result = {'artifacts': {}, 'artifactErrors': {}}
+    for index, name in enumerate(('stdout', 'stderr')):
+        value = streams[index]
+        result[name] = value[:MAX_PREVIEW_BYTES].decode(errors='replace')
+        result[name + 'Truncated'] = truncated[index] or len(value) > MAX_PREVIEW_BYTES
+        if len(value) > MAX_PREVIEW_BYTES:
+            try:
+                if store is None:
+                    raise ArtifactRejected('ARTIFACT_UNAVAILABLE')
+                result['artifacts'][name] = store.put(name + '.txt', value, truncated=truncated[index])
+            except ArtifactRejected as error:
+                result['artifactErrors'][name] = error.code
+    return result
 
 
 class ArtifactRejected(Exception):

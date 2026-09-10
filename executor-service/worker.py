@@ -26,14 +26,14 @@ from bridge import BridgeRejected, LeaseBridge
 from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
 from materialize import IncomingFile
 from binary_capture import BinaryCapture
-from artifacts import ArtifactRejected, ArtifactStore
+from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 MAX_FRAME = 1048576
 MAX_COMMAND = 65536
-MAX_OUTPUT = 65536
+MAX_OUTPUT = MAX_OUTPUT_BYTES
 IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 
 
@@ -777,11 +777,12 @@ class SystemdBackend:
             if reason != 'normal':
                 if exit_code == 0:
                     exit_code = 124 if reason == 'timeout' else 137
-                s.reason = reason
-                s.cancelled.set()
+                if reason != 'output_limit':
+                    s.reason = reason
+                    s.cancelled.set()
             return {'commit': s.commit, 'exitCode': exit_code,
-                    'stdout': output[0].decode(errors='replace'), 'stderr': output[1].decode(errors='replace'),
-                    'stdoutTruncated': truncated[0], 'stderrTruncated': truncated[1],
+                    **retain_output(s.artifacts if payload['mode'] == 'execute' and not s.cancelled.is_set() else None,
+                                    output, truncated),
                     'timedOut': reason == 'timeout', 'terminationReason': reason}
         finally:
             with s.files_lock:

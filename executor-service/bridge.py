@@ -11,7 +11,7 @@ import uuid
 MAX_FRAME = 512 * 1024
 MAX_PENDING = 4
 MAX_REQUESTS = 256
-OPERATIONS = frozenset(('status', 'save', 'recover', 'sync', 'media_fetch', 'media_import', 'move', 'export'))
+OPERATIONS = frozenset(('status', 'save', 'recover', 'sync', 'media_fetch', 'media_import', 'artifact_create', 'artifact_remove', 'move', 'export'))
 
 class BridgeRejected(Exception):
     pass

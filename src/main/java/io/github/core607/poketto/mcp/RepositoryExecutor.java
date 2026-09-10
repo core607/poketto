@@ -3,6 +3,7 @@ package io.github.core607.poketto.mcp;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 
 /** Execution boundary supplied only by a verified isolated worker; no ordinary subprocess fallback. */
@@ -62,7 +63,14 @@ public interface RepositoryExecutor {
             boolean stdoutTruncated,
             boolean stderrTruncated,
             boolean timedOut,
-            TerminationReason terminationReason) {}
+            TerminationReason terminationReason,
+            Map<String, Map<String, Object>> artifacts,
+            Map<String, String> artifactErrors) {
+        public ExecutionResult {
+            artifacts = Map.copyOf(artifacts);
+            artifactErrors = Map.copyOf(artifactErrors);
+        }
+    }
 
     enum TerminationReason {
         NORMAL,

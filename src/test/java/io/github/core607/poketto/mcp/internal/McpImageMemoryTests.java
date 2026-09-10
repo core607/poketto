@@ -90,12 +90,13 @@ class McpImageMemoryTests {
         assertThat(memory.reservedBytes()).isZero();
     }
 
-    @Test
-    void getAssetEnvelopeLimitAlsoAppliesWhenToolNameFollowsArguments() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"get_asset", "get_artifact"})
+    void imageReadEnvelopeLimitAlsoAppliesWhenToolNameFollowsArguments(String toolName) throws Exception {
         var memory = memory();
         var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
         String body = "{\"method\":\"tools/call\",\"id\":1,\"params\":{\"arguments\":{\"ignored\":\""
-                + "x".repeat(16384) + "\"},\"name\":\"get_asset\"}}";
+                + "x".repeat(16384) + "\"},\"name\":\"" + toolName + "\"}}";
         var output = new MockHttpServletResponse();
         filter.doFilter(post(body), output, (input, response) -> fail("large get_asset envelope reached SDK"));
         assertThat(output.getStatus()).isEqualTo(413);
@@ -211,7 +212,9 @@ class McpImageMemoryTests {
         var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
         var download = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
         try {
-            for (String body : new String[] {imageCall("get_asset"), imageCall("put_asset"), " ".repeat(16385)}) {
+            for (String body : new String[] {
+                imageCall("get_asset"), imageCall("get_artifact"), imageCall("put_asset"), " ".repeat(16385)
+            }) {
                 var output = new MockHttpServletResponse();
                 filter.doFilter(post(body), output, (request, response) -> fail("image allocation reached"));
                 assertThat(output.getStatus()).isEqualTo(429);

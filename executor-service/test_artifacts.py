@@ -8,10 +8,30 @@ import unittest
 from unittest.mock import patch
 import uuid
 
-from artifacts import ArtifactRejected, ArtifactStore
+from artifacts import ArtifactRejected, ArtifactStore, MAX_PREVIEW_BYTES, retain_output
 
 
 class ArtifactTests(unittest.TestCase):
+    def test_long_output_has_a_small_preview_and_complete_or_explicitly_truncated_artifact(self):
+        root = self.root / 'output-lease'
+        root.mkdir()
+        store = ArtifactStore(root, maximum=65536)
+        self.addCleanup(store.close)
+        content = b'x' * (MAX_PREVIEW_BYTES + 200)
+        result = retain_output(store, [content, b'warning'], [False, False])
+        self.assertEqual(MAX_PREVIEW_BYTES, len(result['stdout']))
+        self.assertTrue(result['stdoutTruncated'])
+        self.assertFalse(result['artifacts']['stdout']['truncated'])
+        self.assertEqual(content, self.read(result['artifacts']['stdout'], store))
+        cut = retain_output(store, [content, b''], [True, False])
+        self.assertTrue(cut['artifacts']['stdout']['truncated'])
+        self.assertFalse(cut['artifactErrors'])
+        unavailable = retain_output(None, [content, b''], [False, False])
+        self.assertEqual({'stdout': 'ARTIFACT_UNAVAILABLE'}, unavailable['artifactErrors'])
+        self.assertFalse(unavailable['artifacts'])
+        full = retain_output(self.store, [content, b''], [False, False])
+        self.assertEqual({'stdout': 'ARTIFACT_CAPACITY'}, full['artifactErrors'])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

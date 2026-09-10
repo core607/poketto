@@ -1318,7 +1318,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             TerminationReason reason =
                     switch (result.path("terminationReason").stringValue()) {
                         case "session_closed", "client_shutdown" -> TerminationReason.CANCELLED;
-                        case "lease_expired" -> TerminationReason.SANDBOX_FAILURE;
+                        case "lease_expired", "sandbox_failed" -> TerminationReason.SANDBOX_FAILURE;
                         default ->
                             TerminationReason.valueOf(result.path("terminationReason")
                                     .stringValue()
@@ -1326,6 +1326,23 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     };
             boolean timedOut = result.path("timedOut").booleanValue();
             if (timedOut != (reason == TerminationReason.TIMEOUT)) throw new WorkerUnavailableException();
+            if (!result.path("artifacts").isObject()
+                    || !result.path("artifactErrors").isObject()
+                    || result.path("artifacts").size() > 2
+                    || result.path("artifactErrors").size() > 2) throw new WorkerUnavailableException();
+            Map<String, Map<String, Object>> artifacts = new LinkedHashMap<>();
+            Map<String, String> artifactErrors = new LinkedHashMap<>();
+            for (var entry : result.path("artifacts").properties()) {
+                if (!Set.of("stdout", "stderr").contains(entry.getKey())) throw new WorkerUnavailableException();
+                artifacts.put(entry.getKey(), artifactMetadata(entry.getValue()));
+            }
+            for (var entry : result.path("artifactErrors").properties()) {
+                if (!Set.of("stdout", "stderr").contains(entry.getKey())
+                        || artifacts.containsKey(entry.getKey())
+                        || !Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY")
+                                .contains(entry.getValue().asString(""))) throw new WorkerUnavailableException();
+                artifactErrors.put(entry.getKey(), entry.getValue().stringValue());
+            }
             return new ExecutionResult(
                     commit,
                     result.path("exitCode").intValue(),
@@ -1334,8 +1351,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     result.path("stdoutTruncated").booleanValue(),
                     result.path("stderrTruncated").booleanValue(),
                     timedOut,
-                    reason);
+                    reason,
+                    artifacts,
+                    artifactErrors);
         } catch (RuntimeException exception) {
+            String reason = result.path("terminationReason").asString("");
+            log.warn(
+                    "Invalid worker execution result ({}; termination={})",
+                    exception.getClass().getSimpleName(),
+                    reason.matches("[a-z_]{1,32}") ? reason : "invalid");
             throw new WorkerUnavailableException();
         }
     }

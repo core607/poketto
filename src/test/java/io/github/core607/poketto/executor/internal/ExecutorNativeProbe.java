@@ -167,6 +167,7 @@ public final class ExecutorNativeProbe {
             assertThat(first.stdout()).contains("\"scope\": \"full\"", "\"baseCommit\": \"" + first.commit() + "\"");
             passed("signed-open-through-production-socket-and-signature-checks", "milliseconds", millis(start));
             passed("synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies");
+            artifacts(executor);
             start = System.nanoTime();
             for (int i = 0; i < 20; i++)
                 assertThat(execute(executor, "first", "git rev-parse HEAD; test -f article.md", new Cancellation())
@@ -295,6 +296,77 @@ public final class ExecutorNativeProbe {
                 classHash(IsolatedRepositoryExecutor.class),
                 "nativeProbeClassSha256",
                 classHash(ExecutorNativeProbe.class))));
+    }
+
+    private void artifacts(IsolatedRepositoryExecutor executor) throws Exception {
+        var created = execute(
+                executor,
+                "first",
+                "set -eu; printf original-artifact > result.bin; "
+                        + "poketto artifact create result.bin --type application/octet-stream; "
+                        + "printf changed > result.bin; test ! -r \"$POKETTO_BRIDGE/../artifacts\"",
+                new Cancellation());
+        assertThat(created.exitCode())
+                .as("%s %s", created.stdout(), created.stderr())
+                .isZero();
+        JsonNode descriptor = JSON.readTree(created.stdout());
+        assertThat(descriptor.path("ok").booleanValue()).isTrue();
+        String id = descriptor.path("artifact").path("artifactId").stringValue();
+        assertThat(readArtifact(executor, "first", id))
+                .isEqualTo("original-artifact".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(executor.readArtifact(principal, workspace, "other-client", id, 0, 64, new Cancellation()))
+                .isEmpty();
+        assertThat(executor.readArtifact(principal, WorkspaceId.random(), "first", id, 0, 64, new Cancellation()))
+                .isEmpty();
+        assertThat(executor.readArtifact(principal(), workspace, "first", id, 0, 64, new Cancellation()))
+                .isEmpty();
+        assertThat(execute(executor, "first", "poketto artifact remove " + id, new Cancellation())
+                        .exitCode())
+                .isZero();
+        assertThat(executor.readArtifact(principal, workspace, "first", id, 0, 64, new Cancellation()))
+                .isEmpty();
+        passed("artifact-capture-is-immutable-protected-and-bound-to-workspace-key-and-client");
+
+        var complete = execute(
+                executor, "first", "python3 -c 'import sys; sys.stdout.write(\"x\"*65537)'", new Cancellation());
+        assertThat(complete.exitCode()).isZero();
+        assertThat(complete.stdout()).isEqualTo("x".repeat(16384));
+        assertThat(complete.stdoutTruncated()).isTrue();
+        assertThat(complete.artifactErrors()).isEmpty();
+        Map<String, Object> full = complete.artifacts().get("stdout");
+        assertThat(full.get("truncated")).isEqualTo(false);
+        assertThat(readArtifact(executor, "first", (String) full.get("artifactId")))
+                .isEqualTo("x".repeat(65537).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        passed("long-output-retains-complete-bytes-behind-bounded-preview");
+
+        var limited = execute(
+                executor,
+                "first",
+                "printf retained > after-output-limit; python3 -c 'import sys; sys.stdout.write(\"z\"*(5*1024*1024))'",
+                new Cancellation());
+        assertThat(limited.terminationReason()).isEqualTo(RepositoryExecutor.TerminationReason.OUTPUT_LIMIT);
+        assertThat(limited.stdout()).isEqualTo("z".repeat(16384));
+        assertThat(limited.artifactErrors()).isEmpty();
+        Map<String, Object> prefix = limited.artifacts().get("stdout");
+        assertThat(prefix.get("truncated")).isEqualTo(true);
+        assertThat(readArtifact(executor, "first", (String) prefix.get("artifactId")))
+                .isEqualTo("z".repeat(4 * 1024 * 1024).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(execute(executor, "first", "cat after-output-limit", new Cancellation())
+                        .stdout())
+                .isEqualTo("retained");
+        passed("output-limit-kills-command-retains-bounded-artifact-and-unselected-work");
+    }
+
+    private byte[] readArtifact(IsolatedRepositoryExecutor executor, String session, String id) throws Exception {
+        var output = new java.io.ByteArrayOutputStream();
+        RepositoryExecutor.ArtifactChunk chunk;
+        do {
+            chunk = executor.readArtifact(principal, workspace, session, id, output.size(), 65536, new Cancellation())
+                    .orElseThrow();
+            output.write(chunk.bytes());
+        } while (output.size() < chunk.size());
+        assertThat(hash(output.toByteArray())).isEqualTo(chunk.sha256());
+        return output.toByteArray();
     }
 
     private void mediaImport() throws Exception {
@@ -777,6 +849,21 @@ public final class ExecutorNativeProbe {
             assertThat(result.stdout()).contains("READ_ONLY_SCOPE");
             assertThat(result.commit()).isNotEqualTo(fixture.sourceCommit());
             passed("public-scope-real-projection-has-no-private-files-metadata-or-original-history");
+            var publicArtifact = execute(
+                    executor,
+                    "public-native",
+                    "poketto artifact create article/index.md --type text/plain",
+                    new Cancellation());
+            assertThat(publicArtifact.exitCode()).isZero();
+            String publicArtifactId = JSON.readTree(publicArtifact.stdout())
+                    .path("artifact")
+                    .path("artifactId")
+                    .stringValue();
+            assertThat(new String(
+                            readArtifact(executor, "public-native", publicArtifactId),
+                            java.nio.charset.StandardCharsets.UTF_8))
+                    .contains("public-native-body")
+                    .doesNotContain("secret-needle");
             privateRead.set(true);
             var unchanged = executor.execute(
                     principal,
@@ -790,6 +877,10 @@ public final class ExecutorNativeProbe {
             assertThat(unchanged.commit()).isEqualTo(result.commit());
             passed("permission-increase-does-not-expand-existing-public-worker-files");
             fixture.withdraw();
+            assertThatThrownBy(() -> executor.readArtifact(
+                            principal, workspace, "public-native", publicArtifactId, 0, 64, new Cancellation()))
+                    .isInstanceOf(RuntimeException.class);
+            passed("public-artifact-delivery-rechecks-publication-before-returning-bytes");
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,
