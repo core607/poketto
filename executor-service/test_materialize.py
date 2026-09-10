@@ -3,8 +3,9 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from materialize import IncomingFile
+from materialize import IncomingFile, LocalMove
 from session_files import CaptureRejected
 
 
@@ -111,3 +112,141 @@ class MaterializeTests(unittest.TestCase):
         with self.assertRaises(CaptureRejected):
             self.install(again)
         self.assertEqual(b'local edit', path.read_bytes())
+
+
+class LocalMoveTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.repository = self.root / 'work/repository'
+        self.repository.mkdir(parents=True)
+        self.before = {'private/box/note.md': b'[ref](../ref.md)',
+                       'private/box/raw.bin': bytes(range(256)),
+                       'private/ref.md': b'[note](box/note.md)',
+                       '.poketto/assets.json': b'before-index'}
+        for path, content in self.before.items():
+            target = self.repository / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        (self.repository / 'private/scratch.md').write_bytes(b'unselected local edit')
+
+    def plan(self, destination='private/deeper/box'):
+        originals = {path: {'sha256': digest(content), 'bytes': len(content), 'optional': False}
+                     for path, content in self.before.items()}
+        originals['private/box/paper.pdf'] = {'sha256': digest(b'PDF'), 'bytes': 3, 'optional': True}
+        relocations = {path: destination + path[len('private/box'):]
+                       for path in originals if path.startswith('private/box/')}
+        return LocalMove(self.root, 'private/box', destination, originals, relocations,
+                         {destination + '/note.md': b'[ref](../../ref.md)',
+                          'private/ref.md': b'[note](deeper/box/note.md)',
+                          '.poketto/assets.json': b'after-index'})
+
+    def test_directory_and_references_move_together_without_materializing_missing_media(self):
+        raw = self.repository / 'private/box/raw.bin'
+        inode = raw.stat().st_ino
+        plan = self.plan()
+        self.assertIn('private/box/raw.bin', plan.check())
+        result = plan.install(os.getuid(), os.getgid())
+        self.assertFalse(result['alreadyApplied'])
+        self.assertFalse((self.repository / 'private/box').exists())
+        self.assertEqual(inode, (self.repository / 'private/deeper/box/raw.bin').stat().st_ino)
+        self.assertEqual(self.before['private/box/raw.bin'], (self.repository / 'private/deeper/box/raw.bin').read_bytes())
+        self.assertFalse((self.repository / 'private/deeper/box/paper.pdf').exists())
+        self.assertEqual(b'[ref](../../ref.md)', (self.repository / 'private/deeper/box/note.md').read_bytes())
+        self.assertEqual(b'after-index', (self.repository / '.poketto/assets.json').read_bytes())
+        self.assertEqual(b'unselected local edit', (self.repository / 'private/scratch.md').read_bytes())
+        self.assertTrue(self.plan().install(os.getuid(), os.getgid())['alreadyApplied'])
+        self.assertEqual([], list(self.root.glob('move-install-*')))
+        self.assertTrue(all(p.stat().st_nlink == 1 for p in self.repository.rglob('*') if p.is_file()))
+
+    def test_edits_after_preflight_and_untracked_sources_are_preserved(self):
+        plan = self.plan()
+        plan.check()
+        note = self.repository / 'private/box/note.md'
+        note.write_bytes(b'edited after preflight')
+        with self.assertRaises(CaptureRejected):
+            plan.install(os.getuid(), os.getgid())
+        self.assertEqual(b'edited after preflight', note.read_bytes())
+        note.write_bytes(self.before['private/box/note.md'])
+        extra = self.repository / 'private/box/untracked'
+        extra.write_bytes(b'keep')
+        with self.assertRaises(CaptureRejected):
+            plan.check()
+        self.assertEqual(b'keep', extra.read_bytes())
+        extra.unlink()
+        extra.mkdir()
+        with self.assertRaises(CaptureRejected):
+            plan.check()
+        self.assertTrue(extra.is_dir())
+        self.assertFalse((self.repository / 'private/deeper').exists())
+
+    def test_installation_fault_restores_directory_and_original_references(self):
+        replace = os.replace
+        failed = False
+
+        def fail_once(source, destination, **kwargs):
+            nonlocal failed
+            if Path(destination) == self.repository / '.poketto/assets.json' and not failed:
+                failed = True
+                raise OSError('injected installation fault')
+            return replace(source, destination, **kwargs)
+
+        with patch('materialize.os.replace', side_effect=fail_once), self.assertRaises(OSError):
+            self.plan().install(os.getuid(), os.getgid())
+        self.assertTrue(failed)
+        for path, content in self.before.items():
+            self.assertEqual(content, (self.repository / path).read_bytes())
+            self.assertEqual(1, (self.repository / path).stat().st_nlink)
+        self.assertFalse((self.repository / 'private/deeper').exists())
+        self.assertEqual([], list(self.root.glob('move-install-*')))
+
+    def test_unsafe_entries_and_occupied_destination_cannot_replace_or_read_other_files(self):
+        outside = self.root / 'outside'
+        outside.write_bytes(b'outside')
+        unsafe = self.repository / 'private/box/unsafe'
+        unsafe.symlink_to(outside)
+        with self.assertRaises((CaptureRejected, OSError)):
+            self.plan().install(os.getuid(), os.getgid())
+        unsafe.unlink()
+        os.mkfifo(unsafe)
+        with self.assertRaises(CaptureRejected):
+            self.plan().check()
+        unsafe.unlink()
+        occupied = self.repository / 'private/deeper/box'
+        occupied.mkdir(parents=True)
+        with self.assertRaises(CaptureRejected):
+            self.plan().check()
+        self.assertEqual(b'outside', outside.read_bytes())
+
+    def test_case_only_directory_rename_is_supported(self):
+        self.plan('private/BOX').install(os.getuid(), os.getgid())
+        self.assertFalse((self.repository / 'private/box').exists())
+        self.assertEqual(self.before['private/box/raw.bin'], (self.repository / 'private/BOX/raw.bin').read_bytes())
+
+    def test_materialized_optional_media_moves_without_copying_its_inode(self):
+        media = self.repository / 'private/box/paper.pdf'
+        media.write_bytes(b'PDF')
+        inode = media.stat().st_ino
+        self.plan().install(os.getuid(), os.getgid())
+        moved = self.repository / 'private/deeper/box/paper.pdf'
+        self.assertEqual(b'PDF', moved.read_bytes())
+        self.assertEqual(inode, moved.stat().st_ino)
+        self.assertEqual(1, moved.stat().st_nlink)
+
+    def test_failed_rollback_retains_protected_recovery_files_and_requires_lease_close(self):
+        replace = os.replace
+
+        def fail_install_and_rollback(source, destination, **kwargs):
+            if Path(destination) in (self.repository / '.poketto/assets.json', self.repository / 'private/box'):
+                raise OSError('injected installation and rollback fault')
+            return replace(source, destination, **kwargs)
+
+        with patch('materialize.os.replace', side_effect=fail_install_and_rollback):
+            with self.assertRaisesRegex(RuntimeError, 'close the lease'):
+                self.plan().install(os.getuid(), os.getgid())
+        retained = list(self.root.glob('move-install-*'))
+        self.assertEqual(1, len(retained))
+        self.assertEqual(0o700, retained[0].stat().st_mode & 0o777)
+        self.assertTrue(any(p.read_bytes() == self.before['private/box/note.md'] for p in retained[0].iterdir()))
+        self.assertEqual(b'unselected local edit', (self.repository / 'private/scratch.md').read_bytes())

@@ -46,6 +46,9 @@ Selected files and affected backlinks must match their host-owned baselines;
 unsaved affected edits require saving or resolving them before the move. Unrelated
 local edits remain in place. A missing on-demand media file is not a deletion.
 Materialized originals can move only after their bytes match the workspace index.
+For the local media index, session integration must apply only the planned mapping
+changes and retain unrelated unsaved entries. A changed selected mapping or a
+collision at the new logical path prevents the move.
 
 The host prepares the affected Git paths, media mappings and repaired references
 at one immutable authority commit. Sandbox Git refs never supply the plan or its
@@ -64,6 +67,16 @@ bytes remain intact and cause an explicit synchronization conflict. Only affecte
 file baselines advance after installation; unrelated file baselines retain their
 prior revisions. Native executor and actual-client acceptance must cover this
 whole path before the CLI integration is delivered.
+
+The prepared `materialize.LocalMove` primitive verifies local fingerprints and
+rejects unexpected source entries before moving a file or directory. Directory
+renames preserve binary inodes and move only already-materialized originals.
+Replacement text and rollback copies stay in the protected lease filesystem.
+An installation fault restores the directory and original references before the
+caller can unfreeze execution. A rollback failure retains protected evidence and
+requires closing the lease. The primitive assumes the caller holds the lease
+filesystem lock and freezes the command cgroup; signed worker dispatch and CLI
+integration must establish those conditions before using it.
 
 ## Alternatives and related records
 
