@@ -389,9 +389,13 @@ public final class AssetService {
                             name,
                             entry.getValue(),
                             catalog.publicPaths().contains(name));
-                    if (prepareImage(workspace, target, resolved, bytes))
-                        gallery.add(new PreparedGallery(target, name.substring(prefix.length())));
-                    else galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                    try {
+                        if (prepareImage(workspace, target, resolved, bytes))
+                            gallery.add(new PreparedGallery(target, name.substring(prefix.length())));
+                        else galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                    } catch (AssetStorageException | ContentRepositoryException unavailable) {
+                        galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                    }
                 }
             }
         }

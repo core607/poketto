@@ -418,6 +418,75 @@ class RepositoryAdminIntegrationIT {
                         .get("commit")
                         .stringValue())
                 .isEqualTo(before);
+        var mediaEntry = Map.of(
+                "assetId",
+                uploaded.get("reference").get("assetId").stringValue(),
+                "revision",
+                uploaded.get("reference").get("revision").stringValue(),
+                "mediaType",
+                "application/pdf",
+                "size",
+                bytes.length);
+        var mediaIndex = Map.of(
+                "version", 1, "files", Map.of("public/source.pdf", mediaEntry, "private/source.pdf", mediaEntry));
+        var publication = http(
+                client,
+                "POST",
+                "/api/admin/repository/patch",
+                csrf,
+                Map.of(
+                        "baseCommit",
+                        before,
+                        "changes",
+                        List.of(
+                                Map.of(
+                                        "path",
+                                        ".poketto/assets.json",
+                                        "expectedAbsence",
+                                        true,
+                                        "content",
+                                        json.writeValueAsString(mediaIndex)),
+                                Map.of(
+                                        "path",
+                                        "public/http-media.md",
+                                        "expectedAbsence",
+                                        true,
+                                        "content",
+                                        "---\nroute: /http-media\n---\n[Download](source.pdf)\n"))),
+                200);
+        String query =
+                "?commit=" + publication.get("commit").stringValue() + "&route=/http-media&path=public/source.pdf";
+        try (var anonymous =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            for (var reader : List.of(anonymous, client)) {
+                String downloadPath =
+                        reader == anonymous ? "/api/public/media" + query : "/api/admin/media?path=private/source.pdf";
+                var download = reader.send(
+                        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + downloadPath))
+                                .timeout(Duration.ofSeconds(15))
+                                .GET()
+                                .build(),
+                        HttpResponse.BodyHandlers.ofByteArray());
+                assertThat(download.statusCode()).isEqualTo(200);
+                assertThat(download.body()).isEqualTo(bytes);
+                assertThat(download.headers().firstValue("Content-Disposition").orElseThrow())
+                        .startsWith("attachment;");
+                assertThat(download.headers().firstValue("Cache-Control").orElseThrow())
+                        .isEqualTo("no-store");
+                assertThat(download.headers()
+                                .firstValue("X-Content-Type-Options")
+                                .orElseThrow())
+                        .isEqualTo("nosniff");
+            }
+            http(anonymous, "GET", "/api/admin/media?path=private/source.pdf", null, null, 401);
+            http(
+                    anonymous,
+                    "GET",
+                    "/api/public/media" + query.replace("public/source.pdf", "private/source.pdf"),
+                    null,
+                    null,
+                    404);
+        }
     }
 
     private JsonNode http(HttpClient client, String method, String path, JsonNode csrf, Object payload, int status)

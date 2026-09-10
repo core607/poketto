@@ -40,6 +40,8 @@ class IndexedMediaDeliveryTests {
         ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", imageOutput);
         byte[] image = imageOutput.toByteArray();
         var picture = store.uploadFile(workspace, "indexed-picture-01", "image/png", new ByteArrayInputStream(image));
+        var mismatched =
+                store.uploadFile(workspace, "mismatched-picture-01", "image/jpg", new ByteArrayInputStream(image));
         var file = store.uploadFile(
                 workspace,
                 "indexed-document-01",
@@ -50,6 +52,8 @@ class IndexedMediaDeliveryTests {
                 indexed(picture),
                 "public/gallery.png",
                 indexed(picture),
+                "public/bad.png",
+                indexed(mismatched),
                 "public/source.pdf",
                 indexed(file),
                 "private/picture.png",
