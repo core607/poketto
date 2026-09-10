@@ -1,17 +1,44 @@
 """Bounded selected-file capture from a quiescent, worker-owned session root."""
 from contextlib import ExitStack
+import base64
+import hashlib
 import os
 import stat
 import unicodedata
+import uuid
 
 
 MAX_SELECTED = 64
 MAX_TEXT_BYTES = 4 * 1024 * 1024
 MAX_PATH_BYTES = 4096
+MAX_CHUNK_BYTES = 65536
 
 
 class CaptureRejected(Exception):
     pass
+
+
+class CaptureSnapshot:
+    """One immutable, bounded selection kept only for the current worker command."""
+
+    def __init__(self, captured):
+        self.id = str(uuid.uuid4())
+        self.files = tuple((path, text.encode('utf-8')) for path, text in captured['writes'].items())
+        self.deletes = captured['deletes']
+
+    def manifest(self):
+        return {'captureId': self.id, 'writes': [
+            {'path': path, 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
+            for path, content in self.files], 'deletes': self.deletes}
+
+    def chunk(self, index, offset, limit):
+        if (type(index) is not int or not 0 <= index < len(self.files)
+                or type(offset) is not int or not 0 <= offset <= len(self.files[index][1])
+                or type(limit) is not int or not 1 <= limit <= MAX_CHUNK_BYTES):
+            raise CaptureRejected('Invalid capture chunk')
+        content = self.files[index][1]
+        return {'captureId': self.id, 'index': index, 'offset': offset,
+                'data': base64.b64encode(content[offset:offset + limit]).decode('ascii')}
 
 
 def selected_paths(writes, deletes):

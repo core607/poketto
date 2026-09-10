@@ -9,6 +9,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from bridge import LeaseBridge
 from cli import call
+from session_files import capture_text
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from worker import Service
@@ -45,8 +46,45 @@ class Backend:
     def close(self, session):
         self.closed.append(session.id)
 
+    def capture(self, session, writes, deletes):
+        return capture_text(self.root, writes, deletes)
+
 
 class ProtocolTests(unittest.TestCase):
+    def test_selected_capture_is_immutable_chunked_and_bound_to_execution_and_identity(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            original = ('猫\r\n' * 30000).encode()
+            (repository / 'selected.md').write_bytes(original)
+            (repository / 'unselected.md').write_text('Keep me')
+            request = self.payload('CAPTURE_BEGIN', {'executionId': session.execution_id,
+                'writes': ['selected.md'], 'deletes': ['removed.md']})
+            result = self.send(request)
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(['selected.md'], [item['path'] for item in result['writes']])
+            self.assertEqual(('removed.md',), result['deletes'])
+            (repository / 'selected.md').write_text('Changed after capture')
+            reference = {'executionId': session.execution_id, 'captureId': result['captureId']}
+            self.assertEqual('CAPTURE_IN_PROGRESS', self.send(self.payload('CAPTURE_BEGIN', request['data']))['code'])
+            read = self.payload('CAPTURE_READ', {**reference, 'index': 0, 'offset': 0, 'limit': 65536})
+            foreign = {**read, 'requestId': uid(), 'serverSessionHash': 'f' * 64}
+            self.assertEqual('SESSION_NOT_FOUND', self.send(foreign)['code'])
+            wrong_execution = self.payload('CAPTURE_READ', {**read['data'], 'executionId': uid()})
+            self.assertEqual('EXECUTION_MISMATCH', self.send(wrong_execution)['code'])
+            captured = bytearray()
+            while len(captured) < len(original):
+                chunk = self.send(self.payload('CAPTURE_READ', {**read['data'], 'offset': len(captured)}))
+                self.assertTrue(chunk['ok'], chunk)
+                captured.extend(base64.b64decode(chunk['data']))
+            self.assertEqual(original, captured)
+            self.assertTrue(self.send(self.payload('CAPTURE_RELEASE', reference))['ok'])
+            self.assertEqual('CAPTURE_NOT_FOUND', self.send(self.payload('CAPTURE_READ', read['data']))['code'])
+
     def test_signed_bridge_poll_and_completion_work_while_command_holds_operation_lock(self):
         self.opened()
         session = self.service.sessions[self.identity['leaseId']]

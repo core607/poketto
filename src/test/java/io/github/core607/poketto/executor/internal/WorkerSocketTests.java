@@ -357,7 +357,13 @@ class WorkerSocketTests {
 
     private static IsolatedRepositoryExecutor executor(AuthService auth, RepositorySnapshotExports exports, Peer peer) {
         return new IsolatedRepositoryExecutor(
-                auth, exports, peer.client(), 8, Duration.ofSeconds(8), Duration.ofSeconds(3));
+                mock(SelectedFileSaves.class),
+                auth,
+                exports,
+                peer.client(),
+                8,
+                Duration.ofSeconds(8),
+                Duration.ofSeconds(3));
     }
 
     @Test
@@ -472,7 +478,13 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        fullAuth(), exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofSeconds(1))) {
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1))) {
             peer.terminationReason = "cancelled";
             executor.execute(
                     principal,
@@ -514,7 +526,13 @@ class WorkerSocketTests {
                 .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        fullAuth(), exports, peer.client(), 1, Duration.ofSeconds(3), Duration.ofSeconds(1))) {
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports,
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1))) {
             assertThatThrownBy(() -> executor.execute(
                             principal(),
                             WORKSPACE,
@@ -543,7 +561,13 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        fullAuth(), exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
             executor.execute(
                     principal,
                     WORKSPACE,
@@ -577,7 +601,13 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        fullAuth(), exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
             peer.terminationReason = "cancelled";
             peer.dropClose = true;
             assertThatThrownBy(() -> executor.execute(
@@ -614,7 +644,13 @@ class WorkerSocketTests {
         var auth = fullAuth();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        auth, exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                        mock(SelectedFileSaves.class),
+                        auth,
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
             peer.dropClose = true;
             peer.terminationReason = "cancelled";
             assertThatThrownBy(() -> executor.execute(
@@ -683,7 +719,13 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
-                            fullAuth(), exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                            mock(SelectedFileSaves.class),
+                            fullAuth(),
+                            exports(),
+                            peer.client(),
+                            1,
+                            Duration.ofSeconds(3),
+                            Duration.ofMillis(100))) {
                 UUID boot = peer.boot;
                 peer.dropClose = lostReply;
                 peer.closeForever = !lostReply;
@@ -755,7 +797,13 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        fullAuth(), exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
             executor.execute(
                     principal, WORKSPACE, "old-A", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
             peer.boot = UUID.randomUUID();
@@ -808,7 +856,13 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        fullAuth(), exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
             executor.execute(
                     principal, WORKSPACE, "old-A", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
             peer.boot = UUID.randomUUID();

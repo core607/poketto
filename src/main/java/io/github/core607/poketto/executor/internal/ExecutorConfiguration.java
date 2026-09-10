@@ -1,6 +1,8 @@
 package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -25,6 +27,8 @@ class ExecutorConfiguration {
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
             AuthService auth,
             RepositorySnapshotExports exports,
+            AuthorizedRepositoryReader reader,
+            RepositoryPatchService patches,
             ObjectMapper json,
             @Value("${poketto.executor.socket}") Path socket,
             @Value("${poketto.executor.signing-key}") Path key,
@@ -56,7 +60,13 @@ class ExecutorConfiguration {
                 json,
                 Clock.systemUTC());
         return new IsolatedRepositoryExecutor(
-                auth, exports, client, maxSessions, Duration.ofSeconds(openSeconds), Duration.ofSeconds(closeSeconds));
+                new SelectedFileSaves(auth, reader, patches),
+                auth,
+                exports,
+                client,
+                maxSessions,
+                Duration.ofSeconds(openSeconds),
+                Duration.ofSeconds(closeSeconds));
     }
 
     private static PrivateKey privateKey(Path path) {

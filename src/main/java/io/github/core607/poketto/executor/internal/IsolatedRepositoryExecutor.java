@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
@@ -9,10 +10,14 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +45,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final AuthService auth;
     private final RepositorySnapshotExports exports;
     private final WorkerClient worker;
+    private final SelectedFileSaves saves;
     private final int maxSessions;
     private final Duration openTimeout;
     private final Duration closeTimeout;
@@ -64,12 +70,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
+            SelectedFileSaves saves,
             AuthService auth,
             RepositorySnapshotExports exports,
             WorkerClient worker,
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
+        this.saves = saves;
         this.auth = auth;
         this.exports = exports;
         this.worker = worker;
@@ -205,6 +213,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             export = session.publicExport.export();
         }
         session.commit = export.commit();
+        session.saveState = new SelectedFileSaves.State(session.commit);
         try {
             requireLive(session);
             authorize(session);
@@ -381,7 +390,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (!UUID.fromString(requestId).toString().equals(requestId)) throw new WorkerUnavailableException();
                 requireLive(session);
                 authorize(session);
-                Map<String, ?> reply = bridgeReply(session, request);
+                Map<String, ?> reply = bridgeReply(session, executionId, request);
                 requireLive(session);
                 authorize(session);
                 requireOk(
@@ -408,7 +417,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private Map<String, ?> bridgeReply(Session session, JsonNode request) {
+    private Map<String, ?> bridgeReply(Session session, String executionId, JsonNode request) {
         JsonNode arguments = request.path("arguments");
         if (!arguments.isObject()) throw new WorkerUnavailableException();
         if (request.path("operation").asString("").equals("status") && arguments.isEmpty())
@@ -416,8 +425,128 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     "ok",
                     true,
                     "result",
-                    Map.of("scope", session.fullRead ? "full" : "public", "baseCommit", session.commit));
+                    Map.of(
+                            "scope",
+                            session.fullRead ? "full" : "public",
+                            "baseCommit",
+                            session.saveState.baseCommit,
+                            "writeOutcomeUnknown",
+                            session.saveState.uncertain,
+                            "lastSave",
+                            session.saveState.lastSave));
+        if (request.path("operation").asString("").equals("save")) {
+            if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+            try {
+                auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+                if (session.saveState.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+                if (arguments.size() != 2 || !arguments.has("writes") || !arguments.has("deletes"))
+                    throw new IllegalArgumentException();
+                List<String> writes = selectedPaths(arguments.path("writes"));
+                List<String> deletes = selectedPaths(arguments.path("deletes"));
+                if (writes.size() + deletes.size() < 1 || writes.size() + deletes.size() > 64)
+                    throw new IllegalArgumentException();
+                var captured = capture(session, executionId, writes, deletes);
+                requireLive(session);
+                authorize(session);
+                return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
+            } catch (IllegalArgumentException invalid) {
+                return Map.of("ok", false, "code", "INVALID_SELECTION");
+            } catch (AuthException denied) {
+                return Map.of("ok", false, "code", "ACCESS_DENIED");
+            } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
+                return Map.of("ok", false, "code", "REPOSITORY_UNAVAILABLE");
+            }
+        }
         return Map.of("ok", false, "code", "OPERATION_UNAVAILABLE");
+    }
+
+    private static List<String> selectedPaths(JsonNode values) {
+        if (!values.isArray() || values.size() > 64) throw new IllegalArgumentException();
+        var paths = new ArrayList<String>();
+        for (JsonNode value : values) {
+            if (!value.isString()
+                    || value.stringValue().isEmpty()
+                    || value.stringValue().getBytes(StandardCharsets.UTF_8).length > 4096)
+                throw new IllegalArgumentException();
+            paths.add(value.stringValue());
+        }
+        return paths;
+    }
+
+    private Map<String, String> capture(
+            Session session, String executionId, List<String> writes, List<String> deletes) {
+        JsonNode manifest = requestLive(
+                session,
+                "CAPTURE_BEGIN",
+                Map.of("executionId", executionId, "writes", writes, "deletes", deletes),
+                Duration.ofSeconds(5));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
+        requireOk(manifest, session);
+        String captureId = manifest.path("captureId").asString("");
+        if (!UUID.fromString(captureId).toString().equals(captureId)) throw new WorkerUnavailableException();
+        Map<String, ?> reference = Map.of("executionId", executionId, "captureId", captureId);
+        try {
+            JsonNode files = manifest.path("writes");
+            if (!files.isArray()
+                    || files.size() != writes.size()
+                    || !selectedPaths(manifest.path("deletes")).equals(deletes)) throw new WorkerUnavailableException();
+            var result = new LinkedHashMap<String, String>();
+            long total = 0;
+            for (int index = 0; index < files.size(); index++) {
+                JsonNode file = files.get(index);
+                String path = file.path("path").asString("");
+                long size = file.path("bytes").asLong(-1);
+                total += size;
+                if (!path.equals(writes.get(index)) || result.containsKey(path) || size < 0 || total > 4 * 1024 * 1024)
+                    throw new WorkerUnavailableException();
+                var bytes = new ByteArrayOutputStream((int) size);
+                while (bytes.size() < size) {
+                    authorize(session);
+                    int limit = (int) Math.min(65536, size - bytes.size());
+                    JsonNode chunk = requestLive(
+                            session,
+                            "CAPTURE_READ",
+                            Map.of(
+                                    "executionId",
+                                    executionId,
+                                    "captureId",
+                                    captureId,
+                                    "index",
+                                    index,
+                                    "offset",
+                                    bytes.size(),
+                                    "limit",
+                                    limit),
+                            Duration.ofSeconds(3));
+                    requireOk(chunk, session);
+                    if (!captureId.equals(chunk.path("captureId").asString(""))
+                            || chunk.path("index").asInt(-1) != index
+                            || chunk.path("offset").asInt(-1) != bytes.size()) throw new WorkerUnavailableException();
+                    byte[] block = Base64.getDecoder().decode(chunk.path("data").asString(""));
+                    if (block.length != limit) throw new WorkerUnavailableException();
+                    bytes.writeBytes(block);
+                }
+                byte[] content = bytes.toByteArray();
+                try {
+                    if (!HexFormat.of()
+                            .formatHex(MessageDigest.getInstance("SHA-256").digest(content))
+                            .equals(file.path("sha256").asString(""))) throw new WorkerUnavailableException();
+                    result.put(
+                            path,
+                            StandardCharsets.UTF_8
+                                    .newDecoder()
+                                    .onMalformedInput(CodingErrorAction.REPORT)
+                                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                    .decode(ByteBuffer.wrap(content))
+                                    .toString());
+                } catch (java.security.NoSuchAlgorithmException | java.nio.charset.CharacterCodingException invalid) {
+                    throw new WorkerUnavailableException();
+                }
+            }
+            return result;
+        } finally {
+            requireOk(requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3)), session);
+        }
     }
 
     private JsonNode requestLive(Session session, String operation, Map<String, ?> data, Duration timeout) {
@@ -645,6 +774,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private final CompletableFuture<Void> stopped = new CompletableFuture<>();
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
+        private SelectedFileSaves.State saveState;
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

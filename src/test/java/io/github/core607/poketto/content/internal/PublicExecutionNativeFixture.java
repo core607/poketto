@@ -46,6 +46,36 @@ public final class PublicExecutionNativeFixture {
         return exports;
     }
 
+    public io.github.core607.poketto.content.AuthorizedRepositoryReader reader(AuthService auth) {
+        return new io.github.core607.poketto.content.AuthorizedRepositoryReader(
+                auth, new JGitRepositoryContentReader(repository.authority()));
+    }
+
+    public io.github.core607.poketto.content.RepositoryPatchService patches(AuthService auth) {
+        return new JGitRepositoryPatchService(
+                repository.authority(),
+                auth,
+                Clock.systemUTC(),
+                snapshots::installAcknowledged,
+                snapshots::closePublication,
+                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
+    }
+
+    public void competingWrite(AuthService auth, io.github.core607.poketto.auth.AuthPrincipal actor) {
+        var current = reader(auth).getFile(actor, workspace, java.util.Optional.empty(), "AGENTS.md");
+        patches(auth)
+                .apply(
+                        actor,
+                        workspace,
+                        new io.github.core607.poketto.content.RepositoryPatch(
+                                current.commit(),
+                                java.util.List.of(new io.github.core607.poketto.content.RepositoryTextChange(
+                                        "AGENTS.md",
+                                        false,
+                                        current.revision(),
+                                        java.util.Optional.of("externally-updated-guide")))));
+    }
+
     public String sourceCommit() {
         return sourceCommit;
     }

@@ -115,7 +115,16 @@ public final class ExecutorNativeProbe {
             Path socket, int maxSessions, RepositorySnapshotExports selectedExports) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        auth, selectedExports, JSON, socket, path("privateKey"), maxSessions, 45, 8);
+                        auth,
+                        selectedExports,
+                        org.mockito.Mockito.mock(io.github.core607.poketto.content.AuthorizedRepositoryReader.class),
+                        org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryPatchService.class),
+                        JSON,
+                        socket,
+                        path("privateKey"),
+                        maxSessions,
+                        45,
+                        8);
     }
 
     private void rejectNonRootPeer() throws Exception {
@@ -137,6 +146,7 @@ public final class ExecutorNativeProbe {
     private void run() throws Exception {
         rejectNonRootPeer();
         publicProjection();
+        selectedSaves();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -283,6 +293,95 @@ public final class ExecutorNativeProbe {
                 classHash(ExecutorNativeProbe.class))));
     }
 
+    private void selectedSaves() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("saves"), path("exports"), auth, workspace);
+        doAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        var reader = fixture.reader(auth);
+        try (var executor = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        reader,
+                        fixture.patches(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8)) {
+            var saved = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "set -eu; printf 'local-unselected' > AGENTS.md; "
+                            + "python3 -c \"from pathlib import Path; Path('private/secret.md').write_bytes(('猫\\r\\n' * 30000).encode()); "
+                            + "Path('private/created.md').write_text('new-file')\"; "
+                            + "git add .; git -c user.name=Sandbox -c user.email=sandbox@example.invalid commit -qm 'untrusted-local-baseline'; "
+                            + "poketto save private/secret.md private/created.md; grep -q local-unselected AGENTS.md",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(saved.exitCode())
+                    .as("save stdout=%s stderr=%s", saved.stdout(), saved.stderr())
+                    .isZero();
+            JsonNode receipt = JSON.readTree(saved.stdout().strip());
+            assertThat(receipt.path("ok").asBoolean()).isTrue();
+            String firstCommit = receipt.path("result").path("commit").asString();
+            assertThat(firstCommit).isNotEqualTo(saved.commit());
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
+                            .source())
+                    .contains("猫\r\n".repeat(30000));
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "AGENTS.md")
+                            .source())
+                    .contains("operator-secret-needle");
+            var second = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "set -eu; printf 'second-save' > private/secret.md; rm private/created.md; "
+                            + "poketto save private/secret.md --delete private/created.md; grep -q local-unselected AGENTS.md",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(second.exitCode())
+                    .as("save stdout=%s stderr=%s", second.stdout(), second.stderr())
+                    .isZero();
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
+                            .source())
+                    .contains("second-save");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/created.md")
+                            .expectedAbsence())
+                    .isTrue();
+            fixture.competingWrite(auth, principal);
+            var conflict = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "printf 'retain-conflicting-edit' > private/secret.md; poketto save private/secret.md",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(conflict.exitCode()).isEqualTo(1);
+            assertThat(conflict.stdout()).contains("REPOSITORY_CONFLICT");
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
+                            .source())
+                    .contains("second-save");
+            var retained = executor.execute(
+                    principal,
+                    workspace,
+                    "selected-save",
+                    Optional.empty(),
+                    "cat private/secret.md; cat AGENTS.md",
+                    Duration.ofSeconds(5),
+                    new Cancellation());
+            assertThat(retained.stdout()).contains("retain-conflicting-edit", "local-unselected");
+            passed("selected-cli-saves-freeze-chunk-and-commit-real-git-with-host-baseline-and-retained-conflicts");
+        }
+    }
+
     private void publicProjection() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture"), path("exports"), auth, workspace);
@@ -296,7 +395,8 @@ public final class ExecutorNativeProbe {
                     "test $(git rev-list --count HEAD) = 1 && test ! -e private && "
                             + "test ! -e .poketto/publishing.yaml && cat article/index.md && "
                             + "! grep -R -F 'secret-needle' --exclude-dir=.git . && "
-                            + "! git cat-file -e " + fixture.sourceCommit() + "^{commit} && poketto status",
+                            + "! git cat-file -e " + fixture.sourceCommit() + "^{commit} && poketto status && "
+                            + "if poketto save article/index.md; then exit 98; fi",
                     Duration.ofSeconds(10),
                     new Cancellation());
             assertThat(result.exitCode())
@@ -305,6 +405,7 @@ public final class ExecutorNativeProbe {
             assertThat(result.stdout()).contains("public-native-body").doesNotContain("secret-needle");
             assertThat(result.stdout())
                     .contains("\"scope\": \"public\"", "\"baseCommit\": \"" + result.commit() + "\"");
+            assertThat(result.stdout()).contains("READ_ONLY_SCOPE");
             assertThat(result.commit()).isNotEqualTo(fixture.sourceCommit());
             passed("public-scope-real-projection-has-no-private-files-metadata-or-original-history");
             privateRead.set(true);

@@ -22,6 +22,7 @@ import uuid
 from dataclasses import dataclass, field
 from resource_pool import ResourcePool
 from bridge import BridgeRejected, LeaseBridge
+from session_files import CaptureRejected, CaptureSnapshot, capture_text, selected_paths
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -91,6 +92,8 @@ class Session:
     unit: str = ''
     bridge: object = None
     execution_id: str = ''
+    files_lock: threading.Lock = field(default_factory=threading.Lock)
+    capture: object = None
 
 
 class Service:
@@ -137,7 +140,8 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE') or not isinstance(p['data'], dict):
+        if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
+                                  'CAPTURE_BEGIN', 'CAPTURE_READ', 'CAPTURE_RELEASE') or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
         return p, hashlib.sha256(raw).hexdigest()
 
@@ -186,6 +190,8 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op in ('CAPTURE_BEGIN', 'CAPTURE_READ', 'CAPTURE_RELEASE'):
+            return self.capture_dispatch(p)
         if op in ('BRIDGE_POLL', 'BRIDGE_COMPLETE'):
             return self.bridge_dispatch(p)
         with self.lock:
@@ -288,6 +294,52 @@ class Service:
             with self.lock:
                 self.cancel(s, 'sandbox_failed')
             raise
+
+    def capture_dispatch(self, p):
+        op, data = p['operation'], p['data']
+        keys = {'executionId', 'writes', 'deletes'} if op == 'CAPTURE_BEGIN' else {'executionId', 'captureId'}
+        if op == 'CAPTURE_READ':
+            keys |= {'index', 'offset', 'limit'}
+        if set(data) != keys:
+            raise Rejected('INVALID_REQUEST')
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
+                raise Rejected('EXECUTION_MISMATCH')
+        # Keep the mount and unit alive without blocking renewal or revocation.
+        # run() cleanup takes this lock before releasing either resource.
+        with s.files_lock:
+            if s.cancelled.is_set() or s.execution_id != data['executionId'] or not s.unit:
+                raise Rejected('SESSION_NOT_READY')
+            try:
+                if op == 'CAPTURE_BEGIN':
+                    selected_paths(data['writes'], data['deletes'])
+                    if s.capture is not None:
+                        raise Rejected('CAPTURE_IN_PROGRESS')
+                    s.capture = CaptureSnapshot(self.backend.capture(s, data['writes'], data['deletes']))
+                    result = s.capture.manifest()
+                else:
+                    if s.capture is None or s.capture.id != data['captureId']:
+                        raise Rejected('CAPTURE_NOT_FOUND')
+                    if op == 'CAPTURE_READ':
+                        result = s.capture.chunk(data['index'], data['offset'], data['limit'])
+                    else:
+                        s.capture = None
+                        result = {}
+            except CaptureRejected:
+                raise Rejected('CAPTURE_REJECTED') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.execution_id != data['executionId']:
+                raise Rejected('EXECUTION_MISMATCH')
+            return {**self.response(s), **result}
 
     def bridge_dispatch(self, p):
         with self.lock:
@@ -468,6 +520,30 @@ class SystemdBackend:
         s.bridge.reset_command()
         return result
 
+    def capture(self, s, writes, deletes):
+        # The pool and unit names come from the supervisor, never the command.
+        group = self.pool.directory / (s.unit + '.service')
+        freeze = group / 'cgroup.freeze'
+        try:
+            freeze.write_text('1')
+            deadline = time.monotonic() + 2
+            while 'frozen 1' not in (group / 'cgroup.events').read_text().splitlines():
+                if s.cancelled.is_set() or time.monotonic() >= deadline:
+                    raise CaptureRejected('Cannot freeze the execution group')
+                time.sleep(0.01)
+            if s.cancelled.is_set():
+                raise CaptureRejected('Execution was cancelled')
+            return capture_text(self.mount_path(s), writes, deletes)
+        except OSError as error:
+            raise CaptureRejected('Execution group is unavailable') from error
+        finally:
+            try:
+                freeze.write_text('0')
+            except OSError:
+                # A failed thaw cannot leave a live, frozen lease behind.
+                s.cancelled.set()
+                s.reason = 'sandbox_failed'
+
     def run(self, s, payload, timeout_ms):
         self.pool.verify()
         target = self.mount_path(s)
@@ -552,14 +628,16 @@ class SystemdBackend:
                     'stdoutTruncated': truncated[0], 'stderrTruncated': truncated[1],
                     'timedOut': reason == 'timeout', 'terminationReason': reason}
         finally:
-            subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=10)
-            self.assert_empty(unit)
-            subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=5)
-            if process:
-                process.wait(timeout=5)
-            record.unlink(missing_ok=True)
-            settings.unlink(missing_ok=True)
-            s.unit = ''
+            with s.files_lock:
+                subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=10)
+                self.assert_empty(unit)
+                subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=5)
+                if process:
+                    process.wait(timeout=5)
+                record.unlink(missing_ok=True)
+                settings.unlink(missing_ok=True)
+                s.unit = ''
+                s.capture = None
 
     def assert_empty(self, unit):
         result = checked(['systemctl', 'show', unit, '-p', 'ControlGroup', '--value']).stdout.decode().strip()

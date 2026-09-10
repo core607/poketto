@@ -60,7 +60,7 @@ def main():
     config_path = root / 'worker.json'
     worker_config = None
     evidence = []
-    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py'):
+    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -259,6 +259,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
             'bridgeSha256': digest(root / 'bridge.py'), 'cliSha256': digest(root / 'cli.py'),
+            'sessionFilesSha256': digest(root / 'session_files.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only'}), flush=True)
     finally:
