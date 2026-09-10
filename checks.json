@@ -1,0 +1,22 @@
+{
+  "result": "PASS",
+  "sourceCommit": "7123e8e045a86e9e9298d07a706539ed665b7e69",
+  "browser": "153.0.8010.36",
+  "viewport": {
+    "width": 1440,
+    "height": 1050
+  },
+  "checks": [
+    "New path starts at private root; initial document is not publicly readable",
+    "Scope selection preserves category; Escape restores focus without a write",
+    "Single-file publication with a private dependency is refused atomically",
+    "Folder publication moves logical media unchanged; original bytes download anonymously at preserved route",
+    "Folder withdrawal preserves media identity and invalidates public article and old media URL"
+  ],
+  "fixtureCommits": {
+    "initialCommit": "162c1fe6da6966f8af499c12a80ef25a41d6667a",
+    "publicationCommit": "bef23f0145bf525ec4975a808ad4704a5ccea25a",
+    "withdrawalCommit": "4e63faa9d7a7c7f3f395391d1c870c77b6903559"
+  },
+  "originalSha256": "607bb42171d7fef571dd6bc01e17a211d544d85e5909a5f5c2d9725a3d819a8a"
+}
