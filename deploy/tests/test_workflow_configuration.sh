@@ -25,7 +25,15 @@ grep -Fq -- '--frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existin
 existing_step="$(sed -n '/- name: Update existing installation/,/- name: Deploy/p' "$workflow")"
 assert_not_contains "$existing_step" 'POKETTO_REPOSITORY_PASSWORD'
 assert_not_contains "$existing_step" '--sync'
-assert_not_contains "$existing_step" '--set-stdin'
+assert_contains "$existing_step" '--pull --set-stdin'
+assert_contains "$existing_step" 'POKETTO_MIRROR_PULL_PASSWORD'
+
+publication="$(sed -n '/^  publish:/,/^  mirror:/p' "$workflow")"
+assert_not_contains "$publication" 'MIRROR_PASSWORD'
+assert_not_contains "$publication" 'deploy/mirror.sh'
+grep -Fq 'needs: [publish, mirror]' "$workflow"
+grep -Fq "needs.publish.result == 'success'" "$workflow"
+grep -Fq 'mirror mode requires a successful configured mirror job' "$workflow"
 
 grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
