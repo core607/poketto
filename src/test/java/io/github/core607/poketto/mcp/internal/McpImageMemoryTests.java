@@ -167,7 +167,7 @@ class McpImageMemoryTests {
                     "image/png",
                     new byte[] {1});
         });
-        var tool = new RepositoryMcpTools(sessions, null, null, null, assets, executors, new ObjectMapper())
+        var tool = new RepositoryMcpTools(sessions, null, assets, executors, new ObjectMapper())
                 .specifications().stream()
                         .filter(candidate -> candidate.tool().name().equals("get_asset"))
                         .findFirst()
@@ -223,7 +223,7 @@ class McpImageMemoryTests {
             for (String body : new String[] {
                 "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}",
                 "{\"method\":\"tools/list\",\"id\":3}",
-                imageCall("get_file")
+                imageCall("repo_exec")
             }) {
                 var output = new MockHttpServletResponse();
                 filter.doFilter(post(body), output, (request, response) -> {

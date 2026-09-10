@@ -1,6 +1,10 @@
 # Local Execution Supervisor
 
 Date: 2026-09-05
+
+The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
+standalone agent file-read, list and patch tool selections in this record. Shared
+service contracts and outstanding delivery requirements remain applicable.
 Status: Proposed
 
 ## Problem

@@ -1,6 +1,10 @@
 # Repository-Native Publishing and Images
 
 Date: 2026-09-01
+
+The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
+standalone agent file-read, list and patch tool selections in this record. Shared
+service contracts and outstanding delivery requirements remain applicable.
 Status: Proposed
 
 The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.

@@ -24,7 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -131,6 +130,9 @@ class McpProtocolIntegrationIT {
     @Autowired
     ApplicationEvents events;
 
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    io.github.core607.poketto.assets.AssetService assets;
+
     @Autowired
     ImageMemoryAdmission imageMemory;
 
@@ -145,7 +147,7 @@ class McpProtocolIntegrationIT {
     private int sequence;
 
     @Test
-    void realStreamableRequestsBindKeysReadExactObjectsPatchAtomicallyAndRevokeSessions() throws Exception {
+    void realStreamableRequestsBindKeysServeMediaRejectFileCrudAndRevokeSessions() throws Exception {
         var owner = auth.initializeOwner(
                 INITIALIZATION, "mcp-owner", UUID.randomUUID().toString());
         var workspace = workspaces.defaultWorkspace().id();
@@ -169,97 +171,21 @@ class McpProtocolIntegrationIT {
         assertThat(tools.valueStream()
                         .map(tool -> tool.path("name").stringValue())
                         .toList())
-                .contains("list_directory", "get_file", "repo_patch", "get_asset", "put_asset")
-                .doesNotContain("repo_exec");
-        assertDirectoryNavigation(other.token(), denied.token());
-        JsonNode original = result(call(key.token(), first, "get_file", Map.of("path", "private/original.md")));
-        String base = original.path("commit").stringValue();
-        assertRequestErrorBoundary(key.token(), first, base);
-        assertThat(original.path("source").stringValue())
-                .withFailMessage("Authoritative file response: %s", original)
-                .isEqualTo("# Original\n");
-        assertThat(original.path("revision").stringValue()).startsWith("sha256:");
-        assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/missing.md")))
-                        .path("expectedAbsence")
-                        .booleanValue())
-                .isTrue();
-        String source = "\uFEFF---\r\nunknown: untouched\r\n---\r\n# 中文\r\n原始字节\r\n";
-        var patch = Map.of(
-                "baseCommit",
-                base,
-                "changes",
-                List.of(Map.of("path", "private/中文.md", "expectedAbsence", true, "content", source)));
-        JsonNode written = result(call(key.token(), first, "repo_patch", patch));
-        assertThat(written.path("committed").booleanValue()).isTrue();
-        assertThat(written.path("snapshotUpdated").booleanValue()).isTrue();
-        assertThat(result(call(key.token(), second, "get_file", Map.of("path", "private/中文.md")))
-                        .path("source")
-                        .stringValue())
-                .isEqualTo(source);
-        assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/中文.md", "commit", base)))
-                        .path("expectedAbsence")
-                        .booleanValue())
-                .isTrue();
-        assertThat(error(call(key.token(), first, "repo_patch", patch))).isEqualTo("CONFLICT");
-        Map<String, Object> deletion = new LinkedHashMap<>();
-        deletion.put("path", "private/中文.md");
-        deletion.put("expectedAbsence", false);
-        deletion.put(
-                "expectedRevision",
-                written.path("revisions").path("private/中文.md").stringValue());
-        deletion.put("content", null);
-        Map<String, Object> missingContent = new LinkedHashMap<>(deletion);
-        missingContent.remove("content");
-        JsonNode rejected = call(
-                key.token(),
-                first,
-                "repo_patch",
-                Map.of("baseCommit", written.path("commit").stringValue(), "changes", List.of(missingContent)));
-        assertThat(rejected.path("isError").booleanValue()).isTrue();
-        assertThat(rejected.path("content").get(0).path("text").stringValue()).contains("content");
-        var move = Map.of(
-                "baseCommit",
-                written.path("commit").stringValue(),
-                "changes",
-                List.of(deletion, Map.of("path", "private/moved.md", "expectedAbsence", true, "content", source)));
-        JsonNode moved = result(call(key.token(), first, "repo_patch", move));
-        assertThat(moved.path("committed").booleanValue()).isTrue();
-        assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/中文.md")))
-                        .path("expectedAbsence")
-                        .booleanValue())
-                .isTrue();
-        JsonNode movedFile = result(call(key.token(), first, "get_file", Map.of("path", "private/moved.md")));
-        assertThat(movedFile.path("source").stringValue()).isEqualTo(source);
-        deletion.put("path", "private/moved.md");
-        deletion.put("expectedRevision", movedFile.path("revision").stringValue());
-        Map<String, Object> nullBase = new LinkedHashMap<>();
-        nullBase.put("baseCommit", null);
-        nullBase.put("changes", List.of(deletion));
-        assertThat(error(call(key.token(), first, "repo_patch", nullBase))).isEqualTo("CONFLICT");
-        assertThat(result(call(
-                                key.token(),
-                                first,
-                                "repo_patch",
-                                Map.of(
-                                        "baseCommit",
-                                        movedFile.path("commit").stringValue(),
-                                        "changes",
-                                        List.of(deletion))))
-                        .path("committed")
-                        .booleanValue())
-                .isTrue();
-        assertThat(result(call(key.token(), first, "get_file", Map.of("path", "private/moved.md")))
-                        .path("expectedAbsence")
-                        .booleanValue())
-                .isTrue();
+                .containsExactlyInAnyOrder("get_asset", "put_asset");
+        assertRemovedFileTools(key.token(), first);
+        assertRequestErrorBoundary(key.token(), first);
         String deniedSession = initialize(denied.token());
-        assertThat(error(call(denied.token(), deniedSession, "get_file", Map.of("path", "private/original.md"))))
+        assertThat(error(call(
+                        denied.token(),
+                        deniedSession,
+                        "get_asset",
+                        Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png")))))
                 .isEqualTo("DENIED");
         JsonNode image = call(
                 key.token(),
                 first,
                 "get_asset",
-                Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png", "commit", base)));
+                Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png")));
         assertThat(image.path("isError").booleanValue())
                 .withFailMessage("Exact image response: %s", image)
                 .isFalse();
@@ -273,10 +199,10 @@ class McpProtocolIntegrationIT {
                         "put_asset",
                         Map.of("operationKey", UUID.randomUUID().toString(), "base64", "AA=="))))
                 .isEqualTo("DENIED");
-        JsonNode malformed = call(key.token(), first, "repo_patch", Map.of("changes", List.of()));
+        JsonNode malformed = call(key.token(), first, "put_asset", Map.of("base64", "AA=="));
         // SDK schema validation runs before the business callback and returns its own error text.
         assertThat(malformed.path("isError").booleanValue()).isTrue();
-        assertThat(malformed.path("content").get(0).path("text").stringValue()).contains("baseCommit");
+        assertThat(malformed.path("content").get(0).path("text").stringValue()).contains("operationKey");
         var delete = HttpRequest.newBuilder(endpoint())
                 .header("Authorization", "Bearer " + key.token())
                 .header("Mcp-Session-Id", second)
@@ -295,93 +221,38 @@ class McpProtocolIntegrationIT {
                 .contains(McpSessionClosed.Reason.AUTH_REVOKED);
     }
 
-    private void assertDirectoryNavigation(String readOnlyToken, String deniedToken) throws Exception {
-        String session = initialize(readOnlyToken);
-        JsonNode noArguments = response(
-                        post(readOnlyToken, session, rpc("tools/call", Map.of("name", "list_directory"))))
-                .path("result");
-        assertThat(noArguments.path("isError").booleanValue()).isFalse();
-        assertThat(result(noArguments).path("path").stringValue()).isEmpty();
-        JsonNode root = result(call(readOnlyToken, session, "list_directory", Map.of("limit", 2)));
-        String commit = root.path("commit").stringValue();
-        // Pin the complete model-visible page shape on the real authenticated MCP entrance.
-        assertThat(root).isEqualTo(json.readTree("""
-                {"commit":"%s","path":"","expectedAbsence":false,
-                 "entries":[{"path":"AGENTS.md","kind":"FILE"},{"path":"private","kind":"DIRECTORY"}],
-                 "nextOffset":2}
-                """.formatted(commit)));
-        JsonNode tail = result(call(
-                readOnlyToken,
-                session,
-                "list_directory",
-                Map.of("commit", commit, "offset", root.path("nextOffset").intValue(), "limit", 2)));
-        assertThat(tail.path("entries")).isEqualTo(json.readTree("""
-                [{"path":"topics","kind":"DIRECTORY"}]
-                """));
-        assertThat(tail.path("nextOffset").isNull()).isTrue();
-        JsonNode topics =
-                result(call(readOnlyToken, session, "list_directory", Map.of("path", "topics", "commit", commit)));
-        assertThat(topics.path("entries")).isEqualTo(json.readTree("""
-                [{"path":"topics/AGENTS.md","kind":"FILE"},{"path":"topics/list.txt","kind":"FILE"}]
-                """));
-        assertThat(result(call(
-                                readOnlyToken,
-                                session,
-                                "get_file",
-                                Map.of("path", "topics/AGENTS.md", "commit", commit)))
-                        .path("source")
-                        .stringValue())
-                .contains("Maintain the existing list.");
-        assertThat(result(call(readOnlyToken, session, "list_directory", Map.of("path", "absent")))
-                        .path("expectedAbsence")
-                        .booleanValue())
-                .isTrue();
-        assertThat(error(call(readOnlyToken, session, "list_directory", Map.of("path", "topics/list.txt"))))
-                .isEqualTo("INVALID_INPUT");
-        for (Map<String, Object> input : List.<Map<String, Object>>of(
-                Map.of("offset", 1),
-                Map.of("limit", 201),
-                Map.of("path", "../other"),
-                Map.of("limit", 1.5),
-                Map.of("unknown", true))) {
-            assertThat(call(readOnlyToken, session, "list_directory", input)
-                            .path("isError")
-                            .booleanValue())
-                    .isTrue();
+    private void assertRemovedFileTools(String token, String session) throws Exception {
+        for (String name : List.of("list_directory", "get_file", "repo_patch")) {
+            JsonNode reply =
+                    response(post(token, session, rpc("tools/call", Map.of("name", name, "arguments", Map.of()))));
+            assertThat(reply.has("error")).withFailMessage(reply.toString()).isTrue();
         }
-        assertThat(error(call(deniedToken, initialize(deniedToken), "list_directory", Map.of())))
-                .isEqualTo("DENIED");
     }
 
-    private void assertRequestErrorBoundary(String token, String session, String base) throws Exception {
+    private void assertRequestErrorBoundary(String token, String session) throws Exception {
         byte[] operation = JsonMapper.shared()
                 .writeValueAsBytes(rpc(
                         "tools/call",
                         Map.of(
                                 "name",
-                                "repo_patch",
+                                "put_asset",
                                 "arguments",
                                 Map.of(
-                                        "baseCommit",
-                                        base,
-                                        "changes",
-                                        List.of(Map.of(
-                                                "path",
-                                                "private/oversized-request.md",
-                                                "expectedAbsence",
-                                                true,
-                                                "content",
-                                                "# Must not execute\n"))))));
+                                        "operationKey",
+                                        "oversized_request_001",
+                                        "base64",
+                                        Base64.getEncoder().encodeToString(PNG)))));
         byte[] oversized = padded(operation, McpBodyLimitFilter.MAX_REQUEST_BYTES + 128);
         for (boolean chunked : List.of(true, false)) {
+            org.mockito.Mockito.clearInvocations(assets);
             var rejected = rawPost(token, session, oversized, chunked);
             assertThat(rejected.statusCode()).isEqualTo(413);
             assertThat(rejected.body()).doesNotContain("stackTrace", "className", "jsonRpcError");
             assertThat(rejected.headers().firstValue("Cache-Control")).contains("no-store");
-            assertThat(result(call(token, session, "get_file", Map.of("path", "private/oversized-request.md")))
-                            .path("expectedAbsence")
-                            .booleanValue())
-                    .isTrue();
+            org.mockito.Mockito.verify(assets, org.mockito.Mockito.never())
+                    .upload(
+                            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
         }
         var boundary = rawPost(
                 token,

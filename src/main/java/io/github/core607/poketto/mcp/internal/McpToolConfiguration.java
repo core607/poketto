@@ -2,8 +2,6 @@ package io.github.core607.poketto.mcp.internal;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.content.AuthorizedRepositoryReader;
-import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import java.util.List;
@@ -23,11 +21,9 @@ class McpToolConfiguration {
     List<McpServerFeatures.SyncToolSpecification> repositoryMcpTools(
             McpSessions sessions,
             AuthService auth,
-            AuthorizedRepositoryReader reader,
-            RepositoryPatchService patches,
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
             ObjectMapper json) {
-        return new RepositoryMcpTools(sessions, auth, reader, patches, assets, executors, json).specifications();
+        return new RepositoryMcpTools(sessions, auth, assets, executors, json).specifications();
     }
 }

@@ -38,11 +38,11 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 内容格式采用独立的 `public/` 和 `private/` 根目录，新内容默认私有。只有精确 `public/` 下符合条件的路径才能在已启用的 `public-root` 策略下发布；排除路径、指引和隐藏路径保持私有。默认文章路由省略根目录前缀，显式路由不赋予公开权限。[内容计划](../proposed/2026-09-09-codeact-content-and-media.md)定义协调转换和其余交付要求。
 
-第一阶段契约取代最初基于 UUID 的文档工具选型。`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。工具包括 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，仅在隔离执行适配器启用时注册 `repo_exec` 和绑定会话的 `get_artifact` 返回通道。[本地执行服务](../../executor-service/README.md)是独立的 Linux 服务；启用适配器不能替代真实进程边界验证。
+`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`get_artifact`、`get_asset` 和 `put_asset`。没有独立文件 CRUD 回退入口；文件访问要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
 
-[目录导航](2026-09-08-repository-directory-navigation.md)在读取授权下分页返回 Git 的直接子条目，无须执行服务。内容仓库自己的 `AGENTS.md` 提供可选的渐进式指引，服务端不解释其正文。
+Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐层读取内容仓库自己的 `AGENTS.md`。服务端不解释这些指引。[目录导航](2026-09-08-repository-directory-navigation.md)仍通过共享读取服务向浏览器 HTTP 提供功能，无须执行器。
 
-文件使用仓库相对路径，无须 frontmatter ID。`get_file` 将权威 UTF-8 字节作为文本返回，并提供解析出的 commit、服务端 revision、诊断与明确的 expected-absence。`repo_patch` 检查 base commit，以及每个变更路径的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通文件编辑留在本地，由服务端介入的 `poketto` CLI 对媒体操作、选定文件保存、含引用修复的原子移动、单文件合并和不确定写入恢复执行授权。保存使用各文件独立的基线并保留未选中的本地编辑；权威读取不会读取沙箱副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
+文件使用仓库相对路径，无须 frontmatter ID。浏览器读取返回权威 UTF-8 字节、解析出的提交、服务端 revision、诊断和明确的缺失状态。由宿主介入的 CLI 通过同一原子写入服务检查 base commit 及各选定文件的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通编辑在保存前留在本地。CLI 对媒体操作、选定文件保存、含引用修复的原子移动、单文件同步和不确定写入恢复执行授权。保存保留未选中编辑和各文件独立的基线。浏览器读取权威对象，shell 读取会话副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
 
 ## 后续访客问答设计
 
