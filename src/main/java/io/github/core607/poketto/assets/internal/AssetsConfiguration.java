@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlobReader;
@@ -22,6 +23,15 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AssetsConfiguration {
+    @Bean
+    MediaFileService mediaFileService(
+            AuthService auth,
+            RepositoryBlobReader repository,
+            PublicContentSnapshots snapshots,
+            @Qualifier("managedOriginals") Supplier<ManagedBlobStore> originals) {
+        return new MediaFileService(auth, repository, snapshots, originals);
+    }
+
     @Bean
     ImageMemoryAdmission imageMemoryAdmission(
             @Value("${poketto.assets.memory-budget-bytes:268435456}") long bytes,

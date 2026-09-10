@@ -309,6 +309,8 @@ class RepositoryAdminIntegrationIT {
             http(client, "GET", "/api/public/document?route=" + encode("/private/隐藏 %#"), null, null, 404);
             http(client, "GET", "/api/public/document?route=" + encode("/explicit ?%#"), null, null, 404);
             overflowingGalleryOverHttp(client, csrf);
+            // Durable managed originals require native directory synchronization; CI exercises this on Linux.
+            if (System.getProperty("os.name").equals("Linux")) rawMediaUploadOverHttp(client, csrf);
         }
     }
 
@@ -365,6 +367,126 @@ class RepositoryAdminIntegrationIT {
         assertThat(preview.get("galleryStatus").stringValue()).isEqualTo("PARTIAL");
         assertThat(preview.get("gallery").size()).isEqualTo(128);
         assertThat(preview.get("gallery").get(0).get("src").stringValue()).startsWith("/api/admin/assets/images/");
+    }
+
+    private void rawMediaUploadOverHttp(HttpClient client, JsonNode csrf) throws Exception {
+        String before = http(client, "GET", "/api/admin/repository/tree", null, null, 200)
+                .get("commit")
+                .stringValue();
+        byte[] bytes = "raw original bytes".getBytes(StandardCharsets.UTF_8);
+        String key = UUID.randomUUID().toString();
+        var uri = URI.create("http://127.0.0.1:" + port + "/api/admin/media");
+        var withoutCsrf = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(15))
+                .header("Content-Type", "application/octet-stream")
+                .header("Idempotency-Key", key)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(bytes))
+                .build();
+        assertThat(client.send(withoutCsrf, HttpResponse.BodyHandlers.discarding())
+                        .statusCode())
+                .isEqualTo(403);
+        var wrongType = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(15))
+                .header(csrf.get("headerName").stringValue(), csrf.get("token").stringValue())
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("Idempotency-Key", key)
+                .POST(HttpRequest.BodyPublishers.ofString("file=unparsed"))
+                .build();
+        assertThat(client.send(wrongType, HttpResponse.BodyHandlers.discarding())
+                        .statusCode())
+                .isEqualTo(415);
+        var request = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(15))
+                .header(csrf.get("headerName").stringValue(), csrf.get("token").stringValue())
+                .header("Content-Type", "application/octet-stream")
+                .header("X-Media-Type", "application/pdf")
+                .header("Idempotency-Key", key)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(bytes))
+                .build();
+        var first = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(first.statusCode()).isEqualTo(200);
+        var repeated = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(repeated.statusCode()).isEqualTo(200);
+        JsonNode uploaded = json.readTree(first.body());
+        assertThat(json.readTree(repeated.body())).isEqualTo(uploaded);
+        assertThat(uploaded.get("size").longValue()).isEqualTo(bytes.length);
+        assertThat(uploaded.get("reference").get("revision").stringValue())
+                .isEqualTo(java.util.HexFormat.of()
+                        .formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(bytes)));
+        assertThat(http(client, "GET", "/api/admin/repository/tree", null, null, 200)
+                        .get("commit")
+                        .stringValue())
+                .isEqualTo(before);
+        var mediaEntry = Map.of(
+                "assetId",
+                uploaded.get("reference").get("assetId").stringValue(),
+                "revision",
+                uploaded.get("reference").get("revision").stringValue(),
+                "mediaType",
+                "application/pdf",
+                "size",
+                bytes.length);
+        var mediaIndex = Map.of(
+                "version", 1, "files", Map.of("public/source.pdf", mediaEntry, "private/source.pdf", mediaEntry));
+        var publication = http(
+                client,
+                "POST",
+                "/api/admin/repository/patch",
+                csrf,
+                Map.of(
+                        "baseCommit",
+                        before,
+                        "changes",
+                        List.of(
+                                Map.of(
+                                        "path",
+                                        ".poketto/assets.json",
+                                        "expectedAbsence",
+                                        true,
+                                        "content",
+                                        json.writeValueAsString(mediaIndex)),
+                                Map.of(
+                                        "path",
+                                        "public/http-media.md",
+                                        "expectedAbsence",
+                                        true,
+                                        "content",
+                                        "---\nroute: /http-media\n---\n[Download](source.pdf)\n"))),
+                200);
+        String query =
+                "?commit=" + publication.get("commit").stringValue() + "&route=/http-media&path=public/source.pdf";
+        try (var anonymous =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            for (var reader : List.of(anonymous, client)) {
+                String downloadPath =
+                        reader == anonymous ? "/api/public/media" + query : "/api/admin/media?path=private/source.pdf";
+                var download = reader.send(
+                        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + downloadPath))
+                                .timeout(Duration.ofSeconds(15))
+                                .GET()
+                                .build(),
+                        HttpResponse.BodyHandlers.ofByteArray());
+                assertThat(download.statusCode()).isEqualTo(200);
+                assertThat(download.body()).isEqualTo(bytes);
+                assertThat(download.headers().firstValue("Content-Disposition").orElseThrow())
+                        .startsWith("attachment;");
+                assertThat(download.headers().firstValue("Cache-Control").orElseThrow())
+                        .isEqualTo("no-store");
+                assertThat(download.headers()
+                                .firstValue("X-Content-Type-Options")
+                                .orElseThrow())
+                        .isEqualTo("nosniff");
+            }
+            http(anonymous, "GET", "/api/admin/media?path=private/source.pdf", null, null, 401);
+            http(
+                    anonymous,
+                    "GET",
+                    "/api/public/media" + query.replace("public/source.pdf", "private/source.pdf"),
+                    null,
+                    null,
+                    404);
+        }
     }
 
     private JsonNode http(HttpClient client, String method, String path, JsonNode csrf, Object payload, int status)

@@ -19,6 +19,61 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 class AdminBodyFilterTests {
     @Test
+    void mediaDownloadsNeitherOccupyNorRequireRequestBodyCapacity() throws Exception {
+        var filter = new AdminBodyFilter(1);
+        for (String method : java.util.List.of("GET", "HEAD")) {
+            var download = new MockHttpServletRequest(method, "/api/admin/media");
+            download.setServletPath("/api/admin/media");
+            filter.doFilter(download, new MockHttpServletResponse(), (req, res) -> {
+                var called = new AtomicBoolean();
+                filter.doFilter(
+                        request(false, false), new MockHttpServletResponse(), (write, result) -> called.set(true));
+                assertThat(called).isTrue();
+            });
+            filter.doFilter(request(false, false), new MockHttpServletResponse(), (write, result) -> {
+                var called = new AtomicBoolean();
+                filter.doFilter(download, new MockHttpServletResponse(), (req, res) -> called.set(true));
+                assertThat(called).isTrue();
+                rejected(filter);
+            });
+        }
+    }
+
+    @Test
+    void rawMediaDispatchDoesNotPrebufferItsBodyAndRejectsFormParsingTypes() throws Exception {
+        var filter = new AdminBodyFilter(1);
+        for (String type : java.util.List.of(
+                "application/octet-stream", "application/x-www-form-urlencoded", "multipart/form-data")) {
+            var opened = new AtomicBoolean();
+            var request = new MockHttpServletRequest("POST", "/api/admin/media") {
+                @Override
+                public long getContentLengthLong() {
+                    return -1;
+                }
+
+                @Override
+                public int getContentLength() {
+                    return -1;
+                }
+
+                @Override
+                public ServletInputStream getInputStream() {
+                    opened.set(true);
+                    throw new AssertionError("body must remain unread until the streaming controller");
+                }
+            };
+            request.setServletPath("/api/admin/media");
+            request.setContentType(type);
+            var response = new MockHttpServletResponse();
+            var dispatched = new AtomicBoolean();
+            filter.doFilter(request, response, (req, res) -> dispatched.set(true));
+            assertThat(opened).isFalse();
+            assertThat(dispatched.get()).isEqualTo(type.equals("application/octet-stream"));
+            if (!dispatched.get()) assertThat(response.getStatus()).isEqualTo(415);
+        }
+    }
+
+    @Test
     void saturationRejectsDeclaredChunkedAndMultipartWithoutOpeningTheirStreams() throws Exception {
         var filter = new AdminBodyFilter(1);
         var entered = new CountDownLatch(1);

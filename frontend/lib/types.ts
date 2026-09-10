@@ -24,6 +24,7 @@ export type Article = Snapshot &
     folderPage: boolean;
     images?: Record<string, string>;
     links?: Record<string, string>;
+    downloads?: Record<string, string>;
     gallery?: { src: string; alt: string }[];
     galleryStatus: GalleryStatus;
   };

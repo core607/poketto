@@ -3,6 +3,8 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
@@ -60,6 +62,50 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(objects, commit);
                 return find(objects, workspace, commit, path, policy);
             } catch (IOException exception) {
+                throw unavailable();
+            }
+        });
+    }
+
+    @Override
+    public RepositoryMediaSnapshot media(WorkspaceId workspace, String commit) {
+        validateCommit(commit);
+        return authority.readImmutableObjects(workspace, objects -> {
+            try (RevWalk commits = new RevWalk(objects)) {
+                var tree = commits.parseCommit(ObjectId.fromString(commit)).getTree();
+                RepositoryMediaIndex index;
+                try (TreeWalk entry = TreeWalk.forPath(objects, RepositoryMediaIndex.PATH, tree)) {
+                    if (entry == null)
+                        return new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of());
+                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) throw unavailable();
+                    var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+                    if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) throw unavailable();
+                    index = RepositoryMediaIndex.parse(blob.getBytes(RepositoryMediaIndex.MAX_BYTES));
+                }
+                if (!index.files().isEmpty()) {
+                    List<String> paths = new ArrayList<>();
+                    try (TreeWalk entries = new TreeWalk(objects)) {
+                        entries.addTree(tree);
+                        entries.setRecursive(true);
+                        while (entries.next()) {
+                            if (paths.size() >= 100_000) throw unavailable();
+                            if (entries.getPathLength()
+                                    > 4 * io.github.core607.poketto.content.ContentLimits.MAX_PATH_LENGTH)
+                                throw unavailable();
+                            paths.add(entries.getPathString());
+                        }
+                    }
+                    index.requireNoGitCollisions(paths);
+                }
+                var policy = JGitPublicContentSnapshots.policy(objects, commit);
+                return new RepositoryMediaSnapshot(
+                        workspace,
+                        commit,
+                        index,
+                        index.files().keySet().stream()
+                                .filter(policy::permitsPath)
+                                .collect(java.util.stream.Collectors.toSet()));
+            } catch (IOException | IllegalArgumentException exception) {
                 throw unavailable();
             }
         });

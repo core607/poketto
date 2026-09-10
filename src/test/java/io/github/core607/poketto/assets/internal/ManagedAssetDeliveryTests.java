@@ -90,6 +90,12 @@ class ManagedAssetDeliveryTests {
         when(auth.withAuthorization(any(), any(), any(), any()))
                 .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get());
         var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
+                        java.util.Set.of()));
         AssetService service = new AssetService(
                 auth,
                 mock(RepositoryContentReader.class),

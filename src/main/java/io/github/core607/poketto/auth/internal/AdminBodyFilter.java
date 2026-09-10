@@ -31,6 +31,11 @@ final class AdminBodyFilter extends OncePerRequestFilter {
             return;
         }
         int limit = OriginAndBodyFilter.bodyLimit(path);
+        if (request.getMethod().equals("GET") || request.getMethod().equals("HEAD")) {
+            // Download lifetime must not occupy the separate upload/request-body reservation.
+            OriginAndBodyFilter.filterBody(request, response, chain, OriginAndBodyFilter.MAX_AUTH_BODY);
+            return;
+        }
         if (limit == OriginAndBodyFilter.MAX_AUTH_BODY) {
             OriginAndBodyFilter.filterBody(request, response, chain, limit);
             return;
@@ -85,6 +90,7 @@ final class AdminBodyFilter extends OncePerRequestFilter {
         if (supplied == null) return false;
         try {
             var type = MediaType.parseMediaType(supplied);
+            if (path.equals("/api/admin/media")) return MediaType.APPLICATION_OCTET_STREAM.equals(type);
             return path.equals("/api/admin/assets")
                     ? MediaType.MULTIPART_FORM_DATA.includes(type)
                     : MediaType.APPLICATION_JSON.includes(type)

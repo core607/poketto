@@ -20,6 +20,7 @@ record PublicDocument(
         boolean folderPage,
         String body,
         Map<String, String> links,
+        Map<String, String> downloads,
         Map<String, String> images,
         List<ResolvedMedia.GalleryImage> gallery,
         ResolvedMedia.GalleryStatus galleryStatus) {
@@ -36,6 +37,7 @@ record PublicDocument(
                 article.folderPage(),
                 article.body(),
                 media.links(),
+                media.downloads(),
                 media.images(),
                 media.gallery(),
                 media.galleryStatus());

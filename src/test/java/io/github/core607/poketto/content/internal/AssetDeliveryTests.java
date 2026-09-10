@@ -364,6 +364,12 @@ class AssetDeliveryTests {
     void bodyImagesHavePriorityAndExhaustedPageBudgetDoesNotReadMoreManagedOrGitBytes() {
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
+                        java.util.Set.of()));
         var references = new ArrayList<ManagedAssetReference>();
         var source = new StringBuilder("# Text survives\n");
         for (int i = 0; i < 9; i++) {
@@ -397,6 +403,12 @@ class AssetDeliveryTests {
     void successfulSmallManagedReadsReturnUnusedPageAllowance() {
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
+                        java.util.Set.of()));
         var reference = new ManagedAssetReference(UUID.randomUUID(), "a".repeat(64));
         var source = new StringBuilder("# Text\n");
         for (int i = 0; i < 20; i++)
@@ -421,6 +433,12 @@ class AssetDeliveryTests {
     @Test
     void failedGitTargetsChargeOnceAndKnownSizeIsCheckedBeforeMaterialization() {
         var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
+                        java.util.Set.of()));
         var source = new StringBuilder("# Text\n![one](first.png)\n![same](./first.png)\n");
         var first = new RepositoryBlob(
                 workspace, "b".repeat(40), "first.png", "c".repeat(40), RepositoryBlobReader.MAX_BLOB_BYTES, true);
@@ -452,6 +470,12 @@ class AssetDeliveryTests {
         var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
+                        java.util.Set.of()));
         var body = new StringBuilder("# Text remains\n");
         for (int i = 0; i < 9; i++)
             body.append("![Busy](managed:")

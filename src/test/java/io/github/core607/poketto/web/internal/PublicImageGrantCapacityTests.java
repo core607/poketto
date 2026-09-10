@@ -57,6 +57,12 @@ class PublicImageGrantCapacityTests {
         when(snapshots.withCurrent(any(), any()))
                 .thenAnswer(call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(snapshot));
         var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
+                        java.util.Set.of()));
         when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
                 .thenReturn(new SiblingImages(List.of(), true))
                 .thenThrow(new ContentRepositoryException("private/hidden.png: isolated scan failure"));

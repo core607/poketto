@@ -21,6 +21,7 @@ type Preview = {
   body?: string;
   images?: Record<string, string>;
   links?: Record<string, string>;
+  downloads?: Record<string, string>;
   gallery?: { src: string; alt: string }[];
   galleryStatus: GalleryStatus;
 };
@@ -554,6 +555,7 @@ export function Editor({
                           source={preview.body}
                           images={preview.images}
                           links={preview.links}
+                          downloads={preview.downloads}
                           preview
                         />
                         <Gallery

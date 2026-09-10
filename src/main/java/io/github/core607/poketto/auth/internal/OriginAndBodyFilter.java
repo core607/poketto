@@ -70,6 +70,11 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             return;
         }
         String type = request.getContentType();
+        if (AuthHttpErrors.path(request).equals("/api/admin/media")) {
+            // Raw originals stream through the storage byte bound after identity and body admission.
+            chain.doFilter(request, response);
+            return;
+        }
         if (AuthHttpErrors.path(request).equals("/api/admin/assets")
                 && type != null
                 && type.split(";", 2)[0].trim().equalsIgnoreCase("multipart/form-data")) {
@@ -221,6 +226,7 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
         return switch (path) {
             case "/api/admin/repository/patch", "/api/admin/repository/preview" -> 6 * 1024 * 1024;
             case "/api/admin/assets" -> 17 * 1024 * 1024;
+            case "/api/admin/media" -> 128 * 1024 * 1024;
             default -> MAX_AUTH_BODY;
         };
     }

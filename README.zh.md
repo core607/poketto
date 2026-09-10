@@ -62,11 +62,11 @@ exclude:
 
 策略缺失或禁用时不发布任何内容；策略无效时关闭公开服务。根目录 `private/` 与配置的排除路径保持私有。Markdown 元数据可选，未修改的源码字节保持原样。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由，并提供不递归、不重复正文图片的同目录图库。
 
-认证后的 `/api/admin/repository` 入口提供文件树、文件读取、搜索、预览与原子补丁。每个变更路径须在 base commit 下携带 revision 或明确的缺失条件；冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
+认证后的 `/api/admin/repository` 入口提供 Markdown 索引、分页目录列表、文件读取、搜索、预览、原子补丁与移动。浏览器目标选择器可以移动文件或文件夹，并在同一次提交中修复 Markdown 引用。文本变更须在 base commit 下携带 revision 或明确的缺失条件；移动在该版本检查来源和目标。冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 
-存储端口以流式方式保存其他原始文件，默认最多 128 MiB，字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。浏览器/MCP 的通用媒体传输仍属于 [CodeAct 内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
+`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。CodeAct 按需取件与 ZIP 导出仍属于[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
 
 ## MCP 与隔离执行
 

@@ -57,6 +57,7 @@ export default async function Home({
             source={root.body}
             images={root.images}
             links={root.links}
+            downloads={root.downloads}
           />
           <Gallery items={root.gallery} status={root.galleryStatus} />
         </section>
