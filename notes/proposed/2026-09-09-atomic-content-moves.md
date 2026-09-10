@@ -30,6 +30,32 @@ The domain implementation and shared-writer refactor are available. The session-
 
 Real Git fixtures cover a folder exceeding the external patch's file limit, exact binary object reuse, logical media relocation, inbound/outbound reference repair, preserved source, stale bases, collisions and publication refusal without partial writes. The PostgreSQL integration path exercises the actual bean, scoped key permissions, owner publication, snapshot replacement and key revocation, plus authenticated HTTP listing and moves with CSRF enforcement. The required Linux storage replay includes the shared writer suite. Browser acceptance through the real Spring, PostgreSQL, Next.js and gateway services demonstrates cancellation with focus restoration, collision rejection, destination correction, a successful folder move and the repaired inbound document link. CLI acceptance remains outstanding.
 
+## CLI session integration target
+
+The CLI moves existing authoritative content, matching the browser entrance.
+Selected files and affected backlinks must match their host-owned baselines;
+unsaved affected edits require saving or resolving them before the move. Unrelated
+local edits remain in place. A missing on-demand media file is not a deletion.
+Materialized originals can move only after their bytes match the workspace index.
+
+The host prepares the affected Git paths, media mappings and repaired references
+at one immutable authority commit. Sandbox Git refs never supply the plan or its
+preconditions. The worker stages incoming bytes outside the sandbox, checks the
+affected local paths without following symlinks, and freezes the command cgroup
+for final comparison and installation. Local paths absent from the authority,
+including untracked files in a moved directory, must be preserved or cause an
+explicit conflict before an overwrite or deletion. File-count, byte, inode and
+session lifetime bounds apply to staging as well as the final workspace.
+
+Remote commit acknowledgement and local installation are separate outcomes. A
+committed move with incomplete local installation remains pending and blocks new
+saves and moves until recovery reconciles the retained move and local state.
+Recovery never recomputes a different move from newer local edits. Changed local
+bytes remain intact and cause an explicit synchronization conflict. Only affected
+file baselines advance after installation; unrelated file baselines retain their
+prior revisions. Native executor and actual-client acceptance must cover this
+whole path before the CLI integration is delivered.
+
 ## Alternatives and related records
 
 [Browser recording and source provenance](https://github.com/core607/poketto/blob/19a35eb913d169db25735ed1992aeadd868d8bf4/README.md) retain the isolated real-service acceptance separately from product history. The recording covers an actual concurrent save as well as a rejected destination; mocked HTTP component tests do not substitute for it.
