@@ -287,7 +287,9 @@ public final class ExecutorNativeProbe {
                             + "! git cat-file -e " + fixture.sourceCommit() + "^{commit} && poketto status",
                     Duration.ofSeconds(10),
                     new Cancellation());
-            assertThat(result.exitCode()).isZero();
+            assertThat(result.exitCode())
+                    .as("public projection stdout=%s stderr=%s", result.stdout(), result.stderr())
+                    .isZero();
             assertThat(result.stdout()).contains("public-native-body").doesNotContain("secret-needle");
             assertThat(result.stdout())
                     .contains("\"scope\": \"public\"", "\"baseCommit\": \"" + result.commit() + "\"");

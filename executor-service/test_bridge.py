@@ -19,7 +19,13 @@ class LeaseBridgeTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.path = Path(self.temporary.name) / 'bridge'
-        self.bridge = LeaseBridge(self.path, os.getgid())
+        previous = os.umask(0o077)
+        try:
+            self.bridge = LeaseBridge(self.path, os.getgid())
+        finally:
+            os.umask(previous)
+        self.assertEqual(0o750, self.path.stat().st_mode & 0o777)
+        self.assertEqual(0o750, (self.path / 'responses').stat().st_mode & 0o777)
         self.addCleanup(self.bridge.close)
 
     def test_real_cli_waits_for_exact_host_result_and_reply_is_read_only(self):

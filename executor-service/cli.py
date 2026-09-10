@@ -107,7 +107,8 @@ def main():
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result['ok'] else 1
     except (BridgeUnavailable, OSError, ValueError) as error:
-        print('Poketto bridge unavailable or outcome unknown; inspect host status before retrying a write.', file=sys.stderr)
+        code = f'{type(error).__name__}:{getattr(error, "errno", None)}'
+        print(f'Poketto bridge unavailable or outcome unknown ({code}); inspect host status before retrying a write.', file=sys.stderr)
         return 1
 
 

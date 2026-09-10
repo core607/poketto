@@ -61,9 +61,11 @@ class LeaseBridge:
         self.frame_started = None
         self.path.mkdir(mode=0o750)
         os.chown(self.path, -1, gid)
+        os.chmod(self.path, 0o750)
         self.responses = self.path / 'responses'
         self.responses.mkdir(mode=0o750)
         os.chown(self.responses, -1, gid)
+        os.chmod(self.responses, 0o750)
         os.mkfifo(self.path / 'requests', 0o620)
         os.chown(self.path / 'requests', -1, gid)
         os.chmod(self.path / 'requests', 0o620)
