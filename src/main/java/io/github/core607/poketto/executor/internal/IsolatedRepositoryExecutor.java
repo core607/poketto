@@ -792,7 +792,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (session.saveState.move == null || pending.result == null) return committed;
             }
             authorize(session);
-            JsonNode installed = requestLive(session, "MOVE_COMMIT", reference, Duration.ofSeconds(15));
+            JsonNode installed;
+            try {
+                installed = requestLive(session, "MOVE_COMMIT", reference, Duration.ofSeconds(15));
+            } catch (WorkerUnavailableException uncertainInstallation) {
+                // Git is acknowledged. Keep the plan so a live worker can reconcile its receipt.
+                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+            }
             if (installed.path("code").asString("").equals("MOVE_REJECTED"))
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
             requireOk(installed, session);

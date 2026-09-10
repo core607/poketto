@@ -155,6 +155,7 @@ public final class ExecutorNativeProbe {
         mediaFetch();
         mediaImport();
         moves();
+        lostLocalMoveReply();
         uncertainMoveRecovery();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
@@ -689,6 +690,78 @@ public final class ExecutorNativeProbe {
                         8,
                         45,
                         8);
+    }
+
+    private void lostLocalMoveReply() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("local-move-reply"), path("exports"), auth, workspace);
+        try (var executor = moveAdapter(fixture)) {
+            // Drop one confirmed real worker reply at the adapter boundary, after installation.
+            var field = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
+            field.setAccessible(true);
+            var original = (WorkerClient) field.get(executor);
+            var intercepted = spy(original);
+            var dropped = new java.util.concurrent.atomic.AtomicBoolean();
+            doAnswer(call -> {
+                        WorkerClient.PreparedRequest request = call.getArgument(0);
+                        var response = original.send(request, call.getArgument(1));
+                        var payload = JSON.readTree(java.util.Base64.getUrlDecoder()
+                                .decode(request.envelope().get("payload")));
+                        if (payload.path("operation").asString("").equals("MOVE_COMMIT")
+                                && dropped.compareAndSet(false, true)) {
+                            assertThat(response.path("ok").asBoolean(false)).isTrue();
+                            throw new WorkerUnavailableException();
+                        }
+                        return response;
+                    })
+                    .when(intercepted)
+                    .send(any(), any());
+            field.set(executor, intercepted);
+            var moved = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    "poketto move private/secret.md private/moved.md",
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(dropped).isTrue();
+            assertThat(moved.exitCode()).isNotZero();
+            assertThat(moved.stdout()).contains("LOCAL_MOVE_PENDING", "\"committed\": true");
+            String commit = fixture.reader(auth)
+                    .getFile(principal, workspace, Optional.empty(), "private/moved.md")
+                    .commit()
+                    .orElseThrow();
+            var recovered = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    test ! -e private/secret.md
+                    printf 'later local edit' > private/moved.md
+                    poketto recover
+                    test "$(cat private/moved.md)" = 'later local edit'
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(recovered.exitCode())
+                    .as("%s %s", recovered.stdout(), recovered.stderr())
+                    .isZero();
+            assertThat(recovered.stdout()).contains("\"worktreeUpdated\": true");
+            assertThat(fixture.reader(auth)
+                            .getFile(principal, workspace, Optional.empty(), "private/moved.md")
+                            .commit()
+                            .orElseThrow())
+                    .isEqualTo(commit);
+            assertThat(fixture.reader(auth)
+                            .getFile(principal, workspace, Optional.empty(), "private/moved.md")
+                            .source()
+                            .orElseThrow())
+                    .doesNotContain("later local edit");
+            passed("lost-worker-move-reply-retains-session-and-recovers-without-overwriting-new-edits");
+        }
     }
 
     private void moves() throws Exception {
