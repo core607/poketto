@@ -210,6 +210,7 @@ class RepositoryTools:
                 if result["next_cursor"] is not None:
                     result["next_cursor"] = selection + ":" + str(result["next_cursor"])
             result["unreadable_utf8_paths"] = self.unreadable_paths[revision]
+            result["commit"] = self.revisions[revision]
             raw = encode(result)
             if len(raw) > TOOL_BYTES:
                 raise ToolInputError("Tool result exceeds the byte limit.")
