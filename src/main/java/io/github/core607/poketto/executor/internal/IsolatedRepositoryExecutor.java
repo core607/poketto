@@ -648,13 +648,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         session.key.workspace(),
                         operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
                 if (operation.equals("recover")) {
-                    if (!arguments.isEmpty()) throw new IllegalArgumentException();
+                    boolean skipLocal =
+                            arguments.size() == 1 && arguments.path("skipLocal").asBoolean(false);
+                    if (!arguments.isEmpty() && !skipLocal) throw new IllegalArgumentException();
                     if (session.saveState.move != null) {
                         var recovered =
                                 saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
                         if (session.saveState.move == null || session.saveState.move.result == null) return recovered;
+                        if (skipLocal) return saves.moves().skipLocal(session.saveState);
                         return moveFiles(session, executionId, session.saveState.move, true);
                     }
+                    if (skipLocal) throw new IllegalArgumentException("no confirmed move to skip");
                     return saves.recover(session.principal, session.key.workspace(), session.saveState);
                 }
                 if (session.saveState.move != null)
@@ -800,7 +804,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
             }
             if (installed.path("code").asString("").equals("MOVE_REJECTED"))
-                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
             requireOk(installed, session);
             if (installed.path("installed").path("changedPaths").asInt(-1) != pending.paths.size()
                     || !installed.path("installed").path("alreadyApplied").isBoolean())

@@ -182,6 +182,11 @@ Remote acknowledgement and local installation are separate. A pending local move
 reports its commit with `worktreeUpdated: false`; another save, move or sync waits
 for `poketto recover`. Recovery uses the retained request and completion receipt,
 including when a successful installation reply was lost before later local edits.
+`LOCAL_MOVE_CONFLICT` means local installation was refused after the remote commit.
+`poketto recover --skip-local` first confirms any uncertain remote outcome, then
+leaves all local files untouched and releases only the pending installation. It
+retains per-file baselines: subsequent saves cannot resurrect old paths or
+overwrite moved files without explicit `poketto sync` and conflict resolution.
 Plans include a fresh host operation ID, at most 16,384 affected paths, 32 MiB of
 replacement text and 64 MiB of serialized transfer data. Each lease retains at most
 256 protected 4-KiB completion receipts. Staging and receipts consume the lease's

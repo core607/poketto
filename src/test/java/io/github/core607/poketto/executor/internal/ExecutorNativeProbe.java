@@ -702,11 +702,14 @@ public final class ExecutorNativeProbe {
             var original = (WorkerClient) field.get(executor);
             var intercepted = spy(original);
             var dropped = new java.util.concurrent.atomic.AtomicBoolean();
+            var refuseInstall = new java.util.concurrent.atomic.AtomicBoolean();
             doAnswer(call -> {
                         WorkerClient.PreparedRequest request = call.getArgument(0);
-                        var response = original.send(request, call.getArgument(1));
                         var payload = JSON.readTree(java.util.Base64.getUrlDecoder()
                                 .decode(request.envelope().get("payload")));
+                        if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get())
+                            return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
+                        var response = original.send(request, call.getArgument(1));
                         if (payload.path("operation").asString("").equals("MOVE_COMMIT")
                                 && dropped.compareAndSet(false, true)) {
                             assertThat(response.path("ok").asBoolean(false)).isTrue();
@@ -761,6 +764,53 @@ public final class ExecutorNativeProbe {
                             .orElseThrow())
                     .doesNotContain("later local edit");
             passed("lost-worker-move-reply-retains-session-and-recovers-without-overwriting-new-edits");
+            // Model a local precondition refusal; the shared worker tests own the refusal itself.
+            refuseInstall.set(true);
+            var pending = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    poketto save private/moved.md
+                    poketto move private/moved.md private/skipped.md
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(pending.exitCode()).isNotZero();
+            assertThat(pending.stdout()).contains("LOCAL_MOVE_CONFLICT");
+            String remote = fixture.reader(auth)
+                    .getFile(principal, workspace, Optional.empty(), "private/skipped.md")
+                    .commit()
+                    .orElseThrow();
+            var skipped = executor.execute(
+                    principal,
+                    workspace,
+                    "lost-local-move",
+                    Optional.empty(),
+                    """
+                    set -eu
+                    poketto recover --skip-local
+                    test "$(cat private/moved.md)" = 'later local edit'
+                    test ! -e private/skipped.md
+                    if poketto save private/moved.md; then exit 99; fi
+                    poketto sync private/moved.md
+                    poketto sync private/skipped.md
+                    test ! -e private/moved.md
+                    test "$(cat private/skipped.md)" = 'later local edit'
+                    """,
+                    Duration.ofSeconds(30),
+                    new Cancellation());
+            assertThat(skipped.exitCode())
+                    .as("%s %s", skipped.stdout(), skipped.stderr())
+                    .isZero();
+            assertThat(skipped.stdout()).contains("\"localInstallationSkipped\": true", "REPOSITORY_CONFLICT");
+            assertThat(fixture.reader(auth)
+                            .getFile(principal, workspace, Optional.empty(), "private/skipped.md")
+                            .commit())
+                    .contains(remote);
+            passed("skip-confirmed-local-move-keeps-files-and-baselines-and-allows-explicit-sync");
         }
     }
 

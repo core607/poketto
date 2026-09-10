@@ -95,6 +95,38 @@ class SessionMovesTests {
     }
 
     @Test
+    void skippingConfirmedInstallationPreservesBaselinesAndRequiresSyncBeforeOverwritingMovedText() throws Exception {
+        var fixture = fixture(false);
+        var saves = new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth));
+        var state = new SelectedFileSaves.State(fixture.sourceCommit());
+        var pending = saves.moves()
+                .prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
+        assertThatThrownBy(() -> {
+                    state.move = pending;
+                    saves.moves().skipLocal(state);
+                })
+                .isInstanceOf(NullPointerException.class);
+        assertThat(state.move).isSameAs(pending);
+        state.move = null;
+        saves.moves().commit(actor, workspace, state, pending);
+        String committed = pending.result.commit();
+        assertThat(saves.moves().skipLocal(state).get("ok")).isEqualTo(true);
+        assertThat(state.move).isNull();
+        assertThat(state.baseCommit).isEqualTo(committed);
+        assertThat(state.baseline("private/secret.md")).isEqualTo(fixture.sourceCommit());
+        assertThat(state.baseline("private/moved.md")).isEqualTo(fixture.sourceCommit());
+        assertThat(saves.save(actor, workspace, state, Map.of("private/moved.md", "later local edit"), List.of())
+                        .get("code"))
+                .isEqualTo("REPOSITORY_CONFLICT");
+        var plan = saves.prepareSync(actor, workspace, state, "private/moved.md", Optional.empty());
+        assertThat(plan).isNotNull();
+        assertThat(fixture.reader(auth)
+                        .getFile(actor, workspace, Optional.empty(), "private/moved.md")
+                        .commit())
+                .contains(committed);
+    }
+
+    @Test
     void recoveryKeepsTheSamePayloadAndDoesNotReplayAnAcknowledgedMove() throws Exception {
         var fixture = fixture(true);
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth));

@@ -65,7 +65,13 @@ saves and moves until recovery reconciles the retained move and local state.
 Recovery never recomputes a different move from newer local edits. Changed local
 bytes remain intact and cause an explicit synchronization conflict. Only affected
 file baselines advance after installation; unrelated file baselines retain their
-prior revisions.
+prior revisions. A lost installation reply leaves the move pending when the
+worker remains reachable. A local precondition refusal returns `LOCAL_MOVE_CONFLICT`.
+`poketto recover --skip-local` confirms the remote outcome before releasing
+pending installation, leaves local files untouched and retains their old file
+baselines. Explicit per-file synchronization can then resolve the difference;
+a save cannot silently resurrect an old path or overwrite its moved destination.
+Skipping does not roll back or add a remote commit.
 
 The `materialize.LocalMove` primitive verifies local fingerprints and
 rejects unexpected source entries before moving a file or directory. Directory

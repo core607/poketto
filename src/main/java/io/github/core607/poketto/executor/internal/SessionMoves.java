@@ -184,6 +184,30 @@ final class SessionMoves {
         return state.lastSave;
     }
 
+    Map<String, ?> skipLocal(SelectedFileSaves.State state) {
+        Pending pending = Objects.requireNonNull(state.move);
+        var result = Objects.requireNonNull(pending.result, "move must be confirmed before skipping installation");
+        // Local bytes did not advance: retain every per-file baseline to guard later saves.
+        state.baseCommit = result.commit();
+        state.move = null;
+        state.lastSave = Map.of(
+                "ok",
+                true,
+                "result",
+                Map.of(
+                        "commit",
+                        result.commit(),
+                        "committed",
+                        result.committed(),
+                        "worktreeUpdated",
+                        false,
+                        "localInstallationSkipped",
+                        true),
+                "message",
+                "Local files are unchanged. Use poketto sync on affected text and index paths before saving them.");
+        return state.lastSave;
+    }
+
     static Map<String, ?> pendingResult(Pending pending, String code) {
         var result = new LinkedHashMap<String, Object>();
         result.put("committed", pending.result != null && pending.result.committed());
@@ -191,7 +215,15 @@ final class SessionMoves {
         result.put("worktreeUpdated", false);
         result.put("source", pending.request.source());
         result.put("destination", pending.request.destination());
-        return Map.of("ok", false, "code", code, "result", result);
+        return Map.of(
+                "ok",
+                false,
+                "code",
+                code,
+                "result",
+                result,
+                "message",
+                "Run poketto recover to finish installation. If local changes prevent it, poketto recover --skip-local keeps those files and releases the confirmed move for per-file synchronization.");
     }
 
     static final class Pending {

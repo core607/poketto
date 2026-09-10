@@ -63,6 +63,10 @@ unsaved index entries remain local. Dirty selected files and occupied destinatio
 are refused. If the commit succeeds but local installation is pending, use
 `poketto recover` before another save, move or sync; it retains the original
 operation and preserves edits made after an acknowledged local installation.
+If local changes prevent installation, `poketto recover --skip-local` confirms
+the remote move and keeps local files untouched. It releases the pending move
+without advancing file baselines; use `poketto sync` on affected paths before
+saving them.
 
 `poketto media list` discovers indexed media without fetching bytes. It includes
 unsaved imports in full-read sessions; public sessions use only the host-owned
