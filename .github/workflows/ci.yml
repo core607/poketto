@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
     branches:
       - main
@@ -12,11 +13,16 @@ permissions:
 # Pull-request runs may be superseded; a main run carries publication and deployment, which
 # must finish once started.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && github.run_id || 'source' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
+    # An ignored metadata edit must neither cancel verification nor publish a skipped check
+    # named "verify" that could replace the required result for the same commit.
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'verify' }}
+    # Title/body edits do not rerun verification; retargeting changes the tested base.
+    if: github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
