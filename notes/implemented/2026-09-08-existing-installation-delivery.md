@@ -2,11 +2,13 @@
 
 Date: 2026-09-08
 
+[Mirror registry delivery](2026-09-10-mirror-registry-delivery.md) adds `POKETTO_DEPLOY_MODE=mirror` to this layout. Both canonical digests are pulled before invoking the updater. Optional registry credentials are used only for those pulls and are deleted afterwards; application settings remain operator-owned.
+
 ## Problem and decision
 
 An existing installation can use operator-owned Compose files, private environment files and a separately installed worker. Synchronizing the generic deployment stack into that directory replaces those choices. Streaming a repository password from an older CI configuration can also invalidate the application's current content authority.
 
-Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses the same verified-main publication and checksummed archive transfer. It does not synchronize Compose, forward environment settings, restart dependencies or update the external worker.
+Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses verified-main publication with checksummed archive transfer or configured mirror pulls. It does not synchronize Compose, forward application settings, restart dependencies or update the external worker.
 
 ## Operator setup
 
@@ -32,4 +34,4 @@ A failed or interrupted attempt remains pending. Retrying the same images, sourc
 
 Converting every existing installation to the generic Compose layout changes configuration and processes outside an image update. An independent release watcher duplicates GitHub's verified-main trigger. The selected adapter preserves both the existing installation and the standard delivery path.
 
-`deployScriptTests` covers the exclusive workflow branches, absence of repository-secret forwarding and refusal to combine existing mode with configuration synchronization or registry-pull settings. `existingDeploymentTests` runs the Python updater tests on Linux in Docker, covering image-only updates, retained settings, preflight, interrupted retries, target mismatch, runtime drift, wrong image revisions and protected configuration paths. Real installation preflight and successful workflow deployment are separate operator evidence.
+`deployScriptTests` covers the exclusive workflow branches, absence of repository-secret forwarding, refusal of configuration synchronization and application settings, and digest-pinned registry pulls with temporary credentials. `existingDeploymentTests` runs the Python updater tests on Linux in Docker, covering image-only updates, retained settings, preflight, interrupted retries, target mismatch, runtime drift, wrong image revisions and protected configuration paths. Real installation preflight and successful workflow deployment are separate operator evidence.

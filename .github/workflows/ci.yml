@@ -162,14 +162,45 @@ jobs:
             echo "| Database image | \`$db_image\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  mirror:
+    needs: publish
+    if: vars.POKETTO_MIRROR_REPOSITORY != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: quay.io/skopeo/stable@sha256:6c243579ceea16adaf6033c5626bce55a0bb1cfec50e973652306ee89aa8a753
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      image: ${{ steps.copy.outputs.image }}
+      frontend_image: ${{ steps.copy.outputs.frontend_image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Record registry copy client
+        run: skopeo --version
+      - name: Copy canonical digests to delivery mirror
+        id: copy
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
+          REVISION: ${{ github.sha }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          MIRROR_REPOSITORY: ${{ vars.POKETTO_MIRROR_REPOSITORY }}
+          MIRROR_USERNAME: ${{ vars.POKETTO_MIRROR_USERNAME }}
+          MIRROR_PASSWORD: ${{ secrets.POKETTO_MIRROR_PASSWORD }}
+        run: bash deploy/mirror.sh
+
   # Production deployment runs only when the repository variable POKETTO_DEPLOY_ENABLED is
   # "true" and the production environment supplies the target. Consecutive main pushes queue
   # behind one another; an in-progress deployment is never cancelled. The content-repository
   # credential travels to the host's .env over the entrance's standard input, never as an
   # argument.
   deploy:
-    needs: publish
-    if: vars.POKETTO_DEPLOY_ENABLED == 'true'
+    needs: [publish, mirror]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-24.04
     # Full image archives may need a slow-link transfer window; updater deadlines remain bounded.
     timeout-minutes: 180
@@ -191,6 +222,8 @@ jobs:
           DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
           DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
           DEPLOY_LAYOUT: ${{ vars.POKETTO_DEPLOY_LAYOUT }}
+          MIRROR_REPOSITORY: ${{ vars.POKETTO_MIRROR_REPOSITORY }}
+          MIRROR_RESULT: ${{ needs.mirror.result }}
           SSH_PRIVATE_KEY: ${{ secrets.POKETTO_DEPLOY_SSH_KEY }}
           SSH_HOST_KEY: ${{ secrets.POKETTO_DEPLOY_HOST_KEY }}
           SSH_DIR: ${{ runner.temp }}/poketto-ssh
@@ -200,10 +233,14 @@ jobs:
           [ -n "$DEPLOY_ROOT" ] || missing+=("variable POKETTO_DEPLOY_ROOT (absolute deployment root)")
           [ -n "$SSH_PRIVATE_KEY" ] || missing+=("secret POKETTO_DEPLOY_SSH_KEY")
           [ -n "$SSH_HOST_KEY" ] || missing+=("secret POKETTO_DEPLOY_HOST_KEY (known_hosts line)")
-          case "${DEPLOY_MODE:-pull}" in pull|transfer) ;; *) missing+=("variable POKETTO_DEPLOY_MODE must be pull or transfer") ;; esac
+          case "${DEPLOY_MODE:-pull}" in
+            pull|transfer) ;;
+            mirror) [ -n "$MIRROR_REPOSITORY" ] && [ "$MIRROR_RESULT" = success ] || missing+=("mirror mode requires a successful configured mirror job") ;;
+            *) missing+=("variable POKETTO_DEPLOY_MODE must be pull, transfer or mirror") ;;
+          esac
           case "${DEPLOY_LAYOUT:-standard}" in
             standard) ;;
-            existing) [ "${DEPLOY_MODE:-pull}" = transfer ] || missing+=("existing installations require transfer mode") ;;
+            existing) [[ "${DEPLOY_MODE:-pull}" = transfer || "$DEPLOY_MODE" = mirror ]] || missing+=("existing installations require transfer or mirror mode") ;;
             *) missing+=("variable POKETTO_DEPLOY_LAYOUT must be standard or existing") ;;
           esac
           if [ ${#missing[@]} -gt 0 ]; then
@@ -225,18 +262,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Select delivery references
+        env:
+          DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
+          CANONICAL_IMAGE: ${{ needs.publish.outputs.image }}
+          CANONICAL_FRONTEND: ${{ needs.publish.outputs.frontend_image }}
+          MIRROR_IMAGE: ${{ needs.mirror.outputs.image }}
+          MIRROR_FRONTEND: ${{ needs.mirror.outputs.frontend_image }}
+        run: |
+          if [ "${DEPLOY_MODE:-pull}" = mirror ]; then
+            echo "DELIVERY_IMAGE=$MIRROR_IMAGE" >> "$GITHUB_ENV"
+            echo "DELIVERY_FRONTEND=$MIRROR_FRONTEND" >> "$GITHUB_ENV"
+          else
+            echo "DELIVERY_IMAGE=$CANONICAL_IMAGE" >> "$GITHUB_ENV"
+            echo "DELIVERY_FRONTEND=$CANONICAL_FRONTEND" >> "$GITHUB_ENV"
+          fi
+
       - name: Update existing installation
         if: vars.POKETTO_DEPLOY_LAYOUT == 'existing'
         env:
           DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
           DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
-          IMAGE: ${{ needs.publish.outputs.image }}
-          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
+          IMAGE: ${{ env.DELIVERY_IMAGE }}
+          FRONTEND_IMAGE: ${{ env.DELIVERY_FRONTEND }}
+          DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
+          MIRROR_USERNAME: ${{ vars.POKETTO_MIRROR_USERNAME }}
+          MIRROR_PULL_PASSWORD: ${{ secrets.POKETTO_MIRROR_PULL_PASSWORD }}
           REVISION: ${{ github.sha }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
-          bash deploy/transfer.sh --target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE" \
-            --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing
+          args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
+                --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing)
+          if [ "$DEPLOY_MODE" = mirror ]; then
+            printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
+              | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin
+          else
+            bash deploy/transfer.sh "${args[@]}"
+          fi
 
       - name: Deploy
         if: vars.POKETTO_DEPLOY_LAYOUT != 'existing'
@@ -244,8 +306,10 @@ jobs:
           DEPLOY_TARGET: ${{ secrets.POKETTO_DEPLOY_TARGET }}
           DEPLOY_ROOT: ${{ vars.POKETTO_DEPLOY_ROOT }}
           DEPLOY_MODE: ${{ vars.POKETTO_DEPLOY_MODE }}
-          IMAGE: ${{ needs.publish.outputs.image }}
-          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
+          IMAGE: ${{ env.DELIVERY_IMAGE }}
+          FRONTEND_IMAGE: ${{ env.DELIVERY_FRONTEND }}
+          MIRROR_USERNAME: ${{ vars.POKETTO_MIRROR_USERNAME }}
+          MIRROR_PULL_PASSWORD: ${{ secrets.POKETTO_MIRROR_PULL_PASSWORD }}
           REVISION: ${{ github.sha }}
           REPOSITORY_PASSWORD: ${{ secrets.POKETTO_REPOSITORY_PASSWORD }}
           GITHUB_ACTOR: ${{ github.actor }}
@@ -258,6 +322,9 @@ jobs:
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin)
           if [ "${DEPLOY_MODE:-pull}" = transfer ]; then
             printf '%s\n' "$settings" | bash deploy/transfer.sh "${args[@]}"
+          elif [ "$DEPLOY_MODE" = mirror ]; then
+            printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
+              | bash deploy/transfer.sh "${args[@]}" --pull
           else
             printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
               | bash deploy/transfer.sh "${args[@]}" --pull
@@ -266,8 +333,8 @@ jobs:
       - name: Record deployment
         if: always()
         env:
-          IMAGE: ${{ needs.publish.outputs.image }}
-          FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}
+          IMAGE: ${{ env.DELIVERY_IMAGE }}
+          FRONTEND_IMAGE: ${{ env.DELIVERY_FRONTEND }}
         run: |
           {
             echo "## Production deployment"
