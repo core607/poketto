@@ -72,7 +72,30 @@ class LeaseBridgeTests(unittest.TestCase):
         finally:
             if process.poll() is None:
                 process.kill()
-            process.wait(timeout=3)
+                process.wait(timeout=3)
+
+    def test_artifact_cli_operations_cross_the_actual_fifo_allowlist(self):
+        identifier = str(uuid.uuid4())
+        for command, operation, arguments in (
+                (['artifact', 'create', 'result.bin', '--type', 'application/pdf'],
+                 'artifact_create', {'path': 'result.bin', 'mediaType': 'application/pdf'}),
+                (['artifact', 'remove', identifier], 'artifact_remove', {'artifactId': identifier})):
+            with self.subTest(operation=operation):
+                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')), *command],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})
+                try:
+                    request = self.bridge.poll(timeout=2)
+                    self.assertEqual(operation, request['operation'])
+                    self.assertEqual(arguments, request['arguments'])
+                    self.bridge.complete(request['requestId'], {'ok': True})
+                    stdout, stderr = process.communicate(timeout=3)
+                    self.assertEqual(0, process.returncode, stderr)
+                    self.assertEqual({'ok': True}, json.loads(stdout))
+                    self.bridge.poll(timeout=0.05)
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=3)
 
     def test_other_lease_cannot_complete_request_and_close_unblocks_waiter(self):
         with ThreadPoolExecutor() as pool:

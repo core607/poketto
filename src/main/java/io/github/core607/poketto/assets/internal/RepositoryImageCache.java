@@ -3,6 +3,7 @@ package io.github.core607.poketto.assets.internal;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImagePreviewPolicy;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import java.io.IOException;
@@ -157,7 +158,7 @@ public final class RepositoryImageCache {
         try (ObjectInserter.Formatter formatter = new ObjectInserter.Formatter()) {
             if (!formatter.idFor(Constants.OBJ_BLOB, bytes).name().equals(blob.objectId())) throw unavailable();
         }
-        return new Image(ImagePolicy.validate(bytes), bytes);
+        return new Image(ImagePreviewPolicy.validate(bytes), bytes);
     }
 
     private static String key(RepositoryBlob blob) {

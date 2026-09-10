@@ -18,7 +18,7 @@ Markdown、目录结构与媒体引用保存在远程 Git 仓库中。远端 `ma
 
 将 MCP 客户端连接到 Poketto，为它分配具有明确权限的 API Key。启用执行服务后，`repo_exec` 提供带 shell、Python 和 Git 的隔离工作区。Agent 可以查看目录、按需读取内容仓库中的 `AGENTS.md`、搜索已有资料，并直接编辑文件。
 
-工作区内的 `poketto` CLI 通过宿主桥接调用持久化操作：
+工作区内的 `poketto` CLI 通过宿主桥接提供持久化与结果交付：
 
 | 命令 | 用途 |
 |---|---|
@@ -27,6 +27,7 @@ Markdown、目录结构与媒体引用保存在远程 Git 仓库中。远端 `ma
 | `poketto sync` | 按单个文件的基线与远端当前内容进行合并 |
 | `poketto recover` | 使用保留的原始提交核实不确定的保存结果 |
 | `poketto media import` / `fetch` | 存储不可变原件，或把引用的媒体取到工作区 |
+| `poketto artifact create` | 保留临时结果，通过 MCP 返回图片、文本或二进制 |
 
 仓库凭证和原件存储留在沙箱之外。普通编辑在保存前只存在于执行会话中。冲突保留本地工作；保存是否成功尚不明确时，须先核实，再继续保存。会话过期或重启可能丢弃未保存的文件。
 
@@ -54,7 +55,7 @@ API 权限分别约束读取、写入、发布和执行。Agent 如果同时拥�
 
 Poketto 正在开发中。仓库创作、本地媒体、浏览器移动，以及 CodeAct 的保存和媒体流程已实现。[客户端验收](acceptance/clients/README.md)记录了隔离环境中的真实 Codex 和 Claude Code 工作流；[原生执行验证](executor-native/README.md)覆盖 Linux 隔离边界。最终 HTTPS 安装与部署拓扑验收仍待完成。
 
-[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、会话制品返回、专用 CLI 移动、可移植 ZIP 导出、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。
+[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、专用 CLI 移动、可移植 ZIP 导出、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。
 
 主要部署形态是自托管 Linux 服务器。托管工作空间供应、备份、访客问答和[可选 serverless 方案](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)不在当前交付范围内。
 

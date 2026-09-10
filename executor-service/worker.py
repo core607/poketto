@@ -26,13 +26,14 @@ from bridge import BridgeRejected, LeaseBridge
 from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
 from materialize import IncomingFile
 from binary_capture import BinaryCapture
+from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 MAX_FRAME = 1048576
 MAX_COMMAND = 65536
-MAX_OUTPUT = 65536
+MAX_OUTPUT = MAX_OUTPUT_BYTES
 IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 
 
@@ -98,6 +99,7 @@ class Session:
     files_lock: threading.Lock = field(default_factory=threading.Lock)
     capture: object = None
     incoming: object = None
+    artifacts: object = None
 
 
 class Service:
@@ -116,7 +118,7 @@ class Service:
         self.lock = threading.RLock()
 
     def hello(self):
-        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'workerBootId': self.boot,
+        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
 
@@ -145,6 +147,7 @@ class Service:
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
         if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
+                                  'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
                                   'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE', 'MATERIALIZE_BEGIN',
                                   'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT') or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
@@ -195,6 +198,8 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op in ('ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE'):
+            return self.artifact_dispatch(p)
         if op in ('MATERIALIZE_BEGIN', 'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT'):
             return self.materialize_dispatch(p)
         if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE'):
@@ -301,6 +306,47 @@ class Service:
             with self.lock:
                 self.cancel(s, 'sandbox_failed')
             raise
+
+    def artifact_dispatch(self, p):
+        op, data = p['operation'], p['data']
+        keys = {'executionId', 'path', 'mediaType'} if op == 'ARTIFACT_CREATE' else {'artifactId'}
+        if op == 'ARTIFACT_READ':
+            keys |= {'offset', 'limit'}
+        if set(data) != keys:
+            raise Rejected('INVALID_REQUEST')
+        if op != 'ARTIFACT_CREATE':
+            identifier(data['artifactId'])
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.state not in ('READY', 'RUNNING') or s.artifacts is None:
+                raise Rejected('SESSION_NOT_READY')
+        with s.files_lock:
+            if s.cancelled.is_set():
+                raise Rejected('LEASE_EXPIRED')
+            try:
+                if op == 'ARTIFACT_CREATE':
+                    if s.state != 'RUNNING' or not s.unit or data['executionId'] != s.execution_id:
+                        raise Rejected('EXECUTION_MISMATCH')
+                    result = {'artifact': self.backend.artifact(s, data['path'], data['mediaType'])}
+                elif op == 'ARTIFACT_READ':
+                    result = s.artifacts.read(data['artifactId'], data['offset'], data['limit'])
+                else:
+                    s.artifacts.remove(data['artifactId'])
+                    result = {'removed': True}
+            except ArtifactRejected as error:
+                raise Rejected(error.code) from None
+            except OSError:
+                raise Rejected('ARTIFACT_UNAVAILABLE') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            return {**self.response(s), **result}
 
     def materialize_dispatch(self, p):
         op, data = p['operation'], p['data']
@@ -483,6 +529,20 @@ class Service:
             self.executions = {key for key in self.executions if key[0] in self.sessions}
             for name in ('revoked_keys', 'revoked_accounts', 'closed_leases'):
                 setattr(self, name, {k: deadline for k, deadline in getattr(self, name).items() if deadline > self.clock()})
+            retained = list(self.sessions.values())
+        for s in retained:
+            failed = False
+            if s.files_lock.acquire(blocking=False):
+                try:
+                    if s.artifacts is not None:
+                        s.artifacts.reap()
+                except OSError:
+                    failed = True
+                finally:
+                    s.files_lock.release()
+            if failed:
+                with self.lock:
+                    self.cancel(s, 'sandbox_failed')
 
     def shutdown(self):
         with self.lock:
@@ -552,6 +612,7 @@ class SystemdBackend:
             path.mkdir(mode=0o700)
             os.chown(path, self.user.pw_uid, self.user.pw_gid)
         s.bridge = LeaseBridge(target / 'bridge', self.user.pw_gid)
+        s.artifacts = ArtifactStore(target)
         cli = bootstrap / 'poketto'
         cli.write_bytes(Path(self.c['launcher']).with_name('cli.py').read_bytes())
         cli.chmod(0o555)
@@ -597,6 +658,10 @@ class SystemdBackend:
     def capture(self, s, writes, deletes):
         with self.frozen(s):
             return capture_text(self.mount_path(s), writes, deletes)
+
+    def artifact(self, s, path, media_type):
+        with self.frozen(s):
+            return s.artifacts.capture(path, media_type, s.cancelled.is_set)
 
     def capture_optional(self, s, path):
         with self.frozen(s):
@@ -712,11 +777,12 @@ class SystemdBackend:
             if reason != 'normal':
                 if exit_code == 0:
                     exit_code = 124 if reason == 'timeout' else 137
-                s.reason = reason
-                s.cancelled.set()
+                if reason != 'output_limit':
+                    s.reason = reason
+                    s.cancelled.set()
             return {'commit': s.commit, 'exitCode': exit_code,
-                    'stdout': output[0].decode(errors='replace'), 'stderr': output[1].decode(errors='replace'),
-                    'stdoutTruncated': truncated[0], 'stderrTruncated': truncated[1],
+                    **retain_output(s.artifacts if payload['mode'] == 'execute' and not s.cancelled.is_set() else None,
+                                    output, truncated),
                     'timedOut': reason == 'timeout', 'terminationReason': reason}
         finally:
             with s.files_lock:
@@ -757,6 +823,9 @@ class SystemdBackend:
             if s.capture is not None:
                 s.capture.close()
                 s.capture = None
+            if s.artifacts is not None:
+                s.artifacts.close()
+                s.artifacts = None
             target = self.mount_path(s)
             if target.is_symlink():
                 raise RuntimeError('Unsafe mountpoint')

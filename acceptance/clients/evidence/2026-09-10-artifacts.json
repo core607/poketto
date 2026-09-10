@@ -1,0 +1,71 @@
+{
+  "sourceCommit": "183e7f9d27362ace31bf0f8606529e3093082fb1",
+  "runtimeManifestSha256": "d310ed83b9c2b65ca290e0cdad333b79509f44161c5cc06dd7109be5ffb77df7",
+  "workerSources": {
+    "worker.py": "ef1ade1bd5e557dcceeae6a388071c97f8941614d3995b270ad45b59ed08a68d",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "f646771fe3b2ac866d3e71cb2dc93d1952b15d67c0235bebe290ba6dd9ac3607",
+    "cli.py": "83f37d6269b7425875ac15b822a07c8ebb189641d405f96569ad958b0d8bcb59",
+    "session_files.py": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+    "binary_capture.py": "7c8e5760978821effc7804b273c3f852572314a78a5fa38db3e83bccda4477be",
+    "materialize.py": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd"
+  },
+  "environment": "isolated real Spring authentication, PostgreSQL, Streamable HTTP MCP and native Linux SRT with synthetic repository",
+  "clients": [
+    {
+      "client": "codex",
+      "version": "0.153.4",
+      "exitCode": 0,
+      "png": "MCP image content decoded independently; bytes match returned SHA-256. Client reports red left region and blue right region.",
+      "longText": {
+        "capturedBytes": 32785,
+        "previewTruncated": true,
+        "artifactTruncated": false,
+        "offset": 32768,
+        "returnedTail": "END_ARTIFACT_TEXT",
+        "nextOffset": null
+      },
+      "binary": {
+        "bytes": 4,
+        "base64": "AP8BAg==",
+        "sha256": "2f87beacb6a71f75e3243ce005faf5d99405e02b5e729c7c9c216ef2e2a0544a",
+        "delivery": "embedded resource verified from raw MCP response"
+      },
+      "retiredHandle": "ARTIFACT_UNAVAILABLE after acknowledged artifact remove; source file remains local",
+      "unexpectedToolFailures": 0,
+      "transcriptSha256": "77b60c1d36cbafcdfc3d06452e92f458522976b0de6fd3518636471107d46c20"
+    },
+    {
+      "client": "claude",
+      "version": "2.1.240",
+      "exitCode": 0,
+      "png": "MCP image content decoded independently; bytes match returned SHA-256. Client reports red left region and blue right region.",
+      "longText": {
+        "capturedBytes": 32785,
+        "previewTruncated": true,
+        "artifactTruncated": false,
+        "offset": 32768,
+        "returnedTail": "END_ARTIFACT_TEXT",
+        "nextOffset": null
+      },
+      "binary": {
+        "bytes": 4,
+        "base64": "AP8BAg==",
+        "sha256": "2f87beacb6a71f75e3243ce005faf5d99405e02b5e729c7c9c216ef2e2a0544a",
+        "delivery": "client writes embedded resource to a local binary file; independent file read verifies exact bytes and hash"
+      },
+      "retiredHandle": "ARTIFACT_UNAVAILABLE after acknowledged artifact remove; source file remains local",
+      "unexpectedToolFailures": 0,
+      "transcriptSha256": "e774edb5f14930258cabfafab59f21c34a7da9c71c9b06ce2b2adad1568cbfb6"
+    }
+  ],
+  "authority": {
+    "headBeforeAndAfter": "ade46e6fedee99a64a3c21031e18cc6e25ee6195",
+    "remoteMainCommitCount": 1,
+    "newCommits": 0
+  },
+  "cleanup": "PASS; client keys revoked, forwarding processes closed, synthetic services/database/users/mounts removed",
+  "scope": "Focused artifact delivery only. Earlier save/media acceptance remains separate. This does not verify the final HTTPS installation or live worker upgrade."
+}

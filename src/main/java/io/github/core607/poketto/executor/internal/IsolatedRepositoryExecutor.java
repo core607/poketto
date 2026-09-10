@@ -179,6 +179,129 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    @Override
+    public Optional<ArtifactChunk> readArtifact(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            String serverSessionId,
+            String artifactId,
+            long offset,
+            int limit,
+            ExecutionCancellation cancellation) {
+        authorize(principal, workspace);
+        if (serverSessionId == null
+                || serverSessionId.isBlank()
+                || serverSessionId.length() > 128
+                || artifactId == null
+                || !UUID.fromString(artifactId).toString().equals(artifactId)
+                || offset < 0
+                || offset > 128L * 1024 * 1024
+                || limit < 1
+                || limit > 65536) throw new IllegalArgumentException("Invalid artifact read");
+        Session session;
+        synchronized (this) {
+            session = sessions.get(new SessionKey(principal.subjectId(), workspace, hash(serverSessionId)));
+        }
+        if (session == null) return Optional.empty();
+        if (cancellation.isCancelled() || !executions.tryAcquire()) throw new WorkerUnavailableException();
+        boolean ownsRead = false;
+        try {
+            if (!session.busy.compareAndSet(false, true)) throw new WorkerUnavailableException();
+            ownsRead = true;
+            try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
+                requireLive(session);
+                authorize(session);
+                if (!session.ready) throw new WorkerUnavailableException();
+                JsonNode response = requestLive(
+                        session,
+                        "ARTIFACT_READ",
+                        Map.of("artifactId", artifactId, "offset", offset, "limit", limit),
+                        Duration.ofSeconds(3));
+                requireLive(session);
+                authorize(session);
+                String code = response.path("code").asString("");
+                if (code.equals("ARTIFACT_UNAVAILABLE")) return Optional.empty();
+                if (code.equals("INVALID_ARTIFACT_RANGE")) throw new IllegalArgumentException("Invalid artifact range");
+                requireOk(response, session);
+                Map<String, Object> metadata = artifactMetadata(response);
+                long size = (long) metadata.get("bytes");
+                if (!artifactId.equals(metadata.get("artifactId"))
+                        || offset > size
+                        || !response.path("offset").isIntegralNumber()
+                        || response.path("offset").longValue() != offset
+                        || !response.path("data").isString()
+                        || response.path("data").stringValue().length() > 87384) throw new WorkerUnavailableException();
+                byte[] bytes;
+                try {
+                    bytes = Base64.getDecoder().decode(response.path("data").stringValue());
+                } catch (IllegalArgumentException invalid) {
+                    throw new WorkerUnavailableException();
+                }
+                if (bytes.length != Math.min(limit, size - offset)) throw new WorkerUnavailableException();
+                return Optional.of(new ArtifactChunk(
+                        artifactId,
+                        (String) metadata.get("name"),
+                        (String) metadata.get("mediaType"),
+                        size,
+                        (String) metadata.get("sha256"),
+                        (boolean) metadata.get("truncated"),
+                        (int) metadata.get("expiresInSeconds"),
+                        offset,
+                        bytes));
+            }
+        } catch (RuntimeException failure) {
+            if (ownsRead && !(failure instanceof IllegalArgumentException)) stop(session, "cancelled");
+            throw failure;
+        } finally {
+            if (ownsRead) session.busy.set(false);
+            executions.release();
+        }
+    }
+
+    private static Map<String, Object> artifactMetadata(JsonNode value) {
+        try {
+            String id = value.path("artifactId").stringValue();
+            String name = value.path("name").stringValue();
+            String type = value.path("mediaType").stringValue();
+            String digest = value.path("sha256").stringValue();
+            long size = value.path("bytes").longValue();
+            int expires = value.path("expiresInSeconds").intValue();
+            if (!UUID.fromString(id).toString().equals(id)
+                    || name.isEmpty()
+                    || name.length() > 255
+                    || name.contains("/")
+                    || name.contains("\\")
+                    || name.chars().anyMatch(c -> c < 32 || c == 127)
+                    || type.length() > 128
+                    || !type.matches("[a-z0-9.+-]+/[a-z0-9.+-]+")
+                    || !digest.matches("[0-9a-f]{64}")
+                    || !value.path("bytes").isIntegralNumber()
+                    || size < 0
+                    || size > 128L * 1024 * 1024
+                    || !value.path("expiresInSeconds").isIntegralNumber()
+                    || expires < 1
+                    || expires > 300
+                    || !value.path("truncated").isBoolean()) throw new WorkerUnavailableException();
+            return Map.of(
+                    "artifactId",
+                    id,
+                    "name",
+                    name,
+                    "mediaType",
+                    type,
+                    "bytes",
+                    size,
+                    "sha256",
+                    digest,
+                    "truncated",
+                    value.path("truncated").booleanValue(),
+                    "expiresInSeconds",
+                    expires);
+        } catch (RuntimeException invalid) {
+            throw new WorkerUnavailableException();
+        }
+    }
+
     private void recoverRestartedLeases(SessionKey requested) {
         List<Session> candidates;
         synchronized (this) {
@@ -445,6 +568,45 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             "lastImport",
                             session.lastImport));
         String operation = request.path("operation").asString("");
+        if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
+            try {
+                Map<String, Object> data;
+                if (operation.equals("artifact_create")) {
+                    if (arguments.size() != 2
+                            || !arguments.path("path").isString()
+                            || !arguments.path("mediaType").isString()) throw new IllegalArgumentException();
+                    data = Map.of(
+                            "executionId",
+                            executionId,
+                            "path",
+                            arguments.path("path").stringValue(),
+                            "mediaType",
+                            arguments.path("mediaType").stringValue());
+                } else {
+                    if (arguments.size() != 1 || !arguments.path("artifactId").isString())
+                        throw new IllegalArgumentException();
+                    String id = arguments.path("artifactId").stringValue();
+                    if (!UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException();
+                    data = Map.of("artifactId", id);
+                }
+                authorize(session);
+                JsonNode result = requestLive(
+                        session,
+                        operation.equals("artifact_create") ? "ARTIFACT_CREATE" : "ARTIFACT_REMOVE",
+                        data,
+                        Duration.ofSeconds(10));
+                authorize(session);
+                String code = result.path("code").asString("");
+                if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
+                        .contains(code)) return Map.of("ok", false, "code", code);
+                requireOk(result, session);
+                return operation.equals("artifact_create")
+                        ? Map.of("ok", true, "artifact", artifactMetadata(result.path("artifact")))
+                        : Map.of("ok", true, "removed", true);
+            } catch (IllegalArgumentException invalid) {
+                return Map.of("ok", false, "code", "INVALID_ARTIFACT");
+            }
+        }
         if (operation.equals("media_fetch") || operation.equals("media_import")) {
             try {
                 return operation.equals("media_fetch")
@@ -1156,7 +1318,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             TerminationReason reason =
                     switch (result.path("terminationReason").stringValue()) {
                         case "session_closed", "client_shutdown" -> TerminationReason.CANCELLED;
-                        case "lease_expired" -> TerminationReason.SANDBOX_FAILURE;
+                        case "lease_expired", "sandbox_failed" -> TerminationReason.SANDBOX_FAILURE;
                         default ->
                             TerminationReason.valueOf(result.path("terminationReason")
                                     .stringValue()
@@ -1164,6 +1326,23 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     };
             boolean timedOut = result.path("timedOut").booleanValue();
             if (timedOut != (reason == TerminationReason.TIMEOUT)) throw new WorkerUnavailableException();
+            if (!result.path("artifacts").isObject()
+                    || !result.path("artifactErrors").isObject()
+                    || result.path("artifacts").size() > 2
+                    || result.path("artifactErrors").size() > 2) throw new WorkerUnavailableException();
+            Map<String, Map<String, Object>> artifacts = new LinkedHashMap<>();
+            Map<String, String> artifactErrors = new LinkedHashMap<>();
+            for (var entry : result.path("artifacts").properties()) {
+                if (!Set.of("stdout", "stderr").contains(entry.getKey())) throw new WorkerUnavailableException();
+                artifacts.put(entry.getKey(), artifactMetadata(entry.getValue()));
+            }
+            for (var entry : result.path("artifactErrors").properties()) {
+                if (!Set.of("stdout", "stderr").contains(entry.getKey())
+                        || artifacts.containsKey(entry.getKey())
+                        || !Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY")
+                                .contains(entry.getValue().asString(""))) throw new WorkerUnavailableException();
+                artifactErrors.put(entry.getKey(), entry.getValue().stringValue());
+            }
             return new ExecutionResult(
                     commit,
                     result.path("exitCode").intValue(),
@@ -1172,8 +1351,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     result.path("stdoutTruncated").booleanValue(),
                     result.path("stderrTruncated").booleanValue(),
                     timedOut,
-                    reason);
+                    reason,
+                    artifacts,
+                    artifactErrors);
         } catch (RuntimeException exception) {
+            String reason = result.path("terminationReason").asString("");
+            log.warn(
+                    "Invalid worker execution result ({}; termination={})",
+                    exception.getClass().getSimpleName(),
+                    reason.matches("[a-z_]{1,32}") ? reason : "invalid");
             throw new WorkerUnavailableException();
         }
     }

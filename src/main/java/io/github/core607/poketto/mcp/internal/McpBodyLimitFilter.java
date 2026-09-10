@@ -245,7 +245,7 @@ final class McpBodyLimitFilter implements Filter {
             var message = json.readTree(prefix);
             if (!message.path("method").asString("").equals("tools/call")) return false;
             String tool = message.path("params").path("name").asString("");
-            return tool.equals("get_asset") || tool.equals("put_asset");
+            return tool.equals("get_asset") || tool.equals("put_asset") || tool.equals("get_artifact");
         } catch (RuntimeException invalid) {
             return false;
         }

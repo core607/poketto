@@ -99,6 +99,13 @@ def main():
     commands.add_parser('recover', help='Reconcile an uncertain save and, if necessary, retry only its retained commit')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
     sync.add_argument('path')
+    artifacts = commands.add_parser('artifact', help='Create or remove an expiring artifact for this MCP session')
+    artifact_commands = artifacts.add_subparsers(dest='artifact_operation', required=True)
+    created = artifact_commands.add_parser('create', help='Capture a local file for get_artifact; does not save or publish')
+    created.add_argument('path')
+    created.add_argument('--type', dest='media_type', default='application/octet-stream')
+    removed = artifact_commands.add_parser('remove', help='Release a session artifact before it expires')
+    removed.add_argument('artifact_id')
     media = commands.add_parser('media', help='Import or fetch indexed original media')
     media_commands = media.add_subparsers(dest='media_operation', required=True)
     fetch = media_commands.add_parser('fetch', help='Fetch an indexed original into the repository worktree')
@@ -119,6 +126,10 @@ def main():
     if args.operation == 'sync':
         arguments = {'path': args.path}
     operation = args.operation
+    if operation == 'artifact':
+        operation = 'artifact_' + args.artifact_operation
+        arguments = ({'path': args.path, 'mediaType': args.media_type} if args.artifact_operation == 'create'
+                     else {'artifactId': args.artifact_id})
     if operation == 'media':
         if args.media_operation == 'fetch':
             operation = 'media_fetch'

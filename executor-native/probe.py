@@ -60,7 +60,7 @@ def main():
     config_path = root / 'worker.json'
     worker_config = None
     evidence = []
-    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py'):
+    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -262,6 +262,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'sessionFilesSha256': digest(root / 'session_files.py'),
             'materializeSha256': digest(root / 'materialize.py'),
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
+            'artifactsSha256': digest(root / 'artifacts.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only'}), flush=True)
     finally:

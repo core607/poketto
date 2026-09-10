@@ -56,6 +56,7 @@ final class WorkerClient {
                     && response.path("version").intValue() == 1);
             require(response.path("maxFrameBytes").intValue() == MAX_FRAME);
             require(response.path("codeActProtocol").asInt(0) == 1);
+            require(response.path("artifactProtocol").asInt(0) == 1);
             UUID boot = UUID.fromString(response.path("workerBootId").stringValue());
             int lease = response.path("leaseSeconds").intValue();
             int renew = response.path("renewAfterSeconds").intValue();

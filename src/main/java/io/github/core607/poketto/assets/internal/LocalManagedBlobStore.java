@@ -5,6 +5,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.*;
 
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImagePreviewPolicy;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetPage;
 import io.github.core607.poketto.assets.ManagedAssetReference;
@@ -122,7 +123,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 String revision = HexFormat.of().formatHex(digest.digest());
                 if (size == 0) throw new IllegalArgumentException("original file must not be empty");
                 String mediaType = declaredType;
-                if (mediaType == null) mediaType = ImagePolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
+                if (mediaType == null) mediaType = ImagePreviewPolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
                 Path operation = operations.resolve(hash(operationKey.getBytes(StandardCharsets.US_ASCII)));
                 if (Files.exists(operation, NOFOLLOW_LINKS)) {
                     ManagedAsset existing = metadata(operation);
@@ -214,7 +215,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
             byte[] bytes = readBounded(object.resolve("bytes"), MAX_UPLOAD_BYTES);
             if (bytes.length != asset.size()
                     || !hash(bytes).equals(reference.revision())
-                    || !ImagePolicy.validate(bytes).equals(asset.mediaType())) throw unavailable();
+                    || !ImagePreviewPolicy.validate(bytes).equals(asset.mediaType())) throw unavailable();
             return new ManagedImage(asset, bytes);
         } catch (IOException exception) {
             throw unavailable();

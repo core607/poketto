@@ -13,6 +13,7 @@ from bridge import LeaseBridge
 from cli import call
 from session_files import capture_text
 from binary_capture import BinaryCapture
+from artifacts import ArtifactStore
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from worker import Service
@@ -55,6 +56,9 @@ class Backend:
     def capture_binary(self, session, path):
         return BinaryCapture(self.root, path)
 
+    def artifact(self, session, path, media_type):
+        return session.artifacts.capture(path, media_type, session.cancelled.is_set)
+
     def mount_path(self, session):
         return self.root
 
@@ -63,10 +67,65 @@ class Backend:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_artifact_frames_bind_identity_and_preserve_bytes_after_command_completion(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / 'work/repository'
+            repository.mkdir(parents=True)
+            (repository / 'note.txt').write_bytes(b'original')
+            session.artifacts = ArtifactStore(root)
+            try:
+                data = {'executionId': session.execution_id, 'path': 'note.txt', 'mediaType': 'text/plain'}
+                wrong = self.send(self.payload('ARTIFACT_CREATE', {**data, 'executionId': uid()}))
+                self.assertEqual('EXECUTION_MISMATCH', wrong['code'])
+                created = self.send(self.payload('ARTIFACT_CREATE', data))
+                self.assertTrue(created['ok'], created)
+                reference = {'artifactId': created['artifact']['artifactId'], 'offset': 0, 'limit': 65536}
+                session.state, session.execution_id, session.unit = 'READY', '', ''
+                (repository / 'note.txt').write_bytes(b'later local edit')
+                self.assertEqual(b'original', base64.b64decode(self.send(self.payload('ARTIFACT_READ', reference))['data']))
+                self.assertEqual('EXECUTION_MISMATCH', self.send(self.payload('ARTIFACT_CREATE', data))['code'])
+                for key in ('principalId', 'accountId', 'workspaceId', 'appBootId', 'serverSessionHash', 'leaseId'):
+                    foreign = self.payload('ARTIFACT_READ', reference)
+                    foreign[key] = 'f' * 64 if key == 'serverSessionHash' else uid()
+                    self.assertEqual('SESSION_NOT_FOUND', self.send(foreign)['code'])
+                invalid = self.send(self.payload('ARTIFACT_READ', {**reference, 'offset': -1}))
+                self.assertEqual('INVALID_ARTIFACT_RANGE', invalid['code'])
+                self.assertFalse(session.cancelled.is_set())
+                self.assertTrue(self.send(self.payload('ARTIFACT_REMOVE', {'artifactId': reference['artifactId']}))['ok'])
+                self.assertEqual('ARTIFACT_UNAVAILABLE', self.send(self.payload('ARTIFACT_READ', reference))['code'])
+                self.assertFalse(list(session.artifacts.directory.iterdir()))
+            finally:
+                session.artifacts.close()
+
+    def test_artifact_expiry_and_revocation_apply_while_the_lease_is_still_present(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        with tempfile.TemporaryDirectory() as temporary:
+            ticks = [0]
+            session.artifacts = ArtifactStore(temporary, clock=lambda: ticks[0])
+            try:
+                created = session.artifacts.put('stdout.txt', b'private output')
+                reference = {'artifactId': created['artifactId'], 'offset': 0, 'limit': 65536}
+                ticks[0] = 300
+                self.service.sweep()
+                self.assertEqual('ARTIFACT_UNAVAILABLE', self.send(self.payload('ARTIFACT_READ', reference))['code'])
+                self.assertFalse(list(session.artifacts.directory.iterdir()))
+                retained = session.artifacts.put('stdout.txt', b'other output')
+                reference['artifactId'] = retained['artifactId']
+                self.assertTrue(self.send(self.payload('REVOKE', {'keyIds': [self.identity['principalId']], 'accountIds': []}))['ok'])
+                self.assertEqual('AUTH_REVOKED', self.send(self.payload('ARTIFACT_READ', reference))['code'])
+            finally:
+                session.artifacts.close()
+
     def test_hello_advertises_the_codeact_bridge_contract(self):
         response = self.service.hello()
         self.assertEqual(1, response['version'])
         self.assertEqual(1, response['codeActProtocol'])
+        self.assertEqual(1, response['artifactProtocol'])
 
     def test_signed_binary_capture_releases_its_protected_file(self):
         self.opened()
