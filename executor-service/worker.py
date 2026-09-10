@@ -20,7 +20,12 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from contextlib import contextmanager
 from resource_pool import ResourcePool
+from bridge import BridgeRejected, LeaseBridge
+from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
+from materialize import IncomingFile
+from binary_capture import BinaryCapture
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -88,6 +93,11 @@ class Session:
     cancelled: threading.Event = field(default_factory=threading.Event)
     operation: threading.Lock = field(default_factory=threading.Lock)
     unit: str = ''
+    bridge: object = None
+    execution_id: str = ''
+    files_lock: threading.Lock = field(default_factory=threading.Lock)
+    capture: object = None
+    incoming: object = None
 
 
 class Service:
@@ -106,7 +116,7 @@ class Service:
         self.lock = threading.RLock()
 
     def hello(self):
-        return {'ok': True, 'version': 1, 'workerBootId': self.boot,
+        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
 
@@ -134,7 +144,9 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE') or not isinstance(p['data'], dict):
+        if p['operation'] not in ('OPEN', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
+                                  'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE', 'MATERIALIZE_BEGIN',
+                                  'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT') or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
         return p, hashlib.sha256(raw).hexdigest()
 
@@ -183,6 +195,12 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op in ('MATERIALIZE_BEGIN', 'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT'):
+            return self.materialize_dispatch(p)
+        if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE'):
+            return self.capture_dispatch(p)
+        if op in ('BRIDGE_POLL', 'BRIDGE_COMPLETE'):
+            return self.bridge_dispatch(p)
         with self.lock:
             if op == 'REVOKE':
                 if set(d) != {'keyIds', 'accountIds'} or any(not isinstance(d[k], list) or len(d[k]) > 1000 for k in d):
@@ -256,6 +274,7 @@ class Service:
                     raise Rejected('EXECUTION_CAPACITY')
                 self.executions.add(execution_key)
                 s.state = 'RUNNING'
+                s.execution_id = d['executionId']
         try:
             with s.operation:
                 if s.cancelled.is_set():
@@ -271,6 +290,7 @@ class Service:
                         s.state = 'CLOSED'
                     else:
                         s.state = 'READY'
+                        s.execution_id = ''
                     answer = self.response(s)
                     if result is not None:
                         answer['result'] = result
@@ -282,6 +302,159 @@ class Service:
                 self.cancel(s, 'sandbox_failed')
             raise
 
+    def materialize_dispatch(self, p):
+        op, data = p['operation'], p['data']
+        keys = {'executionId', 'path', 'bytes', 'sha256', 'expectedSha256', 'delete', 'allowIdentical'} if op == 'MATERIALIZE_BEGIN' else {'executionId', 'transferId'}
+        if op == 'MATERIALIZE_CHUNK':
+            keys |= {'offset', 'data'}
+        if set(data) != keys:
+            raise Rejected('INVALID_REQUEST')
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
+                raise Rejected('EXECUTION_MISMATCH')
+        with s.files_lock:
+            if s.cancelled.is_set() or s.execution_id != data['executionId'] or not s.unit:
+                raise Rejected('SESSION_NOT_READY')
+            try:
+                if op == 'MATERIALIZE_BEGIN':
+                    if s.incoming is not None:
+                        raise Rejected('MATERIALIZE_IN_PROGRESS')
+                    s.incoming = IncomingFile(self.backend.mount_path(s), data['path'], data['bytes'],
+                                              data['sha256'], data['expectedSha256'], data['delete'], data['allowIdentical'])
+                    result = {'transferId': s.incoming.id}
+                else:
+                    if s.incoming is None or s.incoming.id != data['transferId']:
+                        raise Rejected('MATERIALIZE_NOT_FOUND')
+                    result = {'transferId': s.incoming.id}
+                    if op == 'MATERIALIZE_CHUNK':
+                        encoded = data['data']
+                        if not isinstance(encoded, str) or len(encoded) > 87384:
+                            raise CaptureRejected('Invalid transfer chunk')
+                        try:
+                            block = base64.b64decode(encoded, validate=True)
+                        except (ValueError, UnicodeError):
+                            raise CaptureRejected('Invalid transfer chunk') from None
+                        s.incoming.append(data['offset'], block)
+                        result['receivedBytes'] = s.incoming.received
+                    elif op == 'MATERIALIZE_COMMIT':
+                        result['installed'] = self.backend.install(s, s.incoming)
+                    else:
+                        s.incoming.close()
+                        s.incoming = None
+            except (CaptureRejected, OSError):
+                raise Rejected('MATERIALIZE_REJECTED') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.execution_id != data['executionId']:
+                raise Rejected('EXECUTION_MISMATCH')
+            return {**self.response(s), **result}
+
+    def capture_dispatch(self, p):
+        op, data = p['operation'], p['data']
+        keys = {'executionId', 'writes', 'deletes'} if op == 'CAPTURE_BEGIN' else {'executionId', 'captureId'}
+        if op in ('CAPTURE_OPTIONAL', 'CAPTURE_BINARY'):
+            keys = {'executionId', 'path'}
+        if op == 'CAPTURE_READ':
+            keys |= {'index', 'offset', 'limit'}
+        if set(data) != keys:
+            raise Rejected('INVALID_REQUEST')
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
+                raise Rejected('EXECUTION_MISMATCH')
+        # Keep the mount and unit alive without blocking renewal or revocation.
+        # run() cleanup takes this lock before releasing either resource.
+        with s.files_lock:
+            if s.cancelled.is_set() or s.execution_id != data['executionId'] or not s.unit:
+                raise Rejected('SESSION_NOT_READY')
+            try:
+                if op in ('CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY'):
+                    if s.capture is not None:
+                        raise Rejected('CAPTURE_IN_PROGRESS')
+                    if op == 'CAPTURE_BINARY':
+                        selected_paths([data['path']], [])
+                        s.capture = self.backend.capture_binary(s, data['path'])
+                    elif op == 'CAPTURE_BEGIN':
+                        selected_paths(data['writes'], data['deletes'])
+                        captured = self.backend.capture(s, data['writes'], data['deletes'])
+                        s.capture = CaptureSnapshot(captured)
+                    else:
+                        selected_paths([data['path']], [])
+                        captured = self.backend.capture_optional(s, data['path'])
+                        s.capture = CaptureSnapshot(captured)
+                    result = s.capture.manifest()
+                else:
+                    if s.capture is None or s.capture.id != data['captureId']:
+                        raise Rejected('CAPTURE_NOT_FOUND')
+                    if op == 'CAPTURE_READ':
+                        result = s.capture.chunk(data['index'], data['offset'], data['limit'])
+                    else:
+                        s.capture.close()
+                        s.capture = None
+                        result = {}
+            except CaptureRejected:
+                raise Rejected('CAPTURE_REJECTED') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.execution_id != data['executionId']:
+                raise Rejected('EXECUTION_MISMATCH')
+            return {**self.response(s), **result}
+
+    def bridge_dispatch(self, p):
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.bridge is None or s.state not in ('READY', 'RUNNING'):
+                raise Rejected('SESSION_NOT_READY')
+            data = p['data']
+            if p['operation'] == 'BRIDGE_POLL':
+                if data:
+                    raise Rejected('INVALID_REQUEST')
+            elif set(data) != {'bridgeRequestId', 'executionId', 'response'} or not isinstance(data['response'], dict):
+                raise Rejected('INVALID_REQUEST')
+            else:
+                identifier(data['bridgeRequestId'])
+                if not s.execution_id or data['executionId'] != s.execution_id:
+                    raise Rejected('EXECUTION_MISMATCH')
+            execution_id = s.execution_id
+        # Polling must not hold the service lock or the command operation lock.
+        try:
+            if p['operation'] == 'BRIDGE_POLL':
+                request = s.bridge.poll()
+            else:
+                s.bridge.complete(data['bridgeRequestId'], data['response'])
+                request = None
+        except BridgeRejected:
+            with self.lock:
+                self.cancel(s, 'sandbox_failed')
+            raise Rejected('BRIDGE_UNAVAILABLE') from None
+        with self.lock:
+            self.authorized(p)
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if execution_id != s.execution_id:
+                request = None
+            return {**self.response(s), 'executionId': execution_id, 'bridgeRequest': request}
+
     def cancel(self, s, reason):
         if s.state == 'CLOSED':
             return
@@ -289,6 +462,8 @@ class Service:
             s.reason = reason
         s.state = 'CLOSING'
         s.cancelled.set()
+        if s.bridge is not None:
+            s.bridge.close()
         # The executor loop observes cancellation. No unmount can race initialization.
         if s.operation.acquire(blocking=False):
             try:
@@ -376,6 +551,10 @@ class SystemdBackend:
             path = target / name
             path.mkdir(mode=0o700)
             os.chown(path, self.user.pw_uid, self.user.pw_gid)
+        s.bridge = LeaseBridge(target / 'bridge', self.user.pw_gid)
+        cli = bootstrap / 'poketto'
+        cli.write_bytes(Path(self.c['launcher']).with_name('cli.py').read_bytes())
+        cli.chmod(0o555)
         exports = os.open(self.c['exportRoot'], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             fd = os.open(data['exportId'] + '.bundle', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=exports)
@@ -411,7 +590,50 @@ class SystemdBackend:
         (target / 'snapshot.bundle').unlink()
 
     def execute(self, s, data):
-        return self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
+        result = self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
+        s.bridge.reset_command()
+        return result
+
+    def capture(self, s, writes, deletes):
+        with self.frozen(s):
+            return capture_text(self.mount_path(s), writes, deletes)
+
+    def capture_optional(self, s, path):
+        with self.frozen(s):
+            return capture_optional(self.mount_path(s), path)
+
+    def capture_binary(self, s, path):
+        with self.frozen(s):
+            return BinaryCapture(self.mount_path(s), path, s.cancelled.is_set)
+
+    def install(self, s, incoming):
+        with self.frozen(s):
+            return incoming.install(self.user.pw_uid, self.user.pw_gid)
+
+    @contextmanager
+    def frozen(self, s):
+        # The pool and unit names come from the supervisor, never the command.
+        group = self.pool.directory / (s.unit + '.service')
+        freeze = group / 'cgroup.freeze'
+        try:
+            freeze.write_text('1')
+            deadline = time.monotonic() + 2
+            while 'frozen 1' not in (group / 'cgroup.events').read_text().splitlines():
+                if s.cancelled.is_set() or time.monotonic() >= deadline:
+                    raise CaptureRejected('Cannot freeze the execution group')
+                time.sleep(0.01)
+            if s.cancelled.is_set():
+                raise CaptureRejected('Execution was cancelled')
+            yield
+        except OSError as error:
+            raise CaptureRejected('Execution group is unavailable') from error
+        finally:
+            try:
+                freeze.write_text('0')
+            except OSError:
+                # A failed thaw cannot leave a live, frozen lease behind.
+                s.cancelled.set()
+                s.reason = 'sandbox_failed'
 
     def run(self, s, payload, timeout_ms):
         self.pool.verify()
@@ -420,12 +642,13 @@ class SystemdBackend:
         record = self.records / (operation + '.json')
         settings = self.records / (operation + '.srt.json')
         read_paths = ['/usr', '/bin', '/lib', '/lib64', '/dev', '/proc',
-                      '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap')]
+                      '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap'),
+                      str(target / 'bridge/lock'), str(target / 'bridge/state'), str(target / 'bridge/responses')]
         if payload['mode'] == 'initialize':
             read_paths.append(str(target / 'snapshot.bundle'))
         settings.write_text(json.dumps({'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
             'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
-            'allowWrite': [str(target / 'work'), str(target / 'home'), '/tmp'], 'denyWrite': []},
+            'allowWrite': [str(target / 'work'), str(target / 'home'), str(target / 'bridge/requests'), '/tmp'], 'denyWrite': []},
             'enableWeakerNestedSandbox': False}))
         record.write_text(json.dumps({**payload, 'root': str(target), 'tools': self.c['toolsRoot'], 'settings': str(settings)}))
         for file in (record, settings):
@@ -496,14 +719,21 @@ class SystemdBackend:
                     'stdoutTruncated': truncated[0], 'stderrTruncated': truncated[1],
                     'timedOut': reason == 'timeout', 'terminationReason': reason}
         finally:
-            subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=10)
-            self.assert_empty(unit)
-            subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=5)
-            if process:
-                process.wait(timeout=5)
-            record.unlink(missing_ok=True)
-            settings.unlink(missing_ok=True)
-            s.unit = ''
+            with s.files_lock:
+                subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=10)
+                self.assert_empty(unit)
+                subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=5)
+                if process:
+                    process.wait(timeout=5)
+                record.unlink(missing_ok=True)
+                settings.unlink(missing_ok=True)
+                s.unit = ''
+                if s.capture is not None:
+                    s.capture.close()
+                    s.capture = None
+                if s.incoming is not None:
+                    s.incoming.close()
+                    s.incoming = None
 
     def assert_empty(self, unit):
         result = checked(['systemctl', 'show', unit, '-p', 'ControlGroup', '--value']).stdout.decode().strip()
@@ -515,17 +745,26 @@ class SystemdBackend:
                 raise RuntimeError('Execution descendants remain')
 
     def close(self, s):
-        if s.unit:
-            checked(['systemctl', 'stop', s.unit])
-            self.assert_empty(s.unit)
-        target = self.mount_path(s)
-        if target.is_symlink():
-            raise RuntimeError('Unsafe mountpoint')
-        if target.is_mount():
-            checked(['umount', str(target)])
-        if target.exists():
-            # Never recurse into a command-controlled directory, even after a failed unmount.
-            target.rmdir()
+        with s.files_lock:
+            if s.bridge is not None:
+                s.bridge.close()
+            if s.unit:
+                checked(['systemctl', 'stop', s.unit])
+                self.assert_empty(s.unit)
+            if s.incoming is not None:
+                s.incoming.close()
+                s.incoming = None
+            if s.capture is not None:
+                s.capture.close()
+                s.capture = None
+            target = self.mount_path(s)
+            if target.is_symlink():
+                raise RuntimeError('Unsafe mountpoint')
+            if target.is_mount():
+                checked(['umount', str(target)])
+            if target.exists():
+                # Never recurse into a command-controlled directory, even after a failed unmount.
+                target.rmdir()
 
     def cleanup(self):
         units = checked(['systemctl', 'list-units', '--all', '--plain', '--no-legend', self.c['unitPrefix'] + '*']).stdout.decode()

@@ -1,0 +1,109 @@
+{
+  "sourceCommit": "72f89234b08aec96c1998ad26e1e5710e73132ef",
+  "fixture": "real Spring authentication, HTTP MCP, isolated PostgreSQL, synthetic Git authority, local managed originals, signed root worker and native SRT",
+  "runtimeManifestSha256": "e32faac564a8e123dea0c002855b8f064fd4870cf8fe853e46829454248713c5",
+  "workerSources": {
+    "worker.py": "a0bbc43f9252aa54cc288f1a81477cccf397ff87da20c7d7e9537128a150e2cd",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "9c6898c129a2cd2b403f6ad4a0b0a00c49d7f8939c4ba4f59c42015f351a23cb",
+    "cli.py": "77864095496134f0584ccf7e3d717c0265cb58810879e225926e183d80af4aea",
+    "session_files.py": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+    "binary_capture.py": "0ecce5965cc28f4cff601ada8dd284803e90c487f2efaa1e1bdd39964b6b2c76",
+    "materialize.py": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692"
+  },
+  "clients": {
+    "codex": {
+      "version": "0.153.4",
+      "result": "PASS",
+      "toolCalls": {
+        "repo_exec": 12,
+        "get_asset": 1,
+        "get_file": 10,
+        "repo_patch": 1
+      },
+      "transcriptSha256": "c0394c8c5f441c41cd36e336efac708d44429694e7963955020f5d9ad489912e",
+      "promptSha256": "18b6b7250bb9255a3575b5b811231b7aa760e17b97ae650a75950465dc941de1",
+      "authoritativeReadbackSha256": "ac75722d40331a1f17afaf6943119b967d6a9b4d510df29899ad71144c421f30",
+      "observedOutcomes": [
+        "Original history and private sentinel available",
+        "Git image returned through real MCP image content",
+        "Idempotent original import and exact-byte fetch",
+        "Atomic note/index save and retained unselected local edits",
+        "Real remote conflict, merge markers and resolved save",
+        "Local move with atomic creation/deletion, then explicit deletion",
+        "Final authority readback and preserved immutable original"
+      ],
+      "observedFriction": "python was unavailable; client recovered with python3"
+    },
+    "claude": {
+      "version": "2.1.240",
+      "result": "PASS",
+      "toolCalls": {
+        "list_directory": 2,
+        "get_file": 11,
+        "repo_exec": 18,
+        "get_asset": 2,
+        "repo_patch": 1
+      },
+      "transcriptSha256": "6ae0a54f3319c08246372d4321ff8ed2847f8a959518f6bc964c3d785f5d511f",
+      "promptSha256": "2b3bca03973fba6a70979605d6ea4ec8b4f07c2bda6f4f96b024b329962f74ed",
+      "authoritativeReadbackSha256": "42dccdf04f35c6f054eaf8db3c3e7603015d8df0459903eb9c611c290e1f45e8",
+      "observedOutcomes": [
+        "Original history and private sentinel available",
+        "Git image returned through real MCP image content",
+        "Idempotent original import and exact-byte fetch",
+        "Atomic note/index save and retained unselected local edits",
+        "Real remote conflict, merge markers and resolved save",
+        "Local move with atomic creation/deletion, then explicit deletion",
+        "Final authority readback and preserved immutable original"
+      ],
+      "observedFriction": "/tmp did not survive another command and absolute import paths were rejected; client regenerated a repository-relative file"
+    }
+  },
+  "authority": {
+    "initialCommit": "45b629e2ec4f74932c977af54a94a507fc68fad3",
+    "finalCommit": "96eff410bca296adc001941942aa37ecb0614345",
+    "finalChangedPaths": [
+      ".poketto/assets.json"
+    ],
+    "originalFilesUnchanged": true,
+    "clients": {
+      "codex": {
+        "atomicIndexAndNoteCommit": "20a298e7978604b3d1cf73b3413d8d84140ebc5f",
+        "resolvedCommit": "04f886bc0755c3a779758bb30fc87e62061f4701",
+        "finalSamplePathsAbsent": true,
+        "media": {
+          "assetId": "a9d62ec7-f5a5-4cb2-87fd-7aeb07193141",
+          "revision": "e6d66889131220f931fddfb05730d647a0992456c63ae0a8154b4ae32ff219ef",
+          "mediaType": "image/png",
+          "size": 75
+        }
+      },
+      "claude": {
+        "atomicIndexAndNoteCommit": "0bf575d716a6079b96b5dda45c346eb949fe436d",
+        "resolvedCommit": "c3102409bf247ce315481a9f25b264de50fa8e36",
+        "finalSamplePathsAbsent": true,
+        "media": {
+          "assetId": "a690ba6f-e221-43b0-88eb-1ef0caa1e5c0",
+          "revision": "248b07a3d0e1e0f67d43d18065be8f74434549c0fdde6b0bfc08a7835d41909f",
+          "mediaType": "image/png",
+          "size": 165
+        }
+      }
+    }
+  },
+  "cleanup": "PASS",
+  "limitations": [
+    "Synthetic content on loopback; final HTTPS and live-corpus installation acceptance remains separate.",
+    "Move used local rename and selected save; dedicated CLI move/export and returned artifacts remain unimplemented.",
+    "No AGENTS.md existed in the synthetic fixture; this run does not prove bootstrap-guide delivery.",
+    "The following CLI help refinement was verified separately on Linux: repository-relative paths, transient /tmp, and python3."
+  ],
+  "cleanupHarnessVerification": {
+    "sourceCommit": "b53708ab64e29e319d2849dae7098d3abb347103",
+    "runtimeManifestSha256": "e32faac564a8e123dea0c002855b8f064fd4870cf8fe853e46829454248713c5",
+    "result": "PASS",
+    "scope": "Native host startup, health and full resource cleanup; no repeated model calls"
+  }
+}

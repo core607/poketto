@@ -1,0 +1,152 @@
+{
+  "sourceCommit": "3cc06e5fadf96c933ad82f9a27c3cfb25583bf90",
+  "fixtureParent": "/var/lib",
+  "authentication": "synthetic stub; not PostgreSQL or HTTP MCP client acceptance",
+  "dependencies": "real Git authority, publication/export/atomic patch services, local managed originals, Java adapter, signed capture/materialization bridge, synchronous CLI and SRT on native Linux",
+  "observations": [
+    {
+      "observation": {
+        "requestBytes": 0,
+        "accepted": true
+      },
+      "result": "PASS",
+      "test": "root-owned-socket-rejects-non-root-peer"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "public-scope-real-projection-has-no-private-files-metadata-or-original-history"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "permission-increase-does-not-expand-existing-public-worker-files"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "withdrawn-public-projection-denies-further-worker-output"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "selected-cli-saves-freeze-chunk-and-commit-real-git-with-host-baseline-and-retained-conflicts"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "single-file-cli-sync-merges-conflicts-and-keeps-unselected-baselines-and-local-deletions"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "uncertain-cli-save-recovers-original-commit-without-replaying-new-local-edits"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically"
+    },
+    {
+      "result": "PASS",
+      "milliseconds": 1976.514891,
+      "test": "signed-open-through-production-socket-and-signature-checks"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies"
+    },
+    {
+      "meanMilliseconds": 939.0193723,
+      "result": "PASS",
+      "test": "twenty-adapter-session-reuses"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "same-key-clients-cannot-read-or-write-another-lease-bridge"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "same-key-clients-have-separate-pinned-workdirs"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "command-mutations-preserve-authority-bundle-and-source"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "callback-cancellation-kills-detached-descendants"
+    },
+    {
+      "reason": "CANCELLED",
+      "result": "PASS",
+      "test": "revocation-closes-active-process-tree"
+    },
+    {
+      "result": "PASS",
+      "source": "synthetic-only",
+      "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client"
+    },
+    {
+      "adapterClassSha256": "79b9360340dd1651b57d31d2f7749ccf68cbb54076bd3ebf675584d9359aaa81",
+      "tests": 19,
+      "summary": "PASS",
+      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
+      "nativeProbeClassSha256": "daccd5e73d9f9e7270d74064f2f0407b66d77c3112395de84a3bc62ccea16b54"
+    },
+    {
+      "test": "java-process-loss-expires-real-worker-lease",
+      "result": "PASS"
+    },
+    {
+      "nativeCombined": "PASS",
+      "runtimeManifestSha256": "6959de3e6063125ed7a9fbf952e2822518dff16f8303b87bdc68f378c5fb044b",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
+      "workerSha256": "1313c15fa75f7788c665098c822752e2c84a8bd0b51216d84f1f47ee4c4505d5",
+      "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+      "bridgeSha256": "0d9da34a5ba5629bcdf27b32afec40b49309149427d0e3b9a74514811deb0167",
+      "cliSha256": "ed6520937db3b80c5e8c69c77ddb8111ee4b161f9c6faabfc44ef965442ec1d9",
+      "sessionFilesSha256": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+      "materializeSha256": "10df6a4ca720f527e6c4c525bbb23ee0f5ed1cdaf7de196b2a0eed775881a692",
+      "binaryCaptureSha256": "0ecce5965cc28f4cff601ada8dd284803e90c487f2efaa1e1bdd39964b6b2c76",
+      "nativeScriptSha256": "22bf395c486e0cda8e5b8e3cffe7231eb7520b2bd95709a2380cc79c2525953c",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "source": "synthetic-only"
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ],
+  "diagnostics": "JGit could not persist an optional filesystem-attribute cache under the deliberately absent synthetic account home. Export, worker execution and all required cleanup assertions succeeded.",
+  "additionalObservation": {
+    "sourceCommit": "ec17b869347986a347984f952448de3428dd5ffa",
+    "result": "FAIL",
+    "scenario": "twenty-adapter-session-reuses",
+    "error": "WorkerUnavailableException at requireLive; session had stopped",
+    "cleanup": "PASS",
+    "cause": "Cleanup owns the bridge reader while draining completed input. A concurrent poll treated contention as malformed input and cancelled the lease. The original native failure did not record its cancellation reason; a deterministic signed-protocol regression independently confirms this shutdown defect."
+  },
+  "regression": {
+    "test": "test_bridge_poll_during_command_input_cleanup_does_not_cancel_the_lease",
+    "beforeCommit": "d903c583aa8a024283d9ea1ee6e952c4df7b383d",
+    "beforeResult": "FAIL: signed BRIDGE_POLL returned BRIDGE_UNAVAILABLE and cancelled the lease",
+    "afterCommit": "3cc06e5fadf96c933ad82f9a27c3cfb25583bf90",
+    "afterResult": "PASS: empty bounded poll preserves lease; all 46 worker tests passed"
+  }
+}

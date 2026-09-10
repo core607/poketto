@@ -634,6 +634,101 @@ class RepositoryPatchServiceTests {
     }
 
     @Test
+    void recoveryChecksRemoteHistoryAndRetriesOnlyTheIdenticalRetainedCommit() throws Exception {
+        for (boolean delivered : List.of(false, true)) {
+            var offline = new java.util.concurrent.atomic.AtomicBoolean();
+            var candidates = new java.util.ArrayList<ObjectId>();
+            var delegate = new JGitRemoteGitTransport();
+            var fixture = new RemoteRepositoryFixture(
+                    directory.resolve(Boolean.toString(delivered)), new RemoteGitTransport() {
+                        @Override
+                        public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                            if (offline.get()) throw new RemoteGitTransportException("offline after lost reply");
+                            return delegate.fetchMain(repository, binding);
+                        }
+
+                        @Override
+                        public PushStatus pushMain(
+                                Repository repository,
+                                RepositoryBinding binding,
+                                ObjectId expected,
+                                ObjectId candidate) {
+                            candidates.add(candidate);
+                            if (candidates.size() == 1) {
+                                if (delivered) delegate.pushMain(repository, binding, expected, candidate);
+                                offline.set(true);
+                                throw new RemoteGitTransportException("lost reply");
+                            }
+                            return delegate.pushMain(repository, binding, expected, candidate);
+                        }
+                    });
+            ObjectId base = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("before")));
+            var patch = patch(base, update("private/note.md", "before", "retained"));
+            var service = service(fixture, (id, snapshot) -> {});
+            var unknown = org.assertj.core.api.Assertions.catchThrowableOfType(
+                    RepositoryWriteAmbiguousException.class, () -> service.apply(principal, workspace, patch));
+            assertThat(unknown).isNotNull();
+            var retained = unknown.attempt().orElseThrow();
+            assertThat(retained.commit()).isEqualTo(candidates.getFirst().name());
+            offline.set(false);
+            if (delivered) fixture.commitRemote(workspace, Map.of("private/note.md", bytes("later-remote-edit")));
+            ObjectId beforeRecovery = fixture.remoteHead(workspace);
+            var result = service.recover(principal, workspace, patch, retained);
+            assertThat(result.commit()).isEqualTo(retained.commit());
+            if (delivered) {
+                assertThat(candidates).hasSize(1);
+                assertThat(fixture.remoteHead(workspace)).isEqualTo(beforeRecovery);
+            } else {
+                assertThat(candidates).containsExactly(candidates.getFirst(), candidates.getFirst());
+                assertThat(fixture.remoteHead(workspace).name()).isEqualTo(retained.commit());
+            }
+            // Repeating recovery observes the retained commit; it never creates another write.
+            service.recover(principal, workspace, patch, retained);
+            assertThat(candidates).hasSize(delivered ? 1 : 2);
+        }
+    }
+
+    @Test
+    void recoveryRejectsAlteredPatchAndDivergedRemoteWithoutPushing() throws Exception {
+        var offline = new java.util.concurrent.atomic.AtomicBoolean();
+        var pushes = new AtomicInteger();
+        var delegate = new JGitRemoteGitTransport();
+        var fixture = new RemoteRepositoryFixture(directory, new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                if (offline.get()) throw new RemoteGitTransportException("offline");
+                return delegate.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
+                pushes.incrementAndGet();
+                offline.set(true);
+                throw new RemoteGitTransportException("lost reply before push");
+            }
+        });
+        ObjectId base = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("before")));
+        var patch = patch(base, update("private/note.md", "before", "retained"));
+        var service = service(fixture, (id, snapshot) -> {});
+        var unknown = org.assertj.core.api.Assertions.catchThrowableOfType(
+                RepositoryWriteAmbiguousException.class, () -> service.apply(principal, workspace, patch));
+        var retained = unknown.attempt().orElseThrow();
+        offline.set(false);
+        assertThatThrownBy(() -> service.recover(
+                        principal,
+                        workspace,
+                        patch(base, update("private/note.md", "before", "changed-after-unknown")),
+                        retained))
+                .isInstanceOf(IllegalArgumentException.class);
+        ObjectId other = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("competing")));
+        assertThatThrownBy(() -> service.recover(principal, workspace, patch, retained))
+                .isInstanceOf(RepositoryConflictException.class);
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(other);
+        assertThat(pushes).hasValue(1);
+    }
+
+    @Test
     void lostSuccessfulReplyWithLockedLocalRefStillReportsRemoteAcknowledgement() throws Exception {
         AtomicInteger pushes = new AtomicInteger();
         var delegate = new JGitRemoteGitTransport();

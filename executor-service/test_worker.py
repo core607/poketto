@@ -3,6 +3,16 @@ import json
 import threading
 import unittest
 import uuid
+import os
+import tempfile
+import time
+from unittest.mock import patch
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from bridge import LeaseBridge
+from cli import call
+from session_files import capture_text
+from binary_capture import BinaryCapture
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from worker import Service
@@ -22,6 +32,7 @@ class Backend:
         self.executed = []
         self.closed = []
         self.wait = None
+        self.entered = threading.Event()
 
     def open(self, session, data):
         self.opened.append(session.id)
@@ -30,6 +41,7 @@ class Backend:
 
     def execute(self, session, data):
         self.executed.append(data)
+        self.entered.set()
         if self.wait:
             self.wait.wait(3)
         return {'exitCode': 0, 'terminationReason': session.reason}
@@ -37,8 +49,195 @@ class Backend:
     def close(self, session):
         self.closed.append(session.id)
 
+    def capture(self, session, writes, deletes):
+        return capture_text(self.root, writes, deletes)
+
+    def capture_binary(self, session, path):
+        return BinaryCapture(self.root, path)
+
+    def mount_path(self, session):
+        return self.root
+
+    def install(self, session, incoming):
+        return incoming.install(os.getuid(), os.getgid())
+
 
 class ProtocolTests(unittest.TestCase):
+    def test_hello_advertises_the_codeact_bridge_contract(self):
+        response = self.service.hello()
+        self.assertEqual(1, response['version'])
+        self.assertEqual(1, response['codeActProtocol'])
+
+    def test_signed_binary_capture_releases_its_protected_file(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            source = bytes(range(256))
+            (repository / 'source').write_bytes(source)
+            captured = self.send(self.payload('CAPTURE_BINARY', {'executionId': session.execution_id, 'path': 'source'}))
+            self.assertTrue(captured['ok'], captured)
+            reference = {'executionId': session.execution_id, 'captureId': captured['captureId']}
+            (repository / 'source').write_bytes(b'later edit')
+            chunk = self.send(self.payload('CAPTURE_READ', {**reference, 'index': 0, 'offset': 0, 'limit': 65536}))
+            self.assertEqual(source, base64.b64decode(chunk['data']))
+            self.assertTrue(self.send(self.payload('CAPTURE_RELEASE', reference))['ok'])
+            self.assertFalse(list(self.backend.root.glob('outgoing-*')))
+
+    def test_signed_materialization_is_scoped_and_retains_an_acknowledged_install(self):
+        import hashlib
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            content = b'host selected contents'
+            request = self.payload('MATERIALIZE_BEGIN', {'executionId': session.execution_id, 'path': 'new.md',
+                'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(), 'expectedSha256': None, 'delete': False, 'allowIdentical': False})
+            result = self.send(request)
+            self.assertTrue(result['ok'], result)
+            reference = {'executionId': session.execution_id, 'transferId': result['transferId']}
+            self.assertEqual('MATERIALIZE_IN_PROGRESS', self.send(self.payload('MATERIALIZE_BEGIN', request['data']))['code'])
+            chunk = self.payload('MATERIALIZE_CHUNK', {**reference, 'offset': 0, 'data': base64.b64encode(content).decode()})
+            foreign = {**chunk, 'requestId': uid(), 'serverSessionHash': 'f' * 64}
+            self.assertEqual('SESSION_NOT_FOUND', self.send(foreign)['code'])
+            wrong = self.payload('MATERIALIZE_COMMIT', {**reference, 'executionId': uid()})
+            self.assertEqual('EXECUTION_MISMATCH', self.send(wrong)['code'])
+            self.assertTrue(self.send(chunk)['ok'])
+            self.assertFalse((repository / 'new.md').exists())
+            installed = self.send(self.payload('MATERIALIZE_COMMIT', reference))
+            self.assertTrue(installed['ok'], installed)
+            self.assertEqual(content, (repository / 'new.md').read_bytes())
+            (repository / 'new.md').write_text('subsequent local edit')
+            repeated = self.send(self.payload('MATERIALIZE_COMMIT', reference))
+            self.assertEqual(installed['installed'], repeated['installed'])
+            self.assertEqual('subsequent local edit', (repository / 'new.md').read_text())
+            self.assertTrue(self.send(self.payload('MATERIALIZE_ABORT', reference))['ok'])
+            self.assertIsNone(session.incoming)
+            self.assertFalse(list(self.backend.root.glob('incoming-*')))
+
+    def test_materialization_io_failures_are_classified_without_losing_local_edits(self):
+        import errno
+        import hashlib
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            (repository / 'retained.md').write_bytes(b'unsaved local edit')
+            data = {'executionId': session.execution_id, 'path': 'new.md', 'bytes': 1,
+                    'sha256': hashlib.sha256(b'x').hexdigest(), 'expectedSha256': None,
+                    'delete': False, 'allowIdentical': False}
+            with patch('materialize.os.open', side_effect=OSError(errno.ENOSPC, 'fixture full')):
+                failed = self.send(self.payload('MATERIALIZE_BEGIN', data))
+            self.assertEqual('MATERIALIZE_REJECTED', failed['code'])
+            self.assertIsNone(session.incoming)
+            created = self.send(self.payload('MATERIALIZE_BEGIN', data))
+            self.assertTrue(created['ok'], created)
+            reference = {'executionId': session.execution_id, 'transferId': created['transferId']}
+            self.assertTrue(self.send(self.payload('MATERIALIZE_CHUNK',
+                {**reference, 'offset': 0, 'data': base64.b64encode(b'x').decode()}))['ok'])
+            with patch('materialize.os.pread', side_effect=OSError(errno.EIO, 'fixture read failure')):
+                failed = self.send(self.payload('MATERIALIZE_COMMIT', reference))
+            self.assertEqual('MATERIALIZE_REJECTED', failed['code'])
+            self.assertTrue(self.send(self.payload('MATERIALIZE_ABORT', reference))['ok'])
+            self.assertFalse(session.cancelled.is_set())
+            self.assertEqual(b'unsaved local edit', (repository / 'retained.md').read_bytes())
+            self.assertFalse((repository / 'new.md').exists())
+            self.assertFalse(list(self.backend.root.glob('incoming-*')))
+
+    def test_selected_capture_is_immutable_chunked_and_bound_to_execution_and_identity(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id, session.unit = 'RUNNING', uid(), 'owned-unit'
+        with tempfile.TemporaryDirectory() as temporary:
+            self.backend.root = Path(temporary)
+            repository = self.backend.root / 'work/repository'
+            repository.mkdir(parents=True)
+            original = ('猫\r\n' * 30000).encode()
+            (repository / 'selected.md').write_bytes(original)
+            (repository / 'unselected.md').write_text('Keep me')
+            request = self.payload('CAPTURE_BEGIN', {'executionId': session.execution_id,
+                'writes': ['selected.md'], 'deletes': ['removed.md']})
+            result = self.send(request)
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(['selected.md'], [item['path'] for item in result['writes']])
+            self.assertEqual(('removed.md',), result['deletes'])
+            (repository / 'selected.md').write_text('Changed after capture')
+            reference = {'executionId': session.execution_id, 'captureId': result['captureId']}
+            self.assertEqual('CAPTURE_IN_PROGRESS', self.send(self.payload('CAPTURE_BEGIN', request['data']))['code'])
+            read = self.payload('CAPTURE_READ', {**reference, 'index': 0, 'offset': 0, 'limit': 65536})
+            foreign = {**read, 'requestId': uid(), 'serverSessionHash': 'f' * 64}
+            self.assertEqual('SESSION_NOT_FOUND', self.send(foreign)['code'])
+            wrong_execution = self.payload('CAPTURE_READ', {**read['data'], 'executionId': uid()})
+            self.assertEqual('EXECUTION_MISMATCH', self.send(wrong_execution)['code'])
+            captured = bytearray()
+            while len(captured) < len(original):
+                chunk = self.send(self.payload('CAPTURE_READ', {**read['data'], 'offset': len(captured)}))
+                self.assertTrue(chunk['ok'], chunk)
+                captured.extend(base64.b64decode(chunk['data']))
+            self.assertEqual(original, captured)
+            self.assertTrue(self.send(self.payload('CAPTURE_RELEASE', reference))['ok'])
+            self.assertEqual('CAPTURE_NOT_FOUND', self.send(self.payload('CAPTURE_READ', read['data']))['code'])
+
+    def test_signed_bridge_poll_and_completion_work_while_command_holds_operation_lock(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        with tempfile.TemporaryDirectory() as temporary, ThreadPoolExecutor() as pool:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            self.backend.wait = threading.Event()
+            execution = self.execution()
+            running = pool.submit(self.send, execution)
+            try:
+                self.assertTrue(self.backend.entered.wait(2))
+                client = pool.submit(call, session.bridge.path, 'status', {}, 3)
+                polled = self.send(self.payload('BRIDGE_POLL'))
+                self.assertTrue(polled['ok'])
+                self.assertEqual('RUNNING', polled['state'])
+                self.assertEqual(execution['data']['executionId'], polled['executionId'])
+                self.assertTrue(self.send(self.payload('RENEW'))['ok'])
+                completion = {'bridgeRequestId': polled['bridgeRequest']['requestId'],
+                    'executionId': uid(), 'response': {'ok': True}}
+                self.assertEqual('EXECUTION_MISMATCH', self.send(self.payload('BRIDGE_COMPLETE', completion))['code'])
+                completion['executionId'] = execution['data']['executionId']
+                self.assertTrue(self.send(self.payload('BRIDGE_COMPLETE', completion))['ok'])
+                self.assertEqual({'ok': True}, client.result(timeout=3))
+            finally:
+                self.backend.wait.set()
+                running.result(timeout=3)
+                session.bridge.close()
+
+    def test_bridge_poll_during_command_input_cleanup_does_not_cancel_the_lease(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id = 'RUNNING', uid()
+        with tempfile.TemporaryDirectory() as temporary:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            try:
+                # reset_command owns reader while draining completed command input.
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    with session.bridge.reader:
+                        pending = pool.submit(self.send, self.payload('BRIDGE_POLL', {}))
+                        deadline = time.monotonic() + 1
+                        while not pending.done() and not session.cancelled.is_set() and time.monotonic() < deadline:
+                            threading.Event().wait(.01)
+                    result = pending.result(timeout=2)
+                self.assertTrue(result['ok'], result)
+                self.assertIsNone(result['bridgeRequest'])
+                self.assertFalse(session.cancelled.is_set())
+                self.assertEqual('RUNNING', session.state)
+                self.assertTrue(self.send(self.payload('BRIDGE_POLL', {}))['ok'])
+                self.assertFalse(session.bridge.closed)
+            finally:
+                session.bridge.close()
+
     def setUp(self):
         self.key = Ed25519PrivateKey.generate()
         self.backend = Backend()

@@ -40,7 +40,7 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 [目录导航](2026-09-08-repository-directory-navigation.md)在读取授权下分页返回 Git 的直接子条目，无须执行服务。内容仓库自己的 `AGENTS.md` 提供可选的渐进式指引，服务端不解释其正文。
 
-文件使用仓库相对路径，无须 frontmatter ID。`get_file` 将权威 UTF-8 字节作为文本返回，并提供解析出的 commit、服务端 revision、诊断与明确的 expected-absence。`repo_patch` 检查 base commit，以及每个变更路径的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。执行会话固定于解析出的 commit，命令不能改变权威读取的结果。第一阶段记录定义完整的工具、取消、权限与验收契约。
+文件使用仓库相对路径，无须 frontmatter ID。`get_file` 将权威 UTF-8 字节作为文本返回，并提供解析出的 commit、服务端 revision、诊断与明确的 expected-absence。`repo_patch` 检查 base commit，以及每个变更路径的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通文件编辑留在本地，由服务端介入的 `poketto` CLI 对媒体操作、选定文件保存、单文件合并和不确定写入恢复执行授权。保存使用各文件独立的基线并保留未选中的本地编辑；权威读取不会读取沙箱副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
 
 ## 后续访客问答设计
 
@@ -58,7 +58,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 第一阶段资产契约取代最初仅用 hash 引用与图片索引的选型。本地托管原图在 Git 之外按工作空间存储，使用不可变的资产标识与 revision 引用。Git 图片保持只读，按需物化到可丢弃缓存。公开授权绑定页面快照和精确图片版本，最长五分钟且不超过快照有效期；私有读取重新验证当前权限。所有已确认的托管原图均保留。图片加工、pHash、图片描述与持久化图片索引不在本次交付范围内。
 
-[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。CodeAct 按需取件和可移植导出仍由 [CodeAct 内容与媒体提案](../proposed/2026-09-09-codeact-content-and-media.md)定义。
+[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。可移植导出仍由 [CodeAct 内容与媒体提案](../proposed/2026-09-09-codeact-content-and-media.md)定义。
 
 ## 技术栈
 

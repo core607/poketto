@@ -1,0 +1,214 @@
+package io.github.core607.poketto.executor.internal;
+
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPatchResult;
+import io.github.core607.poketto.content.RepositoryPatchService;
+import io.github.core607.poketto.content.RepositoryTextChange;
+import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
+import io.github.core607.poketto.content.RepositoryWriteAttempt;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/** Uses only authoritative revisions; sandbox Git refs and indexes never supply write preconditions. */
+final class SelectedFileSaves {
+    private final AuthService auth;
+    private final AuthorizedRepositoryReader reader;
+    private final RepositoryPatchService patches;
+
+    SelectedFileSaves(AuthService auth, AuthorizedRepositoryReader reader, RepositoryPatchService patches) {
+        this.auth = auth;
+        this.reader = reader;
+        this.patches = patches;
+    }
+
+    Map<String, ?> save(
+            AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
+        auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
+        if (state.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+        var paths = new HashSet<>(writes.keySet());
+        if (writes.size() + deletes.size() < 1
+                || writes.size() + deletes.size() > RepositoryPatch.MAX_CHANGES
+                || deletes.stream().anyMatch(path -> !paths.add(path)))
+            throw new IllegalArgumentException("Select distinct files within the save bound");
+        var changes = new ArrayList<RepositoryTextChange>();
+        state.requireTracking(paths);
+        for (String path : paths) {
+            String expectedCommit = state.baseline(path);
+            var baseline = reader.getFile(actor, workspace, Optional.of(expectedCommit), path);
+            if (!baseline.commit().equals(Optional.of(expectedCommit))
+                    || (!baseline.expectedAbsence() && baseline.revision().isEmpty()))
+                throw new IllegalArgumentException("Selected path has no writable text baseline");
+            changes.add(new RepositoryTextChange(
+                    path, baseline.expectedAbsence(), baseline.revision(), Optional.ofNullable(writes.get(path))));
+        }
+        RepositoryPatch patch = new RepositoryPatch(Optional.of(state.baseCommit), changes);
+        try {
+            var result = patches.apply(actor, workspace, patch);
+            // Only these selected files changed in the new authoritative tree. All other local
+            // edits retain their old authoritative contents as their next save preconditions.
+            completed(state, result, List.copyOf(paths), false);
+        } catch (RepositoryWriteAmbiguousException unknown) {
+            state.pending = patch;
+            state.attempt = unknown.attempt();
+            state.uncertain = true;
+            state.lastSave = Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "WRITE_OUTCOME_UNKNOWN",
+                    "message",
+                    "Run poketto recover to reconcile the retained commit before another save; local edits are retained.");
+        } catch (RepositoryConflictException conflict) {
+            state.lastSave = Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "REPOSITORY_CONFLICT",
+                    "message",
+                    "Remote main changed; local edits and the host baseline are retained.");
+        }
+        return state.lastSave;
+    }
+
+    Map<String, ?> recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
+        if (!state.uncertain) return Map.of("ok", true, "result", Map.of("recoveryNeeded", false));
+        if (state.pending == null || state.attempt.isEmpty())
+            return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+        try {
+            var result = patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
+            completed(
+                    state,
+                    result,
+                    state.pending.changes().stream()
+                            .map(RepositoryTextChange::path)
+                            .toList(),
+                    true);
+        } catch (RepositoryWriteAmbiguousException unknown) {
+            // Retain the same original patch and commit even if the recovery reply is also lost.
+            state.lastSave = Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+        } catch (RepositoryConflictException conflict) {
+            state.uncertain = false;
+            state.pending = null;
+            state.attempt = Optional.empty();
+            state.lastSave = Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "REPOSITORY_CONFLICT",
+                    "message",
+                    "Remote main diverged from the retained attempt; local edits and baseline are retained.");
+        }
+        return state.lastSave;
+    }
+
+    private static void completed(State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
+        state.baseCommit = result.commit();
+        paths.forEach(path -> state.baselines.put(path, result.commit()));
+        state.uncertain = false;
+        state.pending = null;
+        state.attempt = Optional.empty();
+        state.lastSave = Map.of(
+                "ok",
+                true,
+                "result",
+                Map.of(
+                        "commit",
+                        result.commit(),
+                        "committed",
+                        result.committed(),
+                        "snapshotUpdated",
+                        result.snapshotUpdated(),
+                        "paths",
+                        paths,
+                        "recovered",
+                        recovered));
+    }
+
+    /** Confined to one session's admitted execute owner and its serial bridge loop; renewal never accesses it. */
+    static final class State {
+        private final String originalCommit;
+        private final Map<String, String> baselines = new java.util.HashMap<>();
+        String baseCommit;
+        boolean uncertain;
+        RepositoryPatch pending;
+        Optional<RepositoryWriteAttempt> attempt = Optional.empty();
+        Map<String, ?> lastSave = Map.of();
+
+        State(String baseCommit) {
+            this.originalCommit = baseCommit;
+            this.baseCommit = baseCommit;
+        }
+
+        String baseline(String path) {
+            return baselines.getOrDefault(path, originalCommit);
+        }
+
+        void requireTracking(java.util.Collection<String> paths) {
+            long additional = paths.stream()
+                    .distinct()
+                    .filter(path -> !baselines.containsKey(path))
+                    .count();
+            if (baselines.size() + additional > 16384)
+                throw new IllegalArgumentException("session baseline capacity exhausted");
+        }
+    }
+
+    SyncPlan prepareSync(AuthPrincipal actor, WorkspaceId workspace, State state, String path, Optional<String> local) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        if (state.uncertain) throw new IllegalArgumentException("recover the uncertain save before synchronizing");
+        state.requireTracking(List.of(path));
+        String previous = state.baseline(path);
+        var original = reader.getFile(actor, workspace, Optional.of(previous), path);
+        var remote = reader.getFile(actor, workspace, Optional.empty(), path);
+        if ((!original.expectedAbsence() && original.source().isEmpty())
+                || (!remote.expectedAbsence() && remote.source().isEmpty())
+                || remote.commit().isEmpty())
+            throw new IllegalArgumentException("synchronization requires a text path and an existing remote commit");
+        var merged = TextReconciliation.merge(original.source(), local, remote.source());
+        return new SyncPlan(
+                path,
+                state.baseCommit,
+                previous,
+                remote.commit().orElseThrow(),
+                local.map(value -> io.github.core607.poketto.content.DocumentRevision.sha256(
+                                value.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        .value()
+                        .substring(7)),
+                merged.content(),
+                merged.conflicted());
+    }
+
+    io.github.core607.poketto.content.RepositoryFile baselineFile(
+            AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
+        return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
+    }
+
+    void acknowledgeSync(State state, SyncPlan plan) {
+        if (state.uncertain
+                || !state.baseCommit.equals(plan.previousCommit())
+                || !state.baseline(plan.path()).equals(plan.previousPathCommit()))
+            throw new IllegalStateException("session baseline changed during synchronization");
+        state.requireTracking(List.of(plan.path()));
+        state.baselines.put(plan.path(), plan.remoteCommit());
+        state.baseCommit = plan.remoteCommit();
+    }
+
+    record SyncPlan(
+            String path,
+            String previousCommit,
+            String previousPathCommit,
+            String remoteCommit,
+            Optional<String> expectedLocalSha256,
+            Optional<String> content,
+            boolean conflicted) {}
+}

@@ -17,6 +17,7 @@ import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
+import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
@@ -79,9 +80,29 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
 
     @Override
     public RepositoryPatchResult apply(AuthPrincipal principal, WorkspaceId workspace, RepositoryPatch patch) {
+        return apply(principal, workspace, patch, Optional.empty());
+    }
+
+    @Override
+    public RepositoryPatchResult recover(
+            AuthPrincipal principal, WorkspaceId workspace, RepositoryPatch patch, RepositoryWriteAttempt attempt) {
+        auth.authorize(principal, workspace, Capability.READ_PRIVATE);
+        return apply(principal, workspace, patch, Optional.of(attempt));
+    }
+
+    private RepositoryPatchResult apply(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryPatch patch,
+            Optional<RepositoryWriteAttempt> recovery) {
         Map<String, byte[]> replacements = validate(patch);
         return write(
-                principal, workspace, patch.baseCommit(), Set.of(Capability.WRITE_PRIVATE), (repository, index) -> {
+                principal,
+                workspace,
+                patch.baseCommit(),
+                Set.of(Capability.WRITE_PRIVATE),
+                recovery,
+                (repository, index) -> {
                     checkBase(repository, index, patch);
                     Set<String> deletions = new HashSet<>();
                     patch.changes().stream()
@@ -102,6 +123,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                 workspace,
                 Optional.of(request.baseCommit()),
                 Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE),
+                Optional.empty(),
                 (repository, index) -> RepositoryMovePlanner.prepare(
                         repository, index, request, policy(repository, index), mediaIndex(repository, index)));
     }
@@ -111,15 +133,17 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             WorkspaceId workspace,
             Optional<String> baseCommit,
             Set<Capability> capabilities,
+            Optional<RepositoryWriteAttempt> recovery,
             Preparer preparer) {
         boolean[] acknowledged = {false};
+        RepositoryWriteAttempt[] attempt = {null};
         try {
             return auth.withAuthorization(
                     principal,
                     workspace,
                     capabilities,
                     () -> authority.writeObjects(workspace, (snapshot, advancer) -> {
-                        if (!snapshot.commitId().equals(baseCommit)) {
+                        if (recovery.isEmpty() && !snapshot.commitId().equals(baseCommit)) {
                             throw new RepositoryConflictException(
                                     "repository base commit changed; read current files before retrying");
                         }
@@ -128,9 +152,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                                 RevWalk walk = new RevWalk(repository);
                                 var reader = repository.newObjectReader();
                                 ObjectInserter inserter = repository.newObjectInserter()) {
-                            ObjectId base = snapshot.commitId()
-                                    .map(ObjectId::fromString)
-                                    .orElse(ObjectId.zeroId());
+                            ObjectId base = baseCommit.map(ObjectId::fromString).orElse(ObjectId.zeroId());
                             requireBoundedTree(repository, base);
                             DirCache index = base.equals(ObjectId.zeroId())
                                     ? DirCache.newInCore()
@@ -222,6 +244,9 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                             if (!base.equals(ObjectId.zeroId())
                                     && tree.equals(
                                             walk.parseCommit(base).getTree().getId())) {
+                                if (recovery.isPresent())
+                                    throw new IllegalArgumentException(
+                                            "retained attempt cannot describe an unchanged tree");
                                 return new RepositoryPatchResult(base.name(), false, false, revisions);
                             }
                             CommitBuilder candidate = new CommitBuilder();
@@ -238,8 +263,56 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                                     principal.subjectId().toString());
                             candidate.setMessage("Apply repository changes\n\nPoketto-Principal: "
                                     + attribution.trailerValue() + "\n");
-                            ObjectId commit = inserter.insert(candidate);
+                            byte[] commitBytes = recovery.isPresent()
+                                    ? recovery.orElseThrow().object()
+                                    : candidate.build();
+                            ObjectId commit = inserter.insert(Constants.OBJ_COMMIT, commitBytes);
                             inserter.flush();
+                            if (recovery.isPresent()) {
+                                var retained = recovery.orElseThrow();
+                                var parsed = walk.parseCommit(commit);
+                                if (!commit.name().equals(retained.commit())
+                                        || !parsed.getTree().equals(tree)
+                                        || parsed.getParentCount() != (base.equals(ObjectId.zeroId()) ? 0 : 1)
+                                        || (parsed.getParentCount() == 1
+                                                && !parsed.getParent(0).equals(base))
+                                        || !parsed.getFullMessage().equals(candidate.getMessage())
+                                        || !parsed.getAuthorIdent().getName().equals(author.getName())
+                                        || !parsed.getAuthorIdent()
+                                                .getEmailAddress()
+                                                .equals(author.getEmailAddress())
+                                        || !parsed.getCommitterIdent().getName().equals(author.getName())
+                                        || !parsed.getCommitterIdent()
+                                                .getEmailAddress()
+                                                .equals(author.getEmailAddress()))
+                                    throw new IllegalArgumentException(
+                                            "retained attempt does not match the authorized patch");
+                                attempt[0] = retained;
+                                ObjectId current = snapshot.commitId()
+                                        .map(ObjectId::fromString)
+                                        .orElse(ObjectId.zeroId());
+                                if (!current.equals(ObjectId.zeroId())
+                                        && walk.isMergedInto(parsed, walk.parseCommit(current))) {
+                                    // Reconciliation reads current remote history and never pushes a duplicate.
+                                    // A later remote edit must not be hidden by installing the older candidate.
+                                    acknowledged[0] = true;
+                                    boolean installed = false;
+                                    try {
+                                        installAcknowledged.accept(workspace, snapshot);
+                                        installed = true;
+                                    } catch (RuntimeException unavailable) {
+                                        log.warn(
+                                                "workspace {} recovered commit {} but current snapshot installation failed",
+                                                workspace,
+                                                commit.name());
+                                    }
+                                    return new RepositoryPatchResult(commit.name(), true, installed, revisions);
+                                }
+                                if (!snapshot.commitId().equals(baseCommit))
+                                    throw new RepositoryConflictException(
+                                            "remote main diverged from the retained write attempt");
+                            }
+                            attempt[0] = new RepositoryWriteAttempt(commit.name(), commitBytes);
                             // Close the prior authorization before a remote outcome can become uncertain.
                             // Failure to persist this marker must prevent the push itself.
                             if (needsPublish) closePublication.accept(workspace, snapshot);
@@ -266,9 +339,12 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                         }
                     }));
         } catch (RuntimeException exception) {
+            if (exception instanceof RepositoryWriteAmbiguousException unknown && attempt[0] != null)
+                throw new RepositoryWriteAmbiguousException(unknown.getMessage(), attempt[0]);
             if (acknowledged[0]) {
                 throw new RepositoryWriteAmbiguousException(
-                        "remote acknowledged the patch but local completion failed; read remote main before retrying");
+                        "remote acknowledged the patch but local completion failed; read remote main before retrying",
+                        attempt[0]);
             }
             throw exception;
         }

@@ -60,7 +60,7 @@ def main():
     config_path = root / 'worker.json'
     worker_config = None
     evidence = []
-    for name in ('worker.py', 'launcher.py', 'resource_pool.py'):
+    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -193,7 +193,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
             created_users.append(user)
         app_account, exec_account = pwd.getpwnam(app_user), pwd.getpwnam(exec_user)
-        for name in ('exports', 'control', 'fake-inbox'):
+        for name in ('exports', 'control', 'fake-inbox', 'public-fixture'):
             directory = root / name
             directory.mkdir(mode=0o700)
             os.chown(directory, app_account.pw_uid, app_account.pw_gid)
@@ -245,6 +245,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         java_config.write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
+            'publicFixture': str(root / 'public-fixture'),
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
@@ -257,6 +258,10 @@ with socket.socket(socket.AF_UNIX) as connection:
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
+            'bridgeSha256': digest(root / 'bridge.py'), 'cliSha256': digest(root / 'cli.py'),
+            'sessionFilesSha256': digest(root / 'session_files.py'),
+            'materializeSha256': digest(root / 'materialize.py'),
+            'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only'}), flush=True)
     finally:

@@ -51,6 +51,156 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void overlappingCallsCannotShareOneSessionSaveState() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.stallExec = true;
+            var first = CompletableFuture.supplyAsync(() -> executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "shared",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation()));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "shared",
+                            Optional.empty(),
+                            "poketto save note.md",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+            assertThat(peer.operations("EXEC")).hasSize(1);
+        }
+    }
+
+    @Test
+    void incompatibleWorkerIsRejectedBeforeOpeningOrExportingContent() throws Exception {
+        var exports = exports();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports, peer)) {
+            peer.codeActProtocol = 0;
+            assertThatThrownBy(() -> executor.execute(
+                            principal(),
+                            WORKSPACE,
+                            "unsupported",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(peer.operations("OPEN")).isEmpty();
+            verify(exports, never()).create(any(), any(), any());
+            verify(exports, never()).createPublic(any(), any());
+            peer.codeActProtocol = 2;
+            assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
+            peer.codeActProtocol = 1;
+            assertThat(peer.client().hello().workerBootId()).isEqualTo(peer.boot);
+        }
+    }
+
+    @Test
+    void publicReadersOpenOnlyProjectionAndCannotSelectSourceHistoryOrSilentlyUpgrade() throws Exception {
+        AuthService auth = fullAuth();
+        when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        WORKSPACE,
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                        Set.of(Capability.EXECUTE_REPOSITORY)));
+        var exports = exports();
+        var projection = new RepositorySnapshotExports.PublicExport(
+                WORKSPACE,
+                new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128),
+                "c".repeat(40),
+                "d".repeat(64),
+                Map.of("article/index.md", "public/article.md"),
+                Map.of());
+        when(exports.createPublic(any(), eq(WORKSPACE))).thenReturn(projection);
+        try (var peer = new Peer();
+                var executor = executor(auth, exports, peer)) {
+            var principal = principal();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "historical",
+                            Optional.of("c".repeat(40)),
+                            "git log",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(peer.requests).isEmpty();
+            var result = executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "public",
+                    Optional.empty(),
+                    "git log",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            assertThat(result.commit()).isEqualTo(COMMIT);
+            when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
+                    .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                            WORKSPACE,
+                            call.getArgument(0),
+                            io.github.core607.poketto.auth.MembershipRole.OWNER,
+                            Set.of(Capability.EXECUTE_REPOSITORY, Capability.READ_PRIVATE)));
+            executor.execute(
+                    principal, WORKSPACE, "public", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
+            verify(exports, never()).create(any(), any(), any());
+            verify(exports, times(1)).createPublic(principal, WORKSPACE);
+            verify(exports, atLeast(3)).requireCurrentPublic(principal, WORKSPACE, projection);
+            verify(exports).release(projection.export().exportId());
+            assertThat(peer.operations("OPEN")).hasSize(1);
+        }
+    }
+
+    @Test
+    void withdrawnPublicProjectionSuppressesCompletedOutputAndClosesLease() throws Exception {
+        AuthService auth = fullAuth();
+        when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        WORKSPACE,
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                        Set.of(Capability.EXECUTE_REPOSITORY)));
+        var exports = exports();
+        var projection = new RepositorySnapshotExports.PublicExport(
+                WORKSPACE,
+                new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128),
+                "c".repeat(40),
+                "d".repeat(64),
+                Map.of(),
+                Map.of());
+        when(exports.createPublic(any(), any())).thenReturn(projection);
+        try (var peer = new Peer();
+                var executor = executor(auth, exports, peer)) {
+            doAnswer(call -> {
+                        if (!peer.operations("EXEC").isEmpty()) throw new SecurityException("publication withdrawn");
+                        return null;
+                    })
+                    .when(exports)
+                    .requireCurrentPublic(any(), any(), any());
+            assertThatThrownBy(() -> executor.execute(
+                            principal(),
+                            WORKSPACE,
+                            "public",
+                            Optional.empty(),
+                            "cat article/index.md",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOf(SecurityException.class);
+            assertThat(peer.operations("EXEC")).hasSize(1);
+            assertThat(peer.operations("CLOSE")).isNotEmpty();
+        }
+    }
+
+    @Test
     void peerShutdownStillReportsAssertionsFromActualSocketHandling() throws Exception {
         var peer = new Peer();
         peer.assertOnHelloShutdown = true;
@@ -68,7 +218,7 @@ class WorkerSocketTests {
 
     @Test
     void signsExactFramesPinsEachClientAndReleasesExportsAfterOpening() throws Exception {
-        var auth = mock(AuthService.class);
+        var auth = fullAuth();
         var exports = exports();
         var principal = principal();
         try (var peer = new Peer();
@@ -126,7 +276,7 @@ class WorkerSocketTests {
 
     @Test
     void renewsWhileOpenIsPendingAndCancellationWaitsPastClosingWithoutExecuting() throws Exception {
-        var auth = mock(AuthService.class);
+        var auth = fullAuth();
         var exports = exports();
         try (var peer = new Peer();
                 var executor = executor(auth, exports, peer)) {
@@ -157,7 +307,7 @@ class WorkerSocketTests {
     void lostExecReplyIsNeverReplayedAndLeavesTheSessionUnusable() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
-                var executor = executor(mock(AuthService.class), exports(), peer)) {
+                var executor = executor(fullAuth(), exports(), peer)) {
             peer.dropExec = true;
             assertThatThrownBy(() -> executor.execute(
                             principal,
@@ -187,7 +337,7 @@ class WorkerSocketTests {
     void revocationSendsWorkspaceTombstonesAndStopsActiveLeases() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
-                var executor = executor(mock(AuthService.class), exports(), peer)) {
+                var executor = executor(fullAuth(), exports(), peer)) {
             executor.execute(
                     principal,
                     WORKSPACE,
@@ -219,7 +369,7 @@ class WorkerSocketTests {
 
     @Test
     void unauthorizedOrAlreadyCancelledCallsNeverContactTheWorker() throws Exception {
-        var auth = mock(AuthService.class);
+        var auth = fullAuth();
         var principal = principal();
         try (var peer = new Peer();
                 var executor = executor(auth, exports(), peer)) {
@@ -250,9 +400,27 @@ class WorkerSocketTests {
         }
     }
 
+    private static AuthService fullAuth() {
+        AuthService auth = mock(AuthService.class);
+        when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY)));
+        return auth;
+    }
+
     private static IsolatedRepositoryExecutor executor(AuthService auth, RepositorySnapshotExports exports, Peer peer) {
         return new IsolatedRepositoryExecutor(
-                auth, exports, peer.client(), 8, Duration.ofSeconds(8), Duration.ofSeconds(3));
+                mock(io.github.core607.poketto.assets.MediaFileService.class),
+                mock(SelectedFileSaves.class),
+                auth,
+                exports,
+                peer.client(),
+                8,
+                Duration.ofSeconds(8),
+                Duration.ofSeconds(3));
     }
 
     @Test
@@ -266,7 +434,7 @@ class WorkerSocketTests {
             return new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128);
         });
         try (var peer = new Peer();
-                var executor = executor(mock(AuthService.class), exports, peer)) {
+                var executor = executor(fullAuth(), exports, peer)) {
             var cancellation = new Cancellation();
             var run = CompletableFuture.runAsync(() -> executor.execute(
                     principal(), WORKSPACE, "exporting", Optional.empty(), "pwd", Duration.ofSeconds(1), cancellation));
@@ -315,9 +483,32 @@ class WorkerSocketTests {
     }
 
     @Test
+    void closedBridgeDoesNotReplaceTheConfirmedCancelledCommandResult() throws Exception {
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.stallExec = true;
+            peer.terminationReason = "cancelled";
+            var cancellation = new Cancellation();
+            var running = CompletableFuture.supplyAsync(() -> executor.execute(
+                    principal(),
+                    WORKSPACE,
+                    "cancel-bridge",
+                    Optional.empty(),
+                    "sleep 10",
+                    Duration.ofSeconds(2),
+                    cancellation));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(peer.bridgeEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            cancellation.cancel();
+            assertThat(running.get(5, TimeUnit.SECONDS).terminationReason())
+                    .isEqualTo(io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason.CANCELLED);
+        }
+    }
+
+    @Test
     void workerLeaseAndLifecycleReasonsMapToExplicitPortResults() throws Exception {
         try (var peer = new Peer();
-                var executor = executor(mock(AuthService.class), exports(), peer)) {
+                var executor = executor(fullAuth(), exports(), peer)) {
             for (String reason : List.of("session_closed", "client_shutdown", "lease_expired")) {
                 peer.terminationReason = reason;
                 var result = executor.execute(
@@ -344,7 +535,9 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        mock(AuthService.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
                         exports(),
                         peer.client(),
                         1,
@@ -391,7 +584,9 @@ class WorkerSocketTests {
                 .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        mock(AuthService.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
                         exports,
                         peer.client(),
                         1,
@@ -425,7 +620,9 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        mock(AuthService.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
                         exports(),
                         peer.client(),
                         1,
@@ -464,7 +661,9 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        mock(AuthService.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
                         exports(),
                         peer.client(),
                         1,
@@ -503,10 +702,17 @@ class WorkerSocketTests {
     @Test
     void closeReconciliationRetainsAdmissionUntilMatchingReplyEvenAfterDetach() throws Exception {
         var principal = principal();
-        var auth = mock(AuthService.class);
+        var auth = fullAuth();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        auth, exports(), peer.client(), 1, Duration.ofSeconds(3), Duration.ofMillis(100))) {
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        auth,
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(3),
+                        Duration.ofMillis(100))) {
             peer.dropClose = true;
             peer.terminationReason = "cancelled";
             assertThatThrownBy(() -> executor.execute(
@@ -575,7 +781,9 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
-                            mock(AuthService.class),
+                            mock(io.github.core607.poketto.assets.MediaFileService.class),
+                            mock(SelectedFileSaves.class),
+                            fullAuth(),
                             exports(),
                             peer.client(),
                             1,
@@ -652,7 +860,9 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        mock(AuthService.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
                         exports(),
                         peer.client(),
                         1,
@@ -710,7 +920,9 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        mock(AuthService.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
                         exports(),
                         peer.client(),
                         1,
@@ -753,7 +965,7 @@ class WorkerSocketTests {
     @Test
     void replacementDecodedOutputRetainsTheFullBoundedWorkerResult() throws Exception {
         try (var peer = new Peer();
-                var executor = executor(mock(AuthService.class), exports(), peer)) {
+                var executor = executor(fullAuth(), exports(), peer)) {
             peer.stdout = "\uFFFD".repeat(65536);
             var result = executor.execute(
                     principal(),
@@ -827,6 +1039,8 @@ class WorkerSocketTests {
         private final CountDownLatch openEntered = new CountDownLatch(1);
         private final CountDownLatch openRelease = new CountDownLatch(1);
         private final CountDownLatch renewEntered = new CountDownLatch(1);
+        private final CountDownLatch execEntered = new CountDownLatch(1);
+        private final CountDownLatch bridgeEntered = new CountDownLatch(1);
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
         private volatile boolean closeForever;
@@ -835,6 +1049,7 @@ class WorkerSocketTests {
         private volatile boolean assertOnHelloShutdown;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
+        private volatile int codeActProtocol = 1;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
@@ -895,6 +1110,8 @@ class WorkerSocketTests {
                             true,
                             "version",
                             1,
+                            "codeActProtocol",
+                            codeActProtocol,
                             "workerBootId",
                             boot,
                             "maxFrameBytes",
@@ -930,9 +1147,16 @@ class WorkerSocketTests {
                     if (response == null) return;
                 }
                 byte[] bytes = json.writeValueAsBytes(response);
-                output.writeInt(bytes.length);
-                output.write(bytes);
-                output.flush();
+                try {
+                    output.writeInt(bytes.length);
+                    output.write(bytes);
+                    output.flush();
+                } catch (java.io.IOException disconnected) {
+                    // A stale-boot poll can reject first and cancel the simultaneous EXEC socket.
+                    // Only that obsolete reply may lose its receiver; parsing and assertions still fail.
+                    if (!(response instanceof Map<?, ?> fields) || !"WORKER_RESTARTED".equals(fields.get("code")))
+                        throw disconnected;
+                }
             } catch (Throwable exception) {
                 recordFailure(exception);
             }
@@ -969,7 +1193,17 @@ class WorkerSocketTests {
                     renewEntered.countDown();
                     response.put("state", states.getOrDefault(lease, "INITIALIZING"));
                 }
+                case "BRIDGE_POLL" -> {
+                    bridgeEntered.countDown();
+                    Thread.sleep(50);
+                    response.put("bridgeRequest", null);
+                    if (states.getOrDefault(lease, "").equals("CLOSED")) {
+                        response.put("ok", false);
+                        response.put("code", "BRIDGE_UNAVAILABLE");
+                    }
+                }
                 case "EXEC" -> {
+                    execEntered.countDown();
                     if (dropExec) return null;
                     if (stallExec) Thread.sleep(500);
                     response.put(

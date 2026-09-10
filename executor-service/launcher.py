@@ -21,7 +21,8 @@ def main():
     os.fchdir(bootstrap_fd)
     os.close(root_fd)
     env = {'HOME': str(root / 'home'), 'TMPDIR': '/tmp',
-           'PATH': f'{tools}:{tools}/extracted/usr/bin:/usr/bin:/bin',
+           'PATH': f'{root}/bootstrap:{tools}:{tools}/extracted/usr/bin:/usr/bin:/bin',
+           'POKETTO_BRIDGE': str(root / 'bridge'),
            'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null'}
     if record['mode'] == 'initialize':
         # Parameters originate in verified server leases, and are passed as positional arguments.
