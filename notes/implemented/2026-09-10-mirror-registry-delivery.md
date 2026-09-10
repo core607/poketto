@@ -26,6 +26,8 @@ The `publish` job completes canonical GHCR publication before an independent `mi
 
 An unset mirror variable skips the job. Mirror login, copy or verification failures cannot invalidate the completed GHCR publication. The deployment configuration gate refuses `mirror` mode unless the mirror job succeeded; `pull` and `transfer` remain usable even when the mirror is unavailable. The mirror job has read-only GitHub package permissions and holds the separate mirror-write credential. Registry logins use standard input and a temporary authentication file deleted at exit.
 
+The copy job runs in the official `quay.io/skopeo/stable` image pinned by digest in the workflow. It has a thirty-minute deadline. The SSH throughput measurements describe the direct server route, not the mirror service's network path; actual mirror duration must be measured before changing this deadline.
+
 Repository configuration: variable `POKETTO_MIRROR_REPOSITORY` (image name prefix, for CNB `docker.cnb.cool/<repository>`), variable `POKETTO_MIRROR_USERNAME` (`cnb` for CNB) and secret `POKETTO_MIRROR_PASSWORD` (a token whose scope covers artifact writes for that repository). The mirror repository holds images built from public source that contain no credentials, so it may be public; a private repository additionally needs the production-environment secret `POKETTO_MIRROR_PULL_PASSWORD` holding a read-only token.
 
 ### Deployment

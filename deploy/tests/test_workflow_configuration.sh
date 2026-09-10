@@ -34,6 +34,9 @@ assert_not_contains "$publication" 'deploy/mirror.sh'
 grep -Fq 'needs: [publish, mirror]' "$workflow"
 grep -Fq "needs.publish.result == 'success'" "$workflow"
 grep -Fq 'mirror mode requires a successful configured mirror job' "$workflow"
+mirror_step="$(sed -n '/^  mirror:/,/^  # Production deployment/p' "$workflow")"
+assert_contains "$mirror_step" 'quay.io/skopeo/stable@sha256:'
+assert_not_contains "$mirror_step" 'apt-get'
 
 grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
