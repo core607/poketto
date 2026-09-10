@@ -60,7 +60,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 第一阶段资产契约取代最初仅用 hash 引用与图片索引的选型。本地托管原图在 Git 之外按工作空间存储，使用不可变的资产标识与 revision 引用。Git 图片保持只读，按需物化到可丢弃缓存。公开授权绑定页面快照和精确图片版本，最长五分钟且不超过快照有效期；私有读取重新验证当前权限。所有已确认的托管原图均保留。图片加工、pHash、图片描述与持久化图片索引不在本次交付范围内。
 
-[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。可移植导出仍由 [CodeAct 内容与媒体提案](../proposed/2026-09-09-codeact-content-and-media.md)定义。
+[存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。浏览器和 CLI 的[可移植导出](../proposed/2026-09-10-portable-content-exports.md)将已保存的文档、经过授权的原件和相对链接打包，最终部署验收仍待完成。
 
 ## 技术栈
 
