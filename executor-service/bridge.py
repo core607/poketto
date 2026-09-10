@@ -1,8 +1,8 @@
-"""Per-lease command mailbox; the application alone authorizes and executes requests."""
+"""Per-lease FIFO requests and protected replies; no socket creation inside SRT."""
 import json
 import os
 from pathlib import Path
-import socket
+import select
 import struct
 import threading
 import time
@@ -10,25 +10,11 @@ import uuid
 
 MAX_FRAME = 512 * 1024
 MAX_PENDING = 4
+MAX_REQUESTS = 256
 OPERATIONS = frozenset(('status', 'save', 'media_fetch', 'media_import', 'move', 'export'))
-
 
 class BridgeRejected(Exception):
     pass
-
-
-def _read(connection, size, deadline):
-    result = bytearray()
-    while len(result) < size:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise BridgeRejected('Bridge deadline exceeded')
-        connection.settimeout(remaining)
-        chunk = connection.recv(size - len(result))
-        if not chunk:
-            raise BridgeRejected('Incomplete bridge frame')
-        result.extend(chunk)
-    return bytes(result)
 
 
 def _object(pairs):
@@ -47,136 +33,140 @@ def encode(value):
     return result
 
 
+def identifier(value):
+    try:
+        if str(uuid.UUID(value)) != value:
+            raise ValueError()
+    except (ValueError, AttributeError, TypeError):
+        raise BridgeRejected('Invalid request identity') from None
+    return value
+
+
 class LeaseBridge:
-    """Bind only below a supervisor-owned lease mount, never inside mutable work.
-
-    The sandbox receives access to this socket alone, not the signed application
-    control socket. Peer UID is an additional check; filesystem/sandbox isolation
-    supplies the per-lease boundary when leases share the execution account.
+    """The supervisor owns this directory outside mutable work; SRT exposes only
+    its request FIFO, advisory lock and read-only response directory to this lease.
+    UID/GID filesystem isolation and native sandbox mounts are required. A client
+    identifier correlates requests only; it never supplies principal or scope.
     """
-    def __init__(self, path, uid, gid):
+    def __init__(self, path, gid):
         self.path = Path(path)
-        self.uid = uid
-        self.condition = threading.Condition()
+        self.gid = gid
+        self.condition = threading.RLock()
+        self.reader = threading.Lock()
+        self.closer = threading.Lock()
         self.pending = {}
-        self.connections = set()
-        self.handlers = set()
+        self.seen = set()
         self.closed = False
-        self.capacity = threading.BoundedSemaphore(MAX_PENDING)
-        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            self.server.bind(str(self.path))
-            self.identity = self.path.lstat().st_ino
-            os.chown(self.path, -1, gid)
-            os.chmod(self.path, 0o660)
-            self.server.listen(MAX_PENDING)
-            self.server.settimeout(0.2)
-        except BaseException:
-            self.server.close()
-            if hasattr(self, 'identity') and self.path.lstat().st_ino == self.identity:
-                self.path.unlink()
-            raise
-        self.listener = threading.Thread(target=self._listen, daemon=True)
-        self.listener.start()
+        self.buffer = bytearray()
+        self.frame_started = None
+        self.path.mkdir(mode=0o750)
+        os.chown(self.path, -1, gid)
+        self.responses = self.path / 'responses'
+        self.responses.mkdir(mode=0o750)
+        os.chown(self.responses, -1, gid)
+        os.mkfifo(self.path / 'requests', 0o620)
+        os.chown(self.path / 'requests', -1, gid)
+        os.chmod(self.path / 'requests', 0o620)
+        lock = os.open(self.path / 'lock', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o440)
+        os.close(lock)
+        os.chown(self.path / 'lock', -1, gid)
+        os.chmod(self.path / 'lock', 0o440)
+        self.input = os.open(self.path / 'requests', os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW)
 
-    def _listen(self):
-        while True:
-            with self.condition:
-                if self.closed:
-                    return
-            try:
-                connection, _ = self.server.accept()
-            except socket.timeout:
-                continue
-            except OSError:
-                return
-            with self.condition:
-                if self.closed or not self.capacity.acquire(blocking=False):
-                    connection.close()
-                    continue
-                handler = threading.Thread(target=self._handle, args=(connection,), daemon=True)
-                self.connections.add(connection)
-                self.handlers.add(handler)
-                handler.start()
-
-    def _handle(self, connection):
-        request_id = None
-        try:
-            _, uid, _ = struct.unpack('3i', connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            if uid != self.uid:
-                raise BridgeRejected('Unexpected command peer')
-            deadline = time.monotonic() + 5
-            size, = struct.unpack('!I', _read(connection, 4, deadline))
-            if not 0 < size <= MAX_FRAME:
-                raise BridgeRejected('Invalid bridge frame')
-            value = json.loads(_read(connection, size, deadline), object_pairs_hook=_object,
-                               parse_constant=lambda _: (_ for _ in ()).throw(BridgeRejected('Invalid JSON value')))
-            if not isinstance(value, dict) or set(value) != {'operation', 'arguments'} or \
-                    not isinstance(value['operation'], str) or value['operation'] not in OPERATIONS or \
-                    not isinstance(value['arguments'], dict):
-                raise BridgeRejected('Invalid bridge request')
-            request_id = str(uuid.uuid4())
-            item = {'request': value, 'dispatched': False, 'response': None}
-            with self.condition:
-                if self.closed:
-                    return
-                self.pending[request_id] = item
-                self.condition.notify_all()
-                completed = self.condition.wait_for(lambda: self.closed or item['response'] is not None, timeout=60)
-                if not completed or self.closed:
-                    return
-                response = item['response']
-            connection.settimeout(2)
-            connection.sendall(struct.pack('!I', len(response)) + response)
-        except (BridgeRejected, OSError, ValueError, RecursionError):
-            pass
-        finally:
-            connection.close()
-            self.capacity.release()
-            with self.condition:
-                if request_id is not None:
-                    self.pending.pop(request_id, None)
-                self.connections.discard(connection)
-                self.handlers.discard(threading.current_thread())
-
-    def poll(self, timeout=0.2):
+    def _message(self, value):
+        if not isinstance(value, dict) or not isinstance(value.get('operation'), str):
+            raise BridgeRejected('Invalid bridge request')
+        request_id = identifier(value.get('requestId'))
         with self.condition:
-            def available():
-                return self.closed or any(not item['dispatched'] for item in self.pending.values())
-            self.condition.wait_for(available, timeout=timeout)
             if self.closed:
                 raise BridgeRejected('Session closed')
-            for request_id, item in self.pending.items():
-                if not item['dispatched']:
-                    item['dispatched'] = True
-                    return {'requestId': request_id, **item['request']}
-            return None
+            if value['operation'] == 'ack':
+                if set(value) != {'operation', 'requestId'}:
+                    raise BridgeRejected('Invalid acknowledgement')
+                item = self.pending.get(request_id)
+                if item is not None and item['completed']:
+                    (self.responses / (request_id + '.json')).unlink(missing_ok=True)
+                    self.pending.pop(request_id)
+                return None
+            if set(value) != {'requestId', 'operation', 'arguments'} or value['operation'] not in OPERATIONS or not isinstance(value['arguments'], dict):
+                raise BridgeRejected('Invalid bridge request')
+            if request_id in self.seen or len(self.seen) >= MAX_REQUESTS or len(self.pending) >= MAX_PENDING:
+                raise BridgeRejected('Bridge request capacity or replay limit')
+            self.seen.add(request_id)
+            self.pending[request_id] = {'completed': False}
+            return value
+
+    def poll(self, timeout=0.2):
+        if not self.reader.acquire(blocking=False):
+            raise BridgeRejected('Bridge poll already active')
+        deadline = time.monotonic() + min(max(timeout, 0), 2)
+        try:
+            while True:
+                if self.closed:
+                    raise BridgeRejected('Session closed')
+                now = time.monotonic()
+                if self.frame_started is not None and now - self.frame_started > 5:
+                    raise BridgeRejected('Bridge frame deadline exceeded')
+                if len(self.buffer) >= 4:
+                    size, = struct.unpack('!I', self.buffer[:4])
+                    if not 0 < size <= MAX_FRAME:
+                        raise BridgeRejected('Invalid bridge frame')
+                    if len(self.buffer) >= size + 4:
+                        raw = bytes(self.buffer[4:4 + size])
+                        del self.buffer[:4 + size]
+                        self.frame_started = now if self.buffer else None
+                        value = json.loads(raw, object_pairs_hook=_object,
+                            parse_constant=lambda _: (_ for _ in ()).throw(BridgeRejected('Invalid JSON value')))
+                        request = self._message(value)
+                        if request is not None:
+                            return request
+                        continue
+                remaining = deadline - now
+                if remaining <= 0:
+                    return None
+                ready, _, _ = select.select([self.input], [], [], min(remaining, 0.05))
+                if ready:
+                    if self.frame_started is None:
+                        self.frame_started = time.monotonic()
+                    self.buffer.extend(os.read(self.input, min(65536, MAX_FRAME + 4 - len(self.buffer))))
+        except (OSError, ValueError, RecursionError) as error:
+            raise BridgeRejected('Invalid or closed bridge input') from error
+        finally:
+            self.reader.release()
 
     def complete(self, request_id, response):
+        identifier(request_id)
         encoded = encode(response)
         with self.condition:
             item = self.pending.get(request_id)
-            if self.closed or item is None or not item['dispatched'] or item['response'] is not None:
+            if self.closed or item is None or item['completed']:
                 raise BridgeRejected('No matching pending request')
-            item['response'] = encoded
-            self.condition.notify_all()
+            temporary = self.responses / (request_id + '.pending')
+            destination = self.responses / (request_id + '.json')
+            try:
+                fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o440)
+                with os.fdopen(fd, 'wb') as output:
+                    os.fchown(output.fileno(), -1, self.gid)
+                    os.fchmod(output.fileno(), 0o440)
+                    output.write(encoded)
+                os.rename(temporary, destination)
+                item['completed'] = True
+            finally:
+                temporary.unlink(missing_ok=True)
 
     def close(self):
-        with self.condition:
+        with self.closer:
+            if self.closed:
+                return
             self.closed = True
-            connections = list(self.connections)
-            handlers = list(self.handlers)
-            self.condition.notify_all()
-        self.server.close()
-        for connection in connections:
-            try:
-                connection.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-        deadline = time.monotonic() + 5
-        for handler in [self.listener, *handlers]:
-            handler.join(max(0, deadline - time.monotonic()))
-            if handler.is_alive():
-                raise BridgeRejected('Bridge did not stop')
-        if self.path.exists() and self.path.lstat().st_ino == self.identity:
-            self.path.unlink()
+            with self.reader:
+                os.close(self.input)
+                self.buffer.clear()
+            with self.condition:
+                for request_id in self.pending:
+                    (self.responses / (request_id + '.json')).unlink(missing_ok=True)
+                self.pending.clear()
+            marker = os.open(self.path / 'closed', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o440)
+            os.close(marker)
+            os.chown(self.path / 'closed', -1, self.gid)
+            os.chmod(self.path / 'closed', 0o440)
