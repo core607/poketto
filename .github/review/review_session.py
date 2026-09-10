@@ -8,7 +8,7 @@ import zipfile
 
 
 SCHEMA = 1
-SESSION_BYTES = 8_000_000
+SESSION_BYTES = 16_000_000
 HISTORY_BYTES = 180_000
 
 
@@ -63,7 +63,7 @@ def restore(github, command, current_run):
 
 
 def continuation(previous, fresh, message, encoded, input_limit, framing, previous_tokens=None,
-                 transport_limit=4_000_000):
+                 transport_limit=12_000_000):
     """Keep the exact old prefix, or return None for a checkpoint-based fresh review."""
     if not previous:
         return None

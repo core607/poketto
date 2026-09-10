@@ -19,10 +19,11 @@ from review_scope import core_diff
 import review_session
 
 
-INPUT_TOKENS = 300_000
+INPUT_TOKENS = 800_000
+COMPACT_TOKENS = 600_000
 OUTPUT_TOKENS_PER_CALL = 128_000
 FRAMING_ALLOWANCE = 4096
-TRANSPORT_BYTES = 4_000_000
+TRANSPORT_BYTES = 12_000_000
 MAX_TURNS = 30
 PEAK_TURNS = 3
 BEIJING = timezone(timedelta(hours=8))
@@ -495,6 +496,7 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                 "diff_sha256": digest(data), "rules_sha256": digest(rules.encode("utf-8")),
                 "state": "incomplete", "parts": [], "input_tokens": INPUT_TOKENS,
                 "output_tokens_per_call": OUTPUT_TOKENS_PER_CALL, "max_turns": rounds.limit,
+                "compact_tokens": COMPACT_TOKENS,
                 "off_peak_max_turns": rounds.maximum, "round_budget": rounds.refresh(),
                 "changed_files": changed_files, "trace": "agent-trace.jsonl"}
     manifest.update(coverage_kind="incremental" if resume else "full",
@@ -567,7 +569,7 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                     "继续评审本次核心代码改动。历史结果只属于旧提交，重新核实受影响关系和未解决问题。\n"
                     + "<untrusted-diff>\n" + data.decode("utf-8") + "\n</untrusted-diff>"))["messages"][-1]["content"]
         continued = review_session.continuation(previous.get("requests", {}).get("cross-contract"),
-                        fresh, followup, encoded, INPUT_TOKENS,
+                        fresh, followup, encoded, COMPACT_TOKENS,
                         FRAMING_ALLOWANCE + FINAL_BYTES + BUDGET_MESSAGE_BYTES,
                         previous.get("context_tokens", {}).get("cross-contract"), TRANSPORT_BYTES)
         if continued:

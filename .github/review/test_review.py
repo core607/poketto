@@ -161,7 +161,7 @@ class ReviewTests(unittest.TestCase):
         self.assertIn("--no-textconv", calls[-1])
 
     def test_impossible_utf8_line_is_explicitly_incomplete(self):
-        data = b"diff --git a/huge b/huge\n@@ -0,0 +1 @@\n+" + "猫".encode() * 100000 + b"\n"
+        data = b"diff --git a/huge b/huge\n@@ -0,0 +1 @@\n+" + "猫".encode() * (review.REQUEST_BYTES // 3 + 1) + b"\n"
         with self.assertRaisesRegex(review.Incomplete, "One UTF-8 diff line"):
             self.run_review(data)
         self.assertEqual([], self.provider.requests)
@@ -312,7 +312,7 @@ class ReviewTests(unittest.TestCase):
         self.now = self.now.replace(hour=10)
         self.use_loop_provider()
         data = b"".join(b"diff --git a/" + name + b" b/" + name + b"\n@@ -0,0 +1 @@\n"
-                        + b"+fixture\n" * 22000 for name in (b"one", b"two"))
+                        + b"+fixture\n" * (review.REQUEST_BYTES // 12) for name in (b"one", b"two"))
         self.run_review(data)
         self.assertEqual(3, len(self.provider.requests))
         # Each stage's first call is its last: the user instruction and tool_choice: none remain.
@@ -453,10 +453,11 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual([], self.provider.requests)
 
     def test_provider_never_called_when_cross_contract_context_is_too_large(self):
-        self.provider.complete = lambda body, record=None: ({"role": "assistant", "content": "x" * 49000},
+        self.provider.complete = lambda body, record=None: ({"role": "assistant", "content": "猫" * 49000},
                                                        {"prompt_tokens": 1000, "completion_tokens": 100})
         with self.assertRaisesRegex(review.Incomplete, "Cross-contract review exceeds"):
-            self.run_review()
+            self.run_review(b"".join(f"diff --git a/file{i} b/file{i}\n@@ -0,0 +1 @@\n".encode()
+                                    + b"+value\n" * (review.REQUEST_BYTES // 8) for i in range(8)))
         self.assertFalse((self.output / "cross-contract.md").exists())
         self.assertEqual([], self.github.posts)
 
