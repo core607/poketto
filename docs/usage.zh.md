@@ -45,6 +45,11 @@ exclude:
 
 ## 导出 HTTP 接口
 
+在编辑器中，点击文件旁或展开文件夹内的“导出”，也可以从文件侧栏顶部导出整个工作空间。
+选择私人副本或公开副本，生成 ZIP 后下载。导出使用最新已保存的内容，不包含编辑器中未保存的修改。
+公开副本遇到私密内容会拒绝导出，不会改变发布状态。下载交给浏览器的下载管理器；关闭对话框后，
+已提供的下载包保留至到期，以便正在进行的下载完成。
+
 在原生 Linux 上，`POST /api/admin/exports` 接收 `paths`（明确的 Markdown、索引媒体路径或目录前缀）
 和必填布尔值 `publicOnly`，返回临时句柄、ZIP 大小、SHA-256 和到期时间。
 `GET /api/admin/exports/{handle}` 下载 ZIP；追加 `/metadata` 可读取回执，
@@ -62,7 +67,7 @@ exclude:
 `max-retained-bytes`（2 GiB）、`max-workspace-bytes`（1600 MiB）、`max-packages`（8）、
 `lifetime-seconds`（600）与 `build-seconds`（120）。构建前预留完整 ZIP 额度，成功后仅计入实际大小。
 容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404。不支持 POSIX 权限的文件系统会在读取
-导出内容前返回 503。浏览器导出控件和 CLI 文件落地仍属于
+导出内容前返回 503。CLI 文件落地仍属于
 [导出计划](../notes/proposed/2026-09-10-portable-content-exports.md)。
 
 ## MCP 与隔离执行

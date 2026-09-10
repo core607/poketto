@@ -1370,6 +1370,39 @@ td select {
   gap: 12px;
   margin-top: 26px;
 }
+.export-dialog .export-source {
+  font-weight: 600;
+}
+.export-dialog fieldset {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.export-dialog fieldset label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 0;
+}
+.export-dialog input[type="radio"] {
+  width: auto;
+  margin: 0;
+}
+.export-dialog fieldset label span {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 13px;
+}
+.export-ready {
+  margin-top: 20px;
+}
+.export-ready a {
+  display: inline-block;
+  margin-top: 12px;
+  text-decoration: none;
+}
 .button-danger {
   border-color: var(--danger);
   background: var(--danger);
