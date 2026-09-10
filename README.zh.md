@@ -1,96 +1,80 @@
 # Poketto
 
-以仓库为核心的个人知识服务，公开面是博客。已接受的目标让每个工作空间在远程 Git 中保存 Markdown、仓库自管图片与历史，把经 Poketto 上传的图片存入 ManagedBlobStore；两类图片共用安全渲染，但永不相互同步。同一份内容既支撑公开发布，也通过 MCP 作为受信 AI 的长期记忆。Poketto 首先面向单台云服务器，同时保留由配置选择外部基础设施的[可选 serverless 部署 profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)。
+你和 AI Agent 共用的个人知识空间。
 
-[English](README.md)
+用文件和 Git 历史保存笔记、剪藏、阅读清单与项目资料。在浏览器里整理，也可以让 AI 通过 MCP 搜索、编辑和归档，再把选定的内容发布成博客。
 
-## 状态
+[English](README.md) · [开发与使用](docs/usage.zh.md) · [架构](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)
 
-开发中。[仓库创作基础](notes/implemented/2026-09-05-repository-authoring-foundations.md)提供任意路径 Markdown、文件级诊断、有界公开与私有搜索、发布策略、原子文本补丁、不可变本地图片存储和精确版本图片交付。远端 `main` 仍是权威；公开请求使用已验证快照，不会在请求中访问远端。[身份 HTTP 后端](notes/implemented/2026-09-06-workspace-identity-http.md)提供初始化、会话、邀请、成员与作用域 key。
+## File as truth
 
-[博客与浏览器管理界面](notes/implemented/2026-09-06-blog-browser-interface.md)通过服务端渲染的公开页面，以及包含图片、成员和密钥管理的中文 Markdown 编辑器呈现这些 HTTP API。`/mcp` 提供五个仓库工具；只有启用独立的 [Linux 执行服务](executor-service/README.md)后才注册 `repo_exec`。最终 HTTPS 安装与部署拓扑验收仍待完成。[第一阶段提案](notes/proposed/2026-09-05-phase-one-daily-use.md)与更广泛的提案在完整验收前保持开放。C 端供应、备份、访客问答与 serverless 不在第一阶段内。[持续交付](notes/implemented/2026-09-03-continuous-delivery.md)把通过验证的 `main` 提交发布到 GHCR，自动部署须单独启用。[需求文档](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)区分已实现行为、历史选型与提案。
+Markdown、目录结构与媒体引用保存在远程 Git 仓库中。远端 `main` 是权威来源；Poketto 保留可重建的本地缓存，通过经过验证的快照提供公开页面。浏览器编辑和 Agent 保存共用原子 Git 写入服务，以版本检查保护并发修改。
 
-## 适合谁
+上传的图片、音频、视频、PDF 和其他文件作为不可变原件保存在本地。Git 通过 `.poketto/assets.json` 记录逻辑路径和版本，文档使用相对链接。原件仅在各自的工作空间内去重；不同工作空间即使上传相同字节，也保留独立存储和身份。上传文件本身不会公开它。
 
-- 希望笔记、剪藏和博客始终是带 Git 历史的 Markdown，而关系型应用状态留在内容仓之外的人。
-- 希望自己的 AI 助手通过 MCP 和作用域 API Key 读写内容、而不是交出 shell 权限的人。
-- 希望小型服务器部署始终是一等生产方案，同时保留将来在可选共享服务中提供隔离工作空间这条路的人。
-- 对「为 agent 开发而设计的仓库」感兴趣的人——从 [AGENTS.md](AGENTS.md) 看起。
+内容可以用普通文件工具和 Git 查看、维护。PostgreSQL 保存账号、权限等关系型应用状态。
 
-## 目录
+## CodeAct over MCP
 
+将 MCP 客户端连接到 Poketto，为它分配具有明确权限的 API Key。启用执行服务后，`repo_exec` 提供带 shell、Python 和 Git 的隔离工作区。Agent 可以查看目录、按需读取内容仓库中的 `AGENTS.md`、搜索已有资料，并直接编辑文件。
+
+工作区内的 `poketto` CLI 通过宿主桥接调用持久化操作：
+
+| 命令 | 用途 |
+|---|---|
+| `poketto status` | 查看会话范围、保存基线和待核实的写入结果 |
+| `poketto save` | 提交选定文件和明确删除，保留其他本地编辑 |
+| `poketto sync` | 按单个文件的基线与远端当前内容进行合并 |
+| `poketto recover` | 使用保留的原始提交核实不确定的保存结果 |
+| `poketto media import` / `fetch` | 存储不可变原件，或把引用的媒体取到工作区 |
+
+仓库凭证和原件存储留在沙箱之外。普通编辑在保存前只存在于执行会话中。冲突保留本地工作；保存是否成功尚不明确时，须先核实，再继续保存。会话过期或重启可能丢弃未保存的文件。
+
+更新歌单、维护研究笔记、整理一篇文章及其配图，都可以沿用这套方式。Agent 从文件和目录指引中发现工作空间的组织方式。外部 Agent Harness 提供模型并决定如何执行任务，Poketto 提供授权范围内的数据、执行环境和持久化能力。
+
+## 一个工作空间，多种视图
+
+浏览器提供 Markdown 编辑器、文件与目录导航、图片预览，以及移动文件时使用的目标目录选择器。文件或文件夹移动会在同一次提交中修复支持的 Markdown 引用。公开页面按发布策略提供文章路由、标签、搜索和图片画廊。
+
+执行环境遵循相同的权限边界：完整读取权限的会话获得授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的公开投影，不包含私密元数据和原始历史。即使客户端共用一个 Key，会话仍相互隔离。撤权和取消公开会使受影响的执行会话失效。
+
+```mermaid
+flowchart LR
+    Browser[浏览器编辑器] --> Service[Poketto]
+    Agent[通过 MCP 连接的 AI Agent] --> Service
+    Service <--> Sandbox[隔离的 shell / Python / Git]
+    Service <--> Repository[远程 Git：文本、索引、历史]
+    Service <--> Originals[各工作空间的本地原件]
+    Service --> Blog[公开博客]
 ```
-AGENTS.md            本仓库的 agent 工作规则（从这里开始）
-.agents/skills/      可复用工序：文风、评审、检查、笔记生命周期
-build.gradle.kts     Gradle 构建与校验入口
-Dockerfile           应用镜像：Gradle 构建阶段 + JRE 运行阶段
-deploy/              生产 Compose、部署入口、传输脚本与脚本测试
-src/                 应用模块及其测试
-notes/               决策记录：proposed / implemented / rejected / archived
-```
 
-## 开发
+API 权限分别约束读取、写入、发布和执行。Agent 如果同时拥有私密读取与发布权限，就具备把私密资料发布出去的能力；理解用户意图、处理提示词注入仍由外部 Harness 负责。
 
-使用 Java 26 和仓库内的 Gradle Wrapper。Linux 执行服务测试需要带 venv 与 pip 支持的 Python 3.10+；Windows 在固定的 Linux 容器中运行该必需测试入口。前端与完整校验还需要 Node.js 24.19.0 和 npm 12.0.2。数据库集成测试与完整校验需要 Docker；较快的单元测试和仓库校验不需要。`./gradlew frontendCheck` 运行前端格式、类型、测试和生产构建。通过[隔离浏览器入口](acceptance/README.md)使用合成数据操作真实应用；前端运行设置见 [frontend/README.md](frontend/README.md)。
+## 开发状态
 
-应用启动需要 PostgreSQL 数据源、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。Flyway 会创建默认工作空间；应用将它绑定到远端 `main`，只在 `<data-dir>/workspaces/<workspace-id>/content` 物化一次性缓存。`POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` 与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS` 可以调整默认值为 32 个工作空间和 30 秒的限制；`POKETTO_REPOSITORY_REFRESH_SECONDS` 决定所服务内容多久对照远端 `main` 重新校验一次（默认 30 秒），`POKETTO_REPOSITORY_STALE_AFTER_SECONDS` 决定所服务内容最多多久没有成功重新校验，健康检查就会把它报告为停止服务（默认 3600 秒）。内容不可用时进程与刷新循环继续运行，但 readiness 报告停止服务，公开读取失败关闭。快照过期同样停止公开读取，最长允许沿用一小时。运行中的实例通过 `GET /actuator/health` 回应部署检查，并在 `GET /api/public/documents` 提供默认工作空间的公开文档；经 Poketto 的写入立即可见，合法的直接推送在下一次刷新后可见。
+Poketto 正在开发中。仓库创作、本地媒体、浏览器移动，以及 CodeAct 的保存和媒体流程已实现。[客户端验收](acceptance/clients/README.md)包含真实 Codex 和 Claude Code 工作流；[原生执行验证](executor-native/README.md)覆盖 Linux 隔离边界。最终 HTTPS 安装与部署拓扑验收仍待完成。
+
+[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)还包括默认私密的 `public/`、`private/` 双根目录、会话制品返回、专用 CLI 移动、可移植 ZIP 导出、内容转换，以及冗余 MCP 文件工具的移除。这些能力尚未交付，当前发布策略和工具接口见[使用文档](docs/usage.zh.md)。
+
+主要部署形态是自托管 Linux 服务器。托管工作空间供应、备份、访客问答和[可选 serverless 方案](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)不在当前交付范围内。
+
+## 开发与自托管
+
+应用使用 Java 26、Spring Boot、PostgreSQL 17 和 Next.js 前端，独立的 Linux 执行服务负责沙箱。使用仓库内的 Gradle Wrapper 构建：
 
 ```sh
 ./gradlew test repoCheck
 ./gradlew check
-POKETTO_DATA_DIR=/srv/poketto \
-POKETTO_REPOSITORY_REMOTE_URI=https://git.example.com/owner/private-content.git \
-POKETTO_REPOSITORY_USERNAME=operator \
-POKETTO_REPOSITORY_PASSWORD=... \
-./gradlew bootRun
 ```
 
-初始化首个 owner 前，私下设置 `POKETTO_AUTH_INITIALIZATION_TOKEN`，并把 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin。本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`；HTTPS 保留安全默认值。初始化或登录前先获取 `/api/auth/csrf`，后续请求同时携带会话 cookie 和响应指定的 CSRF header。初始化与登录顺序见[身份 HTTP 契约](notes/implemented/2026-09-06-workspace-identity-http.md#operation)。部署 profile 从私有运行配置中传入这些身份设置。
+完整校验需要 Docker、固定版本的 Node.js/npm 和执行服务测试依赖。Windows 使用 `.\gradlew.bat`。启动应用还需要 PostgreSQL、绝对路径的数据目录，以及预先准备好的私有 HTTPS Git 仓库。
 
-Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生磁盘卷运行 `linuxStorageTest`，包括公开标记持久化与快照恢复测试。Windows 开发模式只能在远端重新验证成功后建立内存公开快照；离线重启不会从磁盘恢复公开授权。Linux 上影响发布的写入必须先成功同步文件与目录才能推送；同步失败或不受支持时关闭公开服务。权威图片存储要求目录同步能力；不支持的宿主不能确认持久化上传。用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](AGENTS.md#commands)。
+- [开发与使用](docs/usage.zh.md)：运行依赖、配置、发布策略、MCP 和部署。
+- [浏览器验收](acceptance/README.md)：使用可丢弃的测试数据运行真实应用。
+- [执行服务](executor-service/README.md)：安装、协议、CLI、限制和生命周期。
+- [AGENTS.md](AGENTS.md)：贡献规则与检查。可复用的 Agent 工作流程位于 `.agents/skills/`，架构决策记录位于 `notes/`。
 
-## 内容与图片
-
-要发布内容，在内容仓创建 `.poketto/publishing.yaml`：
-
-```yaml
-enabled: true
-mode: public-by-default
-exclude:
-  - drafts/**
-```
-
-策略缺失或禁用时不发布任何内容；策略无效时关闭公开服务。根目录 `private/` 与配置的排除路径保持私有。Markdown 元数据可选，未修改的源码字节保持原样。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由，并提供不递归、不重复正文图片的同目录图库。
-
-认证后的 `/api/admin/repository` 入口提供 Markdown 索引、分页目录列表、文件读取、搜索、预览、原子补丁与移动。浏览器目标选择器可以移动文件或文件夹，并在同一次提交中修复 Markdown 引用。文本变更须在 base commit 下携带 revision 或明确的缺失条件；移动在该版本检查来源和目标。冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
-
-托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](notes/implemented/2026-09-05-repository-authoring-foundations.md)。
-
-`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。ZIP 导出仍属于[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
-
-## MCP 与隔离执行
-
-`/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。
-
-`list_directory` 使用读取权限列出已提交的直接子文件与子目录，无须执行服务。不传 `path` 即选择根目录；后续页使用返回的 `nextOffset` 和 `commit`。默认每页 100 项，最多 200 项。内容仓库自己的 `AGENTS.md` 可以引导逐层探索与维护，服务端不会自动注入其内容。条目类型、缺失路径与边界见[目录导航记录](notes/implemented/2026-09-08-repository-directory-navigation.md)。
-
-超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](notes/proposed/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
-
-`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
-
-完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实不确定的保存结果，不会重放后续编辑。`get_file` 始终读取权威 Git 对象。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
-
-`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](executor-service/README.md)定义限制、权限、冲突处理和配套安装。制品返回、专用 CLI 移动、可移植导出和冗余 MCP 工具移除仍属于[内容计划](notes/proposed/2026-09-09-codeact-content-and-media.md)。
-
-## 部署
-
-每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
-
-对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像。配置受保护的更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing` 与 transfer 模式；Compose 文件、环境配置和依赖服务继续由运维配置维护。
-
-Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](notes/implemented/2026-09-05-blog-stack-delivery.md)。
-
-把 `POKETTO_NETWORK_SUBNET` 设置为未被占用、至少含 16 个地址的 RFC1918 IPv4 CIDR，把 `POKETTO_NETWORK_DYNAMIC_RANGE` 设置为规范且严格包含于主网、至少含八个地址的动态子池。把 `POKETTO_GATEWAY_INTERNAL_IP` 设置为池外的 Caddy 固定地址，排除主网的网络地址、供网桥使用的首个可用地址和广播地址。部署会在启动容器前拒绝无效范围；Docker 只从动态池为其他服务分配地址。只有该部署启用 Tomcat 转发解析，且仅信任网关的 `/32`；Caddy 重建客户端地址、协议和主机头，并在转交 Spring 前移除 `X-Forwarded-Port`。其它入口显式默认为 `server.forward-headers-strategy=none`。`./gradlew proxyForwardingCheck` 需要 Docker 和 Python 3.10+，验证真实 Compose 地址分配、客户端独立登录限流与共享账号限流；`check` 和 CI 必须执行它。
+通过验证的 `main` 提交会发布应用与前端镜像。自动部署由运维单独启用；本地原件需要独立的持久化与备份安排。
 
 ## 授权
 
