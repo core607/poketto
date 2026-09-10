@@ -1,73 +1,73 @@
 {
-  "sourceCommit": "677dd1c8e1ea990b61568b150c3fafee8e80d5f4",
+  "sourceCommit": "556a800110ed7743a489c80b86a256cac94551a8",
   "fixtureParent": "/var/lib",
   "authentication": "synthetic stub; not PostgreSQL or HTTP MCP client acceptance",
   "dependencies": "real Git authority, public snapshot/export services, Java adapter, root worker and SRT on native Linux",
   "observations": [
     {
-      "result": "PASS",
       "observation": {
-        "accepted": true,
-        "requestBytes": 0
+        "requestBytes": 0,
+        "accepted": true
       },
+      "result": "PASS",
       "test": "root-owned-socket-rejects-non-root-peer"
     },
     {
       "result": "PASS",
-      "test": "public-scope-real-projection-has-no-private-files-metadata-or-original-history",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "public-scope-real-projection-has-no-private-files-metadata-or-original-history"
     },
     {
       "result": "PASS",
-      "test": "permission-increase-does-not-expand-existing-public-worker-files",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "permission-increase-does-not-expand-existing-public-worker-files"
     },
     {
       "result": "PASS",
-      "test": "withdrawn-public-projection-denies-further-worker-output",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "withdrawn-public-projection-denies-further-worker-output"
     },
     {
       "result": "PASS",
-      "test": "signed-open-through-production-socket-and-signature-checks",
-      "milliseconds": 1594.237518
+      "milliseconds": 1344.883483,
+      "test": "signed-open-through-production-socket-and-signature-checks"
     },
     {
+      "meanMilliseconds": 674.361161,
       "result": "PASS",
-      "meanMilliseconds": 719.89755995,
       "test": "twenty-adapter-session-reuses"
     },
     {
       "result": "PASS",
-      "test": "same-key-clients-have-separate-pinned-workdirs",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "same-key-clients-have-separate-pinned-workdirs"
     },
     {
       "result": "PASS",
-      "test": "command-mutations-preserve-authority-bundle-and-source",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "command-mutations-preserve-authority-bundle-and-source"
     },
     {
       "result": "PASS",
-      "test": "callback-cancellation-kills-detached-descendants",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "callback-cancellation-kills-detached-descendants"
     },
     {
-      "result": "PASS",
       "reason": "CANCELLED",
+      "result": "PASS",
       "test": "revocation-closes-active-process-tree"
     },
     {
       "result": "PASS",
-      "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client",
-      "source": "synthetic-only"
+      "source": "synthetic-only",
+      "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client"
     },
     {
-      "summary": "PASS",
-      "tests": 11,
       "adapterClassSha256": "90f70c22a601267f38cd4a24b76f8628cddd057e79371316d11e22e515387f4e",
-      "nativeProbeClassSha256": "0946cc71f9960677f563a9fd77ee834807051a5ec31b638a5db0f5ccab8f9e2d",
-      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance"
+      "tests": 11,
+      "summary": "PASS",
+      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
+      "nativeProbeClassSha256": "18effd90ecbe76a01402e593176fcd1f01e44b646dba79e4910341815ecfc550"
     },
     {
       "abandon": "READY"
@@ -78,7 +78,7 @@
     },
     {
       "nativeCombined": "PASS",
-      "runtimeManifestSha256": "9147dbdc02601a4ebb0f38a4879199197db9aab14df6af6cb8bc2db24dbd32e9",
+      "runtimeManifestSha256": "4e6e37ed289a352e078071fdf247a279a35dc23f46054c57cb4559637e33aacc",
       "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
       "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
       "workerSha256": "0794d704f0cf64e3e156e338ad7d3314148092ba6f384562a96b99d6119d3e07",
