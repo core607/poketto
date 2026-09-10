@@ -3,6 +3,8 @@
 Date: 2026-09-03
 Status: Implemented
 
+[Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) replace the UUID document routes below with `GET /api/public/documents`, `GET /api/public/document?route=...` and `GET /api/public/tags`. The health and problem-response contracts remain current.
+
 ## Problem
 
 Every accepted proposal assumes a Spring HTTP surface: the [Next.js frontend](../proposed/2026-08-30-nextjs-frontend.md) routes `/api/**` to Spring and expects stable problem responses, [continuous delivery](2026-09-03-continuous-delivery.md) succeeds only after a real health entrance passes, [managed assets](../proposed/2026-09-01-repository-asset-blob-store.md) need a delivery URL, and [invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) needs sessions and CSRF on real endpoints. The `web` module owned none of that: no health endpoint, no error contract, and no route over the implemented content module.
