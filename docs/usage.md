@@ -57,6 +57,12 @@ Full-read execution sessions retain authorized current files and original Git hi
 
 `poketto media import` stores a workspace-owned immutable original and updates its local logical index; save that index with referring text to persist the references. `poketto media fetch` uses the local index or an explicitly selected historical commit in full-read sessions, and the host-owned approved mapping in public sessions. CLI paths are repository-relative; use `poketto --help` for commands and file lifetime. The [worker reference](../executor-service/README.md) owns limits, permissions, conflict behavior and coordinated worker installation. Dedicated CLI moves, portable exports and removal of redundant MCP tools remain in the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
 
+`poketto media list` discovers indexed media without fetching bytes. It includes
+unsaved imports in full-read sessions; public sessions use only the host-owned
+approved mapping. Use `--prefix` to filter paths and continue pages with the
+returned `nextOffset` and `indexVersion`. Full readers can select `--commit` for a
+historical index. Metadata is checked against original storage when fetched.
+
 `poketto artifact create FILE --type MIME` retains an immutable, temporary result
 for the originating MCP session. `get_artifact` renders validated raster images
 or returns text/binary pages; long command output also supplies artifact handles.

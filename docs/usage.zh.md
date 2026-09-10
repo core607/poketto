@@ -57,6 +57,10 @@ exclude:
 
 `poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。专用 CLI 移动、可移植导出和冗余 MCP 工具移除仍属于[内容计划](../notes/proposed/2026-09-09-codeact-content-and-media.md)。
 
+`poketto media list` 列出索引中的媒体，不会下载原件。完整读取会话也能看到尚未保存的导入，
+公开会话只使用宿主持有的已批准映射。可用 `--prefix` 筛选路径，并使用返回的 `nextOffset`
+和 `indexVersion` 继续翻页。完整读取者可用 `--commit` 选择历史索引。获取原件时才会核对存储中的实际对象。
+
 `poketto artifact create FILE --type MIME` 为当前 MCP 会话保留不可变的临时结果。
 `get_artifact` 可展示通过校验的位图，或分页返回文本、二进制；长命令输出也会附带制品句柄。
 句柄在五分钟后或会话关闭时失效，不会上传、保存或发布文件。

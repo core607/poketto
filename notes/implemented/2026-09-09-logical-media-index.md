@@ -9,6 +9,22 @@ Status: Implemented
 
 Media paths share the repository namespace. They cannot replace Markdown, reserved metadata, Git files, symlinks, submodules or their descendants. Directory listing combines committed Git entries with indexed paths at one pinned commit, including directories that contain only managed media. It reads the bounded index rather than original bytes. Missing originals are not represented by empty placeholders. A text read of an indexed path reports `MANAGED_MEDIA` and does not claim expected absence. Invalid or colliding indexes fail explicitly instead of presenting an incomplete directory.
 
+## CodeAct discovery
+
+`poketto media list` reads a frozen snapshot of the full-read session's local
+index, including unsaved imports, or an explicitly selected authorized historical
+index. Public sessions list only their host-retained projection mapping, ignoring
+mutable local index metadata. Results expose logical paths, media types and sizes;
+they never disclose source mappings or original identities to public callers.
+
+Pagination has both entry and serialized-byte bounds. The returned index version
+lets a caller reject changed indexes between pages rather than silently skip or
+repeat entries. Discovery does not fetch original bytes and does not assert their
+availability. Current authorization is checked before delivery, and withdrawal
+invalidates the public session. The [worker reference](../../executor-service/README.md)
+owns CLI arguments and limits; the [CodeAct plan](../proposed/2026-09-09-codeact-workspaces.md)
+retains session admission and remaining agent-tool cutover work.
+
 ## Writes and authorization
 
 The shared repository writer accepts the index with ordinary text changes in one revision-checked patch. Before advancing the remote ref it validates the complete logical namespace and resolves each indexed identity against the same workspace's original metadata. A missing or foreign original, metadata mismatch, collision, conflict or authorization failure prevents the entire patch from committing. Blob upload acknowledgement remains separate from Git acknowledgement.

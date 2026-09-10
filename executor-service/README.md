@@ -167,6 +167,20 @@ Bridge responses carry the same lease fields plus `executionId` and `bridgeReque
 
 `poketto sync PATH` performs a bounded three-way text merge against that file's host-owned baseline and current remote version. It rechecks the local bytes while frozen before installation, retains deletion intent, and updates only the selected file's baseline after acknowledgement. Overlapping changes produce LOCAL/BASE/REMOTE conflict markers and exit unsuccessfully; the agent edits them and saves separately. Unselected files retain their previous expected revisions, so a later save cannot silently overwrite changes that another author made to them. Synchronization does not commit remote changes.
 
+`poketto media list [--prefix PREFIX] [--offset N] [--limit N] [--index-version HASH] [--commit COMMIT]`
+lists logical paths, declared media types and sizes without fetching originals.
+Full-read sessions use the current local index, including unsaved imports, or an
+explicit historical index. Public sessions use only the host-owned admitted
+projection and reject historical selection. Local index edits cannot expand that
+public list. Metadata does not prove that original bytes remain available.
+
+Pages are sorted by path and bounded to 12 KiB of compact JSON, with a default
+of 100 entries and a maximum of 200. A byte-limited page can contain fewer entries;
+continue with its `nextOffset` and `indexVersion`. A changed version returns
+`MEDIA_INDEX_CHANGED` without stale items. A null `nextOffset` means EOF. The
+prefix is a literal string, so use a trailing slash to select a directory tree.
+Listing does not materialize, upload, save or publish files.
+
 `poketto media fetch PATH [--commit COMMIT] [--output PATH]` materializes an indexed original into the worktree. Full-read sessions use their current local index, including unsaved imports, or select an authorized historical commit explicitly. The host resolves every original within the admitted workspace. Public sessions use only the admitted projection's host-owned media mapping and exact asset metadata; they expose no original commit identity. Transfer uses the shared original-file authorization and admission limits, bounded chunks and quarantined staging. An identical local file is retained; a different local file is not overwritten. Fetch does not upload, commit or update the index.
 
 `poketto media import FILE --as LOGICAL_PATH --key KEY [--type MIME] [--replace]` captures one regular file while the command cgroup is frozen and stores an immutable original. Captures are bounded to 128 MiB, charged to the lease's temporary storage and transferred in verified chunks. Keys contain 16–128 letters, digits, underscores or hyphens; retry the same bytes and type with the same key. The command updates only the selected entry in the local `.poketto/assets.json`; `--replace` permits a different logical entry while retaining the old original. Missing tracked indexes and collisions with tracked Git files are rejected. If the index changes during upload, the stored original remains available but the newer local index is preserved. `poketto status` retains `lastImport`, distinguishing original storage from index installation. Import requires private write permission and does not commit or publish. Save the index and referring text together with `poketto save`. [Client acceptance](../acceptance/clients/README.md) records real Codex and Claude Code workflows through isolated Spring authentication, PostgreSQL, HTTP MCP and native SRT. That loopback run does not complete the final HTTPS installation acceptance.
