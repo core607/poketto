@@ -229,7 +229,11 @@ leaving 1 MiB for bridge replies and path installation. Space is checked again
 while streaming; `MATERIALIZE_CAPACITY` reports admission failure or disk/quota
 exhaustion without discarding the session's existing files. Free local space,
 select fewer files, or use browser export for packages exceeding the worker's
-capacity or ordinary command deadline. Unexpected transfer/storage failures still
+capacity or ordinary command deadline. If media import has already stored the
+original when local index installation runs out of space, the capacity response
+includes its receipt with `originalStored: true` and `indexUpdated: false`.
+Free space and retry the same bytes, type and operation key to finish the local index.
+Unexpected transfer/storage failures still
 require session cleanup. Export authorization failures return `ACCESS_DENIED`.
 
 ### Returned artifacts

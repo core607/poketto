@@ -678,6 +678,32 @@ public final class ExecutorNativeProbe {
                     .as("replace stdout=%s stderr=%s", replacement.stdout(), replacement.stderr())
                     .isZero();
             assertThat(replacement.stdout()).contains("changed-original", hash(bytes));
+            var capacity = execute(
+                    executor,
+                    "media-import",
+                    "printf 'capacity-original' > private/capacity.bin; "
+                            + "python3 -c \"import os; s=os.statvfs('.'); f=os.open('capacity-fill.bin',os.O_CREAT|os.O_RDWR,0o600); "
+                            + "os.posix_fallocate(f,0,max(0,s.f_bavail*s.f_frsize-512*1024)); os.close(f)\"; "
+                            + "poketto media import private/capacity.bin --as private/capacity.dat --type application/octet-stream --key native_import_capacity_01",
+                    new Cancellation());
+            assertThat(capacity.exitCode()).isEqualTo(1);
+            JsonNode stored = JSON.readTree(capacity.stdout());
+            assertThat(stored.path("code").asString()).isEqualTo("MATERIALIZE_CAPACITY");
+            assertThat(stored.path("result").path("originalStored").asBoolean()).isTrue();
+            assertThat(stored.path("result").path("indexUpdated").asBoolean()).isFalse();
+            var recovered = execute(
+                    executor,
+                    "media-import",
+                    "rm capacity-fill.bin; poketto media import private/capacity.bin --as private/capacity.dat --type application/octet-stream --key native_import_capacity_01",
+                    new Cancellation());
+            assertThat(recovered.exitCode()).isZero();
+            JsonNode recoveredReceipt = JSON.readTree(recovered.stdout()).path("result");
+            assertThat(recoveredReceipt.path("assetId"))
+                    .isEqualTo(stored.path("result").path("assetId"));
+            assertThat(recoveredReceipt.path("indexUpdated").asBoolean()).isTrue();
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json")
+                            .commit())
+                    .isEqualTo(saved.commit());
             passed("media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically");
         }
     }

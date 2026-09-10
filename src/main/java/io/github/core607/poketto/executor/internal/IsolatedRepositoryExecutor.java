@@ -1199,17 +1199,29 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 ? source.orElseThrow().getBytes(StandardCharsets.UTF_8)
                 : new RepositoryMediaIndex(entries).encode();
         String text = new String(changed, StandardCharsets.UTF_8);
-        if (!materialize(
-                session,
-                executionId,
-                RepositoryMediaIndex.PATH,
-                changed.length,
-                hash(text),
-                source.map(IsolatedRepositoryExecutor::hash).orElse(null),
-                false,
-                false,
-                output -> output.write(changed)))
-            return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+        try {
+            if (!materialize(
+                    session,
+                    executionId,
+                    RepositoryMediaIndex.PATH,
+                    changed.length,
+                    hash(text),
+                    source.map(IsolatedRepositoryExecutor::hash).orElse(null),
+                    false,
+                    false,
+                    output -> output.write(changed)))
+                return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+        } catch (MaterializationCapacity capacity) {
+            return Map.of(
+                    "ok",
+                    false,
+                    "code",
+                    "MATERIALIZE_CAPACITY",
+                    "result",
+                    session.lastImport,
+                    "message",
+                    "Original stored; local index was not updated. Free session space and retry the same bytes, type and key.");
+        }
         session.lastImport = importReceipt(path, asset, true);
         return Map.of("ok", true, "result", session.lastImport);
     }
