@@ -571,7 +571,7 @@ def main():
         trusted = Path(__file__).resolve().parents[2]
         rules = "\n\n".join((trusted / name).read_text(encoding="utf-8") for name in
                               ["AGENTS.md", ".agents/skills/review/SKILL.md"])
-        model = os.environ.get("AI_REVIEW_MODEL", "deepseek-v4.1-flash-expires-on-0910")
+        model = os.environ.get("AI_REVIEW_MODEL", "deepseek-flash")
         provider = Provider(os.environ.get("AI_REVIEW_BASE_URL", "https://api.deepseek.com"),
                             os.environ.get("AI_REVIEW_API_KEY", ""), budget)
         with tempfile.TemporaryDirectory() as directory:
