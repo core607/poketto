@@ -10,6 +10,11 @@ keeps its identity and exact bytes; withdrawal removes the public article and
 invalidates the old media URL. The receipt records the exact runtime source and
 recording hashes. It uses a synthetic workspace, not the production content corpus.
 
+The [integrated root-switching replay](evidence/2026-09-11-content-root-switching.json)
+repeats the browser flow with the browser/CLI export features present. Its
+[recording and provenance](https://github.com/core607/poketto/blob/24f609639d42e62cd9cdd17e04a548301b88fded/2026-09-11/README.md)
+include dependency refusal, exact original downloads and withdrawal checks.
+
 The [portable-export HTTP run](evidence/2026-09-10-export-http.json) uses real
 Spring authentication, PostgreSQL, synthetic remote Git and native local originals.
 Independent ZIP inspection verifies original bytes, relative links, private

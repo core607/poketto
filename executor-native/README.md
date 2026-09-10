@@ -142,6 +142,11 @@ and completes the index update. All 32 native scenarios, process-loss expiry and
 cleanup pass. Its [authenticated HTTP replay](../acceptance/clients/evidence/2026-09-11-import-capacity.json)
 checks the same recovery through MCP and repeats the export checks.
 
+The [integrated content-root run](evidence/2026-09-11-content-roots.json) covers
+all 32 scenarios with the public-root format and merged export implementation.
+Private/public ZIPs, capacity recovery, media receipts, history isolation,
+process-loss expiry and cleanup pass on the recorded native runtime.
+
 ## Isolated peer regression
 
 The historical combined report predates the accepted-connection and byte-count
