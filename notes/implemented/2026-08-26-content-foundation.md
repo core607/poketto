@@ -11,7 +11,9 @@ Poketto needs a durable content boundary before it can implement writes, project
 
 If those details emerge independently inside later features, the same document will acquire incompatible representations across the content, projection, web, and MCP modules.
 
-[Remote repository authority](2026-09-01-remote-repository-authority.md) supersedes this note's original local-bootstrap boundary and owns current materialization and acknowledgement behavior. The document format and revision decisions below remain in force.
+[Remote repository authority](2026-09-01-remote-repository-authority.md) supersedes this note's original local-bootstrap boundary and owns current materialization and acknowledgement behavior. The revision decisions below remain in force.
+
+[Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path reads and atomic patches without the `documents/` layout or frontmatter identifiers; the UUID write path below is a transitional internal implementation awaiting removal. The path safety rules, normalized collision detection and exact-blob revisions remain in force.
 
 ## Decision
 
@@ -72,7 +74,7 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 The content module binds the data directory, resolves per-workspace remote authority into disposable caches, parses and canonically serializes documents, exposes the content value types, and scans commit-pinned `main` trees. Document writes now build on this boundary; projection, HTTP, and MCP entry points remain outside it.
 
-[Repository-native publishing and images](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. This note continues to describe the executable baseline until that proposal is implemented; the reversal does not retroactively describe the current parser or repository layout.
+[Repository-native publishing and images](../proposed/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement that replacement; this note records the transitional UUID layout and the rules that outlived it.
 
 ## Alternatives
 

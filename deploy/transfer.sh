@@ -44,11 +44,16 @@ done
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || fail "--revision must be a full lowercase commit id"
 [[ "$ROOT" = /* ]] || fail "--root must be absolute"
 [[ "$ROOT" != *"'"* && "$ROOT" != *$'\n'* && "$ROOT" != *$'\r'* ]] || fail "--root must not contain quotes or line breaks"
-if [ "$EXISTING" = 1 ] && { [ "$SYNC" = 1 ] || [ "$SET_STDIN" = 1 ] || [ "$PULL" = 1 ]; }; then
-    fail "--existing requires archive transfer without --sync, --set-stdin or --pull"
+if [ "$EXISTING" = 1 ] && { [ "$SYNC" = 1 ] || { [ "$SET_STDIN" = 1 ] && [ "$PULL" = 0 ]; }; }; then
+    fail "--existing refuses --sync and accepts --set-stdin only with --pull"
 fi
 # Settings are read before any other command touches standard input.
 [ "$SET_STDIN" = 1 ] && SETTINGS="$(cat)"
+if [ "$EXISTING" = 1 ]; then
+    while IFS= read -r setting; do
+        case "$setting" in ''|REGISTRY_USERNAME=*|REGISTRY_PASSWORD=*) ;; *) fail "existing pulls accept only registry credentials" ;; esac
+    done <<< "$SETTINGS"
+fi
 
 remote() {
     # shellcheck disable=SC2086
@@ -118,6 +123,12 @@ fi
 
 status=0
 if [ "$EXISTING" = 1 ]; then
+    if [ "$PULL" = 1 ]; then
+        # Only the trusted helper is quoted into the command. Credentials remain on stdin.
+        script="$(sed "s/'/'\\\\''/g" "$HERE/pull-existing.sh")"
+        printf '%s\n' "$SETTINGS" | remote "bash -c '$script' -- '$TAG' '$FRONTEND_TAG'" \
+            || fail "existing-layout registry pull failed"
+    fi
     remote "sudo -n /usr/local/sbin/poketto-update-existing --root '$ROOT' --app-image '$TAG' --app-revision '$REVISION' --frontend-image '$FRONTEND_TAG'" < /dev/null \
         || status=$?
 elif [ "$SET_STDIN" = 1 ]; then

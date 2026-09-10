@@ -135,9 +135,63 @@ run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --fr
 assert_status 0
 assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "sudo -n /usr/local/sbin/poketto-update-existing --root '/srv/existing'"
 [ ! -e "$FAKE_STATE/sync.log" ]
-for incompatible in --sync --set-stdin --pull; do
+for incompatible in --sync --set-stdin; do
     rm -f "$FAKE_STATE/ssh.log"
     run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing "$incompatible"
     assert_status 1
     [ ! -e "$FAKE_STATE/ssh.log" ]
 done
+
+# Existing registry delivery executes the actual pull helper before invoking the updater.
+rm -f "$FAKE_STATE/docker.log" "$FAKE_STATE/deploy-calls" "$FAKE_STATE/ssh.log"
+echo "$REVISION" > "$FAKE_STATE/pull-revision"
+run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --pull
+assert_status 0
+assert_contains "$(docker_log)" "pull $DIGEST_IMAGE"
+assert_contains "$(docker_log)" "pull $FRONTEND_IMAGE"
+assert_not_contains "$(docker_log)" "save"
+assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--app-image '$DIGEST_IMAGE'"
+assert_not_contains "$(cat "$FAKE_STATE/deploy-calls")" '--set-stdin'
+
+rm -f "$FAKE_STATE/deploy-calls" "$FAKE_STATE/ssh.log"
+run_transfer --target ops@host --root /srv/existing --image "$TAG_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --pull
+assert_status 1
+[ ! -e "$FAKE_STATE/ssh.log" ]
+
+set +e
+OUT="$(printf 'POKETTO_REPOSITORY_PASSWORD=never-forward\n' | bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --pull --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 1
+[ ! -e "$FAKE_STATE/ssh.log" ]
+
+mkdir -p "$PWD/home/.docker/contexts"
+echo '{"credsStore":"pass","currentContext":"remote"}' > "$PWD/home/.docker/config.json"
+set +e
+OUT="$(printf 'REGISTRY_USERNAME=cnb\nREGISTRY_PASSWORD=private-token\n' | HOME="$PWD/home" FAKE_DOCKER_CONTEXT=remote bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --pull --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+assert_contains "$(cat "$FAKE_STATE/login-stdin")" 'private-token'
+assert_not_contains "$(ssh_log)$(docker_log)$OUT$ERR" 'private-token'
+assert_not_contains "$(cat "$FAKE_STATE/login-config-before")" credsStore
+[ ! -e "$FAKE_STATE/external-credential-store" ]
+config="$(grep '^login ' "$FAKE_STATE/docker-config.log" | tail -1 | cut -d ' ' -f 2-)"
+[ ! -d "$config" ]
+[ ! -s "$FAKE_STATE/deploy-stdin" ]
+
+rm -f "$FAKE_STATE/deploy-calls"
+set +e
+OUT="$(printf 'REGISTRY_USERNAME=cnb\nREGISTRY_PASSWORD=private-token\n' | FAKE_LOGIN_EXIT=1 bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --pull --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 1
+[ ! -e "$FAKE_STATE/deploy-calls" ]
+
+touch "$FAKE_STATE/pull-fails"
+run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --pull
+assert_status 1
+[ ! -e "$FAKE_STATE/deploy-calls" ]
