@@ -27,6 +27,7 @@ public final class MediaFileService {
     private final PublicContentSnapshots snapshots;
     private final Supplier<ManagedBlobStore> originals;
     private final Map<WorkspaceId, Integer> active = new HashMap<>();
+    private final java.util.Set<WorkspaceId> publicTransfers = new java.util.HashSet<>();
     private int total;
 
     public MediaFileService(
@@ -45,7 +46,7 @@ public final class MediaFileService {
             AuthPrincipal actor, WorkspaceId workspace, String key, String mediaType, InputStream input) {
         Runnable check = () -> auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
         check.run();
-        try (var admission = admit(workspace)) {
+        try (var admission = admit(workspace, false)) {
             var guarded = new FilterInputStream(input) {
                 long allowance;
 
@@ -90,7 +91,7 @@ public final class MediaFileService {
             var catalog = repository.media(workspace, commit);
             ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
             check.run();
-            return new Download(workspace, path, asset, check);
+            return new Download(workspace, path, asset, check, false);
         } catch (RuntimeException failure) {
             check.run();
             throw failure;
@@ -108,7 +109,7 @@ public final class MediaFileService {
             if (!catalog.publicPaths().contains(path) || !references(article, path)) throw missing();
             ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
             check.run();
-            return new Download(workspace, path, asset, check);
+            return new Download(workspace, path, asset, check, true);
         } catch (RuntimeException failure) {
             check.run();
             throw failure;
@@ -143,12 +144,15 @@ public final class MediaFileService {
         private final String path;
         private final ManagedAsset asset;
         private final Runnable check;
+        private final boolean publicTransfer;
 
-        private Download(WorkspaceId workspace, String path, ManagedAsset asset, Runnable check) {
+        private Download(
+                WorkspaceId workspace, String path, ManagedAsset asset, Runnable check, boolean publicTransfer) {
             this.workspace = workspace;
             this.path = path;
             this.asset = asset;
             this.check = check;
+            this.publicTransfer = publicTransfer;
         }
 
         public String filename() {
@@ -162,7 +166,7 @@ public final class MediaFileService {
         /** Leaves output open; consumers discard partial output after failure or authorization loss. */
         public void writeTo(OutputStream output) {
             check.run();
-            try (var admission = admit(workspace)) {
+            try (var admission = admit(workspace, publicTransfer)) {
                 originals.get().copyTo(workspace, asset.reference(), new OutputStream() {
                     long allowance;
 
@@ -194,20 +198,26 @@ public final class MediaFileService {
         }
     }
 
-    private synchronized Admission admit(WorkspaceId workspace) {
-        if (total >= 4 || active.getOrDefault(workspace, 0) >= 2)
+    private synchronized Admission admit(WorkspaceId workspace, boolean publicTransfer) {
+        // Anonymous readers cannot consume the workspace's last slot or the instance's last two slots.
+        if (total >= 4
+                || active.getOrDefault(workspace, 0) >= 2
+                || (publicTransfer && (publicTransfers.size() >= 2 || publicTransfers.contains(workspace))))
             throw new AssetStorageException(AssetStorageException.Reason.UNAVAILABLE);
         total++;
         active.merge(workspace, 1, Integer::sum);
-        return new Admission(workspace);
+        if (publicTransfer) publicTransfers.add(workspace);
+        return new Admission(workspace, publicTransfer);
     }
 
     private final class Admission implements AutoCloseable {
         private final WorkspaceId workspace;
+        private final boolean publicTransfer;
         private boolean closed;
 
-        Admission(WorkspaceId workspace) {
+        Admission(WorkspaceId workspace, boolean publicTransfer) {
             this.workspace = workspace;
+            this.publicTransfer = publicTransfer;
         }
 
         @Override
@@ -217,6 +227,7 @@ public final class MediaFileService {
                 closed = true;
                 total--;
                 active.compute(workspace, (key, count) -> count == 1 ? null : count - 1);
+                if (publicTransfer) publicTransfers.remove(workspace);
             }
         }
     }

@@ -64,6 +64,7 @@ class IndexedMediaDeliveryTests {
                 RepositoryPublishingPolicy.PATH,
                 "enabled: true\nmode: public-by-default\n".getBytes(StandardCharsets.UTF_8));
         files.put("public/index.md", body.getBytes(StandardCharsets.UTF_8));
+        files.put("public/oversized.png", new byte[(int) RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
         var firstCommit = fixture.commitRemote(workspace, files);
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofMinutes(5));
         snapshots.refresh(workspace);
@@ -91,6 +92,7 @@ class IndexedMediaDeliveryTests {
         var page = assets.publicDocument(workspace, "/public").orElseThrow();
         assertThat(page.media().images()).containsKey("picture.png").doesNotContainKey("../private/picture.png");
         assertThat(page.media().gallery()).hasSize(1);
+        assertThat(page.media().galleryStatus()).isEqualTo(ResolvedMedia.GalleryStatus.PARTIAL);
         assertThat(page.media().downloads()).containsKey("source.pdf").doesNotContainKey("../private/source.pdf");
         assertThat(page.media().links()).doesNotContainKey("source.pdf");
         assertThat(page.media().downloads().get("source.pdf"))

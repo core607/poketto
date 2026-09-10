@@ -200,6 +200,88 @@ class MediaFileServiceTests {
         assertThat(output.toByteArray()).isEqualTo(bytes);
     }
 
+    @Test
+    void stalledPublicReadersLeaveWorkspaceAndInstanceCapacityForAuthorizedTransfers() throws Exception {
+        var workspaces = List.of(workspace, WorkspaceId.random(), WorkspaceId.random());
+        for (var selected : workspaces.subList(1, workspaces.size())) {
+            var original = store.uploadFile(
+                    selected, "public-capacity-01", "application/pdf", new ByteArrayInputStream(bytes));
+            var entry = new RepositoryMediaIndex.Media(
+                    original.reference().assetId(),
+                    original.reference().revision(),
+                    original.mediaType(),
+                    original.size());
+            when(repository.media(selected, commit))
+                    .thenReturn(new RepositoryMediaSnapshot(
+                            selected,
+                            commit,
+                            new RepositoryMediaIndex(Map.of("public/source.pdf", entry)),
+                            Set.of("public/source.pdf")));
+            var publicSnapshot = new PublicContentSnapshot(
+                    selected, snapshot.commit(), snapshot.verifiedAt(), snapshot.expiresAt(), snapshot.articles());
+            when(snapshots.withCurrent(eq(selected), any()))
+                    .thenAnswer(
+                            call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(publicSnapshot));
+        }
+        var started = new java.util.concurrent.CountDownLatch(2);
+        var firstStarted = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        OutputStream blocked = new OutputStream() {
+            @Override
+            public void write(int value) throws java.io.IOException {
+                write(new byte[] {(byte) value}, 0, 1);
+            }
+
+            @Override
+            public void write(byte[] data, int offset, int length) throws java.io.IOException {
+                started.countDown();
+                firstStarted.countDown();
+                try {
+                    if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                        throw new java.io.IOException("fixture timed out");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new java.io.IOException(interrupted);
+                }
+            }
+        };
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var readers = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            try {
+                readers.add(
+                        executor.submit(() -> service.publicDownload(workspace, commit, "/note", "public/source.pdf")
+                                .writeTo(blocked)));
+                assertThat(firstStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isTrue();
+                assertUnavailable(() -> service.publicDownload(workspace, commit, "/note", "public/source.pdf")
+                        .writeTo(OutputStream.nullOutputStream()));
+                readers.add(executor.submit(
+                        () -> service.publicDownload(workspaces.get(1), commit, "/note", "public/source.pdf")
+                                .writeTo(blocked)));
+                assertThat(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isTrue();
+                for (var selected : workspaces)
+                    assertUnavailable(() -> service.publicDownload(selected, commit, "/note", "public/source.pdf")
+                            .writeTo(OutputStream.nullOutputStream()));
+                for (var selected : workspaces.subList(0, 2)) {
+                    var uploaded = service.upload(
+                            actor, selected, "reserved-upload-01", "application/pdf", new ByteArrayInputStream(bytes));
+                    assertThat(uploaded.size()).isEqualTo(bytes.length);
+                }
+                var privateBytes = new ByteArrayOutputStream();
+                service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
+                        .writeTo(privateBytes);
+                assertThat(privateBytes.toByteArray()).isEqualTo(bytes);
+            } finally {
+                release.countDown();
+                for (var reader : readers) reader.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+        var publicBytes = new ByteArrayOutputStream();
+        service.publicDownload(workspace, commit, "/note", "public/source.pdf").writeTo(publicBytes);
+        assertThat(publicBytes.toByteArray()).isEqualTo(bytes);
+    }
+
     private static void assertUnavailable(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action)
                 .isInstanceOfSatisfying(

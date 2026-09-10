@@ -355,7 +355,7 @@ public final class AssetService {
         if (folder && commit != null) {
             try {
                 var siblings = blobs.siblings(workspace, commit, path, 128, publicOnly, inlinePaths);
-                galleryCandidates = siblings.partial() ? 128 : siblings.items().size();
+                galleryCandidates = siblings.items().size();
                 if (siblings.partial()) galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
                 for (RepositoryBlob blob : siblings.items()) {
                     if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) continue;
