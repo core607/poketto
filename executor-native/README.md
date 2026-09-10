@@ -128,6 +128,13 @@ a different boot identity. The worker completes exclusive startup cleanup before
 serving HELLO. A failed probe or unchanged identity preserves occupied capacity;
 the retired MCP session cannot reopen.
 
+The [media-import capacity run](evidence/2026-09-11-import-capacity.json) verifies
+that a stored original retains its receipt when local index materialization runs
+out of space. Retrying the same key after freeing space preserves the asset ID
+and completes the index update. All 32 native scenarios, process-loss expiry and
+cleanup pass. Its [authenticated HTTP replay](../acceptance/clients/evidence/2026-09-11-import-capacity.json)
+checks the same recovery through MCP and repeats the export checks.
+
 ## Isolated peer regression
 
 The historical combined report predates the accepted-connection and byte-count

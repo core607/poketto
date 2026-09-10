@@ -1,0 +1,70 @@
+{
+  "result": "PASS",
+  "sourceCommit": "cc9d278ad4600ae0cd0ec7847108c74f547a2dfb",
+  "client": "independent Python Streamable HTTP MCP client",
+  "environment": "real Spring authentication, PostgreSQL, HTTP MCP, production adapter, native root worker/SRT and synthetic Git/originals",
+  "archives": [
+    {
+      "scope": "private",
+      "bytes": 697,
+      "sha256": "4dbb5e3c5825ee12e0259429747f19b8e02ec5fa9581b1c9574d43975e6c77fb",
+      "entries": [
+        "content/private/export-note.md",
+        "content/public/export-note.md",
+        "media/original-1.pdf"
+      ]
+    },
+    {
+      "scope": "public",
+      "bytes": 430,
+      "sha256": "0954d5a0fc528670382966580326a15f85bed5de697f5c4d5f7157f59f24833a",
+      "entries": [
+        "content/article-1.md",
+        "media/original-1.pdf"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "capacityRefusal": "PASS",
+      "sameSessionScratchRetention": "PASS",
+      "identicalRetry": "PASS"
+    },
+    {
+      "storedOriginalReceiptOnCapacityFailure": "PASS",
+      "sameOriginalOnRetry": "PASS",
+      "localIndexRecovery": "PASS"
+    },
+    {
+      "scope": "private",
+      "export": "PASS",
+      "artifactBytes": "PASS",
+      "scopeOrCollisionRefusal": "PASS",
+      "sessionDeleted": 200,
+      "keyRevoked": 204
+    },
+    {
+      "scope": "public",
+      "export": "PASS",
+      "artifactBytes": "PASS",
+      "scopeOrCollisionRefusal": "PASS",
+      "sessionDeleted": 200,
+      "keyRevoked": 204
+    }
+  ],
+  "remoteUnchanged": true,
+  "limitations": "No language model benchmark or production HTTPS acceptance. Fixture cleanup is reported separately by native-host.",
+  "runtimeManifestSha256": "3a88703d4876d662dd4a4d16ef9c5ed63017edcad0831c2b24784f4813b0bd01",
+  "workerSources": {
+    "worker.py": "68d98c48cf0c9d05111e2385b1ec5c80fef0ad4257ccda6ee936aa23aebc551d",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "87e929e107ed7b268ba76247f31ff0139ad343f4aeb27eaa2300752139c9e06c",
+    "cli.py": "61306be717f46cc1298e5b127f61cb6731015d05e2bf0a2186f08f260d177a43",
+    "session_files.py": "267436379defc1cb00a162e223fa1809e40cd3d9543630d51828cf581ec593a2",
+    "binary_capture.py": "7c8e5760978821effc7804b273c3f852572314a78a5fa38db3e83bccda4477be",
+    "materialize.py": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd"
+  },
+  "cleanup": "PASS"
+}

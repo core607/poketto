@@ -100,6 +100,10 @@ files; unexpected transfer/storage failures still close the session.
 [Native capacity acceptance](../../executor-native/evidence/2026-09-11-export-capacity.json)
 and its [authenticated HTTP replay](../../acceptance/clients/evidence/2026-09-11-export-capacity.json)
 verify same-session recovery, retained scratch files and identical ZIP reuse.
+The shared incoming-file channel also preserves a stored-original receipt when
+a media import cannot update its local index. [Native and HTTP recovery evidence](../../executor-native/evidence/2026-09-11-import-capacity.json)
+verifies that retrying the same key after freeing space completes the index
+without creating another original.
 Different local files are preserved; handles and source coordinates never enter
 the command reply. [Native execution](../../executor-native/evidence/2026-09-10-cli-exports.json)
 and [HTTP MCP client acceptance](../../acceptance/clients/evidence/2026-09-10-cli-exports.json)
