@@ -62,7 +62,8 @@ def restore(github, command, current_run):
     return None
 
 
-def continuation(previous, fresh, message, encoded, input_limit, framing):
+def continuation(previous, fresh, message, encoded, input_limit, framing, previous_tokens=None,
+                 transport_limit=4_000_000):
     """Keep the exact old prefix, or return None for a checkpoint-based fresh review."""
     if not previous:
         return None
@@ -70,9 +71,13 @@ def continuation(previous, fresh, message, encoded, input_limit, framing):
     result["messages"] = copy.deepcopy(previous["messages"]) + [{"role": "user", "content": message}]
     # Old tool_choice controls a request, not a conversation. A new review can use tools again.
     result.pop("tool_choice", None)
-    if len(encoded(result)) + framing > input_limit:
+    if type(previous_tokens) is int and previous_tokens >= 0:
+        upper_bound = previous_tokens + len(encoded(result["messages"][-1])) + framing
+    else:
+        upper_bound = len(encoded(result)) + framing
+    if upper_bound > input_limit or len(encoded(result)) + framing > transport_limit:
         return None
-    return result
+    return result, upper_bound
 
 
 def checkpoint(state, encoded):

@@ -391,12 +391,12 @@ class AgentReview:
                                      "reserved_turns": self.reserved, "budget": text})
         return final, text
 
-    def review(self, body):
+    def review(self, body, initial_tokens=None):
         request = json.loads(body)
         trace, seen = [], set()
         requested_operations = set()
         finalize = False
-        upper_bound = len(body) + FRAMING_ALLOWANCE
+        upper_bound = initial_tokens if initial_tokens is not None else len(body) + FRAMING_ALLOWANCE
         self.record("initial_context", {"request": request})
         try:
             for turn in range(self.turns):
@@ -438,6 +438,7 @@ class AgentReview:
                 tool_calls = assistant.get("tool_calls", [])
                 if not tool_calls:
                     self.completed_request = {**request, "messages": [*request["messages"], assistant]}
+                    self.completed_context_tokens = usage["prompt_tokens"] + usage["completion_tokens"]
                     return self.scrub(assistant["content"])
                 if final_call:
                     raise Incomplete("The review agent exceeded its tool call bound.")
@@ -503,6 +504,7 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                + "\n</untrusted-review-checkpoint>\n") if previous else ""
     request = lambda text: payload(model, rules, revision, title, history + text)
     saved_requests = {}
+    context_tokens = {}
     parts = split_diff(data, request)
     # A diff that fits one request is reviewed by one loop with the whole budget; a separate
     # cross-contract stage would only re-read the same files from an empty context.
@@ -519,7 +521,7 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
         if identity(github.current(), github.repository) != revision:
             raise Incomplete("The PR base/head changed; this review is stale and incomplete.")
 
-    def agent_review(body, label, reserved):
+    def agent_review(body, label, reserved, initial_tokens=None):
         # Share remaining calls among stages; unused calls roll forward to subsequent stages.
         available = rounds.refresh()["remaining_turns"]
         if available <= reserved:
@@ -527,8 +529,9 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
         agent = AgentReview(provider, repository, unchanged, output, label,
                             available // (reserved + 1), rounds, reserved)
         try:
-            result = agent.review(body)
+            result = agent.review(body, initial_tokens)
             saved_requests[label] = agent.scrub(agent.completed_request)
+            context_tokens[label] = agent.completed_context_tokens
             return result
         finally:
             state = rounds.refresh()
@@ -557,6 +560,7 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     if len(cross_request) > REQUEST_BYTES:
         raise Incomplete("Cross-contract review exceeds the request cap; coverage remains incomplete.")
     manifest["session_mode"] = "checkpoint" if previous else "new"
+    initial_tokens = None
     if resume and direct:
         fresh = json.loads(cross_request)
         followup = json.loads(payload(model, rules, revision, title,
@@ -564,11 +568,12 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                     + "<untrusted-diff>\n" + data.decode("utf-8") + "\n</untrusted-diff>"))["messages"][-1]["content"]
         continued = review_session.continuation(previous.get("requests", {}).get("cross-contract"),
                         fresh, followup, encoded, INPUT_TOKENS,
-                        FRAMING_ALLOWANCE + FINAL_BYTES + BUDGET_MESSAGE_BYTES)
+                        FRAMING_ALLOWANCE + FINAL_BYTES + BUDGET_MESSAGE_BYTES,
+                        previous.get("context_tokens", {}).get("cross-contract"), TRANSPORT_BYTES)
         if continued:
-            cross_request = encoded(continued)
+            cross_request, initial_tokens = encoded(continued[0]), continued[1]
             manifest["session_mode"] = "continued"
-    cross = agent_review(cross_request, "cross-contract", 0)
+    cross = agent_review(cross_request, "cross-contract", 0, initial_tokens)
     if direct:
         (output / "part-01.md").write_text(cross, encoding="utf-8")
         manifest["parts"][0].update(state="reviewed", review_stage="cross-contract",
@@ -590,7 +595,8 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     state = {"schema": review_session.SCHEMA, "repository": github.repository,
              "pr": str(github.number), "revision": revision, "complete": True,
              "contract": review_session.contract(json.loads(payload(model, rules, revision, title, "")), digest, encoded),
-             "requests": saved_requests, "reports": [*(previous or {}).get("reports", []), checkpoint]}
+             "requests": saved_requests, "context_tokens": context_tokens,
+             "reports": [*(previous or {}).get("reports", []), checkpoint]}
     raw = encoded(state)
     if len(raw) > review_session.SESSION_BYTES:
         # Keep the complete audit checkpoint when source/reasoning transcripts outgrow storage.

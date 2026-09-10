@@ -164,6 +164,7 @@ class SessionTests(unittest.TestCase):
     def test_large_conversation_compacts_to_versioned_reports_and_read_locations(self):
         _, first, _, _ = self.run_at(self.first)
         first["requests"]["cross-contract"]["messages"].insert(1, {"role": "user", "content": "x" * 300_000})
+        first["context_tokens"]["cross-contract"] = 300_000
         first["reports"][0]["reads"] = [{"action": "read", "revision": "head", "path": "app.py", "offset": 0}]
         _, _, _, manifest = self.run_at(self.third, first)
         sent = json.loads(self.provider.requests[-1])
@@ -171,6 +172,14 @@ class SessionTests(unittest.TestCase):
         self.assertIn("Fixture review", sent["messages"][1]["content"])
         self.assertIn("app.py", sent["messages"][1]["content"])
         self.assertEqual("checkpoint", manifest["session_mode"])
+
+    def test_large_cached_transcript_uses_measured_tokens_instead_of_its_byte_size(self):
+        _, first, _, _ = self.run_at(self.first)
+        first["requests"]["cross-contract"]["messages"].insert(1, {"role": "user", "content": "x" * 400_000})
+        first["context_tokens"]["cross-contract"] = 130_000
+        _, _, _, manifest = self.run_at(self.third, first)
+        self.assertEqual("continued", manifest["session_mode"])
+        self.assertIn("x" * 400_000, self.provider.requests[-1].decode("utf-8"))
 
     def test_base_change_does_not_reuse_old_context(self):
         _, first, _, _ = self.run_at(self.first)
