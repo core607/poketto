@@ -28,8 +28,11 @@ def run(args, **kwargs):
 
 
 def sha(path):
+    digest = hashlib.sha256()
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        while block := stream.read(65536):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def main():
