@@ -192,3 +192,4 @@ class LeaseBridge:
                             break
                     except BlockingIOError:
                         break
+                self.seen.clear()

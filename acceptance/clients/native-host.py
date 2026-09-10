@@ -65,7 +65,7 @@ def main():
     root.chmod(0o751)
     app_user, exec_user = 'pkt-capp-' + token, 'pkt-cexec-' + token
     worker_unit, app_unit, db = ['poketto-client-' + token + '-' + name for name in ('worker', 'app', 'db')]
-    users, db_started, worker_config = [], False, None
+    users, db_attempted, worker_config = [], False, None
     try:
         pool.start()
         for user in (app_user, exec_user):
@@ -107,11 +107,11 @@ def main():
         environment = root / 'database.env'
         environment.write_text('POSTGRES_USER=acceptance\nPOSTGRES_DB=acceptance\nPOSTGRES_PASSWORD=' + password + '\n')
         environment.chmod(0o600)
+        db_attempted = True
         run(['docker', 'run', '-d', '--name', db, '--label', 'poketto.acceptance=' + token,
              '--memory=256m', '--memory-swap=256m', '--pids-limit=128', '--cpus=1',
              '--tmpfs', '/var/lib/postgresql/data:rw,size=256m', '-p', '127.0.0.1::5432',
              '--env-file', str(environment), POSTGRES])
-        db_started = True
         binding = run(['docker', 'port', db, '5432/tcp'])
         assert binding.startswith('127.0.0.1:') and '\n' not in binding
         deadline = time.monotonic() + 40
@@ -159,23 +159,52 @@ def main():
             assert run(['systemctl', 'is-active', app_unit]) == 'active'
             time.sleep(1)
     finally:
+        failures = []
+
+        def attempt(label, action):
+            try:
+                action()
+            except Exception as error:
+                failures.append(label + ': ' + type(error).__name__)
+
         for unit in (app_unit, worker_unit):
-            subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=30)
-            subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=10)
+            attempt('stop ' + unit, lambda unit=unit: run(['systemctl', 'stop', unit]))
+            attempt('reset ' + unit, lambda unit=unit: subprocess.run(
+                ['systemctl', 'reset-failed', unit], capture_output=True, timeout=10))
         if worker_config is not None:
-            run([sys.executable, str(root / 'worker.py'), '--config', str(worker_config), '--cleanup'])
-        if db_started:
-            assert run(['docker', 'inspect', '--format', '{{index .Config.Labels "poketto.acceptance"}}', db]) == token
-            run(['docker', 'rm', '-f', '-v', db])
+            attempt('worker cleanup', lambda: run([
+                sys.executable, str(root / 'worker.py'), '--config', str(worker_config), '--cleanup']))
+        # Stop the owned slice even when another component failed. Never remove a
+        # mounted fixture or an unverified container just to report successful cleanup.
+        attempt('resource pool cleanup', pool.close)
+        if db_attempted:
+            def remove_database():
+                if run(['docker', 'inspect', '--format', '{{index .Config.Labels "poketto.acceptance"}}', db]) != token:
+                    raise RuntimeError('Database ownership differs; refusing removal')
+                run(['docker', 'rm', '-f', '-v', db])
+            attempt('database cleanup', remove_database)
         for user in reversed(users):
-            assert subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)], capture_output=True).returncode == 1
-            run(['userdel', user])
-        mounts = run(['findmnt', '-rn', '-o', 'TARGET']).split('\n')
-        assert not any(value == str(root) or value.startswith(str(root) + '/') for value in mounts)
-        assert root.parent == Path('/var/lib') and root.name.startswith('poketto-client-')
-        shutil.rmtree(root)
-        pool.close()
+            def remove_user(user=user):
+                result = subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)], capture_output=True, timeout=5)
+                if result.returncode != 1:
+                    raise RuntimeError('Account still has processes or process lookup failed')
+                run(['userdel', user])
+            attempt('account cleanup ' + user, remove_user)
+        def remove_root():
+            mounts = run(['findmnt', '-rn', '-o', 'TARGET']).split('\n')
+            if any(value == str(root) or value.startswith(str(root) + '/') for value in mounts):
+                raise RuntimeError('Fixture still contains mounts')
+            if root.parent != Path('/var/lib') or not root.name.startswith('poketto-client-'):
+                raise RuntimeError('Unexpected fixture path')
+            shutil.rmtree(root)
+        if not failures:
+            attempt('fixture cleanup', remove_root)
+        if failures:
+            attempt('restrict retained fixture', lambda: root.chmod(0o700))
+            print(json.dumps({'cleanup': 'FAILED', 'failures': failures}), flush=True)
+            raise RuntimeError('Incomplete isolated fixture cleanup; root-only evidence retained')
         print(json.dumps({'cleanup': 'PASS'}), flush=True)
+
 
 
 if __name__ == '__main__':

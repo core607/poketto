@@ -51,6 +51,35 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void overlappingCallsCannotShareOneSessionSaveState() throws Exception {
+        var principal = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.stallExec = true;
+            var first = CompletableFuture.supplyAsync(() -> executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "shared",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation()));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "shared",
+                            Optional.empty(),
+                            "poketto save note.md",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+            assertThat(peer.operations("EXEC")).hasSize(1);
+        }
+    }
+
+    @Test
     void incompatibleWorkerIsRejectedBeforeOpeningOrExportingContent() throws Exception {
         var exports = exports();
         try (var peer = new Peer();

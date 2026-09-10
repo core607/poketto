@@ -10,11 +10,32 @@ import time
 import unittest
 import uuid
 
-from bridge import BridgeRejected, LeaseBridge, MAX_FRAME
+from bridge import BridgeRejected, LeaseBridge, MAX_FRAME, MAX_REQUESTS
 from cli import BridgeUnavailable, _send, call
 
 
 class LeaseBridgeTests(unittest.TestCase):
+    def test_finished_commands_release_replay_budget_but_not_within_command(self):
+        for index in range(MAX_REQUESTS + 1):
+            request = {'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}}
+            _send(self.path, request, time.monotonic() + 2)
+            self.assertEqual(request, self.bridge.poll(timeout=1))
+            self.bridge.complete(request['requestId'], {'ok': True})
+            self.bridge.reset_command()
+        self.assertFalse(self.bridge.closed)
+        self.assertFalse(list(self.bridge.responses.iterdir()))
+        for index in range(MAX_REQUESTS):
+            request = {'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}}
+            self.bridge._message(request)
+            self.bridge.complete(request['requestId'], {'ok': True})
+            self.bridge._message({'operation': 'ack', 'requestId': request['requestId']})
+        with self.assertRaises(BridgeRejected):
+            self.bridge._message(request)
+        with self.assertRaises(BridgeRejected):
+            self.bridge._message({**request, 'requestId': str(uuid.uuid4())})
+        self.bridge.reset_command()
+        self.assertEqual(request, self.bridge._message(request))
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

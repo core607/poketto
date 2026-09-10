@@ -134,6 +134,7 @@ final class SelectedFileSaves {
                         recovered));
     }
 
+    /** Confined to one session's admitted execute owner and its serial bridge loop; renewal never accesses it. */
     static final class State {
         private final String originalCommit;
         private final Map<String, String> baselines = new java.util.HashMap<>();
