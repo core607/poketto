@@ -1,0 +1,42 @@
+{
+  "result": "PASS",
+  "sourceCommit": "b1747ae23886a78ad1b09607356c0a6bb8d3302a",
+  "browser": "153.0.8010.36",
+  "viewport": {
+    "width": 1440,
+    "height": 1050
+  },
+  "checks": [
+    "Escape restores file trigger focus",
+    "public ZIP downloaded by Chrome download manager",
+    "unsaved editor text retained",
+    "public export refuses private selection without offering ZIP",
+    "private ZIP succeeds after public refusal without closing dialog",
+    "folder export selection and cancellation",
+    "workspace export selection and cancellation"
+  ],
+  "archives": [
+    {
+      "scope": "public",
+      "crc": "PASS",
+      "sha256": "df0e81db4a3ff33bcf8a029014b422ed5d9e3cd032a9bab23910815d24b74d0d",
+      "entries": [
+        "content/article-1.md",
+        "media/original-1.bin"
+      ]
+    },
+    {
+      "scope": "private",
+      "crc": "PASS",
+      "sha256": "5436ab6099c23b17625371c8b3678faf8d36b20861bd7cdffba07820d72137d9",
+      "entries": [
+        "content/private/收藏清单.md"
+      ]
+    }
+  ],
+  "recording": {
+    "frames": 35,
+    "gifSha256": "d0d8a6c2c32552b2fa2a9dcb97c2c82800437ae3c7c5cc16cc99761418247bfc",
+    "webmSha256": "9c69a373424d35cb9be5b424c306a8e5bdb672278354c34739b29801c1f6c4c0"
+  }
+}
