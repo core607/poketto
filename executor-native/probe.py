@@ -153,7 +153,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         agent, = list((runtime / 'jars').glob('byte-buddy-agent-*.jar'))
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', app_unit,
                    '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64', '-p', 'RuntimeMaxSec=240',
-                   str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m',
+                   str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(root / 'home'),
                    '-javaagent:' + str(agent), '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
                    'io.github.core607.poketto.executor.internal.ExecutorNativeProbe', str(root / 'java.json'), mode]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -185,6 +185,10 @@ with socket.socket(socket.AF_UNIX) as connection:
         parsed = [json.loads(line) for line in output if line.startswith('{')]
         if mode == 'main':
             assert any(item.get('summary') == 'PASS' for item in parsed)
+        elif mode == 'exports':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority',
+                'public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files'}
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -194,7 +198,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
             created_users.append(user)
         app_account, exec_account = pwd.getpwnam(app_user), pwd.getpwnam(exec_user)
-        for name in ('exports', 'control', 'fake-inbox', 'public-fixture'):
+        for name in ('exports', 'control', 'fake-inbox', 'public-fixture', 'home'):
             directory = root / name
             directory.mkdir(mode=0o700)
             os.chown(directory, app_account.pw_uid, app_account.pw_gid)

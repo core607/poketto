@@ -46,6 +46,9 @@ public final class ExecutorNativeProbe {
     private int tests;
 
     private ExecutorNativeProbe(Path configuration) throws Exception {
+        doAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
         when(auth.authorize(any(), any(), eq(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)))
                 .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
                         call.getArgument(1),
@@ -1147,9 +1150,6 @@ public final class ExecutorNativeProbe {
     private void selectedSaves() throws Exception {
         var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
                 path("publicFixture").resolve("saves"), path("exports"), auth, workspace);
-        doAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get())
-                .when(auth)
-                .withAuthorization(any(), any(), anySet(), any());
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(

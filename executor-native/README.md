@@ -55,6 +55,11 @@ Temurin 26.0.2+10 archive and verifies its pinned SHA-256 without installing it
 globally. Runtime classes and JARs must be readable by the probe's temporary
 application account.
 
+`--scenario exports` selects only the real private/public CLI ZIP flows for
+focused diagnosis. The default `--scenario all` includes them with the complete
+adapter lifecycle checks and process-loss expiry. A focused result does not prove
+the omitted scenarios. Each mode uses a fresh native fixture and checks cleanup.
+
 ```sh
 sudo env PYTHONPATH=/prepared/tools/python python3 probe.py \
   --runtime /staged/runtime \
