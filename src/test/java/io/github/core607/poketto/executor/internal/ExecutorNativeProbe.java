@@ -387,7 +387,7 @@ public final class ExecutorNativeProbe {
             byte[] publicBytes = "public-export-original".getBytes(StandardCharsets.UTF_8);
             byte[] privateBytes = "private-export-original".getBytes(StandardCharsets.UTF_8);
             fixture.seedMedia(auth, principal, publicBytes, privateBytes);
-            var article = fixture.reader(auth).getFile(principal, workspace, Optional.empty(), "article.md");
+            var article = fixture.reader(auth).getFile(principal, workspace, Optional.empty(), "public/article.md");
             // The generic media fixture intentionally links a private dependency. This scenario
             // needs an exportable public article and a private frontmatter sentinel of its own.
             String before = fixture.patches(auth)
@@ -397,12 +397,12 @@ public final class ExecutorNativeProbe {
                             new io.github.core607.poketto.content.RepositoryPatch(
                                     article.commit(),
                                     List.of(new io.github.core607.poketto.content.RepositoryTextChange(
-                                            "article.md",
+                                            "public/article.md",
                                             false,
                                             article.revision(),
                                             Optional.of(
                                                     "---\ntitle: Portable native article\nsecret: metadata-secret-needle\n---\n"
-                                                            + "public-native-body\n[Manual](public/manual.pdf)\n")))))
+                                                            + "public-native-body\n[Manual](manual.pdf)\n")))))
                     .commit();
             for (boolean full : List.of(true, false)) {
                 privateRead.set(full);
@@ -423,7 +423,7 @@ public final class ExecutorNativeProbe {
                                 45,
                                 8)) {
                     String command = "set -eu; printf 'unsaved-export-needle' > scratch.txt; "
-                            + (full ? "printf '\\nunsaved-export-needle' >> article.md; " : "")
+                            + (full ? "printf '\\nunsaved-export-needle' >> public/article.md; " : "")
                             + "poketto export . --output bundle.zip";
                     var exported = executor.execute(
                             principal,
@@ -492,7 +492,7 @@ public final class ExecutorNativeProbe {
                             .isEqualTo("keep-local-fileunsaved-export-needle");
                     assertThat(fixture.retainedPackages()).isZero();
                     assertThat(fixture.reader(auth)
-                                    .getFile(principal, workspace, Optional.empty(), "article.md")
+                                    .getFile(principal, workspace, Optional.empty(), "public/article.md")
                                     .commit())
                             .contains(before);
                     close(executor, session);
