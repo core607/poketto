@@ -147,6 +147,7 @@ public final class ExecutorNativeProbe {
         rejectNonRootPeer();
         publicProjection();
         selectedSaves();
+        uncertainSaveRecovery();
         byte[] originalBundle = Files.readAllBytes(path("bundle"));
         try (var executor = adapter(path("socket"))) {
             long start = System.nanoTime();
@@ -291,6 +292,66 @@ public final class ExecutorNativeProbe {
                 classHash(IsolatedRepositoryExecutor.class),
                 "nativeProbeClassSha256",
                 classHash(ExecutorNativeProbe.class))));
+    }
+
+    private void uncertainSaveRecovery() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("recovery"), path("exports"), auth, workspace, true);
+        var reader = fixture.reader(auth);
+        try (var executor = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        reader,
+                        fixture.patches(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8)) {
+            var unknown = executor.execute(
+                    principal,
+                    workspace,
+                    "recover-save",
+                    Optional.empty(),
+                    "printf 'original-attempt' > private/secret.md; poketto save private/secret.md",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(unknown.exitCode()).isEqualTo(1);
+            assertThat(unknown.stdout()).contains("WRITE_OUTCOME_UNKNOWN");
+            fixture.restoreTransport();
+            var recovered = executor.execute(
+                    principal,
+                    workspace,
+                    "recover-save",
+                    Optional.empty(),
+                    "printf 'later-local-edit' > private/secret.md; poketto recover; cat private/secret.md",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(recovered.exitCode())
+                    .as("recovery stdout=%s stderr=%s", recovered.stdout(), recovered.stderr())
+                    .isZero();
+            assertThat(recovered.stdout()).contains("\"recovered\": true", "later-local-edit");
+            assertThat(fixture.pushes()).isEqualTo(1);
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
+                            .source())
+                    .contains("original-attempt");
+            var saved = executor.execute(
+                    principal,
+                    workspace,
+                    "recover-save",
+                    Optional.empty(),
+                    "poketto save private/secret.md",
+                    Duration.ofSeconds(20),
+                    new Cancellation());
+            assertThat(saved.exitCode()).isZero();
+            assertThat(fixture.pushes()).isEqualTo(2);
+            assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
+                            .source())
+                    .contains("later-local-edit");
+            passed("uncertain-cli-save-recovers-original-commit-without-replaying-new-local-edits");
+        }
     }
 
     private void selectedSaves() throws Exception {

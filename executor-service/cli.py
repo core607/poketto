@@ -92,11 +92,12 @@ def main():
     parser = argparse.ArgumentParser(prog='poketto')
     commands = parser.add_subparsers(dest='operation', required=True)
     commands.add_parser('status', help='Read the host-owned session baseline and scope')
+    commands.add_parser('recover', help='Reconcile an uncertain save and, if necessary, retry only its retained commit')
     save = commands.add_parser('save', help='Commit explicitly selected text files through the host')
     save.add_argument('paths', nargs='*')
     save.add_argument('--delete', action='append', default=[])
     args = parser.parse_args()
-    arguments = {} if args.operation == 'status' else {'writes': args.paths, 'deletes': args.delete}
+    arguments = {'writes': args.paths, 'deletes': args.delete} if args.operation == 'save' else {}
     if args.operation == 'save' and not args.paths and not args.delete:
         parser.error('save requires selected files or explicit --delete paths')
     root = os.environ.get('POKETTO_BRIDGE')

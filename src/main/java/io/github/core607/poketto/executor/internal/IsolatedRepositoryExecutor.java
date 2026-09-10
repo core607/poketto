@@ -434,10 +434,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             session.saveState.uncertain,
                             "lastSave",
                             session.saveState.lastSave));
-        if (request.path("operation").asString("").equals("save")) {
+        String operation = request.path("operation").asString("");
+        if (operation.equals("save") || operation.equals("recover")) {
             if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
             try {
                 auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+                if (operation.equals("recover")) {
+                    if (!arguments.isEmpty()) throw new IllegalArgumentException();
+                    return saves.recover(session.principal, session.key.workspace(), session.saveState);
+                }
                 if (session.saveState.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
                 if (arguments.size() != 2 || !arguments.has("writes") || !arguments.has("deletes"))
                     throw new IllegalArgumentException();

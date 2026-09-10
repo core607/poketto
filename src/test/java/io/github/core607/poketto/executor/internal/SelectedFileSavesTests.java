@@ -86,4 +86,39 @@ class SelectedFileSavesTests {
         when(actor.subjectId()).thenReturn(UUID.randomUUID());
         return actor;
     }
+
+    @Test
+    void recoveryAcknowledgesTheOriginalSaveAndAllowsLaterLocalEditsToBeSavedSeparately() throws Exception {
+        var auth = mock(AuthService.class);
+        var actor = actor();
+        var workspace = WorkspaceId.random();
+        doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace, true);
+        var reader = fixture.reader(auth);
+        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth));
+        var state = new SelectedFileSaves.State(fixture.sourceCommit());
+        assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "original-attempt"), List.of())
+                        .get("code"))
+                .isEqualTo("WRITE_OUTCOME_UNKNOWN");
+        String retained = state.attempt.orElseThrow().commit();
+        assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "later-edit"), List.of())
+                        .get("code"))
+                .isEqualTo("WRITE_OUTCOME_UNKNOWN");
+        fixture.restoreTransport();
+        assertThat(saves.recover(actor, workspace, state).get("ok")).isEqualTo(true);
+        assertThat(state.baseCommit).isEqualTo(retained);
+        assertThat(fixture.pushes()).isEqualTo(1);
+        assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
+                        .source())
+                .contains("original-attempt");
+        assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "later-edit"), List.of())
+                        .get("ok"))
+                .isEqualTo(true);
+        assertThat(fixture.pushes()).isEqualTo(2);
+        assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
+                        .source())
+                .contains("later-edit");
+    }
 }

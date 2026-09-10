@@ -16,11 +16,40 @@ public final class PublicExecutionNativeFixture {
     private final JGitPublicContentSnapshots snapshots;
     private final RepositorySnapshotExports exports;
     private final String sourceCommit;
+    private final java.util.concurrent.atomic.AtomicBoolean offline = new java.util.concurrent.atomic.AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicInteger pushes = new java.util.concurrent.atomic.AtomicInteger();
 
     public PublicExecutionNativeFixture(Path root, Path staging, AuthService auth, WorkspaceId workspace)
             throws Exception {
+        this(root, staging, auth, workspace, false);
+    }
+
+    public PublicExecutionNativeFixture(
+            Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply) throws Exception {
         this.workspace = workspace;
-        repository = new RemoteRepositoryFixture(root);
+        var delegate = new JGitRemoteGitTransport();
+        repository = new RemoteRepositoryFixture(root, new RemoteGitTransport() {
+            @Override
+            public org.eclipse.jgit.lib.ObjectId fetchMain(
+                    org.eclipse.jgit.lib.Repository repo, RepositoryBinding binding) {
+                if (offline.get()) throw new RemoteGitTransportException("synthetic lost-response outage");
+                return delegate.fetchMain(repo, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    org.eclipse.jgit.lib.Repository repo,
+                    RepositoryBinding binding,
+                    org.eclipse.jgit.lib.ObjectId expected,
+                    org.eclipse.jgit.lib.ObjectId candidate) {
+                var result = delegate.pushMain(repo, binding, expected, candidate);
+                if (pushes.incrementAndGet() == 1 && loseFirstReply) {
+                    offline.set(true);
+                    throw new RemoteGitTransportException("synthetic lost-response outage");
+                }
+                return result;
+            }
+        });
         repository.commitRemote(workspace, Map.of("private/secret.md", text("historic-secret-needle")));
         sourceCommit = repository
                 .commitRemote(
@@ -44,6 +73,14 @@ public final class PublicExecutionNativeFixture {
 
     public RepositorySnapshotExports exports() {
         return exports;
+    }
+
+    public void restoreTransport() {
+        offline.set(false);
+    }
+
+    public int pushes() {
+        return pushes.get();
     }
 
     public io.github.core607.poketto.content.AuthorizedRepositoryReader reader(AuthService auth) {
