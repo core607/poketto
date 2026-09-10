@@ -43,6 +43,34 @@ Managed originals live under `<data-dir>/managed-originals` and are retained; `<
 
 `POST /api/admin/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes. ZIP exports remain part of the [content plan](../notes/proposed/2026-09-09-codeact-content-and-media.md).
 
+## Export HTTP interface
+
+On native Linux, `POST /api/admin/exports` accepts `paths` (explicit Markdown,
+indexed-media paths or directory prefixes) and an explicit `publicOnly` boolean.
+It returns a temporary handle, ZIP size, SHA-256 and expiry. `GET
+/api/admin/exports/{handle}` downloads the archive; the `/metadata` suffix reads
+its receipt, and `POST /api/admin/exports/{handle}/release` releases it early.
+Creation and release use normal session CSRF protection. Every operation rechecks
+the owner and workspace; a handle cannot be shared as an anonymous download link.
+
+Private packages require private-read authority and retain source frontmatter.
+Public packages contain approved article fields and authorized originals; private
+selections fail instead of being published. Relative links point to actual media
+inside the ZIP. No original Git history, runtime guide or internal media index is
+included. Download checks publication, expiry and identity again, verifies the
+stored ZIP before output, and returns an attachment with `no-store` and `nosniff`.
+
+The service stages below `<data-dir>/portable-exports/<workspace-id>` and removes
+expired or abandoned packages. Defaults are one build, two downloads (at most one
+per workspace), 512 MiB of originals, 256 MiB of text and 10,000 entries. Properties
+under `poketto.exports` set `max-zip-bytes` (800 MiB), `max-retained-bytes` (2 GiB),
+`max-workspace-bytes` (1600 MiB), `max-packages` (8), `lifetime-seconds` (600), and
+`build-seconds` (120). A build reserves its full ZIP allowance before preparation;
+only its actual size remains charged after success. Capacity exhaustion returns
+429; missing, expired or differently owned handles return 404. Filesystems without
+POSIX permission support return 503 before reading export content. Browser export
+controls and CLI materialization remain in the [export plan](../notes/proposed/2026-09-10-portable-content-exports.md).
+
 ## MCP and isolated execution
 
 `/mcp` uses Spring AI 2.0.1 WebMVC Streamable HTTP and a workspace Bearer API key, independently of browser sessions. Tools are `list_directory`, `get_file`, `get_asset`, `put_asset` and `repo_patch`. They share the HTTP services: authoritative UTF-8 reads, precise image versions, idempotent uploads and atomic revision/absence checks. Upload acknowledgement never implies publication.

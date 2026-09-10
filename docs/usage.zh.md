@@ -43,6 +43,28 @@ exclude:
 
 `POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。ZIP 导出仍属于[内容计划](../notes/proposed/2026-09-09-codeact-content-and-media.md)。
 
+## 导出 HTTP 接口
+
+在原生 Linux 上，`POST /api/admin/exports` 接收 `paths`（明确的 Markdown、索引媒体路径或目录前缀）
+和必填布尔值 `publicOnly`，返回临时句柄、ZIP 大小、SHA-256 和到期时间。
+`GET /api/admin/exports/{handle}` 下载 ZIP；追加 `/metadata` 可读取回执，
+`POST /api/admin/exports/{handle}/release` 可提前释放。创建和释放沿用会话 CSRF 保护。
+每次操作都会重查所属身份和工作空间，句柄不能作为匿名下载链接分享。
+
+私密包要求私密读取权限并保留原文 frontmatter。公开包只包含已批准的文章字段和有权限访问的原件；
+选中私密内容会失败，不会顺带发布。相对链接指向 ZIP 内的实际媒体，不包含原始 Git 历史、运行指导
+或内部媒体索引。下载时再次检查发布状态、到期时间和身份，在输出前校验 ZIP，以附件方式返回，
+并设置 `no-store`、`nosniff`。
+
+服务在 `<data-dir>/portable-exports/<workspace-id>` 暂存，清理到期或遗留的包。
+默认同时构建一个包、下载两个包（同一工作空间最多一个），最多包含 512 MiB 原件、256 MiB 文本和
+10,000 个条目。`poketto.exports` 下可配置 `max-zip-bytes`（800 MiB）、
+`max-retained-bytes`（2 GiB）、`max-workspace-bytes`（1600 MiB）、`max-packages`（8）、
+`lifetime-seconds`（600）与 `build-seconds`（120）。构建前预留完整 ZIP 额度，成功后仅计入实际大小。
+容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404。不支持 POSIX 权限的文件系统会在读取
+导出内容前返回 503。浏览器导出控件和 CLI 文件落地仍属于
+[导出计划](../notes/proposed/2026-09-10-portable-content-exports.md)。
+
 ## MCP 与隔离执行
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。工具为 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，与 HTTP 入口共用权威 UTF-8 读取、精确图片版本、幂等上传和原子 revision/absence 检查。上传确认不意味着发布。

@@ -24,6 +24,12 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AssetsConfiguration {
     @Bean
+    io.github.core607.poketto.content.RepositoryOriginalTransfers repositoryOriginalTransfers(
+            @Qualifier("managedOriginals") Supplier<ManagedBlobStore> originals) {
+        return new io.github.core607.poketto.assets.ManagedOriginalTransfers(originals);
+    }
+
+    @Bean
     MediaFileService mediaFileService(
             AuthService auth,
             RepositoryBlobReader repository,

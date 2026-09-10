@@ -2,6 +2,14 @@
 
 This entrance runs the actual Spring services, PostgreSQL, production Next.js build, and same-origin Caddy routing against a synthetic Git repository. It never reads the operator's repository configuration. The fixture application is compiled from integration-test sources and is absent from the production application image. Its pinned Linux JDK is shared with the native storage verification entrance.
 
+The [portable-export HTTP run](evidence/2026-09-10-export-http.json) uses real
+Spring authentication, PostgreSQL, synthetic remote Git and native local originals.
+Independent ZIP inspection verifies original bytes, relative links, private
+frontmatter retention and public metadata removal. It also covers CSRF and
+anonymous rejection, the browser/MCP identity boundary, publication invalidation,
+release and complete fixture cleanup. This is backend acceptance; it does not
+exercise browser export controls or the CLI export command.
+
 Use Java 26, the pinned frontend runtime, and a working Docker daemon. From the repository root, run `./gradlew stageAcceptanceRuntime`. Copy `acceptance/.env.example` to ignored `acceptance/.env`, supply a fresh disposable password and the tested source revision, then run:
 
 ```sh
