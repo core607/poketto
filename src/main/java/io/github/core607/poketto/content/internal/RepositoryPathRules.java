@@ -29,7 +29,11 @@ public final class RepositoryPathRules {
     }
 
     static boolean privatePath(String path) {
-        return DocumentPathRules.collisionKey(path).startsWith("private/");
+        if (!path.startsWith("public/")) return true;
+        for (String segment : path.split("/", -1)) {
+            if (segment.startsWith(".") || segment.equalsIgnoreCase("AGENTS.md")) return true;
+        }
+        return false;
     }
 
     public static boolean reserved(String path) {
@@ -41,6 +45,7 @@ public final class RepositoryPathRules {
     }
 
     static String route(String path) {
+        if (path.startsWith("public/")) path = path.substring("public/".length());
         String withoutExtension = path.substring(0, path.length() - 3);
         if (folderPage(path)) {
             return path.lastIndexOf('/') < 0 ? "/" : "/" + path.substring(0, path.lastIndexOf('/'));

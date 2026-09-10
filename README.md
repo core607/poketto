@@ -8,6 +8,10 @@ Keep notes, clippings, reading lists and project knowledge in files with Git his
 
 ## File as truth
 
+New content belongs in `private/`; selected content is published from `public/`.
+Each tree can use its own categories. Directory guides let agents discover where
+records belong without a fixed schema for playlists, reading lists or other subjects.
+
 Markdown, directory structure and media references live in a remote Git repository. Its `main` branch is authoritative; Poketto keeps a disposable local cache and serves public pages from verified snapshots. Browser edits and agent saves use the same atomic Git writer, with revision checks to preserve concurrent work.
 
 Uploaded images, audio, video, PDFs and other files live as immutable local originals. Git stores their logical paths and versions in `.poketto/assets.json`; documents use relative links. Originals are deduplicated within each workspace. Equal bytes in different workspaces retain separate storage and identities, and uploading a file does not publish it.

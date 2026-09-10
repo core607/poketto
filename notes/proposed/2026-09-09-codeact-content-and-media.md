@@ -11,6 +11,14 @@ This is the assigned next content-development target. It extends [CodeAct worksp
 
 The default content repository has root `AGENTS.md`, `public/` and `private/`. Both content trees use ordinary independently chosen categories; mirrored directories and duplicate documents are not required. New content is private unless publication is requested. Only eligible content below the exact root `public/` can be published. The publication enable switch and exclusions remain; exclusions win. Other paths, guides, internal metadata and unsafe files remain private. Default public routes omit the `public/` prefix; explicit routes do not grant publication rights.
 
+The publication policy uses `mode: public-root`; it does not accept the former
+default-public format. Exclusions match repository-relative paths, including the
+`public/` prefix. Hidden path segments and case-insensitive `AGENTS.md` names are
+ineligible. Category names inside either root carry no additional privacy rule.
+The [content template](../../content-template/AGENTS.md) initializes both roots
+with progressive guides and publication disabled. Existing repositories require
+the verified conversion and coordinated cutover below before this format is deployed.
+
 Images, audio, video, PDFs and other downloadable files use one local immutable BlobStore. Git's `.poketto/assets.json` is a versioned mapping from logical path to opaque asset identity, immutable revision, size and media type. Markdown uses relative paths. The application validates and serializes index changes together with text edits, after original bytes are durably stored. Replacements create new originals; historical references remain readable. No acknowledged original is garbage-collected by this delivery.
 
 Deduplication is strictly keyed by workspace and byte digest. Equal bytes in different workspaces never share a physical object, identity, upload result or reference count. Within a workspace, physical byte reuse never merges logical-path authorization. Blob objects have no global public flag. Delivery binds workspace, logical reference, exact version and current publication state. Storage, idempotency, hashes, caches, quotas, exports and diagnostics all retain workspace scope; hashes are not bearer credentials or a cross-workspace existence oracle.

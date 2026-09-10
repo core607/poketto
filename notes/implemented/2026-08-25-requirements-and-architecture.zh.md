@@ -36,6 +36,8 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 ## 当前 MCP 契约
 
+内容格式采用独立的 `public/` 和 `private/` 根目录，新内容默认私有。只有精确 `public/` 下符合条件的路径才能在已启用的 `public-root` 策略下发布；排除路径、指引和隐藏路径保持私有。默认文章路由省略根目录前缀，显式路由不赋予公开权限。[内容计划](../proposed/2026-09-09-codeact-content-and-media.md)定义协调转换和其余交付要求。
+
 第一阶段契约取代最初基于 UUID 的文档工具选型。`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。工具包括 `list_directory`、`get_file`、`get_asset`、`put_asset` 和 `repo_patch`，仅在隔离执行适配器启用时注册 `repo_exec` 和绑定会话的 `get_artifact` 返回通道。[本地执行服务](../../executor-service/README.md)是独立的 Linux 服务；启用适配器不能替代真实进程边界验证。
 
 [目录导航](2026-09-08-repository-directory-navigation.md)在读取授权下分页返回 Git 的直接子条目，无须执行服务。内容仓库自己的 `AGENTS.md` 提供可选的渐进式指引，服务端不解释其正文。
