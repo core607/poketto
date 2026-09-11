@@ -17,8 +17,13 @@ class ImageMemoryFilterTests {
     void exactDownloadsAndUploadReserveBeforeDispatchAndRejectWithoutReading() throws Exception {
         var budget = budget();
         var filter = new ImageMemoryFilter(budget);
-        for (String path : List.of("/api/public/assets/token", "/api/admin/assets/images/token", "/api/admin/assets")) {
-            for (String method : path.equals("/api/admin/assets") ? List.of("POST") : List.of("GET", "HEAD")) {
+        for (String path : List.of(
+                "/api/public/assets/token",
+                "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/images/token",
+                "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets")) {
+            for (String method : path.equals("/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets")
+                    ? List.of("POST")
+                    : List.of("GET", "HEAD")) {
                 filter.doFilter(new MockHttpServletRequest(method, path), new MockHttpServletResponse(), (in, out) -> {
                     assertThat(budget.reservedBytes()).isEqualTo(ImageMemoryAdmission.BROWSER_BYTES);
                 });
@@ -46,9 +51,9 @@ class ImageMemoryFilterTests {
         try {
             for (String path : List.of(
                     "/api/public/document",
-                    "/api/admin/repository/preview",
-                    "/api/admin/assets/repository",
-                    "/api/admin/assets",
+                    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview",
+                    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/repository",
+                    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
                     "/api/auth/logout")) {
                 var response = new MockHttpServletResponse();
                 filter.doFilter(
@@ -58,7 +63,8 @@ class ImageMemoryFilterTests {
                 assertThat(response.getContentAsString()).isEqualTo("body");
             }
             filter.doFilter(
-                    new MockHttpServletRequest("POST", "/api/admin/repository/preview"),
+                    new MockHttpServletRequest(
+                            "POST", "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview"),
                     new MockHttpServletResponse(),
                     (in, out) -> {});
         } finally {

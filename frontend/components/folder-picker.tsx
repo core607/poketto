@@ -1,4 +1,5 @@
 "use client";
+import { useWorkspaceApi } from "./workspace-context";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   contentRoot,
@@ -25,6 +26,7 @@ export function FolderPicker({
   onClose: () => void;
   onMove: (destination: string) => Promise<boolean>;
 }) {
+  const api = useWorkspaceApi();
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
   const [folder, setFolder] = useState(
@@ -55,7 +57,7 @@ export function FolderPicker({
     setLoading(true);
     setError("");
     setNewFolder("");
-    void readDirectory(commit, folder)
+    void readDirectory(api, commit, folder)
       .then((result) => {
         if (active) setPage(result);
       })
@@ -88,7 +90,7 @@ export function FolderPicker({
     if (page?.nextOffset == null || loading) return;
     setLoading(true);
     try {
-      const next = await readDirectory(commit, folder, page.nextOffset);
+      const next = await readDirectory(api, commit, folder, page.nextOffset);
       setPage({ ...next, entries: [...page.entries, ...next.entries] });
     } catch (error) {
       setError(message(error));

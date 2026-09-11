@@ -6,6 +6,7 @@ import { message } from "./admin";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
+import { CreateWorkspace } from "./create-workspace";
 
 export type AccountProfile = {
   account: { accountId: string; loginName: string; siteAdministrator: boolean };
@@ -29,7 +30,7 @@ export function AccountPanel({
   hasWorkspace: boolean;
   workspaceUnavailable?: boolean;
   onBeforeJoin: () => Promise<boolean>;
-  onJoined: () => Promise<void>;
+  onJoined: (workspaceId: string, created?: boolean) => Promise<void>;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -41,12 +42,15 @@ export function AccountPanel({
     setError("");
     try {
       if (!(await onBeforeJoin())) return;
-      await api("/api/auth/invitations/accept", {
-        method: "POST",
-        body: { token },
-      });
+      const joined = await api<{ workspaceId: string }>(
+        "/api/auth/invitations/accept",
+        {
+          method: "POST",
+          body: { token },
+        },
+      );
       form.reset();
-      await onJoined();
+      await onJoined(joined.workspaceId);
     } catch (error) {
       setError(message(error));
     } finally {
@@ -55,6 +59,10 @@ export function AccountPanel({
   }
   return (
     <div className="management-panel">
+      <CreateWorkspace
+        accountId={profile.account.accountId}
+        onCreated={(workspaceId) => onJoined(workspaceId, true)}
+      />
       <section>
         <div className="panel-heading">
           <h2>加入空间</h2>

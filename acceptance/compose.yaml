@@ -34,6 +34,7 @@ services:
       POKETTO_ACCEPTANCE_ROOT: /tmp/poketto-acceptance
       POKETTO_ACCEPTANCE_PASSWORD: "${POKETTO_ACCEPTANCE_PASSWORD}"
       POKETTO_ACCEPTANCE_ORIGIN: "${POKETTO_ACCEPTANCE_ORIGIN:-http://127.0.0.1:38180}"
+      POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES: "${POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES:-false}"
     volumes:
       - ../build/acceptance/runtime:/runtime:ro
       - application:/tmp

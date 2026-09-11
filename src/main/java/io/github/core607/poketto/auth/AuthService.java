@@ -201,6 +201,45 @@ public final class AuthService {
     }
 
     private record Membership(MembershipRole role, Set<Capability> permissions) {}
+    /** Machine workspace selection comes exclusively from the durable credential binding. */
+    public WorkspaceId workspaceForKey(AuthPrincipal principal) {
+        if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) throw failure(DENIED);
+        var rows = jdbc.query(
+                "select workspace_id from auth_api_keys where key_id=? and account_id=? and revoked_at is null",
+                (rs, row) -> new WorkspaceId(rs.getObject(1, UUID.class)),
+                principal.subjectId(),
+                principal.accountId());
+        if (rows.size() != 1) throw failure(DENIED);
+        WorkspaceId workspace = rows.getFirst();
+        authorize(principal, workspace);
+        return workspace;
+    }
+
+    public Page<WorkspaceMembership> workspaces(AuthPrincipal principal, int offset, int limit) {
+        if (principal == null || principal.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure(DENIED);
+        validatePage(offset, limit);
+        long total = jdbc.queryForObject(
+                "select count(*) from auth_memberships where account_id=? and suspended_at is null",
+                Long.class,
+                principal.accountId());
+        var rows = jdbc.query(
+                "select w.workspace_id,w.display_name from workspaces w join auth_memberships m using(workspace_id) where m.account_id=? and m.suspended_at is null order by w.display_name,w.workspace_id limit ? offset ?",
+                (rs, row) ->
+                        new WorkspaceMembership(new WorkspaceId(rs.getObject(1, UUID.class)), rs.getString(2), null),
+                principal.accountId(),
+                limit,
+                offset);
+        return new Page<>(
+                rows.stream()
+                        .map(row -> new WorkspaceMembership(
+                                row.workspaceId(), row.displayName(), authorize(principal, row.workspaceId())))
+                        .toList(),
+                total,
+                offset,
+                limit);
+    }
+
+    public record WorkspaceMembership(WorkspaceId workspaceId, String displayName, WorkspaceAccess access) {}
 
     /** The caller creates the empty catalog row in this same transaction; existing spaces cannot be claimed. */
     public void establishWorkspaceOwner(AuthPrincipal actor, WorkspaceId workspace) {

@@ -1,3 +1,4 @@
+import { api } from "../lib/browser-api";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { saveRepositoryFile } from "../lib/repository-write";
@@ -6,6 +7,7 @@ import type { RepositoryFile } from "../lib/types";
 test("saved files cannot bypass dependency repair through delete/create text patches", async () => {
   await assert.rejects(
     saveRepositoryFile(
+      api,
       {
         path: "a.md",
         commit: "before",
@@ -42,7 +44,7 @@ test("renaming an unsaved draft creates only its final path", async () => {
       source: null,
       diagnostics: [],
     };
-    await saveRepositoryFile(file, "中文/新名字.md", "# 保留草稿", false);
+    await saveRepositoryFile(api, file, "中文/新名字.md", "# 保留草稿", false);
     assert.deepEqual(submitted, {
       baseCommit: "before",
       changes: [
@@ -75,6 +77,7 @@ test("an acknowledged unchanged save is returned without a retry or an uncertain
   };
   try {
     const result = await saveRepositoryFile(
+      api,
       {
         path: "a.md",
         expectedAbsence: false,

@@ -3,7 +3,7 @@ package io.github.core607.poketto.auth.internal;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.OAuthService;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -25,12 +25,10 @@ import org.springframework.web.bind.annotation.*;
 class OAuthController {
     private static final String PENDING = OAuthController.class.getName() + ".requests";
     private final OAuthService oauth;
-    private final WorkspaceCatalog workspaces;
     private final Map<String, Window> admission = new HashMap<>();
 
-    OAuthController(OAuthService oauth, WorkspaceCatalog workspaces) {
+    OAuthController(OAuthService oauth) {
         this.oauth = oauth;
-        this.workspaces = workspaces;
     }
 
     @GetMapping({"/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"})
@@ -126,8 +124,7 @@ class OAuthController {
 
     @GetMapping("/api/auth/oauth/consent")
     Map<String, Object> consent(@RequestParam String request, HttpSession session, Authentication authentication) {
-        oauth.requireOwner(
-                principal(authentication), workspaces.defaultWorkspace().id());
+        principal(authentication);
         synchronized (session) {
             var value = lookup(session, request);
             return Map.of(
@@ -137,11 +134,12 @@ class OAuthController {
 
     @PostMapping("/api/auth/oauth/consent")
     Map<String, String> consent(@RequestBody Decision decision, HttpSession session, Authentication authentication) {
+        if (decision.allow() && decision.workspaceId() == null) throw OAuthService.failure("invalid_request");
         synchronized (session) {
             var value = lookup(session, decision.request());
             String redirect = oauth.consent(
                     principal(authentication),
-                    workspaces.defaultWorkspace().id(),
+                    decision.allow() ? WorkspaceId.parse(decision.workspaceId()) : null,
                     value,
                     decision.scopes(),
                     decision.allow());
@@ -180,18 +178,15 @@ class OAuthController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).build();
     }
 
-    @GetMapping("/api/admin/connections")
-    Map<String, Object> connections(Authentication authentication) {
-        return Map.of(
-                "items",
-                oauth.connections(
-                        principal(authentication), workspaces.defaultWorkspace().id()));
+    @GetMapping("/api/admin/workspaces/{workspaceId}/connections")
+    Map<String, Object> connections(Authentication authentication, @PathVariable String workspaceId) {
+        return Map.of("items", oauth.connections(principal(authentication), WorkspaceId.parse(workspaceId)));
     }
 
-    @DeleteMapping("/api/admin/connections/{id}")
-    ResponseEntity<?> disconnect(@PathVariable UUID id, Authentication authentication) {
-        oauth.disconnect(
-                principal(authentication), workspaces.defaultWorkspace().id(), id);
+    @DeleteMapping("/api/admin/workspaces/{workspaceId}/connections/{id}")
+    ResponseEntity<?> disconnect(
+            @PathVariable UUID id, @PathVariable String workspaceId, Authentication authentication) {
+        oauth.disconnect(principal(authentication), WorkspaceId.parse(workspaceId), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -232,8 +227,9 @@ class OAuthController {
     }
 
     private static AuthPrincipal principal(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof AuthPrincipal value))
-            throw OAuthService.failure("access_denied");
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof AuthPrincipal value)
+                || value.kind() != AuthPrincipal.Kind.ACCOUNT) throw OAuthService.failure("access_denied");
         return value;
     }
 
@@ -284,7 +280,7 @@ class OAuthController {
             List<String> grant_types,
             List<String> response_types) {}
 
-    record Decision(String request, Set<String> scopes, boolean allow) {}
+    record Decision(String request, String workspaceId, Set<String> scopes, boolean allow) {}
 
     private record Window(long minute, int count) {}
 }

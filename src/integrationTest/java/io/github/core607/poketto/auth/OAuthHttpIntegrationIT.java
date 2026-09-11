@@ -14,6 +14,9 @@ import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -88,8 +91,11 @@ class OAuthHttpIntegrationIT {
         auth.initializeOwner("owner", PASSWORD);
     }
 
-    @Test
-    void discoveryRegistrationLoginConsentExchangeAndDisconnectUseRealSecurityChain() throws Exception {
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "https://site.example/mcp")
+    void discoveryRegistrationLoginConsentExchangeAndDisconnectUseRealSecurityChain(String requestedResource)
+            throws Exception {
         mvc.perform(get("/.well-known/oauth-protected-resource/mcp"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resource").value("https://site.example/mcp"));
@@ -103,15 +109,16 @@ class OAuthHttpIntegrationIT {
                                         "WWW-Authenticate",
                                         "Bearer resource_metadata=\"https://site.example/.well-known/oauth-protected-resource\""));
         String id = register();
-        MvcResult authorization = mvc.perform(get("/api/auth/oauth/authorize")
-                        .param("client_id", id)
-                        .param("redirect_uri", "https://client.example/callback")
-                        .param("response_type", "code")
-                        .param("state", "browser-state")
-                        .param("scope", "repository:execute content:publish offline_access")
-                        .param("code_challenge", OAuthService.challenge(VERIFIER))
-                        .param("code_challenge_method", "S256")
-                        .param("resource", "https://site.example/mcp"))
+        var authorizationRequest = get("/api/auth/oauth/authorize")
+                .param("client_id", id)
+                .param("redirect_uri", "https://client.example/callback")
+                .param("response_type", "code")
+                .param("state", "browser-state")
+                .param("scope", "repository:execute content:publish offline_access")
+                .param("code_challenge", OAuthService.challenge(VERIFIER))
+                .param("code_challenge_method", "S256");
+        if (requestedResource != null) authorizationRequest.param("resource", requestedResource);
+        MvcResult authorization = mvc.perform(authorizationRequest)
                 .andExpect(status().isSeeOther())
                 .andReturn();
         String request = URI.create(authorization.getResponse().getRedirectedUrl())
@@ -135,6 +142,9 @@ class OAuthHttpIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.clientName").value("Synthetic connector"));
         String decision = json.writeValueAsString(Map.of(
+                "workspaceId",
+                jdbc.queryForObject("select workspace_id from workspaces where is_default", java.util.UUID.class)
+                        .toString(),
                 "request",
                 request,
                 "allow",
@@ -176,31 +186,38 @@ class OAuthHttpIntegrationIT {
         String code = OAuthIntegrationIT.parameter(approved.get("redirect").asString(), "code");
         assertThat(OAuthIntegrationIT.parameter(approved.get("redirect").asString(), "state"))
                 .isEqualTo("browser-state");
+        var exchange = new java.util.HashMap<>(Map.of(
+                "client_id", id,
+                "grant_type", "authorization_code",
+                "code", code,
+                "code_verifier", VERIFIER,
+                "redirect_uri", "https://client.example/callback"));
+        for (String invalid : java.util.List.of("", "https://other.example/mcp", "https://site.example/mcp/")) {
+            exchange.put("resource", invalid);
+            mvc.perform(post("/api/auth/oauth/token")
+                            .contentType("application/x-www-form-urlencoded")
+                            .content(form(exchange)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("invalid_target"));
+        }
+        exchange.remove("resource");
+        if (requestedResource != null) exchange.put("resource", requestedResource);
         JsonNode token = body(mvc.perform(post("/api/auth/oauth/token")
                         .contentType("application/x-www-form-urlencoded")
-                        .content(form(Map.of(
-                                "client_id",
-                                id,
-                                "grant_type",
-                                "authorization_code",
-                                "code",
-                                code,
-                                "code_verifier",
-                                VERIFIER,
-                                "redirect_uri",
-                                "https://client.example/callback",
-                                "resource",
-                                "https://site.example/mcp"))))
+                        .content(form(exchange)))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andReturn());
         var principal = auth.authenticateApiKey(token.get("access_token").asString());
+        assertThat(jdbc.queryForObject(
+                        "select resource from oauth_connections where key_id=?", String.class, principal.subjectId()))
+                .isEqualTo("https://site.example/mcp");
         mvc.perform(get("/api/auth/oauth/consent").session(session).param("request", request))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/api/admin/connections").session(session))
+        mvc.perform(get(scoped("/api/admin/connections")).session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].scopes.length()").value(2));
-        mvc.perform(delete("/api/admin/connections/" + principal.subjectId())
+        mvc.perform(delete(scoped("/api/admin/connections/") + principal.subjectId())
                         .session(session)
                         .header(
                                 csrf.get("headerName").asString(),
@@ -216,6 +233,19 @@ class OAuthHttpIntegrationIT {
     @Test
     void invalidRedirectDuplicateParametersAndUnsupportedClientAuthenticationNeverRedirect() throws Exception {
         String client = register();
+        for (String invalid : java.util.List.of("", "https://other.example/mcp", "https://site.example/mcp/")) {
+            mvc.perform(get("/api/auth/oauth/authorize")
+                            .param("client_id", client)
+                            .param("redirect_uri", "https://client.example/callback")
+                            .param("response_type", "code")
+                            .param("state", "browser-state")
+                            .param("code_challenge", OAuthService.challenge(VERIFIER))
+                            .param("code_challenge_method", "S256")
+                            .param("resource", invalid))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("invalid_target"))
+                    .andExpect(header().doesNotExist("Location"));
+        }
         mvc.perform(get("/api/auth/oauth/authorize")
                         .param("client_id", client)
                         .param("redirect_uri", "https://attacker.example/cb"))
@@ -266,5 +296,13 @@ class OAuthHttpIntegrationIT {
                 .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "="
                         + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                 .collect(java.util.stream.Collectors.joining("&"));
+    }
+
+    private String scoped(String path) {
+        String workspace = jdbc.queryForObject(
+                        "select workspace_id from workspaces where is_default", java.util.UUID.class)
+                .toString();
+        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

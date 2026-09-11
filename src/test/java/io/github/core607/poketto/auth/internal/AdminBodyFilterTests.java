@@ -22,8 +22,9 @@ class AdminBodyFilterTests {
     void mediaDownloadsNeitherOccupyNorRequireRequestBodyCapacity() throws Exception {
         var filter = new AdminBodyFilter(1);
         for (String method : java.util.List.of("GET", "HEAD")) {
-            var download = new MockHttpServletRequest(method, "/api/admin/media");
-            download.setServletPath("/api/admin/media");
+            var download = new MockHttpServletRequest(
+                    method, "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media");
+            download.setServletPath("/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media");
             filter.doFilter(download, new MockHttpServletResponse(), (req, res) -> {
                 var called = new AtomicBoolean();
                 filter.doFilter(
@@ -45,24 +46,26 @@ class AdminBodyFilterTests {
         for (String type : java.util.List.of(
                 "application/octet-stream", "application/x-www-form-urlencoded", "multipart/form-data")) {
             var opened = new AtomicBoolean();
-            var request = new MockHttpServletRequest("POST", "/api/admin/media") {
-                @Override
-                public long getContentLengthLong() {
-                    return -1;
-                }
+            var request =
+                    new MockHttpServletRequest(
+                            "POST", "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media") {
+                        @Override
+                        public long getContentLengthLong() {
+                            return -1;
+                        }
 
-                @Override
-                public int getContentLength() {
-                    return -1;
-                }
+                        @Override
+                        public int getContentLength() {
+                            return -1;
+                        }
 
-                @Override
-                public ServletInputStream getInputStream() {
-                    opened.set(true);
-                    throw new AssertionError("body must remain unread until the streaming controller");
-                }
-            };
-            request.setServletPath("/api/admin/media");
+                        @Override
+                        public ServletInputStream getInputStream() {
+                            opened.set(true);
+                            throw new AssertionError("body must remain unread until the streaming controller");
+                        }
+                    };
+            request.setServletPath("/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media");
             request.setContentType(type);
             var response = new MockHttpServletResponse();
             var dispatched = new AtomicBoolean();
@@ -205,8 +208,11 @@ class AdminBodyFilterTests {
     @Test
     void unsupportedLargeFormIsRejectedWithoutDecodingOrConsumingIt() throws Exception {
         var filter = new AdminBodyFilter(1);
-        for (String path :
-                new String[] {"/api/admin/assets", "/api/admin/repository/patch", "/api/admin/repository/preview"}) {
+        for (String path : new String[] {
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview"
+        }) {
             var request = request(false, false);
             request.setRequestURI(path);
             request.setContentType("application/x-www-form-urlencoded");
@@ -243,7 +249,10 @@ class AdminBodyFilterTests {
     private static CountingRequest request(boolean declared, boolean multipart) {
         var request = new CountingRequest(declared);
         request.setMethod("POST");
-        request.setRequestURI(multipart ? "/api/admin/assets" : "/api/admin/repository/preview");
+        request.setRequestURI(
+                multipart
+                        ? "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets"
+                        : "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview");
         request.setContentType(multipart ? "multipart/form-data; boundary=x" : "application/json");
         request.setContent("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return request;

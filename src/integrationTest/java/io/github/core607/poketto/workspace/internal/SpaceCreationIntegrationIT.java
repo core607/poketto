@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -198,8 +199,8 @@ class SpaceCreationIntegrationIT {
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
             var rotating = pool.submit(() -> service.rotateCredentials(actor, workspace, "cnb", "replacement"));
             assertThat(remote.rotationEntered.await(5, TimeUnit.SECONDS)).isTrue();
-            var demoting = pool.submit(
-                    () -> auth.changeMembership(coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true));
+            var demoting = pool.submit(() -> auth.changeMembership(
+                    coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true, Set.of()));
             demoting.get(3, TimeUnit.SECONDS);
             remote.rotationRelease.countDown();
             assertThatThrownBy(() -> rotating.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(AuthException.class);

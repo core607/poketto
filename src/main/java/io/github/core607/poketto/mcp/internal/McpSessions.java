@@ -4,7 +4,6 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
@@ -29,7 +28,6 @@ final class McpSessions implements AutoCloseable {
     static final String IDENTITY_CONTEXT = "poketto.mcp.identity";
     private static final Logger log = LoggerFactory.getLogger(McpSessions.class);
     private final AuthService auth;
-    private final WorkspaceCatalog workspaces;
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final Duration idleTimeout;
@@ -40,16 +38,10 @@ final class McpSessions implements AutoCloseable {
     private boolean closed;
 
     McpSessions(
-            AuthService auth,
-            WorkspaceCatalog workspaces,
-            ApplicationEventPublisher events,
-            Clock clock,
-            Duration idleTimeout,
-            int maxSessions) {
+            AuthService auth, ApplicationEventPublisher events, Clock clock, Duration idleTimeout, int maxSessions) {
         if (idleTimeout.isNegative() || idleTimeout.isZero() || maxSessions < 1 || maxSessions > 1024)
             throw new IllegalArgumentException("invalid MCP session bounds");
         this.auth = auth;
-        this.workspaces = workspaces;
         this.events = events;
         this.clock = clock;
         this.idleTimeout = idleTimeout;
@@ -64,8 +56,7 @@ final class McpSessions implements AutoCloseable {
                 || !(authentication.getPrincipal() instanceof AuthPrincipal principal)
                 || principal.kind() != AuthPrincipal.Kind.API_KEY)
             throw new SecurityException("MCP authentication required");
-        WorkspaceId workspace = workspaces.defaultWorkspace().id();
-        auth.authorize(principal, workspace);
+        WorkspaceId workspace = auth.workspaceForKey(principal);
         return new Identity(principal, workspace);
     }
 

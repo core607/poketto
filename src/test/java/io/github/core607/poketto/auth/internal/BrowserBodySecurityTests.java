@@ -53,8 +53,11 @@ class BrowserBodySecurityTests {
 
     @Test
     void anonymousAdminRequestsNeverOpenTheBodyOrParseCsrfParameters() throws Exception {
-        for (String path :
-                new String[] {"/api/admin/assets", "/api/admin/repository/patch", "/api/admin/repository/preview"}) {
+        for (String path : new String[] {
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview"
+        }) {
             for (String method : new String[] {"GET", "POST"}) {
                 for (String type : new String[] {
                     "application/json", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"
@@ -74,12 +77,20 @@ class BrowserBodySecurityTests {
     @Test
     void revokedMembershipAndNonAccountSessionsAreRejectedBeforeBodyReads() throws Exception {
         when(auth.authorize(any(), any())).thenThrow(mock(AuthException.class));
-        var revoked = new CountingRequest("POST", "/api/admin/assets", "multipart/form-data; boundary=x", false);
+        var revoked = new CountingRequest(
+                "POST",
+                "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+                "multipart/form-data; boundary=x",
+                false);
         revoked.setSession(session(AuthPrincipal.Kind.ACCOUNT));
         reject(revoked, 403);
         assertThat(revoked.streams).hasValue(0);
         assertThat(revoked.parameters).hasValue(0);
-        var machine = new CountingRequest("POST", "/api/admin/repository/patch", "application/json", false);
+        var machine = new CountingRequest(
+                "POST",
+                "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
+                "application/json",
+                false);
         machine.setSession(session(AuthPrincipal.Kind.API_KEY));
         reject(machine, 401);
         assertThat(machine.streams).hasValue(0);
@@ -93,13 +104,18 @@ class BrowserBodySecurityTests {
             authorized.set(true);
             return null;
         });
-        var request = new CountingRequest("POST", "/api/admin/assets", "multipart/form-data; boundary=x", false) {
-            @Override
-            public String getParameter(String name) {
-                assertThat(authorized).isTrue();
-                return super.getParameter(name);
-            }
-        };
+        var request =
+                new CountingRequest(
+                        "POST",
+                        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+                        "multipart/form-data; boundary=x",
+                        false) {
+                    @Override
+                    public String getParameter(String name) {
+                        assertThat(authorized).isTrue();
+                        return super.getParameter(name);
+                    }
+                };
         request.setSession(session(AuthPrincipal.Kind.ACCOUNT));
         reject(request, 403);
         assertThat(authorized).isTrue();
@@ -108,16 +124,22 @@ class BrowserBodySecurityTests {
 
     @Test
     void originAndDeclaredOverflowAreRejectedWithoutBodyReads() throws Exception {
-        var origin = new CountingRequest("POST", "/api/admin/assets", "application/json", false);
+        var origin = new CountingRequest(
+                "POST", "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets", "application/json", false);
         origin.addHeader("Origin", "https://unexpected.invalid");
         reject(origin, 403);
         assertThat(origin.streams).hasValue(0);
-        var overflow = new CountingRequest("POST", "/api/admin/assets", "application/json", true) {
-            @Override
-            public long getContentLengthLong() {
-                return 17 * 1024 * 1024 + 1;
-            }
-        };
+        var overflow =
+                new CountingRequest(
+                        "POST",
+                        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+                        "application/json",
+                        true) {
+                    @Override
+                    public long getContentLengthLong() {
+                        return 17 * 1024 * 1024 + 1;
+                    }
+                };
         reject(overflow, 413);
         assertThat(overflow.streams).hasValue(0);
         verifyNoInteractions(auth);

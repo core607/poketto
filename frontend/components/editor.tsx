@@ -1,7 +1,8 @@
 "use client";
 import { useConfirmation } from "./confirmation";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError } from "../lib/browser-api";
+import { ApiError } from "../lib/browser-api";
+import { useWorkspaceApi } from "./workspace-context";
 import type {
   GalleryStatus,
   RepositoryFile,
@@ -33,6 +34,7 @@ export function Editor({
   identity: Identity;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const api = useWorkspaceApi();
   const confirm = useConfirmation();
   const [tree, setTree] = useState<RepositoryTree | null>(null);
   const [file, setFile] = useState<RepositoryFile | null>(null);
@@ -134,6 +136,7 @@ export function Editor({
       setFile(result);
       setPath(result.path);
       setSource(result.source ?? "");
+      setPreviewVersion((version) => version + 1);
     } catch (error) {
       setError(message(error));
     } finally {
@@ -168,7 +171,13 @@ export function Editor({
     setError("");
     setConflict(false);
     try {
-      const result = await saveRepositoryFile(file, target, source, remove);
+      const result = await saveRepositoryFile(
+        api,
+        file,
+        target,
+        source,
+        remove,
+      );
       if (remove) {
         setFile(null);
         setSource("");

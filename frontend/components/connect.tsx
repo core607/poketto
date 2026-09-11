@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/browser-api";
-import { Login, message, type Identity } from "./admin";
+import { Login, message } from "./admin";
+import type { AccountProfile } from "./account-panel";
+import type { SpaceSummary } from "./workspace-dashboard";
 
 export const scopeLabels: Record<string, { label: string; detail: string }> = {
   "repository:execute": {
@@ -29,33 +31,41 @@ export const scopeLabels: Record<string, { label: string; detail: string }> = {
 type Consent = { clientName: string; redirectUri: string; scopes: string[] };
 export function Connect() {
   const [request, setRequest] = useState("");
-  const [identity, setIdentity] = useState<Identity | null>(null);
+  const [account, setAccount] = useState<AccountProfile | null>(null);
+  const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
+  const [workspace, setWorkspace] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [consent, setConsent] = useState<Consent | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  async function load(id: string) {
+  async function load(id: string, pageOffset = 0) {
     setLoading(true);
     setError("");
     try {
-      const who = await api<Identity>("/api/auth/me");
-      setIdentity(who);
-      if (who.role !== "OWNER") {
-        setError("只有空间所有者可以授权新的应用连接。");
-        return;
-      }
+      setAccount(await api<AccountProfile>("/api/auth/account"));
       const value = await api<Consent>(
         "/api/auth/oauth/consent?request=" + encodeURIComponent(id),
       );
       setConsent(value);
+      const page = await api<{ items: SpaceSummary[]; total: number }>(
+        `/api/auth/workspaces?offset=${pageOffset}&limit=30`,
+      );
+      setSpaces(page.items);
+      setTotal(page.total);
+      setOffset(pageOffset);
+      setWorkspace(
+        page.items.find((space) => space.role === "OWNER")?.workspaceId ?? "",
+      );
       setSelected(
         value.scopes.filter(
           (s) => s === "repository:execute" || s === "offline_access",
         ),
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setIdentity(null);
+      if (e instanceof ApiError && e.status === 401) setAccount(null);
       else setError("授权请求已失效或不可用，请回到客户端重新连接。");
     } finally {
       setLoading(false);
@@ -77,7 +87,15 @@ export function Connect() {
     try {
       const result = await api<{ redirect: string }>(
         "/api/auth/oauth/consent",
-        { method: "POST", body: { request, scopes: selected, allow } },
+        {
+          method: "POST",
+          body: {
+            request,
+            workspaceId: workspace || null,
+            scopes: selected,
+            allow,
+          },
+        },
       );
       // The server binds this exact redirect to the browser's validated authorization request.
       window.location.assign(result.redirect);
@@ -92,7 +110,7 @@ export function Connect() {
       <h1 id="connect-title">授权应用访问 Poketto</h1>
       {loading ? (
         <p role="status">正在确认连接…</p>
-      ) : !identity && request && !error ? (
+      ) : !account && request && !error ? (
         <>
           <p>先登录，再选择允许应用使用的权限。登录不会自动授权。</p>
           <Login connection onLogin={() => load(request)} />
@@ -108,6 +126,58 @@ export function Connect() {
                 {consent.redirectUri}
               </strong>
             </p>
+            <label>
+              连接哪个空间？
+              <select
+                value={workspace}
+                disabled={pending}
+                onChange={(event) => setWorkspace(event.target.value)}
+              >
+                <option value="">请选择空间</option>
+                {spaces.map((space) => (
+                  <option
+                    key={space.workspaceId}
+                    value={space.workspaceId}
+                    disabled={space.role !== "OWNER"}
+                  >
+                    {space.displayName}
+                    {space.role !== "OWNER" ? "（需要所有者授权）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {total > 30 && (
+              <nav className="pagination" aria-label="空间分页">
+                <button
+                  disabled={pending || offset === 0}
+                  onClick={() => void load(request, Math.max(0, offset - 30))}
+                >
+                  上一页
+                </button>
+                <button
+                  disabled={pending || offset + 30 >= total}
+                  onClick={() => void load(request, offset + 30)}
+                >
+                  下一页
+                </button>
+              </nav>
+            )}
+            {!workspace && (
+              <p>
+                先
+                <a href="/admin?tab=account" target="_blank" rel="noreferrer">
+                  创建或加入空间
+                </a>
+                ，再回来继续授权。
+                <button
+                  className="text-button"
+                  disabled={pending}
+                  onClick={() => void load(request)}
+                >
+                  重新读取空间
+                </button>
+              </p>
+            )}
             <fieldset disabled={pending}>
               <legend>允许哪些操作？</legend>
               {Object.entries(scopeLabels)
@@ -136,7 +206,9 @@ export function Connect() {
             <div className="oauth-actions">
               <button
                 disabled={
-                  pending || !selected.some((s) => s !== "offline_access")
+                  pending ||
+                  !workspace ||
+                  !selected.some((s) => s !== "offline_access")
                 }
                 onClick={() => void decide(true)}
               >

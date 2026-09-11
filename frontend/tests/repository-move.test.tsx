@@ -1,3 +1,4 @@
+import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
@@ -72,7 +73,7 @@ test("folder selection cancels without writing and moves via the host service be
   const { ConfirmationProvider } = await import("../components/confirmation");
   const container = window.document.createElement("div");
   window.document.body.append(container);
-  const root = createRoot(container as unknown as HTMLDivElement);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
   const oldFetch = globalThis.fetch;
   let moved = false;
   let stale = false;
@@ -85,13 +86,19 @@ test("folder selection cancels without writing and moves via the host service be
     const path = moved ? "public/renamed.md" : "private/note.md";
     if (url.pathname === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
-    if (url.pathname === "/api/admin/repository/tree")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/tree"
+    )
       return Response.json({
         commit,
         entries: [{ path, title: "Note" }],
         diagnostics: [],
       });
-    if (url.pathname === "/api/admin/repository/file") {
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/file"
+    ) {
       assert.equal(url.searchParams.get("path"), path);
       return Response.json({
         commit,
@@ -104,7 +111,10 @@ test("folder selection cancels without writing and moves via the host service be
         diagnostics: [],
       });
     }
-    if (url.pathname === "/api/admin/repository/directory") {
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/directory"
+    ) {
       const folder = url.searchParams.get("path")!;
       directoryVersions.push(url.searchParams.get("commit")!);
       const entries =
@@ -124,7 +134,10 @@ test("folder selection cancels without writing and moves via the host service be
         nextOffset: null,
       });
     }
-    if (url.pathname === "/api/admin/repository/move") {
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move"
+    ) {
       assert.equal(options?.method, "POST");
       assert.equal(new Headers(options.headers).get("X-CSRF"), "fixture");
       writes.push(JSON.parse(String(options.body)));
@@ -141,7 +154,10 @@ test("folder selection cancels without writing and moves via the host service be
         revisions: {},
       });
     }
-    if (url.pathname === "/api/admin/repository/preview")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview"
+    )
       return Response.json({ body: "# Note", galleryStatus: "COMPLETE" });
     throw new Error(`Unexpected API call: ${url.pathname}`);
   };
@@ -160,7 +176,7 @@ test("folder selection cancels without writing and moves via the host service be
         <Editor
           identity={{
             accountId: "owner",
-            workspaceId: "workspace",
+            workspaceId: "11111111-1111-4111-8111-111111111111",
             role: "OWNER",
             capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
           }}

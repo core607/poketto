@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ImageRequestScope;
+import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
 import jakarta.servlet.FilterChain;
@@ -48,6 +49,7 @@ final class ImageMemoryFilter extends OncePerRequestFilter {
         String path = request.getServletPath();
         if (path.isEmpty())
             path = request.getRequestURI().substring(request.getContextPath().length());
+        path = WorkspaceHttpRoutes.operation(path);
         return switch (path) {
             case "/api/admin/assets" -> request.getMethod().equals("POST");
             default ->

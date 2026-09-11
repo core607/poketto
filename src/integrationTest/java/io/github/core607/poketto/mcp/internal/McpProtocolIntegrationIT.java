@@ -120,6 +120,15 @@ class McpProtocolIntegrationIT {
     AuthService auth;
 
     @Autowired
+    io.github.core607.poketto.auth.RegistrationService registration;
+
+    @Autowired
+    io.github.core607.poketto.workspace.WorkspaceRegistry registry;
+
+    @Autowired
+    org.springframework.transaction.PlatformTransactionManager transactions;
+
+    @Autowired
     WorkspaceCatalog workspaces;
 
     @Autowired
@@ -154,6 +163,31 @@ class McpProtocolIntegrationIT {
         assertThat(post(null, null, initialize()).statusCode()).isEqualTo(401);
         String first = initialize(key.token());
         String second = initialize(key.token());
+        var separateOwner = registration.register(
+                registration.issue(owner).token(),
+                "separate-mcp-owner",
+                UUID.randomUUID().toString());
+        var separateSpace = io.github.core607.poketto.workspace.WorkspaceId.random();
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status -> {
+            registry.create(separateSpace, "Separate connector space", "separate-connector");
+            auth.establishWorkspaceOwner(separateOwner, separateSpace);
+        });
+        var separateKey = auth.createApiKey(
+                separateOwner, separateSpace, separateOwner.accountId(), Set.of(Capability.READ_PRIVATE));
+        // This account has no default-space membership. Its credential still initializes on /mcp.
+        String separateSession = initialize(separateKey.token());
+        assertThat(post(separateKey.token(), first, rpc("tools/list", Map.of())).statusCode())
+                .isEqualTo(404);
+        assertThat(post(key.token(), separateSession, rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(404);
+        assertThat(post(separateKey.token(), separateSession, rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(200);
+        auth.revokeApiKey(separateOwner, separateSpace, separateKey.id());
+        assertThat(post(separateKey.token(), separateSession, rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(401);
         assertActualImageResponseCompletion(key.token(), first);
         assertEnvelopeLimits(key.token(), first);
         assertThat(second).isNotEqualTo(first);

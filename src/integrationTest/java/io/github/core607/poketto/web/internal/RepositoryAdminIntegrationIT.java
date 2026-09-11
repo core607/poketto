@@ -103,8 +103,8 @@ class RepositoryAdminIntegrationIT {
     void browserEditsPreserveRawTextAndEnforceSessionCsrfAndGitPreconditions() throws Exception {
         String password = UUID.randomUUID().toString();
         auth.initializeOwner("editor", password);
-        mvc.perform(get("/api/admin/repository/tree")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/admin/repository/directory")).andExpect(status().isUnauthorized());
+        mvc.perform(get(scoped("/api/admin/repository/tree"))).andExpect(status().isUnauthorized());
+        mvc.perform(get(scoped("/api/admin/repository/directory"))).andExpect(status().isUnauthorized());
         Csrf anonymous = csrf(null);
         mvc.perform(post("/api/auth/login")
                         .session(anonymous.session())
@@ -113,13 +113,15 @@ class RepositoryAdminIntegrationIT {
                         .param("password", password))
                 .andExpect(status().isNoContent());
         Csrf editor = csrf(anonymous.session());
-        mvc.perform(get("/api/admin/repository/file").session(editor.session()).param("path", "private/中文.md"))
+        mvc.perform(get(scoped("/api/admin/repository/file"))
+                        .session(editor.session())
+                        .param("path", "private/中文.md"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.expectedAbsence").value(true));
         String source = "\uFEFF---\r\ntags: [日常]\r\nunknown: retained\r\n---\r\n# 中文\r\n" + "原文".repeat(10_000);
         String path = "private/中文.md";
         var create = Map.of("changes", List.of(Map.of("path", path, "expectedAbsence", true, "content", source)));
-        mvc.perform(post("/api/admin/repository/patch")
+        mvc.perform(post(scoped("/api/admin/repository/patch"))
                         .session(editor.session())
                         .contentType("application/json")
                         .content(json.writeValueAsString(create)))
@@ -132,21 +134,21 @@ class RepositoryAdminIntegrationIT {
                 .andReturn());
         String commit = created.get("commit").stringValue();
         String revision = created.get("revisions").get(path).stringValue();
-        JsonNode file = body(mvc.perform(get("/api/admin/repository/file")
+        JsonNode file = body(mvc.perform(get(scoped("/api/admin/repository/file"))
                         .session(editor.session())
                         .param("path", path))
                 .andExpect(status().isOk())
                 .andReturn());
         assertThat(file.get("source").stringValue()).isEqualTo(source);
         assertThat(file.get("revision").stringValue()).isEqualTo(revision);
-        mvc.perform(get("/api/admin/repository/search")
+        mvc.perform(get(scoped("/api/admin/repository/search"))
                         .session(editor.session())
                         .param("query", "原文")
                         .param("tag", "日常"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(1))
                 .andExpect(jsonPath("$.items[0].path").value(path));
-        mvc.perform(get("/api/admin/repository/search")
+        mvc.perform(get(scoped("/api/admin/repository/search"))
                         .session(editor.session())
                         .param("query", "原.*文"))
                 .andExpect(status().isOk())
@@ -156,7 +158,7 @@ class RepositoryAdminIntegrationIT {
                 .andExpect(jsonPath("$.total").value(0));
         mvc.perform(request(editor, create)).andExpect(status().isConflict());
 
-        mvc.perform(get("/api/admin/repository/directory")
+        mvc.perform(get(scoped("/api/admin/repository/directory"))
                         .session(editor.session())
                         .param("commit", commit))
                 .andExpect(status().isOk())
@@ -164,19 +166,19 @@ class RepositoryAdminIntegrationIT {
                 .andExpect(jsonPath("$.commit").value(commit))
                 .andExpect(jsonPath("$.entries[0].path").value("private"))
                 .andExpect(jsonPath("$.entries[0].kind").value("DIRECTORY"));
-        mvc.perform(get("/api/admin/repository/directory")
+        mvc.perform(get(scoped("/api/admin/repository/directory"))
                         .session(editor.session())
                         .param("commit", commit)
                         .param("path", "private"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries[0].path").value(path));
         var move = Map.of("baseCommit", commit, "source", path, "destination", "private/moved.md");
-        mvc.perform(post("/api/admin/repository/move")
+        mvc.perform(post(scoped("/api/admin/repository/move"))
                         .session(editor.session())
                         .contentType("application/json")
                         .content(json.writeValueAsString(move)))
                 .andExpect(status().isForbidden());
-        JsonNode moved = body(mvc.perform(post("/api/admin/repository/move")
+        JsonNode moved = body(mvc.perform(post(scoped("/api/admin/repository/move"))
                         .session(editor.session())
                         .header(editor.header(), editor.token())
                         .contentType("application/json")
@@ -184,29 +186,31 @@ class RepositoryAdminIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.committed").value(true))
                 .andReturn());
-        mvc.perform(get("/api/admin/repository/directory")
+        mvc.perform(get(scoped("/api/admin/repository/directory"))
                         .session(editor.session())
                         .param("commit", moved.get("commit").stringValue())
                         .param("path", "private"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries[0].path").value("private/moved.md"));
-        mvc.perform(get("/api/admin/repository/file").session(editor.session()).param("path", path))
+        mvc.perform(get(scoped("/api/admin/repository/file"))
+                        .session(editor.session())
+                        .param("path", path))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.expectedAbsence").value(true));
-        JsonNode history = body(mvc.perform(get("/api/admin/repository/file")
+        JsonNode history = body(mvc.perform(get(scoped("/api/admin/repository/file"))
                         .session(editor.session())
                         .param("path", path)
                         .param("commit", commit))
                 .andExpect(status().isOk())
                 .andReturn());
         assertThat(history.get("source").stringValue()).isEqualTo(source);
-        mvc.perform(post("/api/admin/repository/move")
+        mvc.perform(post(scoped("/api/admin/repository/move"))
                         .session(editor.session())
                         .header(editor.header(), editor.token())
                         .contentType("application/json")
                         .content(json.writeValueAsString(move)))
                 .andExpect(status().isConflict());
-        mvc.perform(post("/api/admin/repository/move")
+        mvc.perform(post(scoped("/api/admin/repository/move"))
                         .session(editor.session())
                         .header(editor.header(), editor.token())
                         .contentType("application/json")
@@ -215,11 +219,11 @@ class RepositoryAdminIntegrationIT {
         mvc.perform(request(editor, Map.of())).andExpect(status().isBadRequest());
         mvc.perform(request(editor, Map.of("changes", List.of(Map.of("content", "# missing path")))))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/api/admin/repository/search")
+        mvc.perform(get(scoped("/api/admin/repository/search"))
                         .session(editor.session())
                         .param("limit", "101"))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/api/admin/repository/tree").session(editor.session()))
+        mvc.perform(get(scoped("/api/admin/repository/tree")).session(editor.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries[0].path").value("private/moved.md"));
         logicalRoutesOverHttp(password);
@@ -242,7 +246,7 @@ class RepositoryAdminIntegrationIT {
             assertThat(client.send(login, HttpResponse.BodyHandlers.ofString()).statusCode())
                     .isEqualTo(204);
             JsonNode csrf = http(client, "GET", "/api/auth/csrf", null, null, 200);
-            JsonNode tree = http(client, "GET", "/api/admin/repository/tree", null, null, 200);
+            JsonNode tree = http(client, "GET", scoped("/api/admin/repository/tree"), null, null, 200);
             Map<String, String> routes = new LinkedHashMap<>();
             for (String path : new String[] {
                 "中文 空格.md",
@@ -276,7 +280,7 @@ class RepositoryAdminIntegrationIT {
                 JsonNode preview = http(
                         client,
                         "POST",
-                        "/api/admin/repository/preview",
+                        scoped("/api/admin/repository/preview"),
                         csrf,
                         Map.of("path", entry.getKey(), "body", source),
                         200);
@@ -287,7 +291,7 @@ class RepositoryAdminIntegrationIT {
             JsonNode saved = http(
                     client,
                     "POST",
-                    "/api/admin/repository/patch",
+                    scoped("/api/admin/repository/patch"),
                     csrf,
                     Map.of("baseCommit", tree.get("commit").stringValue(), "changes", changes),
                     200);
@@ -295,7 +299,12 @@ class RepositoryAdminIntegrationIT {
             assertThat(saved.get("snapshotUpdated").booleanValue()).isTrue();
             for (var entry : routes.entrySet()) {
                 JsonNode file = http(
-                        client, "GET", "/api/admin/repository/file?path=" + encode(entry.getKey()), null, null, 200);
+                        client,
+                        "GET",
+                        scoped("/api/admin/repository/file?path=") + encode(entry.getKey()),
+                        null,
+                        null,
+                        200);
                 assertThat(file.get("source").stringValue()).isEqualTo(sources.get(entry.getKey()));
                 assertThat(file.get("diagnostics").isEmpty()).isTrue();
                 JsonNode document =
@@ -359,22 +368,23 @@ class RepositoryAdminIntegrationIT {
         JsonNode preview = http(
                 client,
                 "POST",
-                "/api/admin/repository/preview",
+                scoped("/api/admin/repository/preview"),
                 csrf,
                 Map.of("path", "private/index.md", "body", "# Private album"),
                 200);
         assertThat(preview.get("galleryStatus").stringValue()).isEqualTo("PARTIAL");
         assertThat(preview.get("gallery").size()).isEqualTo(128);
-        assertThat(preview.get("gallery").get(0).get("src").stringValue()).startsWith("/api/admin/assets/images/");
+        assertThat(preview.get("gallery").get(0).get("src").stringValue())
+                .startsWith(scoped("/api/admin/assets/images/"));
     }
 
     private void rawMediaUploadOverHttp(HttpClient client, JsonNode csrf) throws Exception {
-        String before = http(client, "GET", "/api/admin/repository/tree", null, null, 200)
+        String before = http(client, "GET", scoped("/api/admin/repository/tree"), null, null, 200)
                 .get("commit")
                 .stringValue();
         byte[] bytes = "raw original bytes".getBytes(StandardCharsets.UTF_8);
         String key = UUID.randomUUID().toString();
-        var uri = URI.create("http://127.0.0.1:" + port + "/api/admin/media");
+        var uri = URI.create("http://127.0.0.1:" + port + scoped("/api/admin/media"));
         var withoutCsrf = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(15))
                 .header("Content-Type", "application/octet-stream")
@@ -413,7 +423,7 @@ class RepositoryAdminIntegrationIT {
                 .isEqualTo(java.util.HexFormat.of()
                         .formatHex(java.security.MessageDigest.getInstance("SHA-256")
                                 .digest(bytes)));
-        assertThat(http(client, "GET", "/api/admin/repository/tree", null, null, 200)
+        assertThat(http(client, "GET", scoped("/api/admin/repository/tree"), null, null, 200)
                         .get("commit")
                         .stringValue())
                 .isEqualTo(before);
@@ -431,7 +441,7 @@ class RepositoryAdminIntegrationIT {
         var publication = http(
                 client,
                 "POST",
-                "/api/admin/repository/patch",
+                scoped("/api/admin/repository/patch"),
                 csrf,
                 Map.of(
                         "baseCommit",
@@ -458,8 +468,9 @@ class RepositoryAdminIntegrationIT {
         try (var anonymous =
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             for (var reader : List.of(anonymous, client)) {
-                String downloadPath =
-                        reader == anonymous ? "/api/public/media" + query : "/api/admin/media?path=private/source.pdf";
+                String downloadPath = reader == anonymous
+                        ? "/api/public/media" + query
+                        : scoped("/api/admin/media?path=private/source.pdf");
                 var download = reader.send(
                         HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + downloadPath))
                                 .timeout(Duration.ofSeconds(15))
@@ -477,7 +488,7 @@ class RepositoryAdminIntegrationIT {
                                 .orElseThrow())
                         .isEqualTo("nosniff");
             }
-            http(anonymous, "GET", "/api/admin/media?path=private/source.pdf", null, null, 401);
+            http(anonymous, "GET", scoped("/api/admin/media?path=private/source.pdf"), null, null, 401);
             http(
                     anonymous,
                     "GET",
@@ -491,14 +502,14 @@ class RepositoryAdminIntegrationIT {
 
     private void portableExportsOverHttp(HttpClient client, JsonNode csrf, byte[] original) throws Exception {
         var selection = Map.of("paths", List.of("public/http-media.md"), "publicOnly", true);
-        http(client, "POST", "/api/admin/exports", null, selection, 403);
-        var receipt = http(client, "POST", "/api/admin/exports", csrf, selection, 200);
+        http(client, "POST", scoped("/api/admin/exports"), null, selection, 403);
+        var receipt = http(client, "POST", scoped("/api/admin/exports"), csrf, selection, 200);
         String handle = receipt.path("handle").stringValue();
         try (var anonymous = HttpClient.newHttpClient()) {
-            http(anonymous, "GET", "/api/admin/exports/" + handle, null, null, 401);
+            http(anonymous, "GET", scoped("/api/admin/exports/") + handle, null, null, 401);
         }
         var downloaded = client.send(
-                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/admin/exports/" + handle))
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + scoped("/api/admin/exports/") + handle))
                         .timeout(Duration.ofSeconds(15))
                         .GET()
                         .build(),
@@ -528,13 +539,13 @@ class RepositoryAdminIntegrationIT {
         http(
                 client,
                 "POST",
-                "/api/admin/exports",
+                scoped("/api/admin/exports"),
                 csrf,
                 Map.of("paths", List.of("private/source.pdf"), "publicOnly", true),
                 503);
-        http(client, "POST", "/api/admin/exports/" + handle + "/release", null, Map.of(), 403);
+        http(client, "POST", scoped("/api/admin/exports/") + handle + "/release", null, Map.of(), 403);
         var release = HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + port + "/api/admin/exports/" + handle + "/release"))
+                        URI.create("http://127.0.0.1:" + port + scoped("/api/admin/exports/") + handle + "/release"))
                 .header(
                         csrf.path("headerName").stringValue(),
                         csrf.path("token").stringValue())
@@ -543,7 +554,7 @@ class RepositoryAdminIntegrationIT {
                 .build();
         assertThat(client.send(release, HttpResponse.BodyHandlers.discarding()).statusCode())
                 .isEqualTo(204);
-        http(client, "GET", "/api/admin/exports/" + handle + "/metadata", null, null, 404);
+        http(client, "GET", scoped("/api/admin/exports/") + handle + "/metadata", null, null, 404);
     }
 
     private JsonNode http(HttpClient client, String method, String path, JsonNode csrf, Object payload, int status)
@@ -578,7 +589,7 @@ class RepositoryAdminIntegrationIT {
     }
 
     private MockHttpServletRequestBuilder request(Csrf csrf, Object body) {
-        return post("/api/admin/repository/patch")
+        return post(scoped("/api/admin/repository/patch"))
                 .session(csrf.session())
                 .header(csrf.header(), csrf.token())
                 .contentType("application/json")
@@ -590,4 +601,10 @@ class RepositoryAdminIntegrationIT {
     }
 
     private record Csrf(MockHttpSession session, String header, String token) {}
+
+    private String scoped(String path) {
+        String workspace = catalog.defaultWorkspace().id().toString();
+        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
+    }
 }

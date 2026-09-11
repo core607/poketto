@@ -7,7 +7,6 @@ import io.github.core607.poketto.assets.ManagedAssetPage;
 import io.github.core607.poketto.assets.RepositoryImagePage;
 import io.github.core607.poketto.assets.ResolvedMedia;
 import io.github.core607.poketto.auth.AuthPrincipal;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.io.IOException;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/admin/workspaces/{workspaceId}")
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AssetAdminController {
     private final AssetService assets;
-    private final WorkspaceCatalog workspaces;
+    private final BrowserWorkspace workspaces;
 
-    AssetAdminController(AssetService assets, WorkspaceCatalog workspaces) {
+    AssetAdminController(AssetService assets, BrowserWorkspace workspaces) {
         this.assets = assets;
         this.workspaces = workspaces;
     }
@@ -43,7 +42,7 @@ class AssetAdminController {
             @AuthenticationPrincipal AuthPrincipal actor,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
-        return assets.list(actor, workspaces.defaultWorkspace().id(), offset, limit);
+        return assets.list(actor, workspaces.selected(), offset, limit);
     }
 
     @PostMapping(path = "/assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -52,7 +51,7 @@ class AssetAdminController {
             @RequestHeader("Idempotency-Key") String operationKey,
             @RequestPart("file") MultipartFile file) {
         try (var input = file.getInputStream()) {
-            return assets.upload(actor, workspaces.defaultWorkspace().id(), operationKey, input);
+            return assets.upload(actor, workspaces.selected(), operationKey, input);
         } catch (IOException exception) {
             throw new AssetStorageException(AssetStorageException.Reason.UNAVAILABLE);
         }
@@ -66,7 +65,7 @@ class AssetAdminController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
         return assets.repositoryImages(
-                actor, workspaces.defaultWorkspace().id(), Optional.ofNullable(commit), prefix, offset, limit);
+                actor, workspaces.selected(), Optional.ofNullable(commit), prefix, offset, limit);
     }
 
     @PostMapping("/repository/preview")
@@ -74,16 +73,12 @@ class AssetAdminController {
         if (request.path() == null || request.body() == null)
             throw new IllegalArgumentException("preview path and source are required");
         return assets.preview(
-                actor,
-                workspaces.defaultWorkspace().id(),
-                request.path(),
-                request.body(),
-                Optional.ofNullable(request.commit()));
+                actor, workspaces.selected(), request.path(), request.body(), Optional.ofNullable(request.commit()));
     }
 
     @GetMapping("/assets/images/{token}")
     ResponseEntity<byte[]> image(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable String token) {
-        var image = assets.readPrivateImage(actor, workspaces.defaultWorkspace().id(), token);
+        var image = assets.readPrivateImage(actor, workspaces.selected(), token);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.parseMediaType(image.mediaType()))

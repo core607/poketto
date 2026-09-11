@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
+import { useWorkspaceApi } from "./workspace-context";
 import { message } from "./admin";
 export type AdminPage<T> = {
   items: T[];
@@ -9,6 +9,7 @@ export type AdminPage<T> = {
   limit: number;
 };
 export function useAdminPage<T>(path: string) {
+  const api = useWorkspaceApi();
   const [offset, setOffset] = useState(0);
   const [version, setVersion] = useState(0);
   const [page, setPage] = useState<AdminPage<T>>({
@@ -36,7 +37,7 @@ export function useAdminPage<T>(path: string) {
     return () => {
       active = false;
     };
-  }, [path, offset, version]);
+  }, [api, path, offset, version]);
   return {
     ...page,
     loading,

@@ -3,6 +3,31 @@ import test from "node:test";
 import { api, ApiError } from "../lib/browser-api";
 import { allArticles, articles, PublicApiError } from "../lib/public-api";
 
+test("invitation rejection identifies registration or workspace codes without rendering server diagnostics", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(
+      { code: "INVALID_INVITATION", detail: "private diagnostic" },
+      { status: 400 },
+    );
+  try {
+    for (const [path, subject] of [
+      ["/api/auth/register", "注册邀请码"],
+      ["/api/auth/invitations/accept", "空间邀请码"],
+    ]) {
+      await assert.rejects(
+        api(path),
+        (error) =>
+          error instanceof ApiError &&
+          error.message.startsWith(subject + "无效") &&
+          !error.message.includes("private diagnostic"),
+      );
+    }
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test("move dependency failures have an actionable message without exposing arbitrary problem details", async () => {
   const previous = globalThis.fetch;
   try {
@@ -12,7 +37,9 @@ test("move dependency failures have an actionable message without exposing arbit
         { status: 400 },
       );
     await assert.rejects(
-      api("/api/admin/repository/move"),
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move",
+      ),
       (error) =>
         error instanceof ApiError &&
         error.status === 400 &&
@@ -21,9 +48,19 @@ test("move dependency failures have an actionable message without exposing arbit
     );
     globalThis.fetch = async () =>
       Response.json({ detail: "private diagnostic" }, { status: 400 });
-    await assert.rejects(api("/api/admin/repository/move"), /输入格式有误/);
+    await assert.rejects(
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move",
+      ),
+      /输入格式有误/,
+    );
     globalThis.fetch = async () => new Response("not JSON", { status: 400 });
-    await assert.rejects(api("/api/admin/repository/move"), /输入格式有误/);
+    await assert.rejects(
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move",
+      ),
+      /输入格式有误/,
+    );
   } finally {
     globalThis.fetch = previous;
   }
@@ -50,11 +87,14 @@ test("browser writes get fresh CSRF tokens and preserve upload idempotency heade
         password: "test-password",
       }),
     });
-    await api("/api/admin/assets", {
-      method: "POST",
-      multipart: new FormData(),
-      headers: { "Idempotency-Key": "operation-a" },
-    });
+    await api(
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+      {
+        method: "POST",
+        multipart: new FormData(),
+        headers: { "Idempotency-Key": "operation-a" },
+      },
+    );
     assert.equal(calls.length, 4);
     assert.equal(
       (calls[1].options?.headers as Record<string, string>)["X-CSRF-TOKEN"],
@@ -89,7 +129,10 @@ test("uncertain browser mutation does not retry or claim success", async () => {
   };
   try {
     await assert.rejects(
-      api("/api/admin/repository/patch", { method: "POST", body: {} }),
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
+        { method: "POST", body: {} },
+      ),
       (error) =>
         error instanceof ApiError &&
         error.status === 0 &&

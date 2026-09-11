@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { api, ApiError } from "../lib/browser-api";
+import { ApiError } from "../lib/browser-api";
+import { useWorkspaceApi, useWorkspacePath } from "./workspace-context";
 
 type Receipt = {
   handle: string;
@@ -21,6 +22,8 @@ export function ExportDialog({
   fallbackFocus: HTMLElement | null;
   onClose: () => void;
 }) {
+  const api = useWorkspaceApi();
+  const workspacePath = useWorkspacePath();
   const dialog = useRef<HTMLDialogElement>(null);
   const alive = useRef(true);
   const pending = useRef(false);
@@ -155,7 +158,9 @@ export function ExportDialog({
           </p>
           <a
             className="button"
-            href={`/api/admin/exports/${encodeURIComponent(receipt.handle)}`}
+            href={workspacePath(
+              `/api/admin/exports/${encodeURIComponent(receipt.handle)}`,
+            )}
             download
           >
             下载 ZIP

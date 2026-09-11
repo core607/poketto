@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -123,7 +124,7 @@ class BrowserSecurityIntegrationIT {
     @Test
     void registrationUsesSeparateInvitationsAndAccountIdentityWithoutMembership() throws Exception {
         String ownerPassword = secret();
-        auth.initializeOwner("registration-owner", ownerPassword);
+        var owner = auth.initializeOwner("registration-owner", ownerPassword);
         Csrf ownerSession = login("registration-owner", ownerPassword);
         mvc.perform(post("/api/auth/registration-invitations").session(ownerSession.session()))
                 .andExpect(status().isForbidden());
@@ -134,6 +135,15 @@ class BrowserSecurityIntegrationIT {
         String password = secret();
         Csrf guest = csrf(null);
         var registrationBody = Map.of("token", token, "login", "no-space-person", "password", password);
+        String workspaceToken = auth.createInvitation(
+                        owner, workspaces.defaultWorkspace().id(), Set.of())
+                .token();
+        mvc.perform(request(
+                        post("/api/auth/register"),
+                        guest,
+                        Map.of("token", workspaceToken, "login", "no-space-person", "password", password)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INVITATION"));
         mvc.perform(post("/api/auth/register")
                         .session(guest.session())
                         .contentType("application/json")
@@ -154,7 +164,7 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(get("/api/auth/registration-invitations").session(member.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(0));
-        mvc.perform(get("/api/admin/members").session(member.session())).andExpect(status().isForbidden());
+        mvc.perform(get(scoped("/api/admin/members")).session(member.session())).andExpect(status().isForbidden());
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships", Integer.class))
                 .isOne();
     }
@@ -186,16 +196,18 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(request(post("/api/auth/initialize"), loggedIn, Map.of())).andExpect(status().isNotFound());
         assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
                 .isOne();
-        mvc.perform(get("/api/auth/me").session(loggedIn.session()))
+        mvc.perform(get(scoped("/api/auth/me")).session(loggedIn.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("OWNER"));
-        mvc.perform(post("/api/admin/invitations").session(session.session()).header(session.header(), session.token()))
+        mvc.perform(post(scoped("/api/admin/invitations"))
+                        .session(session.session())
+                        .header(session.header(), session.token()))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/auth/logout").session(loggedIn.session())).andExpect(status().isNotFound());
         mvc.perform(post("/api/auth/logout").session(loggedIn.session())).andExpect(status().isForbidden());
         mvc.perform(request(post("/api/auth/logout"), loggedIn, null)).andExpect(status().isNoContent());
         assertThat(loggedIn.session().isInvalid()).isTrue();
-        mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
+        mvc.perform(get(scoped("/api/auth/me"))).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -203,7 +215,7 @@ class BrowserSecurityIntegrationIT {
         String ownerPassword = secret();
         AuthPrincipal owner = auth.initializeOwner("invite-owner", ownerPassword);
         Csrf ownerSession = login("invite-owner", ownerPassword);
-        JsonNode invitation = body(mvc.perform(request(post("/api/admin/invitations"), ownerSession, null))
+        JsonNode invitation = body(mvc.perform(request(post(scoped("/api/admin/invitations")), ownerSession, null))
                 .andExpect(status().isCreated())
                 .andReturn());
         String token = invitation.get("token").stringValue();
@@ -230,30 +242,34 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(get("/api/auth/account").session(memberSession.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.account.siteAdministrator").value(false));
-        mvc.perform(get("/api/auth/me").session(memberSession.session())).andExpect(status().isForbidden());
+        mvc.perform(get(scoped("/api/auth/me")).session(memberSession.session()))
+                .andExpect(status().isForbidden());
         mvc.perform(request(post("/api/auth/invitations/register"), memberSession, Map.of("token", token)))
                 .andExpect(status().isNotFound());
         mvc.perform(request(post("/api/auth/invitations/accept"), memberSession, Map.of("token", token)))
                 .andExpect(status().isOk());
-        mvc.perform(get("/api/auth/me").session(memberSession.session()))
+        mvc.perform(get(scoped("/api/auth/me")).session(memberSession.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("MEMBER"));
-        mvc.perform(get("/api/admin/members").session(memberSession.session())).andExpect(status().isForbidden());
+        mvc.perform(get(scoped("/api/admin/members")).session(memberSession.session()))
+                .andExpect(status().isForbidden());
         mvc.perform(request(post("/api/auth/invitations/accept"), memberSession, Map.of("token", token)))
                 .andExpect(status().isOk());
         mvc.perform(request(
-                        put("/api/admin/members/" + member.get("accountId").stringValue()),
+                        put(scoped("/api/admin/members/")
+                                + member.get("accountId").stringValue()),
                         ownerSession,
                         Map.of("role", "MEMBER", "active", false, "permissions", java.util.List.of())))
                 .andExpect(status().isNoContent());
-        mvc.perform(get("/api/auth/me").session(memberSession.session())).andExpect(status().isForbidden());
+        mvc.perform(get(scoped("/api/auth/me")).session(memberSession.session()))
+                .andExpect(status().isForbidden());
         mvc.perform(get("/api/auth/account").session(memberSession.session())).andExpect(status().isOk());
         mvc.perform(request(
-                        put("/api/admin/members/" + owner.accountId()),
+                        put(scoped("/api/admin/members/") + owner.accountId()),
                         ownerSession,
                         Map.of("role", "OWNER", "active", false, "permissions", java.util.List.of())))
                 .andExpect(status().isConflict());
-        mvc.perform(get("/api/admin/invitations").session(ownerSession.session()))
+        mvc.perform(get(scoped("/api/admin/invitations")).session(ownerSession.session()))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(token))));
     }
@@ -263,12 +279,12 @@ class BrowserSecurityIntegrationIT {
         String password = secret();
         AuthPrincipal owner = auth.initializeOwner("key-owner", password);
         Csrf session = login("key-owner", password);
-        JsonNode key =
-                body(mvc.perform(request(post("/api/admin/keys"), session, Map.of("accountId", owner.accountId())))
+        JsonNode key = body(
+                mvc.perform(request(post(scoped("/api/admin/keys")), session, Map.of("accountId", owner.accountId())))
                         .andExpect(status().isCreated())
                         .andReturn());
         String bearer = "Bearer " + key.get("token").stringValue();
-        mvc.perform(get("/api/auth/me").header("Authorization", bearer)).andExpect(status().isUnauthorized());
+        mvc.perform(get(scoped("/api/auth/me")).header("Authorization", bearer)).andExpect(status().isUnauthorized());
         mvc.perform(post("/mcp").session(session.session())).andExpect(status().isUnauthorized());
         MvcResult accepted = mvc.perform(post("/mcp").header("Authorization", bearer))
                 .andExpect(status().isBadRequest())
@@ -276,15 +292,15 @@ class BrowserSecurityIntegrationIT {
         assertThat(accepted.getRequest().getSession(false)).isNull();
         mvc.perform(post("/mcp").header("Authorization", bearer).header("Origin", "https://unexpected.invalid"))
                 .andExpect(status().isForbidden());
-        mvc.perform(get("/api/admin/keys").session(session.session()))
+        mvc.perform(get(scoped("/api/admin/keys")).session(session.session()))
                 .andExpect(status().isOk())
                 .andExpect(content()
                         .string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(
                                 key.get("token").stringValue()))));
-        mvc.perform(request(delete("/api/admin/keys/" + key.get("id").stringValue()), session, null))
+        mvc.perform(request(delete(scoped("/api/admin/keys/") + key.get("id").stringValue()), session, null))
                 .andExpect(status().isNoContent());
         mvc.perform(post("/mcp").header("Authorization", bearer)).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/auth/me").session(session.session())).andExpect(status().isOk());
+        mvc.perform(get(scoped("/api/auth/me")).session(session.session())).andExpect(status().isOk());
     }
 
     @Test
@@ -427,7 +443,7 @@ class BrowserSecurityIntegrationIT {
             if (size == 16385) {
                 assertThat(response.headers().allValues("set-cookie")).isEmpty();
                 HttpResponse<String> me = client.send(
-                        HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/me"))
+                        HttpRequest.newBuilder(URI.create("http://localhost:" + port + scoped("/api/auth/me")))
                                 .header("Cookie", cookie)
                                 .GET()
                                 .build(),
@@ -476,7 +492,7 @@ class BrowserSecurityIntegrationIT {
         for (String method : new String[] {"GET", "POST"}) {
             for (boolean declared : new boolean[] {false, true}) {
                 for (String type : new String[] {"application/json", "multipart/form-data; boundary=synthetic"}) {
-                    try (Socket request = pendingBody(method, "/api/admin/assets", type, declared, null)) {
+                    try (Socket request = pendingBody(method, scoped("/api/admin/assets"), type, declared, null)) {
                         assertThat(readStatus(request)).isEqualTo(401);
                         assertThat(BodyObservation.accesses.get(pendingIds.get(request)))
                                 .hasValue(0);
@@ -491,9 +507,14 @@ class BrowserSecurityIntegrationIT {
         String password = secret();
         auth.initializeOwner("slow-owner", password);
         LiveSession session = liveLogin("slow-owner", password);
-        try (Socket first = pendingBody("POST", "/api/admin/repository/preview", "application/json", false, session);
+        try (Socket first = pendingBody(
+                        "POST", scoped("/api/admin/repository/preview"), "application/json", false, session);
                 Socket second = pendingBody(
-                        "POST", "/api/admin/assets", "multipart/form-data; boundary=synthetic", true, session)) {
+                        "POST",
+                        scoped("/api/admin/assets"),
+                        "multipart/form-data; boundary=synthetic",
+                        true,
+                        session)) {
             org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
                 assertThat(BodyObservation.accesses.get(pendingIds.get(first)).get())
                         .isPositive();
@@ -501,7 +522,7 @@ class BrowserSecurityIntegrationIT {
                         .isPositive();
             });
             try (Socket overflow =
-                    pendingBody("POST", "/api/admin/repository/preview", "application/json", true, session)) {
+                    pendingBody("POST", scoped("/api/admin/repository/preview"), "application/json", true, session)) {
                 assertThat(readStatus(overflow)).isEqualTo(429);
                 assertThat(BodyObservation.accesses.get(pendingIds.get(overflow)))
                         .hasValue(0);
@@ -511,7 +532,7 @@ class BrowserSecurityIntegrationIT {
                 HttpResponse<String> response = HttpClient.newHttpClient()
                         .send(
                                 HttpRequest.newBuilder(URI.create(
-                                                "http://localhost:" + port + "/api/admin/repository/preview"))
+                                                "http://localhost:" + port + scoped("/api/admin/repository/preview")))
                                         .timeout(Duration.ofSeconds(5))
                                         .header("Cookie", session.cookie())
                                         .header(session.header(), session.token())
@@ -693,5 +714,11 @@ class BrowserSecurityIntegrationIT {
 
     private static String secret() {
         return UUID.randomUUID().toString() + UUID.randomUUID();
+    }
+
+    private String scoped(String path) {
+        String workspace = workspaces.defaultWorkspace().id().toString();
+        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

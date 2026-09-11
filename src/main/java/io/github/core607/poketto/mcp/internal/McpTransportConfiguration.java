@@ -6,7 +6,6 @@ import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpError;
@@ -37,12 +36,10 @@ class McpTransportConfiguration {
     @Bean
     McpSessions mcpSessions(
             AuthService auth,
-            WorkspaceCatalog workspaces,
             ApplicationEventPublisher events,
             @Value("${poketto.mcp.session-idle-seconds:1800}") long idleSeconds,
             @Value("${poketto.mcp.max-sessions:128}") int maxSessions) {
-        return new McpSessions(
-                auth, workspaces, events, Clock.systemUTC(), Duration.ofSeconds(idleSeconds), maxSessions);
+        return new McpSessions(auth, events, Clock.systemUTC(), Duration.ofSeconds(idleSeconds), maxSessions);
     }
 
     @Bean

@@ -5,7 +5,6 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.IssuedToken;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,13 +22,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/admin/workspaces/{workspaceId}")
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class WorkspaceAdminController {
     private final AuthService auth;
-    private final WorkspaceCatalog workspaces;
+    private final BrowserWorkspace workspaces;
 
-    WorkspaceAdminController(AuthService auth, WorkspaceCatalog workspaces) {
+    WorkspaceAdminController(AuthService auth, BrowserWorkspace workspaces) {
         this.auth = auth;
         this.workspaces = workspaces;
     }
@@ -39,7 +38,7 @@ class WorkspaceAdminController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
-        return auth.listMembers(principal, workspaces.defaultWorkspace().id(), offset, limit);
+        return auth.listMembers(principal, workspaces.selected(), offset, limit);
     }
 
     @PutMapping("/members/{accountId}")
@@ -50,12 +49,7 @@ class WorkspaceAdminController {
             @RequestBody MembershipRequest body) {
         if (body.active() == null) throw new IllegalArgumentException("active is required");
         auth.changeMembership(
-                principal,
-                workspaces.defaultWorkspace().id(),
-                accountId,
-                body.role(),
-                body.active(),
-                body.permissions());
+                principal, workspaces.selected(), accountId, body.role(), body.active(), body.permissions());
     }
 
     @GetMapping("/invitations")
@@ -63,7 +57,7 @@ class WorkspaceAdminController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
-        return auth.listInvitations(principal, workspaces.defaultWorkspace().id(), offset, limit);
+        return auth.listInvitations(principal, workspaces.selected(), offset, limit);
     }
 
     @PostMapping("/invitations")
@@ -72,14 +66,14 @@ class WorkspaceAdminController {
             @AuthenticationPrincipal AuthPrincipal principal, @RequestBody(required = false) InvitationRequest body) {
         return issued(auth.createInvitation(
                 principal,
-                workspaces.defaultWorkspace().id(),
+                workspaces.selected(),
                 body == null || body.permissions() == null ? Set.of() : body.permissions()));
     }
 
     @DeleteMapping("/invitations/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void revokeInvitation(@AuthenticationPrincipal AuthPrincipal principal, @PathVariable UUID id) {
-        auth.revokeInvitation(principal, workspaces.defaultWorkspace().id(), id);
+        auth.revokeInvitation(principal, workspaces.selected(), id);
     }
 
     @GetMapping("/keys")
@@ -87,7 +81,7 @@ class WorkspaceAdminController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
-        return auth.listApiKeys(principal, workspaces.defaultWorkspace().id(), offset, limit);
+        return auth.listApiKeys(principal, workspaces.selected(), offset, limit);
     }
 
     @PostMapping("/keys")
@@ -96,14 +90,13 @@ class WorkspaceAdminController {
         if (body.accountId() == null
                 || (body.capabilities() != null && body.capabilities().stream().anyMatch(java.util.Objects::isNull)))
             throw new IllegalArgumentException("key holder and capabilities must be valid");
-        return issued(auth.createApiKey(
-                principal, workspaces.defaultWorkspace().id(), body.accountId(), body.capabilities()));
+        return issued(auth.createApiKey(principal, workspaces.selected(), body.accountId(), body.capabilities()));
     }
 
     @DeleteMapping("/keys/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void revokeKey(@AuthenticationPrincipal AuthPrincipal principal, @PathVariable UUID id) {
-        auth.revokeApiKey(principal, workspaces.defaultWorkspace().id(), id);
+        auth.revokeApiKey(principal, workspaces.selected(), id);
     }
 
     private static IssuedSecretResponse issued(IssuedToken token) {

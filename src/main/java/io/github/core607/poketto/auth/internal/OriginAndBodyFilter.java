@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -70,12 +71,12 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             return;
         }
         String type = request.getContentType();
-        if (AuthHttpErrors.path(request).equals("/api/admin/media")) {
+        if (WorkspaceHttpRoutes.operation(AuthHttpErrors.path(request)).equals("/api/admin/media")) {
             // Raw originals stream through the storage byte bound after identity and body admission.
             chain.doFilter(request, response);
             return;
         }
-        if (AuthHttpErrors.path(request).equals("/api/admin/assets")
+        if (WorkspaceHttpRoutes.operation(AuthHttpErrors.path(request)).equals("/api/admin/assets")
                 && type != null
                 && type.split(";", 2)[0].trim().equalsIgnoreCase("multipart/form-data")) {
             // Servlet getParts consumes the original stream under the configured multipart limits.
@@ -223,6 +224,7 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
     private static final class InvalidFormException extends RuntimeException {}
 
     static int bodyLimit(String path) {
+        path = WorkspaceHttpRoutes.operation(path);
         return switch (path) {
             case "/api/admin/repository/patch", "/api/admin/repository/preview" -> 6 * 1024 * 1024;
             case "/api/admin/assets" -> 17 * 1024 * 1024;
