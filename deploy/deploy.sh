@@ -6,6 +6,9 @@
 #
 # Usage: deploy.sh [--root DIR] [--app-image REF --app-revision COMMIT --frontend-image REF]
 #                  [--db-image REF] [--gateway-image REF] [--set-stdin] [--sync-from DIR]
+#        deploy.sh [--root DIR] --initialize-admin
+# --initialize-admin opens an interactive terminal in the running app to create its first
+# administrator. It accepts no deployment changes and does not replace containers.
 # Candidate pins and literal KEY=VALUE stdin settings reach .env only after all services and
 # local HTTPS checks succeed. Confirmed application/frontend, database and gateway pins are
 # retained in .env.previous when replaced. Registry credentials supplied on stdin are used
@@ -27,6 +30,7 @@ DB_IMAGE_ARG=""
 FRONTEND_IMAGE_ARG=""
 GATEWAY_IMAGE_ARG=""
 SET_STDIN=0
+INITIALIZE_ADMIN=0
 SYNC_FROM=""
 REGISTRY_USERNAME=""
 REGISTRY_PASSWORD=""
@@ -43,7 +47,7 @@ CONFIG_KEYS=(
     POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME POKETTO_REPOSITORY_PASSWORD
     POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST
     POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
-    POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN POKETTO_GATEWAY_DIR_HOST POKETTO_GATEWAY_UID
+    POKETTO_PUBLIC_DOMAIN POKETTO_GATEWAY_DIR_HOST POKETTO_GATEWAY_UID
     POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED
     POKETTO_NETWORK_SUBNET POKETTO_NETWORK_DYNAMIC_RANGE POKETTO_GATEWAY_INTERNAL_IP
     POKETTO_FRONTEND_MEMORY POKETTO_GATEWAY_MEMORY POKETTO_APP_CPUS POKETTO_DB_CPUS POKETTO_FRONTEND_CPUS POKETTO_GATEWAY_CPUS
@@ -98,11 +102,18 @@ while [ $# -gt 0 ]; do
         --frontend-image) FRONTEND_IMAGE_ARG="$2"; shift 2 ;;
         --gateway-image) GATEWAY_IMAGE_ARG="$2"; shift 2 ;;
         --set-stdin) SET_STDIN=1; shift ;;
+        --initialize-admin) INITIALIZE_ADMIN=1; shift ;;
         --sync-from) SYNC_FROM="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) fail "unknown argument: $1" ;;
     esac
 done
+
+if [ "$INITIALIZE_ADMIN" = 1 ]; then
+    [ "$SET_STDIN" = 0 ] && [ -z "$SYNC_FROM$APP_IMAGE_ARG$APP_REVISION_ARG$DB_IMAGE_ARG$FRONTEND_IMAGE_ARG$GATEWAY_IMAGE_ARG" ] \
+        || fail "--initialize-admin cannot be combined with deployment changes"
+    [ -t 0 ] && [ -t 1 ] || fail "--initialize-admin requires an interactive terminal"
+fi
 
 if { [ -n "$APP_IMAGE_ARG" ] && [ -z "$APP_REVISION_ARG" ]; } || { [ -z "$APP_IMAGE_ARG" ] && [ -n "$APP_REVISION_ARG" ]; }; then
     fail "--app-image and --app-revision must be given together"
@@ -349,7 +360,7 @@ load_configuration() {
             POSTGRES_PASSWORD POKETTO_REPOSITORY_REMOTE_URI POKETTO_REPOSITORY_USERNAME \
             POKETTO_REPOSITORY_PASSWORD POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST \
             POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE POKETTO_GATEWAY_DIR_HOST \
-            POKETTO_PUBLIC_DOMAIN POKETTO_AUTH_INITIALIZATION_TOKEN \
+            POKETTO_PUBLIC_DOMAIN \
             POKETTO_NETWORK_SUBNET POKETTO_NETWORK_DYNAMIC_RANGE POKETTO_GATEWAY_INTERNAL_IP; do
         [ -n "${!key:-}" ] || missing+=("$key")
     done
@@ -666,6 +677,10 @@ main() {
     acquire_lock
     apply_sync
     load_configuration
+    if [ "$INITIALIZE_ADMIN" = 1 ]; then
+        compose exec app java org.springframework.boot.loader.launch.JarLauncher admin init
+        return
+    fi
     prepare_docker_config
     check_host
     acquire_images

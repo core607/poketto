@@ -9,6 +9,8 @@ The [workspace boundary](2026-08-27-workspace-tenancy.md) needs independently re
 
 ## Decision
 
+[Operator administrator setup](2026-09-11-operator-administrator-setup.md) replaces the bootstrap-token and browser-initialization mechanism described here. Its command is the installation entrance; the session, membership, and revocation contracts below remain independently applicable.
+
 The `auth` module owns accounts, workspace memberships, invitations, API keys and capability checks in PostgreSQL. `web` maps browser requests to that service. Membership and key mutations serialize on the workspace row; authorization uses current stored membership and key state. Revocation events publish only after the database transaction commits.
 
 An operator-supplied initialization token permits creation of the first account and default-workspace owner. A persistent singleton closes initialization permanently after success. Passwords use Spring Security's delegating PBKDF2 encoder with upgrade-on-login support. Login names normalize to lowercase ASCII; password failures have uniform responses and perform password verification for missing accounts too.

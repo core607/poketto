@@ -16,7 +16,7 @@ class OriginAndBodyFilterTests {
     @Test
     void unknownBodyReaderAndStreamUseTheSameVerifiedBytes() throws Exception {
         for (boolean reader : new boolean[] {true, false}) {
-            var request = unknown("/api/auth/initialize", "猫".repeat(20), "application/json");
+            var request = unknown("/api/auth/register", "猫".repeat(20), "application/json");
             var response = new MockHttpServletResponse();
             filter.doFilter(request, response, (wrapped, ignored) -> {
                 String text = reader
@@ -31,7 +31,7 @@ class OriginAndBodyFilterTests {
 
     @Test
     void overflowNeverDispatchesAndDoesNotEchoBody() throws Exception {
-        var request = unknown("/api/auth/initialize", "x".repeat(16385), "application/json");
+        var request = unknown("/api/auth/register", "x".repeat(16385), "application/json");
         var response = new MockHttpServletResponse();
         var called = new AtomicBoolean();
         filter.doFilter(request, response, (wrapped, ignored) -> called.set(true));

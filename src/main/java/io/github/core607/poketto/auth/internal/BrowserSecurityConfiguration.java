@@ -102,7 +102,6 @@ class BrowserSecurityConfiguration {
                                 "/api/auth/csrf",
                                 "/api/auth/login",
                                 "/api/auth/register",
-                                "/api/auth/initialize",
                                 "/api/auth/invitations/register")
                         .permitAll()
                         .requestMatchers("/api/auth/oauth/**")

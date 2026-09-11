@@ -79,14 +79,13 @@ class OAuthHttpIntegrationIT {
             throw new IllegalStateException(error);
         }
         registry.add("poketto.test.repository-path", remote::toString);
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZE);
     }
 
     @BeforeEach
     void reset() {
         jdbc.execute("truncate table auth_accounts,oauth_clients cascade");
         jdbc.execute("update auth_initialization set initialized_at=null");
-        auth.initializeOwner(INITIALIZE, "owner", PASSWORD);
+        auth.initializeOwner("owner", PASSWORD);
     }
 
     @Test

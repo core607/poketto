@@ -57,9 +57,9 @@ class OAuthIntegrationIT {
         var manager = new DataSourceTransactionManager(ds);
         var passwords = new DelegatingPasswordEncoder(
                 "pbkdf2", Map.of("pbkdf2", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
-        String initialize = UUID.randomUUID().toString();
-        auth = new AuthService(jdbc, manager, passwords, event -> {}, Clock.systemUTC(), initialize);
-        owner = auth.initializeOwner(initialize, "owner", UUID.randomUUID().toString());
+
+        auth = new AuthService(jdbc, manager, passwords, event -> {}, Clock.systemUTC());
+        owner = auth.initializeOwner("owner", UUID.randomUUID().toString());
         oauth = new OAuthService(jdbc, manager, auth, Clock.systemUTC(), ISSUER);
         client = oauth.register("Test client", List.of(REDIRECT));
     }
