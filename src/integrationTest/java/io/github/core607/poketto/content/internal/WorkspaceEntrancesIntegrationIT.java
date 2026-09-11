@@ -97,6 +97,9 @@ class WorkspaceEntrancesIntegrationIT {
     @Autowired
     JdbcTemplate jdbc;
 
+    @Autowired
+    io.github.core607.poketto.content.RepositoryMoveService moves;
+
     @Test
     void independentTabRoutesWriteDifferentGitAuthoritiesAndForeignMembershipCannotReadEitherEntrance()
             throws Exception {
@@ -194,7 +197,7 @@ class WorkspaceEntrancesIntegrationIT {
         var content = Map.of(
                 ".poketto/publishing.yaml", "enabled: true\nmode: public-root\nexclude:\n  - public/excluded/**\n",
                 "public/a.md", "# Allowed A\nVisible source\n",
-                "public/b.md", "# Allowed B\nVisible source\n",
+                "public/b.md", "# Allowed B\nVisible source [A](a.md)\n",
                 "public/excluded/secret.md", "# ExcludedSecret\n",
                 "public/.hidden/secret.md", "# HiddenSecret\n",
                 "public/AGENTS.md", "# GuideSecret\n");
@@ -345,6 +348,84 @@ class WorkspaceEntrancesIntegrationIT {
                             java.nio.charset.StandardCharsets.UTF_8))
                     .isEqualTo("# Updated public source\n");
         }
+        var plan = moves.plan(
+                guest,
+                second,
+                new io.github.core607.poketto.content.RepositoryMoveRequest(updated, "public/a.md", "public/moved.md"));
+        assertThat(plan.originals().keySet()).allMatch(path -> path.startsWith("public/"));
+        var moved = mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit", updated, "source", "public/a.md", "destination", "public/moved.md"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String movedCommit = json.readTree(moved.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "public/b.md")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("# Allowed B\nVisible source [A](moved.md)\n"));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit", movedCommit, "source", "public/b.md", "destination", "private/b.md"))))
+                .andExpect(status().isForbidden());
+        var backlink = mvc.perform(csrf(ownerSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit",
+                                movedCommit,
+                                "changes",
+                                java.util.List.of(Map.of(
+                                        "path",
+                                        "private/backlink.md",
+                                        "expectedAbsence",
+                                        true,
+                                        "content",
+                                        "# Private backlink\n[Public](../public/moved.md)\n"))))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String linkedCommit = json.readTree(backlink.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        var linkedMove = new io.github.core607.poketto.content.RepositoryMoveRequest(
+                linkedCommit, "public/moved.md", "public/final.md");
+        assertThatThrownBy(() -> moves.plan(guest, second, linkedMove))
+                .isInstanceOf(io.github.core607.poketto.auth.AuthException.class);
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                true,
+                Set.of(Capability.READ_PRIVATE, Capability.PUBLISH));
+        var moveBody = json.writeValueAsString(
+                Map.of("baseCommit", linkedCommit, "source", "public/moved.md", "destination", "public/final.md"));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(moveBody))
+                .andExpect(status().isForbidden());
+        try (var git = Git.open(remotes.get(second).toFile())) {
+            assertThat(git.getRepository().resolve("refs/heads/main").name()).isEqualTo(linkedCommit);
+        }
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                true,
+                Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE, Capability.PUBLISH));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(moveBody))
+                .andExpect(status().isOk());
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "private/backlink.md")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("# Private backlink\n[Public](../public/final.md)\n"));
         auth.changeMembership(
                 owner,
                 second,

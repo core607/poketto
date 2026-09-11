@@ -87,7 +87,6 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
     @Override
     public RepositoryPatchResult recover(
             AuthPrincipal principal, WorkspaceId workspace, RepositoryPatch patch, RepositoryWriteAttempt attempt) {
-        auth.authorize(principal, workspace, Capability.READ_PRIVATE);
         return apply(principal, workspace, patch, Optional.of(attempt));
     }
 
@@ -122,7 +121,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
         return auth.withAuthorization(
                 principal,
                 workspace,
-                Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE),
+                Set.of(),
                 () -> authority.readObjects(workspace, snapshot -> {
                     if (!snapshot.commitId().equals(Optional.of(request.baseCommit())))
                         throw new RepositoryConflictException("repository base changed before preparing move");
@@ -134,8 +133,9 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                         DirCache index =
                                 DirCache.read(reader, walk.parseCommit(base).getTree());
                         var media = mediaIndex(repository, index);
-                        var changes = RepositoryMovePlanner.prepare(
-                                repository, index, request, policy(repository, index), media);
+                        var currentPolicy = policy(repository, index);
+                        var changes = RepositoryMovePlanner.prepare(repository, index, request, currentPolicy, media);
+                        authorizeMoveChanges(principal, workspace, currentPolicy, media, changes, true);
                         var namespace = new HashSet<>(media.files().keySet());
                         for (int i = 0; i < index.getEntryCount(); i++)
                             namespace.add(index.getEntry(i).getPathString());
@@ -215,13 +215,45 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             RepositoryMoveRequest request,
             Optional<RepositoryWriteAttempt> recovery) {
         return write(
-                principal,
-                workspace,
-                Optional.of(request.baseCommit()),
-                Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE),
-                recovery,
-                (repository, index) -> RepositoryMovePlanner.prepare(
-                        repository, index, request, policy(repository, index), mediaIndex(repository, index)));
+                principal, workspace, Optional.of(request.baseCommit()), Set.of(), recovery, (repository, index) -> {
+                    var currentPolicy = policy(repository, index);
+                    var media = mediaIndex(repository, index);
+                    var changes = RepositoryMovePlanner.prepare(repository, index, request, currentPolicy, media);
+                    authorizeMoveChanges(principal, workspace, currentPolicy, media, changes, false);
+                    return changes;
+                });
+    }
+
+    private void authorizeMoveChanges(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryPublishingPolicy policy,
+            RepositoryMediaIndex before,
+            RepositoryCandidateChanges changes,
+            boolean disclosePlan) {
+        Set<String> paths = new HashSet<>(changes.paths());
+        paths.remove(RepositoryMediaIndex.PATH);
+        byte[] replacement = changes.replacements().get(RepositoryMediaIndex.PATH);
+        Set<Capability> required = new HashSet<>();
+        if (replacement != null) {
+            var after = RepositoryMediaIndex.parse(replacement);
+            Set<String> mediaPaths = new HashSet<>(before.files().keySet());
+            mediaPaths.addAll(after.files().keySet());
+            for (String path : mediaPaths) {
+                if (!java.util.Objects.equals(
+                        before.files().get(path), after.files().get(path))) paths.add(path);
+                // An emitted plan contains the complete replacement index, including untouched private entries.
+                if (disclosePlan && !policy.permitsPath(path)) required.add(Capability.READ_PRIVATE);
+            }
+        }
+        for (String path : paths) {
+            if (policy.permitsPath(path)) required.add(Capability.PUBLISH);
+            else {
+                required.add(Capability.READ_PRIVATE);
+                required.add(Capability.WRITE_PRIVATE);
+            }
+        }
+        auth.withAuthorization(principal, workspace, required, () -> null);
     }
 
     private RepositoryPatchResult write(
