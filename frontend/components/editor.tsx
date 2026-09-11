@@ -334,6 +334,7 @@ export function Editor({
           {...moveSelection}
           fallbackFocus={editorRoot.current}
           canPublish={identity.capabilities.includes("PUBLISH")}
+          canWritePrivate={identity.capabilities.includes("WRITE_PRIVATE")}
           onClose={() => setMoveSelection(null)}
           onMove={move}
         />

@@ -140,5 +140,28 @@ for (const scenario of [
       !!container.querySelector('input[type="file"]'),
       scenario.upload,
     );
+    if (scenario.writable) {
+      const move = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "移动…",
+      );
+      assert.ok(move);
+      await act(async () => move.click());
+      const privateRoot = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "私有目录",
+      );
+      const publicRoot = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "公开目录",
+      );
+      assert.ok(privateRoot);
+      assert.ok(publicRoot);
+      assert.equal(
+        privateRoot.disabled,
+        !scenario.capabilities.includes("WRITE_PRIVATE"),
+      );
+      assert.equal(
+        publicRoot.disabled,
+        !scenario.capabilities.includes("PUBLISH"),
+      );
+    }
   });
 }

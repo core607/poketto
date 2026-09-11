@@ -9,7 +9,7 @@ export const scopeLabels: Record<string, { label: string; detail: string }> = {
   "repository:execute": {
     label: "运行隔离命令",
     detail:
-      "在隔离工作区中检索和分析内容；能否读取私密内容、保存修改取决于下面的权限。",
+      "在隔离工作区中检索和分析内容。未授予私密读取时，命令环境仅供读取；保存修改还需要对应的写入权限。",
   },
   "content:read_private": {
     label: "读取私密内容",
