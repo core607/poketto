@@ -148,6 +148,23 @@ class OAuthHttpIntegrationIT {
                         .content(decision))
                 .andExpect(status().isForbidden());
         csrf = body(mvc.perform(get("/api/auth/csrf").session(session)).andReturn());
+        try (var held = jdbc.getDataSource().getConnection()) {
+            held.setAutoCommit(false);
+            try (var lock = held.createStatement()) {
+                lock.execute("select workspace_id from workspaces for update");
+                mvc.perform(post("/api/auth/oauth/consent")
+                                .session(session)
+                                .header(
+                                        csrf.get("headerName").asString(),
+                                        csrf.get("token").asString())
+                                .contentType("application/json")
+                                .content(decision))
+                        .andExpect(status().isTooManyRequests())
+                        .andExpect(jsonPath("$.error").value("temporarily_unavailable"));
+            } finally {
+                held.rollback();
+            }
+        }
         var approved = body(mvc.perform(post("/api/auth/oauth/consent")
                         .session(session)
                         .header(

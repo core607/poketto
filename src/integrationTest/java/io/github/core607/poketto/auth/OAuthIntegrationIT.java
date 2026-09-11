@@ -234,6 +234,31 @@ class OAuthIntegrationIT {
     }
 
     @Test
+    void registryContentionFailsFastAndWorkspaceWaitHasADeadline() throws Exception {
+        var pending = request();
+        try (var held = jdbc.getDataSource().getConnection()) {
+            held.setAutoCommit(false);
+            try (var statement = held.createStatement()) {
+                statement.execute("select pg_advisory_xact_lock(70701109)");
+                assertThatThrownBy(() -> oauth.register("Busy", List.of(REDIRECT)))
+                        .hasMessage("temporarily_unavailable");
+                held.rollback();
+            }
+            try (var statement =
+                    held.prepareStatement("select workspace_id from workspaces where workspace_id=? for update")) {
+                statement.setObject(1, workspace.value());
+                statement.executeQuery().close();
+                assertThatThrownBy(() -> oauth.consent(owner, workspace, pending, Set.of("repository:execute"), true))
+                        .isInstanceOf(org.springframework.dao.DataAccessException.class)
+                        .hasRootCauseInstanceOf(java.sql.SQLException.class);
+                held.rollback();
+            }
+        }
+        assertThat(oauth.consent(owner, workspace, pending, Set.of("repository:execute"), true))
+                .contains("code=");
+    }
+
+    @Test
     void changedIssuerMarksStoredConnectionsAsNeedingNewConsent() {
         var issued = tokens();
         oauth = new OAuthService(

@@ -51,6 +51,7 @@ public final class OAuthService {
             throw new IllegalArgumentException("OAuth issuer must be an HTTPS origin without a trailing slash");
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(manager);
+        this.tx.setTimeout(5);
         this.auth = auth;
         this.clock = clock;
         this.issuer = issuer;
@@ -75,7 +76,7 @@ public final class OAuthService {
                 || redirects.size() > 8) throw failure("invalid_client_metadata");
         redirects.forEach(OAuthService::validateRedirect);
         return tx.execute(status -> {
-            jdbc.execute("select pg_advisory_xact_lock(70701109)");
+            registryLock();
             cleanup("");
             if (jdbc.queryForObject("select count(*) from oauth_clients", Integer.class) >= 4096)
                 throw failure("temporarily_unavailable");
@@ -139,7 +140,7 @@ public final class OAuthService {
         if (capabilities.isEmpty()) throw failure("invalid_scope");
         return tx.execute(status -> {
             // Final consent and registry cleanup cannot race a connection's client foreign key.
-            jdbc.execute("select pg_advisory_xact_lock(70701109)");
+            registryLock();
             cleanup(request.client().id());
             lock(workspace);
             // Pin registration until the new connection commits; cleanup never deletes a live consent.
@@ -377,8 +378,15 @@ public final class OAuthService {
     }
 
     private void lock(WorkspaceId workspace) {
+        jdbc.execute("set local lock_timeout='2s'");
         jdbc.queryForObject(
                 "select workspace_id from workspaces where workspace_id=? for update", UUID.class, workspace.value());
+    }
+
+    private void registryLock() {
+        jdbc.execute("set local lock_timeout='2s'");
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("select pg_try_advisory_xact_lock(70701109)", Boolean.class)))
+            throw failure("temporarily_unavailable");
     }
 
     private void requireResource(String value) {

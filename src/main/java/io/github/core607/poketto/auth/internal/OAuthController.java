@@ -210,6 +210,23 @@ class OAuthController {
         return ResponseEntity.status(403).cacheControl(CacheControl.noStore()).body(Map.of("error", "access_denied"));
     }
 
+    @ExceptionHandler({
+        org.springframework.dao.TransientDataAccessException.class,
+        org.springframework.transaction.TransactionTimedOutException.class
+    })
+    ResponseEntity<?> busy() {
+        return ResponseEntity.status(429)
+                .cacheControl(CacheControl.noStore())
+                .body(Map.of("error", "temporarily_unavailable"));
+    }
+
+    @ExceptionHandler(org.springframework.jdbc.UncategorizedSQLException.class)
+    ResponseEntity<?> databaseLockTimeout(org.springframework.jdbc.UncategorizedSQLException failure) {
+        var sql = failure.getSQLException();
+        if (sql != null && ("55P03".equals(sql.getSQLState()) || "57014".equals(sql.getSQLState()))) return busy();
+        throw failure;
+    }
+
     private String endpoint(String name) {
         return oauth.issuer() + "/api/auth/oauth/" + name;
     }
