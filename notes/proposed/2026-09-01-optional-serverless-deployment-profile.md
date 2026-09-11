@@ -41,7 +41,7 @@ If the selected environment cannot preserve SRT's declared boundary, remote exec
 
 Request instances keep no authoritative repository, required managed object, session, job, budget, rate-limit, provisioning, or lease state only on local disk or in process memory. PostgreSQL transactions and constraints, remote repository-ref compare-and-swap, and durable leases provide shared correctness. Local caches and locks may reduce work but never decide correctness.
 
-Consumer registration and remote repository creation remain owned by [consumer accounts and personal workspaces](2026-09-01-consumer-accounts-and-personal-workspaces.md). Serverless does not invent a second repository-provisioning path. Its workspace setup adds provider-neutral managed-object scope, derived-cache scope, and remote executor routing with idempotent steps keyed by `WorkspaceId`.
+Account registration and existing-repository workspace creation are specified by [consumer accounts and personal workspaces](2026-09-11-multiuser-workspaces-and-discovery.md). Serverless does not invent a second repository-provisioning path. Its workspace setup adds provider-neutral managed-object scope, derived-cache scope, and remote executor routing with idempotent steps keyed by `WorkspaceId`.
 
 ### Deployment behavior
 

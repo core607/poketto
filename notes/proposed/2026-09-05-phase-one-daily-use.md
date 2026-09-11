@@ -135,7 +135,7 @@ The scoped same-topic audit retains these records; none is archived or rejected 
 | [Next.js frontend](2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |
 | [Continuous delivery](../implemented/2026-09-03-continuous-delivery.md) | Retain immutable artifacts and deployment verification; this delivery does not require a backup gate |
 | [Off-host backup](2026-08-27-off-host-backup-and-restore.md) and [source-encrypted recovery](2026-09-01-source-encrypted-backup-recovery.md) | Retain as future work, excluded from phase-one completion |
-| [Consumer workspaces](2026-09-01-consumer-accounts-and-personal-workspaces.md) and [serverless](2026-09-01-optional-serverless-deployment-profile.md) | Retain independent future profiles |
+| [Consumer workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) and [serverless](2026-09-01-optional-serverless-deployment-profile.md) | Retain independent future profiles |
 
 Whole-commit rejection preserves an all-valid document set but lets a malformed private file hide unrelated articles. Per-file diagnostics preserve the actual commit while identifying precisely which structured results are unavailable. Invalid publication policy still closes the entire public surface because its authorization decision cannot be reconstructed safely.
 
