@@ -15,6 +15,7 @@ printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
 printf '%s\n' "$1 ${DOCKER_CONFIG:-}" >> "$FAKE_STATE/docker-config.log"
 printf '%s\n' "$1 ${DOCKER_CONTEXT:-}" >> "$FAKE_STATE/docker-context.log"
 if [ "${POKETTO_CAPTURE_ENV:-0}" = 1 ]; then
+    printf '%s' "${POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED:-false}" > "$FAKE_STATE/registration-invitations"
     printf '%s' "${POKETTO_REPOSITORY_REMOTE_URI:-}" > "$FAKE_STATE/repository-uri"
     printf '%s' "${POKETTO_REPOSITORY_PASSWORD:-}" > "$FAKE_STATE/repository-password"
 fi
