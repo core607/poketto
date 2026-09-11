@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
@@ -12,9 +13,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -34,16 +37,24 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     public Optional<String> selectCommit(WorkspaceId workspace, Optional<String> requested) {
         requested.ifPresent(JGitRepositoryBlobReader::validateCommit);
         return authority.readObjects(workspace, cache -> {
-            if (requested.isEmpty()) return cache.commitId();
-            if (cache.commitId().isEmpty()) throw unavailable();
+            if (requested.isEmpty()) {
+                return cache.commitId();
+            }
+            if (cache.commitId().isEmpty()) {
+                throw unavailable();
+            }
             try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace);
                     RevWalk walk = new RevWalk(repository)) {
                 walk.markStart(
                         walk.parseCommit(ObjectId.fromString(cache.commitId().orElseThrow())));
                 int visited = 0;
                 for (var commit : walk) {
-                    if (++visited > 100_000) throw unavailable();
-                    if (commit.name().equals(requested.orElseThrow())) return requested;
+                    if (++visited > 100_000) {
+                        throw unavailable();
+                    }
+                    if (commit.name().equals(requested.orElseThrow())) {
+                        return requested;
+                    }
                 }
                 throw unavailable();
             } catch (IOException exception) {
@@ -56,7 +67,9 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     public Optional<RepositoryBlob> find(WorkspaceId workspace, String commit, String path) {
         validateCommit(commit);
         RepositoryPathRules.validate(path);
-        if (RepositoryPathRules.reserved(path)) return Optional.empty();
+        if (RepositoryPathRules.reserved(path)) {
+            return Optional.empty();
+        }
         return authority.readImmutableObjects(workspace, objects -> {
             try {
                 RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(objects, commit);
@@ -75,11 +88,16 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 var tree = commits.parseCommit(ObjectId.fromString(commit)).getTree();
                 RepositoryMediaIndex index;
                 try (TreeWalk entry = TreeWalk.forPath(objects, RepositoryMediaIndex.PATH, tree)) {
-                    if (entry == null)
+                    if (entry == null) {
                         return new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of());
-                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) throw unavailable();
+                    }
+                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) {
+                        throw unavailable();
+                    }
                     var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
-                    if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) throw unavailable();
+                    if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) {
+                        throw unavailable();
+                    }
                     index = RepositoryMediaIndex.parse(blob.getBytes(RepositoryMediaIndex.MAX_BYTES));
                 }
                 if (!index.files().isEmpty()) {
@@ -88,10 +106,12 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                         entries.addTree(tree);
                         entries.setRecursive(true);
                         while (entries.next()) {
-                            if (paths.size() >= 100_000) throw unavailable();
-                            if (entries.getPathLength()
-                                    > 4 * io.github.core607.poketto.content.ContentLimits.MAX_PATH_LENGTH)
+                            if (paths.size() >= 100_000) {
                                 throw unavailable();
+                            }
+                            if (entries.getPathLength() > 4 * ContentLimits.MAX_PATH_LENGTH) {
+                                throw unavailable();
+                            }
                             paths.add(entries.getPathString());
                         }
                     }
@@ -104,7 +124,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                         index,
                         index.files().keySet().stream()
                                 .filter(policy::permitsPath)
-                                .collect(java.util.stream.Collectors.toSet()));
+                                .collect(Collectors.toSet()));
             } catch (IOException | IllegalArgumentException exception) {
                 throw unavailable();
             }
@@ -121,7 +141,9 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
             Set<String> inlinePaths) {
         validateCommit(commit);
         RepositoryPathRules.validate(documentPath);
-        if (limit < 1 || limit > 128) throw new IllegalArgumentException("image sibling limit must be 1 to 128");
+        if (limit < 1 || limit > 128) {
+            throw new IllegalArgumentException("image sibling limit must be 1 to 128");
+        }
         String folder = documentPath.contains("/") ? documentPath.substring(0, documentPath.lastIndexOf('/') + 1) : "";
         return authority.readImmutableObjects(workspace, objects -> {
             try (RevWalk commits = new RevWalk(objects);
@@ -130,8 +152,9 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 ObjectId folderTree = root;
                 if (!folder.isEmpty()) {
                     try (TreeWalk entry = TreeWalk.forPath(objects, folder.substring(0, folder.length() - 1), root)) {
-                        if (entry == null || !FileMode.TREE.equals(entry.getFileMode(0)))
+                        if (entry == null || !FileMode.TREE.equals(entry.getFileMode(0))) {
                             return new SiblingImages(List.of(), false);
+                        }
                         folderTree = entry.getObjectId(0);
                     }
                 }
@@ -142,22 +165,32 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 boolean partial = false;
                 int visited = 0;
                 while (tree.next()) {
-                    if (++visited > 100_000) throw unavailable();
+                    if (++visited > 100_000) {
+                        throw unavailable();
+                    }
                     String path = folder + tree.getPathString();
-                    if (!regular(tree.getFileMode(0)) || !imagePath(path) || inlinePaths.contains(path)) continue;
+                    if (!regular(tree.getFileMode(0)) || !imagePath(path) || inlinePaths.contains(path)) {
+                        continue;
+                    }
                     try {
                         RepositoryPathRules.validate(path);
                     } catch (IllegalArgumentException invalid) {
                         continue;
                     }
-                    if (RepositoryPathRules.reserved(path)) continue;
+                    if (RepositoryPathRules.reserved(path)) {
+                        continue;
+                    }
                     boolean publicPath = policy.permitsPath(path);
-                    if (publicOnly && !publicPath) continue;
+                    if (publicOnly && !publicPath) {
+                        continue;
+                    }
                     var candidate = new ImageCandidate(path, tree.getObjectId(0), publicPath);
                     if (candidates.size() == limit) {
                         partial = true;
                         // Git byte order differs from Java filename order for non-BMP characters.
-                        if (order.compare(candidate, candidates.peek()) >= 0) continue;
+                        if (order.compare(candidate, candidates.peek()) >= 0) {
+                            continue;
+                        }
                         candidates.remove();
                     }
                     candidates.add(candidate);
@@ -187,15 +220,18 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     private record ImageCandidate(String path, ObjectId objectId, boolean publicPath) {}
 
     private static boolean imagePath(String path) {
-        return path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)");
+        return path.toLowerCase(Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)");
     }
 
     @Override
     public List<RepositoryBlob> images(WorkspaceId workspace, String commit, String prefix) {
         validateCommit(commit);
-        if (prefix == null) throw new IllegalArgumentException("image prefix is required");
-        if (!prefix.isEmpty())
+        if (prefix == null) {
+            throw new IllegalArgumentException("image prefix is required");
+        }
+        if (!prefix.isEmpty()) {
             RepositoryPathRules.validate(prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix);
+        }
         return scanImages(workspace, commit, prefix);
     }
 
@@ -209,20 +245,32 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 List<RepositoryBlob> result = new ArrayList<>();
                 int visited = 0;
                 while (tree.next()) {
-                    if (++visited > 100_000) throw unavailable();
+                    if (++visited > 100_000) {
+                        throw unavailable();
+                    }
                     String path = tree.getPathString();
                     if (!path.startsWith(folder)
-                            || !path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)")) continue;
-                    if (!regular(tree.getFileMode(0))) continue;
+                            || !path.toLowerCase(Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)")) {
+                        continue;
+                    }
+                    if (!regular(tree.getFileMode(0))) {
+                        continue;
+                    }
                     long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
-                    if (size > MAX_BLOB_BYTES) continue;
+                    if (size > MAX_BLOB_BYTES) {
+                        continue;
+                    }
                     try {
                         RepositoryPathRules.validate(path);
                     } catch (IllegalArgumentException invalid) {
                         continue;
                     }
-                    if (RepositoryPathRules.reserved(path)) continue;
-                    if (result.size() >= 1000) throw unavailable();
+                    if (RepositoryPathRules.reserved(path)) {
+                        continue;
+                    }
+                    if (result.size() >= 1000) {
+                        throw unavailable();
+                    }
                     result.add(new RepositoryBlob(
                             workspace, commit, path, tree.getObjectId(0).name(), size, policy.permitsPath(path)));
                 }
@@ -246,9 +294,13 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                                     .getTree())) {
                 if (entry == null
                         || !regular(entry.getFileMode(0))
-                        || !entry.getObjectId(0).name().equals(descriptor.objectId())) throw unavailable();
+                        || !entry.getObjectId(0).name().equals(descriptor.objectId())) {
+                    throw unavailable();
+                }
                 var loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
-                if (loader.getSize() != descriptor.size() || loader.getSize() > MAX_BLOB_BYTES) throw unavailable();
+                if (loader.getSize() != descriptor.size() || loader.getSize() > MAX_BLOB_BYTES) {
+                    throw unavailable();
+                }
                 return loader.getBytes(MAX_BLOB_BYTES);
             } catch (IOException exception) {
                 throw unavailable();
@@ -269,9 +321,13 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                                     .getTree())) {
                 if (entry == null
                         || !regular(entry.getFileMode(0))
-                        || !entry.getObjectId(0).name().equals(descriptor.objectId())) throw unavailable();
+                        || !entry.getObjectId(0).name().equals(descriptor.objectId())) {
+                    throw unavailable();
+                }
                 long size = objects.getObjectSize(entry.getObjectId(0), Constants.OBJ_BLOB);
-                if (size != descriptor.size() || size > MAX_BLOB_BYTES) throw unavailable();
+                if (size != descriptor.size() || size > MAX_BLOB_BYTES) {
+                    throw unavailable();
+                }
                 return null;
             } catch (IOException exception) {
                 throw unavailable();
@@ -287,9 +343,13 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                         objects,
                         path,
                         commits.parseCommit(ObjectId.fromString(commit)).getTree())) {
-            if (entry == null || !regular(entry.getFileMode(0))) return Optional.empty();
+            if (entry == null || !regular(entry.getFileMode(0))) {
+                return Optional.empty();
+            }
             long size = objects.getObjectSize(entry.getObjectId(0), Constants.OBJ_BLOB);
-            if (size > MAX_BLOB_BYTES) return Optional.empty();
+            if (size > MAX_BLOB_BYTES) {
+                return Optional.empty();
+            }
             return Optional.of(new RepositoryBlob(
                     workspace, commit, path, entry.getObjectId(0).name(), size, policy.permitsPath(path)));
         }
@@ -300,8 +360,9 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
     }
 
     private static void validateCommit(String commit) {
-        if (commit == null || !commit.matches("[0-9a-f]{40}"))
+        if (commit == null || !commit.matches("[0-9a-f]{40}")) {
             throw new IllegalArgumentException("commit must be an exact object id");
+        }
     }
 
     private static ContentRepositoryException unavailable() {

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentWriteService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryContentReader;
@@ -11,13 +12,16 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ContentProperties.class, RepositoryProperties.class})
@@ -49,8 +53,8 @@ class ContentConfiguration {
     @Bean
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ManagedRepositoryConnections managedRepositoryConnections(
-            org.springframework.jdbc.core.JdbcTemplate jdbc,
-            @org.springframework.beans.factory.annotation.Value("${poketto.repository.credential-key:}") String key,
+            JdbcTemplate jdbc,
+            @Value("${poketto.repository.credential-key:}") String key,
             RepositoryProperties configured) {
         return new ManagedRepositoryConnections(
                 jdbc, new RepositoryCredentialCipher(key), new RepositoryProviderClient(), configured);
@@ -142,8 +146,8 @@ class ContentConfiguration {
         return arguments -> {
             try {
                 repositories.ensureReady(defaultWorkspaceId.get());
-            } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
-                org.slf4j.LoggerFactory.getLogger(ContentConfiguration.class)
+            } catch (ContentRepositoryException unavailable) {
+                LoggerFactory.getLogger(ContentConfiguration.class)
                         .warn("public content initialization is unavailable; background refresh will retry");
             }
             refresher.start();

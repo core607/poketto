@@ -87,8 +87,12 @@ public final class AuthorizedRepositoryReader {
         int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
         int start = Math.max(0, match - 60);
         int end = Math.min(body.length(), start + 240);
-        if (start > 0 && Character.isLowSurrogate(body.charAt(start))) start--;
-        if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) end--;
+        if (start > 0 && Character.isLowSurrogate(body.charAt(start))) {
+            start--;
+        }
+        if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) {
+            end--;
+        }
         return body.substring(start, end);
     }
 

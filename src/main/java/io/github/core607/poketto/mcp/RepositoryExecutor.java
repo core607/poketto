@@ -45,7 +45,9 @@ public interface RepositoryExecutor {
             long offset,
             byte[] bytes) {
         public ArtifactChunk {
-            if (bytes.length > 65536) throw new IllegalArgumentException("Artifact chunk exceeds its bound");
+            if (bytes.length > 65536) {
+                throw new IllegalArgumentException("Artifact chunk exceeds its bound");
+            }
             bytes = bytes.clone();
         }
 

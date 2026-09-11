@@ -1,18 +1,37 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMoveService;
+import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.content.RepositoryTextChange;
+import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,7 +39,9 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +49,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.zip.ZipInputStream;
+import org.mockito.Mockito;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -40,25 +66,22 @@ public final class ExecutorNativeProbe {
     private final AuthService auth = mock(AuthService.class);
     private final AuthPrincipal principal = principal();
     private final AtomicInteger released = new AtomicInteger();
-    private final java.util.concurrent.atomic.AtomicBoolean privateRead =
-            new java.util.concurrent.atomic.AtomicBoolean(true);
+    private final AtomicBoolean privateRead = new AtomicBoolean(true);
     private final RepositorySnapshotExports exports;
     private int tests;
 
     private ExecutorNativeProbe(Path configuration) throws Exception {
-        doAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get())
+        doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());
-        when(auth.authorize(any(), any(), eq(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+        when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        MembershipRole.OWNER,
                         privateRead.get()
-                                ? java.util.Set.of(
-                                        io.github.core607.poketto.auth.Capability.READ_PRIVATE,
-                                        io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)
-                                : java.util.Set.of(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)));
+                                ? Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY)
+                                : Set.of(Capability.EXECUTE_REPOSITORY)));
         config = JSON.readTree(Files.readString(configuration));
         Path master = path("bundle");
         String commit = config.path("commit").stringValue();
@@ -66,7 +89,9 @@ public final class ExecutorNativeProbe {
             @Override
             public Export create(AuthPrincipal actor, WorkspaceId selected, Optional<String> requested) {
                 try {
-                    if (requested.isPresent() && !requested.get().equals(commit)) throw new IllegalArgumentException();
+                    if (requested.isPresent() && !requested.get().equals(commit)) {
+                        throw new IllegalArgumentException();
+                    }
                     UUID id = UUID.randomUUID();
                     Path target = path("exports").resolve(id + ".bundle");
                     Files.copy(master, target);
@@ -99,14 +124,21 @@ public final class ExecutorNativeProbe {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 2 || !System.getProperty("os.name").equalsIgnoreCase("Linux"))
+        if (args.length != 2 || !System.getProperty("os.name").equalsIgnoreCase("Linux")) {
             throw new IllegalArgumentException();
+        }
         var probe = new ExecutorNativeProbe(Path.of(args[0]));
-        if (args[1].equals("abandon")) probe.abandon();
-        else if (args[1].equals("main")) probe.run();
-        else if (args[1].equals("exports")) probe.portableExports();
-        else if (args[1].equals("peer-only")) probe.rejectNonRootPeer();
-        else throw new IllegalArgumentException();
+        if (args[1].equals("abandon")) {
+            probe.abandon();
+        } else if (args[1].equals("main")) {
+            probe.run();
+        } else if (args[1].equals("exports")) {
+            probe.portableExports();
+        } else if (args[1].equals("peer-only")) {
+            probe.rejectNonRootPeer();
+        } else {
+            throw new IllegalArgumentException();
+        }
     }
 
     private IsolatedRepositoryExecutor adapter(Path socket) {
@@ -123,11 +155,11 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         selectedExports,
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
-                        mock(io.github.core607.poketto.assets.MediaFileService.class),
-                        org.mockito.Mockito.mock(io.github.core607.poketto.content.AuthorizedRepositoryReader.class),
-                        org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryPatchService.class),
-                        org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMoveService.class),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        Mockito.mock(AuthorizedRepositoryReader.class),
+                        Mockito.mock(RepositoryPatchService.class),
+                        Mockito.mock(RepositoryMoveService.class),
                         JSON,
                         socket,
                         path("privateKey"),
@@ -143,7 +175,9 @@ public final class ExecutorNativeProbe {
         }
         Path observation = path("fakeObservation");
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-        while (!Files.exists(observation) && System.nanoTime() < deadline) Thread.sleep(20);
+        while (!Files.exists(observation) && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
         assertThat(observation).exists();
         JsonNode result = JSON.readTree(Files.readString(observation));
         assertThat(result.path("accepted").booleanValue()).isTrue();
@@ -181,10 +215,11 @@ public final class ExecutorNativeProbe {
             passed("synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies");
             artifacts(executor);
             start = System.nanoTime();
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 20; i++) {
                 assertThat(execute(executor, "first", "git rev-parse HEAD; test -f article.md", new Cancellation())
                                 .exitCode())
                         .isZero();
+            }
             passed("twenty-adapter-session-reuses", "meanMilliseconds", millis(start) / 20.0);
             assertThat(execute(executor, "first", "printf isolated > only-first", new Cancellation())
                             .exitCode())
@@ -324,8 +359,7 @@ public final class ExecutorNativeProbe {
         JsonNode descriptor = JSON.readTree(created.stdout());
         assertThat(descriptor.path("ok").booleanValue()).isTrue();
         String id = descriptor.path("artifact").path("artifactId").stringValue();
-        assertThat(readArtifact(executor, "first", id))
-                .isEqualTo("original-artifact".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(readArtifact(executor, "first", id)).isEqualTo("original-artifact".getBytes(StandardCharsets.UTF_8));
         assertThat(executor.readArtifact(principal, workspace, "other-client", id, 0, 64, new Cancellation()))
                 .isEmpty();
         assertThat(executor.readArtifact(principal, WorkspaceId.random(), "first", id, 0, 64, new Cancellation()))
@@ -348,7 +382,7 @@ public final class ExecutorNativeProbe {
         Map<String, Object> full = complete.artifacts().get("stdout");
         assertThat(full.get("truncated")).isEqualTo(false);
         assertThat(readArtifact(executor, "first", (String) full.get("artifactId")))
-                .isEqualTo("x".repeat(65537).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                .isEqualTo("x".repeat(65537).getBytes(StandardCharsets.UTF_8));
         passed("long-output-retains-complete-bytes-behind-bounded-preview");
 
         var limited = execute(
@@ -362,7 +396,7 @@ public final class ExecutorNativeProbe {
         Map<String, Object> prefix = limited.artifacts().get("stdout");
         assertThat(prefix.get("truncated")).isEqualTo(true);
         assertThat(readArtifact(executor, "first", (String) prefix.get("artifactId")))
-                .isEqualTo("z".repeat(4 * 1024 * 1024).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                .isEqualTo("z".repeat(4 * 1024 * 1024).getBytes(StandardCharsets.UTF_8));
         assertThat(execute(executor, "first", "cat after-output-limit", new Cancellation())
                         .stdout())
                 .isEqualTo("retained");
@@ -370,7 +404,7 @@ public final class ExecutorNativeProbe {
     }
 
     private byte[] readArtifact(IsolatedRepositoryExecutor executor, String session, String id) throws Exception {
-        var output = new java.io.ByteArrayOutputStream();
+        var output = new ByteArrayOutputStream();
         RepositoryExecutor.ArtifactChunk chunk;
         do {
             chunk = executor.readArtifact(principal, workspace, session, id, output.size(), 65536, new Cancellation())
@@ -382,7 +416,7 @@ public final class ExecutorNativeProbe {
     }
 
     private void portableExports() throws Exception {
-        try (var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        try (var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("portable"), path("exports"), auth, workspace)) {
             byte[] publicBytes = "public-export-original".getBytes(StandardCharsets.UTF_8);
             byte[] privateBytes = "private-export-original".getBytes(StandardCharsets.UTF_8);
@@ -394,9 +428,9 @@ public final class ExecutorNativeProbe {
                     .apply(
                             principal,
                             workspace,
-                            new io.github.core607.poketto.content.RepositoryPatch(
+                            new RepositoryPatch(
                                     article.commit(),
-                                    List.of(new io.github.core607.poketto.content.RepositoryTextChange(
+                                    List.of(new RepositoryTextChange(
                                             "public/article.md",
                                             false,
                                             article.revision(),
@@ -449,17 +483,18 @@ public final class ExecutorNativeProbe {
                     byte[] zip = readArtifact(executor, session, id);
                     assertThat(hash(zip))
                             .isEqualTo(receipt.path("result").path("sha256").stringValue());
-                    var files = new java.util.LinkedHashMap<String, byte[]>();
-                    try (var input = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(zip))) {
-                        for (var entry = input.getNextEntry(); entry != null; entry = input.getNextEntry())
+                    var files = new LinkedHashMap<String, byte[]>();
+                    try (var input = new ZipInputStream(new ByteArrayInputStream(zip))) {
+                        for (var entry = input.getNextEntry(); entry != null; entry = input.getNextEntry()) {
                             files.put(entry.getName(), input.readAllBytes());
+                        }
                     }
                     assertThat(files.values())
                             .anySatisfy(bytes -> assertThat(bytes).containsExactly(publicBytes));
                     String text = files.entrySet().stream()
                             .filter(entry -> entry.getKey().endsWith(".md"))
                             .map(entry -> new String(entry.getValue(), StandardCharsets.UTF_8))
-                            .collect(java.util.stream.Collectors.joining("\n"));
+                            .collect(Collectors.joining("\n"));
                     assertThat(text)
                             .doesNotContain(
                                     "unsaved-export-needle", "historic-secret-needle", "operator-secret-needle");
@@ -535,17 +570,19 @@ public final class ExecutorNativeProbe {
     }
 
     private void mediaImport() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("import"), path("exports"), auth, workspace);
         String initial = fixture.seedMedia(auth, principal, new byte[] {1, 2}, new byte[] {3, 4});
         var reader = fixture.reader(auth);
         byte[] bytes = new byte[256 * 700];
-        for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) i;
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) i;
+        }
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -709,18 +746,20 @@ public final class ExecutorNativeProbe {
     }
 
     private void mediaFetch() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("media"), path("exports"), auth, workspace);
         byte[] original = new byte[192 * 1024];
-        for (int i = 0; i < original.length; i++) original[i] = (byte) (i % 251);
-        byte[] updated = "new-private-original".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        for (int i = 0; i < original.length; i++) {
+            original[i] = (byte) (i % 251);
+        }
+        byte[] updated = "new-private-original".getBytes(StandardCharsets.UTF_8);
         String originalCommit = fixture.seedMedia(auth, principal, original, original);
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -790,7 +829,7 @@ public final class ExecutorNativeProbe {
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -862,13 +901,12 @@ public final class ExecutorNativeProbe {
         }
     }
 
-    private IsolatedRepositoryExecutor moveAdapter(
-            io.github.core607.poketto.content.internal.PublicExecutionNativeFixture fixture) {
+    private IsolatedRepositoryExecutor moveAdapter(PublicExecutionNativeFixture fixture) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(PortableContentExports.class),
                         fixture.media(auth),
                         fixture.reader(auth),
                         fixture.patches(auth),
@@ -882,7 +920,7 @@ public final class ExecutorNativeProbe {
     }
 
     private void lostLocalMoveReply() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("local-move-reply"), path("exports"), auth, workspace);
         try (var executor = moveAdapter(fixture)) {
             // Drop one confirmed real worker reply at the adapter boundary, after installation.
@@ -890,14 +928,15 @@ public final class ExecutorNativeProbe {
             field.setAccessible(true);
             var original = (WorkerClient) field.get(executor);
             var intercepted = spy(original);
-            var dropped = new java.util.concurrent.atomic.AtomicBoolean();
-            var refuseInstall = new java.util.concurrent.atomic.AtomicBoolean();
+            var dropped = new AtomicBoolean();
+            var refuseInstall = new AtomicBoolean();
             doAnswer(call -> {
                         WorkerClient.PreparedRequest request = call.getArgument(0);
-                        var payload = JSON.readTree(java.util.Base64.getUrlDecoder()
-                                .decode(request.envelope().get("payload")));
-                        if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get())
+                        var payload = JSON.readTree(
+                                Base64.getUrlDecoder().decode(request.envelope().get("payload")));
+                        if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get()) {
                             return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
+                        }
                         var response = original.send(request, call.getArgument(1));
                         if (payload.path("operation").asString("").equals("MOVE_COMMIT")
                                 && dropped.compareAndSet(false, true)) {
@@ -1004,7 +1043,7 @@ public final class ExecutorNativeProbe {
     }
 
     private void moves() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("moves"), path("exports"), auth, workspace);
         try (var executor = moveAdapter(fixture)) {
             String setup = """
@@ -1098,7 +1137,7 @@ public final class ExecutorNativeProbe {
     }
 
     private void uncertainMoveRecovery() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("move-recovery"), path("exports"), auth, workspace, true);
         try (var executor = moveAdapter(fixture)) {
             var unknown = executor.execute(
@@ -1137,14 +1176,14 @@ public final class ExecutorNativeProbe {
     }
 
     private void uncertainSaveRecovery() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("recovery"), path("exports"), auth, workspace, true);
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -1200,14 +1239,14 @@ public final class ExecutorNativeProbe {
     }
 
     private void selectedSaves() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+        var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("saves"), path("exports"), auth, workspace);
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         auth,
                         fixture.exports(),
-                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(PortableContentExports.class),
                         fixture.media(auth),
                         reader,
                         fixture.patches(auth),
@@ -1359,8 +1398,7 @@ public final class ExecutorNativeProbe {
     }
 
     private void publicProjection() throws Exception {
-        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
-                path("publicFixture"), path("exports"), auth, workspace);
+        var fixture = new PublicExecutionNativeFixture(path("publicFixture"), path("exports"), auth, workspace);
         privateRead.set(false);
         try (var executor = adapter(path("socket"), 8, fixture.exports())) {
             var result = executor.execute(
@@ -1394,9 +1432,7 @@ public final class ExecutorNativeProbe {
                     .path("artifact")
                     .path("artifactId")
                     .stringValue();
-            assertThat(new String(
-                            readArtifact(executor, "public-native", publicArtifactId),
-                            java.nio.charset.StandardCharsets.UTF_8))
+            assertThat(new String(readArtifact(executor, "public-native", publicArtifactId), StandardCharsets.UTF_8))
                     .contains("public-native-body")
                     .doesNotContain("secret-needle");
             privateRead.set(true);

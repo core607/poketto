@@ -1,7 +1,9 @@
 package io.github.core607.poketto.web.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -21,20 +23,26 @@ import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class PublicImageGrantCapacityTests {
@@ -43,7 +51,7 @@ class PublicImageGrantCapacityTests {
 
     @Test
     void emptyPartialAndFailedGalleryScanRemainReadableWithoutLeakingFailureDetails() throws Exception {
-        var workspace = new Workspace(io.github.core607.poketto.workspace.WorkspaceId.random(), "Public fixture");
+        var workspace = new Workspace(WorkspaceId.random(), "Public fixture");
         var catalog = mock(WorkspaceCatalog.class);
         when(catalog.defaultWorkspace()).thenReturn(workspace);
         Instant at = Instant.parse("2026-09-07T00:00:00Z");
@@ -57,12 +65,9 @@ class PublicImageGrantCapacityTests {
         when(snapshots.withCurrent(any(), any()))
                 .thenAnswer(call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(snapshot));
         var blobs = mock(RepositoryBlobReader.class);
-        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
-                        call.getArgument(0),
-                        call.getArgument(1),
-                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
-                        java.util.Set.of()));
+        when(blobs.media(any(), ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new RepositoryMediaSnapshot(
+                        call.getArgument(0), call.getArgument(1), RepositoryMediaIndex.empty(), Set.of()));
         when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
                 .thenReturn(new SiblingImages(List.of(), true))
                 .thenThrow(new ContentRepositoryException("private/hidden.png: isolated scan failure"));
@@ -77,7 +82,7 @@ class PublicImageGrantCapacityTests {
                 16L * 1024 * 1024,
                 128,
                 Clock.fixed(at, ZoneOffset.UTC),
-                new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, java.time.Duration.ZERO));
+                new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
         var mvc = MockMvcBuilders.standaloneSetup(
                         new PublicDocumentController(new PublicDocuments(snapshots, catalog, service)))
                 .setControllerAdvice(new ProblemResponses())
@@ -104,7 +109,7 @@ class PublicImageGrantCapacityTests {
 
     @Test
     void saturatedAuthorizationStillReturnsTheArticleWithoutAnUnapprovedImageUrl() throws Exception {
-        var workspace = new Workspace(io.github.core607.poketto.workspace.WorkspaceId.random(), "Public fixture");
+        var workspace = new Workspace(WorkspaceId.random(), "Public fixture");
         var catalog = mock(WorkspaceCatalog.class);
         when(catalog.defaultWorkspace()).thenReturn(workspace);
         Instant at = Instant.parse("2026-09-07T00:00:00Z");
@@ -123,7 +128,7 @@ class PublicImageGrantCapacityTests {
         var store = mock(ManagedBlobStore.class);
         when(store.read(workspace.id(), reference))
                 .thenReturn(new ManagedImage(new ManagedAsset(reference, "image/png", 1), new byte[] {1}));
-        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, java.time.Duration.ZERO);
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO);
         var service = new AssetService(
                 null,
                 null,

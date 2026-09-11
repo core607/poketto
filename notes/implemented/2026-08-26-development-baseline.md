@@ -22,7 +22,7 @@ The requirements named `write` as an application module, but that boundary also 
 - Treat the content git repository as the command-side source of truth and PostgreSQL as a rebuildable query-side projection. Spring events may wake projection work but do not replace commit replay and checkpoints.
 - Keep fast tests in the standard test suite and Docker-backed database coverage in a separate `integrationTest` suite.
 - Build the integration database from a pinned PostgreSQL 17 image with pinned SCWS and zhparser sources.
-- Make `repoCheck` validate repository-local document and skill invariants. Make `check` depend on unit tests, repository checks, integration tests, and the [code style gate](2026-09-02-code-style-gate.md).
+- Make `repoCheck` validate repository-local document and skill invariants. Make `check` depend on unit tests, repository checks, integration tests, the [code style gate](2026-09-02-code-style-gate.md), and the [Java style baseline](2026-09-12-java-style-baseline.md).
 - Run `check` in GitHub Actions without publishing artifacts or changing repository settings.
 
 The [requirements note](2026-08-25-requirements-and-architecture.md) remains the authority for product behavior.

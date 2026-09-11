@@ -1,6 +1,7 @@
 package io.github.core607.poketto.assets;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -57,7 +58,9 @@ class ImageMemoryAdmissionTests {
             });
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (budget.waitingRequests() == 0 && System.nanoTime() < deadline) Thread.onSpinWait();
+            while (budget.waitingRequests() == 0 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
             assertThat(budget.waitingRequests()).isOne();
             assertThat(budget.acquire(ImageMemoryAdmission.BROWSER_BYTES)).isEmpty();
             waiting.cancel(true);

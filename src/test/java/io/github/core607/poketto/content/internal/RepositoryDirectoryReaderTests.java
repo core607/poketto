@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -14,13 +15,14 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.eclipse.jgit.lib.FileMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepositoryDirectoryReaderTests {
     private static final RepositoryMediaIndex.Media MEDIA = new RepositoryMediaIndex.Media(
-            java.util.UUID.fromString("ae821d0c-f3e4-4a29-a1d9-ce4e73f75008"), "b".repeat(64), "video/mp4", 32_000_000);
+            UUID.fromString("ae821d0c-f3e4-4a29-a1d9-ce4e73f75008"), "b".repeat(64), "video/mp4", 32_000_000);
 
     @TempDir
     Path directory;
@@ -50,7 +52,7 @@ class RepositoryDirectoryReaderTests {
         assertThat(indexedFile.expectedAbsence()).isFalse();
         assertThat(indexedFile.source()).isEmpty();
         assertThat(indexedFile.diagnostics())
-                .extracting(io.github.core607.poketto.content.RepositoryDiagnostic::code)
+                .extracting(RepositoryDiagnostic::code)
                 .containsExactly("MANAGED_MEDIA");
         assertThat(reader.listDirectory(workspace, Optional.of(original.name()), "private/album", 0, 100)
                         .entries())
@@ -154,7 +156,9 @@ class RepositoryDirectoryReaderTests {
         var fixture = new RemoteRepositoryFixture(directory);
         Map<String, byte[]> files = new LinkedHashMap<>();
         byte[] content = bytes("content");
-        for (int index = 0; index <= 100_000; index++) files.put("file-" + (1_000_000 + index), content);
+        for (int index = 0; index <= 100_000; index++) {
+            files.put("file-" + (1_000_000 + index), content);
+        }
         var commit = fixture.commitRemote(workspace, files);
         var reader = new JGitRepositoryContentReader(fixture.authority());
         assertThat(reader.listDirectory(workspace, Optional.empty(), "", 0, 100).entries())
@@ -166,7 +170,9 @@ class RepositoryDirectoryReaderTests {
         assertThat(last.entries()).containsExactly(entry("file-1100000", RepositoryDirectoryPage.Kind.FILE));
         assertThat(last.nextOffset()).isNull();
 
-        for (int index = 100_001; index <= 100_200; index++) files.put("file-" + (1_000_000 + index), content);
+        for (int index = 100_001; index <= 100_200; index++) {
+            files.put("file-" + (1_000_000 + index), content);
+        }
         var largerCommit = fixture.commitRemote(workspace, files);
         assertThatThrownBy(() -> reader.listDirectory(workspace, Optional.of(largerCommit.name()), "", 100_000, 200))
                 .isInstanceOf(ContentRepositoryException.class)

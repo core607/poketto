@@ -23,7 +23,9 @@ final class MediaListing {
                     || !arguments.path("offset").isIntegralNumber()
                     || !arguments.path("offset").canConvertToInt()
                     || !arguments.path("limit").isIntegralNumber()
-                    || !arguments.path("limit").canConvertToInt()) throw new IllegalArgumentException();
+                    || !arguments.path("limit").canConvertToInt()) {
+                throw new IllegalArgumentException();
+            }
             String prefix = arguments.path("prefix").stringValue();
             int offset = arguments.path("offset").intValue(),
                     limit = arguments.path("limit").intValue();
@@ -32,7 +34,9 @@ final class MediaListing {
                     || offset < 0
                     || offset > RepositoryMediaIndex.MAX_FILES
                     || limit < 1
-                    || limit > 200) throw new IllegalArgumentException();
+                    || limit > 200) {
+                throw new IllegalArgumentException();
+            }
             return new Query(
                     prefix,
                     offset,
@@ -42,17 +46,21 @@ final class MediaListing {
         }
 
         private static String optionalHash(JsonNode value, int length) {
-            if (value.isNull()) return null;
-            if (!value.isString() || !value.stringValue().matches("[0-9a-f]{" + length + "}"))
+            if (value.isNull()) {
+                return null;
+            }
+            if (!value.isString() || !value.stringValue().matches("[0-9a-f]{" + length + "}")) {
                 throw new IllegalArgumentException();
+            }
             return value.stringValue();
         }
     }
 
     static Map<String, ?> page(
             Map<String, RepositoryMediaIndex.Media> files, Query query, String version, String source) {
-        if (query.version() != null && !query.version().equals(version))
+        if (query.version() != null && !query.version().equals(version)) {
             return Map.of("ok", false, "code", "MEDIA_INDEX_CHANGED", "indexVersion", version);
+        }
         var matches = files.entrySet().stream()
                 .filter(entry -> entry.getKey().startsWith(query.prefix()))
                 .sorted(Map.Entry.comparingByKey())
@@ -61,7 +69,9 @@ final class MediaListing {
         var result = new LinkedHashMap<String, Object>();
         result.put("indexSource", source);
         result.put("indexVersion", version);
-        if (query.commit() != null) result.put("commit", query.commit());
+        if (query.commit() != null) {
+            result.put("commit", query.commit());
+        }
         result.put("items", items);
         result.put("total", matches.size());
         result.put("offset", query.offset());
@@ -80,7 +90,9 @@ final class MediaListing {
             result.put("nextOffset", next + 1 < matches.size() ? next + 1 : null);
             if (JSON.writeValueAsBytes(response).length > MAX_PAGE_BYTES) {
                 items.removeLast();
-                if (items.isEmpty()) throw new IllegalArgumentException("Media entry exceeds page bound");
+                if (items.isEmpty()) {
+                    throw new IllegalArgumentException("Media entry exceeds page bound");
+                }
                 break;
             }
             next++;

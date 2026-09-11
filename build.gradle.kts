@@ -6,6 +6,7 @@ plugins {
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.diffplug.spotless") version "8.10.1"
+    checkstyle
 }
 
 spotless {
@@ -20,6 +21,19 @@ spotless {
 
 tasks.named("check") {
     dependsOn("spotlessCheck")
+}
+
+// The Java style section of AGENTS.md owns the rules; config/checkstyle/ holds the gate and its suppressions.
+checkstyle {
+    toolVersion = "14.1.0"
+    maxWarnings = 0
+}
+
+tasks.withType<Checkstyle>().configureEach {
+    reports {
+        xml.required = true
+        html.required = false
+    }
 }
 
 group = "io.github.core607"

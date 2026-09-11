@@ -114,14 +114,20 @@ public final class AdministratorSetup {
                             : "The account was not created. Use a 3-64 character login name and a 12-256 character password.");
             return 1;
         } finally {
-            if (password != null) Arrays.fill(password, '\0');
-            if (confirmation != null) Arrays.fill(confirmation, '\0');
+            if (password != null) {
+                Arrays.fill(password, '\0');
+            }
+            if (confirmation != null) {
+                Arrays.fill(confirmation, '\0');
+            }
         }
     }
 
     private static String required(String name) {
         String value = System.getenv(name);
-        if (value == null || value.isBlank()) throw new MissingConfiguration();
+        if (value == null || value.isBlank()) {
+            throw new MissingConfiguration();
+        }
         return value;
     }
 

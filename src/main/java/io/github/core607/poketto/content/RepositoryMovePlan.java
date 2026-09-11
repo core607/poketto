@@ -2,6 +2,7 @@ package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.content.internal.RepositoryPathRules;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,8 +25,9 @@ public record RepositoryMovePlan(
     /** Optional means an indexed original may never have been materialized in this session. */
     public record Original(String sha256, long bytes, boolean optional) {
         public Original {
-            if (sha256 == null || !sha256.matches("[0-9a-f]{64}") || bytes < 0 || bytes > MAX_ORIGINAL_BYTES)
+            if (sha256 == null || !sha256.matches("[0-9a-f]{64}") || bytes < 0 || bytes > MAX_ORIGINAL_BYTES) {
                 throw new IllegalArgumentException("invalid move original fingerprint");
+            }
         }
     }
 
@@ -38,15 +40,18 @@ public record RepositoryMovePlan(
         paths.addAll(relocations.keySet());
         paths.addAll(relocations.values());
         paths.addAll(replacements.keySet());
-        if (paths.size() > MAX_CHANGED_PATHS || relocations.isEmpty())
+        if (paths.size() > MAX_CHANGED_PATHS || relocations.isEmpty()) {
             throw new IllegalArgumentException("move exceeds session path capacity or has no relocations");
+        }
         paths.forEach(RepositoryPathRules::validate);
-        if (!originals.keySet().containsAll(relocations.keySet()))
+        if (!originals.keySet().containsAll(relocations.keySet())) {
             throw new IllegalArgumentException("move sources need authoritative fingerprints");
+        }
         long total =
                 replacements.values().stream().mapToLong(value -> value.length).sum();
-        if (total > MAX_REPLACEMENT_BYTES)
+        if (total > MAX_REPLACEMENT_BYTES) {
             throw new IllegalArgumentException("move replacement text exceeds staging capacity");
+        }
         replacements = copyBytes(replacements);
     }
 
@@ -58,6 +63,6 @@ public record RepositoryMovePlan(
     private static Map<String, byte[]> copyBytes(Map<String, byte[]> values) {
         var copy = new LinkedHashMap<String, byte[]>();
         values.forEach((path, bytes) -> copy.put(path, bytes.clone()));
-        return java.util.Collections.unmodifiableMap(copy);
+        return Collections.unmodifiableMap(copy);
     }
 }

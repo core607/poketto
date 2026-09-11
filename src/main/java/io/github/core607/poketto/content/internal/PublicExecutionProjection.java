@@ -5,17 +5,34 @@ import io.github.core607.poketto.content.MarkdownDestinations;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositorySnapshotExports;
+import java.net.URLEncoder;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import org.commonmark.node.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.commonmark.node.HtmlBlock;
+import org.commonmark.node.HtmlInline;
+import org.commonmark.node.Image;
+import org.commonmark.node.Link;
+import org.commonmark.node.LinkReferenceDefinition;
+import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.markdown.MarkdownRenderer;
 import tools.jackson.databind.json.JsonMapper;
@@ -38,9 +55,9 @@ final class PublicExecutionProjection {
     record Projection(
             Map<String, byte[]> files,
             Map<String, String> sourcePaths,
-            Map<String, io.github.core607.poketto.content.RepositorySnapshotExports.PublicMedia> media) {
+            Map<String, RepositorySnapshotExports.PublicMedia> media) {
         Projection {
-            files = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(files));
+            files = Collections.unmodifiableMap(new LinkedHashMap<>(files));
             sourcePaths = Map.copyOf(sourcePaths);
             media = Map.copyOf(media);
         }
@@ -48,7 +65,7 @@ final class PublicExecutionProjection {
 
     static String fingerprint(Projection projection) {
         try {
-            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            var digest = MessageDigest.getInstance("SHA-256");
             new TreeMap<>(projection.files()).forEach((path, bytes) -> {
                 digest.update((byte) 'F');
                 hashField(digest, path.getBytes(StandardCharsets.UTF_8));
@@ -64,15 +81,14 @@ final class PublicExecutionProjection {
                 hashField(digest, path.getBytes(StandardCharsets.UTF_8));
                 hashField(digest, source.route().getBytes(StandardCharsets.UTF_8));
             });
-            return java.util.HexFormat.of().formatHex(digest.digest());
-        } catch (java.security.NoSuchAlgorithmException exception) {
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException(exception);
         }
     }
 
-    private static void hashField(java.security.MessageDigest digest, byte[] bytes) {
-        digest.update(
-                java.nio.ByteBuffer.allocate(Long.BYTES).putLong(bytes.length).array());
+    private static void hashField(MessageDigest digest, byte[] bytes) {
+        digest.update(ByteBuffer.allocate(Long.BYTES).putLong(bytes.length).array());
         digest.update(bytes);
     }
 
@@ -81,21 +97,23 @@ final class PublicExecutionProjection {
             RepositoryMediaIndex originals,
             RepositoryPublishingPolicy policy,
             long maxBytes) {
-        if (maxBytes < 1 || snapshot.articles().size() > ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) throw invalid();
+        if (maxBytes < 1 || snapshot.articles().size() > ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) {
+            throw invalid();
+        }
         Map<String, String> articlePaths = new HashMap<>();
         Set<String> normalized = new HashSet<>();
         var articles = snapshot.articles().stream()
                 .filter(article -> {
-                    String source = article.repositoryPath().toLowerCase(java.util.Locale.ROOT);
+                    String source = article.repositoryPath().toLowerCase(Locale.ROOT);
                     return !source.equals("agents.md") && !source.endsWith("/agents.md");
                 })
-                .sorted(java.util.Comparator.comparing(PublicArticle::route))
+                .sorted(Comparator.comparing(PublicArticle::route))
                 .toList();
         for (PublicArticle article : articles) {
             RepositoryPathRules.validateRoute(article.route());
             String path = article.route().equals("/")
                     ? "index.md"
-                    : java.util.Arrays.stream(article.route().substring(1).split("/"))
+                    : Arrays.stream(article.route().substring(1).split("/"))
                                     .map(segment -> {
                                         String key = DocumentPathRules.collisionKey(segment);
                                         return segment.startsWith("~")
@@ -104,29 +122,35 @@ final class PublicExecutionProjection {
                                                 ? "~" + segment
                                                 : segment;
                                     })
-                                    .collect(java.util.stream.Collectors.joining("/"))
+                                    .collect(Collectors.joining("/"))
                             + "/index.md";
             RepositoryPathRules.validate(path);
             if (RepositoryPathRules.reserved(path)
                     || !normalized.add(DocumentPathRules.collisionKey(path))
-                    || articlePaths.put(article.repositoryPath(), path) != null) throw invalid();
+                    || articlePaths.put(article.repositoryPath(), path) != null) {
+                throw invalid();
+            }
         }
         Set<String> filePaths = new HashSet<>(normalized);
         filePaths.add("agents.md");
         for (String key : filePaths) {
             for (int slash = key.indexOf('/'); slash >= 0; slash = key.indexOf('/', slash + 1)) {
-                if (filePaths.contains(key.substring(0, slash))) throw invalid();
+                if (filePaths.contains(key.substring(0, slash))) {
+                    throw invalid();
+                }
             }
         }
         int suffix = 0;
         String mediaPrefix = mediaRootPrefix(suffix);
-        while (overlaps(normalized, mediaPrefix)) mediaPrefix = mediaRootPrefix(++suffix);
+        while (overlaps(normalized, mediaPrefix)) {
+            mediaPrefix = mediaRootPrefix(++suffix);
+        }
         String mediaRoot = mediaPrefix.substring(0, mediaPrefix.length() - 1);
         Map<String, RepositoryMediaIndex.Media> referenced = new TreeMap<>();
         Map<String, String> referrers = new HashMap<>();
         for (PublicArticle article : articles) {
             var references = MarkdownDestinations.parse(article.body());
-            java.util.stream.Stream.concat(references.links().stream(), references.images().stream())
+            Stream.concat(references.links().stream(), references.images().stream())
                     .forEach(authored -> MarkdownDestinations.path(article.repositoryPath(), authored)
                             .ifPresent(path -> {
                                 var media = originals.files().get(path);
@@ -138,7 +162,7 @@ final class PublicExecutionProjection {
         }
         Map<String, String> mediaPaths = new HashMap<>();
         Map<String, RepositoryMediaIndex.Media> projectedMedia = new TreeMap<>();
-        Map<String, io.github.core607.poketto.content.RepositorySnapshotExports.PublicMedia> media = new TreeMap<>();
+        Map<String, RepositorySnapshotExports.PublicMedia> media = new TreeMap<>();
         int sequence = 0;
         for (var entry : referenced.entrySet()) {
             String source = entry.getKey();
@@ -146,10 +170,7 @@ final class PublicExecutionProjection {
             RepositoryPathRules.validate(path);
             mediaPaths.put(source, path);
             projectedMedia.put(path, entry.getValue());
-            media.put(
-                    path,
-                    new io.github.core607.poketto.content.RepositorySnapshotExports.PublicMedia(
-                            referrers.get(source), entry.getValue()));
+            media.put(path, new RepositorySnapshotExports.PublicMedia(referrers.get(source), entry.getValue()));
         }
         Map<String, byte[]> files = new TreeMap<>();
         Map<String, String> sourcePaths = new HashMap<>();
@@ -171,14 +192,18 @@ final class PublicExecutionProjection {
                                             article.updatedAt().toString()))
                     + "\n---\n\n" + body;
             byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-            if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES || bytes.length > maxBytes - total) throw invalid();
+            if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES || bytes.length > maxBytes - total) {
+                throw invalid();
+            }
             total += bytes.length;
             files.put(path, bytes);
             sourcePaths.put(path, article.repositoryPath());
         }
         byte[] index = new RepositoryMediaIndex(projectedMedia).encode();
         byte[] guide = GUIDE.getBytes(StandardCharsets.UTF_8);
-        if (index.length + guide.length > maxBytes - total) throw invalid();
+        if (index.length + guide.length > maxBytes - total) {
+            throw invalid();
+        }
         files.put(RepositoryMediaIndex.PATH, index);
         files.put("AGENTS.md", guide);
         mediaPaths.forEach((source, projected) -> sourcePaths.put(projected, source));
@@ -205,10 +230,13 @@ final class PublicExecutionProjection {
         pending.push(new Visit(document, 0));
         while (!pending.isEmpty()) {
             var next = pending.pop();
-            if (nodes.size() >= 20_000 || next.depth() > 128) throw invalid();
+            if (nodes.size() >= 20_000 || next.depth() > 128) {
+                throw invalid();
+            }
             nodes.add(next.node());
-            for (Node child = next.node().getLastChild(); child != null; child = child.getPrevious())
+            for (Node child = next.node().getLastChild(); child != null; child = child.getPrevious()) {
                 pending.push(new Visit(child, next.depth() + 1));
+            }
         }
         for (Node node : nodes) {
             if (node instanceof HtmlBlock || node instanceof HtmlInline || node instanceof LinkReferenceDefinition) {
@@ -221,8 +249,11 @@ final class PublicExecutionProjection {
                         articlePaths,
                         mediaPaths,
                         false);
-                if (destination == null) flatten(node);
-                else link.setDestination(destination);
+                if (destination == null) {
+                    flatten(node);
+                } else {
+                    link.setDestination(destination);
+                }
             } else if (node instanceof Image image) {
                 String destination = destination(
                         article.repositoryPath(),
@@ -231,8 +262,11 @@ final class PublicExecutionProjection {
                         articlePaths,
                         mediaPaths,
                         true);
-                if (destination == null) flatten(node);
-                else image.setDestination(destination);
+                if (destination == null) {
+                    flatten(node);
+                } else {
+                    image.setDestination(destination);
+                }
             }
         }
         return RENDERER.render(document);
@@ -248,38 +282,56 @@ final class PublicExecutionProjection {
         if (!image
                 && authored.startsWith("#")
                 && authored.length() <= 256
-                && authored.codePoints().noneMatch(Character::isISOControl)) return authored;
+                && authored.codePoints().noneMatch(Character::isISOControl)) {
+            return authored;
+        }
         if (!image
                 && authored.matches("(?i)^(https?://|mailto:).*")
-                && authored.codePoints().noneMatch(Character::isISOControl)) return authored;
+                && authored.codePoints().noneMatch(Character::isISOControl)) {
+            return authored;
+        }
         var resolved = MarkdownDestinations.path(source, authored);
-        if (resolved.isEmpty()) return null;
+        if (resolved.isEmpty()) {
+            return null;
+        }
         String original = resolved.orElseThrow();
         String target = media.get(original);
         if (target == null && !image) {
             target = articles.get(original);
-            if (target == null) target = articles.get(original + "/index.md");
-            if (target == null) target = articles.get(original + ".md");
+            if (target == null) {
+                target = articles.get(original + "/index.md");
+            }
+            if (target == null) {
+                target = articles.get(original + ".md");
+            }
         }
-        if (target == null) return null;
+        if (target == null) {
+            return null;
+        }
         String[] parent = projected.contains("/")
                 ? projected.substring(0, projected.lastIndexOf('/')).split("/")
                 : new String[0];
         String[] destination = target.split("/");
         int common = 0;
-        while (common < parent.length && common < destination.length && parent[common].equals(destination[common]))
+        while (common < parent.length && common < destination.length && parent[common].equals(destination[common])) {
             common++;
+        }
         List<String> parts = new ArrayList<>();
-        for (int i = common; i < parent.length; i++) parts.add("..");
-        for (int i = common; i < destination.length; i++) parts.add(destination[i]);
+        for (int i = common; i < parent.length; i++) {
+            parts.add("..");
+        }
+        for (int i = common; i < destination.length; i++) {
+            parts.add(destination[i]);
+        }
         String relative = String.join("/", parts);
-        String encoded = java.util.Arrays.stream(relative.split("/", -1))
+        String encoded = Arrays.stream(relative.split("/", -1))
                 .map(segment -> {
-                    if (segment.equals("..")) return segment;
-                    return java.net.URLEncoder.encode(segment, StandardCharsets.UTF_8)
-                            .replace("+", "%20");
+                    if (segment.equals("..")) {
+                        return segment;
+                    }
+                    return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
                 })
-                .collect(java.util.stream.Collectors.joining("/"));
+                .collect(Collectors.joining("/"));
         int fragment = authored.indexOf('#');
         return fragment >= 0
                         && authored.length() - fragment <= 256
@@ -289,7 +341,9 @@ final class PublicExecutionProjection {
     }
 
     private static void flatten(Node node) {
-        while (node.getFirstChild() != null) node.insertBefore(node.getFirstChild());
+        while (node.getFirstChild() != null) {
+            node.insertBefore(node.getFirstChild());
+        }
         node.unlink();
     }
 

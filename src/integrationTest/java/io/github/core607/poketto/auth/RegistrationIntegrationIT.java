@@ -1,7 +1,9 @@
 package io.github.core607.poketto.auth;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -93,8 +95,7 @@ class RegistrationIntegrationIT {
     @Test
     void credentialKindsCannotBeSubstitutedAndOnlyDigestsAreStored() {
         var registrationCode = registration.issue(owner);
-        var workspace = new io.github.core607.poketto.workspace.WorkspaceId(
-                jdbc.queryForObject("select workspace_id from workspaces", UUID.class));
+        var workspace = new WorkspaceId(jdbc.queryForObject("select workspace_id from workspaces", UUID.class));
         var workspaceCode = auth.createInvitation(owner, workspace);
         assertThatThrownBy(() -> registration.register(workspaceCode.token(), "person", secret()))
                 .isInstanceOf(AuthException.class);
@@ -179,7 +180,9 @@ class RegistrationIntegrationIT {
         RegistrationService denied =
                 new RegistrationService(jdbc, transactions, auth, issuer -> false, Clock.fixed(now, ZoneOffset.UTC));
         assertThatThrownBy(() -> denied.issue(owner)).isInstanceOf(AuthException.class);
-        for (int index = 0; index < 11; index++) registration.issue(owner);
+        for (int index = 0; index < 11; index++) {
+            registration.issue(owner);
+        }
         assertThat(registration.invitations(owner, 0, 3).items()).hasSize(3);
         assertThat(registration.invitations(owner, 0, 3).total()).isEqualTo(11);
     }

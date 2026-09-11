@@ -47,8 +47,9 @@ final class ImageMemoryFilter extends OncePerRequestFilter {
 
     private static boolean imageWork(HttpServletRequest request) {
         String path = request.getServletPath();
-        if (path.isEmpty())
+        if (path.isEmpty()) {
             path = request.getRequestURI().substring(request.getContextPath().length());
+        }
         path = WorkspaceHttpRoutes.operation(path);
         return switch (path) {
             case "/api/admin/assets" -> request.getMethod().equals("POST");

@@ -39,8 +39,9 @@ final class McpSessions implements AutoCloseable {
 
     McpSessions(
             AuthService auth, ApplicationEventPublisher events, Clock clock, Duration idleTimeout, int maxSessions) {
-        if (idleTimeout.isNegative() || idleTimeout.isZero() || maxSessions < 1 || maxSessions > 1024)
+        if (idleTimeout.isNegative() || idleTimeout.isZero() || maxSessions < 1 || maxSessions > 1024) {
             throw new IllegalArgumentException("invalid MCP session bounds");
+        }
         this.auth = auth;
         this.events = events;
         this.clock = clock;
@@ -54,8 +55,9 @@ final class McpSessions implements AutoCloseable {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null
                 || !(authentication.getPrincipal() instanceof AuthPrincipal principal)
-                || principal.kind() != AuthPrincipal.Kind.API_KEY)
+                || principal.kind() != AuthPrincipal.Kind.API_KEY) {
             throw new SecurityException("MCP authentication required");
+        }
         WorkspaceId workspace = auth.workspaceForKey(principal);
         return new Identity(principal, workspace);
     }
@@ -84,8 +86,9 @@ final class McpSessions implements AutoCloseable {
     }
 
     Identity resolve(McpSyncServerExchange exchange) {
-        if (!(exchange.transportContext().get(IDENTITY_CONTEXT) instanceof Identity identity))
+        if (!(exchange.transportContext().get(IDENTITY_CONTEXT) instanceof Identity identity)) {
             throw new SecurityException("MCP request identity unavailable");
+        }
         auth.authorize(identity.principal(), identity.workspace());
         check(exchange.sessionId(), identity);
         return identity;
@@ -97,10 +100,14 @@ final class McpSessions implements AutoCloseable {
             Binding current = bindings.get(id);
             if (reason == McpSessionClosed.Reason.IDLE_EXPIRY
                     && current != null
-                    && clock.instant().isBefore(current.lastAccess.plus(idleTimeout))) return;
+                    && clock.instant().isBefore(current.lastAccess.plus(idleTimeout))) {
+                return;
+            }
             removed = bindings.remove(id);
         }
-        if (removed == null) return;
+        if (removed == null) {
+            return;
+        }
         try {
             events.publishEvent(new McpSessionClosed(
                     removed.identity.workspace(), removed.identity.principal().subjectId(), id, reason));
@@ -120,7 +127,9 @@ final class McpSessions implements AutoCloseable {
                 if (event.workspaceId().equals(identity.workspace())
                         && (event.apiKeyIds().contains(identity.principal().subjectId())
                                 || event.accountIds()
-                                        .contains(identity.principal().accountId()))) ids.add(id);
+                                        .contains(identity.principal().accountId()))) {
+                    ids.add(id);
+                }
             });
         }
         ids.forEach(id -> remove(id, McpSessionClosed.Reason.AUTH_REVOKED));
@@ -130,7 +139,9 @@ final class McpSessions implements AutoCloseable {
         var ids = new ArrayList<String>();
         synchronized (this) {
             bindings.forEach((id, binding) -> {
-                if (!clock.instant().isBefore(binding.lastAccess.plus(idleTimeout))) ids.add(id);
+                if (!clock.instant().isBefore(binding.lastAccess.plus(idleTimeout))) {
+                    ids.add(id);
+                }
             });
         }
         ids.forEach(id -> remove(id, McpSessionClosed.Reason.IDLE_EXPIRY));

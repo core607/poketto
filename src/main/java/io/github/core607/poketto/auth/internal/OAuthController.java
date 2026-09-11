@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth.internal;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.OAuthService;
@@ -12,13 +13,24 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.TransactionTimedOutException;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @ConditionalOnProperty(name = "poketto.oauth.issuer")
@@ -70,12 +82,13 @@ class OAuthController {
         if (body.token_endpoint_auth_method() != null
                         && !body.token_endpoint_auth_method().equals("none")
                 || body.grant_types() != null
-                        && (body.grant_types().stream().anyMatch(java.util.Objects::isNull)
+                        && (body.grant_types().stream().anyMatch(Objects::isNull)
                                 || !body.grant_types().contains("authorization_code")
                                 || !Set.of("authorization_code", "refresh_token")
                                         .containsAll(body.grant_types()))
-                || body.response_types() != null && !body.response_types().equals(List.of("code")))
+                || body.response_types() != null && !body.response_types().equals(List.of("code"))) {
             throw OAuthService.failure("invalid_client_metadata");
+        }
         var client =
                 oauth.register(body.client_name() == null ? "MCP client" : body.client_name(), body.redirect_uris());
         return ResponseEntity.status(201)
@@ -112,7 +125,9 @@ class OAuthController {
         synchronized (session) {
             Map<String, OAuthService.AuthorizationRequest> values = pending(session);
             values.values().removeIf(value -> !value.expiresAt().isAfter(Instant.now()));
-            if (values.size() >= 8) throw OAuthService.failure("temporarily_unavailable");
+            if (values.size() >= 8) {
+                throw OAuthService.failure("temporarily_unavailable");
+            }
             values.put(id, pending);
             session.setAttribute(PENDING, values);
         }
@@ -134,7 +149,9 @@ class OAuthController {
 
     @PostMapping("/api/auth/oauth/consent")
     Map<String, String> consent(@RequestBody Decision decision, HttpSession session, Authentication authentication) {
-        if (decision.allow() && decision.workspaceId() == null) throw OAuthService.failure("invalid_request");
+        if (decision.allow() && decision.workspaceId() == null) {
+            throw OAuthService.failure("invalid_request");
+        }
         synchronized (session) {
             var value = lookup(session, decision.request());
             String redirect = oauth.consent(
@@ -152,7 +169,9 @@ class OAuthController {
     OAuthService.Tokens token(HttpServletRequest request, HttpServletResponse response) {
         headers(response);
         admit(request, "token", 60);
-        if (request.getHeader("Authorization") != null) throw OAuthService.failure("invalid_client");
+        if (request.getHeader("Authorization") != null) {
+            throw OAuthService.failure("invalid_client");
+        }
         return switch (String.valueOf(one(request, "grant_type"))) {
             case "authorization_code" ->
                 oauth.exchange(
@@ -205,20 +224,19 @@ class OAuthController {
         return ResponseEntity.status(403).cacheControl(CacheControl.noStore()).body(Map.of("error", "access_denied"));
     }
 
-    @ExceptionHandler({
-        org.springframework.dao.TransientDataAccessException.class,
-        org.springframework.transaction.TransactionTimedOutException.class
-    })
+    @ExceptionHandler({TransientDataAccessException.class, TransactionTimedOutException.class})
     ResponseEntity<?> busy() {
         return ResponseEntity.status(429)
                 .cacheControl(CacheControl.noStore())
                 .body(Map.of("error", "temporarily_unavailable"));
     }
 
-    @ExceptionHandler(org.springframework.jdbc.UncategorizedSQLException.class)
-    ResponseEntity<?> databaseLockTimeout(org.springframework.jdbc.UncategorizedSQLException failure) {
+    @ExceptionHandler(UncategorizedSQLException.class)
+    ResponseEntity<?> databaseLockTimeout(UncategorizedSQLException failure) {
         var sql = failure.getSQLException();
-        if (sql != null && ("55P03".equals(sql.getSQLState()) || "57014".equals(sql.getSQLState()))) return busy();
+        if (sql != null && ("55P03".equals(sql.getSQLState()) || "57014".equals(sql.getSQLState()))) {
+            return busy();
+        }
         throw failure;
     }
 
@@ -229,7 +247,9 @@ class OAuthController {
     private static AuthPrincipal principal(Authentication authentication) {
         if (authentication == null
                 || !(authentication.getPrincipal() instanceof AuthPrincipal value)
-                || value.kind() != AuthPrincipal.Kind.ACCOUNT) throw OAuthService.failure("access_denied");
+                || value.kind() != AuthPrincipal.Kind.ACCOUNT) {
+            throw OAuthService.failure("access_denied");
+        }
         return value;
     }
 
@@ -245,14 +265,17 @@ class OAuthController {
 
     private static OAuthService.AuthorizationRequest lookup(HttpSession session, String id) {
         var value = pending(session).get(id);
-        if (value == null || !value.expiresAt().isAfter(Instant.now())) throw OAuthService.failure("invalid_request");
+        if (value == null || !value.expiresAt().isAfter(Instant.now())) {
+            throw OAuthService.failure("invalid_request");
+        }
         return value;
     }
 
     private static String one(HttpServletRequest request, String key) {
         String[] values = request.getParameterValues(key);
-        if (values != null && (values.length != 1 || values[0].length() > 2048))
+        if (values != null && (values.length != 1 || values[0].length() > 2048)) {
             throw OAuthService.failure("invalid_request");
+        }
         return values == null ? null : values[0];
     }
 
@@ -261,8 +284,9 @@ class OAuthController {
         admission.values().removeIf(value -> value.minute() != minute);
         String key = operation + ":" + request.getRemoteAddr();
         Window value = admission.get(key);
-        if (value == null && admission.size() >= 1024 || value != null && value.count() >= limit)
+        if (value == null && admission.size() >= 1024 || value != null && value.count() >= limit) {
             throw OAuthService.failure("temporarily_unavailable");
+        }
         admission.put(key, new Window(minute, value == null ? 1 : value.count() + 1));
     }
 
@@ -272,7 +296,7 @@ class OAuthController {
         response.setHeader("Referrer-Policy", "no-referrer");
     }
 
-    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record Registration(
             String client_name,
             List<String> redirect_uris,

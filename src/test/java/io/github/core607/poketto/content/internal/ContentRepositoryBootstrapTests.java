@@ -14,8 +14,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.DosFileAttributeView;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
@@ -23,6 +25,7 @@ import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.util.FileSystemUtils;
 
 class ContentRepositoryBootstrapTests {
 
@@ -57,7 +60,7 @@ class ContentRepositoryBootstrapTests {
                 .create(workspace, OWNER, new DocumentDraft("documents/note.md", "Note", List.of(), "Body"));
         assertThat(created.committed()).isTrue();
         clearReadOnly(firstProcess.cache(workspace));
-        org.springframework.util.FileSystemUtils.deleteRecursively(firstProcess.cache(workspace));
+        FileSystemUtils.deleteRecursively(firstProcess.cache(workspace));
 
         RemoteRepositoryFixture secondProcess = new RemoteRepositoryFixture(root);
 
@@ -94,9 +97,9 @@ class ContentRepositoryBootstrapTests {
                 },
                 new JGitRemoteGitTransport(),
                 2,
-                java.time.Clock.systemUTC());
+                Clock.systemUTC());
         ContentRepositoryStore store =
-                new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec(), java.time.Clock.systemUTC());
+                new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec(), Clock.systemUTC());
 
         assertThatThrownBy(() -> store.ensureReady(workspace))
                 .isInstanceOf(ContentRepositoryException.class)
@@ -115,7 +118,7 @@ class ContentRepositoryBootstrapTests {
                 ignored -> binding,
                 new JGitRemoteGitTransport(),
                 2,
-                java.time.Clock.systemUTC());
+                Clock.systemUTC());
 
         assertThatThrownBy(() -> authority.ensureReady(workspace))
                 .hasMessageNotContaining(address)
@@ -150,7 +153,7 @@ class ContentRepositoryBootstrapTests {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
         byte[] image = new byte[256 * 1024];
-        new java.util.Random(607).nextBytes(image);
+        new Random(607).nextBytes(image);
         byte[] note = document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body");
         repositories.commitRemote(
                 workspace,
@@ -217,7 +220,7 @@ class ContentRepositoryBootstrapTests {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
         byte[] image = new byte[256 * 1024];
-        new java.util.Random(607).nextBytes(image);
+        new Random(607).nextBytes(image);
         repositories.commitRemote(
                 workspace,
                 Map.of(

@@ -1,7 +1,9 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
@@ -19,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import tools.jackson.databind.ObjectMapper;
 
 /** Serial session owner for a retained move; remote acknowledgement precedes local installation. */
@@ -39,18 +42,21 @@ final class SessionMoves {
             String source,
             String destination,
             Optional<String> localIndex) {
-        if (state.uncertain || state.move != null)
+        if (state.uncertain || state.move != null) {
             throw new IllegalArgumentException("recover the pending write first");
+        }
         var request = new RepositoryMoveRequest(state.baseCommit, source, destination);
         var plan = service.plan(actor, workspace, request);
-        if (!plan.workspace().equals(workspace) || !plan.request().equals(request))
+        if (!plan.workspace().equals(workspace) || !plan.request().equals(request)) {
             throw new IllegalStateException("move plan identity differs");
+        }
         var originals = new LinkedHashMap<>(plan.originals());
         var replacements = new LinkedHashMap<>(plan.replacements());
         var beforeFile = reader.getFile(actor, workspace, Optional.of(request.baseCommit()), RepositoryMediaIndex.PATH);
         if (!beforeFile.commit().equals(Optional.of(request.baseCommit()))
-                || (!beforeFile.expectedAbsence() && beforeFile.source().isEmpty()))
+                || (!beforeFile.expectedAbsence() && beforeFile.source().isEmpty())) {
             throw new IllegalArgumentException("move index baseline is unavailable");
+        }
         var before = beforeFile
                 .source()
                 .map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
@@ -62,12 +68,15 @@ final class SessionMoves {
         paths.addAll(local.files().keySet());
         for (String path : paths) {
             if ((inside(path, source) || inside(path, destination))
-                    && !Objects.equals(before.files().get(path), local.files().get(path)))
+                    && !Objects.equals(before.files().get(path), local.files().get(path))) {
                 throw new IllegalArgumentException("selected local media mappings have unsaved changes");
+            }
         }
         var gitTargets = new HashSet<String>();
         plan.originals().forEach((path, original) -> {
-            if (!original.optional()) gitTargets.add(plan.relocations().getOrDefault(path, path));
+            if (!original.optional()) {
+                gitTargets.add(plan.relocations().getOrDefault(path, path));
+            }
         });
         if (replacements.containsKey(RepositoryMediaIndex.PATH)) {
             var after = RepositoryMediaIndex.parse(replacements.get(RepositoryMediaIndex.PATH));
@@ -76,11 +85,14 @@ final class SessionMoves {
             changed.addAll(after.files().keySet());
             for (String path : changed) {
                 if (!Objects.equals(before.files().get(path), after.files().get(path))) {
-                    if (!Objects.equals(before.files().get(path), local.files().get(path)))
+                    if (!Objects.equals(before.files().get(path), local.files().get(path))) {
                         throw new IllegalArgumentException("selected local media mapping changed");
-                    if (after.files().containsKey(path))
+                    }
+                    if (after.files().containsKey(path)) {
                         merged.put(path, after.files().get(path));
-                    else merged.remove(path);
+                    } else {
+                        merged.remove(path);
+                    }
                 }
             }
             var mergedIndex = new RepositoryMediaIndex(merged);
@@ -99,7 +111,7 @@ final class SessionMoves {
         state.requireTracking(affected);
         byte[] payload = JSON.writeValueAsBytes(Map.of(
                 "operationId",
-                java.util.UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
                 "source",
                 source,
                 "destination",
@@ -110,8 +122,9 @@ final class SessionMoves {
                 plan.relocations(),
                 "replacements",
                 replacements));
-        if (payload.length > 64 * 1024 * 1024)
+        if (payload.length > 64 * 1024 * 1024) {
             throw new IllegalArgumentException("move plan exceeds transfer capacity");
+        }
         return new Pending(request, payload, Set.copyOf(affected));
     }
 
@@ -124,16 +137,23 @@ final class SessionMoves {
     }
 
     Map<String, ?> commit(AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, Pending pending) {
-        if (state.uncertain || state.move != null || !state.baseCommit.equals(pending.request.baseCommit()))
+        if (state.uncertain || state.move != null || !state.baseCommit.equals(pending.request.baseCommit())) {
             throw new IllegalArgumentException("move baseline changed");
+        }
         state.move = pending;
         return write(actor, workspace, state, false);
     }
 
     Map<String, ?> recover(AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state) {
-        if (state.move == null) throw new IllegalArgumentException("no pending move");
-        if (state.move.result != null) return pendingResult(state.move, "LOCAL_MOVE_PENDING");
-        if (state.move.attempt == null) return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
+        if (state.move == null) {
+            throw new IllegalArgumentException("no pending move");
+        }
+        if (state.move.result != null) {
+            return pendingResult(state.move, "LOCAL_MOVE_PENDING");
+        }
+        if (state.move.attempt == null) {
+            return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
+        }
         return write(actor, workspace, state, true);
     }
 
@@ -146,22 +166,26 @@ final class SessionMoves {
                     : service.move(actor, workspace, pending.request);
             return pendingResult(pending, "LOCAL_MOVE_PENDING");
         } catch (RepositoryWriteAmbiguousException unknown) {
-            if (pending.attempt == null) pending.attempt = unknown.attempt().orElse(null);
+            if (pending.attempt == null) {
+                pending.attempt = unknown.attempt().orElse(null);
+            }
             return pendingResult(pending, "WRITE_OUTCOME_UNKNOWN");
         } catch (RepositoryConflictException conflict) {
             state.move = null;
             return Map.of("ok", false, "code", "REPOSITORY_CONFLICT");
-        } catch (io.github.core607.poketto.auth.AuthException
-                | io.github.core607.poketto.content.ContentRepositoryException
-                | IllegalArgumentException failure) {
-            if (!recovery) state.move = null;
+        } catch (AuthException | ContentRepositoryException | IllegalArgumentException failure) {
+            if (!recovery) {
+                state.move = null;
+            }
             throw failure;
         }
     }
 
     Map<String, ?> installed(SelectedFileSaves.State state) {
         Pending pending = Objects.requireNonNull(state.move);
-        if (pending.result == null) throw new IllegalStateException("move is not acknowledged");
+        if (pending.result == null) {
+            throw new IllegalStateException("move is not acknowledged");
+        }
         var result = pending.result;
         state.acknowledgeMove(result.commit(), pending.paths);
         state.lastSave = Map.of(

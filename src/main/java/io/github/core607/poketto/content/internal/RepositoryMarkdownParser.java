@@ -37,7 +37,9 @@ final class RepositoryMarkdownParser {
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes))
                     .toString();
-            if (source.indexOf('\0') >= 0) throw new IllegalArgumentException("text must not contain NUL bytes");
+            if (source.indexOf('\0') >= 0) {
+                throw new IllegalArgumentException("text must not contain NUL bytes");
+            }
             return source;
         } catch (CharacterCodingException exception) {
             throw new IllegalArgumentException("file is not valid UTF-8", exception);
@@ -55,7 +57,9 @@ final class RepositoryMarkdownParser {
             int next = -1;
             while (cursor <= body.length()) {
                 int lineEnd = body.indexOf('\n', cursor);
-                if (lineEnd < 0) lineEnd = body.length();
+                if (lineEnd < 0) {
+                    lineEnd = body.length();
+                }
                 String line = body.substring(cursor, lineEnd).replace("\r", "");
                 if (line.equals("---")) {
                     end = cursor;
@@ -64,23 +68,30 @@ final class RepositoryMarkdownParser {
                 }
                 cursor = lineEnd + 1;
             }
-            if (end < 0) throw new IllegalArgumentException("frontmatter requires a closing delimiter");
+            if (end < 0) {
+                throw new IllegalArgumentException("frontmatter requires a closing delimiter");
+            }
             String yaml = body.substring(first, end);
-            if (yaml.getBytes(StandardCharsets.UTF_8).length > ContentLimits.MAX_FRONTMATTER_BYTES)
+            if (yaml.getBytes(StandardCharsets.UTF_8).length > ContentLimits.MAX_FRONTMATTER_BYTES) {
                 throw new IllegalArgumentException("frontmatter exceeds its byte limit");
+            }
             try {
                 var scanner = new ScannerImpl(new StreamReader(yaml), new LoaderOptions());
                 while (scanner.peekToken() != null) {
                     Token token = scanner.getToken();
                     if (token.getTokenId() == Token.ID.Alias
                             || token.getTokenId() == Token.ID.Anchor
-                            || token.getTokenId() == Token.ID.Tag)
+                            || token.getTokenId() == Token.ID.Tag) {
                         throw new IllegalArgumentException("frontmatter aliases, anchors, and tags are not supported");
-                    if (token.getTokenId() == Token.ID.StreamEnd) break;
+                    }
+                    if (token.getTokenId() == Token.ID.StreamEnd) {
+                        break;
+                    }
                 }
                 metadata = YAML.readTree(yaml);
-                if (metadata == null || !metadata.isObject())
+                if (metadata == null || !metadata.isObject()) {
                     throw new IllegalArgumentException("frontmatter must be a mapping");
+                }
             } catch (RuntimeException exception) {
                 throw new IllegalArgumentException("frontmatter is not a valid bounded YAML mapping", exception);
             }
@@ -89,27 +100,37 @@ final class RepositoryMarkdownParser {
         String title = optionalText(metadata, "title")
                 .orElse(firstHeading(body).orElse(path.substring(path.lastIndexOf('/') + 1, path.length() - 3)));
         title = title.strip();
-        if (title.isEmpty() || title.codePointCount(0, title.length()) > ContentLimits.MAX_TITLE_LENGTH)
+        if (title.isEmpty() || title.codePointCount(0, title.length()) > ContentLimits.MAX_TITLE_LENGTH) {
             throw new IllegalArgumentException("title must be nonempty and within its length limit");
+        }
         List<String> tags = new ArrayList<>();
         if (metadata != null && metadata.has("tags")) {
             JsonNode node = metadata.get("tags");
-            if (!node.isArray() || node.size() > ContentLimits.MAX_TAGS)
+            if (!node.isArray() || node.size() > ContentLimits.MAX_TAGS) {
                 throw new IllegalArgumentException("tags must be a bounded sequence");
+            }
             for (JsonNode tag : node) {
-                if (!tag.isString()) throw new IllegalArgumentException("tags must be strings");
+                if (!tag.isString()) {
+                    throw new IllegalArgumentException("tags must be strings");
+                }
                 String value = tag.stringValue().strip();
-                if (value.isEmpty() || value.codePointCount(0, value.length()) > ContentLimits.MAX_TAG_LENGTH)
+                if (value.isEmpty() || value.codePointCount(0, value.length()) > ContentLimits.MAX_TAG_LENGTH) {
                     throw new IllegalArgumentException("tag exceeds its length limit or is empty");
-                if (!tags.contains(value)) tags.add(value);
+                }
+                if (!tags.contains(value)) {
+                    tags.add(value);
+                }
             }
         }
         String route = RepositoryPathRules.validateRoute(
                 optionalText(metadata, "route").orElseGet(() -> RepositoryPathRules.route(path)));
-        if (RepositoryPathRules.folderPage(path) && !route.equals(RepositoryPathRules.route(path)))
+        if (RepositoryPathRules.folderPage(path) && !route.equals(RepositoryPathRules.route(path))) {
             throw new IllegalArgumentException("index.md must use its folder route");
+        }
         Optional<Instant> createdAt = date(metadata, "created_at");
-        if (createdAt.isEmpty()) createdAt = date(metadata, "date");
+        if (createdAt.isEmpty()) {
+            createdAt = date(metadata, "date");
+        }
         return new Metadata(
                 title, body, List.copyOf(tags), createdAt, date(metadata, "updated_at"), route, !hasMetadata);
     }
@@ -123,29 +144,43 @@ final class RepositoryMarkdownParser {
             if (stripped.startsWith("```") || stripped.startsWith("~~~")) {
                 char marker = stripped.charAt(0);
                 int length = 0;
-                while (length < stripped.length() && stripped.charAt(length) == marker) length++;
+                while (length < stripped.length() && stripped.charAt(length) == marker) {
+                    length++;
+                }
                 if (fence == 0) {
                     fence = marker;
                     fenceLength = length;
                 } else if (fence == marker
                         && length >= fenceLength
-                        && stripped.substring(length).isBlank()) fence = 0;
+                        && stripped.substring(length).isBlank()) {
+                    fence = 0;
+                }
                 previous = "";
                 continue;
             }
-            if (fence != 0) continue;
+            if (fence != 0) {
+                continue;
+            }
             Matcher match = HEADING.matcher(line);
-            if (match.matches()) return Optional.of(match.group(1));
-            if (!previous.isBlank() && line.matches(" {0,3}(=+|-+) *")) return Optional.of(previous.strip());
+            if (match.matches()) {
+                return Optional.of(match.group(1));
+            }
+            if (!previous.isBlank() && line.matches(" {0,3}(=+|-+) *")) {
+                return Optional.of(previous.strip());
+            }
             previous = line;
         }
         return Optional.empty();
     }
 
     private static Optional<String> optionalText(JsonNode metadata, String field) {
-        if (metadata == null || !metadata.has(field)) return Optional.empty();
+        if (metadata == null || !metadata.has(field)) {
+            return Optional.empty();
+        }
         JsonNode node = metadata.get(field);
-        if (!node.isString()) throw new IllegalArgumentException(field + " must be a string");
+        if (!node.isString()) {
+            throw new IllegalArgumentException(field + " must be a string");
+        }
         return Optional.of(node.stringValue());
     }
 

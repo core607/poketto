@@ -31,8 +31,9 @@ final class PublicDocuments {
                 || offset > 10_000
                 || limit < 1
                 || limit > 100
-                || (from != null && to != null && from.isAfter(to)))
+                || (from != null && to != null && from.isAfter(to))) {
             throw new IllegalArgumentException("search exceeds its bounds or has an invalid date range");
+        }
         PublicContentSnapshot snapshot = snapshot();
         List<PublicArticle> matches = snapshot.articles().stream()
                 .filter(article -> query.isEmpty()
@@ -58,15 +59,18 @@ final class PublicDocuments {
     }
 
     PublicDocument find(String route) {
-        if (route.length() > 256 || !route.startsWith("/")) throw notFound();
+        if (route.length() > 256 || !route.startsWith("/")) {
+            throw notFound();
+        }
         return assets.publicDocument(workspaces.defaultWorkspace().id(), route)
                 .map(value -> PublicDocument.of(value.article(), value.snapshot(), value.media()))
                 .orElseThrow(PublicDocuments::notFound);
     }
 
     Tags tags(int offset, int limit) {
-        if (offset < 0 || offset > 320_000 || limit < 1 || limit > 200)
+        if (offset < 0 || offset > 320_000 || limit < 1 || limit > 200) {
             throw new IllegalArgumentException("tag page exceeds its bounds");
+        }
         PublicContentSnapshot snapshot = snapshot();
         List<String> tags = snapshot.articles().stream()
                 .flatMap(article -> article.tags().stream())
@@ -87,8 +91,12 @@ final class PublicDocuments {
         int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
         int start = Math.max(0, match - 60);
         int end = Math.min(body.length(), start + 240);
-        if (start > 0 && Character.isLowSurrogate(body.charAt(start))) start--;
-        if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) end--;
+        if (start > 0 && Character.isLowSurrogate(body.charAt(start))) {
+            start--;
+        }
+        if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) {
+            end--;
+        }
         return body.substring(start, end);
     }
 

@@ -1,6 +1,7 @@
 package io.github.core607.poketto.assets.internal;
 
 import java.io.PrintWriter;
+import java.util.List;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
 import org.junit.platform.launcher.core.LauncherFactory;
@@ -8,7 +9,7 @@ import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 
 /** Runs the owning JUnit class without Gradle or a Docker daemon inside the test container. */
 public final class LinuxStorageTestLauncher {
-    private static final java.util.List<String> SUITES = java.util.List.of(
+    private static final List<String> SUITES = List.of(
             "io.github.core607.poketto.assets.internal.BoundedImageReadsTests",
             "io.github.core607.poketto.assets.internal.RepositoryImageCacheTests",
             "io.github.core607.poketto.assets.internal.LocalManagedBlobStoreTests",

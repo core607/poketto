@@ -27,3 +27,7 @@ Formatting disagreements end at the formatter; hand-tuned layout that disagrees 
 
 - `./gradlew spotlessCheck` fails on an unformatted source file and passes on the formatted tree.
 - `./gradlew check` runs `spotlessCheck`.
+
+## Related records
+
+The [Java style baseline](2026-09-12-java-style-baseline.md) adds Checkstyle beside Spotless for braces, imports, and length limits; formatting remains owned by palantir-java-format as decided here.

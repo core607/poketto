@@ -47,13 +47,23 @@ public final class ImageMemoryAdmission {
     }
 
     private Optional<ImageRequestScope> acquire(long bytes, boolean mayWait) {
-        if (bytes <= 0 || bytes % UNIT != 0) throw new IllegalArgumentException("image reservation must use whole MiB");
+        if (bytes <= 0 || bytes % UNIT != 0) {
+            throw new IllegalArgumentException("image reservation must use whole MiB");
+        }
         int units = Math.toIntExact(bytes / UNIT);
-        if (units > capacity) return rejected();
+        if (units > capacity) {
+            return rejected();
+        }
         try {
-            if (available.tryAcquire(units, 0, TimeUnit.NANOSECONDS)) return reservation(units);
-            if (!mayWait) return rejected();
-            if (!waiters.tryAcquire()) return rejected();
+            if (available.tryAcquire(units, 0, TimeUnit.NANOSECONDS)) {
+                return reservation(units);
+            }
+            if (!mayWait) {
+                return rejected();
+            }
+            if (!waiters.tryAcquire()) {
+                return rejected();
+            }
             try {
                 return available.tryAcquire(units, waitNanos, TimeUnit.NANOSECONDS) ? reservation(units) : rejected();
             } finally {

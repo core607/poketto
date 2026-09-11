@@ -8,6 +8,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.http.InvalidMediaTypeException;
@@ -19,7 +20,9 @@ final class AdminBodyFilter extends OncePerRequestFilter {
     private final Semaphore activeBodies;
 
     AdminBodyFilter(int concurrency) {
-        if (concurrency < 1) throw new IllegalArgumentException("admin body concurrency must be positive");
+        if (concurrency < 1) {
+            throw new IllegalArgumentException("admin body concurrency must be positive");
+        }
         activeBodies = new Semaphore(concurrency);
     }
 
@@ -51,7 +54,9 @@ final class AdminBodyFilter extends OncePerRequestFilter {
         }
         AtomicBoolean released = new AtomicBoolean();
         Runnable release = () -> {
-            if (released.compareAndSet(false, true)) activeBodies.release();
+            if (released.compareAndSet(false, true)) {
+                activeBodies.release();
+            }
         };
         try {
             OriginAndBodyFilter.filterBody(request, response, chain, limit);
@@ -83,21 +88,27 @@ final class AdminBodyFilter extends OncePerRequestFilter {
                     // Completion raced with listener registration.
                     release.run();
                 }
-            } else release.run();
+            } else {
+                release.run();
+            }
         }
     }
 
     private static boolean supportedType(String path, String supplied) {
-        if (supplied == null) return false;
+        if (supplied == null) {
+            return false;
+        }
         try {
             var type = MediaType.parseMediaType(supplied);
-            if (path.equals("/api/admin/media")) return MediaType.APPLICATION_OCTET_STREAM.equals(type);
+            if (path.equals("/api/admin/media")) {
+                return MediaType.APPLICATION_OCTET_STREAM.equals(type);
+            }
             return path.equals("/api/admin/assets")
                     ? MediaType.MULTIPART_FORM_DATA.includes(type)
                     : MediaType.APPLICATION_JSON.includes(type)
                             || (type.getType().equalsIgnoreCase("application")
                                     && type.getSubtype()
-                                            .toLowerCase(java.util.Locale.ROOT)
+                                            .toLowerCase(Locale.ROOT)
                                             .endsWith("+json"));
         } catch (InvalidMediaTypeException exception) {
             return false;

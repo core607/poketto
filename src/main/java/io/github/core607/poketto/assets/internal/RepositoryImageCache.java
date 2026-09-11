@@ -32,8 +32,9 @@ public final class RepositoryImageCache {
     private boolean initialized;
 
     public RepositoryImageCache(Path root, long capacity) {
-        if (!root.isAbsolute() || capacity < RepositoryBlobReader.MAX_BLOB_BYTES || capacity > 1024L * 1024 * 1024)
+        if (!root.isAbsolute() || capacity < RepositoryBlobReader.MAX_BLOB_BYTES || capacity > 1024L * 1024 * 1024) {
             throw new IllegalArgumentException("image cache needs an absolute directory and a 16 MiB to 1 GiB bound");
+        }
         this.root = root.normalize();
         this.capacity = capacity;
     }
@@ -61,13 +62,19 @@ public final class RepositoryImageCache {
             Path file = root.resolve(key + ".image");
             if (!Files.exists(file, NOFOLLOW_LINKS)) {
                 Long old = entries.remove(key);
-                if (old != null) bytes -= old;
+                if (old != null) {
+                    bytes -= old;
+                }
                 return null;
             }
-            if (!Files.isRegularFile(file, NOFOLLOW_LINKS)) throw unavailable();
+            if (!Files.isRegularFile(file, NOFOLLOW_LINKS)) {
+                throw unavailable();
+            }
             try (var input = Files.newInputStream(file, StandardOpenOption.READ, NOFOLLOW_LINKS)) {
                 byte[] value = BoundedImageReads.read(input, RepositoryBlobReader.MAX_BLOB_BYTES + 1);
-                if (value.length > RepositoryBlobReader.MAX_BLOB_BYTES) return null;
+                if (value.length > RepositoryBlobReader.MAX_BLOB_BYTES) {
+                    return null;
+                }
                 entries.get(key);
                 return value;
             }
@@ -84,8 +91,9 @@ public final class RepositoryImageCache {
             staged = root.resolve("pending-" + UUID.randomUUID());
             Files.write(staged, value, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, NOFOLLOW_LINKS);
             Path target = root.resolve(key + ".image");
-            if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS))
+            if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS)) {
                 throw unavailable();
+            }
             Files.move(staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             Long previous = entries.put(key, (long) value.length);
             bytes += value.length - (previous == null ? 0 : previous);
@@ -107,29 +115,38 @@ public final class RepositoryImageCache {
         try {
             safeDirectories(root, false);
             Path target = root.resolve(key + ".image");
-            if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS))
+            if (Files.exists(target, NOFOLLOW_LINKS) && !Files.isRegularFile(target, NOFOLLOW_LINKS)) {
                 throw unavailable();
+            }
             Files.deleteIfExists(target);
             Long old = entries.remove(key);
-            if (old != null) bytes -= old;
+            if (old != null) {
+                bytes -= old;
+            }
         } catch (IOException exception) {
             throw unavailable();
         }
     }
 
     private void initialize() throws IOException {
-        if (initialized) return;
+        if (initialized) {
+            return;
+        }
         safeDirectories(root, true);
         try (var files = Files.newDirectoryStream(root)) {
             int count = 0;
             for (Path file : files) {
-                if (++count > 10_000 || !Files.isRegularFile(file, NOFOLLOW_LINKS)) throw unavailable();
+                if (++count > 10_000 || !Files.isRegularFile(file, NOFOLLOW_LINKS)) {
+                    throw unavailable();
+                }
                 String name = file.getFileName().toString();
                 if (name.matches("pending-[0-9a-f-]{36}")) {
                     Files.delete(file);
                     continue;
                 }
-                if (!name.matches("[0-9a-f]{64}\\.image")) throw unavailable();
+                if (!name.matches("[0-9a-f]{64}\\.image")) {
+                    throw unavailable();
+                }
                 long length = Files.size(file);
                 if (length > RepositoryBlobReader.MAX_BLOB_BYTES) {
                     Files.delete(file);
@@ -147,16 +164,22 @@ public final class RepositoryImageCache {
         while (bytes > capacity || entries.size() > 1024) {
             String first = entries.keySet().iterator().next();
             Path file = root.resolve(first + ".image");
-            if (Files.exists(file, NOFOLLOW_LINKS) && !Files.isRegularFile(file, NOFOLLOW_LINKS)) throw unavailable();
+            if (Files.exists(file, NOFOLLOW_LINKS) && !Files.isRegularFile(file, NOFOLLOW_LINKS)) {
+                throw unavailable();
+            }
             Files.deleteIfExists(file);
             bytes -= entries.remove(first);
         }
     }
 
     private static Image validate(RepositoryBlob blob, byte[] bytes) {
-        if (bytes.length != blob.size() || bytes.length > RepositoryBlobReader.MAX_BLOB_BYTES) throw unavailable();
+        if (bytes.length != blob.size() || bytes.length > RepositoryBlobReader.MAX_BLOB_BYTES) {
+            throw unavailable();
+        }
         try (ObjectInserter.Formatter formatter = new ObjectInserter.Formatter()) {
-            if (!formatter.idFor(Constants.OBJ_BLOB, bytes).name().equals(blob.objectId())) throw unavailable();
+            if (!formatter.idFor(Constants.OBJ_BLOB, bytes).name().equals(blob.objectId())) {
+                throw unavailable();
+            }
         }
         return new Image(ImagePreviewPolicy.validate(bytes), bytes);
     }
@@ -175,11 +198,15 @@ public final class RepositoryImageCache {
         Path cursor = path.getRoot();
         for (Path segment : path) {
             cursor = cursor.resolve(segment);
-            if (create && !Files.exists(cursor, NOFOLLOW_LINKS)) Files.createDirectory(cursor);
+            if (create && !Files.exists(cursor, NOFOLLOW_LINKS)) {
+                Files.createDirectory(cursor);
+            }
             BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class, NOFOLLOW_LINKS);
             if (!attributes.isDirectory()
                     || attributes.isSymbolicLink()
-                    || !cursor.toRealPath().equals(cursor)) throw unavailable();
+                    || !cursor.toRealPath().equals(cursor)) {
+                throw unavailable();
+            }
         }
     }
 

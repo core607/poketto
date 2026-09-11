@@ -1,6 +1,8 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.RepositoryConnectionException.Code.*;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.PERMISSION_DENIED;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.REPOSITORY_CHANGED;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.UNAVAILABLE;
 
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryCoordinates;
@@ -55,9 +57,12 @@ final class RepositoryProviderClient implements AutoCloseable {
                     .GET()
                     .build();
             HttpResponse<byte[]> response = http.send(request, info -> new BoundedBody(MAX_METADATA_BYTES));
-            if (response.statusCode() == 401 || response.statusCode() == 403)
+            if (response.statusCode() == 401 || response.statusCode() == 403) {
                 throw new RepositoryConnectionException(PERMISSION_DENIED);
-            if (response.statusCode() != 200) throw new RepositoryConnectionException(UNAVAILABLE);
+            }
+            if (response.statusCode() != 200) {
+                throw new RepositoryConnectionException(UNAVAILABLE);
+            }
             return parse(coordinates, json.readTree(response.body()));
         } catch (IOException exception) {
             throw new RepositoryConnectionException(UNAVAILABLE);
@@ -73,35 +78,48 @@ final class RepositoryProviderClient implements AutoCloseable {
 
     static Metadata parse(RepositoryCoordinates requested, JsonNode data) {
         try {
-            if (data == null || !data.isObject()) throw new IllegalArgumentException();
+            if (data == null || !data.isObject()) {
+                throw new IllegalArgumentException();
+            }
             String id = data.path("id").asText();
             boolean github = requested.provider().equals("github");
-            if (!id.matches(github ? "[1-9][0-9]{0,39}" : "[a-zA-Z0-9_-]{1,128}")) throw new IllegalArgumentException();
+            if (!id.matches(github ? "[1-9][0-9]{0,39}" : "[a-zA-Z0-9_-]{1,128}")) {
+                throw new IllegalArgumentException();
+            }
             String path = data.path(github ? "full_name" : "path").asText();
             RepositoryCoordinates canonical =
                     RepositoryCoordinates.parse("https://" + (github ? "github.com" : "cnb.cool") + "/" + path);
-            if (!canonical.canonicalUri().equals(requested.canonicalUri()))
+            if (!canonical.canonicalUri().equals(requested.canonicalUri())) {
                 throw new RepositoryConnectionException(REPOSITORY_CHANGED);
+            }
             boolean privateRepository;
             if (github) {
                 if (!data.path("private").isBoolean()
                         || !data.path("archived").isBoolean()
-                        || !data.path("disabled").isBoolean()) throw new IllegalArgumentException();
-                if (data.path("archived").asBoolean() || data.path("disabled").asBoolean())
+                        || !data.path("disabled").isBoolean()) {
+                    throw new IllegalArgumentException();
+                }
+                if (data.path("archived").asBoolean() || data.path("disabled").asBoolean()) {
                     throw new RepositoryConnectionException(UNAVAILABLE);
-                if (!data.path("permissions").path("push").asBoolean(false))
+                }
+                if (!data.path("permissions").path("push").asBoolean(false)) {
                     throw new RepositoryConnectionException(PERMISSION_DENIED);
+                }
                 privateRepository = data.path("private").asBoolean();
             } else {
                 String visibility = data.path("visibility_level").asText();
                 if (!Set.of("Private", "Public", "Secret").contains(visibility)
                         || !data.path("status").isInt()
-                        || !data.path("freeze").isBoolean()) throw new IllegalArgumentException();
-                if (data.path("status").intValue() != 0 || data.path("freeze").asBoolean())
+                        || !data.path("freeze").isBoolean()) {
+                    throw new IllegalArgumentException();
+                }
+                if (data.path("status").intValue() != 0 || data.path("freeze").asBoolean()) {
                     throw new RepositoryConnectionException(UNAVAILABLE);
+                }
                 if (!Set.of("Developer", "Master", "Owner")
-                        .contains(data.path("access").asText()))
+                        .contains(data.path("access").asText())) {
                     throw new RepositoryConnectionException(PERMISSION_DENIED);
+                }
                 privateRepository = !visibility.equals("Public");
             }
             return new Metadata(canonical, requested.provider() + ":" + id, privateRepository);

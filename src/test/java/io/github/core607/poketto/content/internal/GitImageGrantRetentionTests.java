@@ -1,9 +1,15 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.AdditionalAnswers.delegatesTo;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
@@ -36,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -244,9 +251,7 @@ class GitImageGrantRetentionTests {
         try (var pool = Executors.newSingleThreadExecutor()) {
             var protecting =
                     pool.submit(() -> fixture.authority().protectImmutableObjects(workspace, expiry, objects -> {
-                        assertThat(objects.has(
-                                        org.eclipse.jgit.lib.ObjectId.fromString(descriptor.objectId()),
-                                        Constants.OBJ_BLOB))
+                        assertThat(objects.has(ObjectId.fromString(descriptor.objectId()), Constants.OBJ_BLOB))
                                 .isTrue();
                         entered.countDown();
                         await(release);
