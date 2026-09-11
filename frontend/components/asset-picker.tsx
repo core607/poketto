@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/browser-api";
+import { useWorkspaceApi } from "./workspace-context";
 import { safeImage } from "../lib/format";
 import { message } from "./admin";
 type Asset = {
@@ -19,6 +19,7 @@ export function AssetPicker({
   commit: string | null;
   onInsert: (markdown: string) => void;
 }) {
+  const api = useWorkspaceApi();
   const [expanded, setExpanded] = useState(false);
   const [items, setItems] = useState<{ source: string; label: string }[]>([]);
   const [images, setImages] = useState<Record<string, string>>({});

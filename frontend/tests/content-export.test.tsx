@@ -1,3 +1,4 @@
+import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
@@ -32,7 +33,7 @@ test("export dialog uses scoped CSRF requests, native downloads, and safe cancel
   trigger.textContent = "导出";
   const container = window.document.createElement("div");
   window.document.body.append(trigger, container);
-  const root = createRoot(container as unknown as HTMLDivElement);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
   const oldFetch = globalThis.fetch;
   const requests: { paths: string[]; publicOnly: boolean }[] = [];
   const releases: string[] = [];
@@ -55,7 +56,10 @@ test("export dialog uses scoped CSRF requests, native downloads, and safe cancel
       releases.push(path);
       return new Response(null, { status: 204 });
     }
-    assert.equal(path, "/api/admin/exports");
+    assert.equal(
+      path,
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/exports",
+    );
     requests.push(JSON.parse(String(options.body)));
     return response();
   };
@@ -103,7 +107,10 @@ test("export dialog uses scoped CSRF requests, native downloads, and safe cancel
     { paths: ["private/note.md"], publicOnly: false },
   ]);
   const download = container.querySelector("a")!;
-  assert.equal(download.getAttribute("href"), "/api/admin/exports/handle-1");
+  assert.equal(
+    download.getAttribute("href"),
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/exports/handle-1",
+  );
   assert.equal(download.hasAttribute("download"), true);
   await act(async () => button("完成").click());
   assert.equal(releases.length, 0);
@@ -147,7 +154,9 @@ test("export dialog uses scoped CSRF requests, native downloads, and safe cancel
   await act(async () =>
     finish(Response.json({ ...receipt, handle: "unused" })),
   );
-  assert.deepEqual(releases, ["/api/admin/exports/unused/release"]);
+  assert.deepEqual(releases, [
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/exports/unused/release",
+  ]);
   assert.equal(container.querySelector("dialog"), null);
   assert.equal(window.document.activeElement, trigger);
 });

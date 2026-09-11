@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,27 +33,29 @@ class MediaFileController {
         this.workspaces = workspaces;
     }
 
-    @PostMapping(path = "/api/admin/media", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @PostMapping(
+            path = "/api/admin/workspaces/{workspaceId}/media",
+            consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     ManagedAsset upload(
             @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
             @RequestHeader("Idempotency-Key") String key,
             @RequestHeader(value = "X-Media-Type", defaultValue = "application/octet-stream") String type,
             HttpServletRequest request)
             throws IOException {
         try (var input = request.getInputStream()) {
-            return media.upload(actor, workspaces.defaultWorkspace().id(), key, type, input);
+            return media.upload(actor, WorkspaceId.parse(workspaceId), key, type, input);
         }
     }
 
-    @GetMapping("/api/admin/media")
+    @GetMapping("/api/admin/workspaces/{workspaceId}/media")
     void privateDownload(
             @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
             @RequestParam String path,
             @RequestParam(required = false) String commit,
             HttpServletResponse response) {
-        send(
-                media.privateDownload(actor, workspaces.defaultWorkspace().id(), Optional.ofNullable(commit), path),
-                response);
+        send(media.privateDownload(actor, WorkspaceId.parse(workspaceId), Optional.ofNullable(commit), path), response);
     }
 
     @GetMapping("/api/public/media")

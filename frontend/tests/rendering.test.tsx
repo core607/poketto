@@ -33,7 +33,8 @@ test("authored image URLs never become network requests without backend resoluti
 test("public and authenticated previews use separate approved image entrances", () => {
   const mapping = {
     "photo.png": "/api/public/assets/public-grant",
-    "private.png": "/api/admin/assets/images/private-token",
+    "private.png":
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/images/private-token",
   };
   const source = "![Public](photo.png)\n\n![Private](private.png)";
   const html = renderToStaticMarkup(
@@ -44,7 +45,10 @@ test("public and authenticated previews use separate approved image entrances", 
   const preview = renderToStaticMarkup(
     <Markdown source={source} images={mapping} preview />,
   );
-  assert.match(preview, /src="\/api\/admin\/assets\/images\/private-token"/);
+  assert.match(
+    preview,
+    /src="\/api\/admin\/workspaces\/11111111-1111-4111-8111-111111111111\/assets\/images\/private-token"/,
+  );
   assert.doesNotMatch(
     renderToStaticMarkup(
       <Gallery items={[{ src: mapping["private.png"], alt: "Private" }]} />,
@@ -76,7 +80,9 @@ test("download mappings keep exact HTTP destinations separate from article route
     "a".repeat(40) +
     "&path=media%2Freport.pdf&route=%2Fdemo#page=2";
   const privateTarget =
-    "/api/admin/media?commit=" + "a".repeat(40) + "&path=private%2Freport.pdf";
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media?commit=" +
+    "a".repeat(40) +
+    "&path=private%2Freport.pdf";
   const source =
     "[PDF](report.pdf) [Private](private.pdf) [Article](article.md)";
   const downloads = { "report.pdf": target, "private.pdf": privateTarget };
@@ -127,10 +133,18 @@ test("safe URL rules reject protocols, external image grants, and normalized tra
     "data:image/png;base64,a",
   ])
     assert.equal(safeImage(value), undefined);
-  assert.equal(safeImage("/api/admin/assets/images/a"), undefined);
   assert.equal(
-    safeImage("/api/admin/assets/images/a", true),
-    "/api/admin/assets/images/a",
+    safeImage(
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/images/a",
+    ),
+    undefined,
+  );
+  assert.equal(
+    safeImage(
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/images/a",
+      true,
+    ),
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/images/a",
   );
   assert.equal(
     relativePath("笔记/旅行/index.md", "笔记/图片/雨.png"),
@@ -220,14 +234,20 @@ test("Chinese and encoded document links preserve route bytes and authored fragm
 
 test("normalized private previews still require the authenticated image and editor entrances", () => {
   const source = "![图](<私有 图.png>)\n\n[笔记](私有.md#正文)";
-  const images = { "私有 图.png": "/api/admin/assets/images/verified" };
+  const images = {
+    "私有 图.png":
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/images/verified",
+  };
   const links = {
     "私有.md#正文": "/admin?path=private%2F%E7%A7%81%E6%9C%89.md#正文",
   };
   const html = renderToStaticMarkup(
     <Markdown source={source} images={images} links={links} preview />,
   );
-  assert.match(html, /src="\/api\/admin\/assets\/images\/verified"/);
+  assert.match(
+    html,
+    /src="\/api\/admin\/workspaces\/11111111-1111-4111-8111-111111111111\/assets\/images\/verified"/,
+  );
   assert.match(
     html,
     /href="\/admin\?path=private%2F%E7%A7%81%E6%9C%89.md#poketto-heading-%E6%AD%A3%E6%96%87"/,

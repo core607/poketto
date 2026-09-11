@@ -94,8 +94,8 @@ class AdminPaginationIntegrationIT {
         String password = secret();
         AuthPrincipal owner = auth.initializeOwner("pagination-owner", password);
         Csrf session = login("pagination-owner", password);
-        JsonNode original =
-                body(mvc.perform(request(post("/api/admin/keys"), session, Map.of("accountId", owner.accountId())))
+        JsonNode original = body(
+                mvc.perform(request(post(scoped("/api/admin/keys")), session, Map.of("accountId", owner.accountId())))
                         .andExpect(status().isCreated())
                         .andReturn());
         String oldId = original.get("id").stringValue();
@@ -103,20 +103,21 @@ class AdminPaginationIntegrationIT {
                 "update auth_api_keys set created_at = now() - interval '1 day' where key_id = ?",
                 UUID.fromString(oldId));
         for (int index = 0; index < 100; index++) {
-            JsonNode issued =
-                    body(mvc.perform(request(post("/api/admin/keys"), session, Map.of("accountId", owner.accountId())))
-                            .andExpect(status().isCreated())
-                            .andReturn());
-            mvc.perform(request(delete("/api/admin/keys/" + issued.get("id").stringValue()), session, null))
+            JsonNode issued = body(mvc.perform(
+                            request(post(scoped("/api/admin/keys")), session, Map.of("accountId", owner.accountId())))
+                    .andExpect(status().isCreated())
+                    .andReturn());
+            mvc.perform(request(
+                            delete(scoped("/api/admin/keys/") + issued.get("id").stringValue()), session, null))
                     .andExpect(status().isNoContent());
         }
-        mvc.perform(get("/api/admin/keys").session(session.session()))
+        mvc.perform(get(scoped("/api/admin/keys")).session(session.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(30))
                 .andExpect(jsonPath("$.total").value(101))
                 .andExpect(jsonPath("$.offset").value(0))
                 .andExpect(jsonPath("$.limit").value(30));
-        mvc.perform(get("/api/admin/keys")
+        mvc.perform(get(scoped("/api/admin/keys"))
                         .session(session.session())
                         .param("offset", "100")
                         .param("limit", "100"))
@@ -125,15 +126,20 @@ class AdminPaginationIntegrationIT {
                 .andExpect(jsonPath("$.items[0].id").value(oldId))
                 .andExpect(jsonPath("$.items[0].revoked").value(false));
         auth.authenticateApiKey(original.get("token").stringValue());
-        mvc.perform(request(delete("/api/admin/keys/" + oldId), session, null)).andExpect(status().isNoContent());
+        mvc.perform(request(delete(scoped("/api/admin/keys/") + oldId), session, null))
+                .andExpect(status().isNoContent());
         assertThatThrownBy(() -> auth.authenticateApiKey(original.get("token").stringValue()))
                 .isInstanceOf(AuthException.class);
         for (String endpoint : java.util.List.of("keys", "members", "invitations")) {
-            mvc.perform(get("/api/admin/" + endpoint).session(session.session()).param("limit", "101"))
+            mvc.perform(get(scoped("/api/admin/") + endpoint)
+                            .session(session.session())
+                            .param("limit", "101"))
                     .andExpect(status().isBadRequest());
-            mvc.perform(get("/api/admin/" + endpoint).session(session.session()).param("offset", "-1"))
+            mvc.perform(get(scoped("/api/admin/") + endpoint)
+                            .session(session.session())
+                            .param("offset", "-1"))
                     .andExpect(status().isBadRequest());
-            mvc.perform(get("/api/admin/" + endpoint)).andExpect(status().isUnauthorized());
+            mvc.perform(get(scoped("/api/admin/") + endpoint)).andExpect(status().isUnauthorized());
         }
     }
 
@@ -156,15 +162,18 @@ class AdminPaginationIntegrationIT {
                     workspace,
                     member);
             lastMember = member;
-            mvc.perform(request(post("/api/admin/invitations"), session, null)).andExpect(status().isCreated());
+            mvc.perform(request(post(scoped("/api/admin/invitations")), session, null))
+                    .andExpect(status().isCreated());
         }
-        mvc.perform(get("/api/admin/members").session(session.session()).param("offset", "30"))
+        mvc.perform(get(scoped("/api/admin/members")).session(session.session()).param("offset", "30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(32))
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[0].accountId").value(lastMember.toString()));
         mvc.perform(request(
-                        put("/api/admin/members/" + lastMember), session, Map.of("role", "MEMBER", "active", false)))
+                        put(scoped("/api/admin/members/") + lastMember),
+                        session,
+                        Map.of("role", "MEMBER", "active", false)))
                 .andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject(
                         "select suspended_at is not null from auth_memberships where workspace_id = ? and account_id = ?",
@@ -172,19 +181,22 @@ class AdminPaginationIntegrationIT {
                         workspace,
                         lastMember))
                 .isTrue();
-        JsonNode lastPage = body(mvc.perform(
-                        get("/api/admin/invitations").session(session.session()).param("offset", "30"))
+        JsonNode lastPage = body(mvc.perform(get(scoped("/api/admin/invitations"))
+                        .session(session.session())
+                        .param("offset", "30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.total").value(31))
                 .andReturn());
         String invitation = lastPage.get("items").get(0).get("id").stringValue();
-        mvc.perform(request(delete("/api/admin/invitations/" + invitation), session, null))
+        mvc.perform(request(delete(scoped("/api/admin/invitations/") + invitation), session, null))
                 .andExpect(status().isNoContent());
-        mvc.perform(get("/api/admin/invitations").session(session.session()).param("offset", "30"))
+        mvc.perform(get(scoped("/api/admin/invitations"))
+                        .session(session.session())
+                        .param("offset", "30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].revoked").value(true));
-        mvc.perform(get("/api/admin/members").session(session.session()).param("offset", "500"))
+        mvc.perform(get(scoped("/api/admin/members")).session(session.session()).param("offset", "500"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(0))
                 .andExpect(jsonPath("$.total").value(32));
@@ -232,5 +244,11 @@ class AdminPaginationIntegrationIT {
 
     private static String secret() {
         return UUID.randomUUID().toString() + UUID.randomUUID();
+    }
+
+    private String scoped(String path) {
+        String workspace = workspaces.defaultWorkspace().id().toString();
+        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

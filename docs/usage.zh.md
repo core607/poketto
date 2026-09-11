@@ -28,6 +28,10 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 ## 内容与图片
 
+管理页会列出当前账号的空间。选择空间后再编辑，URL 中的 `workspace` 参数让不同标签页保持独立。“账号与空间”支持连接已有的 GitHub/CNB 私有仓库、查询或重试中断的创建申请，以及接受空间邀请码。启用仓库连接前，将 `POKETTO_REPOSITORY_CREDENTIAL_KEY` 配置为 Base64 编码的 32 字节密钥。新空间默认关闭公开网站。仓库令牌需要读取元数据和 Git 写入权限，不会保存在浏览器草稿中。
+
+私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个拥有的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
+
 空内容仓可使用 [content-template](../content-template/AGENTS.md) 初始化。模板提供各自组织的 `private/` 和 `public/`，默认禁用发布。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
 
 ```yaml
@@ -41,13 +45,13 @@ exclude:
 
 Markdown 元数据可选，未修改的源码字节保持原样。默认路由省略 `public/` 和 `.md`；显式路由保持不变，但不能赋予公开权限。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由（`public/index.md` 对应 `/`），并提供不递归、不重复正文图片的同目录图库。
 
-认证后的 `/api/admin/repository` 入口提供 Markdown 索引、分页目录列表、文件读取、搜索、预览、原子补丁与移动。浏览器目标选择器可以移动文件或文件夹，并在同一次提交中修复 Markdown 引用。文本变更须在 base commit 下携带 revision 或明确的缺失条件；移动在该版本检查来源和目标。冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
+认证后的 `/api/admin/workspaces/{workspaceId}/repository` 入口提供 Markdown 索引、分页目录列表、文件读取、搜索、预览、原子补丁与移动。浏览器目标选择器可以移动文件或文件夹，并在同一次提交中修复 Markdown 引用。文本变更须在 base commit 下携带 revision 或明确的缺失条件；移动在该版本检查来源和目标。冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/workspaces/{workspaceId}/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
 
 新建路径输入框默认从 `private/` 开始。移动选择器中的私有／公开目录按钮在切换根目录时保留分类路径；选定目标后，提交移动才会写入仓库。移动目录包含其中的索引媒体，单独移动文档不会带走共享依赖。
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 
-`POST /api/admin/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
+`POST /api/admin/workspaces/{workspaceId}/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/workspaces/{workspaceId}/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
 
 ## 导出 HTTP 接口
 
@@ -56,10 +60,10 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 公开副本遇到私密内容会拒绝导出，不会改变发布状态。下载交给浏览器的下载管理器；关闭对话框后，
 已提供的下载包保留至到期，以便正在进行的下载完成。
 
-在原生 Linux 上，`POST /api/admin/exports` 接收 `paths`（明确的 Markdown、索引媒体路径或目录前缀）
+在原生 Linux 上，`POST /api/admin/workspaces/{workspaceId}/exports` 接收 `paths`（明确的 Markdown、索引媒体路径或目录前缀）
 和必填布尔值 `publicOnly`，返回临时句柄、ZIP 大小、SHA-256 和到期时间。
-`GET /api/admin/exports/{handle}` 下载 ZIP；追加 `/metadata` 可读取回执，
-`POST /api/admin/exports/{handle}/release` 可提前释放。创建和释放沿用会话 CSRF 保护。
+`GET /api/admin/workspaces/{workspaceId}/exports/{handle}` 下载 ZIP；追加 `/metadata` 可读取回执，
+`POST /api/admin/workspaces/{workspaceId}/exports/{handle}/release` 可提前释放。创建和释放沿用会话 CSRF 保护。
 每次操作都会重查所属身份和工作空间，句柄不能作为匿名下载链接分享。
 
 私密包要求私密读取权限并保留原文 frontmatter。公开包只包含已批准的文章字段和有权限访问的原件；

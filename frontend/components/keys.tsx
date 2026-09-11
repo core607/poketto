@@ -1,6 +1,6 @@
 "use client";
 import { FormEvent, useState } from "react";
-import { api } from "../lib/browser-api";
+import { useWorkspaceApi } from "./workspace-context";
 import { message, type Identity } from "./admin";
 import type { Member } from "./members";
 import { Secret } from "./secret";
@@ -40,6 +40,7 @@ type Key = {
   revoked: boolean;
 };
 export function Keys({ identity }: { identity: Identity }) {
+  const api = useWorkspaceApi();
   const confirm = useConfirmation();
   const keyPage = useAdminPage<Key>("/api/admin/keys");
   const keys = keyPage.items;

@@ -1,6 +1,7 @@
+import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Window } from "happy-dom";
+import { Window, type HTMLFormElement, type HTMLInputElement } from "happy-dom";
 import { relativePath } from "../components/asset-picker";
 
 test("repository image destinations encode filename bytes and retain relative parents", () => {
@@ -30,6 +31,7 @@ test("editor inserts and previews new images relative to a new draft destination
     "navigator",
     "HTMLElement",
     "HTMLInputElement",
+    "FormData",
     "Event",
     "IS_REACT_ACT_ENVIRONMENT",
   ];
@@ -45,6 +47,7 @@ test("editor inserts and previews new images relative to a new draft destination
     navigator: window.navigator,
     HTMLElement: window.HTMLElement,
     HTMLInputElement: window.HTMLInputElement,
+    FormData: window.FormData,
     Event: window.Event,
     IS_REACT_ACT_ENVIRONMENT: true,
   })) {
@@ -60,7 +63,7 @@ test("editor inserts and previews new images relative to a new draft destination
   const { ConfirmationProvider } = await import("../components/confirmation");
   const container = window.document.createElement("div");
   window.document.body.append(container);
-  const root = createRoot(container as unknown as HTMLDivElement);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
   const original = "# Existing\n\n![Keep](../keep.png)\n";
   const previews: { path: string; body: string; commit: string }[] = [];
   const previousFetch = globalThis.fetch;
@@ -68,13 +71,19 @@ test("editor inserts and previews new images relative to a new draft destination
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
-    if (url.pathname === "/api/admin/repository/tree")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/tree"
+    )
       return Response.json({
         commit: "before",
         entries: [{ path: "notes/a.md", title: "Existing" }],
         diagnostics: [],
       });
-    if (url.pathname === "/api/admin/repository/file")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/file"
+    )
       return Response.json({
         path: "notes/a.md",
         source: null,
@@ -83,7 +92,10 @@ test("editor inserts and previews new images relative to a new draft destination
         expectedAbsence: true,
         diagnostics: [],
       });
-    if (url.pathname === "/api/admin/repository/directory")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/directory"
+    )
       return Response.json({
         commit: "before",
         path: "",
@@ -91,14 +103,20 @@ test("editor inserts and previews new images relative to a new draft destination
         entries: [],
         nextOffset: null,
       });
-    if (url.pathname === "/api/admin/assets/repository")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/repository"
+    )
       return Response.json({
         items: [
           { path: "notes/photo#1?.png", mediaType: "image/png", size: 73 },
         ],
         total: 1,
       });
-    if (url.pathname === "/api/admin/repository/preview") {
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview"
+    ) {
       const request = JSON.parse(String(options?.body));
       previews.push(request);
       return Response.json({
@@ -129,7 +147,7 @@ test("editor inserts and previews new images relative to a new draft destination
         <Editor
           identity={{
             accountId: "owner",
-            workspaceId: "workspace",
+            workspaceId: "11111111-1111-4111-8111-111111111111",
             role: "OWNER",
             capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
           }}
@@ -138,6 +156,31 @@ test("editor inserts and previews new images relative to a new draft destination
       </ConfirmationProvider>,
     ),
   );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 550));
+  });
+  const firstPreviewCount = previews.length;
+  assert.ok(firstPreviewCount > 0);
+  const openForm = container.querySelector<HTMLFormElement>("form.open-path");
+  assert.ok(openForm);
+  const openPath =
+    openForm.querySelector<HTMLInputElement>('input[name="path"]');
+  assert.ok(openPath);
+  openPath.value = "notes/a.md";
+  await act(async () => {
+    openForm.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 550));
+  });
+  assert.equal(
+    previews.length,
+    firstPreviewCount + 1,
+    "Reopening unchanged bytes must replace the cleared preview",
+  );
+  assert.doesNotMatch(container.textContent!, /正在更新预览/);
   await act(async () => {
     const draft = container.querySelector("textarea");
     assert.ok(draft);

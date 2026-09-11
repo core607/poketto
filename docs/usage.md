@@ -28,6 +28,10 @@ On Windows, `check` also runs `linuxStorageTest` in a pinned Linux container usi
 
 ## Content and images
 
+The management page lists the signed-in account's spaces. Select a space before editing; its `workspace` URL parameter keeps separate tabs independent. Account and space management also supports connecting an existing private GitHub/CNB repository, querying or retrying an interrupted creation, and accepting a workspace invitation. Configure `POKETTO_REPOSITORY_CREDENTIAL_KEY` as a Base64-encoded 32-byte secret before enabling repository connection. New spaces start with public delivery disabled. Provider tokens require metadata read and Git write access and are never retained in browser drafts.
+
+Private HTTP routes use `/api/admin/workspaces/{workspaceId}`. Read memberships from `GET /api/auth/workspaces` and current authorization from `GET /api/auth/workspaces/{workspaceId}/me`; unscoped administration routes do not select a fallback space. OAuth consent chooses one owned space, and the `/mcp` resource derives that space from its issued credential. See [workspace routing](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md).
+
 Initialize an empty content repository from [content-template](../content-template/AGENTS.md).
 It contains independent `private/` and `public/` trees and keeps publication disabled.
 Create new content under `private/`. To publish selected content, move it and its
@@ -44,7 +48,7 @@ Only paths below the exact root `public/` are eligible. Exclusions use full repo
 
 Markdown metadata is optional, and unchanged source bytes are retained. Default routes omit `public/` and `.md`; an explicit route is preserved but cannot grant publication rights. The public detail endpoint is `GET /api/public/document?route=...`; list/search and tags include snapshot metadata. `index.md` owns its folder route (`public/index.md` owns `/`) and supplies a non-recursive sibling-image gallery without repeating body images.
 
-Authenticated `/api/admin/repository` endpoints provide the Markdown index, paginated directory listing, file reads, search, preview, atomic patches and moves. The browser destination picker moves files or folders and repairs Markdown references in the same commit. Text changes carry revisions or explicit absence against the base commit; moves check the source and destination at that base. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
+Authenticated `/api/admin/workspaces/{workspaceId}/repository` endpoints provide the Markdown index, paginated directory listing, file reads, search, preview, atomic patches and moves. The browser destination picker moves files or folders and repairs Markdown references in the same commit. Text changes carry revisions or explicit absence against the base commit; moves check the source and destination at that base. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/workspaces/{workspaceId}/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
 
 The new-path field starts at `private/`. In the move picker, the private/public
 directory buttons retain the category path while switching roots. Selecting a
@@ -53,7 +57,7 @@ its indexed media; moving one document does not move shared dependencies.
 
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Withdrawal stops new grants, while private previews recheck the current identity. See the [foundations record](../notes/implemented/2026-09-05-repository-authoring-foundations.md) for limits, storage guarantees and failure behavior.
 
-`POST /api/admin/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes.
+`POST /api/admin/workspaces/{workspaceId}/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/workspaces/{workspaceId}/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes.
 
 ## Export HTTP interface
 
@@ -65,11 +69,11 @@ private selections rather than changing publication. Downloads use the browser's
 download manager. Closing the dialog leaves an already offered package available
 until expiry, so an active download can finish.
 
-On native Linux, `POST /api/admin/exports` accepts `paths` (explicit Markdown,
+On native Linux, `POST /api/admin/workspaces/{workspaceId}/exports` accepts `paths` (explicit Markdown,
 indexed-media paths or directory prefixes) and an explicit `publicOnly` boolean.
 It returns a temporary handle, ZIP size, SHA-256 and expiry. `GET
-/api/admin/exports/{handle}` downloads the archive; the `/metadata` suffix reads
-its receipt, and `POST /api/admin/exports/{handle}/release` releases it early.
+/api/admin/workspaces/{workspaceId}/exports/{handle}` downloads the archive; the `/metadata` suffix reads
+its receipt, and `POST /api/admin/workspaces/{workspaceId}/exports/{handle}/release` releases it early.
 Creation and release use normal session CSRF protection. Every operation rechecks
 the owner and workspace; a handle cannot be shared as an anonymous download link.
 

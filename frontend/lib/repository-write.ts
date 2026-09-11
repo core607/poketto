@@ -1,7 +1,8 @@
-import { api, ApiError } from "./browser-api";
+import { type api as browserApi, ApiError } from "./browser-api";
 import type { PatchResult, RepositoryFile } from "./types";
 
 export async function saveRepositoryFile(
+  api: typeof browserApi,
   file: RepositoryFile,
   target: string,
   source: string,

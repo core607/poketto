@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../lib/browser-api";
+import { ApiError } from "../lib/browser-api";
+import { useWorkspaceApi } from "./workspace-context";
 import { message } from "./admin";
 import { scopeLabels } from "./connect";
 import { useConfirmation } from "./confirmation";
@@ -13,6 +14,7 @@ type Connection = {
   requiresReauthorization: boolean;
 };
 export function Connections() {
+  const api = useWorkspaceApi();
   const [items, setItems] = useState<Connection[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);

@@ -13,6 +13,8 @@ The [workspace boundary](2026-08-27-workspace-tenancy.md) needs independently re
 
 [Registration invitations](2026-09-11-registration-invitations.md) replace combined account registration and workspace joining. Workspace invitations now join an existing signed-in account only; their former registration service operation and HTTP endpoint are removed.
 
+[Workspace routing](2026-09-11-workspace-browser-and-mcp-routing.md) replaces the default-space entry resolution below. Administration routes select a workspace explicitly; MCP resolves it from the credential. Session, body-admission and revocation rules remain applicable.
+
 The `auth` module owns accounts, workspace memberships, invitations, API keys and capability checks in PostgreSQL. `web` maps browser requests to that service. Membership and key mutations serialize on the workspace row; authorization uses current stored membership and key state. Revocation events publish only after the database transaction commits.
 
 An operator-supplied initialization token permits creation of the first account and default-workspace owner. A persistent singleton closes initialization permanently after success. Passwords use Spring Security's delegating PBKDF2 encoder with upgrade-on-login support. Login names normalize to lowercase ASCII; password failures have uniform responses and perform password verification for missing accounts too.

@@ -186,7 +186,7 @@ public final class AssetService {
                 for (var document : content.readTree(workspace, commit).documents()) {
                     routes.put(
                             document.file().path(),
-                            "/admin?path="
+                            "/admin?workspace=" + workspace + "&path="
                                     + java.net.URLEncoder.encode(
                                             document.file().path(), java.nio.charset.StandardCharsets.UTF_8));
                 }
@@ -326,7 +326,8 @@ public final class AssetService {
                         && catalog.index().files().containsKey(target)
                         && (!publicOnly || catalog.publicPaths().contains(target))) {
                     downloads.put(
-                            authored, downloadUrl(publicOnly, commit, routes.get(path), target) + fragment(authored));
+                            authored,
+                            downloadUrl(workspace, publicOnly, commit, routes.get(path), target) + fragment(authored));
                 }
                 if (selected != null) links.put(authored, selected + fragment(authored));
             });
@@ -466,7 +467,11 @@ public final class AssetService {
         try {
             Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor), expires);
             if (token.isPresent())
-                url = (actor.isEmpty() ? "/api/public/assets/" : "/api/admin/assets/images/") + token.orElseThrow();
+                url = (actor.isEmpty()
+                                ? "/api/public/assets/"
+                                : io.github.core607.poketto.workspace.WorkspaceHttpRoutes.admin(workspace)
+                                        + "/assets/images/")
+                        + token.orElseThrow();
         } catch (AssetStorageException unavailable) {
             // Validation and publication are separate; unavailable source protection issues no URL.
         }
@@ -646,8 +651,11 @@ public final class AssetService {
     private record Indexed(String commit, String path, RepositoryMediaIndex.Media media, boolean publicPath)
             implements Target {}
 
-    private static String downloadUrl(boolean publicOnly, String commit, String route, String path) {
-        String prefix = publicOnly ? "/api/public/media?" : "/api/admin/media?";
+    private static String downloadUrl(
+            WorkspaceId workspace, boolean publicOnly, String commit, String route, String path) {
+        String prefix = publicOnly
+                ? "/api/public/media?"
+                : io.github.core607.poketto.workspace.WorkspaceHttpRoutes.admin(workspace) + "/media?";
         return prefix + "commit=" + commit + "&path=" + query(path) + (publicOnly ? "&route=" + query(route) : "");
     }
 

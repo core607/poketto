@@ -45,12 +45,18 @@ export function safeImage(
   if (!value || /[\u0000-\u0020\u007f\\]/.test(value)) return undefined;
   if (
     !value.startsWith("/api/public/assets/") &&
-    !(allowPrivate && value.startsWith("/api/admin/assets/"))
+    !(
+      allowPrivate &&
+      /^\/api\/admin\/workspaces\/[0-9a-f-]{36}\/assets\/images\//.test(value)
+    )
   )
     return undefined;
   const parsed = new URL(value, "https://placeholder.invalid");
   return parsed.pathname.startsWith("/api/public/assets/") ||
-    (allowPrivate && parsed.pathname.startsWith("/api/admin/assets/"))
+    (allowPrivate &&
+      /^\/api\/admin\/workspaces\/[0-9a-f-]{36}\/assets\/images\//.test(
+        parsed.pathname,
+      ))
     ? value
     : undefined;
 }

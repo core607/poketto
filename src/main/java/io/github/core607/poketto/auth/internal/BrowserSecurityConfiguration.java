@@ -2,7 +2,6 @@ package io.github.core607.poketto.auth.internal;
 
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
@@ -61,7 +60,6 @@ class BrowserSecurityConfiguration {
     SecurityFilterChain mcpSecurity(
             HttpSecurity http,
             ObjectProvider<AuthService> auth,
-            ObjectProvider<WorkspaceCatalog> workspaces,
             @Value("${poketto.security.allowed-origins:}") String origins,
             @Value("${poketto.oauth.issuer:}") String issuer)
             throws Exception {
@@ -74,9 +72,7 @@ class BrowserSecurityConfiguration {
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(
                         (request, response, exception) -> AuthHttpErrors.write(response, 401)))
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), AnonymousAuthenticationFilter.class)
-                .addFilterBefore(
-                        new WorkspaceIdentityFilter(auth, workspaces, true, issuer),
-                        AnonymousAuthenticationFilter.class);
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, true, issuer), AnonymousAuthenticationFilter.class);
         return http.build();
     }
 
@@ -86,7 +82,6 @@ class BrowserSecurityConfiguration {
             HttpSecurity http,
             AuthenticationProvider accountAuthenticationProvider,
             ObjectProvider<AuthService> auth,
-            ObjectProvider<WorkspaceCatalog> workspaces,
             @Value("${poketto.security.allowed-origins:}") String origins,
             @Value("${poketto.oauth.issuer:}") String issuer,
             @Value("${poketto.security.admin-body-concurrency:2}") int adminBodyConcurrency,
@@ -126,7 +121,7 @@ class BrowserSecurityConfiguration {
                 .headers(headers -> headers.contentSecurityPolicy(
                         csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'")))
                 .addFilterBefore(new AdminBodyFilter(adminBodyConcurrency), CsrfFilter.class)
-                .addFilterBefore(new WorkspaceIdentityFilter(auth, workspaces, false, issuer), AdminBodyFilter.class)
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, false, issuer), AdminBodyFilter.class)
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), WorkspaceIdentityFilter.class)
                 .addFilterBefore(
                         new LoginThrottleFilter(

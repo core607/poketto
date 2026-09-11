@@ -128,9 +128,10 @@ public final class OAuthService {
             AuthorizationRequest request,
             Set<String> selected,
             boolean allow) {
-        requireOwner(actor, workspace);
+        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure("access_denied");
         if (!request.expiresAt().isAfter(clock.instant())) throw failure("invalid_request");
         if (!allow) return callback(request, "error", "access_denied");
+        requireOwner(actor, workspace);
         if (selected == null
                 || selected.isEmpty()
                 || selected.stream().anyMatch(java.util.Objects::isNull)

@@ -76,8 +76,10 @@ class OriginAndBodyFilterTests {
 
     @Test
     void multipartAssetKeepsTheOriginalUnconsumedRequestForServletPartParsing() throws Exception {
-        var request =
-                unknown("/api/admin/assets", "--boundary\r\nfile bytes\r\n", "multipart/form-data; boundary=boundary");
+        var request = unknown(
+                "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+                "--boundary\r\nfile bytes\r\n",
+                "multipart/form-data; boundary=boundary");
         filter.doFilter(request, new MockHttpServletResponse(), (wrapped, ignored) -> {
             assertThat(wrapped).isSameAs(request);
             assertThat(wrapped.getInputStream().readAllBytes()).isEqualTo(request.getContentAsByteArray());
@@ -86,8 +88,11 @@ class OriginAndBodyFilterTests {
 
     @Test
     void administrationBodiesRemainUnconsumedForTheIdentityAndAdmissionFilters() throws Exception {
-        for (String path :
-                new String[] {"/api/admin/repository/patch", "/api/admin/repository/preview", "/api/admin/assets"}) {
+        for (String path : new String[] {
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview",
+            "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets"
+        }) {
             var called = new AtomicBoolean();
             var request = new MockHttpServletRequest("POST", path) {
                 @Override

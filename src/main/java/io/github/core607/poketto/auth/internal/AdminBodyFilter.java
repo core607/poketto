@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
 import jakarta.servlet.FilterChain;
@@ -25,7 +26,7 @@ final class AdminBodyFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-        String path = AuthHttpErrors.path(request);
+        String path = WorkspaceHttpRoutes.operation(AuthHttpErrors.path(request));
         if (!path.startsWith("/api/admin/")) {
             chain.doFilter(request, response);
             return;

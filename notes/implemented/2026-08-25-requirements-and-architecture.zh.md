@@ -30,7 +30,7 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。管理端与 MCP 共用有界 UTF-8 补丁服务，保留未修改的源码，构建带调用者归属的候选提交，并且只从预期 base 推进远端 ref。竞争 push 返回冲突；回包丢失时须向远端 `main` 对账，绝不盲目重试。可选元数据错误与不安全文件产生文件级诊断；无效发布策略关闭公开服务。仓库确认与快照安装是独立状态。
 3. 仅保留历史选型：从未实现，现已废止，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：当时计划默认使用 agentic 检索，由服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY；AI key 默认不含后三项。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。
-5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)增加了账号级 API，可将已有私有仓库连接为更多空间；浏览器空间选择与跨空间推荐仍属于多用户提案。
+5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开推荐仍属于多用户提案。
 
 从仓库路径派生或由可选元数据指定的[路由](2026-09-06-logical-repository-routes.md)保留原始名称，包括空格、`%`、`?` 和 `#`，不做 URI 编码、解码或首尾裁剪。原有路径安全与长度限制继续适用；调用方在 URI 边界编码逻辑路由。
 

@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import java.time.Clock;
@@ -101,8 +100,7 @@ class McpBoundsTests {
         var workspace = WorkspaceId.random();
         var owner = identity(workspace);
         var other = identity(workspace);
-        try (var sessions = new McpSessions(
-                mock(AuthService.class), mock(WorkspaceCatalog.class), events::add, time, Duration.ofMinutes(30), 1)) {
+        try (var sessions = new McpSessions(mock(AuthService.class), events::add, time, Duration.ofMinutes(30), 1)) {
             var first = session("server-first");
             sessions.bind(first, owner);
             assertThatThrownBy(() -> sessions.check("server-first", other)).isInstanceOf(SecurityException.class);

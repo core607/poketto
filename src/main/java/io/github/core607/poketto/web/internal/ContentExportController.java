@@ -2,7 +2,6 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.PortableContentExports;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -15,13 +14,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/admin/exports")
+@RequestMapping("/api/admin/workspaces/{workspaceId}/exports")
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class ContentExportController {
     private final PortableContentExports exports;
-    private final WorkspaceCatalog workspaces;
+    private final BrowserWorkspace workspaces;
 
-    ContentExportController(PortableContentExports exports, WorkspaceCatalog workspaces) {
+    ContentExportController(PortableContentExports exports, BrowserWorkspace workspaces) {
         this.exports = exports;
         this.workspaces = workspaces;
     }
@@ -32,19 +31,18 @@ class ContentExportController {
     PortableContentExports.Export create(@AuthenticationPrincipal AuthPrincipal actor, @RequestBody Request request) {
         if (request.paths() == null || request.publicOnly() == null)
             throw new IllegalArgumentException("export paths and scope are required");
-        return exports.create(
-                actor, workspaces.defaultWorkspace().id(), request.paths(), request.publicOnly(), Optional.empty());
+        return exports.create(actor, workspaces.selected(), request.paths(), request.publicOnly(), Optional.empty());
     }
 
     @GetMapping("/{handle}/metadata")
     PortableContentExports.Export describe(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID handle) {
-        return exports.describe(actor, workspaces.defaultWorkspace().id(), handle, Optional.empty());
+        return exports.describe(actor, workspaces.selected(), handle, Optional.empty());
     }
 
     @GetMapping("/{handle}")
     void download(
             @AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID handle, HttpServletResponse response) {
-        var workspace = workspaces.defaultWorkspace().id();
+        var workspace = workspaces.selected();
         var receipt = exports.describe(actor, workspace, handle, Optional.empty());
         exports.copyTo(actor, workspace, handle, Optional.empty(), new OutputStream() {
             private OutputStream stream;
@@ -79,7 +77,7 @@ class ContentExportController {
 
     @PostMapping("/{handle}/release")
     ResponseEntity<Void> release(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID handle) {
-        exports.release(actor, workspaces.defaultWorkspace().id(), handle, Optional.empty());
+        exports.release(actor, workspaces.selected(), handle, Optional.empty());
         return ResponseEntity.noContent().build();
     }
 }

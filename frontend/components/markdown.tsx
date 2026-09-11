@@ -102,8 +102,9 @@ function safeDownload(target: string, preview: boolean) {
   if (!safeLink(target)) return undefined;
   const expected = target.startsWith("/api/public/media?")
     ? "/api/public/media"
-    : preview && target.startsWith("/api/admin/media?")
-      ? "/api/admin/media"
+    : preview &&
+        /^\/api\/admin\/workspaces\/[0-9a-f-]{36}\/media\?/.test(target)
+      ? target.slice(0, target.indexOf("?"))
       : undefined;
   if (!expected) return undefined;
   return new URL(target, "https://placeholder.invalid").pathname === expected

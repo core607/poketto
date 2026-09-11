@@ -153,7 +153,7 @@ class AssetDeliveryTests {
         assertThat(preview.links())
                 .containsEntry(
                         "100%25.md",
-                        "/admin?path="
+                        "/admin?workspace=" + workspace + "&path="
                                 + java.net.URLEncoder.encode("public/" + folder + "/100%.md", StandardCharsets.UTF_8));
         assertThat(service.readPrivateImage(
                                 actor, workspace, token(preview.images().get("photo%20%25%23.png")))

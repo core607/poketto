@@ -1,4 +1,4 @@
-import { api, ApiError } from "./browser-api";
+import { type api as browserApi, ApiError } from "./browser-api";
 import type { RepositoryDirectory } from "./types";
 
 export function contentRoot(path: string): "public" | "private" | null {
@@ -15,6 +15,7 @@ export function inContentRoot(path: string, root: "public" | "private") {
 }
 
 export async function readDirectory(
+  api: typeof browserApi,
   commit: string | null,
   path: string,
   offset = 0,

@@ -1,3 +1,4 @@
+import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
@@ -31,12 +32,25 @@ test("a signed-in owner must explicitly choose private permissions and consent n
   const { Connect } = await import("../components/connect");
   const container = window.document.createElement("div");
   window.document.body.append(container);
-  const root = createRoot(container as unknown as HTMLDivElement);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
   const savedFetch = globalThis.fetch;
   const writes: unknown[] = [];
   globalThis.fetch = async (input, options) => {
     const path = String(input);
-    if (path === "/api/auth/me") return Response.json({ role: "OWNER" });
+    if (path === "/api/auth/account")
+      return Response.json({ account: { accountId: "owner" } });
+    if (path.startsWith("/api/auth/workspaces?"))
+      return Response.json({
+        items: [
+          {
+            workspaceId: "11111111-1111-4111-8111-111111111111",
+            displayName: "Owner space",
+            role: "OWNER",
+            capabilities: [],
+          },
+        ],
+        total: 1,
+      });
     if (path === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
     if (options?.method === "POST") {
@@ -85,6 +99,7 @@ test("a signed-in owner must explicitly choose private permissions and consent n
   assert.deepEqual(writes, [
     {
       request: "fixture",
+      workspaceId: "11111111-1111-4111-8111-111111111111",
       scopes: ["repository:execute", "offline_access", "content:read_private"],
       allow: true,
     },
