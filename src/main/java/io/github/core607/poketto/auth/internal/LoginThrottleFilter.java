@@ -37,7 +37,6 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
         String path = AuthHttpErrors.path(request);
         if (request.getMethod().equals("POST")
                 && (path.equals("/api/auth/login")
-                        || path.equals("/api/auth/initialize")
                         || path.equals("/api/auth/register")
                         || path.equals("/api/auth/registration-invitations")
                         || path.equals("/api/auth/invitations/register"))) {

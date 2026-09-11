@@ -38,8 +38,6 @@ class RepositoryPatchIntegrationIT {
     @TempDir
     static Path data;
 
-    private static final String INITIALIZATION = UUID.randomUUID().toString();
-
     @Container
     @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer(
@@ -60,7 +58,6 @@ class RepositoryPatchIntegrationIT {
             throw new IllegalStateException("synthetic Git remote could not be prepared", exception);
         }
         registry.add("poketto.data-dir", () -> data.toAbsolutePath().toString());
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZATION);
     }
 
     @Autowired
@@ -84,8 +81,7 @@ class RepositoryPatchIntegrationIT {
     @Test
     void liveKeyPermissionsAndGitAcknowledgementControlThePublicSnapshot() {
         var workspace = workspaces.defaultWorkspace().id();
-        var owner =
-                auth.initializeOwner(INITIALIZATION, "owner", UUID.randomUUID().toString());
+        var owner = auth.initializeOwner("owner", UUID.randomUUID().toString());
         var issued = auth.createApiKey(owner, workspace, owner.accountId(), null);
         var agent = auth.authenticateApiKey(issued.token());
         var draft = patches.apply(

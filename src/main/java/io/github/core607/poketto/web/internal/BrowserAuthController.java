@@ -40,15 +40,6 @@ class BrowserAuthController {
                 token.getToken());
     }
 
-    @PostMapping("/initialize")
-    @ResponseStatus(HttpStatus.CREATED)
-    Map<String, UUID> initialize(@RequestBody InitializationRequest body) {
-        return Map.of(
-                "accountId",
-                auth.initializeOwner(body.initializationToken(), body.login(), body.password())
-                        .accountId());
-    }
-
     @PostMapping("/invitations/register")
     @ResponseStatus(HttpStatus.CREATED)
     Map<String, UUID> register(@RequestBody InvitationRegistrationRequest body) {
@@ -77,13 +68,6 @@ class BrowserAuthController {
     }
 
     record MeResponse(UUID accountId, String workspaceId, String role, java.util.List<String> capabilities) {}
-
-    record InitializationRequest(String initializationToken, String login, String password) {
-        @Override
-        public String toString() {
-            return "InitializationRequest[REDACTED]";
-        }
-    }
 
     record InvitationRegistrationRequest(String token, String login, String password) {
         @Override

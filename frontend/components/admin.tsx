@@ -159,20 +159,8 @@ export function Login({
     try {
       const login = String(form.get("login"));
       const password = String(form.get("password"));
-      if (
-        ["initialize", "register"].includes(mode) &&
-        password !== String(form.get("confirmation"))
-      )
+      if (mode === "register" && password !== String(form.get("confirmation")))
         throw new ApiError(400, "两次密码不一致，请重新确认。");
-      if (mode === "initialize")
-        await api("/api/auth/initialize", {
-          method: "POST",
-          body: {
-            initializationToken: String(form.get("token")),
-            login,
-            password,
-          },
-        });
       if (mode === "register")
         await api("/api/auth/invitations/register", {
           method: "POST",
@@ -197,18 +185,12 @@ export function Login({
   return (
     <section className="login-card">
       <p className="eyebrow">欢迎回来</p>
-      <h1>
-        {mode === "login"
-          ? "打开自己的空间。"
-          : mode === "initialize"
-            ? "第一次，安顿下来。"
-            : "受邀来到这里。"}
-      </h1>
+      <h1>{mode === "login" ? "打开自己的空间。" : "受邀来到这里。"}</h1>
       <p className="muted">登录后，继续整理你的记录与收藏。</p>
       <form onSubmit={submit} key={mode}>
         {mode !== "login" && (
           <label>
-            {mode === "initialize" ? "初始化凭证" : "邀请凭证"}
+            邀请凭证
             <input
               name="token"
               type="password"
@@ -243,7 +225,7 @@ export function Login({
             maxLength={256}
           />
         </label>
-        {["initialize", "register"].includes(mode) && (
+        {mode === "register" && (
           <>
             <p className="muted form-help">
               用户名为 3–64
@@ -288,15 +270,6 @@ export function Login({
             }}
           >
             已有账号接受邀请
-          </button>
-          <button
-            className="text-button"
-            onClick={() => {
-              setMode(mode === "initialize" ? "login" : "initialize");
-              setError("");
-            }}
-          >
-            首次初始化
           </button>
           <button
             className="text-button"

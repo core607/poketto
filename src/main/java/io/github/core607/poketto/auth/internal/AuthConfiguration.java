@@ -45,9 +45,7 @@ class AuthConfiguration {
             JdbcTemplate jdbc,
             PlatformTransactionManager transactionManager,
             PasswordEncoder passwordEncoder,
-            ApplicationEventPublisher events,
-            @Value("${poketto.auth.initialization-token:}") String initializationToken) {
-        return new AuthService(
-                jdbc, transactionManager, passwordEncoder, events, Clock.systemUTC(), initializationToken);
+            ApplicationEventPublisher events) {
+        return new AuthService(jdbc, transactionManager, passwordEncoder, events, Clock.systemUTC());
     }
 }

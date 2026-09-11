@@ -20,7 +20,7 @@ POKETTO_REPOSITORY_PASSWORD=... \
 ./gradlew bootRun
 ```
 
-初始化首个 owner 前，私下设置 `POKETTO_AUTH_INITIALIZATION_TOKEN`，并把 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin。本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`；HTTPS 保留安全默认值。初始化或登录前先获取 `/api/auth/csrf`，后续请求同时携带会话 cookie 和响应指定的 CSRF header。初始化与登录顺序见[身份 HTTP 契约](../notes/implemented/2026-09-06-workspace-identity-http.md#operation)。部署 profile 从私有运行配置中传入这些身份设置。
+先启动应用完成数据库结构初始化，再在部署主机的交互式终端运行 `./deploy.sh --initialize-admin`，输入用户名并两次输入隐藏的密码。命令只创建一次站点管理员和默认空间主人，不能替换已有账号；它使用正在运行的应用容器中的数据库配置，不提供网页安装入口。自定义容器安装方式见[管理员安装命令](../notes/implemented/2026-09-11-operator-administrator-setup.md)。将 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin；本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`，HTTPS 保留安全默认值。登录前获取 `/api/auth/csrf`，后续请求携带会话 cookie 和响应指定的 CSRF header。
 
 注册邀请码与空间邀请相互独立。`POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED` 默认 `false`，只允许站点管理员签发注册邀请码；设置为 `true` 后普通账号也能签发。目前不设置固定的每用户签发数量。关闭签发后，签发者仍可列出和撤销自己的邀请码。账号与注册 HTTP 接口见[注册邀请码](../notes/implemented/2026-09-11-registration-invitations.md#http-contract)，对应网页流程属于[多用户交付提案](../notes/proposed/2026-09-11-multiuser-workspaces-and-discovery.md)。
 

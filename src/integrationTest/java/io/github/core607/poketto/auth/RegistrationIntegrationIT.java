@@ -51,10 +51,9 @@ class RegistrationIntegrationIT {
         transactions = new DataSourceTransactionManager(source);
         var encoder = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8", Map.of("pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
-        String initialization = secret();
-        auth = new AuthService(
-                jdbc, transactions, encoder, event -> {}, Clock.fixed(now, ZoneOffset.UTC), initialization);
-        owner = auth.initializeOwner(initialization, "site-owner", secret());
+
+        auth = new AuthService(jdbc, transactions, encoder, event -> {}, Clock.fixed(now, ZoneOffset.UTC));
+        owner = auth.initializeOwner("site-owner", secret());
         registration = service(false, now);
     }
 

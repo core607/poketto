@@ -56,8 +56,6 @@ class RepositoryAdminIntegrationIT {
     @TempDir
     static Path directory;
 
-    private static final String INITIALIZATION = UUID.randomUUID().toString();
-
     @Container
     @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer(
@@ -78,7 +76,7 @@ class RepositoryAdminIntegrationIT {
             throw new IllegalStateException(exception);
         }
         registry.add("poketto.data-dir", directory::toString);
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZATION);
+
         // Only this loopback HTTP fixture uses an insecure session cookie.
         registry.add("server.servlet.session.cookie.secure", () -> false);
     }
@@ -104,7 +102,7 @@ class RepositoryAdminIntegrationIT {
     @Test
     void browserEditsPreserveRawTextAndEnforceSessionCsrfAndGitPreconditions() throws Exception {
         String password = UUID.randomUUID().toString();
-        auth.initializeOwner(INITIALIZATION, "editor", password);
+        auth.initializeOwner("editor", password);
         mvc.perform(get("/api/admin/repository/tree")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/admin/repository/directory")).andExpect(status().isUnauthorized());
         Csrf anonymous = csrf(null);
