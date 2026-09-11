@@ -6,6 +6,7 @@ import { Members } from "./members";
 import { Keys } from "./keys";
 import { Connections } from "./connections";
 import { ConfirmationProvider, useConfirmation } from "./confirmation";
+import { AccountPanel, type AccountProfile } from "./account-panel";
 
 export type Identity = {
   accountId: string;
@@ -28,18 +29,37 @@ export function Admin() {
 function AdminContent() {
   const confirm = useConfirmation();
   const [identity, setIdentity] = useState<Identity | null>(null);
+  const [account, setAccount] = useState<AccountProfile | null>(null);
+  const [workspaceUnavailable, setWorkspaceUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("content");
-  const activeTab = identity?.role === "OWNER" ? tab : "content";
+  const activeTab =
+    !identity || tab === "account"
+      ? "account"
+      : identity.role === "OWNER"
+        ? tab
+        : "content";
   const [dirty, setDirty] = useState(false);
   async function refresh() {
     setLoading(true);
+    setError("");
+    setWorkspaceUnavailable(false);
     try {
-      setIdentity(await api<Identity>("/api/auth/me"));
-      setError("");
+      setAccount(await api<AccountProfile>("/api/auth/account"));
+      try {
+        setIdentity(await api<Identity>("/api/auth/me"));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) throw error;
+        setIdentity(null);
+        if (!(error instanceof ApiError && error.status === 403)) {
+          setWorkspaceUnavailable(true);
+          setError("空间暂时无法读取，请稍后重试。你的账号仍已登录。");
+        }
+      }
     } catch (error) {
       setIdentity(null);
+      setAccount(null);
       if (!(error instanceof ApiError && error.status === 401))
         setError(message(error));
     } finally {
@@ -62,6 +82,7 @@ function AdminContent() {
     try {
       await api("/api/auth/logout", { method: "POST" });
       setIdentity(null);
+      setAccount(null);
       setTab("content");
       setDirty(false);
     } catch (error) {
@@ -74,7 +95,7 @@ function AdminContent() {
         <p>正在确认会话…</p>
       </div>
     );
-  if (!identity)
+  if (!account)
     return (
       <div>
         <Login onLogin={refresh} />
@@ -89,7 +110,7 @@ function AdminContent() {
     <div className="admin-shell">
       <header className="admin-heading">
         <div>
-          <p className="eyebrow">自己的工作台</p>
+          <p className="eyebrow">{account.account.loginName} · 自己的工作台</p>
           <h1>整理，续写。</h1>
         </div>
         <button className="button-secondary" onClick={logout}>
@@ -101,14 +122,27 @@ function AdminContent() {
           {error}
         </p>
       )}
-      <nav className="admin-tabs" aria-label="管理功能">
-        <button
-          aria-pressed={activeTab === "content"}
-          onClick={() => setTab("content")}
-        >
-          内容
+      {workspaceUnavailable && (
+        <button className="button-secondary" onClick={refresh}>
+          重新读取空间
         </button>
-        {identity.role === "OWNER" && (
+      )}
+      <nav className="admin-tabs" aria-label="管理功能">
+        {identity && (
+          <button
+            aria-pressed={activeTab === "content"}
+            onClick={() => setTab("content")}
+          >
+            内容
+          </button>
+        )}
+        <button
+          aria-pressed={activeTab === "account"}
+          onClick={() => setTab("account")}
+        >
+          账号与空间
+        </button>
+        {identity?.role === "OWNER" && (
           <>
             <button
               aria-pressed={activeTab === "members"}
@@ -131,12 +165,33 @@ function AdminContent() {
           </>
         )}
       </nav>
-      <div hidden={activeTab !== "content"}>
-        <Editor identity={identity} onDirtyChange={setDirty} />
-      </div>
+      {identity && (
+        <div hidden={activeTab !== "content"}>
+          <Editor identity={identity} onDirtyChange={setDirty} />
+        </div>
+      )}
+      {activeTab === "account" && (
+        <AccountPanel
+          profile={account}
+          hasWorkspace={!!identity}
+          workspaceUnavailable={workspaceUnavailable}
+          onBeforeJoin={async () =>
+            !dirty ||
+            (await confirm({
+              title: "放弃未保存的修改并加入空间？",
+              description: "请先保存当前文件，或放弃这些修改后继续。",
+              confirmLabel: "放弃并继续",
+            }))
+          }
+          onJoined={async () => {
+            setDirty(false);
+            await refresh();
+          }}
+        />
+      )}
       {activeTab === "members" && <Members />}
       {activeTab === "connections" && <Connections />}
-      {activeTab === "keys" && <Keys identity={identity} />}
+      {activeTab === "keys" && identity && <Keys identity={identity} />}
     </div>
   );
 }
@@ -151,6 +206,23 @@ export function Login({
   const [mode, setMode] = useState("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [invitation, setInvitation] = useState("");
+  const [createdLogin, setCreatedLogin] = useState("");
+  useEffect(() => {
+    if (connection) return;
+    const value = new URLSearchParams(window.location.hash.slice(1)).get(
+      "register",
+    );
+    if (value !== null) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + window.location.search,
+      );
+      setMode("register");
+      if (value.length <= 256) setInvitation(value);
+    }
+  }, [connection]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -161,20 +233,19 @@ export function Login({
       const password = String(form.get("password"));
       if (mode === "register" && password !== String(form.get("confirmation")))
         throw new ApiError(400, "两次密码不一致，请重新确认。");
-      if (mode === "register")
-        await api("/api/auth/invitations/register", {
+      if (mode === "register") {
+        await api("/api/auth/register", {
           method: "POST",
           body: { token: String(form.get("token")), login, password },
         });
+        setCreatedLogin(login);
+        setMode("login");
+        setInvitation("");
+      }
       await api("/api/auth/login", {
         method: "POST",
         form: new URLSearchParams({ username: login, password }),
       });
-      if (mode === "accept")
-        await api("/api/auth/invitations/accept", {
-          method: "POST",
-          body: { token: String(form.get("token")) },
-        });
       await onLogin();
     } catch (error) {
       setError(message(error));
@@ -185,15 +256,24 @@ export function Login({
   return (
     <section className="login-card">
       <p className="eyebrow">欢迎回来</p>
-      <h1>{mode === "login" ? "打开自己的空间。" : "受邀来到这里。"}</h1>
-      <p className="muted">登录后，继续整理你的记录与收藏。</p>
+      <h1>{mode === "login" ? "登录 Poketto" : "创建账号"}</h1>
+      <p className="muted">
+        {mode === "login"
+          ? "继续整理你的记录与收藏。"
+          : "填写注册邀请码。注册后可在管理页加入受邀的空间。"}
+      </p>
+      {createdLogin && (
+        <p role="status">账号已创建。若尚未登录，请使用新账号登录。</p>
+      )}
       <form onSubmit={submit} key={mode}>
         {mode !== "login" && (
           <label>
-            邀请凭证
+            注册邀请码
             <input
               name="token"
-              type="password"
+              type="text"
+              value={invitation}
+              onChange={(event) => setInvitation(event.target.value)}
               required
               autoComplete="off"
               maxLength={256}
@@ -204,6 +284,7 @@ export function Login({
           用户名
           <input
             name="login"
+            defaultValue={createdLogin}
             required
             autoComplete="username"
             minLength={3}
@@ -217,11 +298,9 @@ export function Login({
             type="password"
             required
             autoComplete={
-              mode === "login" || mode === "accept"
-                ? "current-password"
-                : "new-password"
+              mode === "login" ? "current-password" : "new-password"
             }
-            minLength={mode === "login" || mode === "accept" ? undefined : 12}
+            minLength={mode === "login" ? undefined : 12}
             maxLength={256}
           />
         </label>
@@ -251,40 +330,21 @@ export function Login({
           </p>
         )}
         <button disabled={pending}>
-          {pending
-            ? "正在处理…"
-            : mode === "login"
-              ? "登录 →"
-              : mode === "accept"
-                ? "登录并接受邀请 →"
-                : "创建账号并登录 →"}
+          {pending ? "正在处理…" : mode === "login" ? "登录 →" : "注册并登录 →"}
         </button>
       </form>
       {!connection && (
         <div className="login-options">
           <button
             className="text-button"
-            onClick={() => {
-              setMode("accept");
-              setError("");
-            }}
-          >
-            已有账号接受邀请
-          </button>
-          <button
-            className="text-button"
+            disabled={pending}
             onClick={() => {
               setMode(mode === "register" ? "login" : "register");
               setError("");
             }}
           >
-            使用邀请注册
+            {mode === "register" ? "已有账号，去登录" : "注册"}
           </button>
-          {mode !== "login" && (
-            <button className="text-button" onClick={() => setMode("login")}>
-              已有账号
-            </button>
-          )}
         </div>
       )}
     </section>

@@ -1,5 +1,5 @@
 "use client";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { api } from "../lib/browser-api";
 import { date } from "../lib/format";
 import { message } from "./admin";
@@ -77,23 +77,6 @@ export function Members() {
       setPending(false);
     }
   }
-  async function accept(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setPending(true);
-    try {
-      await api("/api/auth/invitations/accept", {
-        method: "POST",
-        body: { token: String(new FormData(form).get("token")) },
-      });
-      form.reset();
-      await refresh();
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setPending(false);
-    }
-  }
   return (
     <div className="management-panel">
       <div className="panel-heading">
@@ -102,7 +85,7 @@ export function Members() {
           <p className="muted">管理这个空间的成员和一次性邀请。</p>
         </div>
         <button onClick={invite} disabled={pending}>
-          创建邀请 ↗
+          创建空间邀请码
         </button>
       </div>
       {(error || memberPage.error || invitationPage.error) && (
@@ -112,7 +95,7 @@ export function Members() {
       )}
       {secret && (
         <Secret
-          title="邀请凭证只显示这一次"
+          title="空间邀请码只显示这一次"
           value={secret}
           onClose={() => setSecret("")}
         />
@@ -220,16 +203,6 @@ export function Members() {
         />
         {!invitations.length && <p className="muted">还没有创建邀请。</p>}
       </section>
-      <details className="sub-panel">
-        <summary>已有账号，接受邀请</summary>
-        <form onSubmit={accept} className="inline-form">
-          <label>
-            邀请凭证
-            <input name="token" type="password" required autoComplete="off" />
-          </label>
-          <button disabled={pending}>接受邀请</button>
-        </form>
-      </details>
     </div>
   );
 }

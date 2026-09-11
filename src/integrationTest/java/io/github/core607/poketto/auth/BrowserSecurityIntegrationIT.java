@@ -199,7 +199,7 @@ class BrowserSecurityIntegrationIT {
     }
 
     @Test
-    void invitationRegistrationAndMembershipSuspensionInvalidateExistingRequests() throws Exception {
+    void separateRegistrationAndWorkspaceJoiningRetainAccountAccessAfterSuspension() throws Exception {
         String ownerPassword = secret();
         AuthPrincipal owner = auth.initializeOwner("invite-owner", ownerPassword);
         Csrf ownerSession = login("invite-owner", ownerPassword);
@@ -207,20 +207,34 @@ class BrowserSecurityIntegrationIT {
                 .andExpect(status().isCreated())
                 .andReturn());
         String token = invitation.get("token").stringValue();
+        String registrationToken = registration.issue(owner).token();
         Csrf guest = csrf(null);
         String memberPassword = secret();
         JsonNode member = body(mvc.perform(request(
-                        post("/api/auth/invitations/register"),
+                        post("/api/auth/register"),
                         guest,
-                        Map.of("token", token, "login", "joined-member", "password", memberPassword)))
+                        Map.of("token", registrationToken, "login", "joined-member", "password", memberPassword)))
                 .andExpect(status().isCreated())
                 .andReturn());
         mvc.perform(request(
                         post("/api/auth/invitations/register"),
                         guest,
                         Map.of("token", token, "login", "another-member", "password", secret())))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(request(
+                        post("/api/auth/register"),
+                        guest,
+                        Map.of("token", token, "login", "another-member", "password", secret())))
                 .andExpect(status().isBadRequest());
         Csrf memberSession = login("joined-member", memberPassword);
+        mvc.perform(get("/api/auth/account").session(memberSession.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.account.siteAdministrator").value(false));
+        mvc.perform(get("/api/auth/me").session(memberSession.session())).andExpect(status().isForbidden());
+        mvc.perform(request(post("/api/auth/invitations/register"), memberSession, Map.of("token", token)))
+                .andExpect(status().isNotFound());
+        mvc.perform(request(post("/api/auth/invitations/accept"), memberSession, Map.of("token", token)))
+                .andExpect(status().isOk());
         mvc.perform(get("/api/auth/me").session(memberSession.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("MEMBER"));
@@ -233,6 +247,7 @@ class BrowserSecurityIntegrationIT {
                         Map.of("role", "MEMBER", "active", false)))
                 .andExpect(status().isNoContent());
         mvc.perform(get("/api/auth/me").session(memberSession.session())).andExpect(status().isForbidden());
+        mvc.perform(get("/api/auth/account").session(memberSession.session())).andExpect(status().isOk());
         mvc.perform(request(
                         put("/api/admin/members/" + owner.accountId()),
                         ownerSession,
