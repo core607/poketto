@@ -131,7 +131,7 @@ public final class OAuthService {
         if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure("access_denied");
         if (!request.expiresAt().isAfter(clock.instant())) throw failure("invalid_request");
         if (!allow) return callback(request, "error", "access_denied");
-        requireOwner(actor, workspace);
+        requireMember(actor, workspace);
         if (selected == null
                 || selected.isEmpty()
                 || selected.stream().anyMatch(java.util.Objects::isNull)
@@ -157,7 +157,7 @@ public final class OAuthService {
                             now(),
                             resource())
                     >= 100) throw failure("temporarily_unavailable");
-            IssuedToken key = auth.createApiKey(actor, workspace, actor.accountId(), capabilities);
+            IssuedToken key = auth.createOAuthKey(actor, workspace, capabilities);
             jdbc.update(
                     "insert into oauth_connections(key_id,client_id,workspace_id,account_id,scopes,created_at,expires_at,resource) values (?,?,?,?,?,?,?,?)",
                     key.id(),
@@ -240,9 +240,9 @@ public final class OAuthService {
     }
 
     public List<ConnectionInfo> connections(AuthPrincipal actor, WorkspaceId workspace) {
-        requireOwner(actor, workspace);
+        boolean owner = requireMember(actor, workspace).role() == MembershipRole.OWNER;
         return jdbc.query(
-                "select c.key_id,cl.client_name,c.scopes,c.created_at,c.expires_at,k.revoked_at,c.resource from oauth_connections c join oauth_clients cl using(client_id) join auth_api_keys k using(key_id) where c.workspace_id=? order by (k.revoked_at is null and c.expires_at>? and c.resource=?) desc,c.created_at desc limit 100",
+                "select c.key_id,cl.client_name,c.scopes,c.created_at,c.expires_at,k.revoked_at,c.resource from oauth_connections c join oauth_clients cl using(client_id) join auth_api_keys k using(key_id) where c.workspace_id=? and (? or c.account_id=?) order by (k.revoked_at is null and c.expires_at>? and c.resource=?) desc,c.created_at desc limit 100",
                 (rs, row) -> new ConnectionInfo(
                         rs.getObject(1, UUID.class),
                         rs.getString(2),
@@ -252,13 +252,25 @@ public final class OAuthService {
                         rs.getTimestamp(6) != null,
                         !resource().equals(rs.getString(7))),
                 workspace.value(),
+                owner,
+                actor.accountId(),
                 now(),
                 resource());
     }
 
     public void disconnect(AuthPrincipal actor, WorkspaceId workspace, UUID id) {
-        requireOwner(actor, workspace);
-        auth.revokeApiKey(actor, workspace, id);
+        tx.executeWithoutResult(status -> {
+            lock(workspace);
+            boolean owner = requireMember(actor, workspace).role() == MembershipRole.OWNER;
+            var holders = jdbc.query(
+                    "select account_id from oauth_connections where workspace_id=? and key_id=?",
+                    (rs, row) -> rs.getObject(1, UUID.class),
+                    workspace.value(),
+                    id);
+            if (holders.size() != 1 || (!owner && !holders.getFirst().equals(actor.accountId())))
+                throw failure("access_denied");
+            auth.revokeOAuthKey(workspace, id);
+        });
     }
 
     public void revokeToken(String clientId, String token) {
@@ -372,10 +384,9 @@ public final class OAuthService {
         return rows.getFirst();
     }
 
-    public void requireOwner(AuthPrincipal principal, WorkspaceId workspace) {
-        if (principal == null
-                || principal.kind() != AuthPrincipal.Kind.ACCOUNT
-                || auth.authorize(principal, workspace).role() != MembershipRole.OWNER) throw failure("access_denied");
+    private WorkspaceAccess requireMember(AuthPrincipal principal, WorkspaceId workspace) {
+        if (principal == null || principal.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure("access_denied");
+        return auth.authorize(principal, workspace);
     }
 
     private void lock(WorkspaceId workspace) {

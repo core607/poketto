@@ -111,6 +111,89 @@ class OAuthIntegrationIT {
         assertThat(oauth.connections(owner, workspace)).hasSize(2);
     }
 
+    private AuthPrincipal member(String login) {
+        var registration = new RegistrationService(
+                jdbc,
+                new DataSourceTransactionManager(jdbc.getDataSource()),
+                auth,
+                RegistrationInvitationPolicy.configured(false),
+                Clock.systemUTC());
+        var member = registration.register(
+                registration.issue(owner).token(), login, UUID.randomUUID().toString());
+        auth.acceptInvitation(
+                member, auth.createInvitation(owner, workspace, Set.of()).token());
+        return member;
+    }
+
+    private OAuthService.Tokens connect(AuthPrincipal actor, Set<String> scopes) {
+        return oauth.exchange(
+                client.id(),
+                parameter(oauth.consent(actor, workspace, request(), scopes, true), "code"),
+                REDIRECT,
+                VERIFIER,
+                RESOURCE);
+    }
+
+    @Test
+    void membersConsentOnlyToTheirPermissionsAndManageOnlyTheirOwnConnections() {
+        var member = member("reader");
+        var other = member("other-reader");
+        var ownerTokens = tokens();
+        var ownerKey = auth.authenticateApiKey(ownerTokens.access_token());
+        var delegated = connect(member, Set.of("repository:execute", "offline_access"));
+        var key = auth.authenticateApiKey(delegated.access_token());
+        assertThat(auth.authorize(key, workspace).capabilities()).containsExactly(Capability.EXECUTE_REPOSITORY);
+        assertThatThrownBy(() -> connect(member, Set.of("content:read_private")))
+                .isInstanceOf(AuthException.class);
+        assertThatThrownBy(() ->
+                        auth.createApiKey(member, workspace, member.accountId(), Set.of(Capability.EXECUTE_REPOSITORY)))
+                .isInstanceOf(AuthException.class);
+        assertThat(oauth.connections(member, workspace))
+                .extracting(OAuthService.ConnectionInfo::id)
+                .containsExactly(key.subjectId());
+        assertThat(oauth.connections(other, workspace)).isEmpty();
+        assertThat(oauth.connections(owner, workspace)).hasSize(2);
+        assertThatThrownBy(() -> oauth.disconnect(member, workspace, ownerKey.subjectId()))
+                .hasMessage("access_denied");
+        assertThatThrownBy(() -> oauth.disconnect(other, workspace, key.subjectId()))
+                .hasMessage("access_denied");
+        assertThat(auth.authenticateApiKey(delegated.access_token()).subjectId())
+                .isEqualTo(key.subjectId());
+        oauth.disconnect(member, workspace, key.subjectId());
+        assertThatThrownBy(() -> oauth.refresh(client.id(), delegated.refresh_token(), RESOURCE, null))
+                .hasMessage("invalid_grant");
+        assertThat(auth.authenticateApiKey(ownerTokens.access_token()).subjectId())
+                .isEqualTo(ownerKey.subjectId());
+    }
+
+    @Test
+    void membershipChangesNeverExpandGrantsAndRevokeOverscopedCodesAccessAndRefreshTokens() {
+        var member = member("changing-reader");
+        var publicOnly = connect(member, Set.of("repository:execute", "offline_access"));
+        auth.changeMembership(
+                owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
+        var limitedKey = auth.authenticateApiKey(publicOnly.access_token());
+        assertThat(auth.authorize(limitedKey, workspace).capabilities()).containsExactly(Capability.EXECUTE_REPOSITORY);
+        var privateGrant = connect(member, Set.of("repository:execute", "content:read_private", "offline_access"));
+        var waitingCode =
+                parameter(oauth.consent(member, workspace, request(), Set.of("content:read_private"), true), "code");
+        var privateKey = auth.authenticateApiKey(privateGrant.access_token());
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of());
+        assertThatThrownBy(() -> auth.authorize(privateKey, workspace)).isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> auth.authenticateApiKey(privateGrant.access_token()))
+                .isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> oauth.refresh(client.id(), privateGrant.refresh_token(), RESOURCE, null))
+                .hasMessage("invalid_grant");
+        assertThatThrownBy(() -> oauth.exchange(client.id(), waitingCode, REDIRECT, VERIFIER, RESOURCE))
+                .hasMessage("invalid_grant");
+        assertThat(oauth.refresh(client.id(), publicOnly.refresh_token(), RESOURCE, null))
+                .isNotNull();
+        auth.changeMembership(
+                owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
+        assertThatThrownBy(() -> auth.authenticateApiKey(privateGrant.access_token()))
+                .isInstanceOf(AuthException.class);
+    }
+
     @Test
     void activeConnectionsStayVisibleAfterMoreThanOnePageOfDisconnections() {
         var active = auth.authenticateApiKey(tokens().access_token());

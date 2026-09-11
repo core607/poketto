@@ -95,9 +95,18 @@ export function Members() {
         </div>
       </div>
       <section className="sub-panel">
-        <PermissionFields label="新成员的权限" value={invitePermissions} onChange={setInvitePermissions} disabled={pending} />
-        <p className="muted">默认只能查看空间里的公开目录。私密读取、私密修改和公开发布需要单独授权。</p>
-        <button onClick={invite} disabled={pending}>创建空间邀请码</button>
+        <PermissionFields
+          label="新成员的权限"
+          value={invitePermissions}
+          onChange={setInvitePermissions}
+          disabled={pending}
+        />
+        <p className="muted">
+          默认只能查看空间里的公开目录。私密读取、私密修改和公开发布需要单独授权。
+        </p>
+        <button onClick={invite} disabled={pending}>
+          创建空间邀请码
+        </button>
       </section>
       {(error || memberPage.error || invitationPage.error) && (
         <p className="notice danger" role="alert">
@@ -142,10 +151,18 @@ export function Members() {
                   </select>
                 </td>
                 <td>{member.active ? "正常" : "已停用"}</td>
-                <td>{member.role === "OWNER" ? "全部权限" : permissionSummary(member.permissions)}</td>
+                <td>
+                  {member.role === "OWNER"
+                    ? "全部权限"
+                    : permissionSummary(member.permissions)}
+                </td>
                 <td>
                   {member.role === "MEMBER" && (
-                    <button className="text-button" disabled={pending} onClick={() => setEditing(member)}>
+                    <button
+                      className="text-button"
+                      disabled={pending}
+                      onClick={() => setEditing(member)}
+                    >
                       设置权限
                     </button>
                   )}
@@ -175,12 +192,35 @@ export function Members() {
       </div>
       <AdminPagination label="成员" page={memberPage} disabled={pending} />
       {editing && (
-        <section className="sub-panel" aria-label={editing.loginName + "的权限"}>
-          <PermissionFields label={editing.loginName + "的内容权限"} value={editing.permissions}
-            onChange={(permissions) => setEditing({ ...editing, permissions })} disabled={pending} />
-          <p className="muted">收回权限会断开超出权限的 AI 连接和密钥。增加权限后，已有连接仍保持原来的授权。</p>
-          <button disabled={pending} onClick={() => void update(editing, { permissions: editing.permissions })}>保存权限</button>
-          <button className="button-secondary" disabled={pending} onClick={() => setEditing(null)}>取消</button>
+        <section
+          className="sub-panel"
+          aria-label={editing.loginName + "的权限"}
+        >
+          <PermissionFields
+            label={editing.loginName + "的内容权限"}
+            value={editing.permissions}
+            onChange={(permissions) => setEditing({ ...editing, permissions })}
+            disabled={pending}
+          />
+          <p className="muted">
+            收回权限会断开超出权限的 AI
+            连接和密钥。增加权限后，已有连接仍保持原来的授权。
+          </p>
+          <button
+            disabled={pending}
+            onClick={() =>
+              void update(editing, { permissions: editing.permissions })
+            }
+          >
+            保存权限
+          </button>
+          <button
+            className="button-secondary"
+            disabled={pending}
+            onClick={() => setEditing(null)}
+          >
+            取消
+          </button>
         </section>
       )}
       <section className="sub-panel">

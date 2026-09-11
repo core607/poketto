@@ -29,6 +29,27 @@ export const scopeLabels: Record<string, { label: string; detail: string }> = {
   },
 };
 type Consent = { clientName: string; redirectUri: string; scopes: string[] };
+const scopeCapabilities: Record<string, string> = {
+  "repository:execute": "EXECUTE_REPOSITORY",
+  "content:read_private": "READ_PRIVATE",
+  "content:write_private": "WRITE_PRIVATE",
+  "content:publish": "PUBLISH",
+};
+function permits(space: SpaceSummary | undefined, scope: string) {
+  return (
+    !!space &&
+    (scope === "offline_access" ||
+      space.role === "OWNER" ||
+      space.capabilities.includes(scopeCapabilities[scope]))
+  );
+}
+function defaults(scopes: string[], space: SpaceSummary | undefined) {
+  return scopes.filter(
+    (scope) =>
+      (scope === "repository:execute" || scope === "offline_access") &&
+      permits(space, scope),
+  );
+}
 export function Connect() {
   const [request, setRequest] = useState("");
   const [account, setAccount] = useState<AccountProfile | null>(null);
@@ -56,14 +77,8 @@ export function Connect() {
       setSpaces(page.items);
       setTotal(page.total);
       setOffset(pageOffset);
-      setWorkspace(
-        page.items.find((space) => space.role === "OWNER")?.workspaceId ?? "",
-      );
-      setSelected(
-        value.scopes.filter(
-          (s) => s === "repository:execute" || s === "offline_access",
-        ),
-      );
+      setWorkspace(page.items[0]?.workspaceId ?? "");
+      setSelected(defaults(value.scopes, page.items[0]));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setAccount(null);
       else setError("授权请求已失效或不可用，请回到客户端重新连接。");
@@ -131,17 +146,21 @@ export function Connect() {
               <select
                 value={workspace}
                 disabled={pending}
-                onChange={(event) => setWorkspace(event.target.value)}
+                onChange={(event) => {
+                  const id = event.target.value;
+                  setWorkspace(id);
+                  setSelected(
+                    defaults(
+                      consent.scopes,
+                      spaces.find((space) => space.workspaceId === id),
+                    ),
+                  );
+                }}
               >
                 <option value="">请选择空间</option>
                 {spaces.map((space) => (
-                  <option
-                    key={space.workspaceId}
-                    value={space.workspaceId}
-                    disabled={space.role !== "OWNER"}
-                  >
+                  <option key={space.workspaceId} value={space.workspaceId}>
                     {space.displayName}
-                    {space.role !== "OWNER" ? "（需要所有者授权）" : ""}
                   </option>
                 ))}
               </select>
@@ -186,6 +205,14 @@ export function Connect() {
                   <label key={scope} className="oauth-permission">
                     <input
                       type="checkbox"
+                      disabled={
+                        !permits(
+                          spaces.find(
+                            (space) => space.workspaceId === workspace,
+                          ),
+                          scope,
+                        )
+                      }
                       checked={selected.includes(scope)}
                       onChange={(e) =>
                         setSelected((values) =>
@@ -198,6 +225,10 @@ export function Connect() {
                     <span>
                       <strong>{text.label}</strong>
                       <span>{text.detail}</span>
+                      {!permits(
+                        spaces.find((space) => space.workspaceId === workspace),
+                        scope,
+                      ) && <span>你在这个空间没有此权限。</span>}
                     </span>
                   </label>
                 ))}

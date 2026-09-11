@@ -52,10 +52,15 @@ export function Keys({ identity }: { identity: Identity }) {
   )
     ? holder
     : "";
-  const holderMember = members.find((member) => member.accountId === selectedHolder);
-  const available = capabilities.filter((capability) =>
-    holderMember?.role === "OWNER" || capability.key === "EXECUTE_REPOSITORY" ||
-    holderMember?.permissions.includes(capability.key));
+  const holderMember = members.find(
+    (member) => member.accountId === selectedHolder,
+  );
+  const available = capabilities.filter(
+    (capability) =>
+      holderMember?.role === "OWNER" ||
+      capability.key === "EXECUTE_REPOSITORY" ||
+      holderMember?.permissions.includes(capability.key),
+  );
   const [secret, setSecret] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -152,7 +157,11 @@ export function Keys({ identity }: { identity: Identity }) {
           page={memberPage}
           disabled={pending}
         />
-        <fieldset key={selectedHolder + ":" + available.map((item) => item.key).join(",")}>
+        <fieldset
+          key={
+            selectedHolder + ":" + available.map((item) => item.key).join(",")
+          }
+        >
           <legend>允许的能力</legend>
           <div className="capabilities">
             {available.map((capability) => (
@@ -161,7 +170,9 @@ export function Keys({ identity }: { identity: Identity }) {
                   type="checkbox"
                   name="capabilities"
                   value={capability.key}
-                  defaultChecked={["READ_PRIVATE", "WRITE_PRIVATE"].includes(capability.key)}
+                  defaultChecked={["READ_PRIVATE", "WRITE_PRIVATE"].includes(
+                    capability.key,
+                  )}
                 />
                 <span>
                   <strong>{capability.label}</strong>

@@ -455,10 +455,24 @@ public final class AuthService {
     /** Owners may issue keys; machine owners additionally need MANAGE_KEYS and cannot grant beyond their own capabilities. */
     public IssuedToken createApiKey(
             AuthPrincipal actor, WorkspaceId workspace, UUID holder, Set<Capability> requested) {
+        return issueApiKey(actor, workspace, holder, requested, false);
+    }
+
+    /** OAuth delegates a human member's own permissions without granting key administration. */
+    IssuedToken createOAuthKey(AuthPrincipal actor, WorkspaceId workspace, Set<Capability> requested) {
+        if (actor == null
+                || actor.kind() != AuthPrincipal.Kind.ACCOUNT
+                || requested == null
+                || requested.contains(Capability.MANAGE_KEYS)) throw failure(DENIED);
+        return issueApiKey(actor, workspace, actor.accountId(), requested, true);
+    }
+
+    private IssuedToken issueApiKey(
+            AuthPrincipal actor, WorkspaceId workspace, UUID holder, Set<Capability> requested, boolean oauth) {
         Set<Capability> capabilities = requested == null ? DEFAULT_AI_CAPABILITIES : Set.copyOf(requested);
         return transactions.execute(status -> {
             lockWorkspace(workspace);
-            WorkspaceAccess access = requireKeyManager(actor, workspace);
+            WorkspaceAccess access = oauth ? authorize(actor, workspace) : requireKeyManager(actor, workspace);
             if (actor.kind() == AuthPrincipal.Kind.API_KEY
                     && !access.capabilities().containsAll(capabilities)) throw failure(DENIED);
             List<Membership> holders = jdbc.query(

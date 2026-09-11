@@ -135,7 +135,8 @@ export function WorkspaceDashboard({
   }, [dirty]);
   const activeTab = !identity
     ? "account"
-    : identity.role !== "OWNER" && !["content", "account"].includes(tab)
+    : identity.role !== "OWNER" &&
+        !["content", "account", "connections"].includes(tab)
       ? "content"
       : tab;
   const content = (
@@ -145,7 +146,10 @@ export function WorkspaceDashboard({
           .filter(
             ([key]) =>
               key === "account" ||
-              (identity && (key === "content" || identity.role === "OWNER")),
+              (identity &&
+                (key === "content" ||
+                  key === "connections" ||
+                  identity.role === "OWNER")),
           )
           .map(([key, label]) => (
             <button
