@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<!--
+  Length limits apply to production code. Test methods are scenarios and test classes are suites,
+  so the test source sets are exempt from MethodLength and FileLength as a whole.
+
+  Every other entry is a production file that already exceeded a limit when the gate was
+  introduced, with the methods over 60 code lines named beside it. Splitting the file or method
+  removes its entry. New files and methods get no entry.
+-->
+<suppressions>
+    <suppress checks="MethodLength|FileLength" files="[\/]src[\/](test|integrationTest)[\/]"/>
+
+    <!-- prepareMedia; file length -->
+    <suppress checks="MethodLength|FileLength" files="[\/]assets[\/]AssetService\.java$"/>
+    <!-- validate -->
+    <suppress checks="MethodLength" files="[\/]assets[\/]ImagePreviewPolicy\.java$"/>
+    <!-- uploadOriginal -->
+    <suppress checks="MethodLength" files="[\/]assets[\/]internal[\/]LocalManagedBlobStore\.java$"/>
+    <!-- file length -->
+    <suppress checks="FileLength" files="[\/]auth[\/]AuthService\.java$"/>
+    <!-- consent -->
+    <suppress checks="MethodLength" files="[\/]auth[\/]OAuthService\.java$"/>
+    <!-- path -->
+    <suppress checks="MethodLength" files="[\/]content[\/]MarkdownDestinations\.java$"/>
+    <!-- file length -->
+    <suppress checks="FileLength" files="[\/]content[\/]internal[\/]JGitRemoteRepositoryAuthority\.java$"/>
+    <!-- siblings -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]JGitRepositoryBlobReader\.java$"/>
+    <!-- listDirectory, readTreeObjects, readFile -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]JGitRepositoryContentReader\.java$"/>
+    <!-- write; file length -->
+    <suppress checks="MethodLength|FileLength" files="[\/]content[\/]internal[\/]JGitRepositoryPatchService\.java$"/>
+    <!-- createPublic, create -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]JGitRepositorySnapshotExports\.java$"/>
+    <!-- create, initialize; file length -->
+    <suppress checks="MethodLength|FileLength" files="[\/]content[\/]internal[\/]LocalPortableContentExports\.java$"/>
+    <!-- prepare -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]PortableContentPlanner\.java$"/>
+    <!-- build, destination -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]PublicExecutionProjection\.java$"/>
+    <!-- parse -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]RepositoryMarkdownParser\.java$"/>
+    <!-- prepare -->
+    <suppress checks="MethodLength" files="[\/]content[\/]internal[\/]RepositoryMovePlanner\.java$"/>
+    <!-- execute, readArtifact, open, executeWithBridge, bridgeOperation, moveFiles, readCapture, fetchMedia,
+         importMedia, exportPackage, materialize, result; file length -->
+    <suppress checks="MethodLength|FileLength" files="[\/]executor[\/]internal[\/]IsolatedRepositoryExecutor\.java$"/>
+    <!-- prepare -->
+    <suppress checks="MethodLength" files="[\/]executor[\/]internal[\/]SessionMoves\.java$"/>
+    <!-- doFilter -->
+    <suppress checks="MethodLength" files="[\/]mcp[\/]internal[\/]McpBodyLimitFilter\.java$"/>
+    <!-- inspect -->
+    <suppress checks="MethodLength" files="[\/]mcp[\/]internal[\/]McpEnvelopeBounds\.java$"/>
+    <!-- specifications, getArtifact -->
+    <suppress checks="MethodLength" files="[\/]mcp[\/]internal[\/]RepositoryMcpTools\.java$"/>
+    <!-- create -->
+    <suppress checks="MethodLength" files="[\/]spaces[\/]SpaceCreationService\.java$"/>
+</suppressions>
