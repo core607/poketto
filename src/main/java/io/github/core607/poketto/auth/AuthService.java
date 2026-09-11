@@ -202,6 +202,26 @@ public final class AuthService {
 
     private record Membership(MembershipRole role, Set<Capability> permissions) {}
 
+    /** The caller creates the empty catalog row in this same transaction; existing spaces cannot be claimed. */
+    public void establishWorkspaceOwner(AuthPrincipal actor, WorkspaceId workspace) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Workspace ownership requires a creation transaction");
+        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure(DENIED);
+        lockWorkspace(workspace);
+        if (!jdbc.queryForObject(
+                        "select exists(select 1 from auth_accounts where account_id=?)",
+                        Boolean.class,
+                        actor.accountId())
+                || jdbc.queryForObject(
+                        "select exists(select 1 from auth_memberships where workspace_id=?)",
+                        Boolean.class,
+                        workspace.value())) throw failure(DENIED);
+        jdbc.update(
+                "insert into auth_memberships(workspace_id,account_id,role) values (?,?,'OWNER')",
+                workspace.value(),
+                actor.accountId());
+    }
+
     /**
      * Holds the workspace lock through a bounded operation, serializing authority checks with key
      * revocation and membership changes. External effects are not rolled back with this transaction;

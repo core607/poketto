@@ -88,6 +88,19 @@ assert_status 1
 assert_contains "$ERR" 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED must be true or false'
 [ "$(up_count)" = 0 ]
 
+# The deployment encryption key is forwarded literally without printing it.
+setup_root
+have_image "$DIGEST_IMAGE"
+set +e
+OUT="$(printf '%s\n' 'POKETTO_REPOSITORY_CREDENTIAL_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' \
+    | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+assert_contains "$(cat "$FAKE_STATE/repository-credential-key")" 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+assert_not_contains "$OUT$ERR" 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+
 # Unknown keys cannot alter the deployment process environment.
 setup_root
 printf '%s\n' 'PATH=/tmp/untrusted' >> "$ROOT/.env"

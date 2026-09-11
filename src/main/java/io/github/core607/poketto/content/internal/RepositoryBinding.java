@@ -9,10 +9,20 @@ final class RepositoryBinding {
 
     private final URIish location;
     private final CredentialsProvider credentials;
+    private final boolean managed;
 
     RepositoryBinding(URIish location, CredentialsProvider credentials) {
+        this(location, credentials, false);
+    }
+
+    RepositoryBinding(URIish location, CredentialsProvider credentials, boolean managed) {
         this.location = Objects.requireNonNull(location, "remote location must not be null");
         this.credentials = Objects.requireNonNull(credentials, "credentials must not be null");
+        this.managed = managed;
+    }
+
+    boolean managed() {
+        return managed;
     }
 
     URIish location() {

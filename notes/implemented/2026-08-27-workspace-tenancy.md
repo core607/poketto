@@ -17,7 +17,7 @@ Poketto needs multiple workspaces in its core data model while retaining single-
 
 - A `workspace` is the tenant, security, and data-destruction boundary. Each workspace has an immutable canonical lowercase UUID as its `workspace_id`; its name, public domain, and display slug are not identifiers.
 - The application always uses the workspace model internally. A default deployment creates one workspace on the first successful database-backed start and exposes it through `WorkspaceCatalog`.
-- `WorkspaceCatalog` supports lookup of the default workspace and lookup by `WorkspaceId`. It has no public creation or cross-workspace listing operation. Additional-workspace creation has no route, API, or configuration switch.
+- `WorkspaceCatalog` supports lookup of the default workspace and lookup by `WorkspaceId`. [Managed workspace connections](2026-09-11-managed-workspace-connections.md) add transactional creation through `WorkspaceRegistry` and account-level HTTP operations; catalog lookup remains separate from membership authorization.
 - An account may join multiple workspaces. A role belongs to the membership between an account and a workspace, not to the account globally. The [invitation-only membership proposal](../proposed/2026-08-27-invitation-only-membership.md) owns the joining flow and attaches the first owner to the existing default workspace.
 
 ### Data isolation
