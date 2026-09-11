@@ -1,6 +1,7 @@
 package io.github.core607.poketto.assets.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ManagedAssetReference;
@@ -9,18 +10,27 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -50,9 +60,11 @@ class LocalManagedBlobStoreTests {
 
             @Override
             public int read(byte[] buffer, int offset, int length) {
-                if (remaining == 0) return -1;
+                if (remaining == 0) {
+                    return -1;
+                }
                 int count = (int) Math.min(length, remaining);
-                java.util.Arrays.fill(buffer, offset, offset + count, (byte) 42);
+                Arrays.fill(buffer, offset, offset + count, (byte) 42);
                 remaining -= count;
                 return count;
             }
@@ -65,7 +77,7 @@ class LocalManagedBlobStoreTests {
         var asset = store.uploadFile(workspace, KEY, "video/mp4", input);
         assertThat(input.closed).isFalse();
         assertThat(asset.size()).isEqualTo(size);
-        var output = new java.io.OutputStream() {
+        var output = new OutputStream() {
             long count;
             boolean closed;
 
@@ -78,7 +90,9 @@ class LocalManagedBlobStoreTests {
             @Override
             public void write(byte[] bytes, int offset, int length) {
                 for (int i = offset; i < offset + length; i++) {
-                    if (bytes[i] != 42) throw new AssertionError("original bytes changed");
+                    if (bytes[i] != 42) {
+                        throw new AssertionError("original bytes changed");
+                    }
                 }
                 count += length;
             }
@@ -208,7 +222,7 @@ class LocalManagedBlobStoreTests {
         var workspace = WorkspaceId.random();
         byte[] bytes = "attachment".getBytes(StandardCharsets.UTF_8);
         var asset = store.uploadFile(workspace, KEY, "application/pdf", new ByteArrayInputStream(bytes));
-        var failure = new java.io.OutputStream() {
+        var failure = new OutputStream() {
             @Override
             public void write(int value) throws IOException {
                 throw new IOException("synthetic consumer failure");
@@ -233,12 +247,12 @@ class LocalManagedBlobStoreTests {
                 .resolve("objects")
                 .resolve(asset.reference().assetId().toString())
                 .resolve("bytes");
-        try (var channel = java.nio.channels.FileChannel.open(original, java.nio.file.StandardOpenOption.WRITE)) {
+        try (var channel = FileChannel.open(original, StandardOpenOption.WRITE)) {
             channel.truncate(bytes.length - 1L);
         }
         assertReason(AssetStorageException.Reason.UNAVAILABLE, () -> store.read(workspace, asset.reference()));
         Files.write(original, bytes);
-        Files.write(original, new byte[] {1}, java.nio.file.StandardOpenOption.APPEND);
+        Files.write(original, new byte[] {1}, StandardOpenOption.APPEND);
         assertReason(AssetStorageException.Reason.UNAVAILABLE, () -> store.read(workspace, asset.reference()));
     }
 
@@ -281,7 +295,7 @@ class LocalManagedBlobStoreTests {
     void acceptsAnImageLargerThanEightMiBWithoutChangingIt() throws Exception {
         byte[] png = image("png");
         byte[] payload = new byte[9 * 1024 * 1024];
-        java.util.Arrays.fill(payload, (byte) 'x');
+        Arrays.fill(payload, (byte) 'x');
         payload[7] = 0;
         ByteArrayOutputStream large = new ByteArrayOutputStream();
         large.write(png, 0, png.length - 12);
@@ -329,14 +343,15 @@ class LocalManagedBlobStoreTests {
         var workspace = WorkspaceId.random();
         byte[] png = image("png");
         try (var pool = Executors.newFixedThreadPool(6)) {
-            var results = pool.invokeAll(java.util.stream.IntStream.range(0, 12)
-                    .<java.util.concurrent.Callable<ManagedAssetReference>>mapToObj(
-                            i -> () -> ManagedBlobStore.local(root)
-                                    .upload(workspace, KEY, new ByteArrayInputStream(png))
-                                    .reference())
+            var results = pool.invokeAll(IntStream.range(0, 12)
+                    .<Callable<ManagedAssetReference>>mapToObj(i -> () -> ManagedBlobStore.local(root)
+                            .upload(workspace, KEY, new ByteArrayInputStream(png))
+                            .reference())
                     .toList());
             var identity = results.getFirst().get();
-            for (var result : results) assertThat(result.get()).isEqualTo(identity);
+            for (var result : results) {
+                assertThat(result.get()).isEqualTo(identity);
+            }
         }
         try (var objects = Files.list(root.resolve(workspace.toString()).resolve("objects"))) {
             assertThat(objects.count()).isEqualTo(1);
@@ -357,7 +372,7 @@ class LocalManagedBlobStoreTests {
                         .getCodeSource()
                         .getLocation()
                         .toURI())
-                + java.io.File.pathSeparator
+                + File.pathSeparator
                 + Path.of(ManagedBlobStore.class
                         .getProtectionDomain()
                         .getCodeSource()
@@ -378,7 +393,9 @@ class LocalManagedBlobStoreTests {
         Process second = null;
         try {
             long deadline = System.nanoTime() + 5_000_000_000L;
-            while (!Files.exists(held) && System.nanoTime() < deadline && first.isAlive()) Thread.sleep(10);
+            while (!Files.exists(held) && System.nanoTime() < deadline && first.isAlive()) {
+                Thread.sleep(10);
+            }
             assertThat(Files.exists(held)).isTrue();
             second = new ProcessBuilder(
                             javaBinary,
@@ -390,12 +407,10 @@ class LocalManagedBlobStoreTests {
                             input.toString())
                     .redirectErrorStream(true)
                     .start();
-            assertThat(second.waitFor(150, java.util.concurrent.TimeUnit.MILLISECONDS))
-                    .isFalse();
+            assertThat(second.waitFor(150, TimeUnit.MILLISECONDS)).isFalse();
             Files.createFile(release);
-            assertThat(first.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-            assertThat(second.waitFor(10, java.util.concurrent.TimeUnit.SECONDS))
-                    .isTrue();
+            assertThat(first.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(second.waitFor(10, TimeUnit.SECONDS)).isTrue();
             String firstOutput = new String(first.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             String secondOutput = new String(second.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             assertThat(first.exitValue()).describedAs(firstOutput).isZero();
@@ -421,7 +436,9 @@ class LocalManagedBlobStoreTests {
 
             @Override
             public int read() throws IOException {
-                if (position++ > 100) throw new IOException("synthetic failure");
+                if (position++ > 100) {
+                    throw new IOException("synthetic failure");
+                }
                 return 1;
             }
         };
@@ -434,7 +451,7 @@ class LocalManagedBlobStoreTests {
 
             @Override
             public int read(byte[] bytes, int offset, int length) {
-                java.util.Arrays.fill(bytes, offset, offset + length, (byte) 1);
+                Arrays.fill(bytes, offset, offset + length, (byte) 1);
                 return length;
             }
         };
@@ -518,11 +535,13 @@ class LocalManagedBlobStoreTests {
     }
 
     static byte[] image(String format) throws IOException {
-        if (format.equals("webp"))
+        if (format.equals("webp")) {
             return Base64.getDecoder().decode("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
+        }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        if (!ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), format, out))
+        if (!ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), format, out)) {
             throw new IOException("writer unavailable");
+        }
         return out.toByteArray();
     }
 
@@ -534,7 +553,7 @@ class LocalManagedBlobStoreTests {
         System.arraycopy(small, 0, bytes, 0, offset);
         ByteBuffer.wrap(bytes).putInt(offset, payload);
         System.arraycopy(new byte[] {'t', 'E', 'X', 't'}, 0, bytes, offset + 4, 4);
-        java.util.Arrays.fill(bytes, offset + 8, offset + 8 + payload, (byte) 'x');
+        Arrays.fill(bytes, offset + 8, offset + 8 + payload, (byte) 'x');
         bytes[offset + 8] = 'p';
         bytes[offset + 9] = 0;
         var crc = new CRC32();
@@ -544,8 +563,7 @@ class LocalManagedBlobStoreTests {
         return bytes;
     }
 
-    private static void assertReason(
-            AssetStorageException.Reason reason, org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+    private static void assertReason(AssetStorageException.Reason reason, ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action)
                 .isInstanceOfSatisfying(
                         AssetStorageException.class,

@@ -11,7 +11,12 @@ import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/workspaces/{workspaceId}/exports")
@@ -29,8 +34,9 @@ class ContentExportController {
 
     @PostMapping
     PortableContentExports.Export create(@AuthenticationPrincipal AuthPrincipal actor, @RequestBody Request request) {
-        if (request.paths() == null || request.publicOnly() == null)
+        if (request.paths() == null || request.publicOnly() == null) {
             throw new IllegalArgumentException("export paths and scope are required");
+        }
         return exports.create(actor, workspaces.selected(), request.paths(), request.publicOnly(), Optional.empty());
     }
 

@@ -1,21 +1,27 @@
 package io.github.core607.poketto.auth;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -88,7 +94,9 @@ class OAuthIntegrationIT {
     static String parameter(String uri, String name) {
         for (String pair : URI.create(uri).getRawQuery().split("&")) {
             String[] p = pair.split("=", 2);
-            if (p[0].equals(name)) return URLDecoder.decode(p[1], StandardCharsets.UTF_8);
+            if (p[0].equals(name)) {
+                return URLDecoder.decode(p[1], StandardCharsets.UTF_8);
+            }
         }
         throw new AssertionError(name);
     }
@@ -152,7 +160,7 @@ class OAuthIntegrationIT {
     void requestsCannotKeepUnconnectedRegistrationsAlivePastTheirFixedDeadline() {
         jdbc.update("update oauth_clients set created_at=now()-interval '23 hours 55 minutes'");
         var pending = request();
-        assertThat(pending.expiresAt()).isBefore(java.time.Instant.now().plusSeconds(301));
+        assertThat(pending.expiresAt()).isBefore(Instant.now().plusSeconds(301));
         assertThatThrownBy(() -> oauth.prepare(
                         client.id(),
                         "https://bad.example",
@@ -212,12 +220,14 @@ class OAuthIntegrationIT {
                 codeLock.setObject(1, key);
                 codeLock.executeQuery().close();
                 var cleanup = pool.submit(() -> oauth.register("Concurrent cleanup", List.of(REDIRECT)));
-                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
                 while (jdbc.queryForObject(
                                 "select count(*) from pg_stat_activity where pid<>pg_backend_pid() and datname=current_database() and wait_event_type='Lock' and query like '%oauth_%'",
                                 Integer.class)
                         == 0) {
-                    if (System.nanoTime() >= deadline) throw new AssertionError("cleanup did not wait on a lock");
+                    if (System.nanoTime() >= deadline) {
+                        throw new AssertionError("cleanup did not wait on a lock");
+                    }
                     Thread.sleep(10);
                 }
                 // This is the workspace -> code -> key order used by proven authorization-code replay.
@@ -227,8 +237,7 @@ class OAuthIntegrationIT {
                     revoke.executeUpdate();
                 }
                 held.commit();
-                assertThat(cleanup.get(5, java.util.concurrent.TimeUnit.SECONDS))
-                        .isNotNull();
+                assertThat(cleanup.get(5, TimeUnit.SECONDS)).isNotNull();
             }
         }
     }
@@ -249,8 +258,8 @@ class OAuthIntegrationIT {
                 statement.setObject(1, workspace.value());
                 statement.executeQuery().close();
                 assertThatThrownBy(() -> oauth.consent(owner, workspace, pending, Set.of("repository:execute"), true))
-                        .isInstanceOf(org.springframework.dao.DataAccessException.class)
-                        .hasRootCauseInstanceOf(java.sql.SQLException.class);
+                        .isInstanceOf(DataAccessException.class)
+                        .hasRootCauseInstanceOf(SQLException.class);
                 held.rollback();
             }
         }
@@ -332,8 +341,9 @@ class OAuthIntegrationIT {
                 "http://client.example/cb",
                 "https://client.example/cb#x",
                 "https://name@client.example/cb",
-                "javascript:alert(1)"))
+                "javascript:alert(1)")) {
             assertThatThrownBy(() -> oauth.register("Bad", List.of(bad))).isInstanceOf(OAuthService.Failure.class);
+        }
         assertThatThrownBy(() -> oauth.prepare(
                         client.id(), REDIRECT, "token", null, "s", OAuthService.challenge(VERIFIER), "S256", RESOURCE))
                 .hasMessage("unsupported_response_type");
@@ -353,7 +363,7 @@ class OAuthIntegrationIT {
         var first = tokens();
         var start = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
-            java.util.concurrent.Callable<OAuthService.Tokens> call = () -> {
+            Callable<OAuthService.Tokens> call = () -> {
                 start.await();
                 try {
                     return oauth.refresh(client.id(), first.refresh_token(), RESOURCE, null);

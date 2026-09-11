@@ -5,6 +5,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -81,10 +82,9 @@ class BrowserAuthController {
                 page.limit());
     }
 
-    record SpaceResponse(String workspaceId, String displayName, String role, java.util.List<String> capabilities) {}
+    record SpaceResponse(String workspaceId, String displayName, String role, List<String> capabilities) {}
 
-    record MeResponse(
-            UUID accountId, String workspaceId, String displayName, String role, java.util.List<String> capabilities) {}
+    record MeResponse(UUID accountId, String workspaceId, String displayName, String role, List<String> capabilities) {}
 
     record InvitationTokenRequest(String token) {
         @Override

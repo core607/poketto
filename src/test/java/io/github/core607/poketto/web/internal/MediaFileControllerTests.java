@@ -1,9 +1,16 @@
 package io.github.core607.poketto.web.internal;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.MediaFileService;
@@ -12,6 +19,7 @@ import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -47,9 +55,8 @@ class MediaFileControllerTests {
                 .andExpect(content().contentType("application/octet-stream"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment;")))
-                .andExpect(header().string(
-                                "Content-Disposition", org.hamcrest.Matchers.containsString("filename*=UTF-8''")));
+                .andExpect(header().string("Content-Disposition", Matchers.startsWith("attachment;")))
+                .andExpect(header().string("Content-Disposition", Matchers.containsString("filename*=UTF-8''")));
         doThrow(new AssetStorageException(AssetStorageException.Reason.UNAVAILABLE))
                 .when(download)
                 .writeTo(any());

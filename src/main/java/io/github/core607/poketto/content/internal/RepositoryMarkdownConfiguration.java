@@ -17,18 +17,21 @@ class RepositoryMarkdownConfiguration {
         RepositoryMarkdownParser parser = new RepositoryMarkdownParser();
         return (path, source) -> {
             RepositoryPathRules.validate(path);
-            if (!RepositoryPathRules.markdown(path))
+            if (!RepositoryPathRules.markdown(path)) {
                 throw new IllegalArgumentException("preview requires a Markdown path");
-            if (source == null || source.length() > ContentLimits.MAX_DOCUMENT_BYTES)
+            }
+            if (source == null || source.length() > ContentLimits.MAX_DOCUMENT_BYTES) {
                 throw new IllegalArgumentException("preview source exceeds its bounds");
+            }
             try {
                 ByteBuffer encoded = StandardCharsets.UTF_8
                         .newEncoder()
                         .onMalformedInput(CodingErrorAction.REPORT)
                         .onUnmappableCharacter(CodingErrorAction.REPORT)
                         .encode(CharBuffer.wrap(source));
-                if (encoded.remaining() > ContentLimits.MAX_DOCUMENT_BYTES)
+                if (encoded.remaining() > ContentLimits.MAX_DOCUMENT_BYTES) {
                     throw new IllegalArgumentException("preview source exceeds its bounds");
+                }
                 byte[] bytes = new byte[encoded.remaining()];
                 encoded.get(bytes);
                 RepositoryMarkdownParser.decode(bytes);

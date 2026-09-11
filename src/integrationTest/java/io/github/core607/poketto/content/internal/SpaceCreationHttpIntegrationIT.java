@@ -1,16 +1,26 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.jgit.api.Git;
@@ -30,6 +40,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -49,7 +60,7 @@ class SpaceCreationHttpIntegrationIT {
     @TempDir
     static Path directory;
 
-    private static final String KEY = java.util.Base64.getEncoder().encodeToString(new byte[32]);
+    private static final String KEY = Base64.getEncoder().encodeToString(new byte[32]);
 
     @Autowired
     MockMvc mvc;
@@ -141,7 +152,7 @@ class SpaceCreationHttpIntegrationIT {
                         .password())
                 .isEqualTo("provider-fixture-secret");
         assertThatThrownBy(() -> cipher.decrypt(WorkspaceId.random(), "https://cnb.cool/example/notes", stored))
-                .isInstanceOf(io.github.core607.poketto.content.ContentRepositoryException.class);
+                .isInstanceOf(ContentRepositoryException.class);
         jdbc.update(
                 "insert into auth_accounts(account_id,login_name,password_hash) select ?,'outsider',password_hash from auth_accounts where login_name='operator'",
                 UUID.randomUUID());
@@ -157,17 +168,15 @@ class SpaceCreationHttpIntegrationIT {
         var id = new WorkspaceId(workspace);
         var first = connections.prepareRotation(id, "cnb", "first-fixture-token");
         var stale = connections.prepareRotation(id, "cnb", "stale-fixture-token");
-        auth.withAuthorization(
-                owner, id, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
-                    connections.applyRotation(id, first);
+        auth.withAuthorization(owner, id, Set.of(Capability.MANAGE_KEYS), () -> {
+            connections.applyRotation(id, first);
+            return null;
+        });
+        assertThatThrownBy(() -> auth.withAuthorization(owner, id, Set.of(Capability.MANAGE_KEYS), () -> {
+                    connections.applyRotation(id, stale);
                     return null;
-                });
-        assertThatThrownBy(() -> auth.withAuthorization(
-                        owner, id, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
-                            connections.applyRotation(id, stale);
-                            return null;
-                        }))
-                .isInstanceOf(io.github.core607.poketto.content.RepositoryConnectionException.class);
+                }))
+                .isInstanceOf(RepositoryConnectionException.class);
         mvc.perform(csrf(session, put("/api/auth/workspaces/" + workspace + "/repository-credentials"))
                         .contentType("application/json")
                         .content("{\"username\":\"cnb\",\"token\":\"rotated-fixture-token\"}"))
@@ -247,9 +256,7 @@ class SpaceCreationHttpIntegrationIT {
         }
 
         public CredentialRotation prepareRotation(WorkspaceId workspace, String username, String token) {
-            assertThat(
-                            org.springframework.transaction.support.TransactionSynchronizationManager
-                                    .isActualTransactionActive())
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
             rotations.incrementAndGet();
             var row = jdbc.queryForMap(

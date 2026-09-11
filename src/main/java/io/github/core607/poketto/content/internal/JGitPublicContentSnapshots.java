@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -39,8 +41,9 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
 
     JGitPublicContentSnapshots(
             RepositoryAuthority authority, Clock clock, Duration lifetime, PublicSnapshotMarker marker) {
-        if (lifetime.isNegative() || lifetime.isZero() || lifetime.compareTo(Duration.ofHours(1)) > 0)
+        if (lifetime.isNegative() || lifetime.isZero() || lifetime.compareTo(Duration.ofHours(1)) > 0) {
             throw new IllegalArgumentException("public snapshot lifetime must be positive and at most one hour");
+        }
         this.authority = authority;
         this.reader = new JGitRepositoryContentReader(authority);
         this.clock = clock;
@@ -53,7 +56,9 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         try {
             refresh(workspaceId);
         } catch (ContentRepositoryException unavailable) {
-            if (unavailable.getCause() instanceof PublicSnapshotMarker.WriteFailure) throw unavailable;
+            if (unavailable.getCause() instanceof PublicSnapshotMarker.WriteFailure) {
+                throw unavailable;
+            }
             try {
                 authority.readCache(workspaceId, snapshot -> restore(workspaceId, snapshot));
                 current(workspaceId);
@@ -103,13 +108,14 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
 
     private PublicContentSnapshot requireCurrent(PublicContentSnapshot snapshot) {
         Instant now = clock.instant();
-        if (snapshot == null || now.isBefore(snapshot.verifiedAt()) || !now.isBefore(snapshot.expiresAt()))
+        if (snapshot == null || now.isBefore(snapshot.verifiedAt()) || !now.isBefore(snapshot.expiresAt())) {
             throw unavailable();
+        }
         return snapshot;
     }
 
     @Override
-    public <T> T withCurrent(WorkspaceId workspaceId, java.util.function.Function<PublicContentSnapshot, T> action) {
+    public <T> T withCurrent(WorkspaceId workspaceId, Function<PublicContentSnapshot, T> action) {
         var result = new AtomicReference<T>();
         // The same-key put/remove operations install or close publication. Network fetches keep
         // their authority mutex but never own this gate; callbacks must not enter that mutex.
@@ -117,30 +123,38 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
             result.set(action.apply(requireCurrent(snapshot)));
             return snapshot;
         });
-        if (selected == null) throw unavailable();
+        if (selected == null) {
+            throw unavailable();
+        }
         return result.get();
     }
 
     private PublicContentSnapshot restore(WorkspaceId workspaceId, RepositoryAuthority.Snapshot cache) {
-        if (!marker.supportsOfflineRestoration())
+        if (!marker.supportsOfflineRestoration()) {
             throw new ContentRepositoryException(
                     "offline public snapshot restoration is disabled on Windows development hosts");
+        }
         try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspaceId)) {
             Path marker = repository.getDirectory().toPath().resolve(PublicSnapshotMarker.NAME);
-            if (!Files.isRegularFile(marker) || Files.size(marker) > 256) throw unavailable();
+            if (!Files.isRegularFile(marker) || Files.size(marker) > 256) {
+                throw unavailable();
+            }
             String[] fields =
                     Files.readString(marker, StandardCharsets.UTF_8).strip().split(" ", -1);
             if (fields.length != 4
                     || !fields[0].equals("DURABLE_V2")
                     || !fields[3].equals("OPEN")
-                    || !fields[1].equals(cache.commitId().orElse("unborn"))) throw unavailable();
-            Instant verifiedAt = Instant.parse(fields[2]);
-            if (clock.instant().isBefore(verifiedAt) || !clock.instant().isBefore(verifiedAt.plus(lifetime)))
+                    || !fields[1].equals(cache.commitId().orElse("unborn"))) {
                 throw unavailable();
+            }
+            Instant verifiedAt = Instant.parse(fields[2]);
+            if (clock.instant().isBefore(verifiedAt) || !clock.instant().isBefore(verifiedAt.plus(lifetime))) {
+                throw unavailable();
+            }
             PublicContentSnapshot restored = build(workspaceId, cache, verifiedAt);
             snapshots.put(workspaceId, restored);
             return restored;
-        } catch (IOException | IllegalArgumentException | java.time.DateTimeException exception) {
+        } catch (IOException | IllegalArgumentException | DateTimeException exception) {
             throw new ContentRepositoryException("public snapshot cache cannot be restored", exception);
         }
     }
@@ -148,7 +162,9 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     private PublicContentSnapshot build(
             WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Instant verifiedAt) {
         RepositoryPublishingPolicy policy = policy(workspaceId, snapshot);
-        if (policy.state() == RepositoryPublishingPolicy.State.INVALID) throw unavailable();
+        if (policy.state() == RepositoryPublishingPolicy.State.INVALID) {
+            throw unavailable();
+        }
         List<PublicArticle> articles = List.of();
         if (policy.state() == RepositoryPublishingPolicy.State.ENABLED) {
             articles = reader.readSnapshot(workspaceId, snapshot, policy::permitsPath).documents().stream()
@@ -171,7 +187,9 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     }
 
     static RepositoryPublishingPolicy policy(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
-        if (snapshot.commitId().isEmpty()) return RepositoryPublishingPolicy.missing();
+        if (snapshot.commitId().isEmpty()) {
+            return RepositoryPublishingPolicy.missing();
+        }
         try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId);
                 ObjectReader objects = repository.newObjectReader()) {
             return policy(objects, snapshot.commitId().orElseThrow());
@@ -184,12 +202,17 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
                         objects,
                         RepositoryPublishingPolicy.PATH,
                         commits.parseCommit(ObjectId.fromString(commit)).getTree())) {
-            if (entry == null) return RepositoryPublishingPolicy.missing();
+            if (entry == null) {
+                return RepositoryPublishingPolicy.missing();
+            }
             if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))
-                    && !FileMode.EXECUTABLE_FILE.equals(entry.getFileMode(0)))
+                    && !FileMode.EXECUTABLE_FILE.equals(entry.getFileMode(0))) {
                 return RepositoryPublishingPolicy.parse(null);
+            }
             var loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
-            if (loader.getSize() > RepositoryPublishingPolicy.MAX_BYTES) return RepositoryPublishingPolicy.parse(null);
+            if (loader.getSize() > RepositoryPublishingPolicy.MAX_BYTES) {
+                return RepositoryPublishingPolicy.parse(null);
+            }
             return RepositoryPublishingPolicy.parse(loader.getBytes(RepositoryPublishingPolicy.MAX_BYTES));
         } catch (IOException exception) {
             throw new ContentRepositoryException("publishing policy object cannot be read", exception);

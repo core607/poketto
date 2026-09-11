@@ -1,12 +1,17 @@
 package io.github.core607.poketto.assets.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -16,20 +21,25 @@ import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
 
 @EnabledOnOs(OS.LINUX)
 class ManagedAssetDeliveryTests {
@@ -42,7 +52,7 @@ class ManagedAssetDeliveryTests {
         var workspace = WorkspaceId.random();
         var asset = store.uploadFile(
                 workspace, "index-validation-01", "application/pdf", new ByteArrayInputStream(new byte[] {1, 2, 3}));
-        var entry = new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+        var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
         var validator = new AssetsConfiguration().repositoryMediaValidator(() -> store);
         validator.validate(workspace, List.of(entry));
@@ -50,12 +60,11 @@ class ManagedAssetDeliveryTests {
                 .isInstanceOfSatisfying(
                         AssetStorageException.class,
                         error -> assertThat(error.reason()).isEqualTo(AssetStorageException.Reason.NOT_FOUND));
-        var wrongType = new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
-                entry.assetId(), entry.revision(), "text/html", entry.size());
+        var wrongType = new RepositoryMediaIndex.Media(entry.assetId(), entry.revision(), "text/html", entry.size());
         assertThatThrownBy(() -> validator.validate(workspace, List.of(wrongType)))
                 .isInstanceOf(IllegalArgumentException.class);
-        var wrongSize = new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
-                entry.assetId(), entry.revision(), entry.mediaType(), entry.size() + 1);
+        var wrongSize =
+                new RepositoryMediaIndex.Media(entry.assetId(), entry.revision(), entry.mediaType(), entry.size() + 1);
         assertThatThrownBy(() -> validator.validate(workspace, List.of(wrongSize)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -90,12 +99,9 @@ class ManagedAssetDeliveryTests {
         when(auth.withAuthorization(any(), any(), any(), any()))
                 .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get());
         var blobs = mock(RepositoryBlobReader.class);
-        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
-                        call.getArgument(0),
-                        call.getArgument(1),
-                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
-                        java.util.Set.of()));
+        when(blobs.media(any(), ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new RepositoryMediaSnapshot(
+                        call.getArgument(0), call.getArgument(1), RepositoryMediaIndex.empty(), Set.of()));
         AssetService service = new AssetService(
                 auth,
                 mock(RepositoryContentReader.class),
@@ -107,8 +113,7 @@ class ManagedAssetDeliveryTests {
                 16L * 1024 * 1024,
                 128,
                 Clock.fixed(now, ZoneOffset.UTC),
-                new io.github.core607.poketto.assets.ImageMemoryAdmission(
-                        256L * 1024 * 1024, 16, java.time.Duration.ZERO));
+                new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var page = service.publicDocument(workspace, "/article").orElseThrow();
         String url = page.media().images().get(authored);
         assertThat(url).startsWith("/api/public/assets/");

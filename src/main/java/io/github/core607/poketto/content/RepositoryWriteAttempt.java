@@ -7,8 +7,9 @@ public record RepositoryWriteAttempt(String commit, byte[] object) {
                 || !commit.matches("[0-9a-f]{40}")
                 || object == null
                 || object.length == 0
-                || object.length > 16384)
+                || object.length > 16384) {
             throw new IllegalArgumentException("invalid bounded repository write attempt");
+        }
         object = object.clone();
     }
 

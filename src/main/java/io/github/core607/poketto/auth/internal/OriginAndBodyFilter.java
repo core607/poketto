@@ -41,8 +41,9 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             return;
         }
         String path = request.getServletPath();
-        if (path.isEmpty())
+        if (path.isEmpty()) {
             path = request.getRequestURI().substring(request.getContextPath().length());
+        }
         if (path.startsWith("/api/auth/") || path.startsWith("/api/admin/")) {
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Referrer-Policy", "no-referrer");
@@ -52,8 +53,11 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
                 return;
             }
             // Administration bodies belong after current membership validation and admission.
-            if (path.startsWith("/api/admin/")) chain.doFilter(request, response);
-            else filterBody(request, response, chain, limit);
+            if (path.startsWith("/api/admin/")) {
+                chain.doFilter(request, response);
+            } else {
+                filterBody(request, response, chain, limit);
+            }
             return;
         }
         chain.doFilter(request, response);
@@ -131,12 +135,14 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
 
         @Override
         public ServletInputStream getInputStream() {
-            if (reader != null) throw new IllegalStateException("getReader was already called");
+            if (reader != null) {
+                throw new IllegalStateException("getReader was already called");
+            }
             return input();
         }
 
         private ServletInputStream input() {
-            if (stream == null)
+            if (stream == null) {
                 stream = new ServletInputStream() {
                     @Override
                     public int read() {
@@ -164,13 +170,16 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
                                 "Authentication and administration bodies use synchronous reads");
                     }
                 };
+            }
             return stream;
         }
 
         @Override
         public BufferedReader getReader() {
             if (reader == null) {
-                if (stream != null) throw new IllegalStateException("getInputStream was already called");
+                if (stream != null) {
+                    throw new IllegalStateException("getInputStream was already called");
+                }
                 reader = new BufferedReader(new InputStreamReader(input(), charset));
             }
             return reader;
@@ -178,14 +187,18 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
 
         @Override
         public String getParameter(String name) {
-            if (formParameters == null) return super.getParameter(name);
+            if (formParameters == null) {
+                return super.getParameter(name);
+            }
             String[] values = formParameters.get(name);
             return values == null ? null : values[0];
         }
 
         @Override
         public String[] getParameterValues(String name) {
-            if (formParameters == null) return super.getParameterValues(name);
+            if (formParameters == null) {
+                return super.getParameterValues(name);
+            }
             String[] values = formParameters.get(name);
             return values == null ? null : values.clone();
         }
@@ -199,7 +212,9 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
 
         @Override
         public Map<String, String[]> getParameterMap() {
-            if (formParameters == null) return super.getParameterMap();
+            if (formParameters == null) {
+                return super.getParameterMap();
+            }
             Map<String, String[]> copy = new LinkedHashMap<>();
             formParameters.forEach((key, values) -> copy.put(key, values.clone()));
             return Collections.unmodifiableMap(copy);
@@ -207,10 +222,14 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
     }
 
     private static void decodeForm(Map<String, List<String>> parameters, String form, Charset charset) {
-        if (form == null || form.isEmpty()) return;
+        if (form == null || form.isEmpty()) {
+            return;
+        }
         try {
             for (String pair : form.split("&")) {
-                if (pair.isEmpty()) continue;
+                if (pair.isEmpty()) {
+                    continue;
+                }
                 String[] entry = pair.split("=", 2);
                 String name = URLDecoder.decode(entry[0], charset);
                 String value = entry.length == 1 ? "" : URLDecoder.decode(entry[1], charset);

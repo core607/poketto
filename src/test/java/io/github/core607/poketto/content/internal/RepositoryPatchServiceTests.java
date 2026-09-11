@@ -17,30 +17,43 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import org.assertj.core.api.Assertions;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 class RepositoryPatchServiceTests {
     @TempDir
@@ -49,8 +62,7 @@ class RepositoryPatchServiceTests {
     private final WorkspaceId workspace = WorkspaceId.random();
     private final AuthPrincipal principal = mock(AuthPrincipal.class);
     private final AuthService auth = mock(AuthService.class);
-    private final io.github.core607.poketto.content.RepositoryMediaValidator mediaValidator =
-            mock(io.github.core607.poketto.content.RepositoryMediaValidator.class);
+    private final RepositoryMediaValidator mediaValidator = mock(RepositoryMediaValidator.class);
 
     @Test
     void publicMovePreservesAnAlreadyIneligibleReferenceWithoutPublishingItsTarget() throws Exception {
@@ -86,7 +98,7 @@ class RepositoryPatchServiceTests {
         ObjectId base = fixture.commitRemote(
                 workspace,
                 Map.of("private/box/link", bytes("/outside/secret"), "private/box/note.md", bytes("# Note")),
-                Map.of("private/box/link", org.eclipse.jgit.lib.FileMode.SYMLINK));
+                Map.of("private/box/link", FileMode.SYMLINK));
         assertThatThrownBy(() -> service(fixture, (id, snapshot) -> {})
                         .move(
                                 principal,
@@ -100,7 +112,7 @@ class RepositoryPatchServiceTests {
     void directoryMoveRepairsReferencesAndReusesLargeGitAndIndexedMediaInOneCommit() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var original = new RepositoryMediaIndex.Media(UUID.randomUUID(), "e".repeat(64), "application/pdf", 123);
-        var source = new java.util.LinkedHashMap<String, byte[]>();
+        var source = new LinkedHashMap<String, byte[]>();
         source.put(
                 "private/box/note.md",
                 bytes("---\r\ntitle: Note\r\n---\r\n[outside](../other.md) ![media](scan.pdf)\r\n`../other.md`\r\n"));
@@ -108,7 +120,9 @@ class RepositoryPatchServiceTests {
         source.put(
                 RepositoryMediaIndex.PATH, new RepositoryMediaIndex(Map.of("private/box/scan.pdf", original)).encode());
         source.put("private/box/legacy.bin", new byte[2 * 1024 * 1024]);
-        for (int i = 0; i < 100; i++) source.put("private/box/n" + i + ".md", bytes("# " + i));
+        for (int i = 0; i < 100; i++) {
+            source.put("private/box/n" + i + ".md", bytes("# " + i));
+        }
         ObjectId base = fixture.commitRemote(workspace, source);
         AtomicInteger installed = new AtomicInteger();
         var service = service(fixture, (id, snapshot) -> installed.incrementAndGet());
@@ -152,19 +166,18 @@ class RepositoryPatchServiceTests {
         verify(mediaValidator).validate(workspace, List.of(original));
         verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
         try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace);
-                var walk = new org.eclipse.jgit.revwalk.RevWalk(repository)) {
+                var walk = new RevWalk(repository)) {
             var after = walk.parseCommit(ObjectId.fromString(result.commit()));
             assertThat(after.getParentCount()).isEqualTo(1);
             assertThat(after.getParent(0).getId()).isEqualTo(base);
-            try (var beforeFile = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+            try (var beforeFile = TreeWalk.forPath(
                             repository,
                             "private/box/legacy.bin",
                             walk.parseCommit(base).getTree());
-                    var afterFile = org.eclipse.jgit.treewalk.TreeWalk.forPath(
-                            repository, "private/deeper/box/legacy.bin", after.getTree())) {
+                    var afterFile = TreeWalk.forPath(repository, "private/deeper/box/legacy.bin", after.getTree())) {
                 assertThat(afterFile.getObjectId(0)).isEqualTo(beforeFile.getObjectId(0));
             }
-            assertThat(org.eclipse.jgit.treewalk.TreeWalk.forPath(repository, "private/box/note.md", after.getTree()))
+            assertThat(TreeWalk.forPath(repository, "private/box/note.md", after.getTree()))
                     .isNull();
         }
     }
@@ -195,7 +208,7 @@ class RepositoryPatchServiceTests {
         var folder = new RepositoryMoveRequest(base.name(), "private/box", "public/box");
         assertThatThrownBy(() -> service.move(principal, workspace, folder)).hasMessage("publish denied");
         assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
-        org.mockito.Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
+        Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
         var result = service.move(principal, workspace, folder);
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
         var reader = new JGitRepositoryContentReader(fixture.authority());
@@ -286,7 +299,7 @@ class RepositoryPatchServiceTests {
                 List.of(new RepositoryTextChange("private/new.md", true, Optional.empty(), Optional.of("New"))));
         assertThatThrownBy(() -> service.apply(principal, workspace, create))
                 .hasMessage("repair the media index before structural or publication changes");
-        org.mockito.Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
+        Mockito.doReturn(null).when(auth).authorize(principal, workspace, Capability.PUBLISH);
         var repaired = service.apply(principal, workspace, repair);
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(repaired.commit());
         assertThat(reader.listDirectory(workspace, Optional.empty(), "private", 0, 100)
@@ -339,7 +352,7 @@ class RepositoryPatchServiceTests {
                 .contains("# Updated\n[Source](source.pdf)");
         assertThat(reader.listDirectory(workspace, Optional.empty(), "private", 0, 100)
                         .entries())
-                .extracting(io.github.core607.poketto.content.RepositoryDirectoryPage.Entry::path)
+                .extracting(RepositoryDirectoryPage.Entry::path)
                 .contains("private/source.pdf");
         var publicIndex = new RepositoryMediaIndex(Map.of("public/source.pdf", media));
         var publication = new RepositoryPatch(
@@ -418,8 +431,7 @@ class RepositoryPatchServiceTests {
         assertThat(result.revisions().get("笔记 空格%#/100%.md")).isEqualTo(file.revision());
         assertThat(fixture.cache(workspace).resolve("笔记 空格%#/100%.md")).doesNotExist();
         assertThat(installed).hasValue(1);
-        verify(auth)
-                .withAuthorization(eq(principal), eq(workspace), eq(java.util.Set.of(Capability.WRITE_PRIVATE)), any());
+        verify(auth).withAuthorization(eq(principal), eq(workspace), eq(Set.of(Capability.WRITE_PRIVATE)), any());
         verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
     }
 
@@ -620,7 +632,9 @@ class RepositoryPatchServiceTests {
         var fixture = new RemoteRepositoryFixture(directory, new RemoteGitTransport() {
             @Override
             public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
-                if (pushes.get() > 0) throw new RemoteGitTransportException("simulated offline");
+                if (pushes.get() > 0) {
+                    throw new RemoteGitTransportException("simulated offline");
+                }
                 return delegate.fetchMain(repository, binding);
             }
 
@@ -655,14 +669,16 @@ class RepositoryPatchServiceTests {
     @Test
     void recoveryChecksRemoteHistoryAndRetriesOnlyTheIdenticalRetainedCommit() throws Exception {
         for (boolean delivered : List.of(false, true)) {
-            var offline = new java.util.concurrent.atomic.AtomicBoolean();
-            var candidates = new java.util.ArrayList<ObjectId>();
+            var offline = new AtomicBoolean();
+            var candidates = new ArrayList<ObjectId>();
             var delegate = new JGitRemoteGitTransport();
             var fixture = new RemoteRepositoryFixture(
                     directory.resolve(Boolean.toString(delivered)), new RemoteGitTransport() {
                         @Override
                         public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
-                            if (offline.get()) throw new RemoteGitTransportException("offline after lost reply");
+                            if (offline.get()) {
+                                throw new RemoteGitTransportException("offline after lost reply");
+                            }
                             return delegate.fetchMain(repository, binding);
                         }
 
@@ -674,7 +690,9 @@ class RepositoryPatchServiceTests {
                                 ObjectId candidate) {
                             candidates.add(candidate);
                             if (candidates.size() == 1) {
-                                if (delivered) delegate.pushMain(repository, binding, expected, candidate);
+                                if (delivered) {
+                                    delegate.pushMain(repository, binding, expected, candidate);
+                                }
                                 offline.set(true);
                                 throw new RemoteGitTransportException("lost reply");
                             }
@@ -684,13 +702,15 @@ class RepositoryPatchServiceTests {
             ObjectId base = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("before")));
             var patch = patch(base, update("private/note.md", "before", "retained"));
             var service = service(fixture, (id, snapshot) -> {});
-            var unknown = org.assertj.core.api.Assertions.catchThrowableOfType(
+            var unknown = Assertions.catchThrowableOfType(
                     RepositoryWriteAmbiguousException.class, () -> service.apply(principal, workspace, patch));
             assertThat(unknown).isNotNull();
             var retained = unknown.attempt().orElseThrow();
             assertThat(retained.commit()).isEqualTo(candidates.getFirst().name());
             offline.set(false);
-            if (delivered) fixture.commitRemote(workspace, Map.of("private/note.md", bytes("later-remote-edit")));
+            if (delivered) {
+                fixture.commitRemote(workspace, Map.of("private/note.md", bytes("later-remote-edit")));
+            }
             ObjectId beforeRecovery = fixture.remoteHead(workspace);
             var result = service.recover(principal, workspace, patch, retained);
             assertThat(result.commit()).isEqualTo(retained.commit());
@@ -709,13 +729,15 @@ class RepositoryPatchServiceTests {
 
     @Test
     void recoveryRejectsAlteredPatchAndDivergedRemoteWithoutPushing() throws Exception {
-        var offline = new java.util.concurrent.atomic.AtomicBoolean();
+        var offline = new AtomicBoolean();
         var pushes = new AtomicInteger();
         var delegate = new JGitRemoteGitTransport();
         var fixture = new RemoteRepositoryFixture(directory, new RemoteGitTransport() {
             @Override
             public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
-                if (offline.get()) throw new RemoteGitTransportException("offline");
+                if (offline.get()) {
+                    throw new RemoteGitTransportException("offline");
+                }
                 return delegate.fetchMain(repository, binding);
             }
 
@@ -730,7 +752,7 @@ class RepositoryPatchServiceTests {
         ObjectId base = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("before")));
         var patch = patch(base, update("private/note.md", "before", "retained"));
         var service = service(fixture, (id, snapshot) -> {});
-        var unknown = org.assertj.core.api.Assertions.catchThrowableOfType(
+        var unknown = Assertions.catchThrowableOfType(
                 RepositoryWriteAmbiguousException.class, () -> service.apply(principal, workspace, patch));
         var retained = unknown.attempt().orElseThrow();
         offline.set(false);
@@ -751,13 +773,15 @@ class RepositoryPatchServiceTests {
     void moveRecoveryPreservesTheOriginalCommitAndRejectsChangedDestinations() throws Exception {
         for (String outcome : List.of("not-delivered", "delivered", "diverged")) {
             boolean delivered = outcome.equals("delivered");
-            var offline = new java.util.concurrent.atomic.AtomicBoolean();
-            var candidates = new java.util.ArrayList<ObjectId>();
+            var offline = new AtomicBoolean();
+            var candidates = new ArrayList<ObjectId>();
             var delegate = new JGitRemoteGitTransport();
             var fixture = new RemoteRepositoryFixture(directory.resolve(outcome), new RemoteGitTransport() {
                 @Override
                 public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
-                    if (offline.get()) throw new RemoteGitTransportException("offline after lost move reply");
+                    if (offline.get()) {
+                        throw new RemoteGitTransportException("offline after lost move reply");
+                    }
                     return delegate.fetchMain(repository, binding);
                 }
 
@@ -766,7 +790,9 @@ class RepositoryPatchServiceTests {
                         Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
                     candidates.add(candidate);
                     if (candidates.size() == 1) {
-                        if (delivered) delegate.pushMain(repository, binding, expected, candidate);
+                        if (delivered) {
+                            delegate.pushMain(repository, binding, expected, candidate);
+                        }
                         offline.set(true);
                         throw new RemoteGitTransportException("lost move reply");
                     }
@@ -780,7 +806,7 @@ class RepositoryPatchServiceTests {
                             "private/backlink.md", bytes("[note](folder/note.md)")));
             var request = new RepositoryMoveRequest(base.name(), "private/folder", "private/renamed");
             var service = service(fixture, (id, snapshot) -> {});
-            var unknown = org.assertj.core.api.Assertions.catchThrowableOfType(
+            var unknown = Assertions.catchThrowableOfType(
                     RepositoryWriteAmbiguousException.class, () -> service.move(principal, workspace, request));
             assertThat(unknown).isNotNull();
             var retained = unknown.attempt().orElseThrow();
@@ -801,13 +827,18 @@ class RepositoryPatchServiceTests {
                 assertThat(candidates).hasSize(1);
                 continue;
             }
-            if (delivered) fixture.commitRemote(workspace, Map.of("private/later.md", bytes("later")));
+            if (delivered) {
+                fixture.commitRemote(workspace, Map.of("private/later.md", bytes("later")));
+            }
             ObjectId beforeRecovery = fixture.remoteHead(workspace);
             var result = service.recover(principal, workspace, request, retained);
             assertThat(result.commit()).isEqualTo(retained.commit());
             assertThat(candidates).hasSize(delivered ? 1 : 2);
-            if (delivered) assertThat(fixture.remoteHead(workspace)).isEqualTo(beforeRecovery);
-            else assertThat(candidates).containsExactly(candidates.getFirst(), candidates.getFirst());
+            if (delivered) {
+                assertThat(fixture.remoteHead(workspace)).isEqualTo(beforeRecovery);
+            } else {
+                assertThat(candidates).containsExactly(candidates.getFirst(), candidates.getFirst());
+            }
             var reader = new JGitRepositoryContentReader(fixture.authority());
             assertThat(reader.getFile(workspace, Optional.of(result.commit()), "private/backlink.md")
                             .source())
@@ -834,9 +865,9 @@ class RepositoryPatchServiceTests {
                 if (pushes.get() > 0) {
                     try {
                         Path lock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
-                        java.nio.file.Files.createDirectories(lock.getParent());
-                        java.nio.file.Files.writeString(lock, "held by another local process");
-                    } catch (java.io.IOException exception) {
+                        Files.createDirectories(lock.getParent());
+                        Files.writeString(lock, "held by another local process");
+                    } catch (IOException exception) {
                         throw new RuntimeException(exception);
                     }
                 }

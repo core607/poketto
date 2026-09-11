@@ -1,13 +1,16 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -30,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 @EnabledOnOs(OS.LINUX)
 class PublicSnapshotMarkerNativeTests {
@@ -68,8 +72,9 @@ class PublicSnapshotMarkerNativeTests {
             AtomicInteger calls = new AtomicInteger();
             AtomicInteger failurePoint = new AtomicInteger(Integer.MAX_VALUE);
             var marker = new PublicSnapshotMarker(true, path -> {
-                if (calls.incrementAndGet() == failurePoint.get())
+                if (calls.incrementAndGet() == failurePoint.get()) {
                     throw new IOException("injected directory sync failure");
+                }
                 PublicSnapshotMarker.syncDirectory(path);
             });
             var snapshots = new JGitPublicContentSnapshots(fixture.authority(), CLOCK, Duration.ofHours(1), marker);
@@ -88,7 +93,7 @@ class PublicSnapshotMarkerNativeTests {
                     CLOCK,
                     snapshots::installAcknowledged,
                     snapshots::closePublication,
-                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
+                    Mockito.mock(RepositoryMediaValidator.class));
             var change = new RepositoryTextChange(
                     RepositoryPublishingPolicy.PATH,
                     false,
@@ -168,7 +173,9 @@ class PublicSnapshotMarkerNativeTests {
         AtomicInteger calls = new AtomicInteger();
         var marker = new PublicSnapshotMarker(true, path -> {
             // Initial CLOSED and OPEN each synchronize three directories. Fail renewal's first sync.
-            if (calls.incrementAndGet() == 7) throw new IOException("injected renewal sync failure");
+            if (calls.incrementAndGet() == 7) {
+                throw new IOException("injected renewal sync failure");
+            }
             PublicSnapshotMarker.syncDirectory(path);
         });
         var snapshots = new JGitPublicContentSnapshots(fixture.authority(), CLOCK, Duration.ofHours(1), marker);

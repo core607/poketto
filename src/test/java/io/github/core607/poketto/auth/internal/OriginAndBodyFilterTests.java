@@ -1,7 +1,9 @@
 package io.github.core607.poketto.auth.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
@@ -23,8 +25,11 @@ class OriginAndBodyFilterTests {
                         ? wrapped.getReader().readLine()
                         : new String(wrapped.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
                 assertThat(text).isEqualTo("猫".repeat(20));
-                if (reader) assertThatThrownBy(wrapped::getInputStream).isInstanceOf(IllegalStateException.class);
-                else assertThatThrownBy(wrapped::getReader).isInstanceOf(IllegalStateException.class);
+                if (reader) {
+                    assertThatThrownBy(wrapped::getInputStream).isInstanceOf(IllegalStateException.class);
+                } else {
+                    assertThatThrownBy(wrapped::getReader).isInstanceOf(IllegalStateException.class);
+                }
             });
         }
     }
@@ -101,7 +106,7 @@ class OriginAndBodyFilterTests {
                 }
 
                 @Override
-                public jakarta.servlet.ServletInputStream getInputStream() {
+                public ServletInputStream getInputStream() {
                     throw new AssertionError("administration body read before identity and admission");
                 }
             };

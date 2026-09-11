@@ -79,7 +79,9 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
             return;
         } catch (AuthException exception) {
             SecurityContextHolder.clearContext();
-            if (bearer) response.setHeader("WWW-Authenticate", challenge);
+            if (bearer) {
+                response.setHeader("WWW-Authenticate", challenge);
+            }
             AuthHttpErrors.write(response, bearer ? 401 : 403);
             return;
         }

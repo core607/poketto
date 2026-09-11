@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.util.function.Function;
 
 public interface PublicContentSnapshots {
     void ensureReady(WorkspaceId workspaceId);
@@ -14,5 +15,5 @@ public interface PublicContentSnapshots {
      * without waiting for network fetches. Callbacks must not refresh or enter mutable repository
      * operations; exact immutable-object reads are permitted. Throws when publication is unavailable.
      */
-    <T> T withCurrent(WorkspaceId workspaceId, java.util.function.Function<PublicContentSnapshot, T> action);
+    <T> T withCurrent(WorkspaceId workspaceId, Function<PublicContentSnapshot, T> action);
 }

@@ -1,6 +1,7 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import java.util.ArrayList;
@@ -9,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 class MediaListingTests {
     private final ObjectMapper json = new ObjectMapper();
@@ -18,8 +20,9 @@ class MediaListingTests {
     @Test
     void byteLimitedPagesRemainCompleteAndExposeOnlyLogicalMetadata() {
         var entries = new LinkedHashMap<String, RepositoryMediaIndex.Media>();
-        for (int i = 29; i >= 0; i--)
+        for (int i = 29; i >= 0; i--) {
             entries.put("public/" + String.format("%02d", i) + "猫\"".repeat(120) + ".png", media);
+        }
         var files = new RepositoryMediaIndex(entries).files();
         var returned = new ArrayList<String>();
         int offset = 0;
@@ -65,13 +68,13 @@ class MediaListingTests {
         assertThat(MediaListing.Query.parse(valid).limit()).isEqualTo(100);
         for (String field : new String[] {"offset", "limit"}) {
             var quoted = valid.deepCopy();
-            ((tools.jackson.databind.node.ObjectNode) quoted).put(field, "100");
+            ((ObjectNode) quoted).put(field, "100");
             assertThatThrownBy(() -> MediaListing.Query.parse(quoted)).isInstanceOf(IllegalArgumentException.class);
         }
         var excess = valid.deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) excess).put("limit", 201);
+        ((ObjectNode) excess).put("limit", 201);
         assertThatThrownBy(() -> MediaListing.Query.parse(excess)).isInstanceOf(IllegalArgumentException.class);
-        ((tools.jackson.databind.node.ObjectNode) excess).put("limit", 100).put("hostPath", "/tmp");
+        ((ObjectNode) excess).put("limit", 100).put("hostPath", "/tmp");
         assertThatThrownBy(() -> MediaListing.Query.parse(excess)).isInstanceOf(IllegalArgumentException.class);
     }
 }

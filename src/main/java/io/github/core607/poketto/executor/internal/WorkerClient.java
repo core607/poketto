@@ -128,7 +128,9 @@ final class WorkerClient {
                 Selector selector = Selector.open()) {
             channel.configureBlocking(false);
             if (!channel.connect(UnixDomainSocketAddress.of(socket))) {
-                while (!channel.finishConnect()) ready(channel, selector, SelectionKey.OP_CONNECT, deadline);
+                while (!channel.finishConnect()) {
+                    ready(channel, selector, SelectionKey.OP_CONNECT, deadline);
+                }
             }
             phase = "peer-verification";
             verifyPeer.accept(channel);
@@ -139,7 +141,9 @@ final class WorkerClient {
                     .flip();
             while (output.hasRemaining()) {
                 deadline(deadline);
-                if (channel.write(output) == 0) ready(channel, selector, SelectionKey.OP_WRITE, deadline);
+                if (channel.write(output) == 0) {
+                    ready(channel, selector, SelectionKey.OP_WRITE, deadline);
+                }
             }
             phase = "response-header";
             ByteBuffer prefix = ByteBuffer.allocate(4);
@@ -165,8 +169,12 @@ final class WorkerClient {
         while (body.hasRemaining()) {
             deadline(deadline);
             int read = channel.read(body);
-            if (read < 0) throw new IOException("incomplete worker frame");
-            if (read == 0) ready(channel, selector, SelectionKey.OP_READ, deadline);
+            if (read < 0) {
+                throw new IOException("incomplete worker frame");
+            }
+            if (read == 0) {
+                ready(channel, selector, SelectionKey.OP_READ, deadline);
+            }
         }
     }
 
@@ -180,12 +188,15 @@ final class WorkerClient {
     }
 
     private static void deadline(long deadline) throws IOException {
-        if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline)
+        if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) {
             throw new IOException("worker exchange deadline elapsed");
+        }
     }
 
     private static void require(boolean valid) {
-        if (!valid) throw new WorkerUnavailableException();
+        if (!valid) {
+            throw new WorkerUnavailableException();
+        }
     }
 
     record Hello(UUID workerBootId, int leaseSeconds, int renewAfterSeconds) {}
