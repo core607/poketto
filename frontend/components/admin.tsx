@@ -47,6 +47,11 @@ function AdminContent() {
   async function logout() {
     try {
       await api("/api/auth/logout", { method: "POST" });
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname,
+      );
       setAccount(null);
     } catch (error) {
       setError(message(error));

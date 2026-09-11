@@ -80,6 +80,32 @@ const account = {
 };
 const page = { items: [], total: 0, offset: 0, limit: 30 };
 
+test("a rejected logout preserves the signed-in account and its navigation", async (t) => {
+  const f = await fixture(t);
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input), "https://site.example").pathname;
+    if (path === "/api/auth/account") return Response.json(account);
+    if (
+      path === "/api/auth/workspaces" ||
+      path === "/api/auth/registration-invitations"
+    )
+      return Response.json(page);
+    if (path === "/api/auth/workspaces/creation-policy")
+      return Response.json({ available: false });
+    if (path === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (path === "/api/auth/logout") return new Response(null, { status: 503 });
+    assert.fail("Unexpected request: " + path);
+  };
+  await f.act(async () => f.root.render(<f.Admin />));
+  const navigation = f.window.location.href;
+  await f.act(async () => f.button("退出登录").click());
+  assert.equal(f.window.location.href, navigation);
+  assert.ok(f.button("退出登录"));
+  assert.equal(f.container.querySelector('input[name="password"]'), null);
+  assert.match(f.container.textContent, /服务暂时不可用/);
+});
+
 test("a workspace invitation at registration explains the next step without submitting or clearing the form", async (t) => {
   const f = await fixture(t);
   globalThis.fetch = async () => {

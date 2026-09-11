@@ -338,6 +338,7 @@ test("Admin logout completing while member confirmation is open cancels the unmo
   };
   await f.act(async () => f.root.render(<Admin />));
   await f.act(async () => f.button("成员与邀请").click());
+  assert.ok(f.window.location.search.includes("workspace="));
   await f.act(async () => f.button("退出登录").click());
   assert.equal(logoutRequests, 1);
   assert.ok(f.button("停用"));
@@ -347,6 +348,8 @@ test("Admin logout completing while member confirmation is open cancels the unmo
 
   // Admin's provider survives the switch to Login; only Members unmounts.
   await f.act(async () => finishLogout(new Response(null, { status: 204 })));
+  assert.equal(f.window.location.search, "");
+  assert.equal(f.window.location.hash, "");
   assert.ok(f.container.querySelector('form input[name="login"]'));
   assert.equal(f.window.document.querySelector("dialog"), null);
   assert.equal(f.container.querySelector(".management-panel"), null);
