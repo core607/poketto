@@ -1,0 +1,51 @@
+{
+  "sourceCommit": "ad2f22388b408d0d1c2305016211829994864e3d",
+  "result": "PASS",
+  "fixture": "Fresh isolated Spring, PostgreSQL, Next.js and Caddy with a synthetic Git authority and an explicitly malformed media index.",
+  "authoritativeCommit": "b29ef0d23400101a4b3196e1fb181604deb0f515",
+  "onlyChangedFixturePath": ".poketto/assets.json",
+  "memberPublicDocumentMatchesGit": true,
+  "publicImagePaths": [
+    "public/sample.png",
+    "public/手册/gallery.png"
+  ],
+  "deniedSourceRequests": {
+    "private/日记.md": 403,
+    "public/drafts/草稿.md": 403
+  },
+  "incompleteDirectoryStatus": 503,
+  "domImages": [
+    {
+      "alt": "验收图片",
+      "complete": true,
+      "height": 180,
+      "width": 320
+    },
+    {
+      "alt": "public/sample.png",
+      "complete": true,
+      "height": 180,
+      "width": 320
+    },
+    {
+      "alt": "public/手册/gallery.png",
+      "complete": true,
+      "height": 180,
+      "width": 320
+    }
+  ],
+  "screenshot": {
+    "file": "index-corruption.png",
+    "sha256": "e505a480b1371a0c63015c4a0fcd856db528931de7b906c0c719c23d4dd3d04a",
+    "size": [
+      65536,
+      4292542531
+    ]
+  },
+  "limitations": [
+    "Single browser state; no timing claim.",
+    "The directory reports unavailability; complete directory recovery is not implemented.",
+    "No saving with a malformed index was attempted.",
+    "Local HTTP fixture does not prove production HTTPS or external OAuth clients."
+  ]
+}
