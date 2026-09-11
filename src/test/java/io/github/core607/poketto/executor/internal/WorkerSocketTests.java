@@ -554,11 +554,11 @@ class WorkerSocketTests {
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(peer.operations("EXEC")).hasSize(1);
             assertThat(peer.operations("CLOSE")).isNotEmpty();
-            assertThatThrownBy(() -> client.execute(
-                            executor,
+            assertThatThrownBy(() -> executor.execute(
                             principal,
                             WORKSPACE,
                             "lost",
+                            UUID.randomUUID().toString(),
                             Optional.empty(),
                             "touch local.txt",
                             Duration.ofSeconds(1),
@@ -730,6 +730,48 @@ class WorkerSocketTests {
     }
 
     @Test
+    void releasedLeaseCannotBeReplacedWhileItsCommandStillOwnsTheAdapter() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.holdExecReply = true;
+            peer.terminationReason = "cancelled";
+            var cancellation = new Cancellation();
+            var running = CompletableFuture.supplyAsync(() -> executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "still-owned",
+                    "new",
+                    Optional.empty(),
+                    "sleep 10",
+                    Duration.ofSeconds(2),
+                    cancellation));
+            try {
+                assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+                cancellation.cancel();
+                assertThatThrownBy(() -> executor.execute(
+                                actor,
+                                WORKSPACE,
+                                "still-owned",
+                                "new",
+                                Optional.empty(),
+                                "write-sentinel",
+                                Duration.ofSeconds(2),
+                                new Cancellation()))
+                        .isInstanceOfSatisfying(
+                                io.github.core607.poketto.mcp.SessionReplacedException.class,
+                                failure -> assertThat(failure.newCopyAllowed()).isFalse());
+                assertThat(peer.operations("OPEN")).hasSize(1);
+                assertThat(peer.operations("EXEC")).hasSize(1);
+            } finally {
+                peer.execReplyRelease.countDown();
+            }
+            assertThat(running.get(5, TimeUnit.SECONDS).terminationReason())
+                    .isEqualTo(io.github.core607.poketto.mcp.RepositoryExecutor.TerminationReason.CANCELLED);
+        }
+    }
+
+    @Test
     void closedBridgeDoesNotReplaceTheConfirmedCancelledCommandResult() throws Exception {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
@@ -780,7 +822,7 @@ class WorkerSocketTests {
     }
 
     @Test
-    void confirmedCloseReleasesAdmissionButOldSessionCannotReopenWithoutDelete() throws Exception {
+    void confirmedCloseReleasesAdmissionButOldCopyIdCannotReopen() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
@@ -804,11 +846,23 @@ class WorkerSocketTests {
                     Duration.ofSeconds(1),
                     new Cancellation());
             peer.terminationReason = "normal";
-            assertThat(client.execute(
-                                    executor,
+            assertThatThrownBy(() -> client.execute(
+                            executor,
+                            principal,
+                            WORKSPACE,
+                            "closed-A",
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            io.github.core607.poketto.mcp.SessionReplacedException.class,
+                            failure -> assertThat(failure.newCopyAllowed()).isTrue());
+            assertThat(executor.execute(
                                     principal,
                                     WORKSPACE,
-                                    "fresh-B",
+                                    "closed-A",
+                                    "new",
                                     Optional.empty(),
                                     "pwd",
                                     Duration.ofSeconds(1),
@@ -824,7 +878,12 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(io.github.core607.poketto.mcp.SessionReplacedException.class);
+                    .isInstanceOfSatisfying(io.github.core607.poketto.mcp.SessionReplacedException.class, failure -> {
+                        assertThat(failure.reason())
+                                .isEqualTo(
+                                        io.github.core607.poketto.mcp.SessionReplacedException.Reason.DIFFERENT_COPY);
+                        assertThat(failure.newCopyAllowed()).isFalse();
+                    });
             assertThat(peer.operations("OPEN")).hasSize(2);
         }
     }
@@ -941,6 +1000,20 @@ class WorkerSocketTests {
                             Duration.ofSeconds(1),
                             new Cancellation()))
                     .isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "unknown-A",
+                            "new",
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            io.github.core607.poketto.mcp.SessionReplacedException.class,
+                            failure -> assertThat(failure.newCopyAllowed()).isFalse());
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(peer.operations("EXEC")).hasSize(1);
             assertThatThrownBy(() -> executor.closed(new io.github.core607.poketto.mcp.McpSessionClosed(
                             WORKSPACE,
                             principal.subjectId(),
@@ -1110,11 +1183,11 @@ class WorkerSocketTests {
                         .isTrue();
                 assertThat(peer.boot).isEqualTo(boot);
                 assertThat(peer.operations("CLOSE").size()).isGreaterThan(initialCloses);
-                assertThatThrownBy(() -> client.execute(
-                                executor,
+                assertThatThrownBy(() -> executor.execute(
                                 principal,
                                 WORKSPACE,
                                 "old-A",
+                                UUID.randomUUID().toString(),
                                 Optional.empty(),
                                 "pwd",
                                 Duration.ofSeconds(1),
@@ -1335,6 +1408,8 @@ class WorkerSocketTests {
         private final CountDownLatch openRelease = new CountDownLatch(1);
         private final CountDownLatch renewEntered = new CountDownLatch(1);
         private final CountDownLatch execEntered = new CountDownLatch(1);
+        private final CountDownLatch execReplyRelease = new CountDownLatch(1);
+        private volatile boolean holdExecReply;
         private final CountDownLatch bridgeEntered = new CountDownLatch(1);
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
@@ -1508,6 +1583,8 @@ class WorkerSocketTests {
                 }
                 case "EXEC" -> {
                     execEntered.countDown();
+                    if (holdExecReply && !execReplyRelease.await(5, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Test did not release the execution reply");
                     if (dropExec) return null;
                     if (stallExec) Thread.sleep(500);
                     response.put(

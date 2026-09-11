@@ -133,9 +133,13 @@ class McpCopyIdentityTests {
         String old = UUID.randomUUID().toString(), current = UUID.randomUUID().toString();
         when(executor.execute(any(), any(), anyString(), eq(old), any(), anyString(), any(), any()))
                 .thenThrow(new SessionReplacedException(
-                        SessionReplacedException.Reason.DIFFERENT_COPY, Optional.of(current)))
-                .thenThrow(new SessionReplacedException(SessionReplacedException.Reason.MISSING_COPY, Optional.empty()))
-                .thenThrow(new SessionReplacedException(SessionReplacedException.Reason.CLOSED_COPY, Optional.empty()))
+                        SessionReplacedException.Reason.DIFFERENT_COPY, Optional.of(current), false))
+                .thenThrow(new SessionReplacedException(
+                        SessionReplacedException.Reason.MISSING_COPY, Optional.empty(), true))
+                .thenThrow(new SessionReplacedException(
+                        SessionReplacedException.Reason.CLOSED_COPY, Optional.empty(), false))
+                .thenThrow(new SessionReplacedException(
+                        SessionReplacedException.Reason.CLOSED_COPY, Optional.empty(), true))
                 .thenThrow(new IllegalStateException("private worker detail"));
         var arguments = Map.<String, Object>of("expectedCopyId", old, "command", "poketto save note.md");
         var mismatch = call(arguments);
@@ -150,6 +154,10 @@ class McpCopyIdentityTests {
         var closed = body(call(arguments));
         assertThat(closed.path("reason").stringValue()).isEqualTo("CLOSED_COPY");
         assertThat(closed.path("newCopyAllowed").booleanValue()).isFalse();
+        var released = body(call(arguments));
+        assertThat(released.path("newCopyAllowed").booleanValue()).isTrue();
+        assertThat(released.path("executed").booleanValue()).isFalse();
+        assertThat(released.has("copyId")).isFalse();
         var unknown = body(call(arguments));
         assertThat(unknown.path("code").stringValue()).isEqualTo("UNAVAILABLE");
         assertThat(unknown.has("executed")).isFalse();

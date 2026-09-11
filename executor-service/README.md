@@ -96,7 +96,7 @@ authority; it cannot assume an earlier successful request keeps a lease alive.
 {"expectedCopyId":"new","command":"pwd"}
 ```
 
-`SESSION_REPLACED` means this command did not execute. `MISSING_COPY` permits intentional new admission in the current transport (`newCopyAllowed: true`); `DIFFERENT_COPY` supplies the current authorized ID; `CLOSED_COPY` requires a new MCP transport. Explicit `new` never resets a copy already owned by that transport. All replacements report `recoveryAvailable: false`: unsaved-work recovery is not implemented. Do not replay an uncertain write or automatically replace the expected ID with `new`.
+`SESSION_REPLACED` means this command did not execute. `MISSING_COPY` permits intentional new admission in the current transport (`newCopyAllowed: true`); `DIFFERENT_COPY` supplies the current authorized ID; `CLOSED_COPY` permits explicit `new` in the same transport only when `newCopyAllowed` is true: the worker has confirmed lease release and the previous command has exited. Explicit `new` never resets a live copy or bypasses unconfirmed cleanup. All replacements report `recoveryAvailable: false`: unsaved-work recovery is not implemented. Do not replay an uncertain write or automatically replace the expected ID with `new`.
 
 The [identity decision](../notes/implemented/2026-09-12-executor-copy-identity.md) defines scope and failure ordering. The Micrometer registry exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released`, and `poketto.executor.admission.rejected` with bounded reason tags. Management HTTP exposure remains operator configured; these metrics do not measure memory or disk consumption.
 

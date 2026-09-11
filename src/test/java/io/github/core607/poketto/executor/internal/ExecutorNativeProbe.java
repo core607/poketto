@@ -239,6 +239,32 @@ public final class ExecutorNativeProbe {
                     .isEqualTo(RepositoryExecutor.TerminationReason.CANCELLED);
             control("assert-no-processes");
             passed("callback-cancellation-kills-detached-descendants");
+            var ended = cancelled.get();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            workspace,
+                            "cancel",
+                            ended.copyId(),
+                            Optional.empty(),
+                            "printf unexpected > rejected-command",
+                            Duration.ofSeconds(3),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            io.github.core607.poketto.mcp.SessionReplacedException.class,
+                            failure -> assertThat(failure.newCopyAllowed()).isTrue());
+            var restarted = executor.execute(
+                    principal,
+                    workspace,
+                    "cancel",
+                    "new",
+                    Optional.empty(),
+                    "set -eu; test ! -e rejected-command; git rev-parse HEAD",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(restarted.exitCode()).isZero();
+            assertThat(restarted.copyId()).isNotEqualTo(ended.copyId());
+            assertThat(restarted.commit()).isEqualTo(ended.commit());
+            passed("explicit-new-after-confirmed-close-reuses-transport-with-different-copy");
             close(executor, "cancel");
 
             var revoked =
@@ -256,6 +282,17 @@ public final class ExecutorNativeProbe {
         // A different synthetic key avoids reusing the deliberately revoked key's worker tombstone.
         var secondPrincipal = principal();
         try (var executor = adapter(path("socket"), 1)) {
+            assertThat(client.execute(
+                                    executor,
+                                    secondPrincipal,
+                                    workspace,
+                                    "restart",
+                                    Optional.empty(),
+                                    "pwd",
+                                    Duration.ofSeconds(3),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
             var active = CompletableFuture.supplyAsync(() -> client.execute(
                     executor,
                     secondPrincipal,

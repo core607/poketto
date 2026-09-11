@@ -196,10 +196,7 @@ final class RepositoryMcpTools {
                 body.put("reason", exception.reason().name());
                 body.put("executed", false);
                 body.put("recoveryAvailable", false);
-                body.put(
-                        "newCopyAllowed",
-                        exception.reason()
-                                == io.github.core607.poketto.mcp.SessionReplacedException.Reason.MISSING_COPY);
+                body.put("newCopyAllowed", exception.newCopyAllowed());
                 body.put(
                         "message",
                         switch (exception.reason()) {
@@ -208,7 +205,9 @@ final class RepositoryMcpTools {
                             case DIFFERENT_COPY ->
                                 "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
                             case CLOSED_COPY ->
-                                "This MCP session's copy has closed; this command did not execute. Unsaved work may be lost. Reconnect and use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
+                                exception.newCopyAllowed()
+                                        ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
+                                        : "This copy is closing or its lease release is unconfirmed; this command did not execute. New admission remains unavailable until command exit and lease release are confirmed. Do not replay an uncertain write.";
                         });
                 exception.currentCopyId().ifPresent(value -> body.put("copyId", value));
                 return McpSchema.CallToolResult.builder()

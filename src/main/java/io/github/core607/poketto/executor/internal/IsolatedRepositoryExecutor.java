@@ -131,6 +131,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         Session observed;
         synchronized (this) {
             observed = sessions.get(key);
+            if (RepositoryExecutor.NEW_COPY.equals(expectedCopyId) && replaceable(observed)) {
+                sessions.remove(key, observed);
+                observed = null;
+            }
         }
         requireExpectedCopy(observed, expectedCopyId, false);
         if (cancellation.isCancelled()) throw new WorkerUnavailableException();
@@ -343,7 +347,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         : closedCopy
                                 ? io.github.core607.poketto.mcp.SessionReplacedException.Reason.CLOSED_COPY
                                 : io.github.core607.poketto.mcp.SessionReplacedException.Reason.DIFFERENT_COPY,
-                session == null || closedCopy ? Optional.empty() : Optional.of(session.copyId.toString()));
+                session == null || closedCopy ? Optional.empty() : Optional.of(session.copyId.toString()),
+                session == null || replaceable(session));
+    }
+
+    private static boolean replaceable(Session session) {
+        return session != null && session.stopping.get() && session.capacityReleased && !session.busy.get();
     }
 
     private WorkerUnavailableException rejected(String reason) {

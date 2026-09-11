@@ -92,7 +92,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
-`repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。目前尚未实现未保存工作的恢复。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则。
+`repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。确认旧命令已退出、租约已释放后，可以在同一 MCP 会话里显式传 `"new"` 开始不同的副本。目前尚未实现未保存工作的恢复。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则。
 
 通过 `repo_exec` 查看目录、搜索、读取和编辑文件，再使用 `poketto` CLI 持久化修改。按需逐层读取内容仓库自己的 `AGENTS.md`。独立的 `list_directory`、`get_file` 和 `repo_patch` 不再受支持，关闭 worker 时也不会恢复它们。[CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)定义这一边界；共享目录读取服务仍用于浏览器导航。
 

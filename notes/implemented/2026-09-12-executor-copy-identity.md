@@ -10,13 +10,13 @@ This is the admission guard in [executor work continuity](../proposed/2026-09-12
 
 ## Failure and authority boundaries
 
-The adapter checks identity before capacity admission and again after selecting or creating the copy. A mismatch never exports a replacement bundle or executes the rejected command. Explicit `new` cannot replace a live or closed copy already owned by the same transport. Concurrent initial requests cannot both claim a newly admitted copy. A matching ID still requires current authorization, a live session and the existing command lock.
+The adapter checks identity before capacity admission and again after selecting or creating the copy. A mismatch never exports a replacement bundle or executes the rejected command. Explicit `new` cannot replace a live copy. It can retire a closed entry in the same transport only after the worker confirms lease release and the previous command relinquishes ownership. This creates a different copy; it does not recover unsaved work. Concurrent initial requests cannot both claim a newly admitted copy. A matching ID still requires current authorization, a live session and the existing command lock.
 
 `SESSION_REPLACED` responses carry `executed: false`, `recoveryAvailable: false` and a bounded reason:
 
 - `MISSING_COPY`: this transport has no matching copy; `newCopyAllowed: true` permits intentional initial admission, subject to ordinary authorization and resource limits.
 - `DIFFERENT_COPY`: the transport owns another live copy; its authorized `copyId` is returned, with `newCopyAllowed: false`. The caller must deliberately select that copy or reconnect to create an independent one.
-- `CLOSED_COPY`: the transport's copy is closed; no available ID is returned and `newCopyAllowed` is false. A fresh MCP transport is required for a new copy.
+- `CLOSED_COPY`: the transport's copy is closed or closing; no available ID is returned. `newCopyAllowed` becomes true only after lease release and command exit are confirmed. The caller may then explicitly start a new copy in the same transport. A missing close acknowledgement keeps admission closed; merely dropping the application entry cannot establish worker cleanup.
 
 The server resolves principal, workspace and MCP session before lookup. It never searches for or claims copies by principal and workspace alone. Two chats under one principal retain distinct copies. A returned available ID belongs only to the current transport and permitted scope; revoked access or public withdrawal prevents disclosure. IDs are not bearer credentials and do not grant recovery or access through another transport.
 
