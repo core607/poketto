@@ -675,10 +675,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || operation.equals("move")) {
             if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
             try {
-                auth.authorize(
-                        session.principal,
-                        session.key.workspace(),
-                        operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
+                authorize(session);
                 if (operation.equals("recover")) {
                     boolean skipLocal =
                             arguments.size() == 1 && arguments.path("skipLocal").asBoolean(false);

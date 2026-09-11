@@ -20,6 +20,53 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SelectedFileSavesTests {
+    @Test
+    void publisherSavesPublicTextWithoutPrivateWriteAndCannotUseItForPrivatePaths() throws Exception {
+        var auth = mock(AuthService.class);
+        var actor = actor();
+        var workspace = WorkspaceId.random();
+        var allowed = java.util.Set.of(
+                io.github.core607.poketto.auth.Capability.READ_PRIVATE,
+                io.github.core607.poketto.auth.Capability.PUBLISH);
+        doAnswer(call -> {
+                    io.github.core607.poketto.auth.Capability[] required =
+                            (io.github.core607.poketto.auth.Capability[]) call.getRawArguments()[2];
+                    if (!allowed.containsAll(java.util.List.of(required)))
+                        throw new io.github.core607.poketto.auth.AuthException(
+                                io.github.core607.poketto.auth.AuthException.Code.DENIED);
+                    return new io.github.core607.poketto.auth.WorkspaceAccess(
+                            workspace, actor, io.github.core607.poketto.auth.MembershipRole.MEMBER, allowed);
+                })
+                .when(auth)
+                .authorize(eq(actor), eq(workspace), any(io.github.core607.poketto.auth.Capability[].class));
+        doAnswer(call -> {
+                    java.util.Set<?> required = call.getArgument(2);
+                    if (!allowed.containsAll(required))
+                        throw new io.github.core607.poketto.auth.AuthException(
+                                io.github.core607.poketto.auth.AuthException.Code.DENIED);
+                    return ((Supplier<?>) call.getArgument(3)).get();
+                })
+                .when(auth)
+                .withAuthorization(eq(actor), eq(workspace), anySet(), any());
+        var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
+        var reader = fixture.reader(auth);
+        var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
+        var state = new SelectedFileSaves.State(fixture.sourceCommit());
+        assertThat(saves.save(actor, workspace, state, Map.of("public/article.md", "# Public edit\n"), List.of())
+                        .get("ok"))
+                .isEqualTo(true);
+        assertThat(reader.getFile(actor, workspace, Optional.empty(), "public/article.md")
+                        .source())
+                .contains("# Public edit\n");
+        String committed = state.baseCommit;
+        assertThatThrownBy(() -> saves.save(actor, workspace, state, Map.of("private/secret.md", "denied"), List.of()))
+                .isInstanceOf(io.github.core607.poketto.auth.AuthException.class);
+        assertThat(state.baseCommit).isEqualTo(committed);
+        assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
+                        .source())
+                .contains("current-secret-needle");
+    }
+
     @TempDir
     Path root;
 

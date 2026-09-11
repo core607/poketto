@@ -42,7 +42,7 @@ final class SelectedFileSaves {
 
     Map<String, ?> save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
-        auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
+        auth.authorize(actor, workspace);
         if (state.move != null) return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
         if (state.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
         var paths = new HashSet<>(writes.keySet());
@@ -91,7 +91,7 @@ final class SelectedFileSaves {
     }
 
     Map<String, ?> recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
+        auth.authorize(actor, workspace);
         if (!state.uncertain) return Map.of("ok", true, "result", Map.of("recoveryNeeded", false));
         if (state.pending == null || state.attempt.isEmpty())
             return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");

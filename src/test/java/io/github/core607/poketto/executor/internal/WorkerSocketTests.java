@@ -51,6 +51,60 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void publisherRecoveryDelegatesWithoutRequiringPrivateWrite() throws Exception {
+        var actor = principal();
+        var auth = mock(AuthService.class);
+        var grants = Set.of(Capability.READ_PRIVATE, Capability.PUBLISH, Capability.EXECUTE_REPOSITORY);
+        doAnswer(call -> {
+                    Capability[] required = (Capability[]) call.getRawArguments()[2];
+                    if (!grants.containsAll(List.of(required)))
+                        throw new io.github.core607.poketto.auth.AuthException(
+                                io.github.core607.poketto.auth.AuthException.Code.DENIED);
+                    return new io.github.core607.poketto.auth.WorkspaceAccess(
+                            WORKSPACE, actor, io.github.core607.poketto.auth.MembershipRole.MEMBER, grants);
+                })
+                .when(auth)
+                .authorize(eq(actor), eq(WORKSPACE), any(Capability[].class));
+        var saves = mock(SelectedFileSaves.class);
+        doReturn(Map.of("ok", true, "result", Map.of("recoveryNeeded", false)))
+                .when(saves)
+                .recover(eq(actor), eq(WORKSPACE), any());
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        mock(io.github.core607.poketto.assets.MediaFileService.class),
+                        saves,
+                        auth,
+                        exports(),
+                        peer.client(),
+                        8,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.bridgeCommand =
+                    Map.of("requestId", UUID.randomUUID().toString(), "operation", "recover", "arguments", Map.of());
+            assertThat(executor.execute(
+                                    actor,
+                                    WORKSPACE,
+                                    "publisher-recover",
+                                    Optional.empty(),
+                                    "poketto recover",
+                                    Duration.ofSeconds(3),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThat(peer.operations("BRIDGE_COMPLETE")).hasSize(1);
+            assertThat(peer.operations("BRIDGE_COMPLETE")
+                            .getFirst()
+                            .path("data")
+                            .path("response")
+                            .path("ok")
+                            .asBoolean())
+                    .isTrue();
+            verify(saves).recover(eq(actor), eq(WORKSPACE), any());
+        }
+    }
+
+    @Test
     void overlappingCallsCannotShareOneSessionSaveState() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
@@ -1095,6 +1149,10 @@ class WorkerSocketTests {
         private final CountDownLatch renewEntered = new CountDownLatch(1);
         private final CountDownLatch execEntered = new CountDownLatch(1);
         private final CountDownLatch bridgeEntered = new CountDownLatch(1);
+        private final CountDownLatch bridgeCompleted = new CountDownLatch(1);
+        private final AtomicBoolean bridgeDelivered = new AtomicBoolean();
+        private volatile Map<String, ?> bridgeCommand;
+        private volatile String executionId;
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
         private volatile boolean closeForever;
@@ -1143,7 +1201,13 @@ class WorkerSocketTests {
             try (connection;
                     var input = new DataInputStream(Channels.newInputStream(connection));
                     var output = new DataOutputStream(Channels.newOutputStream(connection))) {
-                int length = input.readInt();
+                // Cancellation can close an accepted socket before sending any frame.
+                int first = input.read();
+                if (first == -1) return;
+                int length = (first << 24)
+                        | (input.readUnsignedByte() << 16)
+                        | (input.readUnsignedByte() << 8)
+                        | input.readUnsignedByte();
                 assertThat(length).isBetween(1, WorkerClient.MAX_FRAME);
                 JsonNode envelope = json.readTree(input.readNBytes(length));
                 Object response;
@@ -1260,13 +1324,20 @@ class WorkerSocketTests {
                     bridgeEntered.countDown();
                     Thread.sleep(50);
                     response.put("bridgeRequest", null);
+                    if (bridgeCommand != null && executionId != null && bridgeDelivered.compareAndSet(false, true)) {
+                        response.put("executionId", executionId);
+                        response.put("bridgeRequest", bridgeCommand);
+                    }
                     if (states.getOrDefault(lease, "").equals("CLOSED")) {
                         response.put("ok", false);
                         response.put("code", "BRIDGE_UNAVAILABLE");
                     }
                 }
                 case "EXEC" -> {
+                    executionId = request.path("data").path("executionId").asString("");
                     execEntered.countDown();
+                    if (bridgeCommand != null)
+                        assertThat(bridgeCompleted.await(5, TimeUnit.SECONDS)).isTrue();
                     if (dropExec) return null;
                     if (stallExec) Thread.sleep(500);
                     response.put(
@@ -1293,6 +1364,7 @@ class WorkerSocketTests {
                                     "artifactErrors",
                                     Map.of()));
                 }
+                case "BRIDGE_COMPLETE" -> bridgeCompleted.countDown();
                 case "CLOSE" -> {
                     if (dropClose) return null;
                     String state = closeForever
