@@ -21,11 +21,12 @@
 
     <module name="TreeWalker">
         <module name="NeedBraces"/>
-        <module name="AvoidStarImport">
-            <!-- Tests keep the AssertJ and Mockito convention of static wildcard imports. -->
-            <property name="allowStaticMemberImports" value="true"/>
-        </module>
+        <module name="AvoidStarImport"/>
         <module name="UnusedImports"/>
+        <!-- Over-limit methods are exempted one at a time; a new long method in the same file fails. -->
+        <module name="SuppressionXpathFilter">
+            <property name="file" value="${config_loc}/xpath-suppressions.xml"/>
+        </module>
         <module name="MethodLength">
             <property name="max" value="60"/>
             <!-- Blank lines and comments do not count, so explaining a method never pushes it over the limit. -->

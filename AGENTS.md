@@ -79,7 +79,7 @@ Checkstyle gates the braces, import, and length rules below and fails `check` on
 - Import types; write a fully qualified name only to resolve a real name clash.
 - Use `var` only when the type is visible on the right-hand side: a constructor, a literal, or a method named after its type.
 - Records, sealed interfaces, and pattern matching are the preferred way to model data and variants; keep using them.
-- A method stays under 60 code lines and a file under 600 lines; split by responsibility. Files that already exceeded a limit are listed with their reasons in [config/checkstyle/suppressions.xml](config/checkstyle/suppressions.xml); new code gets no entry.
+- A method stays under 60 code lines and a file under 600 lines; split by responsibility. Code that already exceeded a limit is exempted one file at a time in [config/checkstyle/suppressions.xml](config/checkstyle/suppressions.xml) and one method at a time in [config/checkstyle/xpath-suppressions.xml](config/checkstyle/xpath-suppressions.xml); new code gets no entry, including a new method in an exempted file.
 - Formatting is owned by Spotless; do not hand-format.
 
 ## Skills (.agents/skills/)
