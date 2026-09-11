@@ -1,0 +1,88 @@
+{
+  "sourceCommit": "742f193ad2e227e3228bc140f04af6f435c5fc67",
+  "dependencies": "Real Spring, pinned PostgreSQL, production Next.js, Caddy and two independent synthetic remote Git repositories; no mocked UI or application responses.",
+  "startCommand": "docker compose -p poketto-member-ui-final-20260912 --env-file .gradle/member-ui-final/acceptance.env -f acceptance/compose.yaml up --build -d",
+  "browser": "Chrome extension",
+  "viewport": {
+    "height": 889,
+    "width": 1920
+  },
+  "captureDimensions": [
+    1905,
+    882
+  ],
+  "captureMethod": "Seven original browser frames sampled in order from one fresh owner/member flow. GIF uses 1.8 seconds per frame for reading, not measured transition timing. Login and fixture setup are omitted from the recording.",
+  "setup": "Real registration and workspace-invitation HTTP operations against the isolated fixture.",
+  "flow": [
+    "Owner views default empty invitation grants and public-reading member",
+    "Member reads public source and a decoded 320x180 Git image with editing disabled",
+    "Private path is refused while the prior public preview remains visible",
+    "Owner selects publication alone after checking private-write/read dependency controls",
+    "Member saves an appended public paragraph without private reading or writing",
+    "Private target control is disabled; member renames within public scope",
+    "Editor confirms the move and refreshes the preserved text and image preview"
+  ],
+  "assertions": {
+    "readerReadonly": true,
+    "readerSaveDisabled": true,
+    "deniedOpenKeptPreview": true,
+    "privateWriteSelectsRead": true,
+    "removingReadClearsWrite": true,
+    "publisherWritable": true,
+    "privateMoveDisabled": true,
+    "publicMoveEnabled": true
+  },
+  "effectiveMemberGrants": [
+    "EXECUTE_REPOSITORY",
+    "PUBLISH"
+  ],
+  "privateReadResponses": {
+    "private/日记.md": 403,
+    "public/drafts/草稿.md": 403
+  },
+  "independentGitReadback": {
+    "commit": "3b75813c7a4c48ea4a48eafff1738250599ddf71",
+    "savedSourceSha256": "c526a6527ea0ffb02bfe3d8f1b89c455296a3437d633850f2413048a0a593aab",
+    "metadataAndUneditedTextPreserved": true,
+    "publicBacklinkRepaired": true,
+    "oldPublicPathAbsent": true,
+    "privateSourceUnchanged": true,
+    "secondWorkspaceUnchanged": true,
+    "secondCommit": "49222fad85743244a43dd539ea4520278ba361eb"
+  },
+  "limitations": "Loopback HTTP and synthetic content. Does not prove external OAuth/MCP client interoperability, provider provisioning, production HTTPS, public-only machine authoring or transition timing.",
+  "artifacts": [
+    {
+      "file": "01-default-member.png",
+      "sha256": "2b59b803df27ab0106ad7987a1399583140d41c50c6e7e222bdc6441b448e5dc"
+    },
+    {
+      "file": "02-public-reader.png",
+      "sha256": "2b8e7f0dbeb64b2c3ca0480add5331a8cb57c46ff854884d64a4f14f713e4157"
+    },
+    {
+      "file": "03-private-denied.png",
+      "sha256": "a136d37fb1bbce7ca45305e0d73c1d8a54d740e9df4b33f646d8a4fb17c6a8de"
+    },
+    {
+      "file": "04-publish-permission.png",
+      "sha256": "7717e90dc4f0e075a13719009a6bc616e935e02bd77a15442e1cd76afc2900c6"
+    },
+    {
+      "file": "05-public-save.png",
+      "sha256": "70f16070d596600d8819cafa3d1a4513c5cb12bdb6cc80724770962a8c60cc9c"
+    },
+    {
+      "file": "06-public-move.png",
+      "sha256": "4184b031dee00287a2bb95a175899bfa241fdc01aafb59eae3ae51eb95e9f1ca"
+    },
+    {
+      "file": "07-move-complete.png",
+      "sha256": "a45945b2d7afaac6cf4165c712de9591fa2ee3cfba2fcd60e9d93f07cd518589"
+    },
+    {
+      "file": "member-permissions.gif",
+      "sha256": "0282d8c0e0d8f2c07f31ed7fec066bd04279b82ea7a8cf430026dfffb2c4f0cf"
+    }
+  ]
+}
