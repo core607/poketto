@@ -14,6 +14,8 @@ Registration detects workspace invitation codes before submission and explains w
 
 Successful logout clears workspace and document navigation from the current URL before displaying login. A subsequent account does not inherit the previous account's selected workspace. Failed logout retains the current account and navigation.
 
+Opening a file refreshes its authenticated preview even when its path, commit and text are unchanged. Clearing the old preview cannot leave an unchanged reread waiting for a source edit.
+
 [OAuth consent](2026-09-11-mcp-oauth.md) loads account and request information without requiring default-space membership. The user selects one owned space before approving permissions. An account without an eligible space receives a create/join entrance and can refresh its choices without restarting an otherwise valid authorization request. Rejection requires no space. Approved connections permanently retain the selected workspace in their backing key; refresh cannot select another one.
 
 The `/mcp` resource remains shared. Both its authentication filter and SDK session identity resolve the workspace from the durable key row, including OAuth backing keys. Browser state and caller headers never select the machine workspace. A session is bound to both the key and its workspace; a different key cannot reuse it, even when held by the same account.

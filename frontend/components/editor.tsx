@@ -136,6 +136,7 @@ export function Editor({
       setFile(result);
       setPath(result.path);
       setSource(result.source ?? "");
+      setPreviewVersion((version) => version + 1);
     } catch (error) {
       setError(message(error));
     } finally {

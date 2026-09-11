@@ -1,7 +1,7 @@
 import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Window } from "happy-dom";
+import { Window, type HTMLFormElement, type HTMLInputElement } from "happy-dom";
 import { relativePath } from "../components/asset-picker";
 
 test("repository image destinations encode filename bytes and retain relative parents", () => {
@@ -31,6 +31,7 @@ test("editor inserts and previews new images relative to a new draft destination
     "navigator",
     "HTMLElement",
     "HTMLInputElement",
+    "FormData",
     "Event",
     "IS_REACT_ACT_ENVIRONMENT",
   ];
@@ -46,6 +47,7 @@ test("editor inserts and previews new images relative to a new draft destination
     navigator: window.navigator,
     HTMLElement: window.HTMLElement,
     HTMLInputElement: window.HTMLInputElement,
+    FormData: window.FormData,
     Event: window.Event,
     IS_REACT_ACT_ENVIRONMENT: true,
   })) {
@@ -154,6 +156,31 @@ test("editor inserts and previews new images relative to a new draft destination
       </ConfirmationProvider>,
     ),
   );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 550));
+  });
+  const firstPreviewCount = previews.length;
+  assert.ok(firstPreviewCount > 0);
+  const openForm = container.querySelector<HTMLFormElement>("form.open-path");
+  assert.ok(openForm);
+  const openPath =
+    openForm.querySelector<HTMLInputElement>('input[name="path"]');
+  assert.ok(openPath);
+  openPath.value = "notes/a.md";
+  await act(async () => {
+    openForm.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 550));
+  });
+  assert.equal(
+    previews.length,
+    firstPreviewCount + 1,
+    "Reopening unchanged bytes must replace the cleared preview",
+  );
+  assert.doesNotMatch(container.textContent!, /正在更新预览/);
   await act(async () => {
     const draft = container.querySelector("textarea");
     assert.ok(draft);
