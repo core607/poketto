@@ -13,10 +13,12 @@ type Preview = { images?: Record<string, string> };
 export function AssetPicker({
   path,
   commit,
+  canUpload,
   onInsert,
 }: {
   path: string;
   commit: string | null;
+  canUpload: boolean;
   onInsert: (markdown: string) => void;
 }) {
   const api = useWorkspaceApi();
@@ -90,7 +92,7 @@ export function AssetPicker({
     }
   }
   async function send() {
-    if (!upload) return;
+    if (!upload || !canUpload) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -132,25 +134,27 @@ export function AssetPicker({
         >
           选择仓库图片
         </button>
-        <label className="upload-label">
-          上传图片
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            disabled={busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              if (file.size > 16 * 1024 * 1024) {
-                setError("图片不能超过 16 MiB。");
-                return;
-              }
-              setUpload({ file, operation: crypto.randomUUID() });
-              setError("");
-            }}
-          />
-        </label>
-        {upload && (
+        {canUpload && (
+          <label className="upload-label">
+            上传图片
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              disabled={busy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (file.size > 16 * 1024 * 1024) {
+                  setError("图片不能超过 16 MiB。");
+                  return;
+                }
+                setUpload({ file, operation: crypto.randomUUID() });
+                setError("");
+              }}
+            />
+          </label>
+        )}
+        {canUpload && upload && (
           <button disabled={busy} onClick={send}>
             {busy ? "上传中…" : `上传 ${upload.file.name}`}
           </button>

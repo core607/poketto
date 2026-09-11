@@ -245,7 +245,8 @@ class WorkspaceEntrancesIntegrationIT {
                         .param("path", "public/a.md")
                         .session(guestSession))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.source").value(content.get("public/a.md")));
+                .andExpect(jsonPath("$.source").value(content.get("public/a.md")))
+                .andExpect(jsonPath("$.publicScope").value(true));
         for (String path : new String[] {
             "private/shared.md",
             "public/excluded/secret.md",
@@ -356,7 +357,8 @@ class WorkspaceEntrancesIntegrationIT {
                         .param("commit", previous)
                         .session(guestSession))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.source").value("# Second workspace\n"));
+                .andExpect(jsonPath("$.source").value("# Second workspace\n"))
+                .andExpect(jsonPath("$.publicScope").value(false));
         auth.changeMembership(
                 owner,
                 second,
