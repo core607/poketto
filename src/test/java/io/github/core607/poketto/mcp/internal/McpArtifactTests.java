@@ -33,6 +33,27 @@ import tools.jackson.databind.ObjectMapper;
 
 class McpArtifactTests {
     @Test
+    void explicit64KiBPagesMatchTheSchemaAndLargerRequestsNeverReachTheExecutor() throws Exception {
+        String source = "a".repeat(65535) + "猫末尾";
+        try (var fixture = new Fixture(source.getBytes(StandardCharsets.UTF_8), "text/plain")) {
+            var schema = fixture.json.valueToTree(fixture.tool.tool().inputSchema());
+            assertThat(schema.path("properties").path("limit").path("maximum").intValue())
+                    .isEqualTo(65536);
+            var first = fixture.call(Map.of("artifactId", fixture.id, "limit", 65536));
+            assertThat(first.isError()).isFalse();
+            assertThat(fixture.info(first).path("nextOffset").longValue()).isEqualTo(65535);
+            var second = fixture.call(Map.of("artifactId", fixture.id, "offset", 65535, "limit", 65536));
+            assertThat(((McpSchema.TextContent) first.content().get(1)).text()
+                            + ((McpSchema.TextContent) second.content().get(1)).text())
+                    .isEqualTo(source);
+            clearInvocations(fixture.executor);
+            var oversized = fixture.call(Map.of("artifactId", fixture.id, "limit", 65537));
+            assertThat(oversized.isError()).isTrue();
+            verifyNoInteractions(fixture.executor);
+        }
+    }
+
+    @Test
     void imageContentContainsExactValidatedBytesAndChecksAccessAgainBeforeDelivery() throws Exception {
         byte[] png = png();
         try (var fixture = new Fixture(png, "image/png")) {

@@ -81,6 +81,19 @@ public final class MediaFileService {
         }
     }
 
+    /** Resolves an existing original in this workspace without transferring or publishing its bytes. */
+    public ManagedAsset describeOriginal(AuthPrincipal actor, WorkspaceId workspace, ManagedAssetReference reference) {
+        Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        check.run();
+        try (var admission = admit(workspace, false)) {
+            ManagedAsset asset = originals.get().describe(workspace, reference);
+            check.run();
+            return asset;
+        } catch (RuntimeException failure) {
+            throw checkedFailure(check, failure);
+        }
+    }
+
     /** Authorized exact-commit logical metadata; original availability is checked only when fetched. */
     public io.github.core607.poketto.content.RepositoryMediaSnapshot privateCatalog(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested) {

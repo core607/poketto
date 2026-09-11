@@ -647,14 +647,24 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return Map.of("ok", false, "code", "INVALID_ARTIFACT");
             }
         }
-        if (operation.equals("media_fetch") || operation.equals("media_import") || operation.equals("media_list")) {
+        if (operation.equals("media_fetch")
+                || operation.equals("media_import")
+                || operation.equals("media_link")
+                || operation.equals("media_list")) {
             try {
                 if (operation.equals("media_list")) return listMedia(session, executionId, arguments);
+                if (operation.equals("media_link")) return linkMedia(session, executionId, arguments);
                 return operation.equals("media_fetch")
                         ? fetchMedia(session, executionId, arguments)
                         : importMedia(session, executionId, arguments);
             } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_MEDIA_REQUEST");
+                return Map.of(
+                        "ok",
+                        false,
+                        "code",
+                        "INVALID_MEDIA_REQUEST",
+                        "reason",
+                        InvalidSelectionException.reason(invalid));
             } catch (AuthException denied) {
                 return Map.of("ok", false, "code", "ACCESS_DENIED");
             } catch (io.github.core607.poketto.assets.AssetStorageException unavailable) {
@@ -720,7 +730,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             Map.of("executionId", executionId, "path", path),
                             Duration.ofSeconds(5));
                     if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
-                        throw new IllegalArgumentException();
+                        throw InvalidSelectionException.capture(
+                                manifest.path("reason").asString(""));
                     requireOk(manifest, session);
                     List<String> absent = selectedPaths(manifest.path("absent"));
                     if (!absent.isEmpty() && !absent.equals(List.of(path))) throw new WorkerUnavailableException();
@@ -745,7 +756,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 authorize(session);
                 return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
             } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_SELECTION");
+                return Map.of(
+                        "ok", false, "code", "INVALID_SELECTION", "reason", InvalidSelectionException.reason(invalid));
             } catch (AuthException denied) {
                 return Map.of("ok", false, "code", "ACCESS_DENIED");
             } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
@@ -863,7 +875,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private Map<String, String> readCapture(
             Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         requireOk(manifest, session);
         String captureId = manifest.path("captureId").asString("");
         if (!UUID.fromString(captureId).toString().equals(captureId)) throw new WorkerUnavailableException();
@@ -1080,7 +1093,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private Optional<String> captureOptional(Session session, String executionId, String path) {
         JsonNode manifest = requestLive(
                 session, "CAPTURE_OPTIONAL", Map.of("executionId", executionId, "path", path), Duration.ofSeconds(5));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         requireOk(manifest, session);
         List<String> absent = selectedPaths(manifest.path("absent"));
         if (!absent.isEmpty() && !absent.equals(List.of(path))) throw new WorkerUnavailableException();
@@ -1105,34 +1119,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         boolean replace = arguments.path("replace").booleanValue();
         if (!key.matches("[A-Za-z0-9_-]{16,128}")) throw new IllegalArgumentException();
         io.github.core607.poketto.assets.ManagedAsset.validateMediaType(mediaType);
-        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
-        if (source.isEmpty()
-                && !saves.baselineFile(
-                                session.principal,
-                                session.key.workspace(),
-                                session.saveState,
-                                RepositoryMediaIndex.PATH)
-                        .expectedAbsence())
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
-                    "INDEX_MISSING",
-                    "message",
-                    "Restore or intentionally recreate the local media index before importing.");
-        var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                .orElseGet(RepositoryMediaIndex::empty);
-        var entries = new LinkedHashMap<>(index.files());
-        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
-        new RepositoryMediaIndex(entries); // Validate the complete logical namespace before uploading.
-        var existingGit = saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
-        if (!existingGit.expectedAbsence()
-                && existingGit.diagnostics().stream()
-                        .noneMatch(value -> value.code().equals("MANAGED_MEDIA")))
+        LocalMediaIndex local = localMediaIndex(session, executionId);
+        if (local == null) return missingMediaIndex();
+        var index = local.index();
+        if (!availableMediaPath(session, local, path, mediaType))
             return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
         JsonNode manifest = requestLive(
                 session, "CAPTURE_BINARY", Map.of("executionId", executionId, "path", file), Duration.ofSeconds(8));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) throw new IllegalArgumentException();
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         requireOk(manifest, session);
         String captureId = manifest.path("captureId").asString("");
         if (!UUID.fromString(captureId).toString().equals(captureId)) throw new WorkerUnavailableException();
@@ -1188,6 +1183,86 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 log.warn("Binary capture release was not acknowledged; command cleanup will release its staging file");
             }
         }
+        return indexMedia(session, executionId, path, asset, local, replace);
+    }
+
+    private Map<String, ?> linkMedia(Session session, String executionId, JsonNode arguments) {
+        if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        if (arguments.size() != 4
+                || !arguments.path("path").isString()
+                || !arguments.path("assetId").isString()
+                || !arguments.path("revision").isString()
+                || !arguments.path("replace").isBoolean()) throw new IllegalArgumentException();
+        String path = arguments.path("path").stringValue();
+        String id = arguments.path("assetId").stringValue();
+        UUID assetId = UUID.fromString(id);
+        if (!assetId.toString().equals(id)) throw new IllegalArgumentException();
+        var reference = new io.github.core607.poketto.assets.ManagedAssetReference(
+                assetId, arguments.path("revision").stringValue());
+        LocalMediaIndex local = localMediaIndex(session, executionId);
+        if (local == null) return missingMediaIndex();
+        var asset = media.describeOriginal(session.principal, session.key.workspace(), reference);
+        if (!availableMediaPath(session, local, path, asset.mediaType()))
+            return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
+        return indexMedia(
+                session,
+                executionId,
+                path,
+                asset,
+                local,
+                arguments.path("replace").booleanValue());
+    }
+
+    private record LocalMediaIndex(Optional<String> source, RepositoryMediaIndex index) {}
+
+    private LocalMediaIndex localMediaIndex(Session session, String executionId) {
+        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
+        if (source.isEmpty()
+                && !saves.baselineFile(
+                                session.principal,
+                                session.key.workspace(),
+                                session.saveState,
+                                RepositoryMediaIndex.PATH)
+                        .expectedAbsence()) return null;
+        return new LocalMediaIndex(
+                source,
+                source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+                        .orElseGet(RepositoryMediaIndex::empty));
+    }
+
+    private static Map<String, ?> missingMediaIndex() {
+        return Map.of(
+                "ok",
+                false,
+                "code",
+                "INDEX_MISSING",
+                "message",
+                "Restore or intentionally recreate the local media index before importing or linking.");
+    }
+
+    private boolean availableMediaPath(Session session, LocalMediaIndex local, String path, String mediaType) {
+        var entries = new LinkedHashMap<>(local.index().files());
+        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
+        new RepositoryMediaIndex(
+                entries); // Validate the entire logical namespace before changing originals or the index.
+        var existingGit = saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
+        return existingGit.expectedAbsence()
+                || existingGit.diagnostics().stream()
+                        .anyMatch(value -> value.code().equals("MANAGED_MEDIA"));
+    }
+
+    private Map<String, ?> indexMedia(
+            Session session,
+            String executionId,
+            String path,
+            io.github.core607.poketto.assets.ManagedAsset asset,
+            LocalMediaIndex local,
+            boolean replace) {
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        var source = local.source();
+        var index = local.index();
+        var entries = new LinkedHashMap<>(index.files());
         session.lastImport = importReceipt(path, asset, false);
         var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
@@ -1220,7 +1295,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     "result",
                     session.lastImport,
                     "message",
-                    "Original stored; local index was not updated. Free session space and retry the same bytes, type and key.");
+                    "Original stored; local index was not updated. Free session space and retry the same import or link.");
         }
         session.lastImport = importReceipt(path, asset, true);
         return Map.of("ok", true, "result", session.lastImport);
