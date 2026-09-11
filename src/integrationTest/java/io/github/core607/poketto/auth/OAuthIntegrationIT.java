@@ -128,7 +128,7 @@ class OAuthIntegrationIT {
     void staleAnonymousRegistrationsAreReclaimedWithoutDeletingConnectionsOrPendingConsent() {
         tokens();
         var waiting = oauth.register("Waiting", List.of(REDIRECT));
-        jdbc.update("update oauth_clients set last_used_at=now()-interval '2 days'");
+        jdbc.update("update oauth_clients set created_at=now()-interval '2 days' where client_id=?", client.id());
         var pending = oauth.prepare(
                 waiting.id(),
                 REDIRECT,
@@ -139,13 +139,62 @@ class OAuthIntegrationIT {
                 "S256",
                 RESOURCE);
         jdbc.update(
-                "insert into oauth_clients(client_id,client_name,redirect_uris,last_used_at) select 'unused-'||i,'Unused',array['https://client.example/callback'],now()-interval '2 days' from generate_series(1,4094) i");
+                "insert into oauth_clients(client_id,client_name,redirect_uris,created_at) select 'unused-'||i,'Unused',array['https://client.example/callback'],now()-interval '2 days' from generate_series(1,4094) i");
         oauth.register("New", List.of(REDIRECT));
         assertThat(jdbc.queryForObject("select count(*) from oauth_clients", Integer.class))
                 .isEqualTo(3);
         assertThat(oauth.connections(owner, workspace)).hasSize(1);
         assertThat(oauth.consent(owner, workspace, pending, Set.of("repository:execute"), true))
                 .contains("code=");
+    }
+
+    @Test
+    void requestsCannotKeepUnconnectedRegistrationsAlivePastTheirFixedDeadline() {
+        jdbc.update("update oauth_clients set created_at=now()-interval '23 hours 55 minutes'");
+        var pending = request();
+        assertThat(pending.expiresAt()).isBefore(java.time.Instant.now().plusSeconds(301));
+        assertThatThrownBy(() -> oauth.prepare(
+                        client.id(),
+                        "https://bad.example",
+                        "code",
+                        null,
+                        "state",
+                        OAuthService.challenge(VERIFIER),
+                        "S256",
+                        RESOURCE))
+                .hasMessage("invalid_request");
+        jdbc.update("update oauth_clients set created_at=now()-interval '2 days'");
+        assertThatThrownBy(this::request).hasMessage("invalid_client");
+        oauth.register("Next", List.of(REDIRECT));
+        assertThatThrownBy(() -> oauth.consent(owner, workspace, pending, Set.of("repository:execute"), true))
+                .hasMessage("invalid_request");
+    }
+
+    @Test
+    void cleanupRetiresOnlyOldInactiveOAuthKeysAndStaticKeyListingExcludesConnections() {
+        var staticKey = auth.createApiKey(owner, workspace, owner.accountId(), Set.of(Capability.READ_PRIVATE));
+        var active = tokens();
+        var retired = auth.authenticateApiKey(tokens().access_token());
+        var recent = auth.authenticateApiKey(tokens().access_token());
+        oauth.disconnect(owner, workspace, retired.subjectId());
+        oauth.disconnect(owner, workspace, recent.subjectId());
+        jdbc.update("update auth_api_keys set revoked_at=now()-interval '31 days' where key_id=?", retired.subjectId());
+        var expired = auth.authenticateApiKey(tokens().access_token());
+        jdbc.update(
+                "update oauth_connections set expires_at=now()-interval '31 days' where key_id=?", expired.subjectId());
+        oauth.register("Cleanup", List.of(REDIRECT));
+        assertThat(oauth.connections(owner, workspace)).hasSize(2);
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from auth_api_keys where key_id in (?,?)",
+                        Integer.class,
+                        retired.subjectId(),
+                        expired.subjectId()))
+                .isZero();
+        assertThat(auth.authenticateApiKey(active.access_token())).isNotNull();
+        assertThat(auth.authenticateApiKey(staticKey.token())).isNotNull();
+        assertThat(auth.listApiKeys(owner, workspace, 0, 100).items())
+                .extracting(AuthService.ApiKeyInfo::id)
+                .containsExactly(staticKey.id());
     }
 
     @Test

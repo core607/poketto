@@ -76,21 +76,20 @@ public final class OAuthService {
         redirects.forEach(OAuthService::validateRedirect);
         return tx.execute(status -> {
             jdbc.execute("select pg_advisory_xact_lock(70701109)");
-            jdbc.update(
-                    "delete from oauth_clients cl where cl.last_used_at<? and not exists (select 1 from oauth_connections c where c.client_id=cl.client_id)",
-                    Timestamp.from(clock.instant().minus(Duration.ofDays(1))));
+            cleanup("");
             if (jdbc.queryForObject("select count(*) from oauth_clients", Integer.class) >= 4096)
                 throw failure("temporarily_unavailable");
             String id = token("oc_");
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
-                        "insert into oauth_clients(client_id,client_name,redirect_uris) values (?,?,?)");
+                        "insert into oauth_clients(client_id,client_name,redirect_uris,created_at) values (?,?,?,?)");
                 statement.setString(1, id);
                 statement.setString(2, name);
                 statement.setArray(3, connection.createArrayOf("text", redirects.toArray(String[]::new)));
+                statement.setTimestamp(4, now());
                 return statement;
             });
-            return new Client(id, name, List.copyOf(redirects));
+            return new Client(id, name, List.copyOf(redirects), clock.instant().plus(Duration.ofDays(1)));
         });
     }
 
@@ -104,6 +103,8 @@ public final class OAuthService {
             String challengeMethod,
             String resource) {
         Client client = client(clientId);
+        if (client.unconnectedUntil() != null && !client.unconnectedUntil().isAfter(clock.instant()))
+            throw failure("invalid_client");
         if (!client.redirectUris().contains(redirect)) throw failure("invalid_request");
         if (!"code".equals(responseType)) throw failure("unsupported_response_type");
         if (!"S256".equals(challengeMethod) || challenge == null || !challenge.matches("[A-Za-z0-9_-]{43}"))
@@ -114,8 +115,10 @@ public final class OAuthService {
                 || state.chars().anyMatch(Character::isISOControl)) throw failure("invalid_request");
         requireResource(resource);
         Set<String> scopes = scopes(scope == null || scope.isBlank() ? "repository:execute offline_access" : scope);
-        return new AuthorizationRequest(
-                client, redirect, scopes, state, challenge, clock.instant().plus(Duration.ofMinutes(10)));
+        Instant expires = clock.instant().plus(Duration.ofMinutes(10));
+        if (client.unconnectedUntil() != null && client.unconnectedUntil().isBefore(expires))
+            expires = client.unconnectedUntil();
+        return new AuthorizationRequest(client, redirect, scopes, state, challenge, expires);
     }
 
     public String consent(
@@ -135,7 +138,16 @@ public final class OAuthService {
                 selected.stream().filter(SCOPES::containsKey).map(SCOPES::get).collect(Collectors.toSet());
         if (capabilities.isEmpty()) throw failure("invalid_scope");
         return tx.execute(status -> {
+            // Final consent and registry cleanup cannot race a connection's client foreign key.
+            jdbc.execute("select pg_advisory_xact_lock(70701109)");
+            cleanup(request.client().id());
             lock(workspace);
+            // Pin registration until the new connection commits; cleanup never deletes a live consent.
+            var registered = jdbc.query(
+                    "select client_id from oauth_clients where client_id=? for update",
+                    (rs, row) -> rs.getString(1),
+                    request.client().id());
+            if (registered.isEmpty() || !request.expiresAt().isAfter(clock.instant())) throw failure("invalid_request");
             if (jdbc.queryForObject(
                             "select count(*) from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=? and k.revoked_at is null and c.expires_at>? and c.resource=?",
                             Integer.class,
@@ -294,6 +306,17 @@ public final class OAuthService {
                 access, "Bearer", Duration.between(clock.instant(), end).toSeconds(), refresh, grant.scopes());
     }
 
+    private void cleanup(String keepClient) {
+        jdbc.update(
+                "delete from auth_api_keys k using oauth_connections c where c.key_id=k.key_id and (c.expires_at<? or k.revoked_at<?)",
+                Timestamp.from(clock.instant().minus(Duration.ofDays(30))),
+                Timestamp.from(clock.instant().minus(Duration.ofDays(30))));
+        jdbc.update(
+                "delete from oauth_clients cl where cl.client_id<>? and cl.created_at<? and not exists (select 1 from oauth_connections c where c.client_id=cl.client_id)",
+                keepClient,
+                Timestamp.from(clock.instant().minus(Duration.ofDays(1))));
+    }
+
     private void validateGrant(Connection grant) {
         if (!grant.expires().isAfter(clock.instant())) throw failure("invalid_grant");
         try {
@@ -329,10 +352,12 @@ public final class OAuthService {
 
     private Client client(String id) {
         var rows = jdbc.query(
-                "update oauth_clients set last_used_at=? where client_id=? returning client_id,client_name,redirect_uris",
-                (rs, row) -> new Client(rs.getString(1), rs.getString(2), List.of((String[])
-                        rs.getArray(3).getArray())),
-                now(),
+                "select cl.client_id,cl.client_name,cl.redirect_uris,case when exists (select 1 from oauth_connections c where c.client_id=cl.client_id) then null else cl.created_at + interval '1 day' end from oauth_clients cl where cl.client_id=?",
+                (rs, row) -> new Client(
+                        rs.getString(1),
+                        rs.getString(2),
+                        List.of((String[]) rs.getArray(3).getArray()),
+                        rs.getTimestamp(4) == null ? null : rs.getTimestamp(4).toInstant()),
                 id);
         if (rows.isEmpty()) throw failure("invalid_client");
         return rows.getFirst();
@@ -434,7 +459,7 @@ public final class OAuthService {
         }
     }
 
-    public record Client(String id, String name, List<String> redirectUris) {}
+    public record Client(String id, String name, List<String> redirectUris, Instant unconnectedUntil) {}
 
     public record AuthorizationRequest(
             Client client, String redirectUri, Set<String> scopes, String state, String challenge, Instant expiresAt) {}

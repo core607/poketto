@@ -379,9 +379,11 @@ public final class AuthService {
         requireKeyManager(actor, workspace);
         validatePage(offset, limit);
         long total = jdbc.queryForObject(
-                "select count(*) from auth_api_keys where workspace_id = ?", Long.class, workspace.value());
+                "select count(*) from auth_api_keys k where workspace_id = ? and not exists (select 1 from oauth_connections c where c.key_id=k.key_id)",
+                Long.class,
+                workspace.value());
         List<ApiKeyInfo> items = jdbc.query(
-                "select key_id, account_id, capabilities, revoked_at from auth_api_keys where workspace_id = ? order by created_at desc, key_id limit ? offset ?",
+                "select key_id, account_id, capabilities, revoked_at from auth_api_keys k where workspace_id = ? and not exists (select 1 from oauth_connections c where c.key_id=k.key_id) order by created_at desc, key_id limit ? offset ?",
                 (rs, row) -> new ApiKeyInfo(
                         rs.getObject(1, UUID.class),
                         rs.getObject(2, UUID.class),

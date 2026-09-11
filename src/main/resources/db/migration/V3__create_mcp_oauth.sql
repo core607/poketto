@@ -2,8 +2,7 @@ create table oauth_clients (
     client_id text primary key,
     client_name text not null,
     redirect_uris text[] not null,
-    created_at timestamptz not null default current_timestamp,
-    last_used_at timestamptz not null default current_timestamp
+    created_at timestamptz not null default current_timestamp
 );
 create table oauth_connections (
     key_id uuid primary key references auth_api_keys on delete cascade,
