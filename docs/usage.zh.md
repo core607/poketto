@@ -32,6 +32,8 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个拥有的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
 
+空间主人可在“仓库连接”标签页更新托管仓库的凭据。填写 Git 用户名和新令牌，服务端验证访问权限后才替换原凭据，不能借此更改仓库地址。表单提交后会清空令牌，也不会将它保存在浏览器草稿中。确认更新成功后，再到 Git 托管平台撤销旧令牌。由部署配置管理的仓库需由站点管理员修改配置。
+
 空内容仓可使用 [content-template](../content-template/AGENTS.md) 初始化。模板提供各自组织的 `private/` 和 `public/`，默认禁用发布。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
 
 ```yaml

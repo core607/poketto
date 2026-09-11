@@ -127,6 +127,26 @@ class SpaceCreationHttpIntegrationIT {
         assertThat(response).doesNotContain("provider-fixture-secret", "git-user", "sealed");
         UUID workspace =
                 UUID.fromString(json.readTree(response).path("workspaceId").asText());
+        String connectionPath = "/api/auth/workspaces/" + workspace + "/repository-connection";
+        var connectionInfo = mvc.perform(get(connectionPath).session(session))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.managed").value(true))
+                .andExpect(jsonPath("$.rotationAvailable").value(true))
+                .andExpect(jsonPath("$.binding.repository").value("https://cnb.cool/example/notes"))
+                .andExpect(jsonPath("$.binding.updatedAt").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(connectionInfo).doesNotContain("provider-fixture-secret", "git-user", "sealed", "password", "token");
+        mvc.perform(get(connectionPath)).andExpect(status().isUnauthorized());
+        UUID operatorWorkspace =
+                jdbc.queryForObject("select workspace_id from workspaces where is_default", UUID.class);
+        mvc.perform(get("/api/auth/workspaces/" + operatorWorkspace + "/repository-connection")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.managed").value(false))
+                .andExpect(jsonPath("$.binding").isEmpty());
         byte[] stored = jdbc.queryForObject(
                 "select sealed_credentials from content_repository_bindings where workspace_id=?",
                 byte[].class,
@@ -146,6 +166,11 @@ class SpaceCreationHttpIntegrationIT {
                 "insert into auth_accounts(account_id,login_name,password_hash) select ?,'outsider',password_hash from auth_accounts where login_name='operator'",
                 UUID.randomUUID());
         var outsider = login("outsider", "fixture-owner-password");
+        mvc.perform(get(connectionPath).session(outsider)).andExpect(status().isForbidden());
+        jdbc.update(
+                "insert into auth_memberships(workspace_id,account_id,role) select ?,account_id,'MEMBER' from auth_accounts where login_name='outsider'",
+                workspace);
+        mvc.perform(get(connectionPath).session(outsider)).andExpect(status().isForbidden());
         mvc.perform(get("/api/auth/workspaces/creations/" + request).session(outsider))
                 .andExpect(status().isForbidden());
         mvc.perform(csrf(outsider, put("/api/auth/workspaces/" + workspace + "/repository-credentials"))
@@ -230,6 +255,10 @@ class SpaceCreationHttpIntegrationIT {
 
         public boolean available() {
             return delegate.available();
+        }
+
+        public java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+            return delegate.connectionInfo(workspace);
         }
 
         public byte[] seal(WorkspaceId workspace, RepositoryCoordinates coordinates, String username, String token) {

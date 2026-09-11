@@ -52,6 +52,18 @@ public final class SpaceCreationService {
         return repositories.available();
     }
 
+    public ConnectionInfo connectionInfo(AuthPrincipal actor, WorkspaceId workspace) {
+        accounts.account(actor);
+        return auth.withAuthorization(
+                actor, workspace, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
+                    var binding = repositories.connectionInfo(workspace);
+                    return new ConnectionInfo(binding.isPresent(), repositories.available(), binding.orElse(null));
+                });
+    }
+
+    public record ConnectionInfo(
+            boolean managed, boolean rotationAvailable, RepositoryConnections.ConnectionInfo binding) {}
+
     public void rotateCredentials(AuthPrincipal actor, WorkspaceId workspace, String username, String token) {
         accounts.account(actor);
         auth.authorize(actor, workspace, io.github.core607.poketto.auth.Capability.MANAGE_KEYS);

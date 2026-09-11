@@ -10,6 +10,7 @@ import { Editor } from "./editor";
 import { Members } from "./members";
 import { Keys } from "./keys";
 import { Connections } from "./connections";
+import { RepositoryConnection } from "./repository-connection";
 
 export type SpaceSummary = {
   workspaceId: string;
@@ -23,6 +24,7 @@ const tabs = {
   members: "成员与邀请",
   keys: "访问密钥",
   connections: "已连接应用",
+  repository: "仓库连接",
 };
 type Tab = keyof typeof tabs;
 
@@ -168,6 +170,12 @@ export function WorkspaceDashboard({
       {activeTab === "members" && <Members />}
       {activeTab === "keys" && identity && <Keys identity={identity} />}
       {activeTab === "connections" && <Connections />}
+      {activeTab === "repository" && identity?.role === "OWNER" && (
+        <RepositoryConnection
+          key={identity.workspaceId}
+          workspaceId={identity.workspaceId}
+        />
+      )}
       {activeTab === "account" && (
         <AccountPanel
           profile={account}

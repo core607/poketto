@@ -6,6 +6,11 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 public interface RepositoryConnections {
     boolean available();
 
+    /** Owner-facing binding metadata only; never decrypts or returns provider credentials. */
+    java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace);
+
+    record ConnectionInfo(String repository, java.time.Instant updatedAt) {}
+
     byte[] seal(WorkspaceId workspace, RepositoryCoordinates coordinates, String username, String token);
 
     Verified verify(WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealedCredentials);

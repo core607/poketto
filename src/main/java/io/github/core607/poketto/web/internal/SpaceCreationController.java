@@ -45,6 +45,12 @@ class SpaceCreationController {
         return creation.status(actor, requestId);
     }
 
+    @GetMapping("/{workspaceId}/repository-connection")
+    SpaceCreationService.ConnectionInfo connectionInfo(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
+        return creation.connectionInfo(actor, WorkspaceId.parse(workspaceId));
+    }
+
     @PutMapping("/{workspaceId}/repository-credentials")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void rotate(

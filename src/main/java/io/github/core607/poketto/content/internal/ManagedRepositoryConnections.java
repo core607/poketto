@@ -36,6 +36,17 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         return cipher.available();
     }
 
+    public java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+        return jdbc
+                .query(
+                        "select canonical_uri,updated_at from content_repository_bindings where workspace_id=?",
+                        (row, number) -> new ConnectionInfo(
+                                row.getString(1), row.getTimestamp(2).toInstant()),
+                        workspace.value())
+                .stream()
+                .findFirst();
+    }
+
     public byte[] seal(WorkspaceId workspace, RepositoryCoordinates coordinates, String username, String token) {
         return cipher.encrypt(
                 workspace, coordinates.canonicalUri(), new RepositoryCredentialCipher.Credentials(username, token));

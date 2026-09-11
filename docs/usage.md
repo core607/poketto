@@ -32,6 +32,8 @@ The management page lists the signed-in account's spaces. Select a space before 
 
 Private HTTP routes use `/api/admin/workspaces/{workspaceId}`. Read memberships from `GET /api/auth/workspaces` and current authorization from `GET /api/auth/workspaces/{workspaceId}/me`; unscoped administration routes do not select a fallback space. OAuth consent chooses one owned space, and the `/mcp` resource derives that space from its issued credential. See [workspace routing](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md).
 
+Space owners can update managed repository credentials from the Repository connection tab. Supply a Git username and replacement token; the server validates access before replacing the existing credentials. This cannot change the repository address. The form clears submitted tokens and never stores them in browser drafts. After a confirmed update, revoke the old token at the Git provider. Deployment-managed repositories require an operator configuration update.
+
 Initialize an empty content repository from [content-template](../content-template/AGENTS.md).
 It contains independent `private/` and `public/` trees and keeps publication disabled.
 Create new content under `private/`. To publish selected content, move it and its
