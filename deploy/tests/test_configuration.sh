@@ -58,6 +58,25 @@ assert_contains "$(cat "$FAKE_STATE/repository-password")" '$(touch env-was-exec
 grep -qFx 'POKETTO_REPOSITORY_PASSWORD=$(touch env-was-executed)' "$ROOT/.env" \
     || { echo "the literal password was not recorded"; exit 1; }
 
+# The registration issuance switch is optional, literal, persisted and restricted to booleans.
+setup_root
+have_image "$DIGEST_IMAGE"
+set +e
+OUT="$(printf '%s\n' 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED=true' \
+    | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+assert_contains "$(cat "$FAKE_STATE/registration-invitations")" 'true'
+grep -qFx 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED=true' "$ROOT/.env"
+setup_root
+printf '%s\n' 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED=yes' >> "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED must be true or false'
+[ "$(up_count)" = 0 ]
+
 # Unknown keys cannot alter the deployment process environment.
 setup_root
 printf '%s\n' 'PATH=/tmp/untrusted' >> "$ROOT/.env"

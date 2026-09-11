@@ -489,7 +489,7 @@ public final class AuthService {
                         .isEmpty()) throw failure(DENIED);
     }
 
-    private UUID createAccount(String login, String encoded, boolean administrator) {
+    UUID createAccount(String login, String encoded, boolean administrator) {
         UUID account = UUID.randomUUID();
         try {
             jdbc.update(
@@ -513,25 +513,25 @@ public final class AuthService {
         });
     }
 
-    private String encodePassword(String password) {
+    String encodePassword(String password) {
         if (password == null || password.length() < 12 || password.length() > 256) throw failure(INVALID_INPUT);
         return passwords.encode(password);
     }
 
-    private String loginName(String login) {
+    String loginName(String login) {
         if (login == null || login.length() > 64) throw failure(INVALID_INPUT);
         String normalized = login.toLowerCase(Locale.ROOT);
         if (!normalized.matches("[a-z0-9][a-z0-9._-]{2,63}")) throw failure(INVALID_INPUT);
         return normalized;
     }
 
-    private String randomToken(String prefix) {
+    String randomToken(String prefix) {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         return prefix + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private static String digestCredential(String token) {
+    static String digestCredential(String token) {
         return digest(token == null || token.length() > 256 ? "" : token);
     }
 
@@ -557,7 +557,7 @@ public final class AuthService {
         return new AuthException(code);
     }
 
-    private static AuthPrincipal accountPrincipal(UUID account) {
+    static AuthPrincipal accountPrincipal(UUID account) {
         return new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, account, account);
     }
 

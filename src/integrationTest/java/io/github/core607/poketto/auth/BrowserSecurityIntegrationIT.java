@@ -120,6 +120,45 @@ class BrowserSecurityIntegrationIT {
     }
 
     @Test
+    void registrationUsesSeparateInvitationsAndAccountIdentityWithoutMembership() throws Exception {
+        String ownerPassword = secret();
+        auth.initializeOwner(INITIALIZATION_TOKEN, "registration-owner", ownerPassword);
+        Csrf ownerSession = login("registration-owner", ownerPassword);
+        mvc.perform(post("/api/auth/registration-invitations").session(ownerSession.session()))
+                .andExpect(status().isForbidden());
+        JsonNode invitation = body(mvc.perform(request(post("/api/auth/registration-invitations"), ownerSession, null))
+                .andExpect(status().isCreated())
+                .andReturn());
+        String token = invitation.get("token").stringValue();
+        String password = secret();
+        Csrf guest = csrf(null);
+        var registrationBody = Map.of("token", token, "login", "no-space-person", "password", password);
+        mvc.perform(post("/api/auth/register")
+                        .session(guest.session())
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(registrationBody)))
+                .andExpect(status().isForbidden());
+        mvc.perform(request(post("/api/auth/register"), guest, registrationBody))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Cache-Control", "no-store"));
+        mvc.perform(get("/api/auth/account").session(guest.session())).andExpect(status().isUnauthorized());
+        Csrf member = login("no-space-person", password);
+        mvc.perform(get("/api/auth/account").session(member.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.account.loginName").value("no-space-person"))
+                .andExpect(jsonPath("$.account.siteAdministrator").value(false))
+                .andExpect(jsonPath("$.mayIssueRegistrationInvitations").value(false));
+        mvc.perform(request(post("/api/auth/registration-invitations"), member, null))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/auth/registration-invitations").session(member.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get("/api/admin/members").session(member.session())).andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("select count(*) from auth_memberships", Integer.class))
+                .isOne();
+    }
+
+    @Test
     void bootstrapLoginFixationProtectionCsrfAndLogoutUseRealSession() throws Exception {
         Csrf session = csrf(null);
         String password = secret();

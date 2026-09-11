@@ -101,6 +101,7 @@ class BrowserSecurityConfiguration {
                 .authorizeHttpRequests(requests -> requests.requestMatchers(
                                 "/api/auth/csrf",
                                 "/api/auth/login",
+                                "/api/auth/register",
                                 "/api/auth/initialize",
                                 "/api/auth/invitations/register")
                         .permitAll()
