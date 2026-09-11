@@ -14,7 +14,7 @@ Registration detects workspace invitation codes before submission and explains w
 
 Successful logout clears workspace and document navigation from the current URL before displaying login. A subsequent account does not inherit the previous account's selected workspace. Failed logout retains the current account and navigation.
 
-Opening a file refreshes its authenticated preview even when its path, commit and text are unchanged. Clearing the old preview cannot leave an unchanged reread waiting for a source edit.
+Opening a file refreshes its authenticated preview even when its path, commit and text are unchanged. Clearing the old preview cannot leave an unchanged reread waiting for a source edit. A failed open retains the loaded file and its preview while displaying the failure.
 
 [OAuth consent](2026-09-11-mcp-oauth.md) loads account and request information without requiring default-space membership. The user selects one joined space before approving permissions within their current grants. An account without an eligible space receives a create/join entrance and can refresh its choices without restarting an otherwise valid authorization request. Rejection requires no space. Approved connections permanently retain the selected workspace in their backing key; refresh cannot select another one.
 

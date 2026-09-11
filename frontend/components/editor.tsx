@@ -130,11 +130,11 @@ export function Editor({
     setError("");
     setNotice("");
     setConflict(false);
-    setPreview({ galleryStatus: "COMPLETE" });
     try {
       const result = await api<RepositoryFile>(
         "/api/admin/repository/file?" + new URLSearchParams({ path: target }),
       );
+      setPreview({ galleryStatus: "COMPLETE" });
       setFile(result);
       setPath(result.path);
       setSource(result.source ?? "");
