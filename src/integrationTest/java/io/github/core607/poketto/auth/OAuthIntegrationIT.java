@@ -134,7 +134,9 @@ class OAuthIntegrationIT {
         var a = tokens();
         assertThatThrownBy(() -> oauth.refresh(client.id(), a.refresh_token(), RESOURCE, "content:publish"))
                 .hasMessage("invalid_scope");
-        var b = oauth.refresh(client.id(), a.refresh_token(), RESOURCE, null);
+        assertThatThrownBy(() -> oauth.refresh(client.id(), a.refresh_token(), "https://other.example/mcp", null))
+                .hasMessage("invalid_target");
+        var b = oauth.refresh(client.id(), a.refresh_token(), null, null);
         assertThat(b.refresh_token()).isNotEqualTo(a.refresh_token());
         assertThat(auth.authenticateApiKey(b.access_token())).isNotNull();
         assertThatThrownBy(() -> oauth.refresh(client.id(), a.refresh_token(), RESOURCE, null))
@@ -145,7 +147,7 @@ class OAuthIntegrationIT {
     }
 
     @Test
-    void expirationDisablingIssuerAndDatabaseRestartPreserveBoundaries() {
+    void expirationAndDisablingIssuerPreserveBoundaries() {
         var a = tokens();
         jdbc.update("update oauth_access_tokens set expires_at=now()-interval '1 second'");
         assertThatThrownBy(() -> auth.authenticateApiKey(a.access_token())).isInstanceOf(AuthException.class);
