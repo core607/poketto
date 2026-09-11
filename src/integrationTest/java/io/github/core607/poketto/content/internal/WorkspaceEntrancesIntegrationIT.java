@@ -271,6 +271,79 @@ class WorkspaceEntrancesIntegrationIT {
                         .param("commit", previous)
                         .session(guestSession))
                 .andExpect(status().isForbidden());
+        var publicFile = json.readTree(mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "public/a.md")
+                        .session(guestSession))
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        var publicEdit = Map.of(
+                "baseCommit",
+                current,
+                "changes",
+                java.util.List.of(Map.of(
+                        "path",
+                        "public/a.md",
+                        "expectedAbsence",
+                        false,
+                        "expectedRevision",
+                        publicFile.path("revision").asString(),
+                        "content",
+                        "# Updated public source\n")));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(publicEdit)))
+                .andExpect(status().isForbidden());
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                true,
+                Set.of(Capability.PUBLISH));
+        var publishedEdit = mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(publicEdit)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String updated = json.readTree(publishedEdit.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        for (String deniedPath :
+                new String[] {"private/new.md", "public/excluded/new.md", ".poketto/publishing.yaml"}) {
+            var deniedEdit = Map.of(
+                    "baseCommit",
+                    updated,
+                    "changes",
+                    java.util.List.of(Map.of(
+                            "path",
+                            deniedPath,
+                            "expectedAbsence",
+                            true,
+                            "content",
+                            deniedPath.endsWith(".yaml")
+                                    ? "enabled: false\nmode: public-root\n"
+                                    : "# Must remain absent\n")));
+            mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
+                            .contentType("application/json")
+                            .content(json.writeValueAsString(deniedEdit)))
+                    .andExpect(status().isForbidden());
+        }
+        try (var git = Git.open(remotes.get(second).toFile());
+                var walk = new org.eclipse.jgit.revwalk.RevWalk(git.getRepository());
+                var fileTree = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                        git.getRepository(),
+                        "public/a.md",
+                        walk.parseCommit(git.getRepository().resolve("refs/heads/main"))
+                                .getTree())) {
+            assertThat(git.getRepository().resolve("refs/heads/main").name()).isEqualTo(updated);
+            assertThat(new String(
+                            git.getRepository()
+                                    .open(fileTree.getObjectId(0), Constants.OBJ_BLOB)
+                                    .getBytes(),
+                            java.nio.charset.StandardCharsets.UTF_8))
+                    .isEqualTo("# Updated public source\n");
+        }
         auth.changeMembership(
                 owner,
                 second,

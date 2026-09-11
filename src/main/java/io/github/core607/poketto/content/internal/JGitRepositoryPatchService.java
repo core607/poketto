@@ -97,24 +97,24 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             RepositoryPatch patch,
             Optional<RepositoryWriteAttempt> recovery) {
         Map<String, byte[]> replacements = validate(patch);
-        return write(
-                principal,
-                workspace,
-                patch.baseCommit(),
-                Set.of(Capability.WRITE_PRIVATE),
-                recovery,
-                (repository, index) -> {
-                    checkBase(repository, index, patch);
-                    Set<String> deletions = new HashSet<>();
-                    patch.changes().stream()
-                            .filter(change -> change.content().isEmpty())
-                            .forEach(change -> deletions.add(change.path()));
-                    boolean structural = patch.changes().stream()
-                            .anyMatch(change -> change.expectedAbsence()
-                                    || change.content().isEmpty()
-                                    || RepositoryPathRules.reserved(change.path()));
-                    return new RepositoryCandidateChanges(replacements, Map.of(), deletions, structural);
-                });
+        return write(principal, workspace, patch.baseCommit(), Set.of(), recovery, (repository, index) -> {
+            var currentPolicy = policy(repository, index);
+            Set<Capability> required = patch.changes().stream()
+                    .map(change ->
+                            currentPolicy.permitsPath(change.path()) ? Capability.PUBLISH : Capability.WRITE_PRIVATE)
+                    .collect(java.util.stream.Collectors.toSet());
+            auth.withAuthorization(principal, workspace, required, () -> null);
+            checkBase(repository, index, patch);
+            Set<String> deletions = new HashSet<>();
+            patch.changes().stream()
+                    .filter(change -> change.content().isEmpty())
+                    .forEach(change -> deletions.add(change.path()));
+            boolean structural = patch.changes().stream()
+                    .anyMatch(change -> change.expectedAbsence()
+                            || change.content().isEmpty()
+                            || RepositoryPathRules.reserved(change.path()));
+            return new RepositoryCandidateChanges(replacements, Map.of(), deletions, structural);
+        });
     }
 
     @Override
