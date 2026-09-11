@@ -1,3 +1,4 @@
+import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { Window } from "happy-dom";
@@ -32,7 +33,7 @@ async function fixture(t: TestContext) {
     await import("../components/confirmation");
   const container = window.document.createElement("div");
   window.document.body.append(container);
-  const root = createRoot(container as unknown as HTMLDivElement);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
   const previousFetch = globalThis.fetch;
   const writes: { path: string; method: string; body: unknown }[] = [];
   const member = {
@@ -55,11 +56,14 @@ async function fixture(t: TestContext) {
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
     if (method === "GET") {
       const items =
-        path === "/api/admin/members"
+        path ===
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/members"
           ? [member]
-          : path === "/api/admin/keys"
+          : path ===
+              "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/keys"
             ? [key]
-            : path === "/api/admin/invitations"
+            : path ===
+                "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/invitations"
               ? []
               : undefined;
       assert.ok(items, `Unexpected read: ${path}`);
@@ -71,8 +75,12 @@ async function fixture(t: TestContext) {
       });
     }
     assert.ok(
-      (path === "/api/admin/members/member" && method === "PUT") ||
-        (path === "/api/admin/keys/fixture-key" && method === "DELETE"),
+      (path ===
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/members/member" &&
+        method === "PUT") ||
+        (path ===
+          "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/keys/fixture-key" &&
+          method === "DELETE"),
       `Unexpected mutation: ${method} ${path}`,
     );
     assert.equal(new Headers(options?.headers).get("X-CSRF"), "fixture");
@@ -140,7 +148,7 @@ for (const kind of ["members", "keys"] as const) {
             <Keys
               identity={{
                 accountId: "member",
-                workspaceId: "workspace",
+                workspaceId: "11111111-1111-4111-8111-111111111111",
                 role: "OWNER",
                 capabilities: ["MANAGE_KEYS"],
               }}
@@ -192,12 +200,12 @@ for (const kind of ["members", "keys"] as const) {
       f.writes[0],
       kind === "members"
         ? {
-            path: "/api/admin/members/member",
+            path: "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/members/member",
             method: "PUT",
             body: { role: "MEMBER", active: false },
           }
         : {
-            path: "/api/admin/keys/fixture-key",
+            path: "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/keys/fixture-key",
             method: "DELETE",
             body: undefined,
           },
@@ -286,6 +294,20 @@ test("Admin logout completing while member confirmation is open cancels the unmo
   let logoutRequests = 0;
   globalThis.fetch = async (input, options) => {
     const path = new URL(String(input), "http://localhost").pathname;
+    if (path === "/api/auth/workspaces")
+      return Response.json({
+        items: [
+          {
+            workspaceId: "11111111-1111-4111-8111-111111111111",
+            displayName: "Owner space",
+            role: "OWNER",
+            capabilities: [],
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 30,
+      });
     if (path === "/api/auth/account")
       return Response.json({
         account: {
@@ -295,14 +317,17 @@ test("Admin logout completing while member confirmation is open cancels the unmo
         },
         mayIssueRegistrationInvitations: true,
       });
-    if (path === "/api/auth/me")
+    if (path === "/api/auth/workspaces/11111111-1111-4111-8111-111111111111/me")
       return Response.json({
         accountId: "owner",
-        workspaceId: "workspace",
+        workspaceId: "11111111-1111-4111-8111-111111111111",
         role: "OWNER",
         capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "MANAGE_KEYS"],
       });
-    if (path === "/api/admin/repository/tree")
+    if (
+      path ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/tree"
+    )
       return Response.json({ commit: "fixture", entries: [], diagnostics: [] });
     if (path === "/api/auth/logout") {
       assert.equal(options?.method, "POST");

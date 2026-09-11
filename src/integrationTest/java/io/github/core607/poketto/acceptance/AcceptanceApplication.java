@@ -2,7 +2,9 @@ package io.github.core607.poketto.acceptance;
 
 import io.github.core607.poketto.PokettoApplication;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
+import io.github.core607.poketto.content.internal.AcceptanceRepositories;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,6 +13,8 @@ import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.transport.RefSpec;
 import org.springframework.boot.SpringApplication;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Synthetic real-service entrance, compiled only with integration fixtures and never into the production image. */
 public final class AcceptanceApplication {
@@ -27,15 +31,25 @@ public final class AcceptanceApplication {
 
         Path remote = root.resolve("remote.git");
         seed(remote, root.resolve("seed"));
-        SpringApplication app =
-                new SpringApplication(PokettoApplication.class, RemoteRepositoryIntegrationConfiguration.class);
+        SpringApplication app = new SpringApplication(PokettoApplication.class, AcceptanceRepositories.class);
         app.setDefaultProperties(Map.of(
                 "poketto.data-dir", root.resolve("data").toString(),
                 "poketto.test.repository-path", remote.toString(),
                 "poketto.security.allowed-origins", required("POKETTO_ACCEPTANCE_ORIGIN"),
                 "POKETTO_SESSION_COOKIE_SECURE", false));
         var context = app.run(args);
-        context.getBean(AuthService.class).initializeOwner("owner", password);
+        var auth = context.getBean(AuthService.class);
+        var owner = auth.initializeOwner("owner", password);
+        if (Boolean.parseBoolean(System.getenv("POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES"))) {
+            Path secondRemote = root.resolve("second.git");
+            seed(secondRemote, root.resolve("second-seed"));
+            WorkspaceId second = WorkspaceId.random();
+            AcceptanceRepositories.register(second, secondRemote);
+            new TransactionTemplate(context.getBean(PlatformTransactionManager.class)).executeWithoutResult(status -> {
+                context.getBean(WorkspaceRegistry.class).create(second, "阅读室", "reading-room");
+                auth.establishWorkspaceOwner(owner, second);
+            });
+        }
         System.out.println("Synthetic acceptance services are ready; production repositories are not used.");
     }
 

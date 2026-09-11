@@ -2,7 +2,6 @@ package io.github.core607.poketto.auth.internal;
 
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
@@ -61,7 +60,6 @@ class BrowserSecurityConfiguration {
     SecurityFilterChain mcpSecurity(
             HttpSecurity http,
             ObjectProvider<AuthService> auth,
-            ObjectProvider<WorkspaceCatalog> workspaces,
             @Value("${poketto.security.allowed-origins:}") String origins,
             @Value("${poketto.oauth.issuer:}") String issuer)
             throws Exception {
@@ -84,7 +82,6 @@ class BrowserSecurityConfiguration {
             HttpSecurity http,
             AuthenticationProvider accountAuthenticationProvider,
             ObjectProvider<AuthService> auth,
-            ObjectProvider<WorkspaceCatalog> workspaces,
             @Value("${poketto.security.allowed-origins:}") String origins,
             @Value("${poketto.oauth.issuer:}") String issuer,
             @Value("${poketto.security.admin-body-concurrency:2}") int adminBodyConcurrency,

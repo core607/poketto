@@ -45,7 +45,7 @@ proof['probeSha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 for area in ('assets', 'mcp', 'web'):
     for path in sorted((ROOT / 'src/main/java/io/github/core607/poketto' / area).rglob('*.java')):
         proof['sourceSha256'][str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
-cookie, csrf, port = None, None, None
+cookie, csrf, port, workspace = None, None, None, None
 held = []
 stop = threading.Event()
 monitor_failure = []
@@ -59,6 +59,9 @@ def run(args):
 
 
 def call(method, path, body=None, ctype=None, extra=None, browser=True, slow=False):
+    if path.startswith('/api/admin/') and not path.startswith('/api/admin/workspaces/'):
+        assert workspace is not None
+        path = '/api/admin/workspaces/' + workspace + path[len('/api/admin'):]
     headers = dict(extra or {})
     if browser and cookie:
         headers['Cookie'] = cookie
@@ -187,6 +190,7 @@ try:
     _, headers = expect('POST', '/api/auth/login', 204, urllib.parse.urlencode({'username': 'owner', 'password': password}).encode(), 'application/x-www-form-urlencoded')
     cookie = headers.get('set-cookie', cookie).split(';', 1)[0]
     csrf = json_call('GET', '/api/auth/csrf')
+    workspace = json_call('GET', '/api/auth/workspaces')['items'][0]['workspaceId']
     app_id = run(COMPOSE + ['ps', '-q', 'app']).strip()
     proof['jvmFlags'] = run(['docker', 'exec', app_id, 'jcmd', '1', 'VM.flags']).strip()
     proof['heapMax'] = int(re.search(r'-XX:MaxHeapSize=(\d+)', proof['jvmFlags'])[1])

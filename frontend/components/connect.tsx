@@ -50,11 +50,15 @@ export function Connect() {
         "/api/auth/oauth/consent?request=" + encodeURIComponent(id),
       );
       setConsent(value);
-      const page = await api<{ items: SpaceSummary[]; total: number }>(`/api/auth/workspaces?offset=${pageOffset}&limit=30`);
+      const page = await api<{ items: SpaceSummary[]; total: number }>(
+        `/api/auth/workspaces?offset=${pageOffset}&limit=30`,
+      );
       setSpaces(page.items);
       setTotal(page.total);
       setOffset(pageOffset);
-      setWorkspace(page.items.find((space) => space.role === "OWNER")?.workspaceId ?? "");
+      setWorkspace(
+        page.items.find((space) => space.role === "OWNER")?.workspaceId ?? "",
+      );
       setSelected(
         value.scopes.filter(
           (s) => s === "repository:execute" || s === "offline_access",
@@ -83,7 +87,15 @@ export function Connect() {
     try {
       const result = await api<{ redirect: string }>(
         "/api/auth/oauth/consent",
-        { method: "POST", body: { request, workspaceId: workspace || null, scopes: selected, allow } },
+        {
+          method: "POST",
+          body: {
+            request,
+            workspaceId: workspace || null,
+            scopes: selected,
+            allow,
+          },
+        },
       );
       // The server binds this exact redirect to the browser's validated authorization request.
       window.location.assign(result.redirect);
@@ -114,15 +126,58 @@ export function Connect() {
                 {consent.redirectUri}
               </strong>
             </p>
-            <label>连接哪个空间？<select value={workspace} disabled={pending} onChange={(event) => setWorkspace(event.target.value)}>
-              <option value="">请选择空间</option>
-              {spaces.map((space) => <option key={space.workspaceId} value={space.workspaceId} disabled={space.role !== "OWNER"}>{space.displayName}{space.role !== "OWNER" ? "（需要所有者授权）" : ""}</option>)}
-            </select></label>
-            {total > 30 && <nav className="pagination" aria-label="空间分页">
-              <button disabled={pending || offset === 0} onClick={() => void load(request, Math.max(0, offset - 30))}>上一页</button>
-              <button disabled={pending || offset + 30 >= total} onClick={() => void load(request, offset + 30)}>下一页</button>
-            </nav>}
-            {!workspace && <p>先<a href="/admin?tab=account" target="_blank" rel="noreferrer">创建或加入空间</a>，再回来继续授权。<button className="text-button" disabled={pending} onClick={() => void load(request)}>重新读取空间</button></p>}
+            <label>
+              连接哪个空间？
+              <select
+                value={workspace}
+                disabled={pending}
+                onChange={(event) => setWorkspace(event.target.value)}
+              >
+                <option value="">请选择空间</option>
+                {spaces.map((space) => (
+                  <option
+                    key={space.workspaceId}
+                    value={space.workspaceId}
+                    disabled={space.role !== "OWNER"}
+                  >
+                    {space.displayName}
+                    {space.role !== "OWNER" ? "（需要所有者授权）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {total > 30 && (
+              <nav className="pagination" aria-label="空间分页">
+                <button
+                  disabled={pending || offset === 0}
+                  onClick={() => void load(request, Math.max(0, offset - 30))}
+                >
+                  上一页
+                </button>
+                <button
+                  disabled={pending || offset + 30 >= total}
+                  onClick={() => void load(request, offset + 30)}
+                >
+                  下一页
+                </button>
+              </nav>
+            )}
+            {!workspace && (
+              <p>
+                先
+                <a href="/admin?tab=account" target="_blank" rel="noreferrer">
+                  创建或加入空间
+                </a>
+                ，再回来继续授权。
+                <button
+                  className="text-button"
+                  disabled={pending}
+                  onClick={() => void load(request)}
+                >
+                  重新读取空间
+                </button>
+              </p>
+            )}
             <fieldset disabled={pending}>
               <legend>允许哪些操作？</legend>
               {Object.entries(scopeLabels)
@@ -151,7 +206,9 @@ export function Connect() {
             <div className="oauth-actions">
               <button
                 disabled={
-                  pending || !workspace || !selected.some((s) => s !== "offline_access")
+                  pending ||
+                  !workspace ||
+                  !selected.some((s) => s !== "offline_access")
                 }
                 onClick={() => void decide(true)}
               >

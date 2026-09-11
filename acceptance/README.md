@@ -31,6 +31,8 @@ docker compose --env-file acceptance/.env -f acceptance/compose.yaml up --build 
 
 Open `http://127.0.0.1:38180`; log in as `owner` with that disposable password. If the port changes, update both the port and origin settings. The repository includes ordinary Chinese Markdown paths, optional metadata, a folder gallery, a private sentinel, and an excluded sentinel. Exercise edits, moves, conflicts, managed uploads, image previews, membership and key operations through the real browser. Obtain MCP keys through the same administration interface.
 
+Set `POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES=true` to add a second space with a separate synthetic Git authority owned by the same account. Use its workspace selector and open each space in a separate tab to verify route-bound edits. This fixture seeds repositories directly; it does not validate GitHub/CNB provisioning credentials.
+
 The application refuses to seed a nonempty fixture root. Each fresh run requires disposing of this stack's sample volumes first:
 
 ```sh

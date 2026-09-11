@@ -3,6 +3,7 @@ package io.github.core607.poketto.web.internal;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.Map;
 import java.util.UUID;
@@ -82,7 +83,8 @@ class BrowserAuthController {
 
     record SpaceResponse(String workspaceId, String displayName, String role, java.util.List<String> capabilities) {}
 
-    record MeResponse(UUID accountId, String workspaceId, String displayName, String role, java.util.List<String> capabilities) {}
+    record MeResponse(
+            UUID accountId, String workspaceId, String displayName, String role, java.util.List<String> capabilities) {}
 
     record InvitationTokenRequest(String token) {
         @Override

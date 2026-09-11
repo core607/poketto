@@ -170,7 +170,13 @@ export function Editor({
     setError("");
     setConflict(false);
     try {
-      const result = await saveRepositoryFile(api, file, target, source, remove);
+      const result = await saveRepositoryFile(
+        api,
+        file,
+        target,
+        source,
+        remove,
+      );
       if (remove) {
         setFile(null);
         setSource("");

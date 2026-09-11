@@ -79,7 +79,8 @@ function DirectoryBranch({
     setLoading(true);
     setError("");
     try {
-      const result = await readDirectory(api, 
+      const result = await readDirectory(
+        api,
         page?.commit ?? props.commit,
         path,
         offset,

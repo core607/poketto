@@ -158,7 +158,9 @@ export function ExportDialog({
           </p>
           <a
             className="button"
-            href={workspacePath(`/api/admin/exports/${encodeURIComponent(receipt.handle)}`)}
+            href={workspacePath(
+              `/api/admin/exports/${encodeURIComponent(receipt.handle)}`,
+            )}
             download
           >
             下载 ZIP

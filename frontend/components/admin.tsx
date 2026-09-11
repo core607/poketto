@@ -31,24 +31,42 @@ function AdminContent() {
   async function refresh() {
     setLoading(true);
     setError("");
-    try { setAccount(await api<AccountProfile>("/api/auth/account")); }
-    catch (error) {
+    try {
+      setAccount(await api<AccountProfile>("/api/auth/account"));
+    } catch (error) {
       setAccount(null);
-      if (!(error instanceof ApiError && error.status === 401)) setError(message(error));
-    } finally { setLoading(false); }
+      if (!(error instanceof ApiError && error.status === 401))
+        setError(message(error));
+    } finally {
+      setLoading(false);
+    }
   }
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+  }, []);
   async function logout() {
     try {
       await api("/api/auth/logout", { method: "POST" });
       setAccount(null);
-    } catch (error) { setError(message(error)); }
+    } catch (error) {
+      setError(message(error));
+    }
   }
   if (loading) return <p role="status">正在确认会话…</p>;
-  return <>
-    {account ? <WorkspaceDashboard account={account} onLogout={logout} /> : <Login onLogin={refresh} />}
-    {error && <p role="alert" className="notice danger">{error}</p>}
-  </>;
+  return (
+    <>
+      {account ? (
+        <WorkspaceDashboard account={account} onLogout={logout} />
+      ) : (
+        <Login onLogin={refresh} />
+      )}
+      {error && (
+        <p role="alert" className="notice danger">
+          {error}
+        </p>
+      )}
+    </>
+  );
 }
 
 export function Login({

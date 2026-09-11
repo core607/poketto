@@ -1,3 +1,4 @@
+import { scopedRoot } from "./workspace-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
@@ -60,7 +61,7 @@ test("editor inserts and previews new images relative to a new draft destination
   const { ConfirmationProvider } = await import("../components/confirmation");
   const container = window.document.createElement("div");
   window.document.body.append(container);
-  const root = createRoot(container as unknown as HTMLDivElement);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
   const original = "# Existing\n\n![Keep](../keep.png)\n";
   const previews: { path: string; body: string; commit: string }[] = [];
   const previousFetch = globalThis.fetch;
@@ -68,13 +69,19 @@ test("editor inserts and previews new images relative to a new draft destination
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
-    if (url.pathname === "/api/admin/repository/tree")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/tree"
+    )
       return Response.json({
         commit: "before",
         entries: [{ path: "notes/a.md", title: "Existing" }],
         diagnostics: [],
       });
-    if (url.pathname === "/api/admin/repository/file")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/file"
+    )
       return Response.json({
         path: "notes/a.md",
         source: null,
@@ -83,7 +90,10 @@ test("editor inserts and previews new images relative to a new draft destination
         expectedAbsence: true,
         diagnostics: [],
       });
-    if (url.pathname === "/api/admin/repository/directory")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/directory"
+    )
       return Response.json({
         commit: "before",
         path: "",
@@ -91,14 +101,20 @@ test("editor inserts and previews new images relative to a new draft destination
         entries: [],
         nextOffset: null,
       });
-    if (url.pathname === "/api/admin/assets/repository")
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets/repository"
+    )
       return Response.json({
         items: [
           { path: "notes/photo#1?.png", mediaType: "image/png", size: 73 },
         ],
         total: 1,
       });
-    if (url.pathname === "/api/admin/repository/preview") {
+    if (
+      url.pathname ===
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview"
+    ) {
       const request = JSON.parse(String(options?.body));
       previews.push(request);
       return Response.json({
@@ -129,7 +145,7 @@ test("editor inserts and previews new images relative to a new draft destination
         <Editor
           identity={{
             accountId: "owner",
-            workspaceId: "workspace",
+            workspaceId: "11111111-1111-4111-8111-111111111111",
             role: "OWNER",
             capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
           }}

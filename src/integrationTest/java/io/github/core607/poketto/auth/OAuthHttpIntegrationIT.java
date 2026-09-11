@@ -135,6 +135,9 @@ class OAuthHttpIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.clientName").value("Synthetic connector"));
         String decision = json.writeValueAsString(Map.of(
+                "workspaceId",
+                jdbc.queryForObject("select workspace_id from workspaces where is_default", java.util.UUID.class)
+                        .toString(),
                 "request",
                 request,
                 "allow",
@@ -197,10 +200,10 @@ class OAuthHttpIntegrationIT {
         var principal = auth.authenticateApiKey(token.get("access_token").asString());
         mvc.perform(get("/api/auth/oauth/consent").session(session).param("request", request))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/api/admin/connections").session(session))
+        mvc.perform(get(scoped("/api/admin/connections")).session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].scopes.length()").value(2));
-        mvc.perform(delete("/api/admin/connections/" + principal.subjectId())
+        mvc.perform(delete(scoped("/api/admin/connections/") + principal.subjectId())
                         .session(session)
                         .header(
                                 csrf.get("headerName").asString(),
@@ -266,5 +269,13 @@ class OAuthHttpIntegrationIT {
                 .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "="
                         + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                 .collect(java.util.stream.Collectors.joining("&"));
+    }
+
+    private String scoped(String path) {
+        String workspace = jdbc.queryForObject(
+                        "select workspace_id from workspaces where is_default", java.util.UUID.class)
+                .toString();
+        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

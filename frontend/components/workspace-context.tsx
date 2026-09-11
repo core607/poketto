@@ -5,8 +5,18 @@ import { workspaceApi, workspacePath } from "../lib/workspace-api";
 
 const WorkspaceContext = createContext<string | null>(null);
 
-export function WorkspaceProvider({ workspaceId, children }: { workspaceId: string; children: ReactNode }) {
-  return <WorkspaceContext.Provider value={workspaceId}>{children}</WorkspaceContext.Provider>;
+export function WorkspaceProvider({
+  workspaceId,
+  children,
+}: {
+  workspaceId: string;
+  children: ReactNode;
+}) {
+  return (
+    <WorkspaceContext.Provider value={workspaceId}>
+      {children}
+    </WorkspaceContext.Provider>
+  );
 }
 
 const accountApi: typeof api = (path, options) => {
@@ -16,7 +26,10 @@ const accountApi: typeof api = (path, options) => {
 
 export function useWorkspaceApi() {
   const workspace = useContext(WorkspaceContext);
-  return useMemo(() => workspace ? workspaceApi(workspace) : accountApi, [workspace]);
+  return useMemo(
+    () => (workspace ? workspaceApi(workspace) : accountApi),
+    [workspace],
+  );
 }
 
 export function useWorkspacePath() {

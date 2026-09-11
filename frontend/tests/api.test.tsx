@@ -12,7 +12,9 @@ test("move dependency failures have an actionable message without exposing arbit
         { status: 400 },
       );
     await assert.rejects(
-      api("/api/admin/repository/move"),
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move",
+      ),
       (error) =>
         error instanceof ApiError &&
         error.status === 400 &&
@@ -21,9 +23,19 @@ test("move dependency failures have an actionable message without exposing arbit
     );
     globalThis.fetch = async () =>
       Response.json({ detail: "private diagnostic" }, { status: 400 });
-    await assert.rejects(api("/api/admin/repository/move"), /输入格式有误/);
+    await assert.rejects(
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move",
+      ),
+      /输入格式有误/,
+    );
     globalThis.fetch = async () => new Response("not JSON", { status: 400 });
-    await assert.rejects(api("/api/admin/repository/move"), /输入格式有误/);
+    await assert.rejects(
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/move",
+      ),
+      /输入格式有误/,
+    );
   } finally {
     globalThis.fetch = previous;
   }
@@ -50,11 +62,14 @@ test("browser writes get fresh CSRF tokens and preserve upload idempotency heade
         password: "test-password",
       }),
     });
-    await api("/api/admin/assets", {
-      method: "POST",
-      multipart: new FormData(),
-      headers: { "Idempotency-Key": "operation-a" },
-    });
+    await api(
+      "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets",
+      {
+        method: "POST",
+        multipart: new FormData(),
+        headers: { "Idempotency-Key": "operation-a" },
+      },
+    );
     assert.equal(calls.length, 4);
     assert.equal(
       (calls[1].options?.headers as Record<string, string>)["X-CSRF-TOKEN"],
@@ -89,7 +104,10 @@ test("uncertain browser mutation does not retry or claim success", async () => {
   };
   try {
     await assert.rejects(
-      api("/api/admin/repository/patch", { method: "POST", body: {} }),
+      api(
+        "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
+        { method: "POST", body: {} },
+      ),
       (error) =>
         error instanceof ApiError &&
         error.status === 0 &&
