@@ -73,6 +73,12 @@ class IndexedMediaDeliveryTests {
         snapshots.refresh(workspace);
         var blobs = new JGitRepositoryBlobReader(fixture.authority());
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         var actor = mock(AuthPrincipal.class);
         when(actor.kind()).thenReturn(AuthPrincipal.Kind.ACCOUNT);
         when(actor.subjectId()).thenReturn(java.util.UUID.randomUUID());

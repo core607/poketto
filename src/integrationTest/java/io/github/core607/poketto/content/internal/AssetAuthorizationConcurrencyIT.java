@@ -113,6 +113,54 @@ class AssetAuthorizationConcurrencyIT {
     private AuthPrincipal owner;
     private WorkspaceId workspace;
 
+    @Test
+    void memberPublicPreviewCannotReadPrivateReferencesAndGrantsTrackCurrentScope() throws Exception {
+        int index = CASE.incrementAndGet();
+        var member = registration.register(registration.issue(owner).token(), "public-member-" + index, PASSWORD);
+        auth.acceptInvitation(
+                member, auth.createInvitation(owner, workspace, Set.of()).token());
+        var requestScope = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
+        try (var producer = requestScope.producer()) {
+            byte[] visible = png(index + 10), secret = png(index + 100);
+            String source = "# Public page\n![visible](visible.png)\n";
+            var files = new java.util.HashMap<String, byte[]>();
+            files.put(
+                    ".poketto/publishing.yaml", "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8));
+            files.put("public/page.md", source.getBytes(StandardCharsets.UTF_8));
+            files.put("public/visible.png", visible);
+            files.put("private/hidden.png", secret);
+            commitRemote(files);
+            String draft = source + "![private](../private/hidden.png)\n";
+            var preview = assets.preview(member, workspace, "public/page.md", draft, Optional.empty());
+            assertThat(preview.images().keySet()).containsExactly("visible.png");
+            String publicToken = preview.images().get("visible.png").replaceFirst(".*/", "");
+            assertThat(assets.readPrivateImage(member, workspace, publicToken).bytes())
+                    .isEqualTo(visible);
+            assertThatThrownBy(() -> assets.readPublicImage(workspace, publicToken))
+                    .isInstanceOf(io.github.core607.poketto.assets.AssetStorageException.class);
+            assertThatThrownBy(() -> assets.preview(member, workspace, "private/page.md", draft, Optional.empty()))
+                    .isInstanceOf(AuthException.class);
+            auth.changeMembership(
+                    owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
+            String privateToken = assets.preview(member, workspace, "public/page.md", draft, Optional.empty())
+                    .images()
+                    .get("../private/hidden.png")
+                    .replaceFirst(".*/", "");
+            auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of());
+            assertThatThrownBy(() -> assets.readPrivateImage(member, workspace, privateToken))
+                    .isInstanceOf(AuthException.class);
+            assertThat(assets.readPrivateImage(member, workspace, publicToken).bytes())
+                    .isEqualTo(visible);
+            files.put(
+                    ".poketto/publishing.yaml", "enabled: false\nmode: public-root\n".getBytes(StandardCharsets.UTF_8));
+            commitRemote(files);
+            assertThatThrownBy(() -> assets.readPrivateImage(member, workspace, publicToken))
+                    .isInstanceOf(AuthException.class);
+        } finally {
+            requestScope.responseComplete();
+        }
+    }
+
     @BeforeEach
     void owner() {
         try {

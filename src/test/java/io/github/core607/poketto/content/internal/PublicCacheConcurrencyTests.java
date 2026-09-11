@@ -279,6 +279,12 @@ class PublicCacheConcurrencyTests {
         snapshots.refresh(workspace);
         var blobs = new JGitRepositoryBlobReader(fixture.authority());
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         when(auth.withAuthorization(any(), any(), any(), any()))
                 .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get());
         var actor = mock(AuthPrincipal.class);

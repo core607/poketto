@@ -81,11 +81,52 @@ class AssetDeliveryTests {
     void canonicalStorageRoot() throws Exception {
         // Windows may supply an 8.3 TEMP alias; the storage policy requires canonical ancestors.
         directory = directory.toRealPath();
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
     }
 
     @Test
     void logicalRoutesResolveEncodedMarkdownLinksAndImagesWithoutReinterpretingNames() throws Exception {
         assertLogicalMedia("目录 空格%#");
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void memberDraftCannotAuthorizeUnpublishedManagedOriginals() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        var originals = ManagedBlobStore.local(directory.resolve("originals"));
+        byte[] visible = png(7), hidden = png(8);
+        var publicImage = originals.upload(workspace, "public-reference", new java.io.ByteArrayInputStream(visible));
+        var privateImage = originals.upload(workspace, "private-reference", new java.io.ByteArrayInputStream(hidden));
+        String publicRef = publicImage.reference().toString(),
+                privateRef = privateImage.reference().toString();
+        String source = "# Public\n![shown](" + publicRef + ")\n";
+        fixture.commitRemote(workspace, files("public/page.md", source));
+        var snapshots = snapshots(fixture, Duration.ofMinutes(5));
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO);
+        var service = service(fixture, snapshots, memory, originals);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                        java.util.Set.of(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)));
+        var preview = service.preview(
+                actor, workspace, "public/page.md", source + "![hidden](" + privateRef + ")", Optional.empty());
+        assertThat(preview.images()).containsOnlyKeys(publicRef);
+        var scope = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
+        try (var producer = scope.producer()) {
+            assertThat(service.readPrivateImage(
+                                    actor, workspace, token(preview.images().get(publicRef)))
+                            .bytes())
+                    .isEqualTo(visible);
+        } finally {
+            scope.responseComplete();
+        }
     }
 
     @Test
@@ -1108,6 +1149,14 @@ class AssetDeliveryTests {
 
     private AssetService service(
             RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, ImageMemoryAdmission memory) {
+        return service(fixture, snapshots, memory, mock(ManagedBlobStore.class));
+    }
+
+    private AssetService service(
+            RemoteRepositoryFixture fixture,
+            JGitPublicContentSnapshots snapshots,
+            ImageMemoryAdmission memory,
+            ManagedBlobStore originals) {
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(invocation -> {
             if (!authorized.get()) throw new SecurityException("authorization revoked");
             return ((Supplier<?>) invocation.getArgument(3)).get();
@@ -1118,7 +1167,7 @@ class AssetDeliveryTests {
                 new JGitRepositoryBlobReader(fixture.authority()),
                 new RepositoryMarkdownConfiguration().repositoryMarkdownInspector(),
                 snapshots,
-                () -> mock(ManagedBlobStore.class),
+                () -> originals,
                 directory.resolve("image-cache"),
                 16L * 1024 * 1024,
                 128,

@@ -31,6 +31,12 @@ class SessionMovesTests {
     private final AuthPrincipal actor = mock(AuthPrincipal.class);
 
     private PublicExecutionNativeFixture fixture(boolean loseReply) throws Exception {
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         when(actor.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
         when(actor.subjectId()).thenReturn(UUID.randomUUID());
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())

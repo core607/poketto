@@ -26,6 +26,12 @@ class SelectedFileSavesTests {
     @Test
     void selectedSavesAdvanceOnlyHostBaselineAndRetainItOnARealRemoteConflict() throws Exception {
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
@@ -62,6 +68,15 @@ class SelectedFileSavesTests {
     @Test
     void unknownAcknowledgementPreventsAnotherWriteAndRetainsItsReceipt() throws Exception {
         var auth = mock(AuthService.class);
+        doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
@@ -90,6 +105,12 @@ class SelectedFileSavesTests {
     @Test
     void synchronizingOnePathNeverAcceptsNewRemoteRevisionsForUnselectedLocalFiles() throws Exception {
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
@@ -123,6 +144,12 @@ class SelectedFileSavesTests {
     @Test
     void recoveryAcknowledgesTheOriginalSaveAndAllowsLaterLocalEditsToBeSavedSeparately() throws Exception {
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.OWNER,
+                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
