@@ -10,6 +10,7 @@ type Connection = {
   scopes: string[];
   expiresAt: string;
   revoked: boolean;
+  requiresReauthorization: boolean;
 };
 export function Connections() {
   const [items, setItems] = useState<Connection[]>([]);
@@ -76,8 +77,14 @@ export function Connections() {
               {item.scopes.map((s) => scopeLabels[s]?.label ?? s).join("、")}
             </p>
             <p>
-              {item.revoked ? "已断开" : inactive ? "已过期" : "已授权"} ·
-              有效至 {new Date(item.expiresAt).toLocaleDateString("zh-CN")}
+              {item.revoked
+                ? "已断开"
+                : inactive
+                  ? "已过期"
+                  : item.requiresReauthorization
+                    ? "需重新授权"
+                    : "已授权"}{" "}
+              · 有效至 {new Date(item.expiresAt).toLocaleDateString("zh-CN")}
             </p>
             <button
               className="button-secondary"

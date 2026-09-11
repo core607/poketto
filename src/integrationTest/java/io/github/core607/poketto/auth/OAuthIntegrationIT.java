@@ -112,6 +112,60 @@ class OAuthIntegrationIT {
     }
 
     @Test
+    void activeConnectionsStayVisibleAfterMoreThanOnePageOfDisconnections() {
+        var active = auth.authenticateApiKey(tokens().access_token());
+        for (int i = 0; i < 100; i++) {
+            var removed = auth.authenticateApiKey(tokens().access_token());
+            oauth.disconnect(owner, workspace, removed.subjectId());
+        }
+        var visible = oauth.connections(owner, workspace);
+        assertThat(visible).hasSize(100);
+        assertThat(visible.getFirst().id()).isEqualTo(active.subjectId());
+        assertThat(visible.getFirst().revoked()).isFalse();
+    }
+
+    @Test
+    void staleAnonymousRegistrationsAreReclaimedWithoutDeletingConnectionsOrPendingConsent() {
+        tokens();
+        var waiting = oauth.register("Waiting", List.of(REDIRECT));
+        jdbc.update("update oauth_clients set last_used_at=now()-interval '2 days'");
+        var pending = oauth.prepare(
+                waiting.id(),
+                REDIRECT,
+                "code",
+                "repository:execute",
+                "state",
+                OAuthService.challenge(VERIFIER),
+                "S256",
+                RESOURCE);
+        jdbc.update(
+                "insert into oauth_clients(client_id,client_name,redirect_uris,last_used_at) select 'unused-'||i,'Unused',array['https://client.example/callback'],now()-interval '2 days' from generate_series(1,4094) i");
+        oauth.register("New", List.of(REDIRECT));
+        assertThat(jdbc.queryForObject("select count(*) from oauth_clients", Integer.class))
+                .isEqualTo(3);
+        assertThat(oauth.connections(owner, workspace)).hasSize(1);
+        assertThat(oauth.consent(owner, workspace, pending, Set.of("repository:execute"), true))
+                .contains("code=");
+    }
+
+    @Test
+    void changedIssuerMarksStoredConnectionsAsNeedingNewConsent() {
+        var issued = tokens();
+        oauth = new OAuthService(
+                jdbc,
+                new DataSourceTransactionManager(jdbc.getDataSource()),
+                auth,
+                Clock.systemUTC(),
+                "https://changed.example");
+        assertThatThrownBy(() -> auth.authenticateApiKey(issued.access_token())).isInstanceOf(AuthException.class);
+        var item = oauth.connections(owner, workspace).getFirst();
+        assertThat(item.requiresReauthorization()).isTrue();
+        assertThat(item.revoked()).isFalse();
+        oauth.disconnect(owner, workspace, item.id());
+        assertThat(oauth.connections(owner, workspace).getFirst().revoked()).isTrue();
+    }
+
+    @Test
     void codesBindClientRedirectResourceAndPkceAndReplayCommitsRevocation() {
         String code = code(Set.of("repository:execute", "offline_access"));
         String other = oauth.register("Other", List.of(REDIRECT)).id();

@@ -76,6 +76,9 @@ public final class OAuthService {
         redirects.forEach(OAuthService::validateRedirect);
         return tx.execute(status -> {
             jdbc.execute("select pg_advisory_xact_lock(70701109)");
+            jdbc.update(
+                    "delete from oauth_clients cl where cl.last_used_at<? and not exists (select 1 from oauth_connections c where c.client_id=cl.client_id)",
+                    Timestamp.from(clock.instant().minus(Duration.ofDays(1))));
             if (jdbc.queryForObject("select count(*) from oauth_clients", Integer.class) >= 4096)
                 throw failure("temporarily_unavailable");
             String id = token("oc_");
@@ -134,10 +137,11 @@ public final class OAuthService {
         return tx.execute(status -> {
             lock(workspace);
             if (jdbc.queryForObject(
-                            "select count(*) from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=? and k.revoked_at is null and c.expires_at>?",
+                            "select count(*) from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=? and k.revoked_at is null and c.expires_at>? and c.resource=?",
                             Integer.class,
                             workspace.value(),
-                            now())
+                            now(),
+                            resource())
                     >= 100) throw failure("temporarily_unavailable");
             IssuedToken key = auth.createApiKey(actor, workspace, actor.accountId(), capabilities);
             jdbc.update(
@@ -224,15 +228,18 @@ public final class OAuthService {
     public List<ConnectionInfo> connections(AuthPrincipal actor, WorkspaceId workspace) {
         requireOwner(actor, workspace);
         return jdbc.query(
-                "select c.key_id,cl.client_name,c.scopes,c.created_at,c.expires_at,k.revoked_at from oauth_connections c join oauth_clients cl using(client_id) join auth_api_keys k using(key_id) where c.workspace_id=? order by c.created_at desc limit 100",
+                "select c.key_id,cl.client_name,c.scopes,c.created_at,c.expires_at,k.revoked_at,c.resource from oauth_connections c join oauth_clients cl using(client_id) join auth_api_keys k using(key_id) where c.workspace_id=? order by (k.revoked_at is null and c.expires_at>? and c.resource=?) desc,c.created_at desc limit 100",
                 (rs, row) -> new ConnectionInfo(
                         rs.getObject(1, UUID.class),
                         rs.getString(2),
                         scopes(rs.getString(3)),
                         rs.getTimestamp(4).toInstant(),
                         rs.getTimestamp(5).toInstant(),
-                        rs.getTimestamp(6) != null),
-                workspace.value());
+                        rs.getTimestamp(6) != null,
+                        !resource().equals(rs.getString(7))),
+                workspace.value(),
+                now(),
+                resource());
     }
 
     public void disconnect(AuthPrincipal actor, WorkspaceId workspace, UUID id) {
@@ -322,9 +329,10 @@ public final class OAuthService {
 
     private Client client(String id) {
         var rows = jdbc.query(
-                "select client_id,client_name,redirect_uris from oauth_clients where client_id=?",
+                "update oauth_clients set last_used_at=? where client_id=? returning client_id,client_name,redirect_uris",
                 (rs, row) -> new Client(rs.getString(1), rs.getString(2), List.of((String[])
                         rs.getArray(3).getArray())),
+                now(),
                 id);
         if (rows.isEmpty()) throw failure("invalid_client");
         return rows.getFirst();
@@ -440,7 +448,13 @@ public final class OAuthService {
     }
 
     public record ConnectionInfo(
-            UUID id, String clientName, Set<String> scopes, Instant createdAt, Instant expiresAt, boolean revoked) {}
+            UUID id,
+            String clientName,
+            Set<String> scopes,
+            Instant createdAt,
+            Instant expiresAt,
+            boolean revoked,
+            boolean requiresReauthorization) {}
 
     private record Connection(UUID key, WorkspaceId workspace, UUID account, String scopes, Instant expires) {}
 
