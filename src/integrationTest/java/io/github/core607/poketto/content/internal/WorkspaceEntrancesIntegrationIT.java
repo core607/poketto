@@ -183,6 +183,115 @@ class WorkspaceEntrancesIntegrationIT {
         assertThat(jdbc.queryForObject(
                         "select public_delivery from workspaces where workspace_id=?", Boolean.class, second.value()))
                 .isFalse();
+
+        String previous = json.readTree(
+                        mvc.perform(get(route(second, "repository/tree")).session(ownerSession))
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString())
+                .path("commit")
+                .asString();
+        var content = Map.of(
+                ".poketto/publishing.yaml", "enabled: true\nmode: public-root\nexclude:\n  - public/excluded/**\n",
+                "public/a.md", "# Allowed A\nVisible source\n",
+                "public/b.md", "# Allowed B\nVisible source\n",
+                "public/excluded/secret.md", "# ExcludedSecret\n",
+                "public/.hidden/secret.md", "# HiddenSecret\n",
+                "public/AGENTS.md", "# GuideSecret\n");
+        var seeded = mvc.perform(csrf(ownerSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit",
+                                previous,
+                                "changes",
+                                content.entrySet().stream()
+                                        .map(entry -> Map.of(
+                                                "path",
+                                                entry.getKey(),
+                                                "expectedAbsence",
+                                                true,
+                                                "content",
+                                                entry.getValue()))
+                                        .toList()))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String current = json.readTree(seeded.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        mvc.perform(get(route(second, "repository/tree")).session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].path").value("public/a.md"));
+        mvc.perform(get(route(second, "repository/directory")).session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(1))
+                .andExpect(jsonPath("$.entries[0].path").value("public"));
+        mvc.perform(get(route(second, "repository/directory"))
+                        .param("path", "public")
+                        .param("limit", "1")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[0].path").value("public/a.md"))
+                .andExpect(jsonPath("$.nextOffset").value(1));
+        mvc.perform(get(route(second, "repository/directory"))
+                        .param("path", "public")
+                        .param("limit", "1")
+                        .param("offset", "1")
+                        .param("commit", current)
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[0].path").value("public/b.md"));
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "public/a.md")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value(content.get("public/a.md")));
+        for (String path : new String[] {
+            "private/shared.md",
+            "public/excluded/secret.md",
+            "public/.hidden/secret.md",
+            "public/AGENTS.md",
+            ".poketto/publishing.yaml"
+        })
+            mvc.perform(get(route(second, "repository/file"))
+                            .param("path", path)
+                            .session(guestSession))
+                    .andExpect(status().isForbidden());
+        mvc.perform(get(route(second, "repository/search"))
+                        .param("query", "Secret")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get(route(second, "repository/search"))
+                        .param("query", "Visible")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get(route(second, "repository/tree"))
+                        .param("commit", previous)
+                        .session(guestSession))
+                .andExpect(status().isForbidden());
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                true,
+                Set.of(Capability.READ_PRIVATE));
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "private/shared.md")
+                        .param("commit", previous)
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("# Second workspace\n"));
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                false,
+                Set.of());
+        mvc.perform(get(route(second, "repository/tree")).session(guestSession)).andExpect(status().isForbidden());
     }
 
     private String patch(String source) throws Exception {

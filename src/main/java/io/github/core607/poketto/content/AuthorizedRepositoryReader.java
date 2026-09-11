@@ -19,19 +19,48 @@ public final class AuthorizedRepositoryReader {
     }
 
     public RepositoryTree readTree(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        return reader.readTree(workspace, commit);
+        boolean privateAccess = privateAccess(actor, workspace);
+        return recheck(
+                actor,
+                workspace,
+                privateAccess,
+                privateAccess ? reader.readTree(workspace, commit) : reader.readPublicTree(workspace, commit));
     }
 
     public RepositoryDirectoryPage listDirectory(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, String path, int offset, int limit) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        return reader.listDirectory(workspace, commit, path, offset, limit);
+        boolean privateAccess = privateAccess(actor, workspace);
+        return recheck(
+                actor,
+                workspace,
+                privateAccess,
+                privateAccess
+                        ? reader.listDirectory(workspace, commit, path, offset, limit)
+                        : reader.listPublicDirectory(workspace, commit, path, offset, limit));
     }
 
     public RepositoryFile getFile(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, String path) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        return reader.getFile(workspace, commit, path);
+        boolean privateAccess = privateAccess(actor, workspace);
+        return recheck(
+                actor,
+                workspace,
+                privateAccess,
+                privateAccess
+                        ? reader.getFile(workspace, commit, path)
+                        : reader.getPublicFile(workspace, commit, path));
+    }
+
+    private boolean privateAccess(AuthPrincipal actor, WorkspaceId workspace) {
+        return auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE);
+    }
+
+    private <T> T recheck(AuthPrincipal actor, WorkspaceId workspace, boolean privateAccess, T result) {
+        // Repository reads may fetch; recheck after materialization without holding a database lock over the network.
+        return auth.withAuthorization(
+                actor,
+                workspace,
+                privateAccess ? java.util.Set.of(Capability.READ_PRIVATE) : java.util.Set.of(),
+                () -> result);
     }
 
     public SearchPage search(
@@ -44,7 +73,7 @@ public final class AuthorizedRepositoryReader {
             Instant to,
             int offset,
             int limit) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        boolean privateAccess = privateAccess(actor, workspace);
         if (query == null
                 || tag == null
                 || query.length() > 200
@@ -56,7 +85,8 @@ public final class AuthorizedRepositoryReader {
                 || (from != null && to != null && from.isAfter(to))) {
             throw new IllegalArgumentException("search exceeds its bounds or has an invalid date range");
         }
-        RepositoryTree tree = reader.readTree(workspace, commit);
+        RepositoryTree tree =
+                privateAccess ? reader.readTree(workspace, commit) : reader.readPublicTree(workspace, commit);
         List<RepositoryDocument> matches = tree.documents().stream()
                 .filter(document -> query.isEmpty()
                         || document.title().contains(query)
@@ -65,22 +95,26 @@ public final class AuthorizedRepositoryReader {
                 .filter(document -> from == null || !document.createdAt().isBefore(from))
                 .filter(document -> to == null || !document.createdAt().isAfter(to))
                 .toList();
-        return new SearchPage(
-                tree.commit().orElse(null),
-                matches.stream()
-                        .skip(offset)
-                        .limit(limit)
-                        .map(document -> new SearchHit(
-                                document.file().path(),
-                                document.title(),
-                                document.tags(),
-                                document.createdAt(),
-                                document.updatedAt(),
-                                snippet(document.body(), query)))
-                        .toList(),
-                matches.size(),
-                offset,
-                limit);
+        return recheck(
+                actor,
+                workspace,
+                privateAccess,
+                new SearchPage(
+                        tree.commit().orElse(null),
+                        matches.stream()
+                                .skip(offset)
+                                .limit(limit)
+                                .map(document -> new SearchHit(
+                                        document.file().path(),
+                                        document.title(),
+                                        document.tags(),
+                                        document.createdAt(),
+                                        document.updatedAt(),
+                                        snippet(document.body(), query)))
+                                .toList(),
+                        matches.size(),
+                        offset,
+                        limit));
     }
 
     private static String snippet(String body, String query) {

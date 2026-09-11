@@ -50,6 +50,95 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
     }
 
     @Override
+    public RepositoryTree readPublicTree(WorkspaceId workspace, Optional<String> commit) {
+        return resolveCurrent(workspace, commit, (repository, resolved) -> {
+            var policy = publicPolicy(repository, resolved);
+            return readTreeObjects(workspace, repository, resolved, policy::permitsPath);
+        });
+    }
+
+    @Override
+    public RepositoryFile getPublicFile(WorkspaceId workspace, Optional<String> commit, String path) {
+        RepositoryPathRules.validate(path);
+        return resolveCurrent(workspace, commit, (repository, resolved) -> {
+            if (!publicPolicy(repository, resolved).permitsPath(path)) throw denied();
+            return readFile(repository, workspace, resolved, path);
+        });
+    }
+
+    @Override
+    public RepositoryDirectoryPage listPublicDirectory(
+            WorkspaceId workspace, Optional<String> commit, String path, int offset, int limit) {
+        Objects.requireNonNull(path);
+        if (!path.isEmpty()) RepositoryPathRules.validate(path);
+        if (offset < 0 || offset > MAX_TREE_ENTRIES || limit < 1 || limit > 200 || (offset > 0 && commit.isEmpty()))
+            throw new IllegalArgumentException("directory pages require valid bounds and a pinned continuation commit");
+        return resolveCurrent(workspace, commit, (repository, resolved) -> {
+            var policy = publicPolicy(repository, resolved);
+            if (!path.isEmpty() && !path.equals("public") && !policy.permitsPath(path)) throw denied();
+            if (resolved.isEmpty())
+                return new RepositoryDirectoryPage(workspace, resolved, path, !path.isEmpty(), List.of(), null);
+            Map<String, RepositoryDirectoryPage.Entry> children = new HashMap<>();
+            boolean exists = path.isEmpty();
+            try (RevWalk revisions = new RevWalk(repository);
+                    TreeWalk entries = new TreeWalk(repository)) {
+                ObjectId tree = revisions
+                        .parseCommit(ObjectId.fromString(resolved.orElseThrow()))
+                        .getTree();
+                if (!path.isEmpty()) {
+                    try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
+                        if (entry != null) {
+                            if (!FileMode.TREE.equals(entry.getFileMode(0)))
+                                throw new IllegalArgumentException("requested path is not a directory");
+                            exists = true;
+                        }
+                    }
+                }
+                entries.addTree(tree);
+                entries.setRecursive(true);
+                int count = 0;
+                while (entries.next()) {
+                    if (++count > MAX_TREE_ENTRIES)
+                        throw new ContentRepositoryException("repository tree entry limit exceeded");
+                    String candidate = entries.getPathString();
+                    if (!policy.permitsPath(candidate)
+                            || kind(entries.getFileMode(0)) != RepositoryDirectoryPage.Kind.FILE) continue;
+                    addImmediate(children, path, candidate, RepositoryDirectoryPage.Kind.FILE);
+                }
+                var media = readMediaIndex(repository, tree);
+                for (String candidate : media.files().keySet()) {
+                    if (!policy.permitsPath(candidate)) continue;
+                    if (candidate.equals(path)) throw new IllegalArgumentException("requested path is not a directory");
+                    addImmediate(children, path, candidate, RepositoryDirectoryPage.Kind.FILE);
+                    if (candidate.startsWith(path + "/")) exists = true;
+                }
+            }
+            List<RepositoryDirectoryPage.Entry> ordered = children.values().stream()
+                    .sorted(Comparator.comparing(RepositoryDirectoryPage.Entry::path))
+                    .toList();
+            return new RepositoryDirectoryPage(
+                    workspace,
+                    resolved,
+                    path,
+                    !exists,
+                    ordered.stream().skip(offset).limit(limit).toList(),
+                    offset + limit < ordered.size() ? offset + limit : null);
+        });
+    }
+
+    private static RepositoryPublishingPolicy publicPolicy(Repository repository, Optional<String> commit) {
+        if (commit.isEmpty()) return RepositoryPublishingPolicy.missing();
+        try (var objects = repository.newObjectReader()) {
+            return JGitPublicContentSnapshots.policy(objects, commit.orElseThrow());
+        }
+    }
+
+    private static io.github.core607.poketto.auth.AuthException denied() {
+        return new io.github.core607.poketto.auth.AuthException(
+                io.github.core607.poketto.auth.AuthException.Code.DENIED);
+    }
+
+    @Override
     public RepositoryDirectoryPage listDirectory(
             WorkspaceId workspaceId, Optional<String> commit, String path, int offset, int limit) {
         Objects.requireNonNull(path);
@@ -370,6 +459,14 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
     }
 
     private <T> T resolve(WorkspaceId workspaceId, Optional<String> requested, Reader<T> reader) {
+        return resolve(workspaceId, requested, reader, false);
+    }
+
+    private <T> T resolveCurrent(WorkspaceId workspaceId, Optional<String> requested, Reader<T> reader) {
+        return resolve(workspaceId, requested, reader, true);
+    }
+
+    private <T> T resolve(WorkspaceId workspaceId, Optional<String> requested, Reader<T> reader, boolean currentOnly) {
         Objects.requireNonNull(workspaceId);
         Objects.requireNonNull(requested);
         requested.ifPresent(commit -> {
@@ -380,6 +477,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
                 Optional<String> selected = requested.isPresent() ? requested : snapshot.commitId();
                 if (requested.isPresent()) {
+                    if (currentOnly && !requested.equals(snapshot.commitId())) throw denied();
                     if (snapshot.commitId().isEmpty()
                             || !reachable(repository, snapshot.commitId().orElseThrow(), requested.orElseThrow()))
                         throw new IllegalArgumentException("requested commit is not in remote main history");
