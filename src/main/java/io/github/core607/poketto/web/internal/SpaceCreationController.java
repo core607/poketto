@@ -58,11 +58,11 @@ class SpaceCreationController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void rotate(
             @AuthenticationPrincipal AuthPrincipal actor,
-            @PathVariable UUID workspaceId,
+            @PathVariable String workspaceId,
             @RequestBody CredentialRequest body) {
         if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT)
             throw new AuthException(AuthException.Code.DENIED);
-        WorkspaceId workspace = new WorkspaceId(workspaceId);
+        WorkspaceId workspace = WorkspaceId.parse(workspaceId);
         auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
             repositories.rotate(workspace, body.username(), body.token());
             return null;

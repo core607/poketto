@@ -37,6 +37,14 @@ public final class RegistrationService {
         return account(actor, false);
     }
 
+    /** Serializes an account-level operation with other account mutations in the same transaction. */
+    public <T> T withAccount(AuthPrincipal actor, java.util.function.Supplier<T> operation) {
+        return transactions.execute(status -> {
+            account(actor, true);
+            return operation.get();
+        });
+    }
+
     private AccountIdentity account(AuthPrincipal actor, boolean lock) {
         if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw new AuthException(DENIED);
         var identities = jdbc.query(

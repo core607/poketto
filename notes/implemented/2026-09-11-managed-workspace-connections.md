@@ -18,6 +18,8 @@ Tokens must allow repository metadata reads and Git content reads/writes. CNB re
 
 Only the fixed GitHub and CNB HTTPS origins are accepted. Embedded credentials, queries, fragments, alternate ports, encoded path components, and unsupported origins are rejected. Provider metadata requests have response-byte and request-time limits. Managed Git transport accepts only the connected repository's smart Git endpoints, disables automatic redirects and proxy selection, checks resolved addresses for private/local networks, and retains TLS certificate and hostname verification. This is a fixed-provider policy, not support for arbitrary self-hosted Git servers.
 
+The application container needs public DNS answers for these provider hosts. Fake-IP desktop proxies or cloud DNS routes that map a provider into private/link-local space are rejected. Configure a public resolver on that container when necessary; do not allow private addresses merely to accommodate such a route. Real Git advertisement probes passed against both providers in an isolated Linux container using a public resolver. These read-only probes do not establish the configured private repository token's write permissions.
+
 Credential rotation requires current human-owner authorization and preserves the repository identity. Fixed error codes cross HTTP boundaries; provider response bodies, tokens, and raw transport exceptions do not. A successful attempt removes its extra staged credential copy.
 
 ## HTTP contract
@@ -25,7 +27,7 @@ Credential rotation requires current human-owner authorization and preserves the
 All routes are under `/api/auth/workspaces`, require browser account authentication, retain CSRF checks, and use the bounded authentication body and no-store response policy:
 
 - `GET /creation-policy` reports whether deployment encryption is configured.
-- `POST /creations` accepts `requestId`, `displayName`, `slug`, `repository`, `username`, and `token`. It returns `workspaceId`, `stage` (`VALIDATING`, `FAILED`, or `READY`), and a fixed `failureCode` when applicable.
+- `POST /creations` accepts `requestId`, `displayName`, `slug`, `repository`, `username`, and `token`. It returns `workspaceId`, `stage` (`VALIDATING`, `FAILED`, or `READY`), a fixed `failureCode` when applicable, and `retryAfterSeconds` for an active validation lease. A retry can omit both credential fields to reuse its encrypted server-side copy; a new credential pair replaces that copy. Browser storage need not retain provider tokens to recover an interrupted creation.
 - `GET /creations/{requestId}` reads only the authenticated account's attempt.
 - `PUT /{workspaceId}/repository-credentials` rotates `username` and `token` for the same established managed binding. It cannot rotate the separately operator-configured default binding or select a different remote.
 
@@ -33,4 +35,4 @@ All routes are under `/api/auth/workspaces`, require browser account authenticat
 
 Provider-side repository creation would require broader token authority and recovery of remote resources. Connecting an existing repository keeps that operation with its provider. One database transaction around network validation would hold relational locks while waiting on third parties; a persisted lease releases those locks and prevents a late attempt from completing after another retry takes ownership. URL-only uniqueness would miss repository renames, so immutable provider identity also participates in duplicate detection.
 
-PostgreSQL integration exercises retry, response replay, duplicate binding rollback, account isolation, and overlapping validation. Cipher tests reject tampering and cross-workspace or cross-repository ciphertext reuse. Provider parsing and transport tests cover read-only, renamed, archived, and unsafe targets. Real provider acceptance and browser creation evidence are required before describing the complete multi-space user flow as delivered.
+PostgreSQL integration exercises retry, response replay, duplicate binding rollback, account isolation, and overlapping validation. Real Spring HTTP coverage checks CSRF, origin and body limits, encrypted storage, and foreign-account denial. Cipher tests reject tampering and cross-workspace or cross-repository ciphertext reuse. Provider parsing and transport tests cover read-only, renamed, archived, and unsafe targets. The production-shaped Linux probe validates metadata and Git read/write advertisements against the actual private CNB repository without changing its refs. Browser creation evidence is still required before describing the complete multi-space user flow as delivered.

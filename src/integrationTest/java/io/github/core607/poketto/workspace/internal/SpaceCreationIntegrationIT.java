@@ -55,7 +55,7 @@ class SpaceCreationIntegrationIT {
         catalog.ensureDefaultWorkspace();
         var encoder = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8", Map.of("pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
-        auth = new AuthService(jdbc, transactions, encoder, event -> {}, Clock.fixed(now, ZoneOffset.UTC), "");
+        auth = new AuthService(jdbc, transactions, encoder, event -> {}, Clock.fixed(now, ZoneOffset.UTC));
         accounts = new RegistrationService(
                 jdbc,
                 transactions,
@@ -128,7 +128,8 @@ class SpaceCreationIntegrationIT {
         assertThat(catalog.findById(new WorkspaceId(UUID.fromString(failed.workspaceId()))))
                 .isEmpty();
         remote.fail = false;
-        var ready = create(service(now), request, "retry-space", "first");
+        var ready = service(now)
+                .create(actor, request, "My notes", "retry-space", "https://github.com/example/first", null, null);
         assertThat(ready.workspaceId()).isEqualTo(failed.workspaceId());
         assertThat(ready.stage()).isEqualTo("READY");
         var duplicate = create(service(now), UUID.randomUUID(), "second-space", "second");
@@ -151,6 +152,7 @@ class SpaceCreationIntegrationIT {
             assertThat(remote.entered.await(5, TimeUnit.SECONDS)).isTrue();
             var overlapping = create(service, request, "concurrent-space", "first");
             assertThat(overlapping.stage()).isEqualTo("VALIDATING");
+            assertThat(overlapping.retryAfterSeconds()).isEqualTo(300);
             assertThat(remote.verifications.get()).isEqualTo(1);
             remote.release.countDown();
             assertThat(first.get(10, TimeUnit.SECONDS).workspaceId()).isEqualTo(overlapping.workspaceId());
@@ -161,6 +163,8 @@ class SpaceCreationIntegrationIT {
         remote.fail = true;
         var failed = create(service, abandoned, "abandoned-space", "second");
         jdbc.update("update space_creation_attempts set stage='VALIDATING' where request_id=?", abandoned);
+        assertThat(service(now.plusSeconds(301)).status(actor, abandoned).retryAfterSeconds())
+                .isZero();
         remote.fail = false;
         remote.identity = "github:other";
         assertThat(create(service(now.plusSeconds(301)), abandoned, "abandoned-space", "second")

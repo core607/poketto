@@ -72,12 +72,8 @@ public final class SpaceCreationService {
         if (!admission.tryAcquire()) throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
         try {
             UUID lease = UUID.randomUUID();
-            Attempt attempt = transactions.execute(status -> {
+            Attempt attempt = accounts.withAccount(actor, () -> {
                 // Serializes the initial insert as well as retries for one account/request pair.
-                jdbc.queryForObject(
-                        "select account_id from auth_accounts where account_id=? for update",
-                        UUID.class,
-                        actor.accountId());
                 var previous = find(actor, requestId, true);
                 if (previous != null) {
                     if (!previous.name().equals(displayName.strip())
@@ -92,7 +88,9 @@ public final class SpaceCreationService {
                                             .isAfter(clock.instant()))) return previous;
                 }
                 WorkspaceId id = previous == null ? WorkspaceId.random() : previous.workspace();
-                byte[] sealed = repositories.seal(id, coordinates, username, token);
+                byte[] sealed = previous != null && username == null && token == null
+                        ? previous.sealed()
+                        : repositories.seal(id, coordinates, username, token);
                 jdbc.update(
                         """
                         insert into space_creation_attempts(account_id,request_id,workspace_id,display_name,public_slug,canonical_uri,sealed_credentials,stage,lease_id,updated_at)
@@ -175,11 +173,20 @@ public final class SpaceCreationService {
         return values.isEmpty() ? null : values.getFirst();
     }
 
-    private static Result result(Attempt value) {
-        return new Result(value.workspace().toString(), value.stage(), value.failure());
+    private Result result(Attempt value) {
+        long remaining = value.stage().equals("VALIDATING")
+                ? Math.max(
+                        0,
+                        Duration.between(
+                                        clock.instant(),
+                                        value.updated().toInstant().plus(Duration.ofMinutes(5)))
+                                .toMillis())
+                : 0;
+        return new Result(value.workspace().toString(), value.stage(), value.failure(), (int)
+                Math.min(300, (remaining + 999) / 1000));
     }
 
-    public record Result(String workspaceId, String stage, String failureCode) {}
+    public record Result(String workspaceId, String stage, String failureCode, int retryAfterSeconds) {}
 
     private record Attempt(
             WorkspaceId workspace,
