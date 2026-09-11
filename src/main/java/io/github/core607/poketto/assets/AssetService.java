@@ -148,8 +148,8 @@ public final class AssetService {
                     candidates.add(new Candidate(blob.path(), blob.size(), new Git(blob)));
             }
             if (!privateAccess) {
-                var catalog = blobs.media(workspace, commit.orElseThrow());
-                for (String path : catalog.publicPaths()) {
+                var catalog = availableMedia(workspace, commit.orElseThrow());
+                for (String path : catalog == null ? Set.<String>of() : catalog.publicPaths()) {
                     var media = catalog.index().files().get(path);
                     if (path.startsWith(prefix) && media.mediaType().startsWith("image/")) {
                         candidates.add(new Candidate(

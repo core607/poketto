@@ -1106,6 +1106,32 @@ class AssetDeliveryTests {
 
     @Test
     @EnabledOnOs(OS.LINUX)
+    void damagedMediaIndexKeepsIndependentlyAuthorizedGitImagesAvailableToMembers() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        var files = files("public/page.md", "# Images\n");
+        files.put("public/visible.png", png(1));
+        files.put("private/hidden.png", png(2));
+        files.put("public/notes/excluded.png", png(3));
+        files.put(io.github.core607.poketto.content.RepositoryMediaIndex.PATH, text("{broken index"));
+        String commit = fixture.commitRemote(workspace, files).name();
+        var service = service(fixture, snapshots(fixture, Duration.ofMinutes(5)));
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                        java.util.Set.of(io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY)));
+
+        var inventory = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30);
+
+        assertThat(inventory.commit()).isEqualTo(commit);
+        assertThat(inventory.items()).extracting(item -> item.path()).containsExactly("public/visible.png");
+        assertThat(inventory.total()).isEqualTo(1);
+        assertThat(inventory.diagnostics()).isEmpty();
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
     void memberInventoryFiltersGitAndManagedImagesBeforePaginationAndRejectsHistory() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var originals = ManagedBlobStore.local(directory.resolve("inventory-originals"));
