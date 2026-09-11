@@ -51,7 +51,6 @@ public final class AuthService {
     private final PasswordEncoder passwords;
     private final ApplicationEventPublisher events;
     private final Clock clock;
-    private final String initializationDigest;
     private final SecureRandom random = new SecureRandom();
     private final String dummyPasswordHash;
 
@@ -60,23 +59,17 @@ public final class AuthService {
             PlatformTransactionManager transactionManager,
             PasswordEncoder passwords,
             ApplicationEventPublisher events,
-            Clock clock,
-            String initializationToken) {
+            Clock clock) {
         this.jdbc = jdbc;
         this.transactions = new TransactionTemplate(transactionManager);
         this.passwords = passwords;
         this.events = events;
         this.clock = clock;
-        this.initializationDigest =
-                initializationToken == null || initializationToken.isBlank() ? null : digest(initializationToken);
         this.dummyPasswordHash = passwords.encode(randomToken("dummy_"));
     }
 
-    public AuthPrincipal initializeOwner(String initializationToken, String login, String password) {
-        if (initializationDigest == null
-                || !constantTimeEquals(initializationDigest, digestCredential(initializationToken))) {
-            throw failure(INVALID_CREDENTIALS);
-        }
+    /** Operator-only process entrance; no HTTP controller may expose this operation. */
+    public AuthPrincipal initializeOwner(String login, String password) {
         String normalized = loginName(login);
         String encoded = encodePassword(password);
         return transactions.execute(status -> {
@@ -542,11 +535,6 @@ public final class AuthService {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 unavailable", exception);
         }
-    }
-
-    private static boolean constantTimeEquals(String first, String second) {
-        return MessageDigest.isEqual(
-                first.getBytes(StandardCharsets.US_ASCII), second.getBytes(StandardCharsets.US_ASCII));
     }
 
     private Timestamp timestamp() {

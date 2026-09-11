@@ -47,7 +47,6 @@ class AdminPaginationIntegrationIT {
     @TempDir
     static Path directory;
 
-    private static final String INITIALIZATION_TOKEN = secret();
     private static final String ORIGIN = "https://site.example.invalid";
 
     @Autowired
@@ -82,7 +81,6 @@ class AdminPaginationIntegrationIT {
             throw new IllegalStateException(exception);
         }
         registry.add("poketto.test.repository-path", remote::toString);
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZATION_TOKEN);
     }
 
     @BeforeEach
@@ -94,7 +92,7 @@ class AdminPaginationIntegrationIT {
     @Test
     void oldActiveKeyRemainsDiscoverableAndRevocableAfterOneHundredRotations() throws Exception {
         String password = secret();
-        AuthPrincipal owner = auth.initializeOwner(INITIALIZATION_TOKEN, "pagination-owner", password);
+        AuthPrincipal owner = auth.initializeOwner("pagination-owner", password);
         Csrf session = login("pagination-owner", password);
         JsonNode original =
                 body(mvc.perform(request(post("/api/admin/keys"), session, Map.of("accountId", owner.accountId())))
@@ -142,7 +140,7 @@ class AdminPaginationIntegrationIT {
     @Test
     void allMembersAndInvitationsRemainReachableBeyondTheFirstPage() throws Exception {
         String password = secret();
-        AuthPrincipal owner = auth.initializeOwner(INITIALIZATION_TOKEN, "owner-pagination", password);
+        AuthPrincipal owner = auth.initializeOwner("owner-pagination", password);
         Csrf session = login("owner-pagination", password);
         UUID workspace = workspaces.defaultWorkspace().id().value();
         UUID lastMember = null;

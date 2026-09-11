@@ -120,7 +120,7 @@ try:
         "COMPOSE_DISABLE_ENV_FILE": "1", "POKETTO_APP_IMAGE": JAVA, "POKETTO_FRONTEND_IMAGE": PYTHON,
         "POKETTO_GATEWAY_IMAGE": pins["POKETTO_GATEWAY_IMAGE"], "POKETTO_DB_IMAGE": pins["POKETTO_DB_IMAGE"],
         "POSTGRES_DB": "proxycheck", "POSTGRES_USER": "proxycheck", "POSTGRES_PASSWORD": password,
-        "POKETTO_AUTH_INITIALIZATION_TOKEN": "synthetic-only", "POKETTO_PUBLIC_DOMAIN": "site.example.invalid",
+        "POKETTO_PUBLIC_DOMAIN": "site.example.invalid",
         "POKETTO_REPOSITORY_REMOTE_URI": "https://example.invalid/synthetic.git",
         "POKETTO_REPOSITORY_USERNAME": "synthetic", "POKETTO_REPOSITORY_PASSWORD": "synthetic",
         "POKETTO_DATA_DIR_HOST": "/unused-proxy-data", "POKETTO_DB_DIR_HOST": "/unused-proxy-db",
@@ -162,7 +162,6 @@ try:
     app_environment.update({"POKETTO_ACCEPTANCE_ROOT": "/tmp/fixture", "POKETTO_ACCEPTANCE_PASSWORD": password,
         "POKETTO_ACCEPTANCE_ORIGIN": "http://gateway", "POKETTO_SESSION_COOKIE_SECURE": "false",
         "POKETTO_DATA_DIR": "/tmp/fixture/data", "POKETTO_SECURITY_ALLOWED_ORIGINS": "http://gateway"})
-    app_environment.pop("POKETTO_AUTH_INITIALIZATION_TOKEN")
     options = [*common, "--network-alias", "app", "--memory", "768m", "--cpus", "1", "--pids-limit", "256",
                "--user", "65534:65534", "--tmpfs", "/tmp:size=128m,mode=1777", "--mount",
                f"type=bind,source={RUNTIME.as_posix()},target=/runtime,readonly"]

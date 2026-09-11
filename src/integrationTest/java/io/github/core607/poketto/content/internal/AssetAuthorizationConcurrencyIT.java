@@ -64,7 +64,6 @@ class AssetAuthorizationConcurrencyIT {
     @TempDir
     static Path directory;
 
-    private static final String INITIALIZATION = UUID.randomUUID().toString();
     private static final String PASSWORD = UUID.randomUUID().toString();
     private static final AtomicInteger CASE = new AtomicInteger();
 
@@ -85,7 +84,7 @@ class AssetAuthorizationConcurrencyIT {
             registry.add("poketto.test.repository-path", remote::toString);
         }
         registry.add("poketto.data-dir", directory::toString);
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZATION);
+
         registry.add("poketto.repository.refresh-seconds", () -> 3600);
     }
 
@@ -113,7 +112,7 @@ class AssetAuthorizationConcurrencyIT {
     @BeforeEach
     void owner() {
         try {
-            auth.initializeOwner(INITIALIZATION, "asset-owner", PASSWORD);
+            auth.initializeOwner("asset-owner", PASSWORD);
         } catch (AuthException existing) {
             assertThat(existing.code()).isEqualTo(AuthException.Code.ALREADY_INITIALIZED);
         }

@@ -63,7 +63,6 @@ class McpProtocolIntegrationIT {
     @TempDir
     static Path directory;
 
-    private static final String INITIALIZATION = UUID.randomUUID().toString();
     private static final byte[] PNG = png();
 
     @Container
@@ -115,7 +114,6 @@ class McpProtocolIntegrationIT {
         }
         registry.add("poketto.test.repository-path", remote::toString);
         registry.add("poketto.data-dir", directory::toString);
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZATION);
     }
 
     @Autowired
@@ -148,8 +146,7 @@ class McpProtocolIntegrationIT {
 
     @Test
     void realStreamableRequestsBindKeysServeMediaRejectFileCrudAndRevokeSessions() throws Exception {
-        var owner = auth.initializeOwner(
-                INITIALIZATION, "mcp-owner", UUID.randomUUID().toString());
+        var owner = auth.initializeOwner("mcp-owner", UUID.randomUUID().toString());
         var workspace = workspaces.defaultWorkspace().id();
         var key = auth.createApiKey(owner, workspace, owner.accountId(), null);
         var other = auth.createApiKey(owner, workspace, owner.accountId(), Set.of(Capability.READ_PRIVATE));

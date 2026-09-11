@@ -33,6 +33,17 @@ run_deploy
 assert_status 1
 assert_contains "$ERR" "POKETTO_APP_REVISION must be a full lowercase commit id"
 
+# Administrator setup cannot consume piped secrets or stage deployment changes.
+setup_root
+run_deploy --initialize-admin
+assert_status 1
+assert_contains "$ERR" 'requires an interactive terminal'
+[ "$(up_count)" = 0 ]
+run_deploy --initialize-admin --set-stdin
+assert_status 1
+assert_contains "$ERR" 'cannot be combined with deployment changes'
+[ "$(up_count)" = 0 ]
+
 # Options must travel together.
 setup_root
 run_deploy --app-image "$DIGEST_IMAGE"

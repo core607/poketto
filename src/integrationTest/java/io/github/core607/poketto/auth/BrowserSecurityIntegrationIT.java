@@ -72,7 +72,6 @@ class BrowserSecurityIntegrationIT {
     @TempDir
     static Path directory;
 
-    private static final String INITIALIZATION_TOKEN = secret();
     private static final String ORIGIN = "https://site.example.invalid";
 
     @Autowired
@@ -86,6 +85,9 @@ class BrowserSecurityIntegrationIT {
 
     @Autowired
     AuthService auth;
+
+    @Autowired
+    RegistrationService registration;
 
     @Autowired
     WorkspaceCatalog workspaces;
@@ -109,7 +111,6 @@ class BrowserSecurityIntegrationIT {
             throw new IllegalStateException(exception);
         }
         registry.add("poketto.test.repository-path", remote::toString);
-        registry.add("poketto.auth.initialization-token", () -> INITIALIZATION_TOKEN);
     }
 
     @BeforeEach
@@ -122,7 +123,7 @@ class BrowserSecurityIntegrationIT {
     @Test
     void registrationUsesSeparateInvitationsAndAccountIdentityWithoutMembership() throws Exception {
         String ownerPassword = secret();
-        auth.initializeOwner(INITIALIZATION_TOKEN, "registration-owner", ownerPassword);
+        auth.initializeOwner("registration-owner", ownerPassword);
         Csrf ownerSession = login("registration-owner", ownerPassword);
         mvc.perform(post("/api/auth/registration-invitations").session(ownerSession.session()))
                 .andExpect(status().isForbidden());
@@ -159,19 +160,13 @@ class BrowserSecurityIntegrationIT {
     }
 
     @Test
-    void bootstrapLoginFixationProtectionCsrfAndLogoutUseRealSession() throws Exception {
+    void operatorBootstrapLeavesNoHttpInitializationAndLoginRetainsSessionProtections() throws Exception {
         Csrf session = csrf(null);
+        mvc.perform(request(post("/api/auth/initialize"), session, Map.of())).andExpect(status().isUnauthorized());
+        assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+                .isZero();
         String password = secret();
-        Map<String, String> body =
-                Map.of("initializationToken", INITIALIZATION_TOKEN, "login", "owner", "password", password);
-        mvc.perform(post("/api/auth/initialize")
-                        .session(session.session())
-                        .contentType("application/json")
-                        .content(json.writeValueAsString(body)))
-                .andExpect(status().isForbidden());
-        mvc.perform(request(post("/api/auth/initialize"), session, body)).andExpect(status().isCreated());
-        mvc.perform(request(post("/api/auth/initialize"), session, body)).andExpect(status().isConflict());
-        mvc.perform(get("/api/auth/me").session(session.session())).andExpect(status().isUnauthorized());
+        auth.initializeOwner("owner", password);
         String priorId = session.session().getId();
         mvc.perform(post("/api/auth/login")
                         .session(session.session())
@@ -187,12 +182,15 @@ class BrowserSecurityIntegrationIT {
                         .param("password", password))
                 .andExpect(status().isNoContent());
         assertThat(session.session().getId()).isNotEqualTo(priorId);
-        mvc.perform(get("/api/auth/me").session(session.session()))
+        Csrf loggedIn = csrf(session.session());
+        mvc.perform(request(post("/api/auth/initialize"), loggedIn, Map.of())).andExpect(status().isNotFound());
+        assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+                .isOne();
+        mvc.perform(get("/api/auth/me").session(loggedIn.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("OWNER"));
         mvc.perform(post("/api/admin/invitations").session(session.session()).header(session.header(), session.token()))
                 .andExpect(status().isForbidden());
-        Csrf loggedIn = csrf(session.session());
         mvc.perform(get("/api/auth/logout").session(loggedIn.session())).andExpect(status().isNotFound());
         mvc.perform(post("/api/auth/logout").session(loggedIn.session())).andExpect(status().isForbidden());
         mvc.perform(request(post("/api/auth/logout"), loggedIn, null)).andExpect(status().isNoContent());
@@ -203,7 +201,7 @@ class BrowserSecurityIntegrationIT {
     @Test
     void invitationRegistrationAndMembershipSuspensionInvalidateExistingRequests() throws Exception {
         String ownerPassword = secret();
-        AuthPrincipal owner = auth.initializeOwner(INITIALIZATION_TOKEN, "invite-owner", ownerPassword);
+        AuthPrincipal owner = auth.initializeOwner("invite-owner", ownerPassword);
         Csrf ownerSession = login("invite-owner", ownerPassword);
         JsonNode invitation = body(mvc.perform(request(post("/api/admin/invitations"), ownerSession, null))
                 .andExpect(status().isCreated())
@@ -248,7 +246,7 @@ class BrowserSecurityIntegrationIT {
     @Test
     void bearerMcpIsStatelessSeparateFromBrowserAndRevalidatesRevocation() throws Exception {
         String password = secret();
-        AuthPrincipal owner = auth.initializeOwner(INITIALIZATION_TOKEN, "key-owner", password);
+        AuthPrincipal owner = auth.initializeOwner("key-owner", password);
         Csrf session = login("key-owner", password);
         JsonNode key =
                 body(mvc.perform(request(post("/api/admin/keys"), session, Map.of("accountId", owner.accountId())))
@@ -289,17 +287,17 @@ class BrowserSecurityIntegrationIT {
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist("Location"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(unknown))));
-        mvc.perform(post("/api/auth/initialize")
+        mvc.perform(post("/api/auth/register")
                         .session(session.session())
                         .header(session.header(), session.token())
                         .contentType("application/json")
                         .content("x".repeat(16385)))
                 .andExpect(status().isPayloadTooLarge());
         mvc.perform(request(
-                        post("/api/auth/initialize"),
+                        post("/api/auth/register"),
                         session,
-                        Map.of("initializationToken", unknown, "login", "unknown-owner", "password", secret())))
-                .andExpect(status().isUnauthorized())
+                        Map.of("token", unknown, "login", "unknown-owner", "password", secret())))
+                .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(unknown))));
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
@@ -320,7 +318,9 @@ class BrowserSecurityIntegrationIT {
     }
 
     @Test
-    void liveChunkedInitializationRejectsMaxPlusOneBeforeCreatingOwner() throws Exception {
+    void liveChunkedRegistrationRejectsMaxPlusOneBeforeCreatingAccount() throws Exception {
+        var issuer = auth.initializeOwner("chunk-issuer", secret());
+        String registrationToken = registration.issue(issuer).token();
         HttpClient client =
                 HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
         HttpResponse<String> csrf = client.send(
@@ -332,13 +332,13 @@ class BrowserSecurityIntegrationIT {
         JsonNode token = json.readTree(csrf.body());
         String cookie = csrf.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
         String payload = json.writeValueAsString(
-                Map.of("initializationToken", INITIALIZATION_TOKEN, "login", "chunk-owner", "password", secret()));
+                Map.of("token", registrationToken, "login", "chunk-owner", "password", secret()));
         int padding = 16384 - payload.getBytes(StandardCharsets.UTF_8).length;
         for (String overLimit :
                 java.util.List.of(payload + " ".repeat(padding + 1), " ".repeat(padding + 1) + payload)) {
             byte[] bytes = overLimit.getBytes(StandardCharsets.UTF_8);
             HttpResponse<String> rejected = client.send(
-                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/initialize"))
+                    HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/register"))
                             .header("Origin", ORIGIN)
                             .header("Cookie", cookie)
                             .header(
@@ -349,18 +349,19 @@ class BrowserSecurityIntegrationIT {
                             .build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
-                    .isZero();
+                    .isOne();
             assertThat(jdbc.queryForObject(
-                            "select count(*) from auth_initialization where initialized_at is not null", Integer.class))
+                            "select count(*) from auth_registration_invitations where used_at is not null",
+                            Integer.class))
                     .isZero();
             assertThat(rejected.statusCode())
                     .as("chunked body with %s bytes", bytes.length)
                     .isEqualTo(413);
-            assertThat(rejected.body()).doesNotContain(INITIALIZATION_TOKEN, "chunk-owner");
+            assertThat(rejected.body()).doesNotContain(registrationToken, "chunk-owner");
         }
         byte[] exact = (" ".repeat(padding) + payload).getBytes(StandardCharsets.UTF_8);
         HttpResponse<String> accepted = client.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/initialize"))
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/register"))
                         .header("Origin", ORIGIN)
                         .header("Cookie", cookie)
                         .header(
@@ -372,13 +373,13 @@ class BrowserSecurityIntegrationIT {
                 HttpResponse.BodyHandlers.ofString());
         assertThat(accepted.statusCode()).isEqualTo(201);
         assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
-                .isEqualTo(1);
+                .isEqualTo(2);
     }
 
     @Test
     void liveChunkedFormRejectsOverflowWithoutLoggingInAndAcceptsExactLimit() throws Exception {
         String password = secret();
-        auth.initializeOwner(INITIALIZATION_TOKEN, "form-owner", password);
+        auth.initializeOwner("form-owner", password);
         HttpClient client =
                 HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
         HttpResponse<String> csrf = client.send(
@@ -473,7 +474,7 @@ class BrowserSecurityIntegrationIT {
     @Test
     void liveSlowBodiesSaturateAfterLoginAndDisconnectReturnsAdmission() throws Exception {
         String password = secret();
-        auth.initializeOwner(INITIALIZATION_TOKEN, "slow-owner", password);
+        auth.initializeOwner("slow-owner", password);
         LiveSession session = liveLogin("slow-owner", password);
         try (Socket first = pendingBody("POST", "/api/admin/repository/preview", "application/json", false, session);
                 Socket second = pendingBody(

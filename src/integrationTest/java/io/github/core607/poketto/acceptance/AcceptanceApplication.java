@@ -7,7 +7,6 @@ import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.transport.RefSpec;
@@ -25,7 +24,7 @@ public final class AcceptanceApplication {
             if (existing.findAny().isPresent()) throw new IllegalArgumentException("acceptance root must be empty");
         }
         String password = required("POKETTO_ACCEPTANCE_PASSWORD");
-        String initialization = UUID.randomUUID().toString();
+
         Path remote = root.resolve("remote.git");
         seed(remote, root.resolve("seed"));
         SpringApplication app =
@@ -33,11 +32,10 @@ public final class AcceptanceApplication {
         app.setDefaultProperties(Map.of(
                 "poketto.data-dir", root.resolve("data").toString(),
                 "poketto.test.repository-path", remote.toString(),
-                "poketto.auth.initialization-token", initialization,
                 "poketto.security.allowed-origins", required("POKETTO_ACCEPTANCE_ORIGIN"),
                 "POKETTO_SESSION_COOKIE_SECURE", false));
         var context = app.run(args);
-        context.getBean(AuthService.class).initializeOwner(initialization, "owner", password);
+        context.getBean(AuthService.class).initializeOwner("owner", password);
         System.out.println("Synthetic acceptance services are ready; production repositories are not used.");
     }
 

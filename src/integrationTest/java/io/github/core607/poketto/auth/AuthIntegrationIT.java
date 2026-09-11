@@ -44,7 +44,7 @@ class AuthIntegrationIT {
     private AuthService auth;
     private PasswordEncoder passwords;
     private WorkspaceId workspace;
-    private String initializationToken;
+
     private final List<AuthRevocation> events = new CopyOnWriteArrayList<>();
     private final Instant now = Instant.parse("2026-01-01T00:00:00Z");
 
@@ -66,7 +66,7 @@ class AuthIntegrationIT {
         transactionManager = new DataSourceTransactionManager(datasource);
         passwords = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8", Map.of("pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
-        initializationToken = secret();
+
         auth = service(now);
         events.clear();
     }
@@ -74,8 +74,8 @@ class AuthIntegrationIT {
     @Test
     void concurrentBootstrapCreatesExactlyOneAdministratorAndPermanentlyCloses() throws Exception {
         var results = concurrent(List.of(
-                () -> auth.initializeOwner(initializationToken, "first-owner", secret()),
-                () -> auth.initializeOwner(initializationToken, "second-owner", secret())));
+                () -> auth.initializeOwner("first-owner", secret()),
+                () -> auth.initializeOwner("second-owner", secret())));
         assertThat(results.stream().filter(AuthPrincipal.class::isInstance)).hasSize(1);
         assertThat(results.stream()
                         .filter(AuthException.class::isInstance)
@@ -87,12 +87,7 @@ class AuthIntegrationIT {
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships where role = 'OWNER'", Integer.class))
                 .isOne();
         AuthService restarted = service(now.plusSeconds(30));
-        assertCode(
-                () -> restarted.initializeOwner(initializationToken, "another-owner", secret()),
-                AuthException.Code.ALREADY_INITIALIZED);
-        assertCode(
-                () -> auth.initializeOwner(secret(), "unknown-owner", secret()),
-                AuthException.Code.INVALID_CREDENTIALS);
+        assertCode(() -> restarted.initializeOwner("another-owner", secret()), AuthException.Code.ALREADY_INITIALIZED);
     }
 
     @Test
@@ -285,7 +280,7 @@ class AuthIntegrationIT {
     @Test
     void passwordAuthenticationUsesAdaptiveHashesAndNormalizesLogin() {
         String password = secret();
-        AuthPrincipal owner = auth.initializeOwner(initializationToken, "OwNeR", password);
+        AuthPrincipal owner = auth.initializeOwner("OwNeR", password);
         assertThat(auth.authenticatePassword("OWNER", password).accountId()).isEqualTo(owner.accountId());
         String stored = jdbc.queryForObject(
                 "select password_hash from auth_accounts where account_id = ?", String.class, owner.accountId());
@@ -339,7 +334,7 @@ class AuthIntegrationIT {
     @Test
     void loginUpgradesARecognizedOlderPasswordHash() {
         String password = secret();
-        AuthPrincipal owner = auth.initializeOwner(initializationToken, "owner", password);
+        AuthPrincipal owner = auth.initializeOwner("owner", password);
         PasswordEncoder legacy = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_5();
         jdbc.update(
                 "update auth_accounts set password_hash = ? where account_id = ?",
@@ -348,13 +343,8 @@ class AuthIntegrationIT {
         PasswordEncoder upgradeable = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8",
                 Map.of("pbkdf2-legacy", legacy, "pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
-        AuthService upgraded = new AuthService(
-                jdbc,
-                transactionManager,
-                upgradeable,
-                event -> {},
-                Clock.fixed(now, ZoneOffset.UTC),
-                initializationToken);
+        AuthService upgraded =
+                new AuthService(jdbc, transactionManager, upgradeable, event -> {}, Clock.fixed(now, ZoneOffset.UTC));
         assertThat(upgraded.authenticatePassword("owner", password).accountId()).isEqualTo(owner.accountId());
         assertThat(jdbc.queryForObject(
                         "select password_hash from auth_accounts where account_id = ?",
@@ -380,12 +370,11 @@ class AuthIntegrationIT {
                     }
                     events.add(revocation);
                 },
-                Clock.fixed(instant, ZoneOffset.UTC),
-                initializationToken);
+                Clock.fixed(instant, ZoneOffset.UTC));
     }
 
     private AuthPrincipal owner() {
-        return auth.initializeOwner(initializationToken, "owner", secret());
+        return auth.initializeOwner("owner", secret());
     }
 
     private AuthPrincipal member(AuthPrincipal owner, String login) {
