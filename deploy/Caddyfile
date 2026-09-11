@@ -7,7 +7,7 @@
     handle @management {
         respond 404
     }
-    @business path /api /api/* /mcp /mcp/*
+    @business path /api /api/* /mcp /mcp/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/mcp /.well-known/oauth-authorization-server
     handle @business {
         reverse_proxy app:8080 {
             header_up -X-Forwarded-Port

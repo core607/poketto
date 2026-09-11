@@ -4,6 +4,7 @@ import { api, ApiError } from "../lib/browser-api";
 import { Editor } from "./editor";
 import { Members } from "./members";
 import { Keys } from "./keys";
+import { Connections } from "./connections";
 import { ConfirmationProvider, useConfirmation } from "./confirmation";
 
 export type Identity = {
@@ -121,6 +122,12 @@ function AdminContent() {
             >
               访问密钥
             </button>
+            <button
+              aria-pressed={activeTab === "connections"}
+              onClick={() => setTab("connections")}
+            >
+              已连接应用
+            </button>
           </>
         )}
       </nav>
@@ -128,12 +135,19 @@ function AdminContent() {
         <Editor identity={identity} onDirtyChange={setDirty} />
       </div>
       {activeTab === "members" && <Members />}
+      {activeTab === "connections" && <Connections />}
       {activeTab === "keys" && <Keys identity={identity} />}
     </div>
   );
 }
 
-function Login({ onLogin }: { onLogin: () => Promise<void> }) {
+export function Login({
+  onLogin,
+  connection = false,
+}: {
+  onLogin: () => Promise<void>;
+  connection?: boolean;
+}) {
   const [mode, setMode] = useState("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -264,40 +278,42 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                 : "创建账号并登录 →"}
         </button>
       </form>
-      <div className="login-options">
-        <button
-          className="text-button"
-          onClick={() => {
-            setMode("accept");
-            setError("");
-          }}
-        >
-          已有账号接受邀请
-        </button>
-        <button
-          className="text-button"
-          onClick={() => {
-            setMode(mode === "initialize" ? "login" : "initialize");
-            setError("");
-          }}
-        >
-          首次初始化
-        </button>
-        <button
-          className="text-button"
-          onClick={() => {
-            setMode(mode === "register" ? "login" : "register");
-            setError("");
-          }}
-        >
-          使用邀请注册
-        </button>
-        {mode !== "login" && (
-          <button className="text-button" onClick={() => setMode("login")}>
-            已有账号
+      {!connection && (
+        <div className="login-options">
+          <button
+            className="text-button"
+            onClick={() => {
+              setMode("accept");
+              setError("");
+            }}
+          >
+            已有账号接受邀请
           </button>
-        )}
-      </div>
+          <button
+            className="text-button"
+            onClick={() => {
+              setMode(mode === "initialize" ? "login" : "initialize");
+              setError("");
+            }}
+          >
+            首次初始化
+          </button>
+          <button
+            className="text-button"
+            onClick={() => {
+              setMode(mode === "register" ? "login" : "register");
+              setError("");
+            }}
+          >
+            使用邀请注册
+          </button>
+          {mode !== "login" && (
+            <button className="text-button" onClick={() => setMode("login")}>
+              已有账号
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

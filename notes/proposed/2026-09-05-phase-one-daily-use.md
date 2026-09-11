@@ -5,6 +5,8 @@ Date: 2026-09-05
 The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
 standalone agent file-read, list and patch tool selections in this record. Shared
 service contracts and outstanding delivery requirements remain applicable.
+The [MCP OAuth extension](../implemented/2026-09-11-mcp-oauth.md) adds owner-approved client connections to this scope. Social login and consumer signup remain excluded.
+
 Status: Proposed
 
 ## Next development priority
@@ -25,7 +27,7 @@ Deliver a single-host installation with a blog, authenticated administration, an
 
 The public interface includes an article stream, article and folder pages, tags, archive, bounded search, RSS, and sitemap. Administration includes a file tree, Markdown editing and preview, image selection and upload, invitations, memberships, and API keys. Interface text is Simplified Chinese; interface language switching is outside this delivery.
 
-Backups, restore drills, visitor Q&A, consumer registration and personal-workspace provisioning, serverless deployment, OAuth, rich-text editing, image transformations, and persistent content indexes are excluded. Backup proposals remain future work and are not implementation or deployment prerequisites. All acknowledged managed originals are retained; only temporary uploads, derived caches, and execution directories may be cleaned up.
+Backups, restore drills, visitor Q&A, consumer registration and personal-workspace provisioning, serverless deployment, rich-text editing, image transformations, and persistent content indexes are excluded. Backup proposals remain future work and are not implementation or deployment prerequisites. All acknowledged managed originals are retained; only temporary uploads, derived caches, and execution directories may be cleaned up.
 
 ## Repository contracts
 

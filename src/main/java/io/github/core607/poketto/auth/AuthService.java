@@ -36,6 +36,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Membership and key mutations serialize on the workspace row; no caller-supplied capability set is trusted.
  */
 public final class AuthService {
+    private volatile String oauthResource = "";
+
+    void oauthResource(String resource) {
+        this.oauthResource = resource;
+    }
+
     public static final Set<Capability> DEFAULT_AI_CAPABILITIES =
             Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
     private static final Set<Capability> MEMBER_CAPABILITIES =
@@ -122,11 +128,20 @@ public final class AuthService {
                 """
                 select k.key_id, k.account_id from auth_api_keys k
                 join auth_memberships m on m.workspace_id = k.workspace_id and m.account_id = k.account_id
-                where k.token_digest = ? and k.revoked_at is null and m.suspended_at is null
+                where (k.token_digest = ? or exists (
+                    select 1 from oauth_access_tokens t join oauth_connections c using(key_id)
+                    where t.key_id=k.key_id and t.digest=? and t.expires_at>? and c.resource=?
+                )) and k.revoked_at is null and m.suspended_at is null
+                and not exists (select 1 from oauth_connections c where c.key_id=k.key_id and (c.expires_at<=? or c.resource<>?))
                 """,
                 (rs, row) -> new AuthPrincipal(
                         AuthPrincipal.Kind.API_KEY, rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)),
-                digestCredential(token));
+                digestCredential(token),
+                digestCredential(token),
+                timestamp(),
+                oauthResource,
+                timestamp(),
+                oauthResource);
         if (matches.isEmpty()) throw failure(INVALID_CREDENTIALS);
         return matches.getFirst();
     }
@@ -148,13 +163,16 @@ public final class AuthService {
                     """
                     select capabilities from auth_api_keys where key_id = ? and account_id = ?
                     and workspace_id = ? and revoked_at is null
+                    and not exists (select 1 from oauth_connections c where c.key_id=auth_api_keys.key_id and (c.expires_at<=? or c.resource<>?))
                     """,
                     (rs, row) -> Arrays.stream((String[]) rs.getArray(1).getArray())
                             .map(Capability::valueOf)
                             .collect(Collectors.toSet()),
                     principal.subjectId(),
                     principal.accountId(),
-                    workspace.value());
+                    workspace.value(),
+                    timestamp(),
+                    oauthResource);
             if (stored.isEmpty()) throw failure(DENIED);
             capabilities = stored.getFirst();
             if (role != MembershipRole.OWNER && capabilities.contains(Capability.MANAGE_KEYS)) throw failure(DENIED);
@@ -361,9 +379,11 @@ public final class AuthService {
         requireKeyManager(actor, workspace);
         validatePage(offset, limit);
         long total = jdbc.queryForObject(
-                "select count(*) from auth_api_keys where workspace_id = ?", Long.class, workspace.value());
+                "select count(*) from auth_api_keys k where workspace_id = ? and not exists (select 1 from oauth_connections c where c.key_id=k.key_id)",
+                Long.class,
+                workspace.value());
         List<ApiKeyInfo> items = jdbc.query(
-                "select key_id, account_id, capabilities, revoked_at from auth_api_keys where workspace_id = ? order by created_at desc, key_id limit ? offset ?",
+                "select key_id, account_id, capabilities, revoked_at from auth_api_keys k where workspace_id = ? and not exists (select 1 from oauth_connections c where c.key_id=k.key_id) order by created_at desc, key_id limit ? offset ?",
                 (rs, row) -> new ApiKeyInfo(
                         rs.getObject(1, UUID.class),
                         rs.getObject(2, UUID.class),
@@ -389,6 +409,16 @@ public final class AuthService {
                     keyId);
             if (!keys.isEmpty()) publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
         });
+    }
+
+    /** Caller holds the workspace row lock after validating an OAuth grant or its replay proof. */
+    void revokeOAuthKey(WorkspaceId workspace, UUID keyId) {
+        jdbc.update(
+                "update auth_api_keys set revoked_at=? where workspace_id=? and key_id=? and revoked_at is null",
+                timestamp(),
+                workspace.value(),
+                keyId);
+        publishRevocation(new AuthRevocation(workspace, Set.of(), Set.of(keyId)));
     }
 
     private Invitation lockInvitation(String token) {

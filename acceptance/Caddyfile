@@ -4,7 +4,7 @@
 }
 
 :8080 {
-    @backend path /api /api/* /mcp /mcp/*
+    @backend path /api /api/* /mcp /mcp/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/mcp /.well-known/oauth-authorization-server
     reverse_proxy @backend app:8080
     reverse_proxy frontend:3000
 }

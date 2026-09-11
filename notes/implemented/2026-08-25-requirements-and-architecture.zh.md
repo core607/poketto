@@ -38,7 +38,7 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 
 内容格式采用独立的 `public/` 和 `private/` 根目录，新内容默认私有。只有精确 `public/` 下符合条件的路径才能在已启用的 `public-root` 策略下发布；排除路径、指引和隐藏路径保持私有。默认文章路由省略根目录前缀，显式路由不赋予公开权限。[内容契约](2026-09-09-codeact-content-and-media.md)定义协调转换与格式边界。
 
-`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`get_artifact`、`get_asset` 和 `put_asset`。没有独立文件 CRUD 回退入口；文件访问要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
+`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key 或 OAuth 访问令牌，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`get_artifact`、`get_asset` 和 `put_asset`。没有独立文件 CRUD 回退入口；文件访问要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
 
 Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐层读取内容仓库自己的 `AGENTS.md`。服务端不解释这些指引。[目录导航](2026-09-08-repository-directory-navigation.md)仍通过共享读取服务向浏览器 HTTP 提供功能，无须执行器。
 
@@ -66,8 +66,8 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[博客前端](2026-09-06-blog-browser-interface.md)使用 Next.js App Router、React、TypeScript 与 Tailwind，锁定 Node.js 24.19.0 和 npm 12.0.2。它取代 JTE + htmx，业务 API 与持久化仍归 Spring。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。可选的[交付镜像仓库](2026-09-10-mirror-registry-delivery.md)把规范发布的 digest 复制到另一仓库，供服务器拉取。仍提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
-MCP 协议版本随固定 SDK 确定。第一阶段使用静态 API key 是有意识的简化，不宣称实现 MCP 标准 OAuth；Streamable HTTP 校验传入的 Origin header。
+MCP 协议版本随固定 SDK 确定。[MCP OAuth](2026-09-11-mcp-oauth.md)在静态 API Key 之外提供所有者明确批准、可独立撤销的客户端连接；Streamable HTTP 校验传入的 Origin header。
 
 ## 不做清单
 
-开放注册与自助创建工作空间、OAuth、评论点赞等社交功能、微服务与 K8s 与消息队列、知识图谱、重 RAG 管道（切块 + 重排 + 多路召回）、富文本编辑器、图床 CDN、移动端、界面多语言、访客会话历史、Redis（单实例下预算计数归 PostgreSQL、限流归 JVM、缓存归 Caffeine）。
+开放注册与自助创建工作空间、社交登录、评论点赞等社交功能、微服务与 K8s 与消息队列、知识图谱、重 RAG 管道（切块 + 重排 + 多路召回）、富文本编辑器、图床 CDN、移动端、界面多语言、访客会话历史、Redis（单实例下预算计数归 PostgreSQL、限流归 JVM、缓存归 Caffeine）。

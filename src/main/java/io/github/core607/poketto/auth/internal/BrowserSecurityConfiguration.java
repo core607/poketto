@@ -62,7 +62,8 @@ class BrowserSecurityConfiguration {
             HttpSecurity http,
             ObjectProvider<AuthService> auth,
             ObjectProvider<WorkspaceCatalog> workspaces,
-            @Value("${poketto.security.allowed-origins:}") String origins)
+            @Value("${poketto.security.allowed-origins:}") String origins,
+            @Value("${poketto.oauth.issuer:}") String issuer)
             throws Exception {
         http.securityMatcher("/mcp", "/mcp/**")
                 .csrf(csrf -> csrf.disable())
@@ -74,7 +75,8 @@ class BrowserSecurityConfiguration {
                         (request, response, exception) -> AuthHttpErrors.write(response, 401)))
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), AnonymousAuthenticationFilter.class)
                 .addFilterBefore(
-                        new WorkspaceIdentityFilter(auth, workspaces, true), AnonymousAuthenticationFilter.class);
+                        new WorkspaceIdentityFilter(auth, workspaces, true, issuer),
+                        AnonymousAuthenticationFilter.class);
         return http.build();
     }
 
@@ -86,6 +88,7 @@ class BrowserSecurityConfiguration {
             ObjectProvider<AuthService> auth,
             ObjectProvider<WorkspaceCatalog> workspaces,
             @Value("${poketto.security.allowed-origins:}") String origins,
+            @Value("${poketto.oauth.issuer:}") String issuer,
             @Value("${poketto.security.admin-body-concurrency:2}") int adminBodyConcurrency,
             @Value("${poketto.security.login-limit-per-account:10}") int perAccount,
             @Value("${poketto.security.login-limit-per-address:40}") int perAddress,
@@ -93,11 +96,15 @@ class BrowserSecurityConfiguration {
             @Value("${poketto.security.login-throttle-window-seconds:300}") long windowSeconds)
             throws Exception {
         http.authenticationProvider(accountAuthenticationProvider)
+                .csrf(csrf -> csrf.ignoringRequestMatchers(
+                        "/api/auth/oauth/register", "/api/auth/oauth/token", "/api/auth/oauth/revoke"))
                 .authorizeHttpRequests(requests -> requests.requestMatchers(
                                 "/api/auth/csrf",
                                 "/api/auth/login",
                                 "/api/auth/initialize",
                                 "/api/auth/invitations/register")
+                        .permitAll()
+                        .requestMatchers("/api/auth/oauth/**")
                         .permitAll()
                         .requestMatchers("/api/public/**")
                         .permitAll()
@@ -122,7 +129,7 @@ class BrowserSecurityConfiguration {
                 .headers(headers -> headers.contentSecurityPolicy(
                         csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'")))
                 .addFilterBefore(new AdminBodyFilter(adminBodyConcurrency), CsrfFilter.class)
-                .addFilterBefore(new WorkspaceIdentityFilter(auth, workspaces, false), AdminBodyFilter.class)
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, workspaces, false, issuer), AdminBodyFilter.class)
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), WorkspaceIdentityFilter.class)
                 .addFilterBefore(
                         new LoginThrottleFilter(

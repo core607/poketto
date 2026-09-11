@@ -18,6 +18,7 @@ services:
       POKETTO_DATA_DIR: /var/lib/poketto
       POKETTO_AUTH_INITIALIZATION_TOKEN: "${POKETTO_AUTH_INITIALIZATION_TOKEN:?initialization token is required}"
       POKETTO_SECURITY_ALLOWED_ORIGINS: "https://${POKETTO_PUBLIC_DOMAIN:?public domain is required}"
+      POKETTO_OAUTH_ISSUER: "https://${POKETTO_PUBLIC_DOMAIN:?public domain is required}"
       POKETTO_SESSION_COOKIE_SECURE: "true"
       SERVER_FORWARDHEADERSSTRATEGY: native
       SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES: "${POKETTO_GATEWAY_INTERNAL_IP:?fixed gateway IPv4 is required}/32"

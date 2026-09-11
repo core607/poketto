@@ -21,12 +21,19 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
     private final ObjectProvider<AuthService> auth;
     private final ObjectProvider<WorkspaceCatalog> workspaces;
     private final boolean bearer;
+    private final String challenge;
 
     WorkspaceIdentityFilter(
-            ObjectProvider<AuthService> auth, ObjectProvider<WorkspaceCatalog> workspaces, boolean bearer) {
+            ObjectProvider<AuthService> auth,
+            ObjectProvider<WorkspaceCatalog> workspaces,
+            boolean bearer,
+            String issuer) {
         this.auth = auth;
         this.workspaces = workspaces;
         this.bearer = bearer;
+        this.challenge = issuer.isBlank()
+                ? "Bearer realm=\"poketto\""
+                : "Bearer resource_metadata=\"" + issuer + "/.well-known/oauth-protected-resource\"";
     }
 
     @Override
@@ -45,7 +52,7 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                         || !headers.getFirst().regionMatches(true, 0, "Bearer ", 0, 7)
                         || headers.getFirst().length() > 263
                         || auth.getIfAvailable() == null) {
-                    response.setHeader("WWW-Authenticate", "Bearer realm=\"poketto\"");
+                    response.setHeader("WWW-Authenticate", challenge);
                     AuthHttpErrors.write(response, 401);
                     return;
                 }
@@ -77,7 +84,7 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
             }
         } catch (AuthException exception) {
             SecurityContextHolder.clearContext();
-            if (bearer) response.setHeader("WWW-Authenticate", "Bearer realm=\"poketto\"");
+            if (bearer) response.setHeader("WWW-Authenticate", challenge);
             AuthHttpErrors.write(response, bearer ? 401 : 403);
             return;
         }
