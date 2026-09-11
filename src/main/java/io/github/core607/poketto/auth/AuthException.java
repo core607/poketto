@@ -13,7 +13,7 @@ public final class AuthException extends RuntimeException {
 
     private final Code code;
 
-    AuthException(Code code) {
+    public AuthException(Code code) {
         super("Authentication operation failed: " + code);
         this.code = code;
     }
