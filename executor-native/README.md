@@ -175,3 +175,5 @@ The fixture changes only container-local UIDs, paths and processes and opens no
 network listener. Its runtime manifest identifies the exact compiled input.
 
 The [MCP usability run](evidence/2026-09-12-mcp-usability.json) verifies linking an existing original into an unsaved index, exact metadata, idempotent byte preservation, explicit replacement, foreign-original refusal, public-only rejection, selected-file failure reasons and an explicit index save. Its 33 Java scenarios, process-loss lease expiry and fixture cleanup pass with actual worker/SRT execution. Runtime and worker hashes are verified against the staged source. Authentication remains synthetic; reconnect identity guards and durable unsaved-work recovery are outside this refinement.
+
+The [binary-import diagnostic run](evidence/2026-09-12-binary-import-reasons.json) additionally checks `NOT_FOUND` for an absent source and `BINARY_LIMIT` for an oversized sparse source through the real CLI. All 33 Java/SRT scenarios, process-loss expiry and final cleanup pass; the same synthetic-authentication and deployment limitations apply.
