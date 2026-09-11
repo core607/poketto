@@ -19,7 +19,9 @@ ARG POKETTO_REVISION
 LABEL org.opencontainers.image.revision="${POKETTO_REVISION}" \
       org.opencontainers.image.source="https://github.com/core607/poketto"
 # Bound repository stalls inside the image build; retain Ubuntu signatures and TLS validation.
-RUN sed -i 's|http://archive.ubuntu.com/|https://archive.ubuntu.com/|g; s|http://security.ubuntu.com/|https://security.ubuntu.com/|g' /etc/apt/sources.list.d/ubuntu.sources \
+RUN sed -i '/^URIs:/s|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources \
+    && grep -q '^URIs: https://' /etc/apt/sources.list.d/ubuntu.sources \
+    && ! grep -q '^URIs:.*http://' /etc/apt/sources.list.d/ubuntu.sources \
     && timeout 300s apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update \
     && timeout 180s apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \

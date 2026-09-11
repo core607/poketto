@@ -5,6 +5,10 @@ import java.time.Clock;
 import java.util.Arrays;
 import java.util.Map;
 import javax.sql.DataSource;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.IncorrectResultSizeDataAccessException;
+import org.springframework.jdbc.BadSqlGrammarException;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -14,6 +18,10 @@ import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
 /** Interactive operator command using the deployment's database credentials, without starting HTTP. */
 public final class AdministratorSetup {
     private AdministratorSetup() {}
+
+    public static void main(String[] args) {
+        System.exit(run(args));
+    }
 
     public static int run(String[] args) {
         if (!Arrays.equals(args, new String[] {"admin", "init"})) {
@@ -44,9 +52,25 @@ public final class AdministratorSetup {
                     console.printf("%s%n", message);
                 }
             });
+        } catch (MissingConfiguration failure) {
+            console.printf(
+                    "Deployment database configuration is incomplete. Set all SPRING_DATASOURCE_* values in the application environment.%n");
+            return 1;
+        } catch (CannotGetJdbcConnectionException failure) {
+            console.printf(
+                    "Administrator setup could not connect to the deployment database. Verify its address, credentials, and availability.%n");
+            return 1;
+        } catch (BadSqlGrammarException | IncorrectResultSizeDataAccessException failure) {
+            console.printf(
+                    "The application database is not initialized correctly. Start the application and verify its schema and default workspace.%n");
+            return 1;
+        } catch (DataAccessException failure) {
+            console.printf(
+                    "The database rejected administrator setup. Inspect the database service before retrying.%n");
+            return 1;
         } catch (RuntimeException failure) {
             console.printf(
-                    "Administrator setup could not connect to the deployment database. Verify its configuration and start the application first.%n");
+                    "Administrator setup could not confirm its result. Check whether the account exists before retrying.%n");
             return 1;
         }
     }
@@ -97,10 +121,11 @@ public final class AdministratorSetup {
 
     private static String required(String name) {
         String value = System.getenv(name);
-        if (value == null || value.isBlank())
-            throw new IllegalArgumentException("Deployment database configuration is incomplete");
+        if (value == null || value.isBlank()) throw new MissingConfiguration();
         return value;
     }
+
+    private static final class MissingConfiguration extends RuntimeException {}
 
     interface Prompt {
         String username();

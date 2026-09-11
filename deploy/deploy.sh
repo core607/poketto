@@ -678,7 +678,8 @@ main() {
     apply_sync
     load_configuration
     if [ "$INITIALIZE_ADMIN" = 1 ]; then
-        compose exec app java org.springframework.boot.loader.launch.JarLauncher admin init
+        compose exec app java -cp '/app/BOOT-INF/classes:/app/BOOT-INF/lib/*' \
+            io.github.core607.poketto.auth.AdministratorSetup admin init
         return
     fi
     prepare_docker_config
