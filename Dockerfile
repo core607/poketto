@@ -18,8 +18,10 @@ FROM eclipse-temurin:26-jre-noble@sha256:c12a27c567c4ce00b0caef14900c1bf2f5e9975
 ARG POKETTO_REVISION
 LABEL org.opencontainers.image.revision="${POKETTO_REVISION}" \
       org.opencontainers.image.source="https://github.com/core607/poketto"
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+# Bound repository stalls inside the image build; retain Ubuntu signatures and TLS validation.
+RUN sed -i 's|http://archive.ubuntu.com/|https://archive.ubuntu.com/|g; s|http://security.ubuntu.com/|https://security.ubuntu.com/|g' /etc/apt/sources.list.d/ubuntu.sources \
+    && timeout 300s apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update \
+    && timeout 180s apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 poketto \
     && useradd --system --uid 10001 --gid 10001 --home-dir /var/lib/poketto --create-home poketto
