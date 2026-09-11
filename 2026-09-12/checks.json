@@ -1,0 +1,81 @@
+{
+  "sourceCommit": "15053429ee96da52dc40dbb327b155e317da0b7c",
+  "environment": "Real Spring, pinned PostgreSQL, production Next.js and Caddy; two independent fresh synthetic Git authorities; Chrome; local HTTP",
+  "captureDimensions": [
+    1905,
+    938
+  ],
+  "captureMethod": "Unmodified browser frames sampled during one workspace switching flow. Frames include intermediate loading and saving states. GIF uses 1.8 seconds per frame for reading, not measured operation timing. Completed writes are verified separately from both Git authorities.",
+  "frames": [
+    {
+      "filename": "08-first-draft.png"
+    },
+    {
+      "filename": "09-switch-confirmation.png"
+    },
+    {
+      "filename": "10-cancel-retains-draft.png"
+    },
+    {
+      "filename": "12-second-draft.png"
+    },
+    {
+      "filename": "13-second-saved.png"
+    },
+    {
+      "filename": "14-unchanged-file-preview-restored.png"
+    }
+  ],
+  "readback": [
+    {
+      "space": "first",
+      "commit": "b3ef3a977b84529d4d8e5e81129947eaf1416c57",
+      "path": "private/日记.md",
+      "sha256": "3dc40ccd3613cbdab92a226bd3f7d197d0ab8f5a6e67ab34895d57566e9ab029"
+    },
+    {
+      "space": "reading-room",
+      "commit": "2d47101ea81235c26047dd9382558cb8b1782b6a",
+      "path": "private/日记.md",
+      "sha256": "2a1d2e133e4782d583609a7dd44a4ca36fee8447ca40d94d63a2657f14a85a59"
+    }
+  ],
+  "verified": [
+    "Unsaved space switch opens in-page confirmation",
+    "Cancel retains the first workspace and its draft",
+    "Two tabs save the same path into separate Git authorities",
+    "Both authorized private image previews render",
+    "Reopening unchanged content restores its preview"
+  ],
+  "limitations": "Synthetic repositories, loopback HTTP, no external provider provisioning or actual MCP client session in this artifact. This sampled state capture does not establish transition timing.",
+  "artifacts": [
+    {
+      "file": "08-first-draft.png",
+      "sha256": "f8e4cdc3ac710a7b9f32b7332d72a087773bce1ee155ee343bbb2e8ca2b7d906"
+    },
+    {
+      "file": "09-switch-confirmation.png",
+      "sha256": "ccf77dcd46e2b1fcd7435cf924c125ba2ad2b7f545302694261a26fab497fef5"
+    },
+    {
+      "file": "10-cancel-retains-draft.png",
+      "sha256": "c15056c9e61478aafbae4d92cb2253f4c9b66c94111153ac0448d3283d65f8d4"
+    },
+    {
+      "file": "12-second-draft.png",
+      "sha256": "de339cfe1508443d3542fe3b048082996dd1efb77516f590dd57a83649d930be"
+    },
+    {
+      "file": "13-second-saved.png",
+      "sha256": "448706afeeccc3f2170a611163e7907210dd35e3a981d4aa7e9df4299db4af1e"
+    },
+    {
+      "file": "14-unchanged-file-preview-restored.png",
+      "sha256": "52dae7f2f90f150ad859a63b2b0837e290311ae5cd12b3a97eb021257ed49bce"
+    },
+    {
+      "file": "workspace-flow.gif",
+      "sha256": "dfc1e3066256e1508d3b730e4c05d9feb5479cd2a9aa7a9cb15affd8e56b6d58"
+    }
+  ]
+}
