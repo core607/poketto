@@ -188,6 +188,38 @@ test("a no-space account stays signed in and joins explicitly from account manag
   assert.doesNotMatch(f.container.textContent, /还没有可访问的空间/);
 });
 
+test("disabling issuance retains the ordinary issuer's existing invitation controls", async (t) => {
+  const f = await fixture(t);
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input), "https://site.example").pathname;
+    if (path === "/api/auth/account") return Response.json(account);
+    if (path === "/api/auth/me") return new Response(null, { status: 403 });
+    if (path === "/api/auth/registration-invitations")
+      return Response.json({
+        ...page,
+        total: 1,
+        items: [
+          {
+            id: "own-invitation",
+            expiresAt: "2099-01-01T00:00:00Z",
+            revoked: false,
+            used: false,
+          },
+        ],
+      });
+    assert.fail("Unexpected request: " + path);
+  };
+  await f.act(async () => f.root.render(<f.Admin />));
+  assert.ok(f.button("撤销"));
+  assert.match(f.container.textContent, /待使用/);
+  assert.equal(
+    [...f.container.querySelectorAll("button")].some(
+      (b) => b.textContent === "创建注册邀请码",
+    ),
+    false,
+  );
+});
+
 test("an unavailable workspace does not turn a verified account into a login form", async (t) => {
   const f = await fixture(t);
   globalThis.fetch = async (input) => {

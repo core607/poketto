@@ -56,7 +56,9 @@ export function AccountPanel({
   return (
     <div className="management-panel">
       <section>
-        <h2>加入空间</h2>
+        <div className="panel-heading">
+          <h2>加入空间</h2>
+        </div>
         {!hasWorkspace && !workspaceUnavailable && (
           <p>你已登录，还没有可访问的空间。</p>
         )}
@@ -133,8 +135,10 @@ export function RegistrationInvitations({ mayIssue }: { mayIssue: boolean }) {
       setPending(false);
     }
   }
+  if (!mayIssue && !page.loading && !page.error && page.total === 0)
+    return null;
   return (
-    <section>
+    <section className="sub-panel">
       <div className="panel-heading">
         <div>
           <h2>邀请注册</h2>
