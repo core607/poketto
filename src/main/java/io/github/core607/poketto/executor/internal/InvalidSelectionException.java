@@ -11,6 +11,7 @@ final class InvalidSelectionException extends IllegalArgumentException {
         NOT_REGULAR_FILE,
         NOT_UTF8,
         TEXT_LIMIT,
+        BINARY_LIMIT,
         FILE_CHANGED,
         CAPTURE_UNAVAILABLE,
         NO_WRITABLE_BASELINE

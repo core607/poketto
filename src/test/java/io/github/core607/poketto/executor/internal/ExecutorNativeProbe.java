@@ -819,6 +819,21 @@ public final class ExecutorNativeProbe {
             assertThat(index.files().get("private/linked.pdf").assetId())
                     .isEqualTo(other.reference().assetId());
             assertThat(index.files()).doesNotContainKey("private/foreign.pdf");
+            var absentBinary = execute(
+                    executor,
+                    "media-link",
+                    "poketto media import private/not-created.bin --as private/absent.pdf --key native_absent_binary_01",
+                    new Cancellation());
+            assertThat(JSON.readTree(absentBinary.stdout()).path("reason").stringValue())
+                    .isEqualTo("NOT_FOUND");
+            var oversizedBinary = execute(
+                    executor,
+                    "media-link",
+                    "python3 -c \"from pathlib import Path; f=Path('private/oversized.bin').open('wb'); f.truncate(128*1024*1024+1); f.close()\"; "
+                            + "poketto media import private/oversized.bin --as private/oversized.pdf --key native_oversized_binary_01",
+                    new Cancellation());
+            assertThat(JSON.readTree(oversizedBinary.stdout()).path("reason").stringValue())
+                    .isEqualTo("BINARY_LIMIT");
             var missing = execute(executor, "media-link", "poketto save private/not-created.md", new Cancellation());
             assertThat(missing.exitCode()).isEqualTo(1);
             assertThat(JSON.readTree(missing.stdout()).path("code").stringValue())
