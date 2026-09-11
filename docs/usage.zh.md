@@ -30,7 +30,11 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 管理页会列出当前账号的空间。选择空间后再编辑，URL 中的 `workspace` 参数让不同标签页保持独立。“账号与空间”支持连接已有的 GitHub/CNB 私有仓库、查询或重试中断的创建申请，以及接受空间邀请码。启用仓库连接前，将 `POKETTO_REPOSITORY_CREDENTIAL_KEY` 配置为 Base64 编码的 32 字节密钥。新空间默认关闭公开网站。仓库令牌需要读取元数据和 Git 写入权限，不会保存在浏览器草稿中。
 
-私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个拥有的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
+私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个已加入的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
+
+所有者在成员管理或空间邀请中分别设置私密读取、私密修改和公开内容修改/发布权限。邀请默认仅允许查看公开范围；私密修改必须同时允许私密读取。即使位于 `public/` 下，被发布策略排除的文件仍属私密内容。空间的匿名网站关闭时，成员仍可读取其当前公开范围。收回权限会撤销权限超限的连接；增加权限不会扩大已有连接的授权。详见[成员内容权限](../notes/implemented/2026-09-12-member-content-permissions.md)；安装该表结构后，已有普通成员也会失去隐含的私密访问权限。
+
+连接 MCP 时，在客户端填写 `https://your-domain.example/mcp`，选择 OAuth，客户端 ID 和密钥留空以使用动态注册。登录 Poketto 后选择已加入的空间，核对应用返回地址，再明确批准权限。只能委托自己持有的权限；私密读取、私密修改和公开发布默认均不勾选。成员可查看和断开自己的连接，所有者可管理空间内全部连接。通过隔离命令保存需要完整源码读取权限，以及受影响内容对应的写权限；私密读取加公开发布可以保存公开文件，无需私密修改。没有私密读取权限时，执行环境中的公开投影仍为只读，即使授予公开发布也不能提交；裁剪后的投影缺少作者元数据，不能安全覆盖原文。
 
 空内容仓可使用 [content-template](../content-template/AGENTS.md) 初始化。模板提供各自组织的 `private/` 和 `public/`，默认禁用发布。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
 
