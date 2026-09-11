@@ -1,0 +1,113 @@
+{
+  "OPEN" : {
+    "exportId" : "11111111-1111-4111-8111-111111111111",
+    "bundleSha256" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "bundleBytes" : 4096,
+    "commit" : "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  "EXEC" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "commit" : "cccccccccccccccccccccccccccccccccccccccc",
+    "command" : "git log",
+    "timeoutMillis" : 1000
+  },
+  "RENEW" : { },
+  "CLOSE" : {
+    "reason" : "session_closed"
+  },
+  "REVOKE" : {
+    "keyIds" : [ "11111111-1111-4111-8111-111111111111" ],
+    "accountIds" : [ "11111111-1111-4111-8111-111111111111" ]
+  },
+  "BRIDGE_POLL" : { },
+  "BRIDGE_COMPLETE" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "bridgeRequestId" : "66666666-6666-4666-8666-666666666666",
+    "response" : {
+      "ok" : true
+    }
+  },
+  "CAPTURE_BEGIN" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "writes" : [ "notes/a.md" ],
+    "deletes" : [ ]
+  },
+  "CAPTURE_OPTIONAL" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "path" : "notes/a.md"
+  },
+  "CAPTURE_BINARY" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "path" : "notes/a.png"
+  },
+  "CAPTURE_READ" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "captureId" : "33333333-3333-4333-8333-333333333333",
+    "index" : 0,
+    "offset" : 0,
+    "limit" : 65536
+  },
+  "CAPTURE_RELEASE" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "captureId" : "33333333-3333-4333-8333-333333333333"
+  },
+  "MATERIALIZE_BEGIN" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "path" : "notes/a.md",
+    "bytes" : 6,
+    "sha256" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "expectedSha256" : null,
+    "delete" : false,
+    "allowIdentical" : true
+  },
+  "MATERIALIZE_CHUNK" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444",
+    "offset" : 0,
+    "data" : "YWJj"
+  },
+  "MATERIALIZE_COMMIT" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444"
+  },
+  "MATERIALIZE_ABORT" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444"
+  },
+  "MOVE_BEGIN" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "bytes" : 64,
+    "sha256" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "MOVE_CHUNK" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444",
+    "offset" : 0,
+    "data" : "YWJj"
+  },
+  "MOVE_CHECK" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444"
+  },
+  "MOVE_COMMIT" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444"
+  },
+  "MOVE_ABORT" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "transferId" : "44444444-4444-4444-8444-444444444444"
+  },
+  "ARTIFACT_CREATE" : {
+    "executionId" : "22222222-2222-4222-8222-222222222222",
+    "path" : "out.zip",
+    "mediaType" : "application/zip"
+  },
+  "ARTIFACT_READ" : {
+    "artifactId" : "55555555-5555-4555-8555-555555555555",
+    "offset" : 0,
+    "limit" : 4096
+  },
+  "ARTIFACT_REMOVE" : {
+    "artifactId" : "55555555-5555-4555-8555-555555555555"
+  }
+}
