@@ -221,6 +221,11 @@ class WorkspaceEntrancesIntegrationIT {
         String current = json.readTree(seeded.getResponse().getContentAsString())
                 .path("commit")
                 .asString();
+        mvc.perform(get(route(second, "assets/repository"))
+                        .session(guestSession)
+                        .param("commit", current))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
         mvc.perform(get(route(second, "repository/tree")).session(guestSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries.length()").value(2))

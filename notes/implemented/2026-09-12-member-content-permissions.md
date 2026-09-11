@@ -12,9 +12,13 @@ This implements the membership portion of the [multi-user proposal](../proposed/
 
 The repository publication policy determines public scope, including exclusions and reserved files. Members can read this scope even when the workspace's anonymous website is disabled. Without `READ_PRIVATE`, repository reads select current authoritative content only and filter paths before pagination. They cannot select historical objects or read excluded files. `RepositoryFile.publicScope` reports the policy decision used by browser editing; the path prefix alone is insufficient.
 
+The workspace catalog's `public_delivery` flag controls anonymous website delivery. It is distinct from `.poketto/publishing.yaml`, which defines eligible content. Disabled, absent or invalid repository policy grants no public scope; ignoring that policy would expose content its owner has withdrawn. The member read path does not depend on the catalog website flag.
+
 Public changes require `PUBLISH`; private or excluded changes require `WRITE_PRIVATE`. Moves additionally require private reading for private source, destination or repaired references. The atomic writer computes requirements from every affected path and holds workspace authorization through the write. Publishing-policy changes and indirect publication effects retain their publication checks. A public-only move plan cannot return a private media index. Failed authorization cannot advance the remote branch.
 
 Authenticated public-scope image previews remain bound to their member and workspace. An edited preview cannot authorize a managed original absent from current public content. Image delivery rechecks current source and membership. Original downloads verify the current repository media snapshot, immutable version and membership; transfer rechecks happen every 256 KiB without fetching Git for each block. Snapshot withdrawal or revoked authority stops an outstanding transfer. Anonymous grants and private-read grants are separate: neither substitutes for member public authority, and downgrading a member does not make an old private grant public.
+
+The public editor's image picker lists eligible Git images and indexed managed images without private-read permission. Filtering precedes validation diagnostics, totals and pagination. It inserts relative paths and cannot list arbitrary private uploads or upload new originals without private-write authority. Requested history and a changed current commit are rejected.
 
 ## Machine delegation
 

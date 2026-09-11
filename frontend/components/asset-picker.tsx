@@ -14,11 +14,13 @@ export function AssetPicker({
   path,
   commit,
   canUpload,
+  canReadPrivate = true,
   onInsert,
 }: {
   path: string;
   commit: string | null;
   canUpload: boolean;
+  canReadPrivate?: boolean;
   onInsert: (markdown: string) => void;
 }) {
   const api = useWorkspaceApi();
@@ -34,7 +36,7 @@ export function AssetPicker({
   const [notice, setNotice] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
-  const [kind, setKind] = useState("managed");
+  const [kind, setKind] = useState(canReadPrivate ? "managed" : "repository");
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -118,21 +120,23 @@ export function AssetPicker({
   return (
     <section className="asset-picker">
       <div className="button-row">
-        <button
-          type="button"
-          className="button-secondary"
-          disabled={busy}
-          onClick={() => void list("managed")}
-        >
-          选择已上传图片
-        </button>
+        {canReadPrivate && (
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={busy}
+            onClick={() => void list("managed")}
+          >
+            选择已上传图片
+          </button>
+        )}
         <button
           type="button"
           className="button-secondary"
           disabled={busy}
           onClick={() => void list("repository")}
         >
-          选择仓库图片
+          {canReadPrivate ? "选择仓库图片" : "选择公开图片"}
         </button>
         {canUpload && (
           <label className="upload-label">

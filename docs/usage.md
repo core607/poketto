@@ -61,6 +61,8 @@ Managed originals live under `<data-dir>/managed-originals` and are retained; `<
 
 `POST /api/admin/workspaces/{workspaceId}/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/workspaces/{workspaceId}/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes.
 
+Members editing public content without private-read permission use **Choose public images**. The picker lists current eligible Git images and indexed managed images, inserts relative paths, and excludes private or withdrawn content. Uploading a new original still requires private-write permission.
+
 ## Export HTTP interface
 
 In the editor, use **Export** beside a file or inside an expanded folder, or the

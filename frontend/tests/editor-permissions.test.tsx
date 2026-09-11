@@ -70,8 +70,22 @@ for (const scenario of [
         value,
       });
     const previousFetch = globalThis.fetch;
+    const imageRequests: string[] = [];
     globalThis.fetch = async (input) => {
       const url = new URL(String(input), "https://site.example");
+      if (url.pathname === "/api/auth/csrf")
+        return Response.json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/assets/repository")) {
+        imageRequests.push(url.pathname);
+        return Response.json({
+          items: [
+            { path: "public/picture.png", mediaType: "image/png", size: 20 },
+          ],
+          total: 1,
+        });
+      }
+      if (url.pathname.endsWith("/repository/preview"))
+        return Response.json({ images: {} });
       if (url.pathname.endsWith("/repository/tree"))
         return Response.json({
           commit: "current",
@@ -140,6 +154,13 @@ for (const scenario of [
       !!container.querySelector('input[type="file"]'),
       scenario.upload,
     );
+    const publicPicker = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "选择公开图片",
+    );
+    assert.equal(
+      !!publicPicker,
+      scenario.writable && !scenario.capabilities.includes("READ_PRIVATE"),
+    );
     if (scenario.writable) {
       const move = Array.from(container.querySelectorAll("button")).find(
         (button) => button.textContent === "移动…",
@@ -162,6 +183,21 @@ for (const scenario of [
         publicRoot.disabled,
         !scenario.capabilities.includes("PUBLISH"),
       );
+      const cancel = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "取消",
+      );
+      assert.ok(cancel);
+      await act(async () => cancel.click());
+    }
+    if (publicPicker) {
+      await act(async () => publicPicker.click());
+      const image = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("public/picture.png"),
+      );
+      assert.ok(image);
+      await act(async () => image.click());
+      assert.match(textarea.value, /!\[图片\]\(<picture.png>\)/);
+      assert.equal(imageRequests.length, 1);
     }
   });
 }

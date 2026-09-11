@@ -609,19 +609,18 @@ export function Editor({
                     )}
                   </div>
                 </div>
-                {writable &&
-                  !busy &&
-                  identity.capabilities.includes("READ_PRIVATE") && (
-                    <AssetPicker
-                      key={path}
-                      path={path}
-                      commit={file.commit}
-                      canUpload={identity.capabilities.includes(
-                        "WRITE_PRIVATE",
-                      )}
-                      onInsert={insert}
-                    />
-                  )}
+                {writable && !busy && (
+                  <AssetPicker
+                    key={path}
+                    path={path}
+                    commit={file.commit}
+                    canUpload={identity.capabilities.includes("WRITE_PRIVATE")}
+                    canReadPrivate={identity.capabilities.includes(
+                      "READ_PRIVATE",
+                    )}
+                    onInsert={insert}
+                  />
+                )}
               </>
             )}
             <div className="editor-foot">

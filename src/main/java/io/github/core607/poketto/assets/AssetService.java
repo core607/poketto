@@ -136,35 +136,58 @@ public final class AssetService {
             int limit) {
         if (offset < 0 || offset > 1000 || limit < 1 || limit > 100)
             throw new IllegalArgumentException("repository image page exceeds its bounds");
-        RepositoryImagePage page = preparePrivate(actor, workspace, () -> {
-            Optional<String> commit = blobs.selectCommit(workspace, requested);
+        boolean privateAccess = auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE);
+        Supplier<RepositoryImagePage> prepare = () -> {
+            Optional<String> commit = blobs.selectCommit(workspace, privateAccess ? requested : Optional.empty());
+            if (!privateAccess && requested.isPresent() && !requested.equals(commit)) throw notFound();
             if (commit.isEmpty()) return new RepositoryImagePage(null, List.of(), 0, offset, limit, List.of());
+            record Candidate(String path, long size, Target target) {}
+            List<Candidate> candidates = new ArrayList<>();
+            for (RepositoryBlob blob : blobs.images(workspace, commit.orElseThrow(), prefix)) {
+                if (privateAccess || blob.publicPath())
+                    candidates.add(new Candidate(blob.path(), blob.size(), new Git(blob)));
+            }
+            if (!privateAccess) {
+                var catalog = blobs.media(workspace, commit.orElseThrow());
+                for (String path : catalog.publicPaths()) {
+                    var media = catalog.index().files().get(path);
+                    if (path.startsWith(prefix) && media.mediaType().startsWith("image/")) {
+                        candidates.add(new Candidate(
+                                path, media.size(), new Indexed(commit.orElseThrow(), path, media, true)));
+                    }
+                }
+            }
+            if (candidates.size() > 1000)
+                throw new ContentRepositoryException("repository image inventory entry bound exceeded");
+            candidates.sort(java.util.Comparator.comparing(Candidate::path));
             List<RepositoryImagePage.Item> images = new ArrayList<>();
             List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
             long totalBytes = 0;
-            for (RepositoryBlob blob : blobs.images(workspace, commit.orElseThrow(), prefix)) {
-                totalBytes += blob.size();
+            for (Candidate candidate : candidates) {
+                totalBytes += candidate.size();
                 if (totalBytes > INVENTORY_IMAGE_BYTES)
                     throw new ContentRepositoryException("repository image inventory byte bound exceeded");
                 var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES);
                 if (reservation.isEmpty()) {
                     diagnostics.add(new RepositoryDiagnostic(
-                            blob.path(),
+                            candidate.path(),
                             "IMAGE_CAPACITY_UNAVAILABLE",
                             "image validation capacity is temporarily unavailable"));
                     continue;
                 }
                 var scope = reservation.orElseThrow();
                 try (var producer = scope.producer()) {
-                    AssetBytes image = bytes(workspace, new Git(blob));
-                    images.add(new RepositoryImagePage.Item(blob.path(), image.mediaType(), blob.size()));
+                    AssetBytes image = bytes(workspace, candidate.target());
+                    images.add(new RepositoryImagePage.Item(candidate.path(), image.mediaType(), candidate.size()));
                 } catch (AssetStorageException | ContentRepositoryException invalid) {
                     diagnostics.add(new RepositoryDiagnostic(
-                            blob.path(), "INVALID_IMAGE", "image signature, dimensions or bytes are unavailable"));
+                            candidate.path(), "INVALID_IMAGE", "image signature, dimensions or bytes are unavailable"));
                 } finally {
                     scope.responseComplete();
                 }
             }
+            if (!privateAccess
+                    && !blobs.selectCommit(workspace, Optional.empty()).equals(commit)) throw notFound();
             return new RepositoryImagePage(
                     commit.orElseThrow(),
                     images.stream().skip(offset).limit(limit).toList(),
@@ -172,8 +195,10 @@ public final class AssetService {
                     offset,
                     limit,
                     diagnostics);
-        });
-        return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> page);
+        };
+        RepositoryImagePage page = privateAccess ? preparePrivate(actor, workspace, prepare) : prepare.get();
+        return auth.withAuthorization(
+                actor, workspace, privateAccess ? Set.of(Capability.READ_PRIVATE) : Set.of(), () -> page);
     }
 
     public ResolvedMedia preview(

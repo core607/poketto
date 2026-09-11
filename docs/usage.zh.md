@@ -57,6 +57,8 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 `POST /api/admin/workspaces/{workspaceId}/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/workspaces/{workspaceId}/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
 
+只有发布权限、没有私密读取权限的成员，可以通过“选择公开图片”插入图片。列表包含当前发布规则允许的 Git 图片和索引图片，插入相对路径，不显示私密或已撤下的内容。上传新的原始文件仍需私密写入权限。
+
 ## 导出 HTTP 接口
 
 在编辑器中，点击文件旁或展开文件夹内的“导出”，也可以从文件侧栏顶部导出整个工作空间。

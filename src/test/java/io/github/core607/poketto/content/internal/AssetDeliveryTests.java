@@ -1105,6 +1105,60 @@ class AssetDeliveryTests {
     }
 
     @Test
+    @EnabledOnOs(OS.LINUX)
+    void memberInventoryFiltersGitAndManagedImagesBeforePaginationAndRejectsHistory() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        var originals = ManagedBlobStore.local(directory.resolve("inventory-originals"));
+        var visible = originals.upload(workspace, "visible-inventory-image", new java.io.ByteArrayInputStream(png(6)));
+        var hidden = originals.upload(workspace, "hidden-inventory-image", new java.io.ByteArrayInputStream(png(9)));
+        var index = new io.github.core607.poketto.content.RepositoryMediaIndex(Map.of(
+                "public/b.png",
+                        new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                                visible.reference().assetId(),
+                                visible.reference().revision(),
+                                visible.mediaType(),
+                                visible.size()),
+                "private/hidden.png",
+                        new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                                hidden.reference().assetId(),
+                                hidden.reference().revision(),
+                                hidden.mediaType(),
+                                hidden.size())));
+        var files = files("public/page.md", "# Images\n");
+        files.put("public/a.png", png(1));
+        files.put("public/z.png", png(2));
+        files.put("private/broken.jpg", text("private invalid bytes"));
+        files.put("public/notes/excluded.png", text("excluded invalid bytes"));
+        files.put(io.github.core607.poketto.content.RepositoryMediaIndex.PATH, index.encode());
+        String commit = fixture.commitRemote(workspace, files).name();
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO);
+        var service = service(fixture, snapshots(fixture, Duration.ofMinutes(5)), memory, originals);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                        workspace,
+                        actor,
+                        io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                        Set.of(Capability.PUBLISH)));
+        var first = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 1);
+        assertThat(first.total()).isEqualTo(3);
+        assertThat(first.items()).extracting(item -> item.path()).containsExactly("public/a.png");
+        assertThat(first.diagnostics()).isEmpty();
+        var second = service.repositoryImages(actor, workspace, Optional.of(commit), "", 1, 1);
+        assertThat(second.items()).extracting(item -> item.path()).containsExactly("public/b.png");
+        assertThat(service.repositoryImages(actor, workspace, Optional.empty(), "private/", 0, 30)
+                        .total())
+                .isZero();
+        files.put("public/page.md", text("# Changed\n"));
+        fixture.commitRemote(workspace, files);
+        assertThatThrownBy(() -> service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 1))
+                .isInstanceOf(AssetStorageException.class);
+        authorized.set(false);
+        assertThatThrownBy(() -> service.repositoryImages(actor, workspace, Optional.empty(), "", 0, 1))
+                .isInstanceOf(SecurityException.class);
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
     void currentCallbackSerializesImageMintingWithSnapshotInstallation() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         fixture.commitRemote(workspace, files("public/article.md", "# Public"));
