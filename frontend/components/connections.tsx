@@ -70,7 +70,7 @@ export function Connections() {
         const inactive =
           item.revoked || Date.parse(item.expiresAt) <= Date.now();
         return (
-          <article className="panel" key={item.id}>
+          <article className="connection-card" key={item.id}>
             <h3>{item.clientName}</h3>
             <p>
               {item.scopes.map((s) => scopeLabels[s]?.label ?? s).join("、")}

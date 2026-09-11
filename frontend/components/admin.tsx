@@ -141,7 +141,13 @@ function AdminContent() {
   );
 }
 
-export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
+export function Login({
+  onLogin,
+  connection = false,
+}: {
+  onLogin: () => Promise<void>;
+  connection?: boolean;
+}) {
   const [mode, setMode] = useState("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -272,40 +278,42 @@ export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                 : "创建账号并登录 →"}
         </button>
       </form>
-      <div className="login-options">
-        <button
-          className="text-button"
-          onClick={() => {
-            setMode("accept");
-            setError("");
-          }}
-        >
-          已有账号接受邀请
-        </button>
-        <button
-          className="text-button"
-          onClick={() => {
-            setMode(mode === "initialize" ? "login" : "initialize");
-            setError("");
-          }}
-        >
-          首次初始化
-        </button>
-        <button
-          className="text-button"
-          onClick={() => {
-            setMode(mode === "register" ? "login" : "register");
-            setError("");
-          }}
-        >
-          使用邀请注册
-        </button>
-        {mode !== "login" && (
-          <button className="text-button" onClick={() => setMode("login")}>
-            已有账号
+      {!connection && (
+        <div className="login-options">
+          <button
+            className="text-button"
+            onClick={() => {
+              setMode("accept");
+              setError("");
+            }}
+          >
+            已有账号接受邀请
           </button>
-        )}
-      </div>
+          <button
+            className="text-button"
+            onClick={() => {
+              setMode(mode === "initialize" ? "login" : "initialize");
+              setError("");
+            }}
+          >
+            首次初始化
+          </button>
+          <button
+            className="text-button"
+            onClick={() => {
+              setMode(mode === "register" ? "login" : "register");
+              setError("");
+            }}
+          >
+            使用邀请注册
+          </button>
+          {mode !== "login" && (
+            <button className="text-button" onClick={() => setMode("login")}>
+              已有账号
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

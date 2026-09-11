@@ -87,7 +87,7 @@ export function Connect() {
     }
   }
   return (
-    <section className="panel" aria-labelledby="connect-title">
+    <section className="oauth-shell" aria-labelledby="connect-title">
       <p className="eyebrow">连接你的空间</p>
       <h1 id="connect-title">授权应用访问 Poketto</h1>
       {loading ? (
@@ -95,7 +95,7 @@ export function Connect() {
       ) : !identity && request && !error ? (
         <>
           <p>先登录，再选择允许应用使用的权限。登录不会自动授权。</p>
-          <Login onLogin={() => load(request)} />
+          <Login connection onLogin={() => load(request)} />
         </>
       ) : (
         consent && (
@@ -113,10 +113,7 @@ export function Connect() {
               {Object.entries(scopeLabels)
                 .filter(([scope]) => consent.scopes.includes(scope))
                 .map(([scope, text]) => (
-                  <label
-                    key={scope}
-                    style={{ display: "block", marginBlock: "1rem" }}
-                  >
+                  <label key={scope} className="oauth-permission">
                     <input
                       type="checkbox"
                       checked={selected.includes(scope)}
@@ -127,16 +124,16 @@ export function Connect() {
                             : values.filter((value) => value !== scope),
                         )
                       }
-                    />{" "}
-                    {text.label}
-                    <span style={{ display: "block", marginLeft: "1.5rem" }}>
-                      {text.detail}
+                    />
+                    <span>
+                      <strong>{text.label}</strong>
+                      <span>{text.detail}</span>
                     </span>
                   </label>
                 ))}
             </fieldset>
             <p>未勾选的权限不会授予。可在管理页面的“已连接应用”中断开连接。</p>
-            <div className="actions">
+            <div className="oauth-actions">
               <button
                 disabled={
                   pending || !selected.some((s) => s !== "offline_access")
