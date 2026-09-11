@@ -122,7 +122,7 @@ final class RepositoryMcpTools {
                                     "offset",
                                     Map.of("type", "integer", "minimum", 0, "maximum", 134217728),
                                     "limit",
-                                    Map.of("type", "integer", "minimum", 4, "maximum", 8192),
+                                    Map.of("type", "integer", "minimum", 4, "maximum", 65536),
                                     "format",
                                     Map.of("type", "string", "enum", List.of("auto", "bytes"))),
                             List.of("artifactId")),
@@ -317,7 +317,7 @@ final class RepositoryMcpTools {
         fields(input, Set.of("artifactId", "offset", "limit", "format"));
         String id = requiredText(input, "artifactId", 36);
         int offset = boundedInteger(input, "offset", 0, 0, 134217728);
-        int limit = boundedInteger(input, "limit", 8192, 4, 8192);
+        int limit = boundedInteger(input, "limit", 8192, 4, 65536);
         String format = optionalText(input, "format", 5).orElse("auto");
         if (!Set.of("auto", "bytes").contains(format)) throw new IllegalArgumentException();
         var identity = sessions.resolve(exchange);

@@ -77,6 +77,19 @@ class MediaFileServiceTests {
     }
 
     @Test
+    void originalMetadataIsWorkspaceBoundAndRechecksReadPermissionBeforeReturning() {
+        assertThat(service.describeOriginal(actor, workspace, asset.reference()))
+                .isEqualTo(asset);
+        assertMissing(() -> service.describeOriginal(actor, WorkspaceId.random(), asset.reference()));
+        reset(auth);
+        when(auth.authorize(actor, workspace, Capability.READ_PRIVATE))
+                .thenReturn(null)
+                .thenThrow(new IllegalStateException("revoked"));
+        assertThatThrownBy(() -> service.describeOriginal(actor, workspace, asset.reference()))
+                .hasMessage("revoked");
+    }
+
+    @Test
     void downloadsExactPrivateAndReferencedPublicBytesButRejectsPrivateAndStalePublicTargets() {
         var output = new ByteArrayOutputStream();
         service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
