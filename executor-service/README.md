@@ -238,6 +238,10 @@ Free space and retry the same bytes, type and operation key to finish the local 
 Unexpected transfer/storage failures still
 require session cleanup. Export authorization failures return `ACCESS_DENIED`.
 
+### Selection diagnostics
+
+`INVALID_SELECTION` and `INVALID_MEDIA_REQUEST` include a stable `reason` for rejected local inputs. Reasons are `INVALID_ARGUMENTS`, `INVALID_PATH`, `SELECTION_LIMIT`, `PATH_COLLISION`, `NOT_FOUND`, `NOT_REGULAR_FILE`, `NOT_UTF8`, `TEXT_LIMIT`, `FILE_CHANGED`, `CAPTURE_UNAVAILABLE`, or `NO_WRITABLE_BASELINE`. Missing selected files are not deletions; use an explicit `--delete`. Unsafe or unavailable captures may be indistinguishable and return `CAPTURE_UNAVAILABLE`. Diagnostics never include host exception text or storage paths. Existing conflict and uncertain-write codes retain their recovery behavior.
+
 ### Returned artifacts
 
 `poketto artifact create FILE [--type MIME]` returns an immutable snapshot of a
@@ -342,7 +346,3 @@ isolated aggregate-budget test, not an SRT or production-capacity acceptance.
 The [recorded result](resource-pool-evidence.json) contains source hashes and
 synthetic counters from a Linux cgroup v2 run; it does not include operator paths
 or production limits.
-
-### Selection diagnostics
-
-`INVALID_SELECTION` and `INVALID_MEDIA_REQUEST` include a stable `reason` for rejected local inputs. Reasons are `INVALID_ARGUMENTS`, `INVALID_PATH`, `SELECTION_LIMIT`, `PATH_COLLISION`, `NOT_FOUND`, `NOT_REGULAR_FILE`, `NOT_UTF8`, `TEXT_LIMIT`, `FILE_CHANGED`, `CAPTURE_UNAVAILABLE`, or `NO_WRITABLE_BASELINE`. Missing selected files are not deletions; use an explicit `--delete`. Unsafe or unavailable captures may be indistinguishable and return `CAPTURE_UNAVAILABLE`. Diagnostics never include host exception text or storage paths. Existing conflict and uncertain-write codes retain their recovery behavior.
