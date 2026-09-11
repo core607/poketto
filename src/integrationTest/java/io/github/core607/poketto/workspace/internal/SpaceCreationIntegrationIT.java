@@ -178,6 +178,37 @@ class SpaceCreationIntegrationIT {
                 jdbc, transactions, accounts, auth, catalog, remote, Clock.fixed(at, ZoneOffset.UTC));
     }
 
+    @Test
+    void rotationWaitDoesNotHoldWorkspaceLockAndRechecksOwnerBeforeCommit() throws Exception {
+        var service = service(now);
+        var created = create(service, UUID.randomUUID(), "rotation-space", "first");
+        WorkspaceId workspace = WorkspaceId.parse(created.workspaceId());
+        UUID other = UUID.randomUUID();
+        jdbc.update(
+                "insert into auth_accounts(account_id,login_name,password_hash) select ?,'co-owner',password_hash from auth_accounts where account_id=?",
+                other,
+                actor.accountId());
+        jdbc.update(
+                "insert into auth_memberships(workspace_id,account_id,role) values (?,?,'OWNER')",
+                workspace.value(),
+                other);
+        AuthPrincipal coOwner = auth.authenticatePassword("co-owner", "fixture-password-123");
+        remote.rotationEntered = new CountDownLatch(1);
+        remote.rotationRelease = new CountDownLatch(1);
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            var rotating = pool.submit(() -> service.rotateCredentials(actor, workspace, "cnb", "replacement"));
+            assertThat(remote.rotationEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var demoting = pool.submit(
+                    () -> auth.changeMembership(coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true));
+            demoting.get(3, TimeUnit.SECONDS);
+            remote.rotationRelease.countDown();
+            assertThatThrownBy(() -> rotating.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(AuthException.class);
+            assertThat(remote.appliedRotations.get()).isZero();
+        } finally {
+            remote.rotationRelease.countDown();
+        }
+    }
+
     private SpaceCreationService.Result create(
             SpaceCreationService service, UUID request, String slug, String repository) {
         return service.create(
@@ -197,6 +228,9 @@ class SpaceCreationIntegrationIT {
         AtomicInteger verifications = new AtomicInteger();
         CountDownLatch entered;
         CountDownLatch release;
+        CountDownLatch rotationEntered;
+        CountDownLatch rotationRelease;
+        AtomicInteger appliedRotations = new AtomicInteger();
 
         public boolean available() {
             return true;
@@ -231,8 +265,24 @@ class SpaceCreationIntegrationIT {
                     sealed);
         }
 
-        public void rotate(WorkspaceId workspace, String username, String token) {
-            throw new UnsupportedOperationException();
+        public CredentialRotation prepareRotation(WorkspaceId workspace, String username, String token) {
+            assertThat(
+                            org.springframework.transaction.support.TransactionSynchronizationManager
+                                    .isActualTransactionActive())
+                    .isFalse();
+            rotationEntered.countDown();
+            try {
+                if (!rotationRelease.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("fixture timeout");
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(error);
+            }
+            return new CredentialRotation(
+                    workspace, "https://github.com/example/first", identity, new byte[] {42}, new byte[] {43});
+        }
+
+        public void applyRotation(WorkspaceId workspace, CredentialRotation rotation) {
+            appliedRotations.incrementAndGet();
         }
     }
 }

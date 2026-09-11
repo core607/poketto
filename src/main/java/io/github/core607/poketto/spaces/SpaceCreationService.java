@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Account-level creation, durable across response loss and process restarts. No remote writes occur. */
+/** Account-level repository connections, durable across response loss and process restarts. No remote writes occur. */
 public final class SpaceCreationService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
@@ -50,6 +50,22 @@ public final class SpaceCreationService {
     public boolean available(AuthPrincipal actor) {
         accounts.account(actor);
         return repositories.available();
+    }
+
+    public void rotateCredentials(AuthPrincipal actor, WorkspaceId workspace, String username, String token) {
+        accounts.account(actor);
+        auth.authorize(actor, workspace, io.github.core607.poketto.auth.Capability.MANAGE_KEYS);
+        if (!admission.tryAcquire()) throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+        try {
+            var rotation = repositories.prepareRotation(workspace, username, token);
+            auth.withAuthorization(
+                    actor, workspace, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
+                        repositories.applyRotation(workspace, rotation);
+                        return null;
+                    });
+        } finally {
+            admission.release();
+        }
     }
 
     public Result create(

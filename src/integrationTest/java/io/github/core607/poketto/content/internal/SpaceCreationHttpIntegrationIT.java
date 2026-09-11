@@ -111,6 +111,10 @@ class SpaceCreationHttpIntegrationIT {
                         .content("x".repeat(16 * 1024 + 1)))
                 .andExpect(status().isPayloadTooLarge());
         assertThat(connections.verifications.get()).isZero();
+        mvc.perform(csrf(session, post("/api/auth/workspaces/creations"))
+                        .contentType("application/json")
+                        .content(body.replace("https://cnb.cool/example/notes", "https://github.com/")))
+                .andExpect(status().isBadRequest());
         var response = mvc.perform(csrf(session, post("/api/auth/workspaces/creations"))
                         .contentType("application/json")
                         .content(body))
@@ -149,6 +153,31 @@ class SpaceCreationHttpIntegrationIT {
                         .content("{\"username\":\"other\",\"token\":\"replacement\"}"))
                 .andExpect(status().isForbidden());
         assertThat(connections.rotations.get()).isZero();
+        var owner = auth.authenticatePassword("operator", "fixture-owner-password");
+        var id = new WorkspaceId(workspace);
+        var first = connections.prepareRotation(id, "cnb", "first-fixture-token");
+        var stale = connections.prepareRotation(id, "cnb", "stale-fixture-token");
+        auth.withAuthorization(
+                owner, id, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
+                    connections.applyRotation(id, first);
+                    return null;
+                });
+        assertThatThrownBy(() -> auth.withAuthorization(
+                        owner, id, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
+                            connections.applyRotation(id, stale);
+                            return null;
+                        }))
+                .isInstanceOf(io.github.core607.poketto.content.RepositoryConnectionException.class);
+        mvc.perform(csrf(session, put("/api/auth/workspaces/" + workspace + "/repository-credentials"))
+                        .contentType("application/json")
+                        .content("{\"username\":\"cnb\",\"token\":\"rotated-fixture-token\"}"))
+                .andExpect(status().isNoContent());
+        byte[] rotated = jdbc.queryForObject(
+                "select sealed_credentials from content_repository_bindings where workspace_id=?",
+                byte[].class,
+                workspace);
+        assertThat(cipher.decrypt(id, "https://cnb.cool/example/notes", rotated).password())
+                .isEqualTo("rotated-fixture-token");
         mvc.perform(get("/api/auth/workspaces/creation-policy")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/auth/workspaces/creation-policy").session(outsider))
                 .andExpect(status().isOk());
@@ -178,20 +207,24 @@ class SpaceCreationHttpIntegrationIT {
         @Bean
         @Primary
         FixtureConnections providerFixture(JdbcTemplate jdbc) {
-            return new FixtureConnections(new ManagedRepositoryConnections(
+            return new FixtureConnections(
                     jdbc,
-                    new RepositoryCredentialCipher(KEY),
-                    new RepositoryProviderClient(),
-                    new RepositoryProperties(null, null, null, null, null, null, null)));
+                    new ManagedRepositoryConnections(
+                            jdbc,
+                            new RepositoryCredentialCipher(KEY),
+                            new RepositoryProviderClient(),
+                            new RepositoryProperties(null, null, null, null, null, null, null)));
         }
     }
 
     static final class FixtureConnections implements RepositoryConnections, AutoCloseable {
+        final JdbcTemplate jdbc;
         final ManagedRepositoryConnections delegate;
         final AtomicInteger verifications = new AtomicInteger();
         final AtomicInteger rotations = new AtomicInteger();
 
-        FixtureConnections(ManagedRepositoryConnections delegate) {
+        FixtureConnections(JdbcTemplate jdbc, ManagedRepositoryConnections delegate) {
+            this.jdbc = jdbc;
             this.delegate = delegate;
         }
 
@@ -213,8 +246,26 @@ class SpaceCreationHttpIntegrationIT {
             delegate.install(workspace, coordinates, sealed, verified);
         }
 
-        public void rotate(WorkspaceId workspace, String username, String token) {
+        public CredentialRotation prepareRotation(WorkspaceId workspace, String username, String token) {
+            assertThat(
+                            org.springframework.transaction.support.TransactionSynchronizationManager
+                                    .isActualTransactionActive())
+                    .isFalse();
             rotations.incrementAndGet();
+            var row = jdbc.queryForMap(
+                    "select canonical_uri,provider_identity,sealed_credentials from content_repository_bindings where workspace_id=?",
+                    workspace.value());
+            var coordinates = RepositoryCoordinates.parse((String) row.get("canonical_uri"));
+            return new CredentialRotation(
+                    workspace,
+                    coordinates.canonicalUri(),
+                    (String) row.get("provider_identity"),
+                    (byte[]) row.get("sealed_credentials"),
+                    delegate.seal(workspace, coordinates, username, token));
+        }
+
+        public void applyRotation(WorkspaceId workspace, CredentialRotation rotation) {
+            delegate.applyRotation(workspace, rotation);
         }
 
         public void close() {

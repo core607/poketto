@@ -38,6 +38,7 @@ public final class RepositoryCoordinates {
             String path = uri.getRawPath();
             if (path == null || path.isEmpty()) throw invalid();
             if (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+            if (path.isEmpty()) throw invalid();
             path = path.toLowerCase(Locale.ROOT);
             if (path.endsWith(".git")) path = path.substring(0, path.length() - 4);
             String[] segments = path.substring(1).split("/", -1);

@@ -1,15 +1,10 @@
 package io.github.core607.poketto.web.internal;
 
-import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
-import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.RepositoryConnectionException;
-import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -22,13 +17,9 @@ import org.springframework.web.bind.annotation.*;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class SpaceCreationController {
     private final SpaceCreationService creation;
-    private final AuthService auth;
-    private final RepositoryConnections repositories;
 
-    SpaceCreationController(SpaceCreationService creation, AuthService auth, RepositoryConnections repositories) {
+    SpaceCreationController(SpaceCreationService creation) {
         this.creation = creation;
-        this.auth = auth;
-        this.repositories = repositories;
     }
 
     @GetMapping("/creation-policy")
@@ -60,13 +51,8 @@ class SpaceCreationController {
             @AuthenticationPrincipal AuthPrincipal actor,
             @PathVariable String workspaceId,
             @RequestBody CredentialRequest body) {
-        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT)
-            throw new AuthException(AuthException.Code.DENIED);
         WorkspaceId workspace = WorkspaceId.parse(workspaceId);
-        auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
-            repositories.rotate(workspace, body.username(), body.token());
-            return null;
-        });
+        creation.rotateCredentials(actor, workspace, body.username(), body.token());
     }
 
     @ExceptionHandler(RepositoryConnectionException.class)

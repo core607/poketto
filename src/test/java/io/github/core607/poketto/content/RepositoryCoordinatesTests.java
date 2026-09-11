@@ -19,15 +19,25 @@ class RepositoryCoordinatesTests {
     @Test
     void userConnectionsCannotSelectOtherOriginsOrEscapeRepositoryCoordinates() {
         for (String input : new String[] {
-            "http://github.com/example/notes", "https://127.0.0.1/example/notes",
-                    "https://github.com.attacker.invalid/example/notes",
-            "https://github.com:8443/example/notes", "https://user:secret@github.com/example/notes",
-                    "https://github.com/example/notes?token=secret",
-            "https://github.com/example/notes#secret", "https://github.com/example/notes/tree/main",
-                    "https://github.com/example/%2e%2e",
-            "https://cnb.cool/example//notes", "https://cnb.cool/example/../notes",
-                    "https://cnb.cool/example/notes/-/settings",
-            "https://cnb.cool/notes", "https://github.com/example/notes//", "https://github.com./example/notes"
+            "https://github.com/",
+            "https://cnb.cool/",
+            "https://github.com",
+            "https://cnb.cool",
+            "http://github.com/example/notes",
+            "https://127.0.0.1/example/notes",
+            "https://github.com.attacker.invalid/example/notes",
+            "https://github.com:8443/example/notes",
+            "https://user:secret@github.com/example/notes",
+            "https://github.com/example/notes?token=secret",
+            "https://github.com/example/notes#secret",
+            "https://github.com/example/notes/tree/main",
+            "https://github.com/example/%2e%2e",
+            "https://cnb.cool/example//notes",
+            "https://cnb.cool/example/../notes",
+            "https://cnb.cool/example/notes/-/settings",
+            "https://cnb.cool/notes",
+            "https://github.com/example/notes//",
+            "https://github.com./example/notes"
         }) {
             assertThatThrownBy(() -> RepositoryCoordinates.parse(input))
                     .isInstanceOf(IllegalArgumentException.class)
