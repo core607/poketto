@@ -6,6 +6,8 @@ Date: 2026-09-12
 
 Work retained by a successfully acknowledged command must be recoverable. An interrupted command must explicitly report that it may have partially completed.
 
+Acknowledgement is distinct from exit code zero or a successful remote save. A normal command result with a nonzero exit code still covers its retained local work; recovery must not discard it merely because the command reported failure.
+
 This proposal changes the disposable-session lifecycle described by [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md) and the [worker reference](../../executor-service/README.md). It does not change remote Git authority: retained local edits are neither a save nor publication. Until the implementation and its failure tests land, expiry and restart can still discard unsaved work.
 
 The broader [CodeAct workspace proposal](2026-09-09-codeact-workspaces.md) retains its tooling and isolation scope. [Session artifacts](../implemented/2026-09-10-session-artifacts.md) retain their separate access, expiry and byte-delivery contract. Neither record is retired by this proposal. [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) retain membership, public authoring and discovery decisions.
