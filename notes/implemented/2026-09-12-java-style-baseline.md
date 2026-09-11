@@ -45,6 +45,8 @@ Braces added about 1,900 lines: `src/main` grew from 21,207 to 23,167 lines and 
 
 The remaining violations are the suppressed length limits: 6 production files over 600 lines, and 37 named methods over 60 code lines across 20 files. The method count is the post-brace figure. Adding braces pushed 8 methods over the limit that were under it before, and one more file over the file limit, so the debt register is larger than the measurement in the problem statement.
 
+An exemption names a method, not a signature, so where an exempted name is overloaded its siblings are exempted too. That covers 4 methods that are currently under the limit: the second `initialize` in `LocalPortableContentExports.java` and the second `fetchMedia`, `open`, and `readCapture` in `IsolatedRepositoryExecutor.java`. Matching a signature in XPath would need the parameter list spelled out in the suppression, which rots against ordinary refactoring; the name is the readable granularity.
+
 The suppression list is a debt register. The largest entry, `IsolatedRepositoryExecutor.java`, is split when the worker protocol moves to records; the others shrink when their owners are touched.
 
 Checkstyle parses each Java release with its own grammar. A language feature the pinned version cannot parse fails `checkstyleMain` visibly and is resolved by upgrading the pin, as with the formatter.
