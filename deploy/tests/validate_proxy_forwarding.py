@@ -135,6 +135,7 @@ try:
         configuration = json.loads(docker("compose", "--env-file", empty, "-f", ROOT / "deploy/compose.yaml",
                                           "config", "--format", "json", env=environment).stdout)
     app_environment = configuration["services"]["app"]["environment"]
+    expect("registration invitations default to administrators", app_environment["POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED"], "false")
     actual_gateway = configuration["services"]["gateway"]["networks"]["default"]["ipv4_address"]
     expect("gateway static address", actual_gateway, gateway_ip)
     expect("production subnet", configuration["networks"]["default"]["ipam"]["config"][0]["subnet"], str(subnet))

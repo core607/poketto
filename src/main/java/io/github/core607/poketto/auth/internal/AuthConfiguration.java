@@ -1,6 +1,8 @@
 package io.github.core607.poketto.auth.internal;
 
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
+import io.github.core607.poketto.auth.RegistrationService;
 import java.time.Clock;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +19,21 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AuthConfiguration {
+    @Bean
+    RegistrationInvitationPolicy registrationInvitationPolicy(
+            @Value("${poketto.registration.user-invitations-enabled:false}") boolean usersEnabled) {
+        return RegistrationInvitationPolicy.configured(usersEnabled);
+    }
+
+    @Bean
+    RegistrationService registrationService(
+            JdbcTemplate jdbc,
+            PlatformTransactionManager transactionManager,
+            AuthService auth,
+            RegistrationInvitationPolicy policy) {
+        return new RegistrationService(jdbc, transactionManager, auth, policy, Clock.systemUTC());
+    }
+
     @Bean
     PasswordEncoder passwordEncoder() {
         return new DelegatingPasswordEncoder(
