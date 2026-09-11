@@ -132,16 +132,24 @@ final class RepositoryMcpTools {
                     this::getArtifact));
             tools.add(tool(
                     "repo_exec",
-                    "Use shell, Python, Git, file listings and search as the main file entrance in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority. Use poketto artifact create FILE --type MIME to return files through get_artifact. Long output includes artifact handles; inspect their truncated flags and read needed pages before they expire.",
+                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new only to explicitly start a fresh copy; otherwise pass the copyId from the previous result, including after reconnecting. SESSION_REPLACED means this command did not execute: do not retry writes blindly or assume earlier local edits survived. Every command starts at the repository root; /tmp is reset per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the pinned copy. Edits stay local until poketto save. CLI operations can store media and commit authorized selected changes. Use poketto artifact create FILE --type MIME with get_artifact for files; long-output handles expire and may be truncated.",
                     object(
                             Map.of(
+                                    "expectedCopyId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "maxLength",
+                                            36,
+                                            "pattern",
+                                            "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
                                     "command",
                                     text(16384),
                                     "commit",
                                     nullableCommit(),
                                     "timeoutSeconds",
                                     Map.of("type", "integer", "minimum", 1, "maximum", 60)),
-                            List.of("command")),
+                            List.of("expectedCopyId", "command")),
                     false,
                     true,
                     false,
@@ -182,6 +190,31 @@ final class RepositoryMcpTools {
                 return operation.apply(exchange, arguments);
             } catch (AuthException | SecurityException exception) {
                 return error("DENIED", "Current workspace capability is required.");
+            } catch (io.github.core607.poketto.mcp.SessionReplacedException exception) {
+                var body = new java.util.LinkedHashMap<String, Object>();
+                body.put("code", "SESSION_REPLACED");
+                body.put("reason", exception.reason().name());
+                body.put("executed", false);
+                body.put("recoveryAvailable", false);
+                body.put(
+                        "newCopyAllowed",
+                        exception.reason()
+                                == io.github.core607.poketto.mcp.SessionReplacedException.Reason.MISSING_COPY);
+                body.put(
+                        "message",
+                        switch (exception.reason()) {
+                            case MISSING_COPY ->
+                                "Expected copy is unavailable in this MCP session; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
+                            case DIFFERENT_COPY ->
+                                "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
+                            case CLOSED_COPY ->
+                                "This MCP session's copy has closed; this command did not execute. Unsaved work may be lost. Reconnect and use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
+                        });
+                exception.currentCopyId().ifPresent(value -> body.put("copyId", value));
+                return McpSchema.CallToolResult.builder()
+                        .addTextContent(json.writeValueAsString(body))
+                        .isError(true)
+                        .build();
             } catch (RepositoryConflictException exception) {
                 return error("CONFLICT", "Read current files and base commit before retrying.");
             } catch (RepositoryWriteAmbiguousException exception) {
@@ -400,7 +433,8 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult execute(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("command", "commit", "timeoutSeconds"));
+        fields(input, Set.of("expectedCopyId", "command", "commit", "timeoutSeconds"));
+        String copyId = RepositoryExecutor.requireCopyId(requiredText(input, "expectedCopyId", 36));
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
         int timeout = 30;
@@ -416,6 +450,7 @@ final class RepositoryMcpTools {
                         identity.principal(),
                         identity.workspace(),
                         exchange.sessionId(),
+                        copyId,
                         optionalText(input, "commit", 40),
                         requiredText(input, "command", 16384),
                         Duration.ofSeconds(timeout),

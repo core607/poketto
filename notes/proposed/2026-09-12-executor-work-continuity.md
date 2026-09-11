@@ -12,6 +12,8 @@ This proposal changes the disposable-session lifecycle described by [CodeAct con
 
 The broader [CodeAct workspace proposal](2026-09-09-codeact-workspaces.md) retains its tooling and isolation scope. [Session artifacts](../implemented/2026-09-10-session-artifacts.md) retain their separate access, expiry and byte-delivery contract. Neither record is retired by this proposal. [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) retain membership, public authoring and discovery decisions.
 
+The [working-copy identity gate](../implemented/2026-09-12-executor-copy-identity.md) implements explicit admission and pre-execution rejection. Durable recovery and the remaining resource changes below remain proposed.
+
 ## Problem
 
 An MCP transport session can expire during a long conversation. Reconnection creates another executor copy at the same repository commit. A commit therefore cannot identify a working copy or establish that local edits survived. Network loss, application deployment and worker restart create similar ambiguity. Current session and command admission bounds protect resource use but do not preserve a user's work or distinguish capacity rejection from lost execution state.

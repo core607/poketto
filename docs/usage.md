@@ -112,6 +112,8 @@ verifies the authenticated export and artifact path.
 
 `/mcp` uses Spring AI 2.0.1 WebMVC Streamable HTTP and a workspace Bearer credential (API key or OAuth access token), independently of browser sessions. With the executor enabled, the catalog contains `repo_exec`, `get_artifact`, `get_asset` and `put_asset`. The asset tools transfer exact image versions and accept idempotent uploads; upload acknowledgement never implies publication.
 
+`repo_exec` requires `expectedCopyId`: use `"new"` for intentional initial admission, then pass the returned `copyId` on every subsequent call, including after reconnecting. `SESSION_REPLACED` rejects the command before execution; follow its reason and `newCopyAllowed` flag instead of blindly repeating a write. Unsaved-work recovery is not implemented. [Working-copy identity](../executor-service/README.md#working-copy-identity) defines the complete contract.
+
 Use `repo_exec` for file listings, search, reads and edits, then the `poketto` CLI for persistence. Read relevant repository-owned `AGENTS.md` files progressively. Standalone `list_directory`, `get_file` and `repo_patch` calls are not supported, including when the worker is disabled. The [CodeAct entrance record](../notes/implemented/2026-09-10-codeact-mcp-entrance.md) defines this boundary; the shared directory reader still serves browser navigation.
 
 Oversized MCP bodies receive 413 before tools run; transport errors contain protocol fields rather than exception internals. Request and concurrency limits are defined in the [integration record](../notes/proposed/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration).

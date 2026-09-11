@@ -95,7 +95,7 @@ def main():
                     'Create files in the repository to retain them between commands; /tmp is reset for every command. '
                     'Use python3 for Python scripts.')
     commands = parser.add_subparsers(dest='operation', required=True)
-    commands.add_parser('status', help='Read the host-owned session baseline and scope')
+    commands.add_parser('status', help='Read the working-copy ID, host-owned baseline and scope')
     recover = commands.add_parser('recover', help='Recover a pending save or move using its retained commit and local completion receipt')
     recover.add_argument('--skip-local', action='store_true', help='For a confirmed move, keep local files untouched and release pending installation; sync affected files before saving')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')

@@ -88,6 +88,18 @@ bound admission and replay state. A full replay table can reject new work until
 signed requests expire. Spring must treat failed renewal as loss of execution
 authority; it cannot assume an earlier successful request keeps a lease alive.
 
+## Working-copy identity
+
+`repo_exec` requires `expectedCopyId` on every call. Use `"new"` only to explicitly admit a fresh copy, then retain the returned `copyId` for later calls, including after a reconnect. The same Git commit does not prove that a working copy survived. `poketto status` reports the same copy ID with the host save baseline.
+
+```json
+{"expectedCopyId":"new","command":"pwd"}
+```
+
+`SESSION_REPLACED` means this command did not execute. `MISSING_COPY` permits intentional new admission in the current transport (`newCopyAllowed: true`); `DIFFERENT_COPY` supplies the current authorized ID; `CLOSED_COPY` requires a new MCP transport. Explicit `new` never resets a copy already owned by that transport. All replacements report `recoveryAvailable: false`: unsaved-work recovery is not implemented. Do not replay an uncertain write or automatically replace the expected ID with `new`.
+
+The [identity decision](../notes/implemented/2026-09-12-executor-copy-identity.md) defines scope and failure ordering. The Micrometer registry exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released`, and `poketto.executor.admission.rejected` with bounded reason tags. Management HTTP exposure remains operator configured; these metrics do not measure memory or disk consumption.
+
 ## Wire version 1
 
 Each UNIX connection carries exactly one request and response: an unsigned

@@ -55,6 +55,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final Duration closeTimeout;
     private final Map<SessionKey, Session> sessions = new LinkedHashMap<>();
     private final Semaphore executions = new Semaphore(4);
+    private final java.util.concurrent.atomic.LongAdder createdCopies = new java.util.concurrent.atomic.LongAdder();
+    private final java.util.concurrent.atomic.LongAdder releasedCopies = new java.util.concurrent.atomic.LongAdder();
+    private final Map<String, java.util.concurrent.atomic.LongAdder> rejected = Map.of(
+            "copy_mismatch", new java.util.concurrent.atomic.LongAdder(),
+            "session_limit", new java.util.concurrent.atomic.LongAdder(),
+            "operation_limit", new java.util.concurrent.atomic.LongAdder(),
+            "session_busy", new java.util.concurrent.atomic.LongAdder());
+
     private final ThreadPoolExecutor commandIo = new ThreadPoolExecutor(
             4,
             4,
@@ -100,11 +108,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             AuthPrincipal principal,
             WorkspaceId workspace,
             String serverSessionId,
+            String expectedCopyId,
             Optional<String> requestedCommit,
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
         var access = authorize(principal, workspace);
+        RepositoryExecutor.requireCopyId(expectedCopyId);
         if (serverSessionId == null
                 || serverSessionId.isBlank()
                 || serverSessionId.length() > 128
@@ -117,30 +127,41 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || requestedCommit
                         .filter(value -> !value.matches("[0-9a-f]{40}"))
                         .isPresent()) throw new IllegalArgumentException("Invalid bounded execution request");
-        if (cancellation.isCancelled() || !executions.tryAcquire()) throw new WorkerUnavailableException();
+        SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
+        Session observed;
+        synchronized (this) {
+            observed = sessions.get(key);
+        }
+        requireExpectedCopy(observed, expectedCopyId, false);
+        if (cancellation.isCancelled()) throw new WorkerUnavailableException();
+        if (!executions.tryAcquire()) throw rejected("operation_limit");
         Session session = null;
         boolean ownsCommand = false;
+        boolean createdCopy = false;
         try {
-            SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
-            recoverRestartedLeases(key);
+            if (RepositoryExecutor.NEW_COPY.equals(expectedCopyId)) recoverRestartedLeases(key);
             synchronized (this) {
                 if (closed) throw new WorkerUnavailableException();
                 session = sessions.get(key);
                 if (session == null) {
+                    requireExpectedCopy(null, expectedCopyId, false);
                     if (sessions.size() >= 1024
                             || sessions.values().stream()
                                             .filter(value -> !value.capacityReleased)
                                             .count()
-                                    >= maxSessions) throw new WorkerUnavailableException();
+                                    >= maxSessions) throw rejected("session_limit");
                     boolean fullRead = access.capabilities().contains(Capability.READ_PRIVATE);
                     if (!fullRead && requestedCommit.isPresent())
                         throw new IllegalArgumentException(
                                 "Public execution starts from current publication; omit commit");
                     session = new Session(key, principal, fullRead);
                     sessions.put(key, session);
+                    createdCopies.increment();
+                    createdCopy = true;
                 }
             }
-            if (!session.busy.compareAndSet(false, true)) throw new WorkerUnavailableException();
+            requireExpectedCopy(session, expectedCopyId, createdCopy);
+            if (!session.busy.compareAndSet(false, true)) throw rejected("session_busy");
             ownsCommand = true;
             Session selected = session;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(selected, "cancelled"))) {
@@ -157,7 +178,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 JsonNode response = executeWithBridge(session, command, timeout);
                 requireOk(response, session);
                 authorize(session);
-                ExecutionResult result = result(response.path("result"), session.commit);
+                ExecutionResult result = result(response.path("result"), session.copyId.toString(), session.commit);
                 String state = response.path("state").asString("");
                 if (state.equals("CLOSING")
                         || state.equals("CLOSED")
@@ -206,10 +227,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             session = sessions.get(new SessionKey(principal.subjectId(), workspace, hash(serverSessionId)));
         }
         if (session == null) return Optional.empty();
-        if (cancellation.isCancelled() || !executions.tryAcquire()) throw new WorkerUnavailableException();
+        if (cancellation.isCancelled()) throw new WorkerUnavailableException();
+        if (!executions.tryAcquire()) throw rejected("operation_limit");
         boolean ownsRead = false;
         try {
-            if (!session.busy.compareAndSet(false, true)) throw new WorkerUnavailableException();
+            if (!session.busy.compareAndSet(false, true)) throw rejected("session_busy");
             ownsRead = true;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
                 requireLive(session);
@@ -303,6 +325,57 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } catch (RuntimeException invalid) {
             throw new WorkerUnavailableException();
         }
+    }
+
+    private void requireExpectedCopy(Session session, String expected, boolean createdHere) {
+        boolean fresh = RepositoryExecutor.NEW_COPY.equals(expected);
+        boolean mismatch = session == null
+                ? !fresh
+                : session.stopping.get()
+                        || (fresh ? !createdHere : !session.copyId.toString().equals(expected));
+        if (!mismatch) return;
+        if (session != null) authorize(session);
+        rejected.get("copy_mismatch").increment();
+        boolean closedCopy = session != null && session.stopping.get();
+        throw new io.github.core607.poketto.mcp.SessionReplacedException(
+                session == null
+                        ? io.github.core607.poketto.mcp.SessionReplacedException.Reason.MISSING_COPY
+                        : closedCopy
+                                ? io.github.core607.poketto.mcp.SessionReplacedException.Reason.CLOSED_COPY
+                                : io.github.core607.poketto.mcp.SessionReplacedException.Reason.DIFFERENT_COPY,
+                session == null || closedCopy ? Optional.empty() : Optional.of(session.copyId.toString()));
+    }
+
+    private WorkerUnavailableException rejected(String reason) {
+        rejected.get(reason).increment();
+        return new WorkerUnavailableException();
+    }
+
+    void bindMetrics(io.micrometer.core.instrument.MeterRegistry registry) {
+        registry.gauge("poketto.executor.sessions.active", this, IsolatedRepositoryExecutor::activeSessions);
+        registry.gauge("poketto.executor.operations.active", this, value -> 4 - value.executions.availablePermits());
+        io.micrometer.core.instrument.FunctionCounter.builder(
+                        "poketto.executor.sessions.created",
+                        createdCopies,
+                        java.util.concurrent.atomic.LongAdder::doubleValue)
+                .register(registry);
+        io.micrometer.core.instrument.FunctionCounter.builder(
+                        "poketto.executor.sessions.released",
+                        releasedCopies,
+                        java.util.concurrent.atomic.LongAdder::doubleValue)
+                .register(registry);
+        rejected.forEach((reason, counter) -> io.micrometer.core.instrument.FunctionCounter.builder(
+                        "poketto.executor.admission.rejected",
+                        counter,
+                        java.util.concurrent.atomic.LongAdder::doubleValue)
+                .tag("reason", reason)
+                .register(registry));
+    }
+
+    private synchronized double activeSessions() {
+        return sessions.values().stream()
+                .filter(value -> !value.capacityReleased)
+                .count();
     }
 
     private void recoverRestartedLeases(SessionKey requested) {
@@ -574,6 +647,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     true,
                     "result",
                     Map.of(
+                            "copyId",
+                            session.copyId.toString(),
                             "scope",
                             session.fullRead ? "full" : "public",
                             "baseCommit",
@@ -1459,6 +1534,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private synchronized void releaseCapacity(Session session) {
+        if (!session.capacityReleased) releasedCopies.increment();
         session.capacityReleased = true;
         if (session.detached) sessions.remove(session.key, session);
     }
@@ -1567,7 +1643,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new WorkerUnavailableException();
     }
 
-    private static ExecutionResult result(JsonNode result, String commit) {
+    private static ExecutionResult result(JsonNode result, String copyId, String commit) {
         try {
             String stdout = result.path("stdout").stringValue();
             String stderr = result.path("stderr").stringValue();
@@ -1609,6 +1685,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 artifactErrors.put(entry.getKey(), entry.getValue().stringValue());
             }
             return new ExecutionResult(
+                    copyId,
                     commit,
                     result.path("exitCode").intValue(),
                     stdout,
@@ -1657,6 +1734,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final class MaterializationCapacity extends RuntimeException {}
 
     private static final class Session {
+        private final UUID copyId = UUID.randomUUID();
         private final SessionKey key;
         private final AuthPrincipal principal;
         private final boolean fullRead;

@@ -24,6 +24,11 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnProperty(name = "poketto.executor.enabled", havingValue = "true")
 class ExecutorConfiguration {
     @Bean
+    io.micrometer.core.instrument.binder.MeterBinder executorMetrics(IsolatedRepositoryExecutor executor) {
+        return executor::bindMetrics;
+    }
+
+    @Bean
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
             AuthService auth,
             RepositorySnapshotExports exports,

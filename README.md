@@ -26,7 +26,7 @@ The host-mediated `poketto` CLI provides persistence and result delivery:
 
 | Command | Role |
 |---|---|
-| `poketto status` | Inspect the session scope, save baseline and pending write outcome |
+| `poketto status` | Inspect the copy ID, session scope, save baseline and pending write outcome |
 | `poketto save` | Commit selected files and explicit deletions, retaining other local edits |
 | `poketto sync` | Reconcile one file against its own baseline and current remote content |
 | `poketto recover` | Reconcile a pending save or move using its original commit and completion receipt |
