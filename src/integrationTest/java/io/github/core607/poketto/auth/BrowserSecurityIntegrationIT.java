@@ -244,14 +244,14 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(request(
                         put("/api/admin/members/" + member.get("accountId").stringValue()),
                         ownerSession,
-                        Map.of("role", "MEMBER", "active", false)))
+                        Map.of("role", "MEMBER", "active", false, "permissions", java.util.List.of())))
                 .andExpect(status().isNoContent());
         mvc.perform(get("/api/auth/me").session(memberSession.session())).andExpect(status().isForbidden());
         mvc.perform(get("/api/auth/account").session(memberSession.session())).andExpect(status().isOk());
         mvc.perform(request(
                         put("/api/admin/members/" + owner.accountId()),
                         ownerSession,
-                        Map.of("role", "OWNER", "active", false)))
+                        Map.of("role", "OWNER", "active", false, "permissions", java.util.List.of())))
                 .andExpect(status().isConflict());
         mvc.perform(get("/api/admin/invitations").session(ownerSession.session()))
                 .andExpect(status().isOk())

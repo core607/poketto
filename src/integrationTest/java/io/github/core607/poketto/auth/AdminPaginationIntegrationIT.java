@@ -164,7 +164,9 @@ class AdminPaginationIntegrationIT {
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[0].accountId").value(lastMember.toString()));
         mvc.perform(request(
-                        put("/api/admin/members/" + lastMember), session, Map.of("role", "MEMBER", "active", false)))
+                        put("/api/admin/members/" + lastMember),
+                        session,
+                        Map.of("role", "MEMBER", "active", false, "permissions", java.util.List.of())))
                 .andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject(
                         "select suspended_at is not null from auth_memberships where workspace_id = ? and account_id = ?",

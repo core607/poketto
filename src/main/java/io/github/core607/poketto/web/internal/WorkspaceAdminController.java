@@ -49,11 +49,17 @@ class WorkspaceAdminController {
             @PathVariable UUID accountId,
             @RequestBody MembershipRequest body) {
         if (body.active() == null) throw new IllegalArgumentException("active is required");
-        auth.changeMembership(principal, workspaces.defaultWorkspace().id(), accountId, body.role(), body.active());
+        auth.changeMembership(
+                principal,
+                workspaces.defaultWorkspace().id(),
+                accountId,
+                body.role(),
+                body.active(),
+                body.permissions());
     }
 
     @GetMapping("/invitations")
-    AuthService.Page<AuthService.InvitationInfo> invitations(
+    AuthService.Page<AuthService.WorkspaceInvitationInfo> invitations(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
@@ -62,9 +68,12 @@ class WorkspaceAdminController {
 
     @PostMapping("/invitations")
     @ResponseStatus(HttpStatus.CREATED)
-    IssuedSecretResponse invite(@AuthenticationPrincipal AuthPrincipal principal) {
-        return issued(
-                auth.createInvitation(principal, workspaces.defaultWorkspace().id()));
+    IssuedSecretResponse invite(
+            @AuthenticationPrincipal AuthPrincipal principal, @RequestBody(required = false) InvitationRequest body) {
+        return issued(auth.createInvitation(
+                principal,
+                workspaces.defaultWorkspace().id(),
+                body == null || body.permissions() == null ? Set.of() : body.permissions()));
     }
 
     @DeleteMapping("/invitations/{id}")
@@ -101,7 +110,9 @@ class WorkspaceAdminController {
         return new IssuedSecretResponse(token.id(), token.token());
     }
 
-    record MembershipRequest(MembershipRole role, Boolean active) {}
+    record MembershipRequest(MembershipRole role, Boolean active, Set<Capability> permissions) {}
+
+    record InvitationRequest(Set<Capability> permissions) {}
 
     record KeyRequest(UUID accountId, Set<Capability> capabilities) {}
 

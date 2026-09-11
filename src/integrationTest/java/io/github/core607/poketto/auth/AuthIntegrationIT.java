@@ -95,7 +95,7 @@ class AuthIntegrationIT {
         AuthPrincipal owner = owner();
         AuthPrincipal first = account(owner, "member-one");
         AuthPrincipal second = account(owner, "member-two");
-        IssuedToken invitation = auth.createInvitation(owner, workspace);
+        IssuedToken invitation = auth.createInvitation(owner, workspace, Set.of());
         var results = concurrent(List.of(
                 () -> auth.acceptInvitation(first, invitation.token()),
                 () -> auth.acceptInvitation(second, invitation.token())));
@@ -126,16 +126,16 @@ class AuthIntegrationIT {
     void invalidWorkspaceInvitationsCannotCreateMemberships() {
         AuthPrincipal owner = owner();
         AuthPrincipal account = account(owner, "new-member");
-        IssuedToken revoked = auth.createInvitation(owner, workspace);
+        IssuedToken revoked = auth.createInvitation(owner, workspace, Set.of());
         auth.revokeInvitation(owner, workspace, revoked.id());
-        IssuedToken expired = auth.createInvitation(owner, workspace);
+        IssuedToken expired = auth.createInvitation(owner, workspace, Set.of());
         AuthService later = service(now.plus(Duration.ofDays(7)));
         assertCode(() -> auth.acceptInvitation(account, revoked.token()), AuthException.Code.INVALID_INVITATION);
         assertCode(() -> later.acceptInvitation(account, expired.token()), AuthException.Code.INVALID_INVITATION);
         assertCode(() -> auth.acceptInvitation(account, secret()), AuthException.Code.INVALID_INVITATION);
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships", Integer.class))
                 .isOne();
-        IssuedToken valid = auth.createInvitation(owner, workspace);
+        IssuedToken valid = auth.createInvitation(owner, workspace, Set.of());
         assertThat(auth.acceptInvitation(account, valid.token())).isEqualTo(workspace);
         assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
                 .isEqualTo(2);
@@ -145,14 +145,14 @@ class AuthIntegrationIT {
     void membershipCannotRemoveTheLastOwnerEvenWithConcurrentOwners() throws Exception {
         AuthPrincipal owner = owner();
         AuthPrincipal second = member(owner, "second-owner");
-        auth.changeMembership(owner, workspace, second.accountId(), MembershipRole.OWNER, true);
+        auth.changeMembership(owner, workspace, second.accountId(), MembershipRole.OWNER, true, Set.of());
         var results = concurrent(List.of(
                 () -> {
-                    auth.changeMembership(owner, workspace, owner.accountId(), MembershipRole.MEMBER, true);
+                    auth.changeMembership(owner, workspace, owner.accountId(), MembershipRole.MEMBER, true, Set.of());
                     return true;
                 },
                 () -> {
-                    auth.changeMembership(second, workspace, second.accountId(), MembershipRole.MEMBER, true);
+                    auth.changeMembership(second, workspace, second.accountId(), MembershipRole.MEMBER, true, Set.of());
                     return true;
                 }));
         assertThat(results.stream().filter(Boolean.class::isInstance)).hasSize(1);
@@ -167,7 +167,8 @@ class AuthIntegrationIT {
                 .isOne();
         AuthPrincipal remaining = auth.authorize(owner, workspace).role() == MembershipRole.OWNER ? owner : second;
         assertCode(
-                () -> auth.changeMembership(remaining, workspace, remaining.accountId(), MembershipRole.OWNER, false),
+                () -> auth.changeMembership(
+                        remaining, workspace, remaining.accountId(), MembershipRole.OWNER, false, Set.of()),
                 AuthException.Code.LAST_OWNER);
     }
 
@@ -204,7 +205,7 @@ class AuthIntegrationIT {
         assertCode(
                 () -> auth.createApiKey(manager, workspace, owner.accountId(), EnumSet.allOf(Capability.class)),
                 AuthException.Code.DENIED);
-        assertCode(() -> auth.createInvitation(manager, workspace), AuthException.Code.DENIED);
+        assertCode(() -> auth.createInvitation(manager, workspace, Set.of()), AuthException.Code.DENIED);
         assertThat(auth.createApiKey(manager, workspace, owner.accountId(), Set.of(Capability.READ_PRIVATE)))
                 .isNotNull();
         AuthPrincipal member = member(owner, "member");
@@ -227,7 +228,7 @@ class AuthIntegrationIT {
         AuthPrincipal member = member(owner, "member");
         IssuedToken held = auth.createApiKey(owner, workspace, member.accountId(), null);
 
-        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, true);
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, true, Set.of());
         AuthPrincipal machine = auth.authenticateApiKey(held.token());
         assertThat(auth.authorize(machine, workspace).capabilities())
                 .containsExactlyInAnyOrder(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
@@ -236,7 +237,7 @@ class AuthIntegrationIT {
         assertThat(events).isEmpty();
 
         IssuedToken created = auth.createApiKey(member, workspace, owner.accountId(), null);
-        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true);
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of());
         assertCode(() -> auth.authenticateApiKey(held.token()), AuthException.Code.INVALID_CREDENTIALS);
         assertCode(() -> auth.authenticateApiKey(created.token()), AuthException.Code.INVALID_CREDENTIALS);
         assertThat(events)
@@ -248,7 +249,7 @@ class AuthIntegrationIT {
     void suspensionRevokesHeldAndCreatedKeysOnlyInThatWorkspace() {
         AuthPrincipal owner = owner();
         AuthPrincipal member = member(owner, "member");
-        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, true);
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, true, Set.of());
         IssuedToken held = auth.createApiKey(owner, workspace, member.accountId(), null);
         IssuedToken created = auth.createApiKey(member, workspace, owner.accountId(), null);
         WorkspaceId other = WorkspaceId.random();
@@ -261,7 +262,7 @@ class AuthIntegrationIT {
         IssuedToken unrelated = auth.createApiKey(member, other, member.accountId(), null);
         AuthPrincipal heldPrincipal = auth.authenticateApiKey(held.token());
         assertCode(() -> auth.authorize(heldPrincipal, other), AuthException.Code.DENIED);
-        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, false);
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.OWNER, false, Set.of());
         assertCode(() -> auth.authorize(member, workspace), AuthException.Code.DENIED);
         assertCode(() -> auth.authorize(heldPrincipal, workspace), AuthException.Code.DENIED);
         assertCode(() -> auth.authenticateApiKey(held.token()), AuthException.Code.INVALID_CREDENTIALS);
@@ -270,6 +271,93 @@ class AuthIntegrationIT {
         assertThat(auth.authorize(member, other).role()).isEqualTo(MembershipRole.OWNER);
         assertThat(events)
                 .contains(new AuthRevocation(workspace, Set.of(member.accountId()), Set.of(held.id(), created.id())));
+    }
+
+    @Test
+    void emptyInvitationGrantsNoPrivateAccessAndRejoiningNeverExpandsMembership() {
+        AuthPrincipal owner = owner();
+        AuthPrincipal member = account(owner, "public-reader");
+        var invitation = auth.createInvitation(owner, workspace, Set.of());
+        auth.acceptInvitation(member, invitation.token());
+        assertThat(auth.authorize(member, workspace).capabilities()).containsExactly(Capability.EXECUTE_REPOSITORY);
+        for (Capability permission : AuthService.CONTENT_PERMISSIONS)
+            assertCode(() -> auth.authorize(member, workspace, permission), AuthException.Code.DENIED);
+        var stronger = auth.createInvitation(owner, workspace, AuthService.CONTENT_PERMISSIONS);
+        auth.acceptInvitation(member, stronger.token());
+        assertCode(() -> auth.authorize(member, workspace, Capability.READ_PRIVATE), AuthException.Code.DENIED);
+        assertThat(auth.listInvitations(owner, workspace, 0, 20).items()).anySatisfy(value -> {
+            assertThat(value.id()).isEqualTo(stronger.id());
+            assertThat(value.permissions()).isEqualTo(AuthService.CONTENT_PERMISSIONS);
+        });
+        assertCode(
+                () -> auth.createInvitation(owner, workspace, Set.of(Capability.WRITE_PRIVATE)),
+                AuthException.Code.INVALID_INPUT);
+        assertCode(
+                () -> auth.changeMembership(
+                        owner,
+                        workspace,
+                        member.accountId(),
+                        MembershipRole.MEMBER,
+                        true,
+                        Set.of(Capability.MANAGE_KEYS)),
+                AuthException.Code.INVALID_INPUT);
+    }
+
+    @Test
+    void permissionNarrowingRevokesOnlyAffectedKeysAndExpansionNeverEnlargesOldGrants() {
+        AuthPrincipal owner = owner();
+        AuthPrincipal member = member(owner, "limited-member");
+        IssuedToken publicKey =
+                auth.createApiKey(owner, workspace, member.accountId(), Set.of(Capability.EXECUTE_REPOSITORY));
+        IssuedToken privateKey = auth.createApiKey(
+                owner, workspace, member.accountId(), Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY));
+        AuthPrincipal privateActor = auth.authenticateApiKey(privateKey.token());
+        AuthPrincipal publicActor = auth.authenticateApiKey(publicKey.token());
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of());
+        assertCode(() -> auth.authorize(privateActor, workspace), AuthException.Code.DENIED);
+        assertCode(() -> auth.authenticateApiKey(privateKey.token()), AuthException.Code.INVALID_CREDENTIALS);
+        assertThat(auth.authorize(publicActor, workspace).capabilities())
+                .containsExactly(Capability.EXECUTE_REPOSITORY);
+        assertThat(events).containsExactly(new AuthRevocation(workspace, Set.of(), Set.of(privateKey.id())));
+        assertCode(
+                () -> auth.createApiKey(owner, workspace, member.accountId(), Set.of(Capability.READ_PRIVATE)),
+                AuthException.Code.DENIED);
+        auth.changeMembership(
+                owner, workspace, member.accountId(), MembershipRole.MEMBER, true, AuthService.CONTENT_PERMISSIONS);
+        assertThat(auth.authorize(publicActor, workspace).capabilities())
+                .containsExactly(Capability.EXECUTE_REPOSITORY);
+        assertCode(() -> auth.authorize(privateActor, workspace), AuthException.Code.DENIED);
+        assertThat(events).hasSize(1);
+    }
+
+    @Test
+    void permissionUpdateWaitsForAuthorizedWorkAndFutureRequestsObserveTheCommittedReduction() throws Exception {
+        AuthPrincipal owner = owner();
+        AuthPrincipal member = member(owner, "working-member");
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var operation = executor.submit(
+                    () -> auth.withAuthorization(member, workspace, Set.of(Capability.READ_PRIVATE), () -> {
+                        entered.countDown();
+                        await(release);
+                        return "finished";
+                    }));
+            await(entered);
+            var revoke = executor.submit(() ->
+                    auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of()));
+            try {
+                assertThatThrownBy(() -> revoke.get(100, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(java.util.concurrent.TimeoutException.class);
+            } finally {
+                release.countDown();
+            }
+            assertThat(operation.get(10, TimeUnit.SECONDS)).isEqualTo("finished");
+            revoke.get(10, TimeUnit.SECONDS);
+        }
+        assertCode(
+                () -> auth.withAuthorization(member, workspace, Set.of(Capability.READ_PRIVATE), () -> "must not run"),
+                AuthException.Code.DENIED);
     }
 
     @Test
@@ -374,7 +462,10 @@ class AuthIntegrationIT {
 
     private AuthPrincipal member(AuthPrincipal owner, String login) {
         AuthPrincipal account = account(owner, login);
-        auth.acceptInvitation(account, auth.createInvitation(owner, workspace).token());
+        auth.acceptInvitation(
+                account,
+                auth.createInvitation(owner, workspace, AuthService.CONTENT_PERMISSIONS)
+                        .token());
         return account;
     }
 

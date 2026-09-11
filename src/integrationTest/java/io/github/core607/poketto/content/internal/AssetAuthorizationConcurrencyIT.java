@@ -150,11 +150,12 @@ class AssetAuthorizationConcurrencyIT {
             principal = auth.authenticateApiKey(issued.token());
             revoke = () -> auth.revokeApiKey(owner, workspace, issued.id());
         } else {
-            var invitation = auth.createInvitation(owner, workspace);
+            var invitation = auth.createInvitation(owner, workspace, AuthService.CONTENT_PERMISSIONS);
             principal =
                     registration.register(registration.issue(owner).token(), "member-" + UUID.randomUUID(), PASSWORD);
             auth.acceptInvitation(principal, invitation.token());
-            revoke = () -> auth.changeMembership(owner, workspace, principal.accountId(), MembershipRole.MEMBER, false);
+            revoke = () -> auth.changeMembership(
+                    owner, workspace, principal.accountId(), MembershipRole.MEMBER, false, Set.of());
         }
         String privateToken = null;
         if (operation == Operation.TOKEN) {
