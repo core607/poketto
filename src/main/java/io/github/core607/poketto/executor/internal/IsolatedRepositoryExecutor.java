@@ -348,7 +348,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 ? io.github.core607.poketto.mcp.SessionReplacedException.Reason.CLOSED_COPY
                                 : io.github.core607.poketto.mcp.SessionReplacedException.Reason.DIFFERENT_COPY,
                 session == null || closedCopy ? Optional.empty() : Optional.of(session.copyId.toString()),
-                session == null || replaceable(session));
+                session == null || (closedCopy && replaceable(session)));
     }
 
     private static boolean replaceable(Session session) {
