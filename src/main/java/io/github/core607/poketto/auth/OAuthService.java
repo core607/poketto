@@ -391,7 +391,8 @@ public final class OAuthService {
     }
 
     private void requireResource(String value) {
-        if (!resource().equals(value)) throw failure("invalid_target");
+        // This issuer serves one resource; omitted indicators use that fixed audience.
+        if (value != null && !resource().equals(value)) throw failure("invalid_target");
     }
 
     public static Set<String> scopes(String value) {
