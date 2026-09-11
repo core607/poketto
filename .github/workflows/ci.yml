@@ -168,7 +168,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
-      image: quay.io/skopeo/stable@sha256:6c243579ceea16adaf6033c5626bce55a0bb1cfec50e973652306ee89aa8a753
+      image: quay.io/skopeo/stable@sha256:4a16d57b37617a04b3d643079a477a2848efe892dffcdf0ce56df4262b65f810 # v1.22.2-immutable
     permissions:
       contents: read
       packages: read
