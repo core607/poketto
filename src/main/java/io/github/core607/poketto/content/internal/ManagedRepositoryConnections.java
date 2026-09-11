@@ -42,10 +42,15 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
     }
 
     public Verified verify(WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealedCredentials) {
+        return verify(workspace, coordinates, sealedCredentials, true);
+    }
+
+    private Verified verify(
+            WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealedCredentials, boolean creating) {
         var credentials = cipher.decrypt(workspace, coordinates.canonicalUri(), sealedCredentials);
         var metadata = providers.read(coordinates, credentials);
         if (!metadata.privateRepository()) throw new RepositoryConnectionException(PRIVATE_REPOSITORY_REQUIRED);
-        rejectDefaultDuplicate(metadata);
+        if (creating) rejectDefaultDuplicate(metadata);
         try (var repository = new InMemoryRepository(new DfsRepositoryDescription());
                 Transport transport = Transport.open(repository, new URIish(coordinates.transportUri()))) {
             transport.setCredentialsProvider(
@@ -121,7 +126,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         var before = rows.getFirst();
         var coordinates = RepositoryCoordinates.parse(before.canonicalUri());
         byte[] sealed = seal(workspace, coordinates, username, token);
-        var verified = verify(workspace, coordinates, sealed);
+        var verified = verify(workspace, coordinates, sealed, false);
         if (!verified.providerIdentity().equals(before.providerIdentity()))
             throw new RepositoryConnectionException(REPOSITORY_CHANGED);
         return new CredentialRotation(
