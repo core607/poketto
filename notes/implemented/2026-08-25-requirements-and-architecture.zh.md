@@ -10,7 +10,7 @@ Date: 2026-08-25
 
 本文保留主要的单服务器基线及为其选定的产品边界。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)和[已验证内容快照](2026-09-04-validated-content-snapshot.md)记录最初实现。新的创作基础与第一阶段记录定义替代契约；下文的历史与后续设计章节不代表已交付行为。
 
-更广泛的[前端](../proposed/2026-08-30-nextjs-frontend.md)、[托管资产](../proposed/2026-09-01-repository-asset-blob-store.md)、[发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)及[检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)提案，在满足完整验收标准之前仍保留为 proposed。[C 端供应](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md)与[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍在第一阶段范围之外。这些选择均不改变工作空间租户边界。
+更广泛的[前端](../proposed/2026-08-30-nextjs-frontend.md)、[托管资产](../proposed/2026-09-01-repository-asset-blob-store.md)、[发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)及[检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)提案，在满足完整验收标准之前仍保留为 proposed。[C 端供应](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md)与[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍在第一阶段范围之外。这些选择均不改变工作空间租户边界。
 
 ## 定位
 

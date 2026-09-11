@@ -1,13 +1,15 @@
 # Consumer Accounts and Personal Workspaces
 
 Date: 2026-09-01
-Status: Proposed
+Status: Rejected
 
-This remains an independent future delivery. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) uses one pre-provisioned workspace and invitation-only membership, without consumer account or personal-workspace provisioning.
+The [multi-user workspace delivery](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) separates invitation-gated account registration from explicit workspace creation and connects existing repositories. Automatically creating a personal repository during registration adds provider-side lifecycle and credential requirements that are not selected. This record retains that alternative's constraints if automatic provisioning is reconsidered.
+
+This remains an independent future delivery. [Phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md) uses one pre-provisioned workspace and invitation-only membership, without consumer account or personal-workspace provisioning.
 
 ## Problem
 
-The implemented [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) makes a workspace the tenant and allows one account to belong to several workspaces, but the executable topology creates only one default workspace and exposes no self-service creation entrance. The [invitation proposal](2026-08-27-invitation-only-membership.md) explains how an account joins an existing workspace; it does not define the personal workspace created for a new consumer.
+The implemented [workspace boundary](../implemented/2026-08-27-workspace-tenancy.md) makes a workspace the tenant and allows one account to belong to several workspaces, but the executable topology creates only one default workspace and exposes no self-service creation entrance. The [invitation proposal](../proposed/2026-08-27-invitation-only-membership.md) explains how an account joins an existing workspace; it does not define the personal workspace created for a new consumer.
 
 Poketto's consumer direction needs each registered person to receive a private workspace without turning the account itself into a storage or authorization scope. That provisioning must work first on the primary single-server deployment and remain independent of any optional serverless infrastructure.
 
@@ -36,7 +38,7 @@ Quotas and usage accounting attach to `WorkspaceId`. Billing may later aggregate
 
 ## Implementation scope and dependencies
 
-The first implementation depends on the account, session, and membership foundation from [invitation-only membership](2026-08-27-invitation-only-membership.md), the binding contract from [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md), and the local managed-storage contract from [managed assets and repository image materialization](2026-09-01-repository-asset-blob-store.md). It adds the provider adapter that creates an isolated private repository, durable provisioning state, personal-workspace creation entrance, managed-object scope, owner membership, retry and cleanup behavior, authorization, audit events, and focused failure-injection and isolation tests.
+The first implementation depends on the account, session, and membership foundation from [invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md), the binding contract from [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md), and the local managed-storage contract from [managed assets and repository image materialization](../proposed/2026-09-01-repository-asset-blob-store.md). It adds the provider adapter that creates an isolated private repository, durable provisioning state, personal-workspace creation entrance, managed-object scope, owner membership, retry and cleanup behavior, authorization, audit events, and focused failure-injection and isolation tests.
 
 It targets the primary single-server profile first, but every personal workspace receives remote Git authority. Repository provisioning is therefore shared product infrastructure rather than a serverless adapter. Its start gate requires an isolated non-production provider account and narrowly scoped credentials capable of creating private repositories; without them the proposal remains pending rather than substituting local authority. The optional serverless profile later changes managed storage, derived image caching, database, and SRT deployment without changing consumer identity or repository ownership. Email or SMS delivery, OAuth, social login, passkeys, billing, custom domains, ownership transfer, account recovery, and destructive deletion remain outside this implementation.
 

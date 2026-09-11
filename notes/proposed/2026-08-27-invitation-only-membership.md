@@ -18,7 +18,7 @@ Sharing an owner account or long-lived API key obscures attribution and prevents
 ### Accounts and memberships
 
 - A human account is an instance-level identity. A membership connects an account to one workspace with the `OWNER` or `MEMBER` role. One account may join several workspaces and have an independent role in each.
-- A self-hosted instance may use a one-time initialization flow to create its first account, instance administrator, and default-workspace `OWNER`. The entry point closes permanently after initialization and leaves no default password. The consumer account and personal-workspace flow belongs to the [consumer accounts proposal](2026-09-01-consumer-accounts-and-personal-workspaces.md).
+- A self-hosted instance may use a one-time initialization flow to create its first account, instance administrator, and default-workspace `OWNER`. The entry point closes permanently after initialization and leaves no default password. The consumer account and personal-workspace flow belongs to the [consumer accounts proposal](2026-09-11-multiuser-workspaces-and-discovery.md).
 - A workspace always retains at least one active `OWNER`. Disabling a member, leaving a workspace, or transferring ownership cannot remove the last owner.
 - Human sessions, AI API keys, and system tasks are distinct principal types. Audit records preserve the acting principal and do not attribute a member's or AI's work to the owner.
 

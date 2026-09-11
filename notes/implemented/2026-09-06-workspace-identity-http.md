@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Problem and scope
 
-The [workspace boundary](2026-08-27-workspace-tenancy.md) needs independently revocable human and machine identities. This record implements the backend identity portion of [invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) and [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). Administration pages, content authoring entrances, MCP tools, and execution services remain outside this implementation. Consumer registration and personal-workspace provisioning retain their [separate proposal](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md).
+The [workspace boundary](2026-08-27-workspace-tenancy.md) needs independently revocable human and machine identities. This record implements the backend identity portion of [invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) and [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md). Administration pages, content authoring entrances, MCP tools, and execution services remain outside this implementation. Consumer registration and personal-workspace provisioning retain their [separate proposal](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md).
 
 ## Decision
 

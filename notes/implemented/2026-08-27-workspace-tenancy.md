@@ -9,7 +9,7 @@ Status: Implemented
 
 Without an explicit tenant boundary, content repositories, projections, caches, authorization, and background work could form around an implicit default tenant. Adding independent knowledge spaces after those features existed would require isolation conditions to be threaded through every layer. Search, caches, and asynchronous work are the easiest paths to miss because they do not all appear in the primary request flow.
 
-Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the implemented default topology. The proposed [consumer accounts and personal workspaces](../proposed/2026-09-01-consumer-accounts-and-personal-workspaces.md) build registration and personal provisioning on this boundary without making an account the tenant. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) changes deployment adapters without changing this boundary.
+Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the implemented default topology. The proposed [consumer accounts and personal workspaces](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) build registration and personal provisioning on this boundary without making an account the tenant. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) changes deployment adapters without changing this boundary.
 
 ## Decision
 
