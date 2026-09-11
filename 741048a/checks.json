@@ -1,0 +1,102 @@
+{
+  "sourceCommit": "741048a951fad5e254cdd103652221c9f4b47d2d",
+  "dependencies": "Real Spring, pinned PostgreSQL, production Next.js, Caddy and two independent synthetic remote Git repositories; no mocked UI or application responses.",
+  "startCommand": "docker compose -p poketto-member-ui-review-20260912 --env-file .gradle/member-ui-review/acceptance.env -f acceptance/compose.yaml up --build -d",
+  "browser": "Chrome extension",
+  "viewport": {
+    "height": 945,
+    "width": 1920
+  },
+  "captureDimensions": [
+    1905,
+    938
+  ],
+  "captureMethod": "Nine original browser frames sampled in order from one fresh owner/member flow. GIF uses 1.8 seconds per frame for reading, not measured transition timing. Login, fixture setup and the grant-selection interaction are omitted from the recording. The final frame reads back the saved public-only grant.",
+  "setup": "Real registration and workspace-invitation HTTP operations against the isolated fixture.",
+  "flow": [
+    "Owner views default empty invitation grants and public-reading member",
+    "Member reads public source and a decoded 320x180 Git image with editing disabled",
+    "Private path is refused while the prior public preview remains visible",
+    "Public-only publisher opens the picker showing decoded public Git images",
+    "Member saves an appended public paragraph and a relative image link without private reading or writing",
+    "Private target control is disabled; member renames within public scope",
+    "Editor confirms the move and refreshes the preserved text and image preview",
+    "The inserted image still renders after the move",
+    "Owner reads back the saved publication-only member grant"
+  ],
+  "assertions": {
+    "readerReadonly": true,
+    "readerSaveDisabled": true,
+    "deniedOpenKeptPreview": true,
+    "privateWriteSelectsRead": true,
+    "removingReadClearsWrite": true,
+    "publisherWritable": true,
+    "privatePickerHidden": true,
+    "publicImageInserted": true,
+    "privateMoveDisabled": true,
+    "publicMoveEnabled": true,
+    "ownerFinalPublicOnly": true
+  },
+  "effectiveMemberGrants": [
+    "EXECUTE_REPOSITORY",
+    "PUBLISH"
+  ],
+  "privateReadResponses": {
+    "private/日记.md": 403,
+    "public/drafts/草稿.md": 403
+  },
+  "independentGitReadback": {
+    "commit": "bd6ed70132cbec8d5fc243272a09e9384f3fbb29",
+    "savedSourceSha256": "2e414ed48e95112bea13ad8eb673cf3416d6e54dad0a599bbef79033fdf640be",
+    "metadataAndUneditedTextPreserved": true,
+    "publicBacklinkRepaired": true,
+    "oldPublicPathAbsent": true,
+    "privateSourceUnchanged": true,
+    "insertedPublicImageLinkPreserved": true,
+    "secondWorkspaceUnchanged": true,
+    "secondCommit": "58ff27d8100b54e38afcce06855bdd368f541cc2"
+  },
+  "limitations": "Loopback HTTP and synthetic content. Does not prove external OAuth/MCP client interoperability, provider provisioning, production HTTPS, public-only machine authoring or transition timing.",
+  "artifacts": [
+    {
+      "file": "01-default-member.png",
+      "sha256": "4327856dd8114fe4d7b2a8302976a0180b4baad1e6d851555e92069fb86229c9"
+    },
+    {
+      "file": "02-public-reader.png",
+      "sha256": "c7d0fd23c8501e1ab04458d89275ea8cb3c3bc13df8b9fe8f2406ddaec2f5b1e"
+    },
+    {
+      "file": "03-private-denied.png",
+      "sha256": "e67b01f089bea6d213d07aefb004bdf17a13590348e628183d9fd11ef969b5d4"
+    },
+    {
+      "file": "05-public-image-picker.png",
+      "sha256": "a3e324a7eefab5fa867d2e6623e1d6c82b32a189d95cd62c5fb7aec02967a9c2"
+    },
+    {
+      "file": "06-public-save.png",
+      "sha256": "2d1d5728efd77fea4ae818517af787c681c67c3ef45bc3f5833b764ad3a92104"
+    },
+    {
+      "file": "08-public-move.png",
+      "sha256": "b63c994d45c222b2b2a9f2c7c0c3c852224c78402722a30e252edf4ddb298985"
+    },
+    {
+      "file": "09-move-complete.png",
+      "sha256": "e4bff5ed5537f2891252a66431cbeef6107818e3d068beefb645bf60b834fac3"
+    },
+    {
+      "file": "11-complete-image-after-move.png",
+      "sha256": "8a696f13312f14dde019bf689fcaa1622dbd97b3b39b59538fa1a274bc087bdd"
+    },
+    {
+      "file": "12-owner-final-grants.png",
+      "sha256": "4bee5f58834b2e403863da6cd5f0646d5a353b8c43bbb54a33fa77a4c83dd521"
+    },
+    {
+      "file": "member-permissions.gif",
+      "sha256": "d83d5f68b2b7ad3fb6fed77e7b0b0aa6be36f75600d4898c5b0c8e9416498b42"
+    }
+  ]
+}

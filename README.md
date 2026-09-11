@@ -1,3 +1,5 @@
+Current evidence for PR #86: [source 741048a](741048a/README.md). The files below retain the earlier run for source 742f193.
+
 # Member permission browser evidence
 
 Application source: `742f193ad2e227e3228bc140f04af6f435c5fc67`.
