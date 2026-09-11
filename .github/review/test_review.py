@@ -477,10 +477,21 @@ class ReviewTests(unittest.TestCase):
         self.assertNotIn("application/vnd.github.v3.diff", workflow)
         self.assertNotIn("ref: ${{ github.event.pull_request.head", workflow)
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("github.event.changes.base != null", ci)
         self.assertIn("github.event.changes.base == null && github.run_id || 'source'", ci)
-        self.assertIn("'metadata-only' || 'verify'", ci)
         self.assertIn('unittest discover -s .github/review -p "test_*.py"', ci)
+        # Branch protection expects "verify" from the newest run of this workflow, including the
+        # run a title or body edit starts, so the job always runs under that exact name and
+        # instead skips every one of its steps when the edit changes no code.
+        verify = ci.split("\n  verify:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        self.assertIn("\n    name: verify\n", verify)
+        self.assertNotIn("\n    if:", verify)
+        self.assertIn(
+            "METADATA_ONLY: ${{ github.event.action == 'edited'"
+            " && github.event.changes.base == null }}", verify)
+        steps = [line for line in verify.splitlines() if line.startswith("      - name:")]
+        guarded = [line for line in verify.splitlines() if "env.METADATA_ONLY != 'true'" in line]
+        self.assertTrue(steps)
+        self.assertEqual(len(steps), len(guarded))
 
     def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):
         pr = self.github.current()

@@ -54,6 +54,14 @@ edit, which is visible as unexpected work rather than as a silent gap.
 A pull request already stranded by the old behavior is not repaired by this change. It still needs a
 new head commit, because the unmet expectation belongs to the commit that was current at the time.
 
+## Consequences for the workflow's own guard test
+
+`.github/review/test_review.py` pinned the previous design by asserting that `ci.yml` contained the
+job-level condition and the conditional job name. Both are gone, so that test now encodes the new
+invariant instead: the job carries no job-level condition, its name is exactly `verify`, it declares
+`METADATA_ONLY`, and the number of guarded lines equals the number of steps. A step added without
+the guard fails that count.
+
 ## Verification
 
 - The workflow's own pull request runs `verify` to success on push.
