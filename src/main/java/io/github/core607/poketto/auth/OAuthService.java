@@ -307,10 +307,17 @@ public final class OAuthService {
     }
 
     private void cleanup(String keepClient) {
+        Timestamp retiredBefore = Timestamp.from(clock.instant().minus(Duration.ofDays(30)));
+        // Match issuance/replay's workspace -> key/token order before cascading key deletion.
+        jdbc.query(
+                "select w.workspace_id from workspaces w where exists (select 1 from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=w.workspace_id and (c.expires_at<? or k.revoked_at<?)) order by w.workspace_id for update",
+                (rs, row) -> rs.getObject(1, UUID.class),
+                retiredBefore,
+                retiredBefore);
         jdbc.update(
                 "delete from auth_api_keys k using oauth_connections c where c.key_id=k.key_id and (c.expires_at<? or k.revoked_at<?)",
-                Timestamp.from(clock.instant().minus(Duration.ofDays(30))),
-                Timestamp.from(clock.instant().minus(Duration.ofDays(30))));
+                retiredBefore,
+                retiredBefore);
         jdbc.update(
                 "delete from oauth_clients cl where cl.client_id<>? and cl.created_at<? and not exists (select 1 from oauth_connections c where c.client_id=cl.client_id)",
                 keepClient,

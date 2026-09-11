@@ -198,6 +198,42 @@ class OAuthIntegrationIT {
     }
 
     @Test
+    void cleanupWaitsForTheWorkspaceBeforeLockingKeysAndTheirCodeRows() throws Exception {
+        var key = auth.authenticateApiKey(tokens().access_token()).subjectId();
+        jdbc.update("update oauth_connections set expires_at=now()-interval '31 days' where key_id=?", key);
+        try (var pool = Executors.newSingleThreadExecutor();
+                var held = jdbc.getDataSource().getConnection()) {
+            held.setAutoCommit(false);
+            try (var workspaceLock = held.prepareStatement(
+                            "select workspace_id from workspaces where workspace_id=? for update");
+                    var codeLock = held.prepareStatement("select digest from oauth_codes where key_id=? for update")) {
+                workspaceLock.setObject(1, workspace.value());
+                workspaceLock.executeQuery().close();
+                codeLock.setObject(1, key);
+                codeLock.executeQuery().close();
+                var cleanup = pool.submit(() -> oauth.register("Concurrent cleanup", List.of(REDIRECT)));
+                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+                while (jdbc.queryForObject(
+                                "select count(*) from pg_stat_activity where pid<>pg_backend_pid() and datname=current_database() and wait_event_type='Lock' and query like '%oauth_%'",
+                                Integer.class)
+                        == 0) {
+                    if (System.nanoTime() >= deadline) throw new AssertionError("cleanup did not wait on a lock");
+                    Thread.sleep(10);
+                }
+                // This is the workspace -> code -> key order used by proven authorization-code replay.
+                try (var revoke = held.prepareStatement("update auth_api_keys set revoked_at=now() where key_id=?")) {
+                    revoke.setQueryTimeout(2);
+                    revoke.setObject(1, key);
+                    revoke.executeUpdate();
+                }
+                held.commit();
+                assertThat(cleanup.get(5, java.util.concurrent.TimeUnit.SECONDS))
+                        .isNotNull();
+            }
+        }
+    }
+
+    @Test
     void changedIssuerMarksStoredConnectionsAsNeedingNewConsent() {
         var issued = tokens();
         oauth = new OAuthService(
