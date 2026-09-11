@@ -123,6 +123,7 @@ try:
         "POKETTO_PUBLIC_DOMAIN": "site.example.invalid",
         "POKETTO_REPOSITORY_REMOTE_URI": "https://example.invalid/synthetic.git",
         "POKETTO_REPOSITORY_USERNAME": "synthetic", "POKETTO_REPOSITORY_PASSWORD": "synthetic",
+        "POKETTO_REPOSITORY_CREDENTIAL_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "POKETTO_DATA_DIR_HOST": "/unused-proxy-data", "POKETTO_DB_DIR_HOST": "/unused-proxy-db",
         "POKETTO_GATEWAY_DIR_HOST": "/unused-proxy-gateway", "POKETTO_NETWORK_SUBNET": str(subnet),
         "POKETTO_NETWORK_DYNAMIC_RANGE": str(pool),
@@ -136,6 +137,7 @@ try:
                                           "config", "--format", "json", env=environment).stdout)
     app_environment = configuration["services"]["app"]["environment"]
     expect("registration invitations default to administrators", app_environment["POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED"], "false")
+    expect("workspace credential encryption key reaches the application", app_environment["POKETTO_REPOSITORY_CREDENTIAL_KEY"], "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     actual_gateway = configuration["services"]["gateway"]["networks"]["default"]["ipv4_address"]
     expect("gateway static address", actual_gateway, gateway_ip)
     expect("production subnet", configuration["networks"]["default"]["ipam"]["config"][0]["subnet"], str(subnet))

@@ -36,6 +36,7 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
         try (Transport transport = Transport.open(repository, binding.location())) {
             transport.setCredentialsProvider(binding.credentials());
             transport.setTimeout(timeoutSeconds);
+            configureManaged(transport, binding);
             try (FetchConnection connection = transport.openFetch()) {
                 Ref advertised = connection.getRef(MAIN);
                 if (advertised == null || advertised.getObjectId() == null) {
@@ -61,6 +62,7 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
             try (Transport transport = Transport.open(repository, binding.location())) {
                 transport.setCredentialsProvider(binding.credentials());
                 transport.setTimeout(timeoutSeconds);
+                configureManaged(transport, binding);
                 transport.push(NullProgressMonitor.INSTANCE, List.of(update));
             }
             return switch (update.getStatus()) {
@@ -75,6 +77,14 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
             throw exception;
         } catch (IOException | RuntimeException exception) {
             throw new RemoteGitTransportException("ref update");
+        }
+    }
+
+    private static void configureManaged(Transport transport, RepositoryBinding binding) {
+        if (binding.managed()) {
+            ((org.eclipse.jgit.transport.TransportHttp) transport)
+                    .setHttpConnectionFactory(
+                            new ManagedGitHttp(binding.location().toString()));
         }
     }
 }

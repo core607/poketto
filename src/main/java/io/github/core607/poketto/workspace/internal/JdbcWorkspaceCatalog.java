@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.support.TransactionTemplate;
 
-final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
+final class JdbcWorkspaceCatalog implements WorkspaceCatalog, io.github.core607.poketto.workspace.WorkspaceRegistry {
 
     private static final String SELECT_COLUMNS = "workspace_id, display_name";
     private static final RowMapper<Workspace> WORKSPACE_ROW = JdbcWorkspaceCatalog::readWorkspace;
@@ -62,11 +62,30 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog {
 
             Workspace created = new Workspace(WorkspaceId.random(), "Default workspace");
             jdbc.update(
-                    "insert into workspaces (workspace_id, display_name, is_default) " + "values (?, ?, true)",
+                    "insert into workspaces (workspace_id, display_name, is_default,public_slug,public_delivery) "
+                            + "values (?, ?, true,'home',true)",
                     created.id().value(),
                     created.displayName());
             return created;
         });
+    }
+
+    @Override
+    public void create(WorkspaceId id, String displayName, String publicSlug) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Workspace creation requires an ownership transaction");
+        if (id == null
+                || displayName == null
+                || displayName.isBlank()
+                || displayName.length() > 120
+                || publicSlug == null
+                || !publicSlug.matches("[a-z0-9][a-z0-9-]{1,62}[a-z0-9]"))
+            throw new IllegalArgumentException("Invalid workspace name or slug");
+        jdbc.update(
+                "insert into workspaces(workspace_id,display_name,public_slug,public_delivery) values (?,?,?,false)",
+                id.value(),
+                displayName,
+                publicSlug);
     }
 
     private static Workspace readWorkspace(ResultSet resultSet, int rowNumber) throws SQLException {
