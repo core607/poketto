@@ -18,7 +18,7 @@ Markdown、目录结构与媒体引用保存在远程 Git 仓库中。远端 `ma
 
 ## CodeAct over MCP
 
-将 MCP 客户端连接到 Poketto，为它分配具有明确权限的 API Key。文件访问要求启用执行服务并授予 `EXECUTE_REPOSITORY` 权限。`repo_exec` 提供带 shell、Python 和 Git 的隔离工作区。Agent 可以查看目录、按需读取内容仓库中的 `AGENTS.md`、搜索已有资料，并直接编辑文件。
+通过所有者批准的 OAuth 授权或具有明确权限的 API Key 连接 MCP 客户端。[OAuth 配置](docs/usage.md#oauth-connections)为每个客户端建立可独立撤销的连接。文件访问要求启用执行服务并授予 `EXECUTE_REPOSITORY` 权限。`repo_exec` 提供带 shell、Python 和 Git 的隔离工作区。Agent 可以查看目录、按需读取内容仓库中的 `AGENTS.md`、搜索已有资料，并直接编辑文件。
 
 工作区内的 `poketto` CLI 通过宿主桥接提供持久化与结果交付：
 

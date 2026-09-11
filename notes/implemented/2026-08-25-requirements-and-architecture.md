@@ -43,7 +43,7 @@ Default article routes omit the root prefix, while explicit routes do not grant
 publication. The [content contract](2026-09-09-codeact-content-and-media.md)
 owns the coordinated conversion and format boundaries.
 
-`/mcp` uses Streamable HTTP and workspace Bearer API keys independently of browser sessions. The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) exposes `repo_exec`, `get_artifact`, `get_asset` and `put_asset` when the isolated executor and asset services are available. There is no standalone file CRUD fallback: file access requires the verified [local worker](../../executor-service/README.md) and `EXECUTE_REPOSITORY`. Enabling the adapter does not substitute for verifying the real process boundary.
+`/mcp` uses Streamable HTTP and workspace Bearer API keys or OAuth access tokens independently of browser sessions. The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) exposes `repo_exec`, `get_artifact`, `get_asset` and `put_asset` when the isolated executor and asset services are available. There is no standalone file CRUD fallback: file access requires the verified [local worker](../../executor-service/README.md) and `EXECUTE_REPOSITORY`. Enabling the adapter does not substitute for verifying the real process boundary.
 
 Agents use ordinary listings, search, shell and Python to inspect files and progressively read repository-owned `AGENTS.md` guides. The server does not interpret those guides. [Directory navigation](2026-09-08-repository-directory-navigation.md) remains available to browser HTTP through the shared reader without an executor.
 
@@ -71,8 +71,8 @@ The [storage port](2026-09-05-repository-authoring-foundations.md#managed-origin
 
 The build requires JDK 26 and pins Spring Boot 4.1.1 and Spring AI 2.0.1. Spring Security owns browser authentication; Spring Modulith defines application module boundaries. JGit owns repository access, commonmark-java and Jackson YAML parse content, and [official PostgreSQL 17](2026-09-05-stock-postgresql.md) stores relational application state. The [blog frontend](2026-09-06-blog-browser-interface.md) uses Next.js App Router, React, TypeScript and Tailwind, with Node.js 24.19.0 and npm 12.0.2. It replaces JTE + htmx while Spring retains business APIs and persistence.
 CI: GitHub Actions + Testcontainers; images publish to GHCR. An optional [delivery mirror](2026-09-10-mirror-registry-delivery.md) copies canonical digests to another registry for host pulls. A docker-save-over-SSH deployment script remains available for networks with restricted registry access. GraalVM Native Image and JDK structured concurrency (preview) stay on the experimental track.
-The MCP protocol version follows the pinned SDK. Static API keys are a deliberate phase-one simplification without a claim to standard MCP OAuth. Streamable HTTP validates supplied Origin headers.
+The MCP protocol version follows the pinned SDK. [MCP OAuth](2026-09-11-mcp-oauth.md) adds owner-approved, independently revocable client connections alongside static API keys. Streamable HTTP validates supplied Origin headers.
 
 ## Non-goals (v1)
 
-Open registration and self-service workspace creation, OAuth, comments/likes/social features, microservices/K8s/message queues, knowledge graphs, heavy RAG pipelines (chunking + reranking + multi-path recall), rich-text editors, image CDN, mobile apps, UI internationalization, visitor conversation history, Redis (single-instance: budget counting in PostgreSQL, rate limiting in the JVM, caching in Caffeine).
+Open registration and self-service workspace creation, social login, comments/likes/social features, microservices/K8s/message queues, knowledge graphs, heavy RAG pipelines (chunking + reranking + multi-path recall), rich-text editors, image CDN, mobile apps, UI internationalization, visitor conversation history, Redis (single-instance: budget counting in PostgreSQL, rate limiting in the JVM, caching in Caffeine).

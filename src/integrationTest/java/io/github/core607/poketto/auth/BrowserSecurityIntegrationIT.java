@@ -275,7 +275,7 @@ class BrowserSecurityIntegrationIT {
                         HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.headers().allValues("set-cookie")).anySatisfy(cookie -> {
-            assertThat(cookie).startsWith("POKETTO_SESSION=").contains("Secure", "HttpOnly", "SameSite=Strict");
+            assertThat(cookie).startsWith("POKETTO_SESSION=").contains("Secure", "HttpOnly", "SameSite=Lax");
         });
         assertThat(response.headers().firstValue("cache-control")).contains("no-store");
     }

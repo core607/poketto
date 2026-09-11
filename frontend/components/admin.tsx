@@ -4,6 +4,7 @@ import { api, ApiError } from "../lib/browser-api";
 import { Editor } from "./editor";
 import { Members } from "./members";
 import { Keys } from "./keys";
+import { Connections } from "./connections";
 import { ConfirmationProvider, useConfirmation } from "./confirmation";
 
 export type Identity = {
@@ -121,6 +122,12 @@ function AdminContent() {
             >
               访问密钥
             </button>
+            <button
+              aria-pressed={activeTab === "connections"}
+              onClick={() => setTab("connections")}
+            >
+              已连接应用
+            </button>
           </>
         )}
       </nav>
@@ -128,12 +135,13 @@ function AdminContent() {
         <Editor identity={identity} onDirtyChange={setDirty} />
       </div>
       {activeTab === "members" && <Members />}
+      {activeTab === "connections" && <Connections />}
       {activeTab === "keys" && <Keys identity={identity} />}
     </div>
   );
 }
 
-function Login({ onLogin }: { onLogin: () => Promise<void> }) {
+export function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const [mode, setMode] = useState("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
