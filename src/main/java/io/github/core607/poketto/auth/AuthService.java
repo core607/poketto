@@ -238,19 +238,6 @@ public final class AuthService {
         return new Page<>(items, total, offset, limit);
     }
 
-    /** Creates an account only while atomically consuming a valid invitation. No standalone signup exists. */
-    public AuthPrincipal registerWithInvitation(String token, String login, String password) {
-        String normalized = loginName(login);
-        String encoded = encodePassword(password);
-        return transactions.execute(status -> {
-            Invitation invitation = lockInvitation(token);
-            requireUsableInvitation(invitation, null);
-            UUID account = createAccount(normalized, encoded, false);
-            join(invitation, account);
-            return accountPrincipal(account);
-        });
-    }
-
     /** Repeating a consumed token succeeds only for its original account with an active membership. */
     public WorkspaceId acceptInvitation(AuthPrincipal account, String token) {
         if (account == null || account.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure(DENIED);

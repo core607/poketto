@@ -12,6 +12,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlob;
@@ -63,6 +64,9 @@ import org.testcontainers.utility.DockerImageName;
 class AssetAuthorizationConcurrencyIT {
     @TempDir
     static Path directory;
+
+    @Autowired
+    RegistrationService registration;
 
     private static final String PASSWORD = UUID.randomUUID().toString();
     private static final AtomicInteger CASE = new AtomicInteger();
@@ -147,7 +151,9 @@ class AssetAuthorizationConcurrencyIT {
             revoke = () -> auth.revokeApiKey(owner, workspace, issued.id());
         } else {
             var invitation = auth.createInvitation(owner, workspace);
-            principal = auth.registerWithInvitation(invitation.token(), "member-" + UUID.randomUUID(), PASSWORD);
+            principal =
+                    registration.register(registration.issue(owner).token(), "member-" + UUID.randomUUID(), PASSWORD);
+            auth.acceptInvitation(principal, invitation.token());
             revoke = () -> auth.changeMembership(owner, workspace, principal.accountId(), MembershipRole.MEMBER, false);
         }
         String privateToken = null;

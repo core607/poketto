@@ -38,8 +38,7 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
         if (request.getMethod().equals("POST")
                 && (path.equals("/api/auth/login")
                         || path.equals("/api/auth/register")
-                        || path.equals("/api/auth/registration-invitations")
-                        || path.equals("/api/auth/invitations/register"))) {
+                        || path.equals("/api/auth/registration-invitations"))) {
             String login = path.equals("/api/auth/login") ? request.getParameter("username") : null;
             if (!take(request.getRemoteAddr(), login)) {
                 response.setHeader("Retry-After", Long.toString(window.toSeconds()));

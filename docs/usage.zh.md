@@ -22,7 +22,7 @@ POKETTO_REPOSITORY_PASSWORD=... \
 
 先启动应用完成数据库结构初始化，再在部署主机的交互式终端运行 `./deploy.sh --initialize-admin`，输入用户名并两次输入隐藏的密码。命令只创建一次站点管理员和默认空间主人，不能替换已有账号；它使用正在运行的应用容器中的数据库配置，不提供网页安装入口。自定义容器安装方式见[管理员安装命令](../notes/implemented/2026-09-11-operator-administrator-setup.md)。将 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin；本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`，HTTPS 保留安全默认值。登录前获取 `/api/auth/csrf`，后续请求携带会话 cookie 和响应指定的 CSRF header。
 
-注册邀请码与空间邀请相互独立。`POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED` 默认 `false`，只允许站点管理员签发注册邀请码；设置为 `true` 后普通账号也能签发。目前不设置固定的每用户签发数量。关闭签发后，签发者仍可列出和撤销自己的邀请码。账号与注册 HTTP 接口见[注册邀请码](../notes/implemented/2026-09-11-registration-invitations.md#http-contract)，对应网页流程属于[多用户交付提案](../notes/proposed/2026-09-11-multiuser-workspaces-and-discovery.md)。
+注册邀请码与空间邀请相互独立。`POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED` 默认 `false`，只允许站点管理员签发注册邀请码；设置为 `true` 后普通账号也能签发。目前不设置固定的每用户签发数量。关闭签发后，签发者仍可列出和撤销自己的邀请码。登录后，在“账号与空间”中创建并复制注册邀请码或注册链接，也可查看状态和撤销。访客点击“注册”，填写邀请码、用户名和密码；注册并登录后还没有空间权限，需要在管理页单独填写空间邀请码加入。接口与流程见[注册邀请码](../notes/implemented/2026-09-11-registration-invitations.md)。
 
 Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生磁盘卷运行 `linuxStorageTest`，包括公开标记持久化与快照恢复测试。Windows 开发模式只能在远端重新验证成功后建立内存公开快照；离线重启不会从磁盘恢复公开授权。Linux 上影响发布的写入必须先成功同步文件与目录才能推送；同步失败或不受支持时关闭公开服务。权威图片存储要求目录同步能力；不支持的宿主不能确认持久化上传。用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](../AGENTS.md#commands)。
 
