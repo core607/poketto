@@ -35,8 +35,25 @@ class ContentConfiguration {
 
     @Bean
     RepositoryBindingSource repositoryBindingSource(
-            RepositoryProperties properties, ObjectProvider<WorkspaceCatalog> workspaces) {
-        return new ConfiguredRepositoryBindingSource(properties, workspaces);
+            RepositoryProperties properties,
+            ObjectProvider<WorkspaceCatalog> workspaces,
+            ObjectProvider<ManagedRepositoryConnections> managed) {
+        var configured = new ConfiguredRepositoryBindingSource(properties, workspaces);
+        return workspace -> {
+            var connections = managed.getIfAvailable();
+            RepositoryBinding binding = connections == null ? null : connections.binding(workspace);
+            return binding == null ? configured.bindingFor(workspace) : binding;
+        };
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
+    ManagedRepositoryConnections managedRepositoryConnections(
+            org.springframework.jdbc.core.JdbcTemplate jdbc,
+            @org.springframework.beans.factory.annotation.Value("${poketto.repository.credential-key:}") String key,
+            RepositoryProperties configured) {
+        return new ManagedRepositoryConnections(
+                jdbc, new RepositoryCredentialCipher(key), new RepositoryProviderClient(), configured);
     }
 
     @Bean
