@@ -1,0 +1,52 @@
+{
+  "sourceCommit": "a6e43bb2b3e9c3c6c4eaffdaa348fd54d4b6fb2d",
+  "startCommand": "docker compose -p poketto-credential-ui-20260912 --env-file .gradle/credential-ui/acceptance.env -f acceptance/compose.yaml up --build -d",
+  "browser": "Chrome",
+  "viewport": {
+    "height": 889,
+    "width": 1920
+  },
+  "captureDimensions": [
+    1905,
+    882
+  ],
+  "captureMethod": "Three original browser frames from one fresh run, in order; 2 seconds per frame is reading time, not measured transition timing. Login, workspace creation, deployment-managed page and token entry are omitted.",
+  "realDependencies": "Spring authentication and workspace services, PostgreSQL, credential encryption and rotation CAS, Next.js production build, Caddy and synthetic local Git.",
+  "mockedBoundary": "Integration-only RepositoryConnections fixture replaces provider metadata and credential verification. No request or credential is sent to GitHub or CNB.",
+  "flow": [
+    "Created managed workspace shows its fixed repository address and empty rotation form",
+    "Invalid synthetic token produces actionable error and clears both inputs",
+    "Accepted synthetic replacement produces success and updated timestamp, with both inputs cleared"
+  ],
+  "checks": {
+    "sourceUnchanged": true,
+    "invalidRotationPreservesCiphertextAndTimestamp": true,
+    "successfulRotationChangesCiphertextAndTimestamp": true,
+    "repositoryAndWorkspaceUnchanged": true,
+    "publicDeliveryRemainsFalse": true,
+    "metadataNoStore": true,
+    "metadataContainsNoCredentials": true,
+    "formClearedAfterFailure": true,
+    "formClearedAfterSuccess": true,
+    "operatorManagedFormHidden": true
+  },
+  "limitations": "Mocked Git provider verification does not prove real GitHub/CNB credentials or network interoperability. Local HTTP only; no production HTTPS acceptance. Required integration tests cover anonymous, outsider and member denial; these are not shown in this owner browser run.",
+  "artifacts": [
+    {
+      "file": "02-managed-connection.png",
+      "sha256": "695d5bbcca8852d3ea3a693b1d16c7179ada6cc842c7bef9708333f9c9fdcd11"
+    },
+    {
+      "file": "03-rejected-token.png",
+      "sha256": "222a2a870a1fd303177a350cd26f3079cd13b7c5b06fe49eba087b81df6402e7"
+    },
+    {
+      "file": "04-rotation-complete.png",
+      "sha256": "774a086568e3429615fb0eb40202828614a2bccf1819d253550c074ca0e44a03"
+    },
+    {
+      "file": "repository-connection.gif",
+      "sha256": "57a87553605293228c4e857303acc708e88fcfe66c08591ac236130476d02228"
+    }
+  ]
+}
