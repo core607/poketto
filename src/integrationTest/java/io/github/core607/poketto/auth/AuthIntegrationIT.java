@@ -91,29 +91,30 @@ class AuthIntegrationIT {
     }
 
     @Test
-    void invitationCreatesAnAccountOnceWithAtomicConcurrentConsumption() throws Exception {
+    void invitationJoinsOneExistingAccountWithAtomicConcurrentConsumption() throws Exception {
         AuthPrincipal owner = owner();
+        AuthPrincipal first = account(owner, "member-one");
+        AuthPrincipal second = account(owner, "member-two");
         IssuedToken invitation = auth.createInvitation(owner, workspace);
         var results = concurrent(List.of(
-                () -> auth.registerWithInvitation(invitation.token(), "member-one", secret()),
-                () -> auth.registerWithInvitation(invitation.token(), "member-two", secret())));
-        assertThat(results.stream().filter(AuthPrincipal.class::isInstance)).hasSize(1);
+                () -> auth.acceptInvitation(first, invitation.token()),
+                () -> auth.acceptInvitation(second, invitation.token())));
+        assertThat(results.stream().filter(WorkspaceId.class::isInstance)).hasSize(1);
         assertThat(results.stream()
                         .filter(AuthException.class::isInstance)
                         .map(AuthException.class::cast)
                         .map(AuthException::code))
                 .containsExactly(AuthException.Code.INVALID_INVITATION);
-        AuthPrincipal member = (AuthPrincipal) results.stream()
-                .filter(AuthPrincipal.class::isInstance)
-                .findFirst()
-                .orElseThrow();
+        UUID joined = jdbc.queryForObject(
+                "select used_by from auth_invitations where invitation_id=?", UUID.class, invitation.id());
+        AuthPrincipal member = joined.equals(first.accountId()) ? first : second;
         assertThat(auth.authorize(member, workspace).role()).isEqualTo(MembershipRole.MEMBER);
         assertThat(auth.acceptInvitation(member, invitation.token())).isEqualTo(workspace);
         assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
-                .isEqualTo(2);
+                .isEqualTo(3);
         assertCode(() -> auth.acceptInvitation(owner, invitation.token()), AuthException.Code.INVALID_INVITATION);
         assertThat(jdbc.queryForObject(
-                        "select token_digest from auth_invitations where invitation_id = ?",
+                        "select token_digest from auth_invitations where invitation_id=?",
                         String.class,
                         invitation.id()))
                 .hasSize(64)
@@ -122,28 +123,22 @@ class AuthIntegrationIT {
     }
 
     @Test
-    void invalidInvitationsShareFailureAndCannotLeaveNewAccounts() {
+    void invalidWorkspaceInvitationsCannotCreateMemberships() {
         AuthPrincipal owner = owner();
+        AuthPrincipal account = account(owner, "new-member");
         IssuedToken revoked = auth.createInvitation(owner, workspace);
         auth.revokeInvitation(owner, workspace, revoked.id());
         IssuedToken expired = auth.createInvitation(owner, workspace);
         AuthService later = service(now.plus(Duration.ofDays(7)));
-        assertCode(
-                () -> auth.registerWithInvitation(revoked.token(), "revoked-member", secret()),
-                AuthException.Code.INVALID_INVITATION);
-        assertCode(
-                () -> later.registerWithInvitation(expired.token(), "expired-member", secret()),
-                AuthException.Code.INVALID_INVITATION);
-        assertCode(
-                () -> auth.registerWithInvitation(secret(), "unknown-member", secret()),
-                AuthException.Code.INVALID_INVITATION);
-        assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+        assertCode(() -> auth.acceptInvitation(account, revoked.token()), AuthException.Code.INVALID_INVITATION);
+        assertCode(() -> later.acceptInvitation(account, expired.token()), AuthException.Code.INVALID_INVITATION);
+        assertCode(() -> auth.acceptInvitation(account, secret()), AuthException.Code.INVALID_INVITATION);
+        assertThat(jdbc.queryForObject("select count(*) from auth_memberships", Integer.class))
                 .isOne();
         IssuedToken valid = auth.createInvitation(owner, workspace);
-        assertCode(
-                () -> auth.registerWithInvitation(valid.token(), "owner", secret()), AuthException.Code.INVALID_INPUT);
-        assertThat(auth.registerWithInvitation(valid.token(), "new-member", secret()))
-                .isNotNull();
+        assertThat(auth.acceptInvitation(account, valid.token())).isEqualTo(workspace);
+        assertThat(jdbc.queryForObject("select count(*) from auth_accounts", Integer.class))
+                .isEqualTo(2);
     }
 
     @Test
@@ -378,8 +373,19 @@ class AuthIntegrationIT {
     }
 
     private AuthPrincipal member(AuthPrincipal owner, String login) {
-        return auth.registerWithInvitation(
-                auth.createInvitation(owner, workspace).token(), login, secret());
+        AuthPrincipal account = account(owner, login);
+        auth.acceptInvitation(account, auth.createInvitation(owner, workspace).token());
+        return account;
+    }
+
+    private AuthPrincipal account(AuthPrincipal owner, String login) {
+        RegistrationService registration = new RegistrationService(
+                jdbc,
+                transactionManager,
+                auth,
+                RegistrationInvitationPolicy.configured(false),
+                Clock.fixed(now, ZoneOffset.UTC));
+        return registration.register(registration.issue(owner).token(), login, secret());
     }
 
     private static String secret() {

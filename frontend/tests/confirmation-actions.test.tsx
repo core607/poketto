@@ -286,6 +286,15 @@ test("Admin logout completing while member confirmation is open cancels the unmo
   let logoutRequests = 0;
   globalThis.fetch = async (input, options) => {
     const path = new URL(String(input), "http://localhost").pathname;
+    if (path === "/api/auth/account")
+      return Response.json({
+        account: {
+          accountId: "owner",
+          loginName: "owner",
+          siteAdministrator: true,
+        },
+        mayIssueRegistrationInvitations: true,
+      });
     if (path === "/api/auth/me")
       return Response.json({
         accountId: "owner",

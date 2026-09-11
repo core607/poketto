@@ -7,14 +7,12 @@ import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -40,15 +38,6 @@ class BrowserAuthController {
                 token.getToken());
     }
 
-    @PostMapping("/invitations/register")
-    @ResponseStatus(HttpStatus.CREATED)
-    Map<String, UUID> register(@RequestBody InvitationRegistrationRequest body) {
-        return Map.of(
-                "accountId",
-                auth.registerWithInvitation(body.token(), body.login(), body.password())
-                        .accountId());
-    }
-
     @PostMapping("/invitations/accept")
     Map<String, String> accept(
             @AuthenticationPrincipal AuthPrincipal principal, @RequestBody InvitationTokenRequest body) {
@@ -68,13 +57,6 @@ class BrowserAuthController {
     }
 
     record MeResponse(UUID accountId, String workspaceId, String role, java.util.List<String> capabilities) {}
-
-    record InvitationRegistrationRequest(String token, String login, String password) {
-        @Override
-        public String toString() {
-            return "InvitationRegistrationRequest[REDACTED]";
-        }
-    }
 
     record InvitationTokenRequest(String token) {
         @Override
