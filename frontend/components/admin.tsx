@@ -1,15 +1,13 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../lib/browser-api";
-import { Editor } from "./editor";
-import { Members } from "./members";
-import { Keys } from "./keys";
-import { Connections } from "./connections";
-import { ConfirmationProvider, useConfirmation } from "./confirmation";
-import { AccountPanel, type AccountProfile } from "./account-panel";
+import { ConfirmationProvider } from "./confirmation";
+import { type AccountProfile } from "./account-panel";
+import { WorkspaceDashboard } from "./workspace-dashboard";
 
 export type Identity = {
   accountId: string;
+  displayName?: string;
   workspaceId: string;
   role: "OWNER" | "MEMBER";
   capabilities: string[];
@@ -27,173 +25,30 @@ export function Admin() {
   );
 }
 function AdminContent() {
-  const confirm = useConfirmation();
-  const [identity, setIdentity] = useState<Identity | null>(null);
   const [account, setAccount] = useState<AccountProfile | null>(null);
-  const [workspaceUnavailable, setWorkspaceUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState("content");
-  const activeTab =
-    !identity || tab === "account"
-      ? "account"
-      : identity.role === "OWNER"
-        ? tab
-        : "content";
-  const [dirty, setDirty] = useState(false);
   async function refresh() {
     setLoading(true);
     setError("");
-    setWorkspaceUnavailable(false);
-    try {
-      setAccount(await api<AccountProfile>("/api/auth/account"));
-      try {
-        setIdentity(await api<Identity>("/api/auth/me"));
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) throw error;
-        setIdentity(null);
-        if (!(error instanceof ApiError && error.status === 403)) {
-          setWorkspaceUnavailable(true);
-          setError("空间暂时无法读取，请稍后重试。你的账号仍已登录。");
-        }
-      }
-    } catch (error) {
-      setIdentity(null);
+    try { setAccount(await api<AccountProfile>("/api/auth/account")); }
+    catch (error) {
       setAccount(null);
-      if (!(error instanceof ApiError && error.status === 401))
-        setError(message(error));
-    } finally {
-      setLoading(false);
-    }
+      if (!(error instanceof ApiError && error.status === 401)) setError(message(error));
+    } finally { setLoading(false); }
   }
-  useEffect(() => {
-    void refresh();
-  }, []);
+  useEffect(() => { void refresh(); }, []);
   async function logout() {
-    if (
-      dirty &&
-      !(await confirm({
-        title: "放弃修改并退出登录？",
-        description: "还有未保存的修改。退出后，这些修改将丢失。",
-        confirmLabel: "放弃并退出",
-      }))
-    )
-      return;
     try {
       await api("/api/auth/logout", { method: "POST" });
-      setIdentity(null);
       setAccount(null);
-      setTab("content");
-      setDirty(false);
-    } catch (error) {
-      setError(message(error));
-    }
+    } catch (error) { setError(message(error)); }
   }
-  if (loading)
-    return (
-      <div className="empty-state">
-        <p>正在确认会话…</p>
-      </div>
-    );
-  if (!account)
-    return (
-      <div>
-        <Login onLogin={refresh} />
-        {error && (
-          <p role="alert" className="notice danger">
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  return (
-    <div className="admin-shell">
-      <header className="admin-heading">
-        <div>
-          <p className="eyebrow">{account.account.loginName} · 自己的工作台</p>
-          <h1>整理，续写。</h1>
-        </div>
-        <button className="button-secondary" onClick={logout}>
-          退出登录
-        </button>
-      </header>
-      {error && (
-        <p className="notice danger" role="alert">
-          {error}
-        </p>
-      )}
-      {workspaceUnavailable && (
-        <button className="button-secondary" onClick={refresh}>
-          重新读取空间
-        </button>
-      )}
-      <nav className="admin-tabs" aria-label="管理功能">
-        {identity && (
-          <button
-            aria-pressed={activeTab === "content"}
-            onClick={() => setTab("content")}
-          >
-            内容
-          </button>
-        )}
-        <button
-          aria-pressed={activeTab === "account"}
-          onClick={() => setTab("account")}
-        >
-          账号与空间
-        </button>
-        {identity?.role === "OWNER" && (
-          <>
-            <button
-              aria-pressed={activeTab === "members"}
-              onClick={() => setTab("members")}
-            >
-              成员与邀请
-            </button>
-            <button
-              aria-pressed={activeTab === "keys"}
-              onClick={() => setTab("keys")}
-            >
-              访问密钥
-            </button>
-            <button
-              aria-pressed={activeTab === "connections"}
-              onClick={() => setTab("connections")}
-            >
-              已连接应用
-            </button>
-          </>
-        )}
-      </nav>
-      {identity && (
-        <div hidden={activeTab !== "content"}>
-          <Editor identity={identity} onDirtyChange={setDirty} />
-        </div>
-      )}
-      {activeTab === "account" && (
-        <AccountPanel
-          profile={account}
-          hasWorkspace={!!identity}
-          workspaceUnavailable={workspaceUnavailable}
-          onBeforeJoin={async () =>
-            !dirty ||
-            (await confirm({
-              title: "放弃未保存的修改并加入空间？",
-              description: "请先保存当前文件，或放弃这些修改后继续。",
-              confirmLabel: "放弃并继续",
-            }))
-          }
-          onJoined={async () => {
-            setDirty(false);
-            await refresh();
-          }}
-        />
-      )}
-      {activeTab === "members" && <Members />}
-      {activeTab === "connections" && <Connections />}
-      {activeTab === "keys" && identity && <Keys identity={identity} />}
-    </div>
-  );
+  if (loading) return <p role="status">正在确认会话…</p>;
+  return <>
+    {account ? <WorkspaceDashboard account={account} onLogout={logout} /> : <Login onLogin={refresh} />}
+    {error && <p role="alert" className="notice danger">{error}</p>}
+  </>;
 }
 
 export function Login({

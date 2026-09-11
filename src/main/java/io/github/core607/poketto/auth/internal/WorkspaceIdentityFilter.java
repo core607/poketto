@@ -3,7 +3,7 @@ package io.github.core607.poketto.auth.internal;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,17 +19,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 final class WorkspaceIdentityFilter extends OncePerRequestFilter {
     private final ObjectProvider<AuthService> auth;
-    private final ObjectProvider<WorkspaceCatalog> workspaces;
     private final boolean bearer;
     private final String challenge;
 
-    WorkspaceIdentityFilter(
-            ObjectProvider<AuthService> auth,
-            ObjectProvider<WorkspaceCatalog> workspaces,
-            boolean bearer,
-            String issuer) {
+    WorkspaceIdentityFilter(ObjectProvider<AuthService> auth, boolean bearer, String issuer) {
         this.auth = auth;
-        this.workspaces = workspaces;
         this.bearer = bearer;
         this.challenge = issuer.isBlank()
                 ? "Bearer realm=\"poketto\""
@@ -58,17 +52,14 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                 }
                 AuthPrincipal principal =
                         auth.getObject().authenticateApiKey(headers.getFirst().substring(7));
-                auth.getObject()
-                        .authorize(
-                                principal,
-                                workspaces.getObject().defaultWorkspace().id());
+                auth.getObject().workspaceForKey(principal);
                 SecurityContextHolder.getContext()
                         .setAuthentication(new UsernamePasswordAuthenticationToken(
                                 principal, null, List.of(new SimpleGrantedAuthority("ROLE_API"))));
             } else {
                 String path = AuthHttpErrors.path(request);
                 var authentication = SecurityContextHolder.getContext().getAuthentication();
-                if (path.startsWith("/api/admin/") || path.startsWith("/api/private/") || path.equals("/api/auth/me")) {
+                if (path.startsWith("/api/admin/")) {
                     if (authentication == null
                             || !authentication.isAuthenticated()
                             || !(authentication.getPrincipal() instanceof AuthPrincipal principal)
@@ -76,12 +67,16 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                         AuthHttpErrors.write(response, 401);
                         return;
                     }
-                    auth.getObject()
-                            .authorize(
-                                    principal,
-                                    workspaces.getObject().defaultWorkspace().id());
+                    if (!path.startsWith(WorkspaceHttpRoutes.ADMIN)) {
+                        AuthHttpErrors.write(response, 404);
+                        return;
+                    }
+                    auth.getObject().authorize(principal, WorkspaceHttpRoutes.workspace(path));
                 }
             }
+        } catch (IllegalArgumentException invalid) {
+            AuthHttpErrors.write(response, 400);
+            return;
         } catch (AuthException exception) {
             SecurityContextHolder.clearContext();
             if (bearer) response.setHeader("WWW-Authenticate", challenge);

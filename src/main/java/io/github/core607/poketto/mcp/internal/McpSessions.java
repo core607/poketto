@@ -64,8 +64,7 @@ final class McpSessions implements AutoCloseable {
                 || !(authentication.getPrincipal() instanceof AuthPrincipal principal)
                 || principal.kind() != AuthPrincipal.Kind.API_KEY)
             throw new SecurityException("MCP authentication required");
-        WorkspaceId workspace = workspaces.defaultWorkspace().id();
-        auth.authorize(principal, workspace);
+        WorkspaceId workspace = auth.workspaceForKey(principal);
         return new Identity(principal, workspace);
     }
 

@@ -74,9 +74,7 @@ class BrowserSecurityConfiguration {
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(
                         (request, response, exception) -> AuthHttpErrors.write(response, 401)))
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), AnonymousAuthenticationFilter.class)
-                .addFilterBefore(
-                        new WorkspaceIdentityFilter(auth, workspaces, true, issuer),
-                        AnonymousAuthenticationFilter.class);
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, true, issuer), AnonymousAuthenticationFilter.class);
         return http.build();
     }
 
@@ -126,7 +124,7 @@ class BrowserSecurityConfiguration {
                 .headers(headers -> headers.contentSecurityPolicy(
                         csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'")))
                 .addFilterBefore(new AdminBodyFilter(adminBodyConcurrency), CsrfFilter.class)
-                .addFilterBefore(new WorkspaceIdentityFilter(auth, workspaces, false, issuer), AdminBodyFilter.class)
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, false, issuer), AdminBodyFilter.class)
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), WorkspaceIdentityFilter.class)
                 .addFilterBefore(
                         new LoginThrottleFilter(

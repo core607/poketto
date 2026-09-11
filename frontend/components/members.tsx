@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { api } from "../lib/browser-api";
+import { useWorkspaceApi } from "./workspace-context";
 import { date } from "../lib/format";
 import { message } from "./admin";
 import { Secret } from "./secret";
@@ -19,6 +19,7 @@ type Invitation = {
   used: boolean;
 };
 export function Members() {
+  const api = useWorkspaceApi();
   const confirm = useConfirmation();
   const memberPage = useAdminPage<Member>("/api/admin/members");
   const members = memberPage.items;

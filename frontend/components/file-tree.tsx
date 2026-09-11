@@ -1,4 +1,5 @@
 "use client";
+import { useWorkspaceApi } from "./workspace-context";
 import { useEffect, useRef, useState } from "react";
 import { readDirectory, movablePath } from "../lib/repository-directory";
 import type { RepositoryDirectory } from "../lib/types";
@@ -60,6 +61,7 @@ function DirectoryBranch({
   onExpanded: (path: string, opened: boolean) => void;
 }) {
   const opened = !path || props.expanded.has(path);
+  const api = useWorkspaceApi();
   const [page, setPage] = useState<RepositoryDirectory | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -77,7 +79,7 @@ function DirectoryBranch({
     setLoading(true);
     setError("");
     try {
-      const result = await readDirectory(
+      const result = await readDirectory(api, 
         page?.commit ?? props.commit,
         path,
         offset,

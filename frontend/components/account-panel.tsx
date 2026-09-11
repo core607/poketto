@@ -29,7 +29,7 @@ export function AccountPanel({
   hasWorkspace: boolean;
   workspaceUnavailable?: boolean;
   onBeforeJoin: () => Promise<boolean>;
-  onJoined: () => Promise<void>;
+  onJoined: (workspaceId: string) => Promise<void>;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -41,12 +41,12 @@ export function AccountPanel({
     setError("");
     try {
       if (!(await onBeforeJoin())) return;
-      await api("/api/auth/invitations/accept", {
+      const joined = await api<{ workspaceId: string }>("/api/auth/invitations/accept", {
         method: "POST",
         body: { token },
       });
       form.reset();
-      await onJoined();
+      await onJoined(joined.workspaceId);
     } catch (error) {
       setError(message(error));
     } finally {

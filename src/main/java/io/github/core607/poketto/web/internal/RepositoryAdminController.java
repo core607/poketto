@@ -11,7 +11,6 @@ import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,19 +28,19 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping(path = "/api/admin/repository", produces = MediaType.APPLICATION_JSON_VALUE)
+@RequestMapping(path = "/api/admin/workspaces/{workspaceId}/repository", produces = MediaType.APPLICATION_JSON_VALUE)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class RepositoryAdminController {
     private final AuthorizedRepositoryReader reader;
     private final RepositoryPatchService patches;
     private final RepositoryMoveService moves;
-    private final WorkspaceCatalog workspaces;
+    private final BrowserWorkspace workspaces;
 
     RepositoryAdminController(
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             RepositoryMoveService moves,
-            WorkspaceCatalog workspaces) {
+            BrowserWorkspace workspaces) {
         this.reader = reader;
         this.patches = patches;
         this.moves = moves;
@@ -55,8 +54,7 @@ class RepositoryAdminController {
             @RequestParam(defaultValue = "") String path,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "100") int limit) {
-        var page = reader.listDirectory(
-                actor, workspaces.defaultWorkspace().id(), Optional.ofNullable(commit), path, offset, limit);
+        var page = reader.listDirectory(actor, workspaces.selected(), Optional.ofNullable(commit), path, offset, limit);
         return new Directory(
                 page.commit().orElse(null), page.path(), page.expectedAbsence(), page.entries(), page.nextOffset());
     }
@@ -66,12 +64,12 @@ class RepositoryAdminController {
         if (request.source() == null || request.destination() == null)
             throw new IllegalArgumentException("move source and destination are required");
         var move = new RepositoryMoveRequest(request.baseCommit(), request.source(), request.destination());
-        return result(moves.move(actor, workspaces.defaultWorkspace().id(), move));
+        return result(moves.move(actor, workspaces.selected(), move));
     }
 
     @GetMapping("/tree")
     Tree tree(@AuthenticationPrincipal AuthPrincipal actor, @RequestParam(required = false) String commit) {
-        var tree = reader.readTree(actor, workspaces.defaultWorkspace().id(), Optional.ofNullable(commit));
+        var tree = reader.readTree(actor, workspaces.selected(), Optional.ofNullable(commit));
         Map<String, Entry> entries = new TreeMap<>();
         tree.documents()
                 .forEach(document -> entries.put(
@@ -87,7 +85,7 @@ class RepositoryAdminController {
             @AuthenticationPrincipal AuthPrincipal actor,
             @RequestParam String path,
             @RequestParam(required = false) String commit) {
-        var file = reader.getFile(actor, workspaces.defaultWorkspace().id(), Optional.ofNullable(commit), path);
+        var file = reader.getFile(actor, workspaces.selected(), Optional.ofNullable(commit), path);
         return new File(
                 file.commit().orElse(null),
                 file.path(),
@@ -108,15 +106,7 @@ class RepositoryAdminController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
         return reader.search(
-                actor,
-                workspaces.defaultWorkspace().id(),
-                Optional.ofNullable(commit),
-                query,
-                tag,
-                from,
-                to,
-                offset,
-                limit);
+                actor, workspaces.selected(), Optional.ofNullable(commit), query, tag, from, to, offset, limit);
     }
 
     @PostMapping("/patch")
@@ -134,7 +124,7 @@ class RepositoryAdminController {
                                 Optional.ofNullable(change.expectedRevision()).map(DocumentRevision::new),
                                 Optional.ofNullable(change.content())))
                         .toList());
-        return result(patches.apply(actor, workspaces.defaultWorkspace().id(), patch));
+        return result(patches.apply(actor, workspaces.selected(), patch));
     }
 
     private static PatchResult result(RepositoryPatchResult result) {
