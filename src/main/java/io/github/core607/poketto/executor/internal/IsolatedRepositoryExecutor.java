@@ -261,7 +261,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 JsonNode response = requestLive(
                         session,
                         "ARTIFACT_READ",
-                        Map.of("artifactId", artifactId, "offset", offset, "limit", limit),
+                        new WorkerRequests.ArtifactRead(artifactId, offset, limit),
                         Duration.ofSeconds(3));
                 requireLive(session);
                 authorize(session);
@@ -419,15 +419,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             JsonNode response = requestLive(
                     session,
                     "OPEN",
-                    Map.of(
-                            "exportId",
-                            export.exportId(),
-                            "bundleSha256",
-                            export.bundleSha256(),
-                            "bundleBytes",
-                            export.bundleBytes(),
-                            "commit",
-                            export.commit()),
+                    new WorkerRequests.Open(
+                            export.exportId(), export.bundleSha256(), export.bundleBytes(), export.commit()),
                     openTimeout);
             while (true) {
                 requireOk(response, session);
@@ -442,7 +435,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 pause();
                 authorize(session);
-                response = requestLive(session, "RENEW", Map.of(), Duration.ofSeconds(3));
+                response = requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
             }
         } catch (RuntimeException exception) {
             try {
@@ -497,7 +490,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             return;
                         }
                         authorize(session);
-                        JsonNode response = requestLive(session, "RENEW", Map.of(), Duration.ofSeconds(3));
+                        JsonNode response =
+                                requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
                         requireOk(response, session);
                         String state = response.path("state").asString("");
                         if (!List.of("INITIALIZING", "READY", "RUNNING").contains(state)) {
@@ -560,15 +554,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         var running = commandIo.submit(() -> requestLive(
                 session,
                 "EXEC",
-                Map.of(
-                        "executionId",
-                        executionId,
-                        "commit",
-                        session.commit,
-                        "command",
-                        command,
-                        "timeoutMillis",
-                        timeout.toMillis()),
+                new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
                 timeout.plusSeconds(5)));
         long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
         try {
@@ -582,7 +568,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 JsonNode polled;
                 try {
-                    polled = requestLive(session, "BRIDGE_POLL", Map.of(), Duration.ofSeconds(3));
+                    polled =
+                            requestLive(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
                 } catch (RuntimeException failed) {
                     if (session.stopping.get()) {
                         break;
@@ -618,7 +605,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         requestLive(
                                 session,
                                 "BRIDGE_COMPLETE",
-                                Map.of("executionId", executionId, "bridgeRequestId", requestId, "response", reply),
+                                new WorkerRequests.BridgeComplete(executionId, requestId, reply),
                                 Duration.ofSeconds(3)),
                         session);
             }
@@ -701,29 +688,23 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
             try {
-                Map<String, Object> data;
+                WorkerRequests.Data data;
                 if (operation.equals("artifact_create")) {
                     if (arguments.size() != 2
                             || !arguments.path("path").isString()
                             || !arguments.path("mediaType").isString()) {
-                        throw new IllegalArgumentException();
+                        throw new IllegalArgumentException("artifact_create takes exactly a path and a mediaType");
                     }
-                    data = Map.of(
-                            "executionId",
+                    data = new WorkerRequests.ArtifactCreate(
                             executionId,
-                            "path",
                             arguments.path("path").stringValue(),
-                            "mediaType",
                             arguments.path("mediaType").stringValue());
                 } else {
                     if (arguments.size() != 1 || !arguments.path("artifactId").isString()) {
-                        throw new IllegalArgumentException();
+                        throw new IllegalArgumentException("artifact_remove takes exactly an artifactId");
                     }
-                    String id = arguments.path("artifactId").stringValue();
-                    if (!UUID.fromString(id).toString().equals(id)) {
-                        throw new IllegalArgumentException();
-                    }
-                    data = Map.of("artifactId", id);
+                    data = new WorkerRequests.ArtifactRemove(
+                            arguments.path("artifactId").stringValue());
                 }
                 authorize(session);
                 JsonNode result = requestLive(
@@ -833,7 +814,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     JsonNode manifest = requestLive(
                             session,
                             "CAPTURE_OPTIONAL",
-                            Map.of("executionId", executionId, "path", path),
+                            new WorkerRequests.CapturePath(executionId, path),
                             Duration.ofSeconds(5));
                     if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
                         throw new IllegalArgumentException();
@@ -898,12 +879,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode begun = requestLive(
                 session,
                 "MOVE_BEGIN",
-                Map.of(
-                        "executionId",
+                new WorkerRequests.MoveBegin(
                         executionId,
-                        "bytes",
                         payload.length,
-                        "sha256",
                         DocumentRevision.sha256(payload).value().substring(7)),
                 Duration.ofSeconds(3));
         if (begun.path("code").asString("").equals("MOVE_REJECTED")) {
@@ -917,7 +895,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!UUID.fromString(transfer).toString().equals(transfer)) {
             throw new WorkerUnavailableException();
         }
-        var reference = Map.of("executionId", executionId, "transferId", transfer);
+        var reference = new WorkerRequests.Transfer(executionId, transfer);
         try {
             for (int offset = 0; offset < payload.length; offset += 65536) {
                 authorize(session);
@@ -925,14 +903,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 JsonNode chunk = requestLive(
                         session,
                         "MOVE_CHUNK",
-                        Map.of(
-                                "executionId",
+                        new WorkerRequests.TransferChunk(
                                 executionId,
-                                "transferId",
                                 transfer,
-                                "offset",
                                 offset,
-                                "data",
                                 Base64.getEncoder().encodeToString(Arrays.copyOfRange(payload, offset, end))),
                         Duration.ofSeconds(3));
                 if (chunk.path("code").asString("").equals("MOVE_REJECTED")) {
@@ -993,7 +967,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session,
                 "CAPTURE_BEGIN",
-                Map.of("executionId", executionId, "writes", writes, "deletes", deletes),
+                new WorkerRequests.CaptureBegin(executionId, writes, deletes),
                 Duration.ofSeconds(5));
         return readCapture(session, executionId, manifest, writes, deletes);
     }
@@ -1008,7 +982,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!UUID.fromString(captureId).toString().equals(captureId)) {
             throw new WorkerUnavailableException();
         }
-        Map<String, ?> reference = Map.of("executionId", executionId, "captureId", captureId);
+        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         try {
             JsonNode files = manifest.path("writes");
             if (!files.isArray()
@@ -1036,17 +1010,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     JsonNode chunk = requestLive(
                             session,
                             "CAPTURE_READ",
-                            Map.of(
-                                    "executionId",
-                                    executionId,
-                                    "captureId",
-                                    captureId,
-                                    "index",
-                                    index,
-                                    "offset",
-                                    bytes.size(),
-                                    "limit",
-                                    limit),
+                            new WorkerRequests.CaptureRead(executionId, captureId, index, bytes.size(), limit),
                             Duration.ofSeconds(3));
                     requireOk(chunk, session);
                     if (!captureId.equals(chunk.path("captureId").asString(""))
@@ -1246,7 +1210,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private Optional<String> captureOptional(Session session, String executionId, String path) {
         JsonNode manifest = requestLive(
-                session, "CAPTURE_OPTIONAL", Map.of("executionId", executionId, "path", path), Duration.ofSeconds(5));
+                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
             throw new IllegalArgumentException();
         }
@@ -1310,7 +1274,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
         }
         JsonNode manifest = requestLive(
-                session, "CAPTURE_BINARY", Map.of("executionId", executionId, "path", file), Duration.ofSeconds(8));
+                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
             throw new IllegalArgumentException();
         }
@@ -1319,7 +1283,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!UUID.fromString(captureId).toString().equals(captureId)) {
             throw new WorkerUnavailableException();
         }
-        Map<String, ?> reference = Map.of("executionId", executionId, "captureId", captureId);
+        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         ManagedAsset asset;
         try {
             JsonNode files = manifest.path("writes");
@@ -1343,17 +1307,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 JsonNode chunk = requestLive(
                         session,
                         "CAPTURE_READ",
-                        Map.of(
-                                "executionId",
-                                executionId,
-                                "captureId",
-                                captureId,
-                                "index",
-                                0,
-                                "offset",
-                                offset,
-                                "limit",
-                                limit),
+                        new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
                         Duration.ofSeconds(3));
                 requireOk(chunk, session);
                 if (!captureId.equals(chunk.path("captureId").asString(""))
@@ -1523,14 +1477,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             boolean delete,
             boolean allowIdentical,
             FileSource source) {
-        var metadata = new LinkedHashMap<String, Object>();
-        metadata.put("executionId", executionId);
-        metadata.put("path", path);
-        metadata.put("bytes", size);
-        metadata.put("sha256", digest);
-        metadata.put("expectedSha256", expected);
-        metadata.put("delete", delete);
-        metadata.put("allowIdentical", allowIdentical);
+        var metadata =
+                new WorkerRequests.MaterializeBegin(executionId, path, size, digest, expected, delete, allowIdentical);
         JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
         checkMaterialization(begun);
         if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) {
@@ -1541,7 +1489,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!UUID.fromString(transferId).toString().equals(transferId)) {
             throw new WorkerUnavailableException();
         }
-        Map<String, ?> reference = Map.of("executionId", executionId, "transferId", transferId);
+        var reference = new WorkerRequests.Transfer(executionId, transferId);
         try {
             var sink = new OutputStream() {
                 long sent;
@@ -1563,14 +1511,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         JsonNode chunk = requestLive(
                                 session,
                                 "MATERIALIZE_CHUNK",
-                                Map.of(
-                                        "executionId",
+                                new WorkerRequests.TransferChunk(
                                         executionId,
-                                        "transferId",
                                         transferId,
-                                        "offset",
                                         sent,
-                                        "data",
                                         Base64.getEncoder()
                                                 .encodeToString(Arrays.copyOfRange(bytes, offset, offset + count))),
                                 Duration.ofSeconds(3));
@@ -1618,7 +1562,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private JsonNode requestLive(Session session, String operation, Map<String, ?> data, Duration timeout) {
+    private JsonNode requestLive(Session session, String operation, WorkerRequests.Data data, Duration timeout) {
         WorkerClient.PreparedRequest request;
         synchronized (session) {
             requireLive(session);
@@ -1681,7 +1625,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         long deadline = System.nanoTime() + closeTimeout.toNanos();
         while (System.nanoTime() < deadline) {
             JsonNode response = worker.request(
-                    session.hello, session.identity(), "CLOSE", Map.of("reason", reason), Duration.ofSeconds(3));
+                    session.hello,
+                    session.identity(),
+                    "CLOSE",
+                    new WorkerRequests.Close(reason),
+                    Duration.ofSeconds(3));
             requireOk(response, session);
             String state = response.path("state").asString("");
             if (state.equals("CLOSED")) {
@@ -1735,7 +1683,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         hello,
                         identity,
                         "REVOKE",
-                        Map.of("keyIds", event.apiKeyIds(), "accountIds", event.accountIds()),
+                        new WorkerRequests.Revoke(event.apiKeyIds(), event.accountIds()),
                         Duration.ofSeconds(3));
                 if (!response.path("ok").booleanValue()) {
                     throw new WorkerUnavailableException();

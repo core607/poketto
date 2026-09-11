@@ -933,7 +933,7 @@ public final class ExecutorNativeProbe {
             doAnswer(call -> {
                         WorkerClient.PreparedRequest request = call.getArgument(0);
                         var payload = JSON.readTree(
-                                Base64.getUrlDecoder().decode(request.envelope().get("payload")));
+                                Base64.getUrlDecoder().decode(request.envelope().payload()));
                         if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get()) {
                             return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
                         }
