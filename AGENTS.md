@@ -41,6 +41,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew appImageIdentityCheck` | Verify the production image identity and protected executor socket access |
 | `./gradlew executorServiceTests` | Run required executor protocol and lifecycle tests on Linux; Windows uses Docker |
 | `./gradlew spotlessApply` | Rewrite Java sources into the canonical format |
+| `./gradlew checkstyleMain checkstyleTest checkstyleIntegrationTest` | Check Java sources against the style gate |
 | `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |
 | `./gradlew check` | Run the complete local and CI verification suite |
 
@@ -64,6 +65,22 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
 - Treat main as protected and never push directly; changes go through short-lived branches and PRs. Restore platform enforcement before the repository becomes public.
 - No credentials in the repository, ever. `.env` is the first line of .gitignore.
+
+## Java style
+
+Checkstyle gates the braces, import, and length rules below and fails `check` on a violation; the [Java style baseline](notes/implemented/2026-09-12-java-style-baseline.md) records the rationale. The remaining rules bind new and changed code and are enforced in review.
+
+- Every `if`, `else`, `for`, and `while` body uses braces, including single statements.
+- Request and response shapes are records serialized by Jackson; do not build them with `Map.of("key", value, ...)`. Literal-key maps are allowed only at a protocol boundary that has no fixed schema, and only in one adapter class.
+- Inputs are deserialized into records that validate on construction; do not hand-check `JsonNode.path(...).isX()` chains in business code.
+- A guard clause tests one condition or calls a named validator; no multi-line `||` chains ending in `throw`.
+- Every thrown exception carries a message, and a wrapped exception keeps the original as its `cause`. Client responses may hide details; logs record the cause with its stack trace.
+- Catch specific exception types. `catch (RuntimeException e)` is allowed only at a boundary that logs at WARN with the exception and re-maps it once.
+- Import types; write a fully qualified name only to resolve a real name clash.
+- Use `var` only when the type is visible on the right-hand side: a constructor, a literal, or a method named after its type.
+- Records, sealed interfaces, and pattern matching are the preferred way to model data and variants; keep using them.
+- A method stays under 60 code lines and a file under 600 lines; split by responsibility. Files that already exceeded a limit are listed with their reasons in [config/checkstyle/suppressions.xml](config/checkstyle/suppressions.xml); new code gets no entry.
+- Formatting is owned by Spotless; do not hand-format.
 
 ## Skills (.agents/skills/)
 
