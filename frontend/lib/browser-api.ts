@@ -61,6 +61,13 @@ export async function api<T>(
   if (!response.ok) {
     if (response.status === 400) {
       const problem = await response.json().catch(() => null);
+      if (problem?.code === "INVALID_INVITATION")
+        throw new ApiError(
+          400,
+          path === "/api/auth/register"
+            ? "注册邀请码无效、已过期或已使用。请向邀请人获取新的注册邀请码；加入空间的邀请码不能用于注册。"
+            : "空间邀请码无效、已过期或已使用。请向空间主人获取新的空间邀请码。",
+        );
       if (problem?.code === "MOVE_UNPUBLISHABLE_DEPENDENCY")
         throw new ApiError(
           400,

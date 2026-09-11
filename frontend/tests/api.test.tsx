@@ -3,6 +3,31 @@ import test from "node:test";
 import { api, ApiError } from "../lib/browser-api";
 import { allArticles, articles, PublicApiError } from "../lib/public-api";
 
+test("invitation rejection identifies registration or workspace codes without rendering server diagnostics", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json(
+      { code: "INVALID_INVITATION", detail: "private diagnostic" },
+      { status: 400 },
+    );
+  try {
+    for (const [path, subject] of [
+      ["/api/auth/register", "注册邀请码"],
+      ["/api/auth/invitations/accept", "空间邀请码"],
+    ]) {
+      await assert.rejects(
+        api(path),
+        (error) =>
+          error instanceof ApiError &&
+          error.message.startsWith(subject + "无效") &&
+          !error.message.includes("private diagnostic"),
+      );
+    }
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test("move dependency failures have an actionable message without exposing arbitrary problem details", async () => {
   const previous = globalThis.fetch;
   try {

@@ -104,12 +104,18 @@ export function Login({
     try {
       const login = String(form.get("login"));
       const password = String(form.get("password"));
+      const token = String(form.get("token") ?? "").trim();
+      if (mode === "register" && token.startsWith("invite_"))
+        throw new ApiError(
+          400,
+          "这是加入空间的邀请码。请先使用注册邀请码创建账号，登录后再到“账号与空间”加入空间。",
+        );
       if (mode === "register" && password !== String(form.get("confirmation")))
         throw new ApiError(400, "两次密码不一致，请重新确认。");
       if (mode === "register") {
         await api("/api/auth/register", {
           method: "POST",
-          body: { token: String(form.get("token")), login, password },
+          body: { token, login, password },
         });
         setCreatedLogin(login);
         setMode("login");
@@ -128,7 +134,9 @@ export function Login({
   }
   return (
     <section className="login-card">
-      <p className="eyebrow">欢迎回来</p>
+      <p className="eyebrow">
+        {mode === "login" ? "欢迎回来" : "开始记录与收藏"}
+      </p>
       <h1>{mode === "login" ? "登录 Poketto" : "创建账号"}</h1>
       <p className="muted">
         {mode === "login"

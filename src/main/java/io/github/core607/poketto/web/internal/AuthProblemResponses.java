@@ -18,6 +18,9 @@ class AuthProblemResponses {
                     case LAST_OWNER, ALREADY_INITIALIZED -> HttpStatus.CONFLICT;
                     case INVALID_INPUT, INVALID_INVITATION -> HttpStatus.BAD_REQUEST;
                 };
-        return ProblemDetail.forStatusAndDetail(status, "Authentication operation rejected: " + exception.code());
+        ProblemDetail problem =
+                ProblemDetail.forStatusAndDetail(status, "Authentication operation rejected: " + exception.code());
+        problem.setProperty("code", exception.code().name());
+        return problem;
     }
 }

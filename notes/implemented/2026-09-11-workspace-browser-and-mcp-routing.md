@@ -10,6 +10,8 @@ Browser administration selects a workspace through `/api/admin/workspaces/{works
 
 The account view connects existing private GitHub or CNB repositories through [managed connections](2026-09-11-managed-workspace-connections.md). A browser-tab draft retains only the request identifier, name, slug and repository URL. Provider tokens remain outside browser storage. A timed-out submission can query or retry the same durable request; invalid input can be corrected, and a completed request opens its recorded workspace. Accepting an invitation selects the returned workspace and displays a success receipt.
 
+Registration detects workspace invitation codes before submission and explains where to use them. Invalid or expired invitations receive a specific, locally defined message from the authentication problem code; arbitrary server diagnostics are never displayed as guidance.
+
 [OAuth consent](2026-09-11-mcp-oauth.md) loads account and request information without requiring default-space membership. The user selects one owned space before approving permissions. An account without an eligible space receives a create/join entrance and can refresh its choices without restarting an otherwise valid authorization request. Rejection requires no space. Approved connections permanently retain the selected workspace in their backing key; refresh cannot select another one.
 
 The `/mcp` resource remains shared. Both its authentication filter and SDK session identity resolve the workspace from the durable key row, including OAuth backing keys. Browser state and caller headers never select the machine workspace. A session is bound to both the key and its workspace; a different key cannot reuse it, even when held by the same account.

@@ -123,7 +123,7 @@ class BrowserSecurityIntegrationIT {
     @Test
     void registrationUsesSeparateInvitationsAndAccountIdentityWithoutMembership() throws Exception {
         String ownerPassword = secret();
-        auth.initializeOwner("registration-owner", ownerPassword);
+        var owner = auth.initializeOwner("registration-owner", ownerPassword);
         Csrf ownerSession = login("registration-owner", ownerPassword);
         mvc.perform(post("/api/auth/registration-invitations").session(ownerSession.session()))
                 .andExpect(status().isForbidden());
@@ -134,6 +134,14 @@ class BrowserSecurityIntegrationIT {
         String password = secret();
         Csrf guest = csrf(null);
         var registrationBody = Map.of("token", token, "login", "no-space-person", "password", password);
+        String workspaceToken =
+                auth.createInvitation(owner, workspaces.defaultWorkspace().id()).token();
+        mvc.perform(request(
+                        post("/api/auth/register"),
+                        guest,
+                        Map.of("token", workspaceToken, "login", "no-space-person", "password", password)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INVITATION"));
         mvc.perform(post("/api/auth/register")
                         .session(guest.session())
                         .contentType("application/json")

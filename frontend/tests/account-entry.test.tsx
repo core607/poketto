@@ -80,6 +80,37 @@ const account = {
 };
 const page = { items: [], total: 0, offset: 0, limit: 30 };
 
+test("a workspace invitation at registration explains the next step without submitting or clearing the form", async (t) => {
+  const f = await fixture(t);
+  globalThis.fetch = async () => {
+    assert.fail("The wrong invitation kind must not submit credentials");
+  };
+  await f.act(async () => f.root.render(<f.Login onLogin={async () => {}} />));
+  await f.act(async () => f.button("注册").click());
+  f.input("token", "  invite_workspace-fixture  ");
+  f.input("login", "new-member");
+  f.input("password", "fixture-password-long");
+  f.input("confirmation", "fixture-password-long");
+  await f.submit();
+  assert.match(
+    f.container.querySelector('[role="alert"]')!.textContent!,
+    /这是加入空间的邀请码/,
+  );
+  assert.match(
+    f.container.querySelector('[role="alert"]')!.textContent!,
+    /注册邀请码创建账号/,
+  );
+  assert.equal(
+    f.container.querySelector<HTMLInputElement>('input[name="login"]')!.value,
+    "new-member",
+  );
+  assert.equal(
+    f.container.querySelector<HTMLInputElement>('input[name="password"]')!
+      .value,
+    "fixture-password-long",
+  );
+});
+
 test("workspace connection retries reuse the request and never persist the provider token", async (t) => {
   const f = await fixture(t);
   const { CreateWorkspace } = await import("../components/create-workspace");
