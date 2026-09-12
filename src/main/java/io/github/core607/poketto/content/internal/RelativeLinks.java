@@ -17,14 +17,11 @@ final class RelativeLinks {
      * are repository-relative and already validated, so the walk is over path segments rather than
      * over the filesystem: nothing here consults local disk or its separator.
      *
-     * <p>A document at the repository root has no directory to link from. Both callers write into a
-     * subtree and cannot reach this, and it is refused rather than answered from the root, because
-     * an answer would be a link the reader cannot follow and nothing downstream would notice.
+     * <p>A document at the repository root links by the target's own path, because there is no
+     * directory to climb out of. That case is reached: a move repairs links in every Markdown file
+     * in the tree, root files included, not only in managed documents.
      */
     static String from(String document, String target) {
-        if (document.indexOf('/') < 0) {
-            throw new IllegalArgumentException("document must sit in a directory to link from: " + document);
-        }
         String[] source = document.split("/");
         String[] destination = target.split("/");
         int common = 0;
