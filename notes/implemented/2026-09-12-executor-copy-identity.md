@@ -4,13 +4,13 @@ Date: 2026-09-12
 
 ## Decision
 
-Every `repo_exec` request includes `expectedCopyId`. The literal `new` explicitly admits a fresh copy only when this MCP transport does not already own one. Other values must match the opaque UUID returned as `copyId` by an earlier command result. `poketto status` returns the same ID. The ID is separate from the pinned Git commit, worker lease and transport session.
+Every `repo_exec` request includes `expectedCopyId`. The literal `new` explicitly admits a fresh copy when this MCP transport has no live or unconfirmed copy. Other values must match the opaque UUID returned as `copyId` by an earlier command result. `poketto status` returns the same ID. The ID is separate from the pinned Git commit, worker lease and transport session.
 
 This is the admission guard in [executor work continuity](../proposed/2026-09-12-executor-work-continuity.md), not its durable-recovery implementation. It extends the [CodeAct entrance](2026-09-10-codeact-mcp-entrance.md). Existing expiry, cancellation and worker-loss behavior can still discard unsaved work. A normal nonzero exit returns the copy ID, so the caller can continue using that copy; it does not acknowledge a remote save or promise recovery after closure.
 
 ## Failure and authority boundaries
 
-The adapter checks identity before capacity admission and again after selecting or creating the copy. A mismatch never exports a replacement bundle or executes the rejected command. Explicit `new` cannot replace a live copy. It can retire a closed entry in the same transport only after the worker confirms lease release and the previous command relinquishes ownership. This creates a different copy; it does not recover unsaved work. Concurrent initial requests cannot both claim a newly admitted copy. A matching ID still requires current authorization, a live session and the existing command lock.
+The adapter checks identity before copy creation and again after selecting or creating the copy. A mismatch never exports a replacement bundle or executes the rejected command. Explicit `new` cannot replace a live copy. It can retire a closed entry in the same transport only after the worker confirms lease release and the previous command relinquishes ownership. This creates a different copy; it does not recover unsaved work. Concurrent initial requests cannot both claim a newly admitted copy. A matching ID still requires current authorization, a live session and the existing command lock.
 
 `SESSION_REPLACED` responses carry `executed: false`, `recoveryAvailable: false` and a bounded reason:
 
@@ -21,6 +21,8 @@ The adapter checks identity before capacity admission and again after selecting 
 The server resolves principal, workspace and MCP session before lookup. It never searches for or claims copies by principal and workspace alone. Two chats under one principal retain distinct copies. A returned available ID belongs only to the current transport and permitted scope; revoked access or public withdrawal prevents disclosure. IDs are not bearer credentials and do not grant recovery or access through another transport.
 
 Worker transport loss may leave an earlier operation indeterminate. Such failures retain their unavailable/unknown-outcome behavior; only a rejection known to precede execution reports `executed: false`. Clients must preserve the expected ID across reconnects and must not replay an uncertain write or treat `new` as an automatic retry policy. Omitted or malformed IDs are invalid input; there is no unguarded compatibility path.
+
+A stopped copy is reconciled before identity refusal, even when the session pool is not full. A valid HELLO from a different worker boot proves that exclusive startup cleanup ended old worker units; only leases observed before that handshake may be retired. The rejected old-ID request can then report `newCopyAllowed: true` after its previous command exits. Missing or invalid HELLO and same-boot unconfirmed CLOSE responses keep admission closed. Handshake checks share the bounded operation admission; they never execute the rejected command or recover its files.
 
 ## Observability
 
