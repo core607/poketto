@@ -222,7 +222,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                             commits.parseCommit(ObjectId.fromString(authorityCommit))
                                     .getTree())) {
                 if (entry != null) {
-                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) {
+                    if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
                         throw unavailable();
                     }
                     var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);

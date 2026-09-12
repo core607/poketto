@@ -11,7 +11,7 @@ Measured on `src/main` before this change:
 
 | Answer | Copies | Where |
 |---|---|---|
-| "is this tree entry a file" | 10, in 4 spellings | 7 files, twice as a private helper named `regular` |
+| "is this tree entry a file" | 15, in 5 spellings, under two different rules | 9 files, twice as a private helper named `regular` |
 | "is this path in the managed document area" | 2 | next to the constant already holding the prefix |
 | Strict UTF-8 decode | 5 identical blocks | `content`, plus one in `executor` |
 | Strict UTF-8 encode | 2 identical blocks | `content` |
@@ -30,11 +30,11 @@ Two of those copies had already drifted. The recursive delete in the repository 
 
 The repeated answers each get one owner, and the callers keep only what genuinely differs between them.
 
-- `RepositoryBlobs.isFile` answers whether a tree entry holds file bytes. The five sites that accept only `REGULAR_FILE` and refuse the executable bit are left exactly as they were. Whether that is deliberate is a question for the maintainer; unifying it would settle it silently.
+- `RepositoryBlobs` owns both file-mode questions, because there are two and they were being confused for one. `isFile` accepts the executable bit and is asked of anything an author may have written. `isPlainFile` refuses it and is asked by every reader of the media index, which this application writes itself with the mode forced to `REGULAR_FILE`. Naming both keeps the difference visible; collapsing them would have changed what a media index may be.
 - `DocumentPathRules.isManaged` answers whether a path is in the managed area, beside the prefix constant that was already there.
 - `StrictText` owns both directions of strict UTF-8. Each caller still translates the coding failure itself, because what undecodable bytes mean differs: invalid content, a closed publishing policy, or a media index not to be trusted at all. One inline copy stays, in `IsolatedRepositoryExecutor`, because the executor is its own application module and cannot import `content.internal`.
 - `LocalFileTrees.delete` owns recursive deletion, using the stricter of the two behaviors. Callers keep their own translation of the failure.
-- `RelativeLinks.from` owns the relative link, using the path-segment algorithm, which never consults the local filesystem or its separator.
+- `RelativeLinks.from` owns the relative link, using the path-segment algorithm, which never consults the local filesystem or its separator. A document at the repository root is refused rather than answered from the root: the replaced `java.nio.file.Path` version failed there with a `NullPointerException`, and a quiet answer would be a link the reader cannot follow.
 - `MarkdownNodes.next` owns the document-order walk. Each caller keeps its own node budget and its own message, because the budget belongs to what the caller is doing.
 - `StorageDirectories.requireContained` owns the directory isolation guard. Each walk keeps its own create step.
 - `DeferredDownload` owns the stream that holds response headers uncommitted until the store produces its first byte. Each route passes only the headers it sets.
@@ -65,7 +65,7 @@ A security guard written three times could be fixed in two of them. After this c
 
 `DocumentSearch` is public API in `content`. A future corpus that wants the same search semantics constructs one rather than copying six bounds.
 
-The five `REGULAR_FILE`-only checks are now the only remaining spelling of the file-mode question, which makes the inconsistency visible rather than buried among ten copies.
+The file-mode question has two named answers rather than five spellings of one. No inline mode check remains: the only surviving literal use of `FileMode.REGULAR_FILE` outside `RepositoryBlobs` is the patch service setting it when it writes the media index, which is what makes the stricter reader rule hold.
 
 ## Verification
 

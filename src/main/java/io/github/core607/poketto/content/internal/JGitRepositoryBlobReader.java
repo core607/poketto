@@ -91,7 +91,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                     if (entry == null) {
                         return new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of());
                     }
-                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) {
+                    if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
                         throw unavailable();
                     }
                     var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);

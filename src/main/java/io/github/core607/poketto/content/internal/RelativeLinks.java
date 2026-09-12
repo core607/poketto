@@ -16,8 +16,15 @@ final class RelativeLinks {
      * The percent-encoded path from the directory holding {@code document} to {@code target}. Both
      * are repository-relative and already validated, so the walk is over path segments rather than
      * over the filesystem: nothing here consults local disk or its separator.
+     *
+     * <p>A document at the repository root has no directory to link from. Both callers write into a
+     * subtree and cannot reach this, and it is refused rather than answered from the root, because
+     * an answer would be a link the reader cannot follow and nothing downstream would notice.
      */
     static String from(String document, String target) {
+        if (document.indexOf('/') < 0) {
+            throw new IllegalArgumentException("document must sit in a directory to link from: " + document);
+        }
         String[] source = document.split("/");
         String[] destination = target.split("/");
         int common = 0;

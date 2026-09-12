@@ -675,7 +675,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
         if (entry == null) {
             return RepositoryMediaIndex.empty();
         }
-        if (!FileMode.REGULAR_FILE.equals(entry.getFileMode())) {
+        if (!RepositoryBlobs.isPlainFile(entry.getFileMode())) {
             throw new IllegalArgumentException("repository media index must be a regular file");
         }
         ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);

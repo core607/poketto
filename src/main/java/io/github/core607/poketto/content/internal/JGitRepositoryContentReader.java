@@ -138,7 +138,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             if (entry == null) {
                 return RepositoryMediaIndex.empty();
             }
-            if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) {
+            if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
                 throw new ContentRepositoryException("repository media index is not a regular file");
             }
             ObjectLoader blob = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
