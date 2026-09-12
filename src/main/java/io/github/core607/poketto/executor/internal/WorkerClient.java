@@ -51,18 +51,8 @@ final class WorkerClient {
     Hello hello() {
         JsonNode response = exchange(new WorkerRequests.Hello(), Duration.ofSeconds(3));
         try {
-            require(response.path("ok").booleanValue()
-                    && response.path("version").intValue() == 1);
-            require(response.path("maxFrameBytes").intValue() == MAX_FRAME);
-            require(response.path("codeActProtocol").asInt(0) == 1);
-            require(response.path("artifactProtocol").asInt(0) == 1);
-            require(response.path("moveProtocol").asInt(0) == 1);
-            require(response.path("exportProtocol").asInt(0) == 1);
-            UUID boot = UUID.fromString(response.path("workerBootId").stringValue());
-            int lease = response.path("leaseSeconds").intValue();
-            int renew = response.path("renewAfterSeconds").intValue();
-            require(lease >= 10 && lease <= 3600 && renew >= 1 && renew <= lease / 3);
-            return new Hello(boot, lease, renew);
+            var handshake = WorkerResponses.read(response, WorkerResponses.Handshake.class);
+            return new Hello(handshake.bootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
         } catch (RuntimeException exception) {
             log.warn("Worker handshake rejected ({})", exception.getClass().getSimpleName());
             throw new WorkerUnavailableException(exception);

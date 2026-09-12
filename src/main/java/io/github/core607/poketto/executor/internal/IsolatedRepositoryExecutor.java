@@ -917,29 +917,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the selected files");
         }
         requireOk(manifest, session);
-        String captureId = manifest.path("captureId").asString("");
-        if (!UUID.fromString(captureId).toString().equals(captureId)) {
-            throw new WorkerUnavailableException();
-        }
+        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
+        String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         try {
-            JsonNode files = manifest.path("writes");
-            if (!files.isArray()
-                    || files.size() != writes.size()
-                    || !selectedPaths(manifest.path("deletes")).equals(deletes)) {
+            // The manifest is well formed by construction; these compare it against this request.
+            if (captured.writes().size() != writes.size() || !captured.deletes().equals(deletes)) {
                 throw new WorkerUnavailableException();
             }
             var result = new LinkedHashMap<String, String>();
-            long total = 0;
-            for (int index = 0; index < files.size(); index++) {
-                JsonNode file = files.get(index);
-                String path = file.path("path").asString("");
-                long size = file.path("bytes").asLong(-1);
-                total += size;
-                if (!path.equals(writes.get(index))
-                        || result.containsKey(path)
-                        || size < 0
-                        || total > 4 * 1024 * 1024) {
+            for (int index = 0; index < captured.writes().size(); index++) {
+                var file = captured.writes().get(index);
+                String path = file.path();
+                long size = file.bytes();
+                if (!path.equals(writes.get(index)) || result.containsKey(path)) {
                     throw new WorkerUnavailableException();
                 }
                 var bytes = new ByteArrayOutputStream((int) size);
@@ -952,12 +943,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             new WorkerRequests.CaptureRead(executionId, captureId, index, bytes.size(), limit),
                             Duration.ofSeconds(3));
                     requireOk(chunk, session);
-                    if (!captureId.equals(chunk.path("captureId").asString(""))
-                            || chunk.path("index").asInt(-1) != index
-                            || chunk.path("offset").asInt(-1) != bytes.size()) {
+                    var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
+                    if (!captureId.equals(page.captureId()) || page.index() != index || page.offset() != bytes.size()) {
                         throw new WorkerUnavailableException();
                     }
-                    byte[] block = Base64.getDecoder().decode(chunk.path("data").asString(""));
+                    byte[] block = page.decoded();
                     if (block.length != limit) {
                         throw new WorkerUnavailableException();
                     }
@@ -967,7 +957,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 try {
                     if (!HexFormat.of()
                             .formatHex(MessageDigest.getInstance("SHA-256").digest(content))
-                            .equals(file.path("sha256").asString(""))) {
+                            .equals(file.sha256())) {
                         throw new WorkerUnavailableException();
                     }
                     result.put(
