@@ -29,11 +29,11 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -1153,9 +1153,18 @@ class WorkerSocketTests {
 
         private void respond(SocketChannel connection) {
             try (connection;
-                    var input = new DataInputStream(Channels.newInputStream(connection));
+                    var input = Channels.newInputStream(connection);
                     var output = new DataOutputStream(Channels.newOutputStream(connection))) {
-                int length = input.readInt();
+                byte[] prefix = input.readNBytes(4);
+                if (prefix.length == 0) {
+                    // A client exchange closes its socket without writing when its deadline elapses
+                    // or its thread is interrupted, which executor shutdown does to renewals still
+                    // in flight, before this peer is closed. That connection carries no request and
+                    // nothing to answer. A prefix that arrives short is a truncated frame and fails.
+                    return;
+                }
+                assertThat(prefix).as("worker frame length prefix").hasSize(4);
+                int length = ByteBuffer.wrap(prefix).getInt();
                 assertThat(length).isBetween(1, WorkerClient.MAX_FRAME);
                 JsonNode envelope = json.readTree(input.readNBytes(length));
                 Object response;
