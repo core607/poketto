@@ -13,12 +13,16 @@ import io.github.core607.poketto.content.ContentExportException;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PortableContentExports;
+import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
+import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -51,6 +55,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -70,6 +75,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final Duration closeTimeout;
     private final Map<SessionKey, Session> sessions = new LinkedHashMap<>();
     private final Semaphore executions = new Semaphore(4);
+    private final LongAdder createdCopies = new LongAdder();
+    private final LongAdder releasedCopies = new LongAdder();
+    private final Map<String, LongAdder> rejected = Map.of(
+            "copy_mismatch", new LongAdder(),
+            "session_limit", new LongAdder(),
+            "operation_limit", new LongAdder(),
+            "session_busy", new LongAdder());
+
     private final ThreadPoolExecutor commandIo = new ThreadPoolExecutor(
             4,
             4,
@@ -115,11 +128,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             AuthPrincipal principal,
             WorkspaceId workspace,
             String serverSessionId,
+            String expectedCopyId,
             Optional<String> requestedCommit,
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
         var access = authorize(principal, workspace);
+        RepositoryExecutor.requireCopyId(expectedCopyId);
         if (serverSessionId == null
                 || serverSessionId.isBlank()
                 || serverSessionId.length() > 128
@@ -134,26 +149,32 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         .isPresent()) {
             throw new IllegalArgumentException("Invalid bounded execution request");
         }
-        if (cancellation.isCancelled() || !executions.tryAcquire()) {
+        SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
+        if (cancellation.isCancelled()) {
             throw new WorkerUnavailableException();
+        }
+        if (!executions.tryAcquire()) {
+            throw rejected("operation_limit");
         }
         Session session = null;
         boolean ownsCommand = false;
+        boolean createdCopy = false;
         try {
-            SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
-            recoverRestartedLeases(key);
+            recoverRestartedLeases(key, RepositoryExecutor.NEW_COPY.equals(expectedCopyId));
+            requireExpectedCopy(observedCopy(key, expectedCopyId), expectedCopyId, false);
             synchronized (this) {
                 if (closed) {
                     throw new WorkerUnavailableException();
                 }
                 session = sessions.get(key);
                 if (session == null) {
+                    requireExpectedCopy(null, expectedCopyId, false);
                     if (sessions.size() >= 1024
                             || sessions.values().stream()
                                             .filter(value -> !value.capacityReleased)
                                             .count()
                                     >= maxSessions) {
-                        throw new WorkerUnavailableException();
+                        throw rejected("session_limit");
                     }
                     boolean fullRead = access.capabilities().contains(Capability.READ_PRIVATE);
                     if (!fullRead && requestedCommit.isPresent()) {
@@ -162,10 +183,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     }
                     session = new Session(key, principal, fullRead);
                     sessions.put(key, session);
+                    createdCopies.increment();
+                    createdCopy = true;
                 }
             }
+            requireExpectedCopy(session, expectedCopyId, createdCopy);
             if (!session.busy.compareAndSet(false, true)) {
-                throw new WorkerUnavailableException();
+                throw rejected("session_busy");
             }
             ownsCommand = true;
             Session selected = session;
@@ -186,7 +210,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 JsonNode response = executeWithBridge(session, command, timeout);
                 requireOk(response, session);
                 authorize(session);
-                ExecutionResult result = result(response.path("result"), session.commit);
+                ExecutionResult result = result(response.path("result"), session.copyId.toString(), session.commit);
                 String state = response.path("state").asString("");
                 if (state.equals("CLOSING")
                         || state.equals("CLOSED")
@@ -242,13 +266,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (session == null) {
             return Optional.empty();
         }
-        if (cancellation.isCancelled() || !executions.tryAcquire()) {
+        if (cancellation.isCancelled()) {
             throw new WorkerUnavailableException();
+        }
+        if (!executions.tryAcquire()) {
+            throw rejected("operation_limit");
         }
         boolean ownsRead = false;
         try {
             if (!session.busy.compareAndSet(false, true)) {
-                throw new WorkerUnavailableException();
+                throw rejected("session_busy");
             }
             ownsRead = true;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
@@ -312,20 +339,87 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return WorkerResponses.read(value, ArtifactMetadata.class);
     }
 
-    private void recoverRestartedLeases(SessionKey requested) {
+    private synchronized Session observedCopy(SessionKey key, String expectedCopyId) {
+        Session observed = sessions.get(key);
+        if (RepositoryExecutor.NEW_COPY.equals(expectedCopyId) && replaceable(observed)) {
+            sessions.remove(key, observed);
+            return null;
+        }
+        return observed;
+    }
+
+    private void requireExpectedCopy(Session session, String expected, boolean createdHere) {
+        boolean fresh = RepositoryExecutor.NEW_COPY.equals(expected);
+        boolean mismatch = session == null
+                ? !fresh
+                : session.stopping.get()
+                        || (fresh ? !createdHere : !session.copyId.toString().equals(expected));
+        if (!mismatch) {
+            return;
+        }
+        if (session != null) {
+            authorize(session);
+        }
+        rejected.get("copy_mismatch").increment();
+        boolean closedCopy = session != null && session.stopping.get();
+        throw new SessionReplacedException(
+                session == null
+                        ? SessionReplacedException.Reason.MISSING_COPY
+                        : closedCopy
+                                ? SessionReplacedException.Reason.CLOSED_COPY
+                                : SessionReplacedException.Reason.DIFFERENT_COPY,
+                session == null || closedCopy ? Optional.empty() : Optional.of(session.copyId.toString()),
+                session == null || (closedCopy && replaceable(session)));
+    }
+
+    private static boolean replaceable(Session session) {
+        return session != null && session.stopping.get() && session.capacityReleased && !session.busy.get();
+    }
+
+    private WorkerUnavailableException rejected(String reason) {
+        rejected.get(reason).increment();
+        return new WorkerUnavailableException();
+    }
+
+    void bindMetrics(MeterRegistry registry) {
+        registry.gauge("poketto.executor.sessions.active", this, IsolatedRepositoryExecutor::activeSessions);
+        registry.gauge("poketto.executor.operations.active", this, value -> 4 - value.executions.availablePermits());
+        FunctionCounter.builder("poketto.executor.sessions.created", createdCopies, LongAdder::doubleValue)
+                .register(registry);
+        FunctionCounter.builder("poketto.executor.sessions.released", releasedCopies, LongAdder::doubleValue)
+                .register(registry);
+        rejected.forEach((reason, counter) -> FunctionCounter.builder(
+                        "poketto.executor.admission.rejected", counter, LongAdder::doubleValue)
+                .tag("reason", reason)
+                .register(registry));
+    }
+
+    private synchronized double activeSessions() {
+        return sessions.values().stream()
+                .filter(value -> !value.capacityReleased)
+                .count();
+    }
+
+    private void recoverRestartedLeases(SessionKey requested, boolean fresh) {
         List<Session> candidates;
         synchronized (this) {
-            if (closed
-                    || sessions.containsKey(requested)
-                    || sessions.values().stream()
-                                    .filter(value -> !value.capacityReleased)
-                                    .count()
-                            < maxSessions) {
+            if (closed) {
                 return;
             }
-            candidates = sessions.values().stream()
-                    .filter(value -> !value.capacityReleased && value.openAttempted)
-                    .toList();
+            Session existing = sessions.get(requested);
+            if (existing != null) {
+                if (!existing.stopping.get() || existing.capacityReleased || !existing.openAttempted) {
+                    return;
+                }
+                candidates = List.of(existing);
+            } else {
+                if (!fresh || activeSessions() < maxSessions) {
+                    return;
+                }
+                candidates = sessions.values().stream()
+                        .filter(value -> !value.capacityReleased && value.openAttempted)
+                        .toList();
+            }
         }
         if (candidates.isEmpty()) {
             return;
@@ -609,7 +703,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
             return artifactCommand(session, executionId, operation, arguments);
         }
-        if (operation.equals("media_fetch") || operation.equals("media_import") || operation.equals("media_list")) {
+        if (operation.equals("media_fetch")
+                || operation.equals("media_import")
+                || operation.equals("media_link")
+                || operation.equals("media_list")) {
             return mediaCommand(session, executionId, operation, arguments);
         }
         if (operation.equals("save")
@@ -624,6 +721,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     /** Where this session's writes stand, as the agent needs to see them before deciding what to do. */
     private static BridgeReplies.Reply status(Session session) {
         return BridgeReplies.succeeded(new BridgeReplies.Status(
+                session.copyId.toString(),
                 session.fullRead ? "full" : "public",
                 session.saveState.baseCommit,
                 session.saveState.uncertain
@@ -687,11 +785,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         try {
             return switch (operation) {
                 case "media_list" -> listMedia(session, executionId, arguments);
+                case "media_link" -> linkMedia(session, executionId, arguments);
                 case "media_fetch" -> fetchMedia(session, executionId, arguments);
                 default -> importMedia(session, executionId, arguments);
             };
         } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failed("INVALID_MEDIA_REQUEST");
+            return BridgeReplies.failedBecause("INVALID_MEDIA_REQUEST", InvalidSelectionException.reason(invalid));
         } catch (AuthException denied) {
             return BridgeReplies.failed("ACCESS_DENIED");
         } catch (AssetStorageException unavailable) {
@@ -735,7 +834,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 default -> saveCommand(session, executionId, arguments);
             };
         } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failed("INVALID_SELECTION");
+            return BridgeReplies.failedBecause("INVALID_SELECTION", InvalidSelectionException.reason(invalid));
         } catch (AuthException denied) {
             return BridgeReplies.failed("ACCESS_DENIED");
         } catch (ContentRepositoryException unavailable) {
@@ -788,7 +887,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the selected file");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
         List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
@@ -924,7 +1023,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private Map<String, String> readCapture(
             Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the selected files");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
         var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
@@ -1115,7 +1214,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the media index");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
         List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
@@ -1137,35 +1236,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         String file = selected.file(), path = selected.path();
         String mediaType = selected.mediaType(), key = selected.key();
         boolean replace = selected.replace();
-        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
-        if (source.isEmpty()
-                && !saves.baselineFile(
-                                session.principal,
-                                session.key.workspace(),
-                                session.saveState,
-                                RepositoryMediaIndex.PATH)
-                        .expectedAbsence()) {
-            return BridgeReplies.failed(
-                    "INDEX_MISSING", "Restore or intentionally recreate the local media index before importing.");
+        LocalMediaIndex local = localMediaIndex(session, executionId);
+        if (local == null) {
+            return missingMediaIndex();
         }
-        var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                .orElseGet(RepositoryMediaIndex::empty);
-        var entries = new LinkedHashMap<>(index.files());
-        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
-        new RepositoryMediaIndex(entries); // Validate the complete logical namespace before uploading.
-        var existingGit = saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
-        if (!existingGit.expectedAbsence()
-                && existingGit.diagnostics().stream()
-                        .noneMatch(value -> value.code().equals("MANAGED_MEDIA"))) {
+        RepositoryMediaIndex index = local.index();
+        if (!availableMediaPath(session, local, path, mediaType)) {
             return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
         }
         JsonNode manifest = requestLive(
                 session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the imported file");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
+        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
         String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         ManagedAsset asset;
@@ -1216,6 +1301,74 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         cleanupFailure);
             }
         }
+        return indexMedia(session, executionId, path, asset, local, replace);
+    }
+
+    private BridgeReplies.Reply linkMedia(Session session, String executionId, JsonNode arguments) {
+        if (!session.fullRead) {
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
+        }
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        BridgeArguments.MediaLink selected = BridgeArguments.mediaLink(arguments);
+        LocalMediaIndex local = localMediaIndex(session, executionId);
+        if (local == null) {
+            return missingMediaIndex();
+        }
+        ManagedAsset asset = media.describeOriginal(session.principal, session.key.workspace(), selected.reference());
+        if (!availableMediaPath(session, local, selected.path(), asset.mediaType())) {
+            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
+        }
+        return indexMedia(session, executionId, selected.path(), asset, local, selected.replace());
+    }
+
+    private record LocalMediaIndex(Optional<String> source, RepositoryMediaIndex index) {}
+
+    private LocalMediaIndex localMediaIndex(Session session, String executionId) {
+        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
+        if (source.isEmpty()
+                && !saves.baselineFile(
+                                session.principal,
+                                session.key.workspace(),
+                                session.saveState,
+                                RepositoryMediaIndex.PATH)
+                        .expectedAbsence()) {
+            return null;
+        }
+        return new LocalMediaIndex(
+                source,
+                source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+                        .orElseGet(RepositoryMediaIndex::empty));
+    }
+
+    private static BridgeReplies.Reply missingMediaIndex() {
+        return BridgeReplies.failed(
+                "INDEX_MISSING",
+                "Restore or intentionally recreate the local media index before importing or linking.");
+    }
+
+    private boolean availableMediaPath(Session session, LocalMediaIndex local, String path, String mediaType) {
+        var entries = new LinkedHashMap<>(local.index().files());
+        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
+        new RepositoryMediaIndex(
+                entries); // Validate the entire logical namespace before changing originals or the index.
+        RepositoryFile existingGit =
+                saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
+        return existingGit.expectedAbsence()
+                || existingGit.diagnostics().stream()
+                        .anyMatch(value -> value.code().equals("MANAGED_MEDIA"));
+    }
+
+    private BridgeReplies.Reply indexMedia(
+            Session session,
+            String executionId,
+            String path,
+            ManagedAsset asset,
+            LocalMediaIndex local,
+            boolean replace) {
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        Optional<String> source = local.source();
+        RepositoryMediaIndex index = local.index();
+        var entries = new LinkedHashMap<>(index.files());
         session.lastImport = importReceipt(path, asset, false);
         var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
@@ -1245,7 +1398,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failedWith(
                     "MATERIALIZE_CAPACITY",
                     session.lastImport,
-                    "Original stored; local index was not updated. Free session space and retry the same bytes, type and key.");
+                    "Original stored; local index was not updated. Free session space and retry the same import or link.");
         }
         session.lastImport = importReceipt(path, asset, true);
         return BridgeReplies.succeeded(session.lastImport);
@@ -1465,6 +1618,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
      * the stopping session instead of opening a second lease beside it.
      */
     private synchronized void releaseCapacity(Session session) {
+        if (!session.capacityReleased) {
+            releasedCopies.increment();
+        }
         session.capacityReleased = true;
         if (session.detached) {
             sessions.remove(session.key, session);
@@ -1612,7 +1768,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private static ExecutionResult result(JsonNode result, String commit) {
+    private static ExecutionResult result(JsonNode result, String copyId, String commit) {
         try {
             var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
             // The commit is an echo of what this session pinned, so it is compared here.
@@ -1644,6 +1800,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 artifactErrors.put(entry.getKey(), entry.getValue().stringValue());
             }
             return new ExecutionResult(
+                    copyId,
                     commit,
                     finished.exitCode(),
                     finished.stdout(),
@@ -1729,6 +1886,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
      * </ul>
      */
     private static final class Session {
+        private final UUID copyId = UUID.randomUUID();
         private final SessionKey key;
         private final AuthPrincipal principal;
         private final boolean fullRead;

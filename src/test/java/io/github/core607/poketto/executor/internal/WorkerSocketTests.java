@@ -17,6 +17,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
@@ -28,7 +29,9 @@ import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
+import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
@@ -70,16 +73,182 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Real Unix sockets and Ed25519 frames test the adapter; this peer does not claim sandbox isolation. */
 class WorkerSocketTests {
+    private final RememberingExecutorClient client = new RememberingExecutorClient();
     private static final String COMMIT = "a".repeat(40);
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
-    void overlappingCallsCannotShareOneSessionSaveState() throws Exception {
+    void idleReconnectAtTheSameCommitRequiresExplicitAdmissionAndNeverRunsTheRejectedCommand() throws Exception {
+        var principal = principal();
+        var exports = exports();
+        var meters = new SimpleMeterRegistry();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports, peer)) {
+            executor.bindMetrics(meters);
+            var first = executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "before-idle",
+                    "new",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            executor.closed(new McpSessionClosed(
+                    WORKSPACE, principal.subjectId(), "before-idle", McpSessionClosed.Reason.IDLE_EXPIRY));
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "after-idle",
+                            first.copyId(),
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            SessionReplacedException.class,
+                            failure -> assertThat(failure.currentCopyId()).isEmpty());
+            assertThat(peer.operations("EXEC")).hasSize(1);
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            verify(exports, times(1)).create(any(), any(), any());
+            var second = executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "after-idle",
+                    "new",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(second.commit()).isEqualTo(first.commit());
+            assertThat(second.copyId()).isNotEqualTo(first.copyId());
+            for (String expected : List.of(first.copyId(), "new")) {
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "after-idle",
+                                expected,
+                                Optional.empty(),
+                                "write-sentinel",
+                                Duration.ofSeconds(2),
+                                new Cancellation()))
+                        .isInstanceOfSatisfying(
+                                SessionReplacedException.class,
+                                failure -> assertThat(failure.currentCopyId()).contains(second.copyId()));
+            }
+            assertThat(peer.operations("EXEC")).hasSize(2);
+            assertThat(peer.operations("OPEN")).hasSize(2);
+            assertThat(meters.get("poketto.executor.sessions.created")
+                            .functionCounter()
+                            .count())
+                    .isEqualTo(2);
+            assertThat(meters.get("poketto.executor.sessions.released")
+                            .functionCounter()
+                            .count())
+                    .isEqualTo(1);
+            assertThat(meters.get("poketto.executor.sessions.active").gauge().value())
+                    .isEqualTo(1);
+            assertThat(meters.get("poketto.executor.operations.active").gauge().value())
+                    .isZero();
+            assertThat(meters.get("poketto.executor.admission.rejected")
+                            .tag("reason", "copy_mismatch")
+                            .functionCounter()
+                            .count())
+                    .isEqualTo(3);
+            assertThat(meters.getMeters())
+                    .allSatisfy(meter -> assertThat(meter.getId().getTags())
+                            .allSatisfy(tag -> assertThat(tag.getKey()).isEqualTo("reason")));
+        } finally {
+            meters.close();
+        }
+    }
+
+    @Test
+    void parallelChatsDoNotShareCopiesAndForeignIdentitiesCannotDiscoverTheAvailableId() throws Exception {
+        var principal = principal();
+        var auth = fullAuth();
+        try (var peer = new Peer();
+                var executor = executor(auth, exports(), peer)) {
+            var left = executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "left",
+                    "new",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            var right = executor.execute(
+                    principal,
+                    WORKSPACE,
+                    "right",
+                    "new",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(left.copyId()).isNotEqualTo(right.copyId());
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "right",
+                            left.copyId(),
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            SessionReplacedException.class,
+                            failure -> assertThat(failure.currentCopyId()).contains(right.copyId()));
+            assertThatThrownBy(() -> executor.execute(
+                            principal(),
+                            WORKSPACE,
+                            "right",
+                            right.copyId(),
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            SessionReplacedException.class,
+                            failure -> assertThat(failure.currentCopyId()).isEmpty());
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WorkspaceId.random(),
+                            "right",
+                            right.copyId(),
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            SessionReplacedException.class,
+                            failure -> assertThat(failure.currentCopyId()).isEmpty());
+            when(auth.authorize(principal, WORKSPACE, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY))
+                    .thenThrow(new AuthException(AuthException.Code.DENIED));
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "right",
+                            left.copyId(),
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOf(AuthException.class);
+            assertThat(peer.operations("EXEC")).hasSize(2);
+            assertThat(peer.operations("OPEN")).hasSize(2);
+        }
+    }
+
+    @Test
+    void overlappingInitialCallsCannotClaimOneUnacknowledgedCopy() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
             peer.stallExec = true;
-            var first = CompletableFuture.supplyAsync(() -> executor.execute(
+            var first = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "shared",
@@ -88,7 +257,8 @@ class WorkerSocketTests {
                     Duration.ofSeconds(2),
                     new Cancellation()));
             assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "shared",
@@ -96,7 +266,7 @@ class WorkerSocketTests {
                             "poketto save note.md",
                             Duration.ofSeconds(2),
                             new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOf(SessionReplacedException.class);
             assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
             assertThat(peer.operations("EXEC")).hasSize(1);
         }
@@ -108,7 +278,8 @@ class WorkerSocketTests {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports, peer)) {
             peer.codeActProtocol = 0;
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal(),
                             WORKSPACE,
                             "unsupported",
@@ -151,7 +322,8 @@ class WorkerSocketTests {
                         8,
                         Duration.ofSeconds(8),
                         Duration.ofSeconds(3))) {
-            executor.execute(
+            client.execute(
+                    executor,
                     actor,
                     WORKSPACE,
                     "package-client",
@@ -187,7 +359,8 @@ class WorkerSocketTests {
         try (var peer = new Peer();
                 var executor = executor(auth, exports, peer)) {
             var principal = principal();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "historical",
@@ -197,7 +370,8 @@ class WorkerSocketTests {
                             new Cancellation()))
                     .isInstanceOf(IllegalArgumentException.class);
             assertThat(peer.requests).isEmpty();
-            var result = executor.execute(
+            var result = client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "public",
@@ -212,8 +386,15 @@ class WorkerSocketTests {
                             call.getArgument(0),
                             MembershipRole.OWNER,
                             Set.of(Capability.EXECUTE_REPOSITORY, Capability.READ_PRIVATE)));
-            executor.execute(
-                    principal, WORKSPACE, "public", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
+            client.execute(
+                    executor,
+                    principal,
+                    WORKSPACE,
+                    "public",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
             verify(exports, never()).create(any(), any(), any());
             verify(exports, times(1)).createPublic(principal, WORKSPACE);
             verify(exports, atLeast(3)).requireCurrentPublic(principal, WORKSPACE, projection);
@@ -247,7 +428,8 @@ class WorkerSocketTests {
                     })
                     .when(exports)
                     .requireCurrentPublic(any(), any(), any());
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal(),
                             WORKSPACE,
                             "public",
@@ -284,7 +466,8 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = executor(auth, exports, peer)) {
-            var first = executor.execute(
+            var first = client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "client-one",
@@ -294,7 +477,8 @@ class WorkerSocketTests {
                     new Cancellation());
             assertThat(first.commit()).isEqualTo(COMMIT);
             assertThat(first.stdout()).isEqualTo("fixture result");
-            executor.execute(
+            client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "client-one",
@@ -302,7 +486,8 @@ class WorkerSocketTests {
                     "git status",
                     Duration.ofSeconds(1),
                     new Cancellation());
-            executor.execute(
+            client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "client-two",
@@ -318,7 +503,8 @@ class WorkerSocketTests {
                     .hasSize(2);
             assertThat(peer.operations("EXEC").get(0).path("leaseId"))
                     .isEqualTo(peer.operations("EXEC").get(1).path("leaseId"));
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "client-one",
@@ -344,7 +530,8 @@ class WorkerSocketTests {
             peer.blockOpen = true;
             peer.closeNeedsPolling = true;
             var cancellation = new Cancellation();
-            var run = CompletableFuture.runAsync(() -> executor.execute(
+            var run = CompletableFuture.runAsync(() -> client.execute(
+                    executor,
                     principal(),
                     WORKSPACE,
                     "opening",
@@ -370,7 +557,8 @@ class WorkerSocketTests {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
             peer.dropExec = true;
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "lost",
@@ -385,11 +573,12 @@ class WorkerSocketTests {
                             principal,
                             WORKSPACE,
                             "lost",
+                            UUID.randomUUID().toString(),
                             Optional.empty(),
                             "touch local.txt",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOf(SessionReplacedException.class);
             assertThat(peer.operations("EXEC")).hasSize(1);
         }
     }
@@ -399,7 +588,8 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
-            executor.execute(
+            client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "revoked",
@@ -414,7 +604,8 @@ class WorkerSocketTests {
             assertThat(revoked.path("data").path("keyIds").get(0).stringValue())
                     .isEqualTo(principal.subjectId().toString());
             assertThat(peer.operations("CLOSE")).isNotEmpty();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "revoked",
@@ -422,7 +613,7 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOf(SessionReplacedException.class);
             executor.revoked(new AuthRevocation(WORKSPACE, Set.of(UUID.randomUUID()), Set.of()));
             assertThat(peer.operations("REVOKE")).hasSize(2);
         }
@@ -436,7 +627,8 @@ class WorkerSocketTests {
                 var executor = executor(auth, exports(), peer)) {
             var cancelled = new Cancellation();
             cancelled.cancel();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "cancelled",
@@ -448,7 +640,8 @@ class WorkerSocketTests {
             doThrow(new SecurityException("denied"))
                     .when(auth)
                     .authorize(principal, WORKSPACE, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "denied",
@@ -498,8 +691,15 @@ class WorkerSocketTests {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports, peer)) {
             var cancellation = new Cancellation();
-            var run = CompletableFuture.runAsync(() -> executor.execute(
-                    principal(), WORKSPACE, "exporting", Optional.empty(), "pwd", Duration.ofSeconds(1), cancellation));
+            var run = CompletableFuture.runAsync(() -> client.execute(
+                    executor,
+                    principal(),
+                    WORKSPACE,
+                    "exporting",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    cancellation));
             try {
                 assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
                 cancellation.cancel();
@@ -547,13 +747,56 @@ class WorkerSocketTests {
     }
 
     @Test
+    void releasedLeaseCannotBeReplacedWhileItsCommandStillOwnsTheAdapter() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.holdExecReply = true;
+            peer.terminationReason = "cancelled";
+            var cancellation = new Cancellation();
+            var running = CompletableFuture.supplyAsync(() -> executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "still-owned",
+                    "new",
+                    Optional.empty(),
+                    "sleep 10",
+                    Duration.ofSeconds(2),
+                    cancellation));
+            try {
+                assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+                cancellation.cancel();
+                assertThatThrownBy(() -> executor.execute(
+                                actor,
+                                WORKSPACE,
+                                "still-owned",
+                                "new",
+                                Optional.empty(),
+                                "write-sentinel",
+                                Duration.ofSeconds(2),
+                                new Cancellation()))
+                        .isInstanceOfSatisfying(
+                                SessionReplacedException.class,
+                                failure -> assertThat(failure.newCopyAllowed()).isFalse());
+                assertThat(peer.operations("OPEN")).hasSize(1);
+                assertThat(peer.operations("EXEC")).hasSize(1);
+            } finally {
+                peer.execReplyRelease.countDown();
+            }
+            assertThat(running.get(5, TimeUnit.SECONDS).terminationReason())
+                    .isEqualTo(RepositoryExecutor.TerminationReason.CANCELLED);
+        }
+    }
+
+    @Test
     void closedBridgeDoesNotReplaceTheConfirmedCancelledCommandResult() throws Exception {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
             peer.stallExec = true;
             peer.terminationReason = "cancelled";
             var cancellation = new Cancellation();
-            var running = CompletableFuture.supplyAsync(() -> executor.execute(
+            var running = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
                     principal(),
                     WORKSPACE,
                     "cancel-bridge",
@@ -575,7 +818,8 @@ class WorkerSocketTests {
                 var executor = executor(fullAuth(), exports(), peer)) {
             for (String reason : List.of("session_closed", "client_shutdown", "lease_expired", "sandbox_failed")) {
                 peer.terminationReason = reason;
-                var result = executor.execute(
+                var result = client.execute(
+                        executor,
                         principal(),
                         WORKSPACE,
                         reason,
@@ -594,7 +838,7 @@ class WorkerSocketTests {
     }
 
     @Test
-    void confirmedCloseReleasesAdmissionButOldSessionCannotReopenWithoutDelete() throws Exception {
+    void confirmedCloseReleasesAdmissionButOldCopyIdCannotReopen() throws Exception {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
@@ -608,7 +852,8 @@ class WorkerSocketTests {
                         Duration.ofSeconds(3),
                         Duration.ofSeconds(1))) {
             peer.terminationReason = "cancelled";
-            executor.execute(
+            client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "closed-A",
@@ -617,17 +862,31 @@ class WorkerSocketTests {
                     Duration.ofSeconds(1),
                     new Cancellation());
             peer.terminationReason = "normal";
+            assertThatThrownBy(() -> client.execute(
+                            executor,
+                            principal,
+                            WORKSPACE,
+                            "closed-A",
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            SessionReplacedException.class,
+                            failure -> assertThat(failure.newCopyAllowed()).isTrue());
             assertThat(executor.execute(
                                     principal,
                                     WORKSPACE,
-                                    "fresh-B",
+                                    "closed-A",
+                                    "new",
                                     Optional.empty(),
                                     "pwd",
                                     Duration.ofSeconds(1),
                                     new Cancellation())
                             .exitCode())
                     .isZero();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "closed-A",
@@ -635,7 +894,10 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOfSatisfying(SessionReplacedException.class, failure -> {
+                        assertThat(failure.reason()).isEqualTo(SessionReplacedException.Reason.DIFFERENT_COPY);
+                        assertThat(failure.newCopyAllowed()).isFalse();
+                    });
             assertThat(peer.operations("OPEN")).hasSize(2);
         }
     }
@@ -657,7 +919,8 @@ class WorkerSocketTests {
                         1,
                         Duration.ofSeconds(3),
                         Duration.ofSeconds(1))) {
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal(),
                             WORKSPACE,
                             "failed-A",
@@ -666,7 +929,8 @@ class WorkerSocketTests {
                             Duration.ofSeconds(1),
                             new Cancellation()))
                     .isInstanceOf(IllegalStateException.class);
-            assertThat(executor.execute(
+            assertThat(client.execute(
+                                    executor,
                                     principal(),
                                     WORKSPACE,
                                     "fresh-B",
@@ -694,7 +958,8 @@ class WorkerSocketTests {
                         1,
                         Duration.ofSeconds(3),
                         Duration.ofMillis(100))) {
-            executor.execute(
+            client.execute(
+                    executor,
                     principal,
                     WORKSPACE,
                     "closing-A",
@@ -706,7 +971,8 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.closed(new McpSessionClosed(
                             WORKSPACE, principal.subjectId(), "closing-A", McpSessionClosed.Reason.CLIENT_DELETE)))
                     .isInstanceOf(WorkerUnavailableException.class);
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "fresh-B",
@@ -735,7 +1001,8 @@ class WorkerSocketTests {
                         Duration.ofMillis(100))) {
             peer.terminationReason = "cancelled";
             peer.dropClose = true;
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "unknown-A",
@@ -744,10 +1011,25 @@ class WorkerSocketTests {
                             Duration.ofSeconds(1),
                             new Cancellation()))
                     .isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            WORKSPACE,
+                            "unknown-A",
+                            "new",
+                            Optional.empty(),
+                            "write-sentinel",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            SessionReplacedException.class,
+                            failure -> assertThat(failure.newCopyAllowed()).isFalse());
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(peer.operations("EXEC")).hasSize(1);
             assertThatThrownBy(() -> executor.closed(new McpSessionClosed(
                             WORKSPACE, principal.subjectId(), "unknown-A", McpSessionClosed.Reason.CLIENT_DELETE)))
                     .isInstanceOf(WorkerUnavailableException.class);
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "fresh-B",
@@ -777,7 +1059,8 @@ class WorkerSocketTests {
                         Duration.ofMillis(100))) {
             peer.dropClose = true;
             peer.terminationReason = "cancelled";
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "detached-A",
@@ -800,7 +1083,8 @@ class WorkerSocketTests {
             assertThat(peer.operations("CLOSE").size()).isGreaterThanOrEqualTo(firstCloses + 2);
             assertThat(peer.states.values()).contains("CLOSED");
             verifyNoInteractions(auth);
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "fresh-B",
@@ -816,7 +1100,8 @@ class WorkerSocketTests {
             boolean admitted = false;
             while (System.nanoTime() < deadline) {
                 try {
-                    executor.execute(
+                    client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "fresh-B",
@@ -855,7 +1140,8 @@ class WorkerSocketTests {
                 peer.dropClose = lostReply;
                 peer.closeForever = !lostReply;
                 peer.terminationReason = "cancelled";
-                assertThatThrownBy(() -> executor.execute(
+                assertThatThrownBy(() -> client.execute(
+                                executor,
                                 principal,
                                 WORKSPACE,
                                 "old-A",
@@ -865,7 +1151,8 @@ class WorkerSocketTests {
                                 new Cancellation()))
                         .isInstanceOf(WorkerUnavailableException.class);
                 int initialCloses = peer.operations("CLOSE").size();
-                assertThatThrownBy(() -> executor.execute(
+                assertThatThrownBy(() -> client.execute(
+                                executor,
                                 principal,
                                 WORKSPACE,
                                 "new-B",
@@ -881,7 +1168,8 @@ class WorkerSocketTests {
                 boolean recovered = false;
                 while (System.nanoTime() < deadline) {
                     try {
-                        assertThat(executor.execute(
+                        assertThat(client.execute(
+                                                executor,
                                                 principal,
                                                 WORKSPACE,
                                                 "new-B",
@@ -906,13 +1194,116 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "old-A",
+                                UUID.randomUUID().toString(),
                                 Optional.empty(),
                                 "pwd",
                                 Duration.ofSeconds(1),
                                 new Cancellation()))
-                        .isInstanceOf(WorkerUnavailableException.class);
+                        .isInstanceOf(SessionReplacedException.class);
                 assertThat(peer.operations("OPEN")).hasSize(2);
                 assertThat(peer.operations("EXEC")).hasSize(2);
+            }
+        }
+    }
+
+    @Test
+    void sameTransportCanExplicitlyReplaceRestartedCopyAfterVerifiedHelloAtAnyCapacity() throws Exception {
+        for (int capacity : List.of(1, 4)) {
+            var principal = principal();
+            try (var peer = new Peer();
+                    var executor = new IsolatedRepositoryExecutor(
+                            mock(PortableContentExports.class),
+                            mock(MediaFileService.class),
+                            mock(SelectedFileSaves.class),
+                            fullAuth(),
+                            exports(),
+                            peer.client(),
+                            capacity,
+                            Duration.ofSeconds(3),
+                            Duration.ofMillis(100))) {
+                var old = executor.execute(
+                        principal,
+                        WORKSPACE,
+                        "same",
+                        "new",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(1),
+                        new Cancellation());
+                peer.boot = UUID.randomUUID();
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "same",
+                                old.copyId(),
+                                Optional.empty(),
+                                "pwd",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOfAny(WorkerUnavailableException.class, SessionReplacedException.class);
+                int executionsBeforeRecovery = peer.operations("EXEC").size();
+                peer.dropHello = true;
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "same",
+                                "new",
+                                Optional.empty(),
+                                "sentinel",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOf(WorkerUnavailableException.class);
+                peer.dropHello = false;
+                peer.codeActProtocol = 999;
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "same",
+                                "new",
+                                Optional.empty(),
+                                "sentinel",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOf(WorkerUnavailableException.class);
+                assertThat(peer.operations("OPEN")).hasSize(1);
+                assertThat(peer.operations("EXEC")).hasSize(executionsBeforeRecovery);
+                peer.codeActProtocol = 1;
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "same",
+                                old.copyId(),
+                                Optional.empty(),
+                                "sentinel",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOfSatisfying(
+                                SessionReplacedException.class,
+                                failure -> assertThat(failure.newCopyAllowed()).isTrue());
+
+                var fresh = executor.execute(
+                        principal,
+                        WORKSPACE,
+                        "same",
+                        "new",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(1),
+                        new Cancellation());
+                assertThat(fresh.copyId()).isNotEqualTo(old.copyId());
+                assertThat(fresh.commit()).isEqualTo(old.commit());
+                assertThatThrownBy(() -> executor.execute(
+                                principal,
+                                WORKSPACE,
+                                "same",
+                                old.copyId(),
+                                Optional.empty(),
+                                "sentinel",
+                                Duration.ofSeconds(1),
+                                new Cancellation()))
+                        .isInstanceOf(SessionReplacedException.class);
+                assertThat(peer.operations("OPEN")).hasSize(2);
+                assertThat(peer.operations("EXEC")).hasSize(executionsBeforeRecovery + 1);
             }
         }
     }
@@ -931,10 +1322,18 @@ class WorkerSocketTests {
                         1,
                         Duration.ofSeconds(3),
                         Duration.ofMillis(100))) {
-            executor.execute(
-                    principal, WORKSPACE, "old-A", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
+            client.execute(
+                    executor,
+                    principal,
+                    WORKSPACE,
+                    "old-A",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
             peer.boot = UUID.randomUUID();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "old-A",
@@ -944,7 +1343,8 @@ class WorkerSocketTests {
                             new Cancellation()))
                     .isInstanceOf(WorkerUnavailableException.class);
             peer.dropHello = true;
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "new-B",
@@ -955,7 +1355,8 @@ class WorkerSocketTests {
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(peer.operations("OPEN")).hasSize(1);
             peer.dropHello = false;
-            assertThat(executor.execute(
+            assertThat(client.execute(
+                                    executor,
                                     principal,
                                     WORKSPACE,
                                     "new-B",
@@ -965,7 +1366,8 @@ class WorkerSocketTests {
                                     new Cancellation())
                             .exitCode())
                     .isZero();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "old-A",
@@ -973,7 +1375,7 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOf(SessionReplacedException.class);
             assertThat(peer.operations("OPEN")).hasSize(2);
         }
     }
@@ -992,10 +1394,18 @@ class WorkerSocketTests {
                         1,
                         Duration.ofSeconds(3),
                         Duration.ofMillis(100))) {
-            executor.execute(
-                    principal, WORKSPACE, "old-A", Optional.empty(), "pwd", Duration.ofSeconds(1), new Cancellation());
+            client.execute(
+                    executor,
+                    principal,
+                    WORKSPACE,
+                    "old-A",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
             peer.boot = UUID.randomUUID();
-            assertThat(executor.execute(
+            assertThat(client.execute(
+                                    executor,
                                     principal,
                                     WORKSPACE,
                                     "new-B",
@@ -1005,7 +1415,8 @@ class WorkerSocketTests {
                                     new Cancellation())
                             .exitCode())
                     .isZero();
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal,
                             WORKSPACE,
                             "old-A",
@@ -1013,7 +1424,7 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOf(SessionReplacedException.class);
             assertThat(peer.operations("OPEN")).hasSize(2);
         }
     }
@@ -1031,7 +1442,8 @@ class WorkerSocketTests {
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
             peer.stdout = "\uFFFD".repeat(65536);
-            var result = executor.execute(
+            var result = client.execute(
+                    executor,
                     principal(),
                     WORKSPACE,
                     "replacement",
@@ -1041,7 +1453,8 @@ class WorkerSocketTests {
                     new Cancellation());
             assertThat(result.stdout()).isEqualTo(peer.stdout);
             peer.stdout += "\uFFFD";
-            assertThatThrownBy(() -> executor.execute(
+            assertThatThrownBy(() -> client.execute(
+                            executor,
                             principal(),
                             WORKSPACE,
                             "too-large",
@@ -1104,6 +1517,8 @@ class WorkerSocketTests {
         private final CountDownLatch openRelease = new CountDownLatch(1);
         private final CountDownLatch renewEntered = new CountDownLatch(1);
         private final CountDownLatch execEntered = new CountDownLatch(1);
+        private final CountDownLatch execReplyRelease = new CountDownLatch(1);
+        private volatile boolean holdExecReply;
         private final CountDownLatch bridgeEntered = new CountDownLatch(1);
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
@@ -1298,6 +1713,9 @@ class WorkerSocketTests {
                 }
                 case "EXEC" -> {
                     execEntered.countDown();
+                    if (holdExecReply && !execReplyRelease.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test did not release the execution reply");
+                    }
                     if (dropExec) {
                         return null;
                     }

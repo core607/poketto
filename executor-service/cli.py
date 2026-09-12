@@ -95,7 +95,7 @@ def main():
                     'Create files in the repository to retain them between commands; /tmp is reset for every command. '
                     'Use python3 for Python scripts.')
     commands = parser.add_subparsers(dest='operation', required=True)
-    commands.add_parser('status', help='Read the host-owned session baseline and scope')
+    commands.add_parser('status', help='Read the working-copy ID, host-owned baseline and scope')
     recover = commands.add_parser('recover', help='Recover a pending save or move using its retained commit and local completion receipt')
     recover.add_argument('--skip-local', action='store_true', help='For a confirmed move, keep local files untouched and release pending installation; sync affected files before saving')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
@@ -132,6 +132,11 @@ def main():
     imported.add_argument('--type', dest='media_type', default='application/octet-stream')
     imported.add_argument('--key', required=True, help='Stable 16-128 character idempotency key for these original bytes')
     imported.add_argument('--replace', action='store_true', help='Replace an existing logical index entry; originals remain immutable')
+    linked = media_commands.add_parser('link', help='Link an existing workspace original into the unsaved media index; does not upload or save')
+    linked.add_argument('path', help='Repository-relative logical path stored in the media index')
+    linked.add_argument('--asset', required=True, help='Existing managed asset ID returned by upload')
+    linked.add_argument('--revision', required=True, help='Exact immutable revision returned by upload')
+    linked.add_argument('--replace', action='store_true', help='Replace an existing logical index entry; originals remain immutable')
     save = commands.add_parser('save', help='Commit explicitly selected text files through the host')
     save.add_argument('paths', nargs='*')
     save.add_argument('--delete', action='append', default=[])
@@ -157,6 +162,9 @@ def main():
         elif args.media_operation == 'fetch':
             operation = 'media_fetch'
             arguments = {'path': args.path, 'commit': args.commit, 'output': args.output}
+        elif args.media_operation == 'link':
+            operation = 'media_link'
+            arguments = {'path': args.path, 'assetId': args.asset, 'revision': args.revision, 'replace': args.replace}
         else:
             operation = 'media_import'
             arguments = {'file': args.file, 'path': args.logical_path, 'mediaType': args.media_type, 'key': args.key, 'replace': args.replace}

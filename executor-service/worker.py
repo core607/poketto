@@ -38,8 +38,9 @@ IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 
 
 class Rejected(Exception):
-    def __init__(self, code):
+    def __init__(self, code, reason=None):
         self.code = code
+        self.reason = reason
 
 
 def identifier(value):
@@ -174,6 +175,8 @@ class Service:
                 answer = self.dispatch(p)
             except Rejected as e:
                 answer = {'ok': False, 'code': e.code}
+                if e.reason is not None:
+                    answer['reason'] = e.reason
             except Exception:
                 # Never expose commands, repository paths, signatures, or host exceptions.
                 answer = {'ok': False, 'code': 'EXECUTOR_FAILED'}
@@ -516,8 +519,8 @@ class Service:
                         s.capture.close()
                         s.capture = None
                         result = {}
-            except CaptureRejected:
-                raise Rejected('CAPTURE_REJECTED') from None
+            except CaptureRejected as error:
+                raise Rejected('CAPTURE_REJECTED', error.reason) from None
         with self.lock:
             self.authorized(p)
             if s.cancelled.is_set() or s.deadline <= self.clock():

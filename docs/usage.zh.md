@@ -92,6 +92,8 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
+`repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。确认旧命令已退出、租约已释放后，可以在同一 MCP 会话里显式传 `"new"` 开始不同的副本。目前尚未实现未保存工作的恢复。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则。
+
 通过 `repo_exec` 查看目录、搜索、读取和编辑文件，再使用 `poketto` CLI 持久化修改。按需逐层读取内容仓库自己的 `AGENTS.md`。独立的 `list_directory`、`get_file` 和 `repo_patch` 不再受支持，关闭 worker 时也不会恢复它们。[CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)定义这一边界；共享目录读取服务仍用于浏览器导航。
 
 超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](../notes/proposed/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
@@ -100,7 +102,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
 
-`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。
+`poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。`poketto media link PATH --asset ID --revision REV` 将已经上传的原件接入该本地索引，不传输原件字节。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。
 
 `poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复
 Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本地。选定文件存在未保存修改或目标已占用时，

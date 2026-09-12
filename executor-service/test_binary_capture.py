@@ -10,6 +10,19 @@ from session_files import CaptureRejected
 
 
 class BinaryCaptureTests(unittest.TestCase):
+    def test_source_failures_have_bounded_reasons_and_leave_no_staging(self):
+        (self.repository / 'directory').mkdir()
+        (self.repository / 'large').write_bytes(b'12345')
+        for root, path, reason in (
+                (self.root, 'missing/file.bin', 'NOT_FOUND'),
+                (self.root / 'missing', 'file.bin', 'CAPTURE_UNAVAILABLE'),
+                (self.root, 'directory', 'NOT_REGULAR_FILE'),
+                (self.root, 'large', 'BINARY_LIMIT')):
+            with self.subTest(reason=reason), self.assertRaises(CaptureRejected) as raised:
+                BinaryCapture(root, path, maximum=4)
+            self.assertEqual(reason, raised.exception.reason)
+        self.assertFalse(list(self.root.glob('outgoing-*')))
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

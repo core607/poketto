@@ -101,6 +101,7 @@ final class BridgeReplies {
 
     /** The session's own view of where its writes stand, returned by {@code poketto status}. */
     record Status(
+            String copyId,
             String scope,
             String baseCommit,
             boolean writeOutcomeUnknown,

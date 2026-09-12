@@ -1,5 +1,6 @@
 package io.github.core607.poketto.mcp.internal;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.assets.AssetBytes;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
@@ -15,6 +16,7 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
+import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -130,7 +132,7 @@ final class RepositoryMcpTools {
                                     "offset",
                                     Map.of("type", "integer", "minimum", 0, "maximum", 134217728),
                                     "limit",
-                                    Map.of("type", "integer", "minimum", 4, "maximum", 8192),
+                                    Map.of("type", "integer", "minimum", 4, "maximum", 65536),
                                     "format",
                                     Map.of("type", "string", "enum", List.of("auto", "bytes"))),
                             List.of("artifactId")),
@@ -140,16 +142,24 @@ final class RepositoryMcpTools {
                     this::getArtifact));
             tools.add(tool(
                     "repo_exec",
-                    "Use shell, Python, Git, file listings and search as the main file entrance in this MCP session's isolated repository copy. Read the root AGENTS.md when present and use poketto --help for host operations. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the session copy. File edits stay local until poketto save; authorized CLI operations can store media and commit selected changes to repository authority. Use poketto artifact create FILE --type MIME to return files through get_artifact. Long output includes artifact handles; inspect their truncated flags and read needed pages before they expire.",
+                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new only to explicitly start a fresh copy; otherwise pass the copyId from the previous result, including after reconnecting. SESSION_REPLACED means this command did not execute: do not retry writes blindly or assume earlier local edits survived. Every command starts at the repository root; /tmp is reset per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the pinned copy. Edits stay local until poketto save. CLI operations can store media and commit authorized selected changes. Use poketto artifact create FILE --type MIME with get_artifact for files; long-output handles expire and may be truncated.",
                     object(
                             Map.of(
+                                    "expectedCopyId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "maxLength",
+                                            36,
+                                            "pattern",
+                                            "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
                                     "command",
                                     text(16384),
                                     "commit",
                                     nullableCommit(),
                                     "timeoutSeconds",
                                     Map.of("type", "integer", "minimum", 1, "maximum", 60)),
-                            List.of("command")),
+                            List.of("expectedCopyId", "command")),
                     false,
                     true,
                     false,
@@ -193,6 +203,8 @@ final class RepositoryMcpTools {
                 return operation.apply(exchange, arguments);
             } catch (AuthException | SecurityException exception) {
                 return error("DENIED", "Current workspace capability is required.");
+            } catch (SessionReplacedException exception) {
+                return copyReplaced(exception);
             } catch (RepositoryConflictException exception) {
                 return error("CONFLICT", "Read current files and base commit before retrying.");
             } catch (RepositoryWriteAmbiguousException exception) {
@@ -209,6 +221,42 @@ final class RepositoryMcpTools {
                         "Operation could not be completed; verify authoritative state before retrying writes.");
             }
         });
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record CopyReplacement(
+            String code,
+            String reason,
+            boolean executed,
+            boolean recoveryAvailable,
+            boolean newCopyAllowed,
+            String message,
+            String copyId) {}
+
+    private McpSchema.CallToolResult copyReplaced(SessionReplacedException exception) {
+        String message =
+                switch (exception.reason()) {
+                    case MISSING_COPY ->
+                        "Expected copy is unavailable in this MCP session; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
+                    case DIFFERENT_COPY ->
+                        "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
+                    case CLOSED_COPY ->
+                        exception.newCopyAllowed()
+                                ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
+                                : "This copy is closing or its lease release is unconfirmed; this command did not execute. New admission remains unavailable until command exit and lease release are confirmed. Do not replay an uncertain write.";
+                };
+        var body = new CopyReplacement(
+                "SESSION_REPLACED",
+                exception.reason().name(),
+                false,
+                false,
+                exception.newCopyAllowed(),
+                message,
+                exception.currentCopyId().orElse(null));
+        return McpSchema.CallToolResult.builder()
+                .addTextContent(json.writeValueAsString(body))
+                .isError(true)
+                .build();
     }
 
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
@@ -305,7 +353,7 @@ final class RepositoryMcpTools {
         fields(input, Set.of("artifactId", "offset", "limit", "format"));
         String id = requiredText(input, "artifactId", 36);
         int offset = boundedInteger(input, "offset", 0, 0, 134217728);
-        int limit = boundedInteger(input, "limit", 8192, 4, 8192);
+        int limit = boundedInteger(input, "limit", 8192, 4, 65536);
         String format = optionalText(input, "format", 5).orElse("auto");
         if (!Set.of("auto", "bytes").contains(format)) {
             throw new IllegalArgumentException();
@@ -430,7 +478,8 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult execute(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("command", "commit", "timeoutSeconds"));
+        fields(input, Set.of("expectedCopyId", "command", "commit", "timeoutSeconds"));
+        String copyId = RepositoryExecutor.requireCopyId(requiredText(input, "expectedCopyId", 36));
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
         int timeout = 30;
@@ -449,6 +498,7 @@ final class RepositoryMcpTools {
                         identity.principal(),
                         identity.workspace(),
                         exchange.sessionId(),
+                        copyId,
                         optionalText(input, "commit", 40),
                         requiredText(input, "command", 16384),
                         Duration.ofSeconds(timeout),

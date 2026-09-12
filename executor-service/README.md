@@ -88,6 +88,18 @@ bound admission and replay state. A full replay table can reject new work until
 signed requests expire. Spring must treat failed renewal as loss of execution
 authority; it cannot assume an earlier successful request keeps a lease alive.
 
+## Working-copy identity
+
+`repo_exec` requires `expectedCopyId` on every call. Use `"new"` only to explicitly admit a fresh copy, then retain the returned `copyId` for later calls, including after a reconnect. The same Git commit does not prove that a working copy survived. `poketto status` reports the same copy ID with the host save baseline.
+
+```json
+{"expectedCopyId":"new","command":"pwd"}
+```
+
+`SESSION_REPLACED` means this command did not execute. `MISSING_COPY` permits intentional new admission in the current transport (`newCopyAllowed: true`); `DIFFERENT_COPY` supplies the current authorized ID; `CLOSED_COPY` permits explicit `new` in the same transport only when `newCopyAllowed` is true: the worker has confirmed lease release and the previous command has exited. Explicit `new` never resets a live copy or bypasses unconfirmed cleanup. A verified HELLO from a different worker boot establishes exclusive startup cleanup even when the pool has spare capacity. The adapter checks stopped copies before refusing their old IDs; missing or invalid HELLO and an old command that has not exited keep new admission closed. All replacements report `recoveryAvailable: false`: unsaved-work recovery is not implemented. Do not replay an uncertain write or automatically replace the expected ID with `new`.
+
+The [identity decision](../notes/implemented/2026-09-12-executor-copy-identity.md) defines scope and failure ordering. The Micrometer registry exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released`, and `poketto.executor.admission.rejected` with bounded reason tags. Management HTTP exposure remains operator configured; these metrics do not measure memory or disk consumption.
+
 ## Wire version 1
 
 Each UNIX connection carries exactly one request and response: an unsigned
@@ -217,6 +229,8 @@ concurrent operations globally and two per workspace. Saturation returns
 
 `poketto media import FILE --as LOGICAL_PATH --key KEY [--type MIME] [--replace]` captures one regular file while the command cgroup is frozen and stores an immutable original. Captures are bounded to 128 MiB, charged to the lease's temporary storage and transferred in verified chunks. Keys contain 16–128 letters, digits, underscores or hyphens; retry the same bytes and type with the same key. The command updates only the selected entry in the local `.poketto/assets.json`; `--replace` permits a different logical entry while retaining the old original. Missing tracked indexes and collisions with tracked Git files are rejected. If the index changes during upload, the stored original remains available but the newer local index is preserved. `poketto status` retains `lastImport`, distinguishing original storage from index installation. Import requires private write permission and does not commit or publish. Save the index and referring text together with `poketto save`. [Client acceptance](../acceptance/clients/README.md) records real Codex and Claude Code workflows through isolated Spring authentication, PostgreSQL, HTTP MCP and native SRT. That loopback run does not complete the final HTTPS installation acceptance.
 
+`poketto media link LOGICAL_PATH --asset ID --revision REV [--replace]` links an existing original in the current workspace without uploading or fetching its bytes. The host resolves its actual size and media type, checks full-read and private-write permission, and uses the same local-index validation and compare-and-replace as import. A different entry requires `--replace`; repeating the same entry preserves the index's bytes. `lastImport` records the installation result for either command. Linking remains local until `poketto save .poketto/assets.json` (with any referring text); it does not publish. Missing or foreign originals return `MEDIA_UNAVAILABLE` with `reason: NOT_FOUND`.
+
 
 `poketto export PATH... --output FILE [--public]` packages the latest saved documents and media through the host. `.` selects the visible workspace. Full-read sessions default to a private copy; `--public` requires already-public selections and dependencies. Public-read sessions always produce public copies and resolve files and directory selections only through the host's admitted projection mapping. Selection expands to at most 128 source paths; select a smaller folder or explicit files when that bound is exceeded. Missing selections, internal guides and forged source paths fail without returning source coordinates.
 
@@ -236,6 +250,10 @@ Free space and retry the same bytes, type and operation key to finish the local 
 Unexpected transfer/storage failures still
 require session cleanup. Export authorization failures return `ACCESS_DENIED`.
 
+### Selection diagnostics
+
+`INVALID_SELECTION` and `INVALID_MEDIA_REQUEST` include a stable `reason` for rejected local inputs. Reasons are `INVALID_ARGUMENTS`, `INVALID_PATH`, `SELECTION_LIMIT`, `PATH_COLLISION`, `NOT_FOUND`, `NOT_REGULAR_FILE`, `NOT_UTF8`, `TEXT_LIMIT`, `BINARY_LIMIT`, `FILE_CHANGED`, `CAPTURE_UNAVAILABLE`, or `NO_WRITABLE_BASELINE`. Missing selected files are not deletions; use an explicit `--delete`. Unsafe or unavailable captures may be indistinguishable and return `CAPTURE_UNAVAILABLE`. Diagnostics never include host exception text or storage paths. Existing conflict and uncertain-write codes retain their recovery behavior.
+
 ### Returned artifacts
 
 `poketto artifact create FILE [--type MIME]` returns an immutable snapshot of a
@@ -252,7 +270,7 @@ PNG, JPEG, GIF or WebP images up to 16 MiB in full, pages UTF-8 text, and return
 other files, including SVG, as exact binary resource pages. Invalid raster bytes
 or a mismatched image digest fail preview validation; use `format=bytes` to read
 those original bytes without rendering them. `format=bytes` always returns binary
-pages. Page `offset` and `nextOffset` count bytes; `limit` is 4–8192 bytes, and a
+pages. Page `offset` and `nextOffset` count bytes; `limit` is 4–65536 bytes (8192 by default), and a
 null `nextOffset` means EOF. Image previews require offset zero and ignore the
 page limit. Public-scope reads recheck the admitted publication before delivery.
 Neither creating nor reading an artifact uploads an original, writes Git,
