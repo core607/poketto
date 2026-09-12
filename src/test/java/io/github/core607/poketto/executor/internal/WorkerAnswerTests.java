@@ -31,6 +31,12 @@ class WorkerAnswerTests {
             assertThatThrownBy(() -> WorkerResponses.read(response, WorkerResponses.CaptureManifest.class))
                     .isInstanceOf(WorkerUnavailableException.class);
         }
+        var empty = json(manifest.formatted(file.formatted(0)));
+        assertThat(WorkerResponses.read(empty, WorkerResponses.BinaryCaptureManifest.class)
+                        .writes()
+                        .getFirst()
+                        .bytes())
+                .isZero();
         var oversized = json(manifest.formatted(file.formatted(128L * 1024 * 1024 + 1)));
         assertThatThrownBy(() -> WorkerResponses.read(oversized, WorkerResponses.BinaryCaptureManifest.class))
                 .isInstanceOf(WorkerUnavailableException.class);

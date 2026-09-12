@@ -143,7 +143,7 @@ final class WorkerResponses {
             require(writes != null, "writes", "must be present");
             require(writes.size() == 1, "writes", "must contain one binary file");
             writes = List.copyOf(writes);
-            ProtocolValues.inRange(writes.getFirst().bytes(), 1, ManagedBlobStore.MAX_FILE_BYTES, "binary bytes");
+            ProtocolValues.inRange(writes.getFirst().bytes(), 0, ManagedBlobStore.MAX_FILE_BYTES, "binary bytes");
         }
     }
 
