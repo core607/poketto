@@ -28,11 +28,6 @@ final class BridgeArguments {
 
     private BridgeArguments() {}
 
-    /** No argument at all, which {@code poketto status} and a bare {@code recover} both send. */
-    static void requireEmpty(JsonNode arguments, String operation) {
-        require(object(arguments, operation).isEmpty(), operation, "takes no argument");
-    }
-
     static ArtifactCreate artifactCreate(JsonNode arguments) {
         var fields = exactly(arguments, ArtifactCreate.class);
         return new ArtifactCreate(string(fields, "path"), string(fields, "mediaType"));

@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,12 +88,18 @@ class WorkerFrameContractTests {
 
     /**
      * The worker reads an absent {@code expectedSha256} as "no precondition" but requires the key,
-     * so a null must survive serialization. A global non-null inclusion would silently drop it.
+     * so a null must survive serialization. The mapper the application injects here is Spring's,
+     * whose default inclusion this repository already overrides elsewhere, so the frame is checked
+     * against a mapper deliberately configured to drop nulls as well as against the plain one.
      */
     @Test
-    void materializeKeepsAnAbsentPreconditionAsAnExplicitNull() {
+    void materializeKeepsAnAbsentPreconditionEvenWhenNullsAreDropped() {
         var frame = new WorkerRequests.MaterializeBegin(EXECUTION, "notes/a.md", 6, DIGEST, null, false, true);
         assertThat(JSON.writeValueAsString(frame)).contains("\"expectedSha256\":null");
+        ObjectMapper dropsNulls = JsonMapper.builder()
+                .changeDefaultPropertyInclusion(inclusion -> inclusion.withValueInclusion(JsonInclude.Include.NON_NULL))
+                .build();
+        assertThat(dropsNulls.writeValueAsString(frame)).contains("\"expectedSha256\":null");
     }
 
     @Test

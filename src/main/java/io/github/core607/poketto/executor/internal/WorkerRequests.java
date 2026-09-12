@@ -8,6 +8,7 @@ import static io.github.core607.poketto.executor.internal.ProtocolValues.require
 import static io.github.core607.poketto.executor.internal.ProtocolValues.uuid;
 import static io.github.core607.poketto.executor.internal.ProtocolValues.withoutNul;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -20,8 +21,9 @@ import java.util.UUID;
  *
  * <p>Field order never reaches the worker, which compares sets. Null does: {@link MaterializeBegin}
  * keeps {@code expectedSha256} in the frame even when it is null, because the worker requires that
- * key to be present and reads null as "no precondition". Serialization therefore has to include
- * nulls, which is Jackson's default and which {@code WorkerRequestFrameTests} pins.
+ * key to be present and reads null as "no precondition". That field carries its own inclusion
+ * rule rather than relying on the mapper's default, and {@code WorkerFrameContractTests} proves it
+ * survives a mapper configured to drop nulls.
  */
 final class WorkerRequests {
 
@@ -160,7 +162,10 @@ final class WorkerRequests {
             String path,
             long bytes,
             String sha256,
-            String expectedSha256,
+            // The worker requires this key and reads its null as "no precondition", so the frame
+            // must carry it even when unset. Pinning the rule here keeps it independent of the
+            // mapper's default inclusion, which this repository already overrides elsewhere.
+            @JsonInclude(JsonInclude.Include.ALWAYS) String expectedSha256,
             boolean delete,
             boolean allowIdentical)
             implements Data {
