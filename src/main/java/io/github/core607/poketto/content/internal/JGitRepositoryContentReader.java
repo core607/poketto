@@ -121,7 +121,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         if (FileMode.TREE.equals(mode)) {
             return RepositoryDirectoryPage.Kind.DIRECTORY;
         }
-        if (FileMode.REGULAR_FILE.equals(mode) || FileMode.EXECUTABLE_FILE.equals(mode)) {
+        if (RepositoryBlobs.isFile(mode)) {
             return RepositoryDirectoryPage.Kind.FILE;
         }
         if (FileMode.SYMLINK.equals(mode)) {
@@ -289,7 +289,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 }
                 paths.add(path);
                 FileMode mode = tree.getFileMode(0);
-                if (FileMode.REGULAR_FILE.equals(mode) || FileMode.EXECUTABLE_FILE.equals(mode)) {
+                if (RepositoryBlobs.isFile(mode)) {
                     long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
                     if (size <= ContentLimits.MAX_DOCUMENT_BYTES) {
                         total += size;
@@ -387,7 +387,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 return absent(workspaceId, commit, path);
             }
             FileMode mode = entry.getFileMode(0);
-            if (!FileMode.REGULAR_FILE.equals(mode) && !FileMode.EXECUTABLE_FILE.equals(mode)) {
+            if (!RepositoryBlobs.isFile(mode)) {
                 return invalid(workspaceId, commit, path, "NOT_REGULAR_FILE", "path is not a regular file");
             }
             ObjectLoader loader = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);

@@ -20,7 +20,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
@@ -205,8 +204,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
             if (entry == null) {
                 return RepositoryPublishingPolicy.missing();
             }
-            if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))
-                    && !FileMode.EXECUTABLE_FILE.equals(entry.getFileMode(0))) {
+            if (!RepositoryBlobs.isFile(entry.getFileMode(0))) {
                 return RepositoryPublishingPolicy.parse(null);
             }
             var loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);

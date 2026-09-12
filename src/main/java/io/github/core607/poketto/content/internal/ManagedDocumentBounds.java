@@ -4,7 +4,6 @@ import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import java.io.IOException;
 import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -29,11 +28,10 @@ final class ManagedDocumentBounds {
             long totalBytes = 0;
             while (walk.next()) {
                 String path = walk.getPathString();
-                if (!path.equals("documents") && !path.startsWith("documents/")) {
+                if (!DocumentPathRules.isManaged(path)) {
                     continue;
                 }
-                if (!(FileMode.REGULAR_FILE.equals(walk.getFileMode(0))
-                        || FileMode.EXECUTABLE_FILE.equals(walk.getFileMode(0)))) {
+                if (!RepositoryBlobs.isFile(walk.getFileMode(0))) {
                     throw new ContentRepositoryException("non-file managed document at " + path);
                 }
                 if (++count > ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) {

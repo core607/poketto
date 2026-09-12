@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content;
 
+import io.github.core607.poketto.content.internal.MarkdownNodes;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -43,16 +44,7 @@ public final class MarkdownDestinations {
             if (links.size() + images.size() > 256) {
                 throw new IllegalArgumentException("Markdown reference count exceeds its bound");
             }
-            if (node.getFirstChild() != null) {
-                node = node.getFirstChild();
-            } else {
-                while (node != null && node.getNext() == null) {
-                    node = node.getParent();
-                }
-                if (node != null) {
-                    node = node.getNext();
-                }
-            }
+            node = MarkdownNodes.next(node);
         }
         return new Destinations(links, images);
     }

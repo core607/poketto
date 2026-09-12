@@ -558,7 +558,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                     throw new RepositoryConflictException("expected file no longer exists");
                 }
                 FileMode mode = entry.getFileMode();
-                if (!mode.equals(FileMode.REGULAR_FILE) && !mode.equals(FileMode.EXECUTABLE_FILE)) {
+                if (!RepositoryBlobs.isFile(mode)) {
                     throw new IllegalArgumentException("patch target must be a regular text file");
                 }
                 ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);
@@ -609,8 +609,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             }
             if (RepositoryPathRules.markdown(path)
                     && !RepositoryPathRules.reserved(path)
-                    && (entry.getFileMode().equals(FileMode.REGULAR_FILE)
-                            || entry.getFileMode().equals(FileMode.EXECUTABLE_FILE))) {
+                    && RepositoryBlobs.isFile(entry.getFileMode())) {
                 count++;
                 bytes += replacements.containsKey(path)
                         ? replacements.get(path).length
@@ -674,8 +673,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
         if (entry == null) {
             return RepositoryPublishingPolicy.missing();
         }
-        if (!entry.getFileMode().equals(FileMode.REGULAR_FILE)
-                && !entry.getFileMode().equals(FileMode.EXECUTABLE_FILE)) {
+        if (!RepositoryBlobs.isFile(entry.getFileMode())) {
             return RepositoryPublishingPolicy.parse(null);
         }
         ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);
