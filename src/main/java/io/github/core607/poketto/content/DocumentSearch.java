@@ -25,16 +25,24 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
     private static final int SNIPPET_LEAD = 60;
 
     public DocumentSearch {
-        if (query == null
-                || tag == null
-                || query.length() > MAX_QUERY_LENGTH
-                || tag.length() > MAX_TAG_LENGTH
-                || offset < 0
-                || offset > MAX_OFFSET
-                || limit < 1
-                || limit > MAX_LIMIT
-                || (from != null && to != null && from.isAfter(to))) {
-            throw new IllegalArgumentException("search exceeds its bounds or has an invalid date range");
+        require(query != null, "query must not be null");
+        require(tag != null, "tag must not be null");
+        require(query.length() <= MAX_QUERY_LENGTH, "query must not exceed " + MAX_QUERY_LENGTH + " characters");
+        require(tag.length() <= MAX_TAG_LENGTH, "tag must not exceed " + MAX_TAG_LENGTH + " characters");
+        require(offset >= 0 && offset <= MAX_OFFSET, "offset must be between 0 and " + MAX_OFFSET);
+        require(limit >= 1 && limit <= MAX_LIMIT, "limit must be between 1 and " + MAX_LIMIT);
+        require(from == null || to == null || !from.isAfter(to), "from must not be after to");
+    }
+
+    /**
+     * Names the field in the failure. A null is refused the same way as an out-of-range value
+     * rather than through {@code requireNonNull}, because the boundary answers an
+     * {@link IllegalArgumentException} with 400 and a {@link NullPointerException} with 500, and a
+     * caller that left a parameter out made a bad request rather than finding a server fault.
+     */
+    private static void require(boolean satisfied, String rule) {
+        if (!satisfied) {
+            throw new IllegalArgumentException("search is out of bounds: " + rule);
         }
     }
 
