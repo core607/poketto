@@ -22,7 +22,9 @@ import tools.jackson.databind.json.JsonMapper;
 public record RepositoryMediaIndex(Map<String, Media> files) {
     public static final String PATH = ".poketto/assets.json";
     public static final int MAX_BYTES = ContentLimits.MAX_DOCUMENT_BYTES;
+    /** Entries one media index may hold, matching the managed document count per workspace. */
     public static final int MAX_FILES = 10_000;
+
     private static final Set<String> ROOT_FIELDS = Set.of("version", "files");
     private static final Set<String> MEDIA_FIELDS = Set.of("assetId", "revision", "mediaType", "size");
     private static final JsonMapper JSON = JsonMapper.builder()

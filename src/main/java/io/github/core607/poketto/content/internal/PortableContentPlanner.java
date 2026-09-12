@@ -49,7 +49,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Selects one committed content package. Retained plans and their source coordinates are host-only. */
 final class PortableContentPlanner {
+    /** Media one portable export may carry, from the portable content exports record. */
     private static final long MAX_MEDIA_BYTES = 512L * 1024 * 1024;
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private final AuthService auth;
     private final RepositoryContentReader reader;

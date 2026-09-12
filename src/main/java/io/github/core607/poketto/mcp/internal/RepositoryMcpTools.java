@@ -41,7 +41,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
+    /** Largest text result one tool may return before it is refused as an output-limit failure. */
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
+
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
     private final McpSessions sessions;
     private final AuthService auth;

@@ -25,7 +25,9 @@ import java.util.stream.Stream;
 
 /** Original-file transfers. Declared types never authorize inline rendering or publication. */
 public final class MediaFileService {
+    /** Memory reserved while an original's authorization is checked, before any bytes stream. */
     private static final int AUTHORIZATION_BYTES = 256 * 1024;
+
     private final AuthService auth;
     private final RepositoryBlobReader repository;
     private final PublicContentSnapshots snapshots;

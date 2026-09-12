@@ -47,6 +47,9 @@ public final class AssetService {
     private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
     private static final Duration MINIMUM_REUSABLE_LIFETIME = Duration.ofMinutes(1);
     private static final Duration CAPACITY_WARNING_INTERVAL = Duration.ofMinutes(1);
+    // Image work is admitted against one of two budgets. Rendering a page is latency-sensitive
+    // and gets the smaller one; listing an inventory is not, and may hold more at once without
+    // making a reader wait behind it.
     private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
     private final AuthService auth;

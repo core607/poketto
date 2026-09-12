@@ -59,7 +59,9 @@ import org.slf4j.LoggerFactory;
 
 final class JGitRepositoryPatchService implements RepositoryPatchService, RepositoryMoveService {
     private static final Logger log = LoggerFactory.getLogger(JGitRepositoryPatchService.class);
+    /** Tree entries one scan visits, from the repository authoring record. */
     private static final int MAX_TREE_ENTRIES = 100_000;
+
     private static final Set<String> IMAGE_EXTENSIONS =
             Set.of("png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp", "tif", "tiff");
     private final RepositoryAuthority authority;
