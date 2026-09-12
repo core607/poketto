@@ -24,7 +24,8 @@ final class MediaListing {
                     || !arguments.path("offset").canConvertToInt()
                     || !arguments.path("limit").isIntegralNumber()
                     || !arguments.path("limit").canConvertToInt()) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException(
+                        "a media listing takes a prefix, offset, limit, indexVersion and commit");
             }
             String prefix = arguments.path("prefix").stringValue();
             int offset = arguments.path("offset").intValue(),
@@ -35,7 +36,7 @@ final class MediaListing {
                     || offset > RepositoryMediaIndex.MAX_FILES
                     || limit < 1
                     || limit > 200) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("a media listing offset and limit must be within their bounds");
             }
             return new Query(
                     prefix,
@@ -50,7 +51,8 @@ final class MediaListing {
                 return null;
             }
             if (!value.isString() || !value.stringValue().matches("[0-9a-f]{" + length + "}")) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException(
+                        "an optional hash must be null or lowercase hex of its exact length");
             }
             return value.stringValue();
         }

@@ -88,13 +88,14 @@ class ExecutorConfiguration {
         try {
             ancestors(path);
             if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > 16 * 1024) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("the signing key must be a regular file of at most 16 KiB");
             }
             var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
             if (permissions.stream()
                     .anyMatch(permission -> permission.name().startsWith("GROUP_")
                             || permission.name().startsWith("OTHERS_"))) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException(
+                        "the signing key must not be readable or writable by group or others");
             }
             String pem = Files.readString(path);
             byte[] bytes = Base64.getMimeDecoder()
@@ -110,7 +111,7 @@ class ExecutorConfiguration {
             ancestors(path);
             for (Path parent = path.getParent(); parent != null; parent = parent.getParent()) {
                 if (!Files.getOwner(parent, LinkOption.NOFOLLOW_LINKS).getName().equals("root")) {
-                    throw new IllegalArgumentException();
+                    throw new IllegalArgumentException("every ancestor of a protected path must be owned by root");
                 }
             }
             var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
@@ -121,7 +122,7 @@ class ExecutorConfiguration {
                             .equals("root")
                     || permissions.contains(PosixFilePermission.OTHERS_READ)
                     || permissions.contains(PosixFilePermission.OTHERS_WRITE)) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("a protected path must not be writable by group or others");
             }
         } catch (Exception exception) {
             throw new WorkerUnavailableException();
@@ -130,17 +131,17 @@ class ExecutorConfiguration {
 
     private static void ancestors(Path path) throws IOException {
         if (!path.isAbsolute() || !path.equals(path.normalize())) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("a protected path must be absolute and already normalized");
         }
         for (Path current = path; current != null; current = current.getParent()) {
             if (Files.isSymbolicLink(current)) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("a protected path must not traverse a symbolic link");
             }
             if (!current.equals(path)) {
                 var permissions = Files.getPosixFilePermissions(current, LinkOption.NOFOLLOW_LINKS);
                 if (permissions.contains(PosixFilePermission.OTHERS_WRITE)
                         || permissions.contains(PosixFilePermission.GROUP_WRITE)) {
-                    throw new IllegalArgumentException();
+                    throw new IllegalArgumentException("a protected directory must not be writable by group or others");
                 }
             }
         }

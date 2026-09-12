@@ -203,7 +203,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 try {
                     stopAndAwait(session, "cancelled");
                 } catch (RuntimeException closeFailure) {
-                    log.warn("Worker termination not acknowledged; lease renewal has stopped");
+                    log.warn("Worker termination not acknowledged; lease renewal has stopped", closeFailure);
                 }
             }
             throw exception;
@@ -287,7 +287,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 try {
                     bytes = Base64.getDecoder().decode(response.path("data").stringValue());
                 } catch (IllegalArgumentException invalid) {
-                    throw new WorkerUnavailableException();
+                    throw new WorkerUnavailableException(invalid);
                 }
                 if (bytes.length != Math.min(limit, size - offset)) {
                     throw new WorkerUnavailableException();
@@ -345,7 +345,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return new ArtifactMetadata(
                     id, name, type, size, digest, value.path("truncated").booleanValue(), expires);
         } catch (RuntimeException invalid) {
-            throw new WorkerUnavailableException();
+            throw new WorkerUnavailableException(invalid);
         }
     }
 
@@ -428,7 +428,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             try {
                 stopAndAwait(session, "cancelled");
             } catch (RuntimeException closeFailure) {
-                log.warn("Failed opening worker lease remains unconfirmed; renewal stopped");
+                log.warn("Failed opening worker lease remains unconfirmed; renewal stopped", closeFailure);
             }
             throw exception;
         } finally {
@@ -488,9 +488,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 + Duration.ofSeconds(session.hello.renewAfterSeconds())
                                         .toNanos();
                     } catch (RuntimeException exception) {
-                        log.warn(
-                                "Worker lease renewal failed ({})",
-                                exception.getClass().getSimpleName());
+                        log.warn("Worker lease renewal failed", exception);
                         stop(session, "cancelled");
                     } finally {
                         session.renewing.set(false);
@@ -526,7 +524,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     closeWorker(session, session.closeReason);
                     releaseCapacity(session);
                 } catch (RuntimeException exception) {
-                    log.debug("Worker close remains unconfirmed; admission is retained");
+                    log.debug("Worker close remains unconfirmed; admission is retained", exception);
                 } finally {
                     deferred.run();
                 }
@@ -601,14 +599,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            throw new WorkerUnavailableException();
+            throw new WorkerUnavailableException(interrupted);
         } catch (ExecutionException failed) {
             if (failed.getCause() instanceof RuntimeException failure) {
                 throw failure;
             }
             throw new WorkerUnavailableException();
         } catch (TimeoutException expired) {
-            throw new WorkerUnavailableException();
+            throw new WorkerUnavailableException(expired);
         } finally {
             running.cancel(true);
         }
@@ -761,7 +759,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             new WorkerRequests.CapturePath(executionId, path),
                             Duration.ofSeconds(5));
                     if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-                        throw new IllegalArgumentException();
+                        throw new IllegalArgumentException("the worker refused to capture the selected file");
                     }
                     requireOk(manifest, session);
                     List<String> absent = selectedPaths(manifest.path("absent"));
@@ -798,14 +796,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private static List<String> selectedPaths(JsonNode values) {
         if (!values.isArray() || values.size() > 64) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("a selection must be an array of at most 64 paths");
         }
         var paths = new ArrayList<String>();
         for (JsonNode value : values) {
             if (!value.isString()
                     || value.stringValue().isEmpty()
                     || value.stringValue().getBytes(StandardCharsets.UTF_8).length > 4096) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("each selected path must be text of at most 4096 UTF-8 bytes");
             }
             paths.add(value.stringValue());
         }
@@ -896,7 +894,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             try {
                 requestLive(session, "MOVE_ABORT", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                log.warn("Worker move staging cleanup was not acknowledged; command cleanup will release its slot");
+                log.warn(
+                        "Worker move staging cleanup was not acknowledged; command cleanup will release its slot",
+                        cleanupFailure);
             }
         }
     }
@@ -914,7 +914,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private Map<String, String> readCapture(
             Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("the worker refused to capture the selected files");
         }
         requireOk(manifest, session);
         String captureId = manifest.path("captureId").asString("");
@@ -979,7 +979,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                     .decode(ByteBuffer.wrap(content))
                                     .toString());
                 } catch (NoSuchAlgorithmException | CharacterCodingException invalid) {
-                    throw new WorkerUnavailableException();
+                    throw new WorkerUnavailableException(invalid);
                 }
             }
             return result;
@@ -1054,7 +1054,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (requested.isPresent()) {
                 commit = requested.orElseThrow();
                 if (!commit.matches("[0-9a-f]{40}")) {
-                    throw new IllegalArgumentException();
+                    throw new IllegalArgumentException("a pinned commit must be 40 lowercase hex characters");
                 }
                 download = media.privateDownload(session.principal, session.key.workspace(), Optional.of(commit), path);
                 indexSource = "repository";
@@ -1115,7 +1115,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("the worker refused to capture the media index");
         }
         requireOk(manifest, session);
         List<String> absent = selectedPaths(manifest.path("absent"));
@@ -1161,7 +1161,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("the worker refused to capture the imported file");
         }
         requireOk(manifest, session);
         String captureId = manifest.path("captureId").asString("");
@@ -1214,7 +1214,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             try {
                 requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                log.warn("Binary capture release was not acknowledged; command cleanup will release its staging file");
+                log.warn(
+                        "Binary capture release was not acknowledged; command cleanup will release its staging file",
+                        cleanupFailure);
             }
         }
         session.lastImport = importReceipt(path, asset, false);
@@ -1325,7 +1327,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
         checkMaterialization(begun);
         if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("the worker refused to stage the outgoing file");
         }
         requireOk(begun, session);
         String transferId = begun.path("transferId").asString("");
@@ -1395,12 +1397,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             return true;
         } catch (IOException failure) {
-            throw new WorkerUnavailableException();
+            throw new WorkerUnavailableException(failure);
         } finally {
             try {
                 requestLive(session, "MATERIALIZE_ABORT", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                log.warn("Worker transfer cleanup was not acknowledged; command cleanup will release its slot");
+                log.warn(
+                        "Worker transfer cleanup was not acknowledged; command cleanup will release its slot",
+                        cleanupFailure);
             }
         }
     }
