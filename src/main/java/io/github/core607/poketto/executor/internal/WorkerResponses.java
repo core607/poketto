@@ -3,8 +3,11 @@ package io.github.core607.poketto.executor.internal;
 import static io.github.core607.poketto.executor.internal.ProtocolValues.require;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.github.core607.poketto.mcp.RepositoryExecutor;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -177,6 +180,53 @@ final class WorkerResponses {
                 require(changedPaths >= 0, "changedPaths", "must not be negative");
                 require(alreadyApplied != null, "alreadyApplied", "must be present");
             }
+        }
+    }
+
+    /**
+     * One finished command. The combined preview bound and the agreement between {@code timedOut}
+     * and the termination reason are properties of this answer and are checked here. The commit is
+     * an echo of the pinned session commit, and the artifact maps carry their own richer metadata
+     * rules, so both stay with the caller.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Execution(
+            int exitCode,
+            String stdout,
+            String stderr,
+            boolean stdoutTruncated,
+            boolean stderrTruncated,
+            boolean timedOut,
+            String terminationReason) {
+        /** Two 16 KiB previews plus their worst-case multibyte expansion. */
+        static final int MAX_PREVIEW_BYTES = 3 * 64 * 1024;
+
+        Execution {
+            require(stdout != null, "stdout", "must be present");
+            require(stderr != null, "stderr", "must be present");
+            int bytes = stdout.getBytes(StandardCharsets.UTF_8).length + stderr.getBytes(StandardCharsets.UTF_8).length;
+            require(bytes <= MAX_PREVIEW_BYTES, "combined output", "must not exceed " + MAX_PREVIEW_BYTES + " bytes");
+            require(terminationReason != null, "terminationReason", "must be present");
+        }
+
+        /**
+         * The worker names two endings this application does not distinguish from cancellation,
+         * and two it treats as the sandbox having failed. Anything else must name a reason this
+         * application knows, or the answer is not one it can act on.
+         */
+        RepositoryExecutor.TerminationReason reason() {
+            var reason =
+                    switch (terminationReason) {
+                        case "session_closed", "client_shutdown" -> RepositoryExecutor.TerminationReason.CANCELLED;
+                        case "lease_expired", "sandbox_failed" -> RepositoryExecutor.TerminationReason.SANDBOX_FAILURE;
+                        default ->
+                            RepositoryExecutor.TerminationReason.valueOf(terminationReason.toUpperCase(Locale.ROOT));
+                    };
+            require(
+                    timedOut == (reason == RepositoryExecutor.TerminationReason.TIMEOUT),
+                    "timedOut",
+                    "must agree with the termination reason");
+            return reason;
         }
     }
 

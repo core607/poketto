@@ -36,7 +36,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -1594,32 +1593,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private static ExecutionResult result(JsonNode result, String commit) {
         try {
-            String stdout = result.path("stdout").stringValue();
-            String stderr = result.path("stderr").stringValue();
-            if (!result.path("commit").asString("").equals(commit)
-                    || stdout == null
-                    || stderr == null
-                    || stdout.getBytes(StandardCharsets.UTF_8).length + stderr.getBytes(StandardCharsets.UTF_8).length
-                            > 3 * 64 * 1024
-                    || !result.path("exitCode").isIntegralNumber()
-                    || !result.path("stdoutTruncated").isBoolean()
-                    || !result.path("stderrTruncated").isBoolean()
-                    || !result.path("timedOut").isBoolean()) {
+            var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
+            // The commit is an echo of what this session pinned, so it is compared here.
+            if (!result.path("commit").asString("").equals(commit)) {
                 throw new WorkerUnavailableException();
             }
-            TerminationReason reason =
-                    switch (result.path("terminationReason").stringValue()) {
-                        case "session_closed", "client_shutdown" -> TerminationReason.CANCELLED;
-                        case "lease_expired", "sandbox_failed" -> TerminationReason.SANDBOX_FAILURE;
-                        default ->
-                            TerminationReason.valueOf(result.path("terminationReason")
-                                    .stringValue()
-                                    .toUpperCase(Locale.ROOT));
-                    };
-            boolean timedOut = result.path("timedOut").booleanValue();
-            if (timedOut != (reason == TerminationReason.TIMEOUT)) {
-                throw new WorkerUnavailableException();
-            }
+            TerminationReason reason = finished.reason();
             if (!result.path("artifacts").isObject()
                     || !result.path("artifactErrors").isObject()
                     || result.path("artifacts").size() > 2
@@ -1645,12 +1624,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             return new ExecutionResult(
                     commit,
-                    result.path("exitCode").intValue(),
-                    stdout,
-                    stderr,
-                    result.path("stdoutTruncated").booleanValue(),
-                    result.path("stderrTruncated").booleanValue(),
-                    timedOut,
+                    finished.exitCode(),
+                    finished.stdout(),
+                    finished.stderr(),
+                    finished.stdoutTruncated(),
+                    finished.stderrTruncated(),
+                    finished.timedOut(),
                     reason,
                     artifacts,
                     artifactErrors);
