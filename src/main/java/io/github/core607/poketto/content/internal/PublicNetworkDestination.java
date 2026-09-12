@@ -9,9 +9,13 @@ final class PublicNetworkDestination {
 
     static void requirePublic(String host) throws IOException {
         InetAddress[] addresses = InetAddress.getAllByName(host);
-        if (addresses.length == 0) throw new IOException("Provider address is unavailable");
+        if (addresses.length == 0) {
+            throw new IOException("Provider address is unavailable");
+        }
         for (InetAddress address : addresses) {
-            if (!isPublic(address)) throw new IOException("Provider address is not public");
+            if (!isPublic(address)) {
+                throw new IOException("Provider address is not public");
+            }
         }
     }
 
@@ -20,15 +24,18 @@ final class PublicNetworkDestination {
                 || address.isLoopbackAddress()
                 || address.isLinkLocalAddress()
                 || address.isSiteLocalAddress()
-                || address.isMulticastAddress()) return false;
+                || address.isMulticastAddress()) {
+            return false;
+        }
         byte[] bytes = address.getAddress();
         int first = Byte.toUnsignedInt(bytes[0]);
         int second = Byte.toUnsignedInt(bytes[1]);
-        if (bytes.length == 4)
+        if (bytes.length == 4) {
             return first != 0
                     && first < 224
                     && !(first == 100 && second >= 64 && second <= 127)
                     && !(first == 198 && (second == 18 || second == 19));
+        }
         return bytes.length == 16 && (first & 0xe0) == 0x20 && !(first == 0x20 && second == 0x02);
     }
 }

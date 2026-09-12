@@ -1,10 +1,13 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class SessionExportSelectionTests {
@@ -29,9 +32,10 @@ class SessionExportSelectionTests {
         assertThat(SessionExportSelection.resolve(List.of("articles/1.md", "media"), projection))
                 .containsExactly("public/files/original.pdf", "public/original.md");
         for (String forged :
-                List.of("public/original.md", "public", "articles/3.md", "articles-other", "private/secret.md"))
+                List.of("public/original.md", "public", "articles/3.md", "articles-other", "private/secret.md")) {
             assertThatThrownBy(() -> SessionExportSelection.resolve(List.of(forged), projection))
                     .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Test
@@ -45,8 +49,9 @@ class SessionExportSelectionTests {
                 List.of("a.md", "a.md"),
                 List.of("../secret"),
                 List.of(".git/config"),
-                List.of("agents.md")))
+                List.of("agents.md"))) {
             assertThatThrownBy(() -> SessionExportSelection.resolve(bad, projection))
                     .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 }

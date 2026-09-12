@@ -21,7 +21,9 @@ public final class ManagedUploadProcess {
                     Files.createFile(Path.of(args[3]));
                     long deadline = System.nanoTime() + 10_000_000_000L;
                     while (!Files.exists(Path.of(args[4]))) {
-                        if (System.nanoTime() >= deadline) throw new IOException("synthetic release timed out");
+                        if (System.nanoTime() >= deadline) {
+                            throw new IOException("synthetic release timed out");
+                        }
                         try {
                             Thread.sleep(10);
                         } catch (InterruptedException exception) {

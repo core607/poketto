@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -15,7 +16,7 @@ class WebConfiguration {
     @Bean
     FilterRegistrationBean<ImageMemoryFilter> imageMemoryFilter(ImageMemoryAdmission admission) {
         var registration = new FilterRegistrationBean<>(new ImageMemoryFilter(admission));
-        registration.setUrlPatterns(java.util.List.of("/api/*"));
+        registration.setUrlPatterns(List.of("/api/*"));
         registration.setOrder(-99);
         registration.setAsyncSupported(true);
         return registration;

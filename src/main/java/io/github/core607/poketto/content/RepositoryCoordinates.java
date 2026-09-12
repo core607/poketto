@@ -23,7 +23,9 @@ public final class RepositoryCoordinates {
     }
 
     public static RepositoryCoordinates parse(String input) {
-        if (input == null || input.length() > 2048) throw invalid();
+        if (input == null || input.length() > 2048) {
+            throw invalid();
+        }
         try {
             URI uri = new URI(input.strip());
             String host = uri.getHost();
@@ -32,23 +34,38 @@ public final class RepositoryCoordinates {
                     || uri.getRawUserInfo() != null
                     || uri.getRawQuery() != null
                     || uri.getRawFragment() != null
-                    || (uri.getPort() != -1 && uri.getPort() != 443)) throw invalid();
-            host = host.toLowerCase(Locale.ROOT);
-            if (!host.equals("github.com") && !host.equals("cnb.cool")) throw invalid();
-            String path = uri.getRawPath();
-            if (path == null || path.isEmpty()) throw invalid();
-            if (path.endsWith("/")) path = path.substring(0, path.length() - 1);
-            if (path.isEmpty()) throw invalid();
-            path = path.toLowerCase(Locale.ROOT);
-            if (path.endsWith(".git")) path = path.substring(0, path.length() - 4);
-            String[] segments = path.substring(1).split("/", -1);
-            if (segments.length < 2 || segments.length > 20 || (host.equals("github.com") && segments.length != 2))
+                    || (uri.getPort() != -1 && uri.getPort() != 443)) {
                 throw invalid();
+            }
+            host = host.toLowerCase(Locale.ROOT);
+            if (!host.equals("github.com") && !host.equals("cnb.cool")) {
+                throw invalid();
+            }
+            String path = uri.getRawPath();
+            if (path == null || path.isEmpty()) {
+                throw invalid();
+            }
+            if (path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
+            if (path.isEmpty()) {
+                throw invalid();
+            }
+            path = path.toLowerCase(Locale.ROOT);
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            String[] segments = path.substring(1).split("/", -1);
+            if (segments.length < 2 || segments.length > 20 || (host.equals("github.com") && segments.length != 2)) {
+                throw invalid();
+            }
             for (String segment : segments) {
                 if (!segment.matches("[a-z0-9._-]{1,128}")
                         || segment.equals(".")
                         || segment.equals("..")
-                        || segment.equals("-")) throw invalid();
+                        || segment.equals("-")) {
+                    throw invalid();
+                }
             }
             return new RepositoryCoordinates(host.equals("github.com") ? "github" : "cnb", "https://" + host + path);
         } catch (URISyntaxException exception) {

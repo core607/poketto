@@ -1,19 +1,24 @@
 package io.github.core607.poketto.mcp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Execution boundary supplied only by a verified isolated worker; no ordinary subprocess fallback. */
 public interface RepositoryExecutor {
     String NEW_COPY = "new";
 
     static String requireCopyId(String value) {
-        if (NEW_COPY.equals(value)) return value;
-        if (value == null || !java.util.UUID.fromString(value).toString().equals(value))
+        if (NEW_COPY.equals(value)) {
+            return value;
+        }
+        if (value == null || !UUID.fromString(value).toString().equals(value)) {
             throw new IllegalArgumentException("Use new or a canonical working-copy ID");
+        }
         return value;
     }
 
@@ -57,13 +62,56 @@ public interface RepositoryExecutor {
             long offset,
             byte[] bytes) {
         public ArtifactChunk {
-            if (bytes.length > 65536) throw new IllegalArgumentException("Artifact chunk exceeds its bound");
+            if (bytes.length > 65536) {
+                throw new IllegalArgumentException("Artifact chunk exceeds its bound");
+            }
             bytes = bytes.clone();
         }
 
         @Override
         public byte[] bytes() {
             return bytes.clone();
+        }
+    }
+
+    /**
+     * Immutable metadata for one retained artifact, as the worker reported it. The rules below are
+     * what makes such a report usable: the name reaches a client as a file name, so it carries no
+     * separator and no control character, and the lifetime and size are the worker's own bounds.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record ArtifactMetadata(
+            String artifactId,
+            String name,
+            String mediaType,
+            long bytes,
+            String sha256,
+            boolean truncated,
+            int expiresInSeconds) {
+        public ArtifactMetadata {
+            if (artifactId == null || !UUID.fromString(artifactId).toString().equals(artifactId)) {
+                throw new IllegalArgumentException("artifactId must be a canonical UUID");
+            }
+            if (name == null
+                    || name.isEmpty()
+                    || name.length() > 255
+                    || name.contains("/")
+                    || name.contains("\\")
+                    || name.chars().anyMatch(character -> character < 32 || character == 127)) {
+                throw new IllegalArgumentException("artifact name must be a bounded file name");
+            }
+            if (mediaType == null || mediaType.length() > 128 || !mediaType.matches("[a-z0-9.+-]+/[a-z0-9.+-]+")) {
+                throw new IllegalArgumentException("artifact mediaType must be a bounded media type");
+            }
+            if (sha256 == null || !sha256.matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException("artifact sha256 must be 64 lowercase hex characters");
+            }
+            if (bytes < 0 || bytes > 128L * 1024 * 1024) {
+                throw new IllegalArgumentException("artifact bytes must be within the worker's per-file bound");
+            }
+            if (expiresInSeconds < 1 || expiresInSeconds > 300) {
+                throw new IllegalArgumentException("artifact expiry must be between 1 and 300 seconds");
+            }
         }
     }
 
@@ -77,10 +125,12 @@ public interface RepositoryExecutor {
             boolean stderrTruncated,
             boolean timedOut,
             TerminationReason terminationReason,
-            Map<String, Map<String, Object>> artifacts,
+            Map<String, ArtifactMetadata> artifacts,
             Map<String, String> artifactErrors) {
         public ExecutionResult {
-            if (NEW_COPY.equals(requireCopyId(copyId))) throw new IllegalArgumentException("Result requires a copy ID");
+            if (NEW_COPY.equals(requireCopyId(copyId))) {
+                throw new IllegalArgumentException("Result requires a copy ID");
+            }
             artifacts = Map.copyOf(artifacts);
             artifactErrors = Map.copyOf(artifactErrors);
         }

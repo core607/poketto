@@ -1,8 +1,16 @@
 package io.github.core607.poketto.mcp.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
@@ -181,8 +189,9 @@ class McpArtifactTests {
                     .thenAnswer(call -> {
                         long offset = call.getArgument(4);
                         int limit = call.getArgument(5);
-                        if (!id.equals(call.getArgument(3)) || expireAtEnd && offset == content.length)
+                        if (!id.equals(call.getArgument(3)) || expireAtEnd && offset == content.length) {
                             return Optional.empty();
+                        }
                         byte[] part = Arrays.copyOfRange(
                                 content, (int) offset, Math.min(content.length, (int) offset + limit));
                         return Optional.of(new RepositoryExecutor.ArtifactChunk(

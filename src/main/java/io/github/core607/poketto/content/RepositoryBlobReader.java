@@ -4,6 +4,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** Already-authorized binary reads, with no checkout or Git mutation. Never expose this port as a raw public endpoint. */
 public interface RepositoryBlobReader {
@@ -29,7 +30,7 @@ public interface RepositoryBlobReader {
             String documentPath,
             int limit,
             boolean publicOnly,
-            java.util.Set<String> inlinePaths);
+            Set<String> inlinePaths);
     /** Lists at most 1000 bounded regular image candidates under a literal path prefix. */
     List<RepositoryBlob> images(WorkspaceId workspace, String commit, String prefix);
 

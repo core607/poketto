@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryCoordinates;

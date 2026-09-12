@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Objects;
 
@@ -24,14 +25,15 @@ final class CapturedBinaryInput extends InputStream {
     private boolean verified;
 
     CapturedBinaryInput(long size, String expected, Reader reader) {
-        if (size < 1 || size > 128L * 1024 * 1024 || expected == null || !expected.matches("[0-9a-f]{64}"))
+        if (size < 1 || size > 128L * 1024 * 1024 || expected == null || !expected.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("invalid binary capture metadata");
+        }
         this.size = size;
         this.expected = expected;
         this.reader = Objects.requireNonNull(reader);
         try {
             digest = MessageDigest.getInstance("SHA-256");
-        } catch (java.security.NoSuchAlgorithmException impossible) {
+        } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         }
     }
@@ -45,9 +47,15 @@ final class CapturedBinaryInput extends InputStream {
     @Override
     public int read(byte[] bytes, int offset, int length) throws IOException {
         Objects.checkFromIndexSize(offset, length, bytes.length);
-        if (closed) throw new IOException("binary capture input is closed");
-        if (length == 0) return 0;
-        if (consumed == size) return -1;
+        if (closed) {
+            throw new IOException("binary capture input is closed");
+        }
+        if (length == 0) {
+            return 0;
+        }
+        if (consumed == size) {
+            return -1;
+        }
         if (cursor == buffer.length) {
             int requested = (int) Math.min(65536, size - consumed);
             buffer = reader.read(consumed, requested);

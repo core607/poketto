@@ -1,8 +1,13 @@
 package io.github.core607.poketto.mcp.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -15,6 +20,7 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,7 +60,7 @@ class McpCopyIdentityTests {
     void schemaAndHandlerRequireAnExplicitCopyBeforeCallingTheExecutor() {
         var schema = json.valueToTree(tool.tool().inputSchema());
         assertThat(schema.path("required").toString()).contains("expectedCopyId", "command");
-        for (var arguments : java.util.List.of(
+        for (var arguments : List.of(
                 Map.<String, Object>of("command", "pwd"),
                 Map.<String, Object>of("command", "pwd", "expectedCopyId", "bad-copy"))) {
             var result = call(arguments);

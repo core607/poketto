@@ -13,16 +13,27 @@ import org.eclipse.jgit.merge.MergeAlgorithm;
 import org.eclipse.jgit.merge.MergeFormatter;
 
 final class TextReconciliation {
+    /**
+     * A three-way merge holds the local, base and remote texts at once plus its result, so
+     * the bound is four times the largest single document rather than a number of its own.
+     */
     private static final int MAX_BYTES = 4 * ContentLimits.MAX_DOCUMENT_BYTES;
 
     static Result merge(Optional<String> base, Optional<String> local, Optional<String> remote) {
         for (var text : List.of(base, local, remote)) {
-            if (text.orElse("").getBytes(StandardCharsets.UTF_8).length > ContentLimits.MAX_DOCUMENT_BYTES)
+            if (text.orElse("").getBytes(StandardCharsets.UTF_8).length > ContentLimits.MAX_DOCUMENT_BYTES) {
                 throw new IllegalArgumentException("text reconciliation input exceeds one document");
+            }
         }
-        if (local.equals(remote)) return new Result(local, false);
-        if (base.equals(local)) return new Result(remote, false);
-        if (base.equals(remote)) return new Result(local, false);
+        if (local.equals(remote)) {
+            return new Result(local, false);
+        }
+        if (base.equals(local)) {
+            return new Result(remote, false);
+        }
+        if (base.equals(remote)) {
+            return new Result(local, false);
+        }
         // Absence differs from an existing empty file. Add/add and modify/delete
         // conflicts retain all versions instead of collapsing either to an empty sequence.
         if (base.isEmpty() || local.isEmpty() || remote.isEmpty()) {
@@ -53,8 +64,9 @@ final class TextReconciliation {
             }
 
             private void bounded(int length) {
-                if (length < 0 || count > MAX_BYTES - length)
+                if (length < 0 || count > MAX_BYTES - length) {
                     throw new IllegalArgumentException("merged text exceeds its bound");
+                }
             }
         };
         try {
@@ -68,7 +80,9 @@ final class TextReconciliation {
 
     private static RawText text(String value) {
         RawText text = new RawText(value.getBytes(StandardCharsets.UTF_8));
-        if (text.size() > 100000) throw new IllegalArgumentException("text reconciliation line bound exceeded");
+        if (text.size() > 100000) {
+            throw new IllegalArgumentException("text reconciliation line bound exceeded");
+        }
         return text;
     }
 

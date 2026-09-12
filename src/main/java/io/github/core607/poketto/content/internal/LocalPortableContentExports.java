@@ -9,16 +9,33 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -44,16 +61,18 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     || lifetime.compareTo(Duration.ofMinutes(30)) > 0
                     || buildTime.isNegative()
                     || buildTime.isZero()
-                    || buildTime.compareTo(Duration.ofMinutes(10)) > 0)
+                    || buildTime.compareTo(Duration.ofMinutes(10)) > 0) {
                 throw new IllegalArgumentException("invalid portable export limits");
+            }
         }
     }
 
     private record Owner(
             WorkspaceId workspace, AuthPrincipal.Kind kind, UUID subject, UUID account, Optional<String> client) {
         static Owner of(AuthPrincipal actor, WorkspaceId workspace, Optional<String> client) {
-            if (client.isPresent() && !client.orElseThrow().matches("[0-9a-f]{64}"))
+            if (client.isPresent() && !client.orElseThrow().matches("[0-9a-f]{64}")) {
                 throw new IllegalArgumentException("invalid client identity");
+            }
             return new Owner(
                     Objects.requireNonNull(workspace),
                     Objects.requireNonNull(actor.kind()),
@@ -105,8 +124,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
 
     LocalPortableContentExports(
             AuthService auth, PortableContentPlanner planner, Path root, Clock clock, Limits limits) {
-        if (!root.isAbsolute() || !root.normalize().equals(root))
+        if (!root.isAbsolute() || !root.normalize().equals(root)) {
             throw new IllegalArgumentException("export staging must be absolute and normalized");
+        }
         this.auth = auth;
         this.planner = planner;
         this.root = root;
@@ -124,7 +144,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             Optional<String> client) {
         Owner owner = Owner.of(actor, workspace, client);
         authorize(actor, workspace, publicOnly);
-        if (!builders.tryAcquire()) throw failure(ContentExportException.Reason.CAPACITY);
+        if (!builders.tryAcquire()) {
+            throw failure(ContentExportException.Reason.CAPACITY);
+        }
         lifecycle.readLock().lock();
         boolean reservation = false;
         boolean coordinated = false;
@@ -138,8 +160,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                 reap();
                 if (retained.size() + orphans.size() >= limits.packages()
                         || limits.zipBytes() > limits.retainedBytes() - bytes
-                        || limits.zipBytes() > limits.workspaceBytes() - workspaceBytes.getOrDefault(workspace, 0L))
+                        || limits.zipBytes() > limits.workspaceBytes() - workspaceBytes.getOrDefault(workspace, 0L)) {
                     throw failure(ContentExportException.Reason.CAPACITY);
+                }
                 charge(workspace, limits.zipBytes());
                 reservation = true;
                 building = owner;
@@ -147,14 +170,19 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                 coordinated = true;
             }
             var plan = planner.prepare(actor, workspace, selections, publicOnly);
-            if (!plan.workspace().equals(workspace)) throw failure(ContentExportException.Reason.UNAVAILABLE);
+            if (!plan.workspace().equals(workspace)) {
+                throw failure(ContentExportException.Reason.UNAVAILABLE);
+            }
             Runnable check = () -> {
                 checkOpen();
                 synchronized (this) {
-                    if (buildCancelled) throw failure(ContentExportException.Reason.NOT_FOUND);
+                    if (buildCancelled) {
+                        throw failure(ContentExportException.Reason.NOT_FOUND);
+                    }
                 }
-                if (System.nanoTime() >= deadline || Thread.currentThread().isInterrupted())
+                if (System.nanoTime() >= deadline || Thread.currentThread().isInterrupted()) {
                     throw failure(ContentExportException.Reason.UNAVAILABLE);
+                }
                 plan.authorize().run();
             };
             check.run();
@@ -167,7 +195,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             try (FileChannel file = FileChannel.open(
                     pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
                 Files.setPosixFilePermissions(pending, PosixFilePermissions.fromString("rw-------"));
-                var output = new DigestOutputStream(java.nio.channels.Channels.newOutputStream(file), digest);
+                var output = new DigestOutputStream(Channels.newOutputStream(file), digest);
                 PortableArchiveWriter.write(
                         output,
                         plan.entries(),
@@ -188,7 +216,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     clock.instant().plus(limits.lifetime()));
             synchronized (this) {
                 checkOpen();
-                if (buildCancelled) throw failure(ContentExportException.Reason.NOT_FOUND);
+                if (buildCancelled) {
+                    throw failure(ContentExportException.Reason.NOT_FOUND);
+                }
                 retained.put(id, new Retained(owner, receipt, ready, plan.authorize()));
                 charge(workspace, size - limits.zipBytes());
                 reservation = false;
@@ -200,8 +230,12 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         } finally {
             try {
                 try {
-                    if (pending != null) Files.deleteIfExists(pending);
-                    if (ready != null) Files.deleteIfExists(ready);
+                    if (pending != null) {
+                        Files.deleteIfExists(pending);
+                    }
+                    if (ready != null) {
+                        Files.deleteIfExists(ready);
+                    }
                 } catch (IOException error) {
                     // Retry removal before releasing this failed build's reserved capacity.
                     synchronized (this) {
@@ -210,7 +244,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     reservation = false;
                 }
                 synchronized (this) {
-                    if (reservation) charge(workspace, -limits.zipBytes());
+                    if (reservation) {
+                        charge(workspace, -limits.zipBytes());
+                    }
                     if (coordinated) {
                         building = null;
                         prune(workspace);
@@ -249,15 +285,18 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         try {
             synchronized (this) {
                 item = find(actor, workspace, handle, client);
-                if (downloading.contains(workspace) || !transfers.tryAcquire())
+                if (downloading.contains(workspace) || !transfers.tryAcquire()) {
                     throw failure(ContentExportException.Reason.CAPACITY);
+                }
                 downloading.add(workspace);
                 admitted = true;
                 item.readers++;
             }
             check(item);
             try (var input = FileChannel.open(item.path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
-                if (input.size() != item.receipt.bytes()) throw failure(ContentExportException.Reason.UNAVAILABLE);
+                if (input.size() != item.receipt.bytes()) {
+                    throw failure(ContentExportException.Reason.UNAVAILABLE);
+                }
                 MessageDigest hash = digest();
                 ByteBuffer buffer = ByteBuffer.allocate(65536);
                 while (input.read(buffer) != -1) {
@@ -266,8 +305,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     hash.update(buffer);
                     buffer.clear();
                 }
-                if (!HexFormat.of().formatHex(hash.digest()).equals(item.receipt.sha256()))
+                if (!HexFormat.of().formatHex(hash.digest()).equals(item.receipt.sha256())) {
                     throw failure(ContentExportException.Reason.UNAVAILABLE);
+                }
                 input.position(0);
                 while (input.read(buffer) != -1) {
                     check(item);
@@ -286,7 +326,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                         item.readers--;
                         downloading.remove(workspace);
                         transfers.release();
-                        if (item.retired) remove(item);
+                        if (item.retired) {
+                            remove(item);
+                        }
                     }
                 }
             } finally {
@@ -312,17 +354,22 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
 
     @Override
     public void closeClient(AuthPrincipal actor, WorkspaceId workspace, String client) {
-        if (closed.get()) return;
+        if (closed.get()) {
+            return;
+        }
         Owner owner = Owner.of(actor, workspace, Optional.of(client));
         lifecycle.readLock().lock();
         try {
             synchronized (this) {
-                if (owner.equals(building)) buildCancelled = true;
-                for (var item : List.copyOf(retained.values()))
+                if (owner.equals(building)) {
+                    buildCancelled = true;
+                }
+                for (var item : List.copyOf(retained.values())) {
                     if (item.owner.equals(owner)) {
                         item.retired = true;
                         remove(item);
                     }
+                }
             }
         } finally {
             lifecycle.readLock().unlock();
@@ -335,16 +382,18 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         if (item == null
                 || !item.owner.equals(Owner.of(actor, workspace, client))
                 || item.retired
-                || !clock.instant().isBefore(item.receipt.expiresAt()))
+                || !clock.instant().isBefore(item.receipt.expiresAt())) {
             throw failure(ContentExportException.Reason.NOT_FOUND);
+        }
         return item;
     }
 
     private void check(Retained item) {
         checkOpen();
         synchronized (this) {
-            if (item.retired || !clock.instant().isBefore(item.receipt.expiresAt()))
+            if (item.retired || !clock.instant().isBefore(item.receipt.expiresAt())) {
                 throw failure(ContentExportException.Reason.NOT_FOUND);
+            }
         }
         item.authorization.run();
     }
@@ -354,20 +403,28 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
     }
 
     private void checkOpen() {
-        if (closed.get()) throw failure(ContentExportException.Reason.UNAVAILABLE);
+        if (closed.get()) {
+            throw failure(ContentExportException.Reason.UNAVAILABLE);
+        }
     }
 
     private void charge(WorkspaceId workspace, long delta) {
         bytes += delta;
         workspaceBytes.merge(workspace, delta, Long::sum);
-        if (workspaceBytes.get(workspace) == 0) workspaceBytes.remove(workspace);
+        if (workspaceBytes.get(workspace) == 0) {
+            workspaceBytes.remove(workspace);
+        }
     }
 
     private void remove(Retained item) {
-        if (item.readers != 0) return;
+        if (item.readers != 0) {
+            return;
+        }
         try {
             Files.deleteIfExists(item.path);
-            if (retained.remove(item.receipt.handle(), item)) charge(item.owner.workspace(), -item.receipt.bytes());
+            if (retained.remove(item.receipt.handle(), item)) {
+                charge(item.owner.workspace(), -item.receipt.bytes());
+            }
             prune(item.owner.workspace());
         } catch (IOException error) {
             throw failure(ContentExportException.Reason.UNAVAILABLE);
@@ -386,14 +443,20 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             }
         }
         for (var item : List.copyOf(retained.values())) {
-            if (!clock.instant().isBefore(item.receipt.expiresAt())) item.retired = true;
-            if (item.retired) remove(item);
+            if (!clock.instant().isBefore(item.receipt.expiresAt())) {
+                item.retired = true;
+            }
+            if (item.retired) {
+                remove(item);
+            }
         }
     }
 
     private void prune(WorkspaceId workspace) {
         if (workspaceBytes.containsKey(workspace)
-                || building != null && building.workspace().equals(workspace)) return;
+                || building != null && building.workspace().equals(workspace)) {
+            return;
+        }
         try {
             Files.deleteIfExists(root.resolve(workspace.value().toString()));
         } catch (IOException ignored) {
@@ -405,7 +468,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         lifecycle.readLock().lock();
         try {
             synchronized (this) {
-                if (!closed.get()) reap();
+                if (!closed.get()) {
+                    reap();
+                }
             }
         } catch (RuntimeException ignored) {
             /* Retain charged storage for a later cleanup attempt. */
@@ -415,14 +480,19 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
     }
 
     private void initialize() throws IOException {
-        if (lock != null) return;
+        if (lock != null) {
+            return;
+        }
         Path ancestor = root.getRoot();
         for (Path segment : root) {
             ancestor = ancestor.resolve(segment);
-            if (!Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(ancestor);
+            if (!Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
+                Files.createDirectory(ancestor);
+            }
             if (!Files.isDirectory(ancestor, LinkOption.NOFOLLOW_LINKS)
-                    || !ancestor.toRealPath().equals(ancestor))
+                    || !ancestor.toRealPath().equals(ancestor)) {
                 throw failure(ContentExportException.Reason.UNAVAILABLE);
+            }
         }
         protectedDirectory(root);
         FileChannel channel = FileChannel.open(
@@ -433,22 +503,28 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         FileLock acquired = null;
         try {
             acquired = channel.tryLock();
-            if (acquired == null) throw failure(ContentExportException.Reason.UNAVAILABLE);
+            if (acquired == null) {
+                throw failure(ContentExportException.Reason.UNAVAILABLE);
+            }
             Files.setPosixFilePermissions(root.resolve(".owner.lock"), PosixFilePermissions.fromString("rw-------"));
             int count = 0;
             try (var directories = Files.newDirectoryStream(root)) {
                 for (Path directory : directories) {
-                    if (directory.getFileName().toString().equals(".owner.lock")) continue;
+                    if (directory.getFileName().toString().equals(".owner.lock")) {
+                        continue;
+                    }
                     if (++count > 128
                             || !uuid(directory.getFileName().toString())
-                            || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+                            || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
                         throw failure(ContentExportException.Reason.UNAVAILABLE);
+                    }
                     try (var files = Files.newDirectoryStream(directory)) {
                         for (Path file : files) {
                             if (++count > 256
                                     || !file.getFileName().toString().matches("[0-9a-f-]{36}\\.(zip|pending)")
-                                    || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+                                    || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
                                 throw failure(ContentExportException.Reason.UNAVAILABLE);
+                            }
                             Files.delete(file);
                         }
                     }
@@ -458,16 +534,22 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             ownership = channel;
             lock = acquired;
         } catch (IOException | RuntimeException error) {
-            if (acquired != null) acquired.release();
+            if (acquired != null) {
+                acquired.release();
+            }
             channel.close();
             throw error;
         }
     }
 
     private static void protectedDirectory(Path directory) throws IOException {
-        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(directory);
+        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+            Files.createDirectory(directory);
+        }
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
-                || !directory.toRealPath().equals(directory)) throw failure(ContentExportException.Reason.UNAVAILABLE);
+                || !directory.toRealPath().equals(directory)) {
+            throw failure(ContentExportException.Reason.UNAVAILABLE);
+        }
         Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
     }
 
@@ -482,7 +564,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
     private static MessageDigest digest() {
         try {
             return MessageDigest.getInstance("SHA-256");
-        } catch (java.security.NoSuchAlgorithmException error) {
+        } catch (NoSuchAlgorithmException error) {
             throw new IllegalStateException(error);
         }
     }
@@ -493,7 +575,9 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) return;
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         cleanup.shutdownNow();
         lifecycle.writeLock().lock();
         try {
@@ -506,9 +590,13 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     reap();
                 } finally {
                     try {
-                        if (lock != null) lock.release();
+                        if (lock != null) {
+                            lock.release();
+                        }
                     } finally {
-                        if (ownership != null) ownership.close();
+                        if (ownership != null) {
+                            ownership.close();
+                        }
                     }
                 }
             }

@@ -1,7 +1,9 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
 import java.util.List;
@@ -26,7 +28,7 @@ class ManagedGitHttpTests {
                 "https://token@github.com/owner/repo.git/info/refs")) {
             assertThatThrownBy(() -> ManagedGitHttp.validate(
                             repository, URI.create(target).toURL()))
-                    .isInstanceOf(java.io.IOException.class);
+                    .isInstanceOf(IOException.class);
         }
         for (String address : List.of(
                 "127.0.0.1",

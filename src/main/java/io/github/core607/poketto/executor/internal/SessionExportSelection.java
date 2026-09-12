@@ -2,21 +2,31 @@ package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.content.RepositoryPaths;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
-import java.util.*;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.TreeSet;
 
 /** Translates visible public paths using the host-owned projection, never the command's filesystem. */
 final class SessionExportSelection {
     private SessionExportSelection() {}
 
     static List<String> resolve(List<String> selections, RepositorySnapshotExports.PublicExport projection) {
-        if (selections.isEmpty() || selections.size() > 128) throw new IllegalArgumentException();
+        if (selections.isEmpty() || selections.size() > 128) {
+            throw new IllegalArgumentException("an export selects 1 to 128 paths");
+        }
         var normalized = new LinkedHashSet<String>();
         for (String selection : selections) {
             String path = selection.equals(".") ? "" : selection;
-            if (!path.isEmpty()) validate(path);
-            if (!normalized.add(path)) throw new IllegalArgumentException();
+            if (!path.isEmpty()) {
+                validate(path);
+            }
+            if (!normalized.add(path)) {
+                throw new IllegalArgumentException("an export must not select the same path twice");
+            }
         }
-        if (projection == null) return List.copyOf(normalized);
+        if (projection == null) {
+            return List.copyOf(normalized);
+        }
         var sources = new TreeSet<String>();
         for (String selection : normalized) {
             boolean matched = false;
@@ -26,17 +36,24 @@ final class SessionExportSelection {
                     validate(entry.getValue());
                     sources.add(entry.getValue());
                     matched = true;
-                    if (sources.size() > 128) throw new IllegalArgumentException();
+                    if (sources.size() > 128) {
+                        throw new IllegalArgumentException("an export expands to at most 128 source paths");
+                    }
                 }
             }
-            if (!matched) throw new IllegalArgumentException();
+            if (!matched) {
+                throw new IllegalArgumentException("an export selection matches no published path");
+            }
         }
         return List.copyOf(sources);
     }
 
     static void validate(String path) {
         RepositoryPaths.validate(path);
-        for (String part : path.split("/"))
-            if (part.startsWith(".") || part.equalsIgnoreCase("AGENTS.md")) throw new IllegalArgumentException();
+        for (String part : path.split("/")) {
+            if (part.startsWith(".") || part.equalsIgnoreCase("AGENTS.md")) {
+                throw new IllegalArgumentException("an export must not select a dot path or AGENTS.md");
+            }
+        }
     }
 }

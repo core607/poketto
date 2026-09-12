@@ -1,10 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
 import java.io.StringReader;
-import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -21,8 +18,11 @@ import org.yaml.snakeyaml.nodes.Tag;
 final class RepositoryPublishingPolicy {
 
     static final String PATH = ".poketto/publishing.yaml";
+    /** Largest publishing policy document, from the phase-one record. */
     static final int MAX_BYTES = 16 * 1024;
+    /** Exclusion patterns one publishing policy may declare, from the phase-one record. */
     static final int MAX_EXCLUSIONS = 64;
+
     private static final Set<String> FIELDS = Set.of("enabled", "mode", "exclude");
 
     enum State {
@@ -50,12 +50,7 @@ final class RepositoryPublishingPolicy {
             return invalid();
         }
         try {
-            String source = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
+            String source = StrictText.utf8(bytes);
             LoaderOptions options = new LoaderOptions();
             options.setAllowDuplicateKeys(false);
             options.setMaxAliasesForCollections(0);

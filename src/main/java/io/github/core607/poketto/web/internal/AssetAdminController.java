@@ -70,8 +70,9 @@ class AssetAdminController {
 
     @PostMapping("/repository/preview")
     ResolvedMedia preview(@AuthenticationPrincipal AuthPrincipal actor, @RequestBody Preview request) {
-        if (request.path() == null || request.body() == null)
+        if (request.path() == null || request.body() == null) {
             throw new IllegalArgumentException("preview path and source are required");
+        }
         return assets.preview(
                 actor, workspaces.selected(), request.path(), request.body(), Optional.ofNullable(request.commit()));
     }

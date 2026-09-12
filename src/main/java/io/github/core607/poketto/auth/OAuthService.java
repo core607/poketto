@@ -1,10 +1,12 @@
 package io.github.core607.poketto.auth;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -16,6 +18,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -47,8 +50,9 @@ public final class OAuthService {
                 || uri.getUserInfo() != null
                 || uri.getRawQuery() != null
                 || uri.getRawFragment() != null
-                || !uri.getRawPath().isEmpty())
+                || !uri.getRawPath().isEmpty()) {
             throw new IllegalArgumentException("OAuth issuer must be an HTTPS origin without a trailing slash");
+        }
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(manager);
         this.tx.setTimeout(5);
@@ -73,13 +77,16 @@ public final class OAuthService {
                 || name.chars().anyMatch(Character::isISOControl)
                 || redirects == null
                 || redirects.isEmpty()
-                || redirects.size() > 8) throw failure("invalid_client_metadata");
+                || redirects.size() > 8) {
+            throw failure("invalid_client_metadata");
+        }
         redirects.forEach(OAuthService::validateRedirect);
         return tx.execute(status -> {
             registryLock();
             cleanup("");
-            if (jdbc.queryForObject("select count(*) from oauth_clients", Integer.class) >= 4096)
+            if (jdbc.queryForObject("select count(*) from oauth_clients", Integer.class) >= 4096) {
                 throw failure("temporarily_unavailable");
+            }
             String id = token("oc_");
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
@@ -104,21 +111,30 @@ public final class OAuthService {
             String challengeMethod,
             String resource) {
         Client client = client(clientId);
-        if (client.unconnectedUntil() != null && !client.unconnectedUntil().isAfter(clock.instant()))
+        if (client.unconnectedUntil() != null && !client.unconnectedUntil().isAfter(clock.instant())) {
             throw failure("invalid_client");
-        if (!client.redirectUris().contains(redirect)) throw failure("invalid_request");
-        if (!"code".equals(responseType)) throw failure("unsupported_response_type");
-        if (!"S256".equals(challengeMethod) || challenge == null || !challenge.matches("[A-Za-z0-9_-]{43}"))
+        }
+        if (!client.redirectUris().contains(redirect)) {
             throw failure("invalid_request");
+        }
+        if (!"code".equals(responseType)) {
+            throw failure("unsupported_response_type");
+        }
+        if (!"S256".equals(challengeMethod) || challenge == null || !challenge.matches("[A-Za-z0-9_-]{43}")) {
+            throw failure("invalid_request");
+        }
         if (state == null
                 || state.length() < 1
                 || state.length() > 1024
-                || state.chars().anyMatch(Character::isISOControl)) throw failure("invalid_request");
+                || state.chars().anyMatch(Character::isISOControl)) {
+            throw failure("invalid_request");
+        }
         requireResource(resource);
         Set<String> scopes = scopes(scope == null || scope.isBlank() ? "repository:execute offline_access" : scope);
         Instant expires = clock.instant().plus(Duration.ofMinutes(10));
-        if (client.unconnectedUntil() != null && client.unconnectedUntil().isBefore(expires))
+        if (client.unconnectedUntil() != null && client.unconnectedUntil().isBefore(expires)) {
             expires = client.unconnectedUntil();
+        }
         return new AuthorizationRequest(client, redirect, scopes, state, challenge, expires);
     }
 
@@ -128,17 +144,27 @@ public final class OAuthService {
             AuthorizationRequest request,
             Set<String> selected,
             boolean allow) {
-        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure("access_denied");
-        if (!request.expiresAt().isAfter(clock.instant())) throw failure("invalid_request");
-        if (!allow) return callback(request, "error", "access_denied");
+        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) {
+            throw failure("access_denied");
+        }
+        if (!request.expiresAt().isAfter(clock.instant())) {
+            throw failure("invalid_request");
+        }
+        if (!allow) {
+            return callback(request, "error", "access_denied");
+        }
         requireOwner(actor, workspace);
         if (selected == null
                 || selected.isEmpty()
-                || selected.stream().anyMatch(java.util.Objects::isNull)
-                || !request.scopes().containsAll(selected)) throw failure("invalid_scope");
+                || selected.stream().anyMatch(Objects::isNull)
+                || !request.scopes().containsAll(selected)) {
+            throw failure("invalid_scope");
+        }
         Set<Capability> capabilities =
                 selected.stream().filter(SCOPES::containsKey).map(SCOPES::get).collect(Collectors.toSet());
-        if (capabilities.isEmpty()) throw failure("invalid_scope");
+        if (capabilities.isEmpty()) {
+            throw failure("invalid_scope");
+        }
         return tx.execute(status -> {
             // Final consent and registry cleanup cannot race a connection's client foreign key.
             registryLock();
@@ -149,14 +175,18 @@ public final class OAuthService {
                     "select client_id from oauth_clients where client_id=? for update",
                     (rs, row) -> rs.getString(1),
                     request.client().id());
-            if (registered.isEmpty() || !request.expiresAt().isAfter(clock.instant())) throw failure("invalid_request");
+            if (registered.isEmpty() || !request.expiresAt().isAfter(clock.instant())) {
+                throw failure("invalid_request");
+            }
             if (jdbc.queryForObject(
                             "select count(*) from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=? and k.revoked_at is null and c.expires_at>? and c.resource=?",
                             Integer.class,
                             workspace.value(),
                             now(),
                             resource())
-                    >= 100) throw failure("temporarily_unavailable");
+                    >= 100) {
+                throw failure("temporarily_unavailable");
+            }
             IssuedToken key = auth.createApiKey(actor, workspace, actor.accountId(), capabilities);
             jdbc.update(
                     "insert into oauth_connections(key_id,client_id,workspace_id,account_id,scopes,created_at,expires_at,resource) values (?,?,?,?,?,?,?,?)",
@@ -182,7 +212,9 @@ public final class OAuthService {
 
     public Tokens exchange(String clientId, String code, String redirect, String verifier, String resource) {
         requireResource(resource);
-        if (verifier == null || !verifier.matches("[A-Za-z0-9._~-]{43,128}")) throw failure("invalid_grant");
+        if (verifier == null || !verifier.matches("[A-Za-z0-9._~-]{43,128}")) {
+            throw failure("invalid_grant");
+        }
         Connection grant = findGrant("oauth_codes", code, clientId);
         Tokens result = tx.execute(status -> {
             lock(grant.workspace());
@@ -194,48 +226,64 @@ public final class OAuthService {
                             rs.getTimestamp(3).toInstant(),
                             rs.getTimestamp(4) != null),
                     digest(code));
-            if (rows.isEmpty()) throw failure("invalid_grant");
-            Code value = rows.getFirst();
-            if (!value.redirect().equals(redirect) || !constantEquals(value.challenge(), challenge(verifier)))
+            if (rows.isEmpty()) {
                 throw failure("invalid_grant");
+            }
+            Code value = rows.getFirst();
+            if (!value.redirect().equals(redirect) || !constantEquals(value.challenge(), challenge(verifier))) {
+                throw failure("invalid_grant");
+            }
             if (value.used()) {
                 revoke(grant);
                 return null;
             }
-            if (!value.expires().isAfter(clock.instant())) throw failure("invalid_grant");
+            if (!value.expires().isAfter(clock.instant())) {
+                throw failure("invalid_grant");
+            }
             validateGrant(grant);
             jdbc.update("update oauth_codes set used_at=? where digest=?", now(), digest(code));
             return issue(grant);
         });
         // Replay revocation must commit even though the protocol response is an error.
-        if (result == null) throw failure("invalid_grant");
+        if (result == null) {
+            throw failure("invalid_grant");
+        }
         return result;
     }
 
     public Tokens refresh(String clientId, String refresh, String resource, String requestedScope) {
         // A refresh without an explicit resource remains bound to its stored grant and this issuer.
-        if (resource != null) requireResource(resource);
+        if (resource != null) {
+            requireResource(resource);
+        }
         Connection grant = findGrant("oauth_refresh_tokens", refresh, clientId);
-        if (requestedScope != null && !scopes(requestedScope).equals(scopes(grant.scopes())))
+        if (requestedScope != null && !scopes(requestedScope).equals(scopes(grant.scopes()))) {
             throw failure("invalid_scope");
+        }
         Tokens result = tx.execute(status -> {
             lock(grant.workspace());
             var rows = jdbc.query(
                     "select expires_at,used_at from oauth_refresh_tokens where digest=? for update",
                     (rs, row) -> new Refresh(rs.getTimestamp(1).toInstant(), rs.getTimestamp(2) != null),
                     digest(refresh));
-            if (rows.isEmpty()) throw failure("invalid_grant");
+            if (rows.isEmpty()) {
+                throw failure("invalid_grant");
+            }
             Refresh value = rows.getFirst();
             if (value.used()) {
                 revoke(grant);
                 return null;
             }
-            if (!value.expires().isAfter(clock.instant())) throw failure("invalid_grant");
+            if (!value.expires().isAfter(clock.instant())) {
+                throw failure("invalid_grant");
+            }
             validateGrant(grant);
             jdbc.update("update oauth_refresh_tokens set used_at=? where digest=?", now(), digest(refresh));
             return issue(grant);
         });
-        if (result == null) throw failure("invalid_grant");
+        if (result == null) {
+            throw failure("invalid_grant");
+        }
         return result;
     }
 
@@ -283,7 +331,9 @@ public final class OAuthService {
         String access = token("oa_");
         String refresh = scopes(grant.scopes()).contains("offline_access") ? token("or_") : null;
         Instant end = clock.instant().plus(Duration.ofMinutes(10));
-        if (end.isAfter(grant.expires())) end = grant.expires();
+        if (end.isAfter(grant.expires())) {
+            end = grant.expires();
+        }
         jdbc.update("delete from oauth_access_tokens where expires_at <= ?", now());
         jdbc.update("delete from oauth_refresh_tokens where expires_at <= ?", now());
         jdbc.update(
@@ -297,7 +347,9 @@ public final class OAuthService {
                 Timestamp.from(end));
         if (refresh != null) {
             Instant refreshEnd = clock.instant().plus(Duration.ofDays(30));
-            if (refreshEnd.isAfter(grant.expires())) refreshEnd = grant.expires();
+            if (refreshEnd.isAfter(grant.expires())) {
+                refreshEnd = grant.expires();
+            }
             jdbc.update(
                     "insert into oauth_refresh_tokens(digest,key_id,expires_at) values (?,?,?)",
                     digest(refresh),
@@ -327,7 +379,9 @@ public final class OAuthService {
     }
 
     private void validateGrant(Connection grant) {
-        if (!grant.expires().isAfter(clock.instant())) throw failure("invalid_grant");
+        if (!grant.expires().isAfter(clock.instant())) {
+            throw failure("invalid_grant");
+        }
         try {
             auth.authorize(
                     new AuthPrincipal(AuthPrincipal.Kind.API_KEY, grant.key(), grant.account()), grant.workspace());
@@ -342,7 +396,9 @@ public final class OAuthService {
 
     private Connection findGrant(String table, String token, String clientId) {
         if (!Set.of("oauth_codes", "oauth_access_tokens", "oauth_refresh_tokens")
-                .contains(table)) throw new IllegalArgumentException();
+                .contains(table)) {
+            throw new IllegalArgumentException();
+        }
         var rows = jdbc.query(
                 "select c.key_id,c.workspace_id,c.account_id,c.scopes,c.expires_at from oauth_connections c join "
                         + table + " t using(key_id) where t.digest=? and c.client_id=? and c.resource=?",
@@ -355,7 +411,9 @@ public final class OAuthService {
                 digest(token),
                 clientId,
                 resource());
-        if (rows.isEmpty()) throw failure("invalid_grant");
+        if (rows.isEmpty()) {
+            throw failure("invalid_grant");
+        }
         return rows.getFirst();
     }
 
@@ -368,14 +426,18 @@ public final class OAuthService {
                         List.of((String[]) rs.getArray(3).getArray()),
                         rs.getTimestamp(4) == null ? null : rs.getTimestamp(4).toInstant()),
                 id);
-        if (rows.isEmpty()) throw failure("invalid_client");
+        if (rows.isEmpty()) {
+            throw failure("invalid_client");
+        }
         return rows.getFirst();
     }
 
     public void requireOwner(AuthPrincipal principal, WorkspaceId workspace) {
         if (principal == null
                 || principal.kind() != AuthPrincipal.Kind.ACCOUNT
-                || auth.authorize(principal, workspace).role() != MembershipRole.OWNER) throw failure("access_denied");
+                || auth.authorize(principal, workspace).role() != MembershipRole.OWNER) {
+            throw failure("access_denied");
+        }
     }
 
     private void lock(WorkspaceId workspace) {
@@ -386,19 +448,26 @@ public final class OAuthService {
 
     private void registryLock() {
         jdbc.execute("set local lock_timeout='2s'");
-        if (!Boolean.TRUE.equals(jdbc.queryForObject("select pg_try_advisory_xact_lock(70701109)", Boolean.class)))
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("select pg_try_advisory_xact_lock(70701109)", Boolean.class))) {
             throw failure("temporarily_unavailable");
+        }
     }
 
     private void requireResource(String value) {
         // This issuer serves one resource; omitted indicators use that fixed audience.
-        if (value != null && !resource().equals(value)) throw failure("invalid_target");
+        if (value != null && !resource().equals(value)) {
+            throw failure("invalid_target");
+        }
     }
 
     public static Set<String> scopes(String value) {
-        if (value == null || value.length() > 512) throw failure("invalid_scope");
+        if (value == null || value.length() > 512) {
+            throw failure("invalid_scope");
+        }
         Set<String> values = new LinkedHashSet<>(Arrays.asList(value.split(" ")));
-        if (values.isEmpty() || !SUPPORTED.containsAll(values)) throw failure("invalid_scope");
+        if (values.isEmpty() || !SUPPORTED.containsAll(values)) {
+            throw failure("invalid_scope");
+        }
         return Set.copyOf(values);
     }
 
@@ -408,7 +477,9 @@ public final class OAuthService {
     }
 
     public static void validateRedirect(String value) {
-        if (value == null) throw failure("invalid_redirect_uri");
+        if (value == null) {
+            throw failure("invalid_redirect_uri");
+        }
         try {
             URI uri = URI.create(value);
             if (value.length() > 2048
@@ -417,7 +488,9 @@ public final class OAuthService {
                     || uri.getRawUserInfo() != null
                     || uri.getRawFragment() != null
                     || value.indexOf('\\') >= 0
-                    || value.chars().anyMatch(Character::isISOControl)) throw failure("invalid_redirect_uri");
+                    || value.chars().anyMatch(Character::isISOControl)) {
+                throw failure("invalid_redirect_uri");
+            }
         } catch (IllegalArgumentException invalid) {
             throw failure("invalid_redirect_uri");
         }
@@ -432,14 +505,16 @@ public final class OAuthService {
     }
 
     private static String digest(String value) {
-        if (value == null || value.length() > 256) throw failure("invalid_grant");
+        if (value == null || value.length() > 256) {
+            throw failure("invalid_grant");
+        }
         return HexFormat.of().formatHex(hash(value));
     }
 
     private static byte[] hash(String value) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-        } catch (java.security.NoSuchAlgorithmException impossible) {
+        } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         }
     }
@@ -481,7 +556,7 @@ public final class OAuthService {
     public record AuthorizationRequest(
             Client client, String redirectUri, Set<String> scopes, String state, String challenge, Instant expiresAt) {}
 
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Tokens(String access_token, String token_type, long expires_in, String refresh_token, String scope) {
         @Override
         public String toString() {

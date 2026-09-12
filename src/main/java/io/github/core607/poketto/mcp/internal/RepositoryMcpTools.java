@@ -1,5 +1,6 @@
 package io.github.core607.poketto.mcp.internal;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.assets.AssetBytes;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
@@ -15,14 +16,21 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
+import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.ByteArrayInputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +43,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
+    /** Largest text result one tool may return before it is refused as an output-limit failure. */
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
+
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
     private final McpSessions sessions;
     private final AuthService auth;
@@ -179,41 +189,22 @@ final class RepositoryMcpTools {
             try {
                 sessions.resolve(exchange);
                 var arguments = request.arguments();
-                if (arguments == null) throw new IllegalArgumentException();
+                if (arguments == null) {
+                    throw new IllegalArgumentException();
+                }
                 if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
                     try (var producer = scope.producer()) {
                         return operation.apply(exchange, arguments);
                     }
                 }
-                if (name.equals("get_asset") || name.equals("put_asset") || name.equals("get_artifact"))
+                if (name.equals("get_asset") || name.equals("put_asset") || name.equals("get_artifact")) {
                     return error("UNAVAILABLE", "Image memory admission is unavailable.");
+                }
                 return operation.apply(exchange, arguments);
             } catch (AuthException | SecurityException exception) {
                 return error("DENIED", "Current workspace capability is required.");
-            } catch (io.github.core607.poketto.mcp.SessionReplacedException exception) {
-                var body = new java.util.LinkedHashMap<String, Object>();
-                body.put("code", "SESSION_REPLACED");
-                body.put("reason", exception.reason().name());
-                body.put("executed", false);
-                body.put("recoveryAvailable", false);
-                body.put("newCopyAllowed", exception.newCopyAllowed());
-                body.put(
-                        "message",
-                        switch (exception.reason()) {
-                            case MISSING_COPY ->
-                                "Expected copy is unavailable in this MCP session; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
-                            case DIFFERENT_COPY ->
-                                "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
-                            case CLOSED_COPY ->
-                                exception.newCopyAllowed()
-                                        ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
-                                        : "This copy is closing or its lease release is unconfirmed; this command did not execute. New admission remains unavailable until command exit and lease release are confirmed. Do not replay an uncertain write.";
-                        });
-                exception.currentCopyId().ifPresent(value -> body.put("copyId", value));
-                return McpSchema.CallToolResult.builder()
-                        .addTextContent(json.writeValueAsString(body))
-                        .isError(true)
-                        .build();
+            } catch (SessionReplacedException exception) {
+                return copyReplaced(exception);
             } catch (RepositoryConflictException exception) {
                 return error("CONFLICT", "Read current files and base commit before retrying.");
             } catch (RepositoryWriteAmbiguousException exception) {
@@ -232,12 +223,52 @@ final class RepositoryMcpTools {
         });
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record CopyReplacement(
+            String code,
+            String reason,
+            boolean executed,
+            boolean recoveryAvailable,
+            boolean newCopyAllowed,
+            String message,
+            String copyId) {}
+
+    private McpSchema.CallToolResult copyReplaced(SessionReplacedException exception) {
+        String message =
+                switch (exception.reason()) {
+                    case MISSING_COPY ->
+                        "Expected copy is unavailable in this MCP session; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
+                    case DIFFERENT_COPY ->
+                        "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
+                    case CLOSED_COPY ->
+                        exception.newCopyAllowed()
+                                ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
+                                : "This copy is closing or its lease release is unconfirmed; this command did not execute. New admission remains unavailable until command exit and lease release are confirmed. Do not replay an uncertain write.";
+                };
+        var body = new CopyReplacement(
+                "SESSION_REPLACED",
+                exception.reason().name(),
+                false,
+                false,
+                exception.newCopyAllowed(),
+                message,
+                exception.currentCopyId().orElse(null));
+        return McpSchema.CallToolResult.builder()
+                .addTextContent(json.writeValueAsString(body))
+                .isError(true)
+                .build();
+    }
+
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
-        if (!input.containsKey(field)) return fallback;
+        if (!input.containsKey(field)) {
+            return fallback;
+        }
         if (!(input.get(field) instanceof Number number)
                 || number.doubleValue() != number.intValue()
                 || number.intValue() < minimum
-                || number.intValue() > maximum) throw new IllegalArgumentException();
+                || number.intValue() > maximum) {
+            throw new IllegalArgumentException();
+        }
         return number.intValue();
     }
 
@@ -251,7 +282,9 @@ final class RepositoryMcpTools {
                     new AssetSource.Repository(optionalText(source, "commit", 40), requiredText(source, "path", 255));
         } else {
             fields(source, Set.of("kind", "assetId", "revision"));
-            if (!source.get("kind").equals("managed")) throw new IllegalArgumentException();
+            if (!source.get("kind").equals("managed")) {
+                throw new IllegalArgumentException();
+            }
             selected = new AssetSource.Managed(new ManagedAssetReference(
                     UUID.fromString(requiredText(source, "assetId", 36)), requiredText(source, "revision", 64)));
         }
@@ -278,7 +311,9 @@ final class RepositoryMcpTools {
                 "size",
                 result.size()));
         String base64 = Base64.getEncoder().encodeToString(result.bytes());
-        if (base64.length() > MAX_BASE64_LENGTH) throw new IllegalArgumentException();
+        if (base64.length() > MAX_BASE64_LENGTH) {
+            throw new IllegalArgumentException();
+        }
         return McpSchema.CallToolResult.builder()
                 .addTextContent(metadata)
                 .addContent(McpSchema.ImageContent.builder(base64, result.mediaType())
@@ -292,7 +327,9 @@ final class RepositoryMcpTools {
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
         byte[] bytes = Base64.getDecoder().decode(requiredText(input, "base64", MAX_BASE64_LENGTH));
-        if (bytes.length > ManagedBlobStore.MAX_UPLOAD_BYTES) throw new IllegalArgumentException();
+        if (bytes.length > ManagedBlobStore.MAX_UPLOAD_BYTES) {
+            throw new IllegalArgumentException();
+        }
         var result = assets.getObject()
                 .upload(
                         identity.principal(),
@@ -318,26 +355,32 @@ final class RepositoryMcpTools {
         int offset = boundedInteger(input, "offset", 0, 0, 134217728);
         int limit = boundedInteger(input, "limit", 8192, 4, 65536);
         String format = optionalText(input, "format", 5).orElse("auto");
-        if (!Set.of("auto", "bytes").contains(format)) throw new IllegalArgumentException();
+        if (!Set.of("auto", "bytes").contains(format)) {
+            throw new IllegalArgumentException();
+        }
         var identity = sessions.resolve(exchange);
         var cancellation = cancellation(exchange);
         var executor = executors.getObject();
         var found = executor.readArtifact(
                 identity.principal(), identity.workspace(), exchange.sessionId(), id, offset, limit, cancellation);
-        if (found.isEmpty())
+        if (found.isEmpty()) {
             return error("ARTIFACT_UNAVAILABLE", "Artifact is unavailable in this execution session or has expired.");
+        }
         var first = found.orElseThrow();
         if (format.equals("auto")
                 && Set.of("image/png", "image/jpeg", "image/gif", "image/webp").contains(first.mediaType())) {
-            if (offset != 0 || first.size() > ManagedBlobStore.MAX_UPLOAD_BYTES) throw new IllegalArgumentException();
+            if (offset != 0 || first.size() > ManagedBlobStore.MAX_UPLOAD_BYTES) {
+                throw new IllegalArgumentException();
+            }
             byte[] content = new byte[Math.toIntExact(first.size())];
             byte[] initial = first.bytes();
             System.arraycopy(initial, 0, content, 0, initial.length);
             int received = initial.length;
             long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
             while (received < content.length) {
-                if (System.nanoTime() >= deadline)
+                if (System.nanoTime() >= deadline) {
                     throw new IllegalStateException("Artifact transfer deadline exceeded");
+                }
                 var next = executor.readArtifact(
                                 identity.principal(),
                                 identity.workspace(),
@@ -351,25 +394,27 @@ final class RepositoryMcpTools {
                         || next.size() != first.size()
                         || !next.sha256().equals(first.sha256())
                         || !next.mediaType().equals(first.mediaType())
-                        || next.offset() != received)
+                        || next.offset() != received) {
                     throw new IllegalStateException("Artifact changed during transfer");
+                }
                 byte[] part = next.bytes();
-                if (part.length < 1 || part.length > content.length - received)
+                if (part.length < 1 || part.length > content.length - received) {
                     throw new IllegalStateException("Invalid artifact chunk");
+                }
                 System.arraycopy(part, 0, content, received, part.length);
                 received += part.length;
             }
             String digest;
             try {
-                digest = java.util.HexFormat.of()
-                        .formatHex(java.security.MessageDigest.getInstance("SHA-256")
-                                .digest(content));
-            } catch (java.security.NoSuchAlgorithmException unavailable) {
+                digest = HexFormat.of()
+                        .formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+            } catch (NoSuchAlgorithmException unavailable) {
                 throw new IllegalStateException(unavailable);
             }
             if (!digest.equals(first.sha256())
-                    || !ImagePreviewPolicy.validate(content).equals(first.mediaType()))
+                    || !ImagePreviewPolicy.validate(content).equals(first.mediaType())) {
                 throw new IllegalStateException("Artifact image is invalid");
+            }
             var confirmed = executor.readArtifact(
                             identity.principal(),
                             identity.workspace(),
@@ -379,8 +424,9 @@ final class RepositoryMcpTools {
                             1,
                             cancellation)
                     .orElseThrow(() -> new IllegalStateException("Artifact expired before delivery"));
-            if (!confirmed.sha256().equals(first.sha256()) || confirmed.size() != first.size())
+            if (!confirmed.sha256().equals(first.sha256()) || confirmed.size() != first.size()) {
                 throw new IllegalStateException("Artifact changed before delivery");
+            }
             var metadata = artifactInfo(first, first.size());
             metadata.put("expiresInSeconds", confirmed.expiresInSeconds());
             return McpSchema.CallToolResult.builder()
@@ -393,12 +439,12 @@ final class RepositoryMcpTools {
         }
         byte[] bytes = first.bytes();
         if (format.equals("auto") && first.mediaType().startsWith("text/")) {
-            var source = java.nio.ByteBuffer.wrap(bytes);
-            var target = java.nio.CharBuffer.allocate(bytes.length);
+            var source = ByteBuffer.wrap(bytes);
+            var target = CharBuffer.allocate(bytes.length);
             var decoder = StandardCharsets.UTF_8
                     .newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE);
+                    .onMalformedInput(CodingErrorAction.REPLACE)
+                    .onUnmappableCharacter(CodingErrorAction.REPLACE);
             decoder.decode(source, target, offset + bytes.length == first.size());
             return McpSchema.CallToolResult.builder()
                     .addTextContent(json.writeValueAsString(artifactInfo(first, offset + source.position())))
@@ -438,11 +484,14 @@ final class RepositoryMcpTools {
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
         int timeout = 30;
         if (input.containsKey("timeoutSeconds")) {
-            if (!(input.get("timeoutSeconds") instanceof Number number) || number.doubleValue() != number.intValue())
+            if (!(input.get("timeoutSeconds") instanceof Number number) || number.doubleValue() != number.intValue()) {
                 throw new IllegalArgumentException();
+            }
             timeout = number.intValue();
         }
-        if (timeout < 1 || timeout > 60) throw new IllegalArgumentException();
+        if (timeout < 1 || timeout > 60) {
+            throw new IllegalArgumentException();
+        }
         var result = executors
                 .getObject()
                 .execute(
@@ -458,15 +507,17 @@ final class RepositoryMcpTools {
     }
 
     private static McpCancellation cancellation(McpSyncServerExchange exchange) {
-        if (!(exchange.transportContext().get(McpCancellation.CONTEXT_KEY) instanceof McpCancellation cancellation))
+        if (!(exchange.transportContext().get(McpCancellation.CONTEXT_KEY) instanceof McpCancellation cancellation)) {
             throw new SecurityException("Server execution cancellation context required");
+        }
         return cancellation;
     }
 
     private McpSchema.CallToolResult textResult(Object value) {
         String encoded = json.writeValueAsString(value);
-        if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_TEXT_RESULT_BYTES)
+        if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_TEXT_RESULT_BYTES) {
             return error("OUTPUT_LIMIT", "Result exceeds the MCP text response bound.");
+        }
         return McpSchema.CallToolResult.builder()
                 .addTextContent(encoded)
                 .isError(false)
@@ -493,7 +544,9 @@ final class RepositoryMcpTools {
     }
 
     private static void fields(Map<String, Object> values, Set<String> expected) {
-        if (!expected.containsAll(values.keySet())) throw new IllegalArgumentException();
+        if (!expected.containsAll(values.keySet())) {
+            throw new IllegalArgumentException();
+        }
     }
 
     private static String requiredText(Map<String, Object> values, String field, int maximum) {
@@ -502,14 +555,19 @@ final class RepositoryMcpTools {
 
     private static Optional<String> optionalText(Map<String, Object> values, String field, int maximum) {
         Object value = values.get(field);
-        if (value == null) return Optional.empty();
-        if (!(value instanceof String text) || text.length() > maximum) throw new IllegalArgumentException();
+        if (value == null) {
+            return Optional.empty();
+        }
+        if (!(value instanceof String text) || text.length() > maximum) {
+            throw new IllegalArgumentException();
+        }
         return Optional.of(text);
     }
 
     private static Map<String, Object> mapping(Object value) {
-        if (!(value instanceof Map<?, ?> map) || map.keySet().stream().anyMatch(key -> !(key instanceof String)))
+        if (!(value instanceof Map<?, ?> map) || map.keySet().stream().anyMatch(key -> !(key instanceof String))) {
             throw new IllegalArgumentException();
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         map.forEach((key, item) -> result.put((String) key, item));
         return result;

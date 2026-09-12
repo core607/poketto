@@ -1,13 +1,37 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.ManagedOriginalTransfers;
+import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.PortableContentExports;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
+import io.github.core607.poketto.content.RepositoryMoveService;
+import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.mockito.Mockito;
 
 /** Synthetic Git authority and real projection service for the native worker acceptance. */
 public final class PublicExecutionNativeFixture implements AutoCloseable {
@@ -17,10 +41,10 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
     private final RepositorySnapshotExports exports;
     private final String sourceCommit;
     private final Path fixtureRoot;
-    private io.github.core607.poketto.assets.ManagedBlobStore originals;
+    private ManagedBlobStore originals;
     private LocalPortableContentExports packages;
-    private final java.util.concurrent.atomic.AtomicBoolean offline = new java.util.concurrent.atomic.AtomicBoolean();
-    private final java.util.concurrent.atomic.AtomicInteger pushes = new java.util.concurrent.atomic.AtomicInteger();
+    private final AtomicBoolean offline = new AtomicBoolean();
+    private final AtomicInteger pushes = new AtomicInteger();
 
     public PublicExecutionNativeFixture(Path root, Path staging, AuthService auth, WorkspaceId workspace)
             throws Exception {
@@ -34,18 +58,16 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
         var delegate = new JGitRemoteGitTransport();
         repository = new RemoteRepositoryFixture(root, new RemoteGitTransport() {
             @Override
-            public org.eclipse.jgit.lib.ObjectId fetchMain(
-                    org.eclipse.jgit.lib.Repository repo, RepositoryBinding binding) {
-                if (offline.get()) throw new RemoteGitTransportException("synthetic lost-response outage");
+            public ObjectId fetchMain(Repository repo, RepositoryBinding binding) {
+                if (offline.get()) {
+                    throw new RemoteGitTransportException("synthetic lost-response outage");
+                }
                 return delegate.fetchMain(repo, binding);
             }
 
             @Override
             public PushStatus pushMain(
-                    org.eclipse.jgit.lib.Repository repo,
-                    RepositoryBinding binding,
-                    org.eclipse.jgit.lib.ObjectId expected,
-                    org.eclipse.jgit.lib.ObjectId candidate) {
+                    Repository repo, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
                 var result = delegate.pushMain(repo, binding, expected, candidate);
                 if (pushes.incrementAndGet() == 1 && loseFirstReply) {
                     offline.set(true);
@@ -79,26 +101,26 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
         return exports;
     }
 
-    public io.github.core607.poketto.assets.MediaFileService media(AuthService auth) {
-        return new io.github.core607.poketto.assets.MediaFileService(
-                auth, new JGitRepositoryBlobReader(repository.authority()), snapshots, () -> {
-                    if (originals == null)
-                        originals = io.github.core607.poketto.assets.ManagedBlobStore.local(
-                                fixtureRoot.resolve("originals"));
-                    return originals;
-                });
+    public MediaFileService media(AuthService auth) {
+        return new MediaFileService(auth, new JGitRepositoryBlobReader(repository.authority()), snapshots, () -> {
+            if (originals == null) {
+                originals = ManagedBlobStore.local(fixtureRoot.resolve("originals"));
+            }
+            return originals;
+        });
     }
 
-    public io.github.core607.poketto.content.PortableContentExports packages(AuthService auth) {
+    public PortableContentExports packages(AuthService auth) {
         if (packages == null) {
-            if (originals == null)
-                originals = io.github.core607.poketto.assets.ManagedBlobStore.local(fixtureRoot.resolve("originals"));
+            if (originals == null) {
+                originals = ManagedBlobStore.local(fixtureRoot.resolve("originals"));
+            }
             var planner = new PortableContentPlanner(
                     auth,
                     new JGitRepositoryContentReader(repository.authority()),
                     new JGitRepositoryBlobReader(repository.authority()),
                     snapshots,
-                    new io.github.core607.poketto.assets.ManagedOriginalTransfers(() -> originals));
+                    new ManagedOriginalTransfers(() -> originals));
             packages = new LocalPortableContentExports(
                     auth,
                     planner,
@@ -115,8 +137,8 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
         return packages;
     }
 
-    public long retainedPackages() throws java.io.IOException {
-        try (var paths = java.nio.file.Files.walk(fixtureRoot.resolve("packages"))) {
+    public long retainedPackages() throws IOException {
+        try (var paths = Files.walk(fixtureRoot.resolve("packages"))) {
             return paths.filter(path -> path.getFileName().toString().endsWith(".zip"))
                     .count();
         }
@@ -124,60 +146,52 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     @Override
     public void close() {
-        if (packages != null) packages.close();
+        if (packages != null) {
+            packages.close();
+        }
     }
 
-    public String seedMedia(
-            AuthService auth,
-            io.github.core607.poketto.auth.AuthPrincipal actor,
-            byte[] publicBytes,
-            byte[] privateBytes) {
-        var files = new java.util.LinkedHashMap<String, io.github.core607.poketto.content.RepositoryMediaIndex.Media>();
+    public String seedMedia(AuthService auth, AuthPrincipal actor, byte[] publicBytes, byte[] privateBytes) {
+        var files = new LinkedHashMap<String, RepositoryMediaIndex.Media>();
         for (var entry : Map.of("public/manual.pdf", publicBytes, "private/manual.pdf", privateBytes)
                 .entrySet()) {
             var asset = media(auth)
                     .upload(
                             actor,
                             workspace,
-                            "native-" + java.util.UUID.randomUUID(),
+                            "native-" + UUID.randomUUID(),
                             "application/pdf",
-                            new java.io.ByteArrayInputStream(entry.getValue()));
+                            new ByteArrayInputStream(entry.getValue()));
             files.put(
                     entry.getKey(),
-                    new io.github.core607.poketto.content.RepositoryMediaIndex.Media(
+                    new RepositoryMediaIndex.Media(
                             asset.reference().assetId(),
                             asset.reference().revision(),
                             asset.mediaType(),
                             asset.size()));
         }
         var reader = reader(auth);
-        var index = reader.getFile(
-                actor,
-                workspace,
-                java.util.Optional.empty(),
-                io.github.core607.poketto.content.RepositoryMediaIndex.PATH);
+        var index = reader.getFile(actor, workspace, Optional.empty(), RepositoryMediaIndex.PATH);
         var article = reader.getFile(actor, workspace, index.commit(), "public/article.md");
         return patches(auth)
                 .apply(
                         actor,
                         workspace,
-                        new io.github.core607.poketto.content.RepositoryPatch(
+                        new RepositoryPatch(
                                 index.commit(),
-                                java.util.List.of(
-                                        new io.github.core607.poketto.content.RepositoryTextChange(
+                                List.of(
+                                        new RepositoryTextChange(
                                                 index.path(),
                                                 index.expectedAbsence(),
                                                 index.revision(),
-                                                java.util.Optional.of(new String(
-                                                        new io.github.core607.poketto.content.RepositoryMediaIndex(
-                                                                        files)
-                                                                .encode(),
+                                                Optional.of(new String(
+                                                        new RepositoryMediaIndex(files).encode(),
                                                         StandardCharsets.UTF_8))),
-                                        new io.github.core607.poketto.content.RepositoryTextChange(
+                                        new RepositoryTextChange(
                                                 article.path(),
                                                 false,
                                                 article.revision(),
-                                                java.util.Optional.of(
+                                                Optional.of(
                                                         "# Media fixture\n[Manual](manual.pdf)\n[Hidden](../private/manual.pdf)\n")))))
                 .commit();
     }
@@ -190,16 +204,15 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
         return pushes.get();
     }
 
-    public io.github.core607.poketto.content.AuthorizedRepositoryReader reader(AuthService auth) {
-        return new io.github.core607.poketto.content.AuthorizedRepositoryReader(
-                auth, new JGitRepositoryContentReader(repository.authority()));
+    public AuthorizedRepositoryReader reader(AuthService auth) {
+        return new AuthorizedRepositoryReader(auth, new JGitRepositoryContentReader(repository.authority()));
     }
 
-    public io.github.core607.poketto.content.RepositoryPatchService patches(AuthService auth) {
+    public RepositoryPatchService patches(AuthService auth) {
         return writeService(auth);
     }
 
-    public io.github.core607.poketto.content.RepositoryMoveService moves(AuthService auth) {
+    public RepositoryMoveService moves(AuthService auth) {
         return writeService(auth);
     }
 
@@ -210,22 +223,22 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                 Clock.systemUTC(),
                 snapshots::installAcknowledged,
                 snapshots::closePublication,
-                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
+                Mockito.mock(RepositoryMediaValidator.class));
     }
 
-    public void competingWrite(AuthService auth, io.github.core607.poketto.auth.AuthPrincipal actor) {
-        var current = reader(auth).getFile(actor, workspace, java.util.Optional.empty(), "AGENTS.md");
+    public void competingWrite(AuthService auth, AuthPrincipal actor) {
+        var current = reader(auth).getFile(actor, workspace, Optional.empty(), "AGENTS.md");
         patches(auth)
                 .apply(
                         actor,
                         workspace,
-                        new io.github.core607.poketto.content.RepositoryPatch(
+                        new RepositoryPatch(
                                 current.commit(),
-                                java.util.List.of(new io.github.core607.poketto.content.RepositoryTextChange(
+                                List.of(new RepositoryTextChange(
                                         "AGENTS.md",
                                         false,
                                         current.revision(),
-                                        java.util.Optional.of("externally-updated-guide")))));
+                                        Optional.of("externally-updated-guide")))));
     }
 
     public String sourceCommit() {

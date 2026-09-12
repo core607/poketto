@@ -16,13 +16,16 @@ public final class SessionReplacedException extends RuntimeException {
 
     public SessionReplacedException(Reason reason, Optional<String> currentCopyId, boolean newCopyAllowed) {
         super("Expected working copy is unavailable or different; this command did not execute");
-        if (reason == null || (reason == Reason.DIFFERENT_COPY) != currentCopyId.isPresent())
+        if (reason == null || (reason == Reason.DIFFERENT_COPY) != currentCopyId.isPresent()) {
             throw new IllegalArgumentException("Only a different live copy has an available ID");
-        if ((reason == Reason.MISSING_COPY && !newCopyAllowed) || (reason == Reason.DIFFERENT_COPY && newCopyAllowed))
+        }
+        if ((reason == Reason.MISSING_COPY && !newCopyAllowed) || (reason == Reason.DIFFERENT_COPY && newCopyAllowed)) {
             throw new IllegalArgumentException("New admission requires no live copy");
+        }
         currentCopyId.ifPresent(value -> {
-            if (RepositoryExecutor.NEW_COPY.equals(RepositoryExecutor.requireCopyId(value)))
+            if (RepositoryExecutor.NEW_COPY.equals(RepositoryExecutor.requireCopyId(value))) {
                 throw new IllegalArgumentException("Available copy requires an existing ID");
+            }
         });
         this.reason = reason;
         this.currentCopyId = currentCopyId;
