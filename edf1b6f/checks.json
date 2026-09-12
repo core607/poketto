@@ -1,0 +1,32 @@
+{
+  "sourceCommit": "edf1b6fe28429d607c0bef77984255a2fbc2524c",
+  "result": "PASS",
+  "fixture": "Fresh isolated Spring, PostgreSQL, Next.js, Caddy and synthetic Git; no provider or production credentials.",
+  "browser": "Codex in-app Chromium",
+  "viewport": {
+    "height": 720,
+    "width": 1280
+  },
+  "publicPublisherSavedWithoutPrivatePermissions": true,
+  "savedSourceMatchesAuthoritativeGit": true,
+  "authoritativeCommit": "d253d584546a61d761534bba0b51099ce99f2fdd",
+  "privateAndExcludedRejected": true,
+  "privateDenialRetainsSource": true,
+  "revokedPublisherReadOnly": true,
+  "images": [
+    {
+      "alt": "验收图片",
+      "complete": true,
+      "height": 180,
+      "width": 320
+    }
+  ],
+  "screenshots": {
+    "public-publisher.png": "ffedbf63e7e346cdeec17bc119aece6dcdeafe0f211735c4e0000a70d48032d7",
+    "public-readonly.png": "d40709b31293ed776e25304350aecc46670400db92e43240252cf90cbaac35c8"
+  },
+  "limitations": [
+    "Screenshots show stable states; no timing or live provider claim.",
+    "Local HTTP acceptance does not establish production HTTPS or external MCP-client acceptance."
+  ]
+}
