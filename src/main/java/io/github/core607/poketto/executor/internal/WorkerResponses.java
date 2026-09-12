@@ -45,6 +45,18 @@ final class WorkerResponses {
 
     private WorkerResponses() {}
 
+    /**
+     * Decoding happens after parsing succeeded, so it is the one step where a broken worker could
+     * still be reported as a caller mistake. It leaves the same way an unparseable frame does.
+     */
+    static byte[] decode(String data) {
+        try {
+            return Base64.getDecoder().decode(data);
+        } catch (IllegalArgumentException malformed) {
+            throw new WorkerUnavailableException(malformed);
+        }
+    }
+
     static <T> T read(JsonNode response, Class<T> shape) {
         try {
             return JSON.treeToValue(response, shape);
@@ -139,11 +151,7 @@ final class WorkerResponses {
         }
 
         byte[] decoded() {
-            try {
-                return Base64.getDecoder().decode(data);
-            } catch (IllegalArgumentException malformed) {
-                throw new IllegalArgumentException("data must be base64", malformed);
-            }
+            return WorkerResponses.decode(data);
         }
     }
 
@@ -163,7 +171,7 @@ final class WorkerResponses {
         }
 
         byte[] decoded() {
-            return Base64.getDecoder().decode(data);
+            return WorkerResponses.decode(data);
         }
     }
 
@@ -248,17 +256,20 @@ final class WorkerResponses {
          * application knows, or the answer is not one it can act on.
          */
         RepositoryExecutor.TerminationReason reason() {
-            var reason =
-                    switch (terminationReason) {
-                        case "session_closed", "client_shutdown" -> RepositoryExecutor.TerminationReason.CANCELLED;
-                        case "lease_expired", "sandbox_failed" -> RepositoryExecutor.TerminationReason.SANDBOX_FAILURE;
-                        default ->
-                            RepositoryExecutor.TerminationReason.valueOf(terminationReason.toUpperCase(Locale.ROOT));
-                    };
-            require(
-                    timedOut == (reason == RepositoryExecutor.TerminationReason.TIMEOUT),
-                    "timedOut",
-                    "must agree with the termination reason");
+            final RepositoryExecutor.TerminationReason reason;
+            try {
+                reason = switch (terminationReason) {
+                    case "session_closed", "client_shutdown" -> RepositoryExecutor.TerminationReason.CANCELLED;
+                    case "lease_expired", "sandbox_failed" -> RepositoryExecutor.TerminationReason.SANDBOX_FAILURE;
+                    default -> RepositoryExecutor.TerminationReason.valueOf(terminationReason.toUpperCase(Locale.ROOT));
+                };
+            } catch (IllegalArgumentException unknown) {
+                throw new WorkerUnavailableException(unknown);
+            }
+            if (timedOut != (reason == RepositoryExecutor.TerminationReason.TIMEOUT)) {
+                throw new WorkerUnavailableException(
+                        new IllegalArgumentException("timedOut must agree with the termination reason"));
+            }
             return reason;
         }
     }

@@ -85,7 +85,28 @@ class WorkerAnswerTests {
                 + "\"stderrTruncated\":false,\"timedOut\":true,\"terminationReason\":\"normal\"}";
         assertThatThrownBy(() -> WorkerResponses.read(json(finished), WorkerResponses.Execution.class)
                         .reason())
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("timedOut");
+                .isInstanceOf(WorkerUnavailableException.class);
+        assertThatThrownBy(() -> WorkerResponses.read(
+                                json(finished.replace("\"normal\"", "\"invented\"")), WorkerResponses.Execution.class)
+                        .reason())
+                .describedAs("a termination this application does not know")
+                .isInstanceOf(WorkerUnavailableException.class);
+    }
+
+    /**
+     * Decoding happens after parsing succeeds, so it is the one step where a broken worker could
+     * still have been reported as a caller mistake.
+     */
+    @Test
+    void aPageWhoseContentIsNotBase64IsAlsoAnUnavailableWorker() {
+        assertThatThrownBy(() -> WorkerResponses.read(
+                                json("{\"captureId\":\"" + UUID + "\",\"index\":0,\"offset\":0,\"data\":\"!!\"}"),
+                                WorkerResponses.CaptureChunk.class)
+                        .decoded())
+                .isInstanceOf(WorkerUnavailableException.class);
+        assertThatThrownBy(() -> WorkerResponses.read(
+                                json("{\"offset\":0,\"data\":\"!!\"}"), WorkerResponses.ArtifactPage.class)
+                        .decoded())
+                .isInstanceOf(WorkerUnavailableException.class);
     }
 }

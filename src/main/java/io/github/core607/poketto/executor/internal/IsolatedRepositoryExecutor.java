@@ -279,12 +279,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (!artifactId.equals(metadata.artifactId()) || offset > size || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
-                byte[] bytes;
-                try {
-                    bytes = page.decoded();
-                } catch (IllegalArgumentException invalid) {
-                    throw new WorkerUnavailableException(invalid);
-                }
+                byte[] bytes = page.decoded();
                 if (bytes.length != Math.min(limit, size - offset)) {
                     throw new WorkerUnavailableException();
                 }
