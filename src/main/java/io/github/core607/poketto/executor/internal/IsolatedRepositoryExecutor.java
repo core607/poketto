@@ -1135,12 +1135,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
                         Duration.ofSeconds(3));
                 requireOk(chunk, session);
-                if (!captureId.equals(chunk.path("captureId").asString(""))
-                        || chunk.path("index").asInt(-1) != 0
-                        || chunk.path("offset").asLong(-1) != offset) {
+                var page = read(chunk, WorkerResponses.CaptureChunk.class);
+                if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
-                return Base64.getDecoder().decode(chunk.path("data").asString(""));
+                return page.decoded();
             })) {
                 asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
                 if (!input.verified()
