@@ -1,8 +1,14 @@
 package io.github.core607.poketto.assets.internal;
 
-import static io.github.core607.poketto.assets.AssetStorageException.Reason.*;
+import static io.github.core607.poketto.assets.AssetStorageException.Reason.IDEMPOTENCY_CONFLICT;
+import static io.github.core607.poketto.assets.AssetStorageException.Reason.NOT_FOUND;
+import static io.github.core607.poketto.assets.AssetStorageException.Reason.TOO_LARGE;
+import static io.github.core607.poketto.assets.AssetStorageException.Reason.UNAVAILABLE;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-import static java.nio.file.StandardOpenOption.*;
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.CREATE_NEW;
+import static java.nio.file.StandardOpenOption.READ;
+import static java.nio.file.StandardOpenOption.WRITE;
 
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImagePreviewPolicy;
@@ -22,10 +28,12 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,7 +48,9 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
     private static final ReentrantLock[] LOCKS = new ReentrantLock[64];
 
     static {
-        for (int i = 0; i < LOCKS.length; i++) LOCKS[i] = new ReentrantLock();
+        for (int i = 0; i < LOCKS.length; i++) {
+            LOCKS[i] = new ReentrantLock();
+        }
     }
 
     private final Path root;
@@ -52,10 +62,13 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
 
     public LocalManagedBlobStore(Path root, int maxFileBytes) {
         Objects.requireNonNull(root, "managed storage root is required");
-        if (maxFileBytes < 1 || maxFileBytes > MAX_FILE_BYTES)
+        if (maxFileBytes < 1 || maxFileBytes > MAX_FILE_BYTES) {
             throw new IllegalArgumentException("managed file upload bound must be between 1 and 128 MiB");
+        }
         this.maxFileBytes = maxFileBytes;
-        if (!root.isAbsolute()) throw new IllegalArgumentException("managed storage root must be absolute");
+        if (!root.isAbsolute()) {
+            throw new IllegalArgumentException("managed storage root must be absolute");
+        }
         this.root = root.normalize();
         try {
             directory(this.root);
@@ -105,25 +118,37 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                     byte[] buffer = new byte[8192];
                     while (size <= limit) {
                         int count = original.read(buffer, 0, (int) Math.min(buffer.length, limit + 1L - size));
-                        if (count < 0) break;
+                        if (count < 0) {
+                            break;
+                        }
                         if (count == 0) {
                             int single = original.read();
-                            if (single < 0) break;
+                            if (single < 0) {
+                                break;
+                            }
                             buffer[0] = (byte) single;
                             count = 1;
                         }
                         size += count;
-                        if (size > limit) throw new AssetStorageException(TOO_LARGE);
+                        if (size > limit) {
+                            throw new AssetStorageException(TOO_LARGE);
+                        }
                         digest.update(buffer, 0, count);
                         ByteBuffer bytes = ByteBuffer.wrap(buffer, 0, count);
-                        while (bytes.hasRemaining()) out.write(bytes);
+                        while (bytes.hasRemaining()) {
+                            out.write(bytes);
+                        }
                     }
                     out.force(true);
                 }
                 String revision = HexFormat.of().formatHex(digest.digest());
-                if (size == 0) throw new IllegalArgumentException("original file must not be empty");
+                if (size == 0) {
+                    throw new IllegalArgumentException("original file must not be empty");
+                }
                 String mediaType = declaredType;
-                if (mediaType == null) mediaType = ImagePreviewPolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
+                if (mediaType == null) {
+                    mediaType = ImagePreviewPolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
+                }
                 Path operation = operations.resolve(hash(operationKey.getBytes(StandardCharsets.US_ASCII)));
                 if (Files.exists(operation, NOFOLLOW_LINKS)) {
                     ManagedAsset existing = metadata(operation);
@@ -132,15 +157,18 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                         throw new AssetStorageException(IDEMPOTENCY_CONFLICT);
                     }
                     if (!copyTo(workspace, existing.reference(), OutputStream.nullOutputStream())
-                            .equals(existing)) throw unavailable();
+                            .equals(existing)) {
+                        throw unavailable();
+                    }
                     syncDirectory(operations);
                     return existing;
                 }
                 Path digestEntry = digests.resolve(revision);
                 if (Files.exists(digestEntry, NOFOLLOW_LINKS)) {
                     ManagedAsset canonical = metadata(digestEntry);
-                    if (!canonical.reference().revision().equals(revision) || canonical.size() != size)
+                    if (!canonical.reference().revision().equals(revision) || canonical.size() != size) {
                         throw unavailable();
+                    }
                     copyTo(workspace, canonical.reference(), OutputStream.nullOutputStream());
                     Path canonicalBytes = objects.resolve(
                                     canonical.reference().assetId().toString())
@@ -154,7 +182,9 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 writeNew(temporary.resolve("metadata"), manifest);
                 syncDirectory(temporary);
                 Path published = objects.resolve(asset.reference().assetId().toString());
-                if (Files.exists(published, NOFOLLOW_LINKS)) throw unavailable();
+                if (Files.exists(published, NOFOLLOW_LINKS)) {
+                    throw unavailable();
+                }
                 Files.move(temporary, published, StandardCopyOption.ATOMIC_MOVE);
                 temporary = null;
                 syncDirectory(objects);
@@ -201,21 +231,29 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
     @Override
     public ManagedImage read(WorkspaceId workspace, ManagedAssetReference reference) {
         ManagedAsset described = describe(workspace, reference);
-        if (described.size() > MAX_UPLOAD_BYTES) throw new AssetStorageException(TOO_LARGE);
+        if (described.size() > MAX_UPLOAD_BYTES) {
+            throw new AssetStorageException(TOO_LARGE);
+        }
         Objects.requireNonNull(workspace, "workspace is required");
         Objects.requireNonNull(reference, "asset reference is required");
         Path object = root.resolve(workspace.toString())
                 .resolve("objects")
                 .resolve(reference.assetId().toString());
         try {
-            if (!Files.exists(object, NOFOLLOW_LINKS)) throw new AssetStorageException(NOT_FOUND);
+            if (!Files.exists(object, NOFOLLOW_LINKS)) {
+                throw new AssetStorageException(NOT_FOUND);
+            }
             checkDirectory(object);
             ManagedAsset asset = metadata(object.resolve("metadata"));
-            if (!asset.reference().equals(reference)) throw new AssetStorageException(NOT_FOUND);
+            if (!asset.reference().equals(reference)) {
+                throw new AssetStorageException(NOT_FOUND);
+            }
             byte[] bytes = readBounded(object.resolve("bytes"), MAX_UPLOAD_BYTES);
             if (bytes.length != asset.size()
                     || !hash(bytes).equals(reference.revision())
-                    || !ImagePreviewPolicy.validate(bytes).equals(asset.mediaType())) throw unavailable();
+                    || !ImagePreviewPolicy.validate(bytes).equals(asset.mediaType())) {
+                throw unavailable();
+            }
             return new ManagedImage(asset, bytes);
         } catch (IOException exception) {
             throw unavailable();
@@ -231,10 +269,14 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 .resolve(reference.assetId().toString());
         try {
             checkDirectory(root);
-            if (!Files.exists(object, NOFOLLOW_LINKS)) throw new AssetStorageException(NOT_FOUND);
+            if (!Files.exists(object, NOFOLLOW_LINKS)) {
+                throw new AssetStorageException(NOT_FOUND);
+            }
             checkDirectory(object);
             ManagedAsset asset = metadata(object.resolve("metadata"));
-            if (!asset.reference().equals(reference)) throw new AssetStorageException(NOT_FOUND);
+            if (!asset.reference().equals(reference)) {
+                throw new AssetStorageException(NOT_FOUND);
+            }
             return asset;
         } catch (IOException exception) {
             throw unavailable();
@@ -251,25 +293,33 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 .resolve("bytes");
         try {
             checkDirectory(bytes.getParent());
-            if (!Files.isRegularFile(bytes, NOFOLLOW_LINKS)) throw unavailable();
+            if (!Files.isRegularFile(bytes, NOFOLLOW_LINKS)) {
+                throw unavailable();
+            }
             try (FileChannel channel = FileChannel.open(bytes, READ, NOFOLLOW_LINKS)) {
                 MessageDigest digest = sha256();
                 ByteBuffer buffer = ByteBuffer.allocate(8192);
                 long count = 0;
                 while (channel.read(buffer) != -1) {
                     count += buffer.position();
-                    if (count > asset.size()) throw unavailable();
+                    if (count > asset.size()) {
+                        throw unavailable();
+                    }
                     digest.update(buffer.array(), 0, buffer.position());
                     buffer.clear();
                 }
                 if (count != asset.size()
-                        || !HexFormat.of().formatHex(digest.digest()).equals(reference.revision())) throw unavailable();
+                        || !HexFormat.of().formatHex(digest.digest()).equals(reference.revision())) {
+                    throw unavailable();
+                }
                 channel.position(0);
                 long remaining = asset.size();
                 while (remaining > 0) {
                     buffer.clear().limit((int) Math.min(buffer.capacity(), remaining));
                     int copied = channel.read(buffer);
-                    if (copied < 0) throw unavailable();
+                    if (copied < 0) {
+                        throw unavailable();
+                    }
                     output.write(buffer.array(), 0, copied);
                     remaining -= copied;
                 }
@@ -283,25 +333,30 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
     @Override
     public ManagedAssetPage list(WorkspaceId workspace, int offset, int limit) {
         Objects.requireNonNull(workspace, "workspace is required");
-        if (offset < 0 || offset > 10_000 || limit < 1 || limit > 100)
+        if (offset < 0 || offset > 10_000 || limit < 1 || limit > 100) {
             throw new IllegalArgumentException("asset page exceeds its bounds");
+        }
         Path operations = root.resolve(workspace.toString()).resolve("operations");
         try {
             checkDirectory(root);
-            if (!Files.exists(operations, NOFOLLOW_LINKS))
-                return new ManagedAssetPage(java.util.List.of(), 0, offset, limit);
+            if (!Files.exists(operations, NOFOLLOW_LINKS)) {
+                return new ManagedAssetPage(List.of(), 0, offset, limit);
+            }
             checkDirectory(operations);
-            java.util.List<ManagedAsset> assets = new java.util.ArrayList<>();
+            List<ManagedAsset> assets = new ArrayList<>();
             int visited = 0;
             try (var entries = Files.newDirectoryStream(operations)) {
                 for (Path entry : entries) {
-                    if (++visited > 10_000) throw unavailable();
-                    if (!entry.getFileName().toString().matches("[0-9a-f]{64}")) continue;
+                    if (++visited > 10_000) {
+                        throw unavailable();
+                    }
+                    if (!entry.getFileName().toString().matches("[0-9a-f]{64}")) {
+                        continue;
+                    }
                     assets.add(metadata(entry));
                 }
             }
-            assets.sort(
-                    java.util.Comparator.comparing(asset -> asset.reference().assetId()));
+            assets.sort(Comparator.comparing(asset -> asset.reference().assetId()));
             return new ManagedAssetPage(
                     assets.stream().skip(offset).limit(limit).toList(), assets.size(), offset, limit);
         } catch (IOException exception) {
@@ -312,9 +367,13 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
     private static ManagedAsset metadata(Path path) throws IOException {
         try {
             String[] fields = new String(readBounded(path, 512), StandardCharsets.US_ASCII).split("\n", -1);
-            if (fields.length != 5 || !fields[4].isEmpty()) throw unavailable();
+            if (fields.length != 5 || !fields[4].isEmpty()) {
+                throw unavailable();
+            }
             UUID id = UUID.fromString(fields[0]);
-            if (!id.toString().equals(fields[0])) throw unavailable();
+            if (!id.toString().equals(fields[0])) {
+                throw unavailable();
+            }
             return new ManagedAsset(new ManagedAssetReference(id, fields[1]), fields[2], Long.parseLong(fields[3]));
         } catch (IllegalArgumentException exception) {
             throw unavailable();
@@ -330,17 +389,23 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
     private static void writeNew(Path path, byte[] bytes) throws IOException {
         try (FileChannel channel = FileChannel.open(path, CREATE_NEW, WRITE, NOFOLLOW_LINKS)) {
             ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            while (buffer.hasRemaining()) channel.write(buffer);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
             channel.force(true);
         }
     }
 
     private static byte[] readBounded(Path path, int limit) throws IOException {
         checkDirectory(path.getParent());
-        if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) throw unavailable();
+        if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) {
+            throw unavailable();
+        }
         try (InputStream input = Files.newInputStream(path, READ, NOFOLLOW_LINKS)) {
             byte[] bytes = BoundedImageReads.read(input, limit + 1);
-            if (bytes.length > limit) throw unavailable();
+            if (bytes.length > limit) {
+                throw unavailable();
+            }
             return bytes;
         }
     }
@@ -355,12 +420,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
             } catch (FileAlreadyExistsException ignored) {
                 // Another cooperating store may create the same workspace root.
             }
-            BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!attributes.isDirectory()
-                    || attributes.isSymbolicLink()
-                    || !cursor.toRealPath().equals(cursor)) {
-                throw unavailable();
-            }
+            StorageDirectories.requireContained(cursor);
         }
         return path;
     }
@@ -369,10 +429,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
         Path cursor = path.getRoot();
         for (Path segment : path) {
             cursor = cursor.resolve(segment);
-            BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!attributes.isDirectory()
-                    || attributes.isSymbolicLink()
-                    || !cursor.toRealPath().equals(cursor)) throw unavailable();
+            StorageDirectories.requireContained(cursor);
         }
     }
 

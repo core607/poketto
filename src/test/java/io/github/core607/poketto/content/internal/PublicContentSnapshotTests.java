@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -12,11 +13,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
+import org.springframework.boot.DefaultApplicationArguments;
 
 class PublicContentSnapshotTests {
     @TempDir
@@ -63,17 +69,17 @@ class PublicContentSnapshotTests {
 
     @Test
     void applicationInitializationKeepsRetryingWhenContentCannotBeServed() throws Exception {
-        var retries = new java.util.concurrent.CountDownLatch(1);
-        var snapshots = org.mockito.Mockito.mock(io.github.core607.poketto.content.PublicContentSnapshots.class);
-        org.mockito.Mockito.doThrow(new ContentRepositoryException("unavailable"))
+        var retries = new CountDownLatch(1);
+        var snapshots = Mockito.mock(PublicContentSnapshots.class);
+        Mockito.doThrow(new ContentRepositoryException("unavailable"))
                 .when(snapshots)
                 .ensureReady(workspace);
         try (var refresher = new ContentSnapshotRefresher(
-                ignored -> retries.countDown(), () -> java.util.List.of(workspace), Duration.ofMillis(10))) {
+                ignored -> retries.countDown(), () -> List.of(workspace), Duration.ofMillis(10))) {
             new ContentConfiguration()
                     .contentRepositoryInitializer(() -> workspace, snapshots, refresher)
-                    .run(new org.springframework.boot.DefaultApplicationArguments());
-            assertThat(retries.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                    .run(new DefaultApplicationArguments());
+            assertThat(retries.await(5, TimeUnit.SECONDS)).isTrue();
         }
     }
 
@@ -313,7 +319,9 @@ class PublicContentSnapshotTests {
         @Override
         public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
             fetches++;
-            if (offline) throw new RemoteGitTransportException("fetch");
+            if (offline) {
+                throw new RemoteGitTransportException("fetch");
+            }
             ObjectId commit = delegate.fetchMain(repository, binding);
             if (afterFetch != null) {
                 Runnable action = afterFetch;

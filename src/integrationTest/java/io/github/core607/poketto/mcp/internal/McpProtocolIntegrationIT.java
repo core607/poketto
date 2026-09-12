@@ -2,13 +2,17 @@ package io.github.core607.poketto.mcp.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,13 +20,16 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +42,8 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.transport.RefSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -45,8 +54,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -120,13 +132,13 @@ class McpProtocolIntegrationIT {
     AuthService auth;
 
     @Autowired
-    io.github.core607.poketto.auth.RegistrationService registration;
+    RegistrationService registration;
 
     @Autowired
-    io.github.core607.poketto.workspace.WorkspaceRegistry registry;
+    WorkspaceRegistry registry;
 
     @Autowired
-    org.springframework.transaction.PlatformTransactionManager transactions;
+    PlatformTransactionManager transactions;
 
     @Autowired
     WorkspaceCatalog workspaces;
@@ -137,8 +149,8 @@ class McpProtocolIntegrationIT {
     @Autowired
     ApplicationEvents events;
 
-    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
-    io.github.core607.poketto.assets.AssetService assets;
+    @MockitoSpyBean
+    AssetService assets;
 
     @Autowired
     ImageMemoryAdmission imageMemory;
@@ -167,8 +179,8 @@ class McpProtocolIntegrationIT {
                 registration.issue(owner).token(),
                 "separate-mcp-owner",
                 UUID.randomUUID().toString());
-        var separateSpace = io.github.core607.poketto.workspace.WorkspaceId.random();
-        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status -> {
+        var separateSpace = WorkspaceId.random();
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
             registry.create(separateSpace, "Separate connector space", "separate-connector");
             auth.establishWorkspaceOwner(separateOwner, separateSpace);
         });
@@ -275,15 +287,15 @@ class McpProtocolIntegrationIT {
                                         Base64.getEncoder().encodeToString(PNG)))));
         byte[] oversized = padded(operation, McpBodyLimitFilter.MAX_REQUEST_BYTES + 128);
         for (boolean chunked : List.of(true, false)) {
-            org.mockito.Mockito.clearInvocations(assets);
+            Mockito.clearInvocations(assets);
             var rejected = rawPost(token, session, oversized, chunked);
             assertThat(rejected.statusCode()).isEqualTo(413);
             assertThat(rejected.body()).doesNotContain("stackTrace", "className", "jsonRpcError");
             assertThat(rejected.headers().firstValue("Cache-Control")).contains("no-store");
-            org.mockito.Mockito.verify(assets, org.mockito.Mockito.never())
+            Mockito.verify(assets, Mockito.never())
                     .upload(
-                            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+                            ArgumentMatchers.any(), ArgumentMatchers.any(),
+                            ArgumentMatchers.anyString(), ArgumentMatchers.any());
         }
         var boundary = rawPost(
                 token,
@@ -307,7 +319,7 @@ class McpProtocolIntegrationIT {
 
     private static byte[] padded(byte[] operation, int size) {
         byte[] body = new byte[size];
-        java.util.Arrays.fill(body, (byte) ' ');
+        Arrays.fill(body, (byte) ' ');
         System.arraycopy(operation, 0, body, size - operation.length, operation.length);
         return body;
     }
@@ -316,7 +328,7 @@ class McpProtocolIntegrationIT {
         var legal = Map.of("jsonrpc", "2.0", "id", "图".repeat(128), "method", "tools/list");
         assertThat(response(post(token, session, legal)).path("id").stringValue())
                 .isEqualTo("图".repeat(128));
-        for (Object id : List.of("图".repeat(129), "x".repeat(1024 * 1024), java.math.BigInteger.TEN.pow(128))) {
+        for (Object id : List.of("图".repeat(129), "x".repeat(1024 * 1024), BigInteger.TEN.pow(128))) {
             var invalid = post(token, session, Map.of("jsonrpc", "2.0", "id", id, "method", "tools/list"));
             assertThat(invalid.statusCode()).isEqualTo(400);
             assertThat(invalid.body()).hasSizeLessThan(200);
@@ -338,7 +350,7 @@ class McpProtocolIntegrationIT {
                         .statusCode())
                 .isEqualTo(413);
         for (String body : List.of("[".repeat(33) + "]".repeat(33), "[" + "[],".repeat(2050) + "[]]")) {
-            assertThat(rawPost(token, session, body.getBytes(java.nio.charset.StandardCharsets.UTF_8), false)
+            assertThat(rawPost(token, session, body.getBytes(StandardCharsets.UTF_8), false)
                             .statusCode())
                     .isEqualTo(413);
         }
@@ -378,9 +390,13 @@ class McpProtocolIntegrationIT {
                     assertThat(response.body()).contains("MCP response unavailable");
                     assertThat(imageMemory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
                     imageProbe.release.countDown();
-                } else assertThat(response.statusCode()).isEqualTo(204);
+                } else {
+                    assertThat(response.statusCode()).isEqualTo(204);
+                }
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-                while (imageMemory.reservedBytes() != 0 && System.nanoTime() < deadline) Thread.sleep(10);
+                while (imageMemory.reservedBytes() != 0 && System.nanoTime() < deadline) {
+                    Thread.sleep(10);
+                }
                 assertThat(imageMemory.reservedBytes()).isZero();
             }
         } finally {
@@ -412,13 +428,17 @@ class McpProtocolIntegrationIT {
                 async.start(() -> {
                     try (var producer = scope.producer()) {
                         entered.countDown();
-                        if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("producer release timeout");
+                        if (!release.await(10, TimeUnit.SECONDS)) {
+                            throw new AssertionError("producer release timeout");
+                        }
                     } catch (InterruptedException interrupted) {
                         Thread.currentThread().interrupt();
                     }
                 });
                 try {
-                    if (!entered.await(5, TimeUnit.SECONDS)) throw new AssertionError("producer did not start");
+                    if (!entered.await(5, TimeUnit.SECONDS)) {
+                        throw new AssertionError("producer did not start");
+                    }
                 } catch (InterruptedException interrupted) {
                     throw new IllegalStateException(interrupted);
                 }
@@ -458,7 +478,7 @@ class McpProtocolIntegrationIT {
             var bytes = new ByteArrayOutputStream();
             ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
             return bytes.toByteArray();
-        } catch (java.io.IOException exception) {
+        } catch (IOException exception) {
             throw new IllegalStateException(exception);
         }
     }
@@ -501,15 +521,21 @@ class McpProtocolIntegrationIT {
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(JsonMapper.shared().writeValueAsString(body)));
-        if (token != null) request.header("Authorization", "Bearer " + token);
-        if (session != null) request.header("Mcp-Session-Id", session).header("MCP-Protocol-Version", "2025-11-25");
+        if (token != null) {
+            request.header("Authorization", "Bearer " + token);
+        }
+        if (session != null) {
+            request.header("Mcp-Session-Id", session).header("MCP-Protocol-Version", "2025-11-25");
+        }
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private JsonNode response(HttpResponse<String> response) {
         assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
         String body = response.body();
-        if (body.stripLeading().startsWith("{")) return json.readTree(body);
+        if (body.stripLeading().startsWith("{")) {
+            return json.readTree(body);
+        }
         return json.readTree(body.lines()
                 .filter(line -> line.startsWith("data:"))
                 .reduce((a, b) -> b)

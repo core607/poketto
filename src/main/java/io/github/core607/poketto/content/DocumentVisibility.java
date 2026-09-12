@@ -2,6 +2,12 @@ package io.github.core607.poketto.content;
 
 import java.util.Objects;
 
+/**
+ * Whether a document is part of the public site. Its text form is the value stored in
+ * frontmatter, so parsing accepts only those two spellings: an unrecognized value is
+ * invalid content rather than a private default, because guessing would publish nothing
+ * silently or, worse, publish something unintended.
+ */
 public enum DocumentVisibility {
     PRIVATE("private"),
     PUBLIC("public");

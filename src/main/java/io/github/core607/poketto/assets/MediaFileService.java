@@ -9,25 +9,31 @@ import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 /** Original-file transfers. Declared types never authorize inline rendering or publication. */
 public final class MediaFileService {
+    /** Memory reserved while an original's authorization is checked, before any bytes stream. */
     private static final int AUTHORIZATION_BYTES = 256 * 1024;
+
     private final AuthService auth;
     private final RepositoryBlobReader repository;
     private final PublicContentSnapshots snapshots;
     private final Supplier<ManagedBlobStore> originals;
     private final Map<WorkspaceId, Integer> active = new HashMap<>();
-    private final java.util.Set<WorkspaceId> publicTransfers = new java.util.HashSet<>();
+    private final Set<WorkspaceId> publicTransfers = new HashSet<>();
     private int total;
 
     public MediaFileService(
@@ -61,7 +67,9 @@ public final class MediaFileService {
                 public int read() throws IOException {
                     authorize();
                     int value = in.read();
-                    if (value >= 0) allowance--;
+                    if (value >= 0) {
+                        allowance--;
+                    }
                     return value;
                 }
 
@@ -69,7 +77,9 @@ public final class MediaFileService {
                 public int read(byte[] bytes, int offset, int length) throws IOException {
                     authorize();
                     int count = in.read(bytes, offset, (int) Math.min(length, allowance));
-                    if (count > 0) allowance -= count;
+                    if (count > 0) {
+                        allowance -= count;
+                    }
                     return count;
                 }
             };
@@ -82,7 +92,7 @@ public final class MediaFileService {
     }
 
     /** Authorized exact-commit logical metadata; original availability is checked only when fetched. */
-    public io.github.core607.poketto.content.RepositoryMediaSnapshot privateCatalog(
+    public RepositoryMediaSnapshot privateCatalog(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested) {
         Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);
         check.run();
@@ -128,12 +138,16 @@ public final class MediaFileService {
     public Download publicDownload(WorkspaceId workspace, String commit, String route, String path) {
         PublicArticle article = snapshots.withCurrent(workspace, snapshot -> publicArticle(snapshot, commit, route));
         Runnable check = () -> snapshots.withCurrent(workspace, snapshot -> {
-            if (!publicArticle(snapshot, commit, route).equals(article)) throw missing();
+            if (!publicArticle(snapshot, commit, route).equals(article)) {
+                throw missing();
+            }
             return null;
         });
         try (var admission = admit(workspace, true)) {
             var catalog = repository.media(workspace, commit);
-            if (!catalog.publicPaths().contains(path) || !references(article, path)) throw missing();
+            if (!catalog.publicPaths().contains(path) || !references(article, path)) {
+                throw missing();
+            }
             ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
             check.run();
             return new Download(workspace, path, asset, check, true);
@@ -150,14 +164,20 @@ public final class MediaFileService {
     }
 
     private ManagedAsset resolve(WorkspaceId workspace, RepositoryMediaIndex.Media entry) {
-        if (entry == null) throw missing();
+        if (entry == null) {
+            throw missing();
+        }
         var asset = originals.get().describe(workspace, new ManagedAssetReference(entry.assetId(), entry.revision()));
-        if (asset.size() != entry.size() || !asset.mediaType().equals(entry.mediaType())) throw missing();
+        if (asset.size() != entry.size() || !asset.mediaType().equals(entry.mediaType())) {
+            throw missing();
+        }
         return asset;
     }
 
     private static PublicArticle publicArticle(PublicContentSnapshot snapshot, String commit, String route) {
-        if (!snapshot.commit().equals(Optional.ofNullable(commit))) throw missing();
+        if (!snapshot.commit().equals(Optional.ofNullable(commit))) {
+            throw missing();
+        }
         return snapshot.articles().stream()
                 .filter(article -> article.route().equals(route))
                 .findFirst()
@@ -166,7 +186,7 @@ public final class MediaFileService {
 
     private static boolean references(PublicArticle article, String path) {
         var references = MarkdownDestinations.parse(article.body());
-        return java.util.stream.Stream.concat(references.links().stream(), references.images().stream())
+        return Stream.concat(references.links().stream(), references.images().stream())
                 .anyMatch(authored -> MarkdownDestinations.path(article.repositoryPath(), authored)
                         .filter(path::equals)
                         .isPresent());
@@ -238,7 +258,9 @@ public final class MediaFileService {
             check.run();
         } catch (RuntimeException denied) {
             // Preserve the diagnostic while keeping the current authorization failure client-visible.
-            if (denied != failure) denied.addSuppressed(failure);
+            if (denied != failure) {
+                denied.addSuppressed(failure);
+            }
             return denied;
         }
         return failure;
@@ -248,11 +270,14 @@ public final class MediaFileService {
         // Anonymous readers cannot consume the workspace's last slot or the instance's last two slots.
         if (total >= 4
                 || active.getOrDefault(workspace, 0) >= 2
-                || (publicTransfer && (publicTransfers.size() >= 2 || publicTransfers.contains(workspace))))
+                || (publicTransfer && (publicTransfers.size() >= 2 || publicTransfers.contains(workspace)))) {
             throw new AssetStorageException(AssetStorageException.Reason.UNAVAILABLE);
+        }
         total++;
         active.merge(workspace, 1, Integer::sum);
-        if (publicTransfer) publicTransfers.add(workspace);
+        if (publicTransfer) {
+            publicTransfers.add(workspace);
+        }
         return new Admission(workspace, publicTransfer);
     }
 
@@ -269,11 +294,15 @@ public final class MediaFileService {
         @Override
         public void close() {
             synchronized (MediaFileService.this) {
-                if (closed) return;
+                if (closed) {
+                    return;
+                }
                 closed = true;
                 total--;
                 active.compute(workspace, (key, count) -> count == 1 ? null : count - 1);
-                if (publicTransfer) publicTransfers.remove(workspace);
+                if (publicTransfer) {
+                    publicTransfers.remove(workspace);
+                }
             }
         }
     }

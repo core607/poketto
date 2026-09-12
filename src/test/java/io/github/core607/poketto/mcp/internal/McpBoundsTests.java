@@ -1,61 +1,70 @@
 package io.github.core607.poketto.mcp.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.modelcontextprotocol.spec.McpError;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
+import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.servlet.function.EntityResponse;
+import org.springframework.web.servlet.function.ServerResponse;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.ObjectMapper;
 
 class McpBoundsTests {
     @Test
     void onlyThrowableEntitiesAreNormalizedAndResponseMetadataSurvives() {
-        var original = org.springframework.web.servlet.function.ServerResponse.badRequest()
+        var original = ServerResponse.badRequest()
                 .header("MCP-Protocol-Version", "2025-11-25")
                 .header("Allow", "POST, DELETE")
-                .cookie(new jakarta.servlet.http.Cookie("fixture", "value"))
-                .body(io.modelcontextprotocol.spec.McpError.builder(-32600)
-                        .message("Invalid message format")
-                        .build());
+                .cookie(new Cookie("fixture", "value"))
+                .body(McpError.builder(-32600).message("Invalid message format").build());
         var normalized = McpTransportConfiguration.normalizeError(original);
         assertThat(normalized.statusCode()).isEqualTo(original.statusCode());
         assertThat(normalized.headers()).isEqualTo(original.headers());
         assertThat(normalized.cookies()).isEqualTo(original.cookies());
-        var body = (java.util.Map<?, ?>)
-                ((org.springframework.web.servlet.function.EntityResponse<?>) normalized).entity();
+        var body = (Map<?, ?>) ((EntityResponse<?>) normalized).entity();
         assertThat(body.keySet().stream().map(Object::toString).toList()).containsExactlyInAnyOrder("jsonrpc", "error");
-        var rpc = org.springframework.web.servlet.function.ServerResponse.badRequest()
-                .body(io.modelcontextprotocol.spec.McpSchema.JSONRPCResponse.error(
+        var rpc = ServerResponse.badRequest()
+                .body(McpSchema.JSONRPCResponse.error(
                         42,
-                        io.modelcontextprotocol.spec.McpError.builder(-32600)
+                        McpError.builder(-32600)
                                 .message("Invalid request")
                                 .build()
                                 .getJsonRpcError()));
         assertThat(McpTransportConfiguration.normalizeError(rpc)).isSameAs(rpc);
-        var accepted = org.springframework.web.servlet.function.ServerResponse.accepted()
-                .build();
+        var accepted = ServerResponse.accepted().build();
         assertThat(McpTransportConfiguration.normalizeError(accepted)).isSameAs(accepted);
     }
 
     @Test
     void fullBodyIsValidatedBeforeDispatchAndExactBytesAreConsumedOnlyOnce() throws Exception {
         var filter = new McpBodyLimitFilter(
-                new tools.jackson.databind.ObjectMapper(),
-                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
+                new ObjectMapper(), new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         byte[] oversized = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1];
         for (int attempt = 0; attempt < 5; attempt++) {
             var request = chunked(oversized);
@@ -64,13 +73,13 @@ class McpBoundsTests {
             assertThat(response.getStatus()).isEqualTo(413);
         }
         byte[] exact = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES];
-        java.util.Arrays.fill(exact, (byte) ' ');
+        Arrays.fill(exact, (byte) ' ');
         exact[0] = '{';
         exact[1] = '}';
         filter.doFilter(chunked(exact), new MockHttpServletResponse(), (input, output) -> {
             assertThat(input.getInputStream().read()).isEqualTo('{');
             byte[] remaining = input.getInputStream().readAllBytes();
-            assertThat(java.util.Arrays.equals(exact, 1, exact.length, remaining, 0, remaining.length))
+            assertThat(Arrays.equals(exact, 1, exact.length, remaining, 0, remaining.length))
                     .isTrue();
             assertThat(input.getInputStream().read()).isEqualTo(-1);
         });
@@ -126,8 +135,7 @@ class McpBoundsTests {
     @Test
     void bodyLimitEnforcesDeclaredAndChunkedBytesAndDoesNotResetOnRepeatedStreamAccess() throws Exception {
         var filter = new McpBodyLimitFilter(
-                new tools.jackson.databind.ObjectMapper(),
-                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
+                new ObjectMapper(), new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var declared = new MockHttpServletRequest("POST", "/mcp");
         declared.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
         var response = new MockHttpServletResponse();
@@ -151,7 +159,7 @@ class McpBoundsTests {
         assertThat(chunkedResponse.getStatus()).isEqualTo(413);
         var valid = new MockHttpServletRequest("POST", "/mcp");
         byte[] validBytes = new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES];
-        java.util.Arrays.fill(validBytes, (byte) ' ');
+        Arrays.fill(validBytes, (byte) ' ');
         validBytes[0] = '{';
         validBytes[1] = '}';
         valid.setContent(validBytes);
@@ -166,8 +174,7 @@ class McpBoundsTests {
     @Test
     void cancellationHasBoundedReservedAdmissionWhenAllDataPostsAreActive() throws Exception {
         var filter = new McpBodyLimitFilter(
-                new tools.jackson.databind.ObjectMapper(),
-                new io.github.core607.poketto.assets.ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
+                new ObjectMapper(), new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
         var held = new ArrayList<MockHttpServletRequest>();
         try {
             for (int i = 0; i < 4; i++) {
@@ -204,7 +211,7 @@ class McpBoundsTests {
         var request = new MockHttpServletRequest("POST", "/mcp");
         request.setAsyncSupported(true);
         request.addHeader("Mcp-Session-Id", "server-session");
-        request.setContent(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        request.setContent(body.getBytes(StandardCharsets.UTF_8));
         return request;
     }
 

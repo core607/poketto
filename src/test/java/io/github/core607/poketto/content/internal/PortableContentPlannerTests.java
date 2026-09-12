@@ -1,20 +1,40 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
-import io.github.core607.poketto.assets.*;
-import io.github.core607.poketto.auth.*;
-import io.github.core607.poketto.content.*;
+import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.ManagedOriginalTransfers;
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.MarkdownDestinations;
+import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryContentReader;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
 import java.util.zip.ZipFile;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -106,9 +126,10 @@ class PortableContentPlannerTests {
                     MarkdownDestinations.path("content/private/note.md", link).orElseThrow();
             assertThat(contents).containsKey(path);
         });
-        for (byte[] bytes : expected)
+        for (byte[] bytes : expected) {
             assertThat(contents.values())
                     .anySatisfy(actual -> assertThat(actual).containsExactly(bytes));
+        }
     }
 
     @Test
@@ -153,9 +174,8 @@ class PortableContentPlannerTests {
     void legacyPublicImagesUsePreviewValidationAndWithdrawWithTheirArticleReference() throws Exception {
         var fixture = new RemoteRepositoryFixture(root.resolve("git"));
         var store = ManagedBlobStore.local(root.resolve("originals").toAbsolutePath());
-        var imageBytes = new java.io.ByteArrayOutputStream();
-        javax.imageio.ImageIO.write(
-                new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", imageBytes);
+        var imageBytes = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", imageBytes);
         var image =
                 store.upload(workspace, "export_legacy_image_001", new ByteArrayInputStream(imageBytes.toByteArray()));
         var files = new LinkedHashMap<String, byte[]>();

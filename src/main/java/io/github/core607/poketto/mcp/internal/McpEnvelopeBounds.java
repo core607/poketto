@@ -6,7 +6,14 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Streams envelope limits before the SDK constructs its argument tree or echoes a request id. */
 final class McpEnvelopeBounds {
+    /**
+     * How much JSON structure one envelope may contain before the SDK builds an argument
+     * tree from it. Both bounds come from the local execution supervisor record and are
+     * applied by streaming preflight, so a deeply nested or enormous envelope is refused
+     * before anything allocates a tree for it.
+     */
     static final int MAX_TOKENS = 4096;
+
     static final int MAX_DEPTH = 32;
     private final ObjectMapper json;
 
@@ -24,19 +31,28 @@ final class McpEnvelopeBounds {
             String rootField = null;
             JsonToken token;
             while ((token = parser.nextToken()) != null) {
-                if (++count > MAX_TOKENS) return Result.TOO_COMPLEX;
+                if (++count > MAX_TOKENS) {
+                    return Result.TOO_COMPLEX;
+                }
                 if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
-                    if (++depth > MAX_DEPTH) return Result.TOO_COMPLEX;
-                } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) depth--;
+                    if (++depth > MAX_DEPTH) {
+                        return Result.TOO_COMPLEX;
+                    }
+                } else if (token == JsonToken.END_OBJECT || token == JsonToken.END_ARRAY) {
+                    depth--;
+                }
                 if (identifier) {
-                    if (token == JsonToken.VALUE_STRING) parser.readString(new IdentifierCounter());
-                    else if (token == JsonToken.VALUE_NUMBER_INT) {
+                    if (token == JsonToken.VALUE_STRING) {
+                        parser.readString(new IdentifierCounter());
+                    } else if (token == JsonToken.VALUE_NUMBER_INT) {
                         try {
                             parser.getLongValue();
                         } catch (RuntimeException invalid) {
                             return Result.INVALID_ID;
                         }
-                    } else return Result.INVALID_ID;
+                    } else {
+                        return Result.INVALID_ID;
+                    }
                 }
                 if (nameValue && token == JsonToken.VALUE_STRING) {
                     var name = new NameCounter();
@@ -44,9 +60,13 @@ final class McpEnvelopeBounds {
                     if (toolName
                             && (name.value.toString().equals("get_asset")
                                     || name.value.toString().equals("get_artifact"))
-                            && length > McpBodyLimitFilter.MAX_INITIALIZE_BYTES) return Result.TOO_COMPLEX;
+                            && length > McpBodyLimitFilter.MAX_INITIALIZE_BYTES) {
+                        return Result.TOO_COMPLEX;
+                    }
                 }
-                if (depth == 1 && token == JsonToken.PROPERTY_NAME) rootField = parser.currentName();
+                if (depth == 1 && token == JsonToken.PROPERTY_NAME) {
+                    rootField = parser.currentName();
+                }
                 toolName = depth == 2
                         && "params".equals(rootField)
                         && token == JsonToken.PROPERTY_NAME
@@ -81,7 +101,9 @@ final class McpEnvelopeBounds {
 
         @Override
         public void write(char[] characters, int offset, int length) {
-            if ((count += length) > 128) throw new IdentifierTooLong();
+            if ((count += length) > 128) {
+                throw new IdentifierTooLong();
+            }
         }
 
         @Override
@@ -98,7 +120,9 @@ final class McpEnvelopeBounds {
 
         @Override
         public void write(char[] characters, int offset, int length) {
-            if (value.length() + length > 128) throw new NameTooLong();
+            if (value.length() + length > 128) {
+                throw new NameTooLong();
+            }
             value.append(characters, offset, length);
         }
 

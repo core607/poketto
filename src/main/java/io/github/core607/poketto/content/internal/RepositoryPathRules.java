@@ -4,6 +4,11 @@ import io.github.core607.poketto.content.ContentLimits;
 import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * What a repository-relative path may be. These rules run before a path reaches Git or the
+ * filesystem, so traversal, absolute paths and backslash separators are refused at the
+ * boundary rather than relied on to fail later.
+ */
 public final class RepositoryPathRules {
     private RepositoryPathRules() {}
 
@@ -29,9 +34,13 @@ public final class RepositoryPathRules {
     }
 
     static boolean privatePath(String path) {
-        if (!path.startsWith("public/")) return true;
+        if (!path.startsWith("public/")) {
+            return true;
+        }
         for (String segment : path.split("/", -1)) {
-            if (segment.startsWith(".") || segment.equalsIgnoreCase("AGENTS.md")) return true;
+            if (segment.startsWith(".") || segment.equalsIgnoreCase("AGENTS.md")) {
+                return true;
+            }
         }
         return false;
     }
@@ -39,13 +48,17 @@ public final class RepositoryPathRules {
     public static boolean reserved(String path) {
         String key = DocumentPathRules.collisionKey(path);
         for (String segment : key.split("/", -1)) {
-            if (segment.equals(".poketto")) return true;
+            if (segment.equals(".poketto")) {
+                return true;
+            }
         }
         return false;
     }
 
     static String route(String path) {
-        if (path.startsWith("public/")) path = path.substring("public/".length());
+        if (path.startsWith("public/")) {
+            path = path.substring("public/".length());
+        }
         String withoutExtension = path.substring(0, path.length() - 3);
         if (folderPage(path)) {
             return path.lastIndexOf('/') < 0 ? "/" : "/" + path.substring(0, path.lastIndexOf('/'));
@@ -58,7 +71,9 @@ public final class RepositoryPathRules {
     }
 
     static String validateRoute(String route) {
-        if (route.equals("/")) return route;
+        if (route.equals("/")) {
+            return route;
+        }
         if (!route.startsWith("/")) {
             throw new IllegalArgumentException("route must be an absolute logical path");
         }

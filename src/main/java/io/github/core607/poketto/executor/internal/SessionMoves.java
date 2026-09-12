@@ -1,7 +1,9 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
@@ -19,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import tools.jackson.databind.ObjectMapper;
 
 /** Serial session owner for a retained move; remote acknowledgement precedes local installation. */
@@ -39,18 +42,21 @@ final class SessionMoves {
             String source,
             String destination,
             Optional<String> localIndex) {
-        if (state.uncertain || state.move != null)
+        if (state.uncertain || state.move != null) {
             throw new IllegalArgumentException("recover the pending write first");
+        }
         var request = new RepositoryMoveRequest(state.baseCommit, source, destination);
         var plan = service.plan(actor, workspace, request);
-        if (!plan.workspace().equals(workspace) || !plan.request().equals(request))
+        if (!plan.workspace().equals(workspace) || !plan.request().equals(request)) {
             throw new IllegalStateException("move plan identity differs");
+        }
         var originals = new LinkedHashMap<>(plan.originals());
         var replacements = new LinkedHashMap<>(plan.replacements());
         var beforeFile = reader.getFile(actor, workspace, Optional.of(request.baseCommit()), RepositoryMediaIndex.PATH);
         if (!beforeFile.commit().equals(Optional.of(request.baseCommit()))
-                || (!beforeFile.expectedAbsence() && beforeFile.source().isEmpty()))
+                || (!beforeFile.expectedAbsence() && beforeFile.source().isEmpty())) {
             throw new IllegalArgumentException("move index baseline is unavailable");
+        }
         var before = beforeFile
                 .source()
                 .map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
@@ -62,12 +68,15 @@ final class SessionMoves {
         paths.addAll(local.files().keySet());
         for (String path : paths) {
             if ((inside(path, source) || inside(path, destination))
-                    && !Objects.equals(before.files().get(path), local.files().get(path)))
+                    && !Objects.equals(before.files().get(path), local.files().get(path))) {
                 throw new IllegalArgumentException("selected local media mappings have unsaved changes");
+            }
         }
         var gitTargets = new HashSet<String>();
         plan.originals().forEach((path, original) -> {
-            if (!original.optional()) gitTargets.add(plan.relocations().getOrDefault(path, path));
+            if (!original.optional()) {
+                gitTargets.add(plan.relocations().getOrDefault(path, path));
+            }
         });
         if (replacements.containsKey(RepositoryMediaIndex.PATH)) {
             var after = RepositoryMediaIndex.parse(replacements.get(RepositoryMediaIndex.PATH));
@@ -76,11 +85,14 @@ final class SessionMoves {
             changed.addAll(after.files().keySet());
             for (String path : changed) {
                 if (!Objects.equals(before.files().get(path), after.files().get(path))) {
-                    if (!Objects.equals(before.files().get(path), local.files().get(path)))
+                    if (!Objects.equals(before.files().get(path), local.files().get(path))) {
                         throw new IllegalArgumentException("selected local media mapping changed");
-                    if (after.files().containsKey(path))
+                    }
+                    if (after.files().containsKey(path)) {
                         merged.put(path, after.files().get(path));
-                    else merged.remove(path);
+                    } else {
+                        merged.remove(path);
+                    }
                 }
             }
             var mergedIndex = new RepositoryMediaIndex(merged);
@@ -97,21 +109,16 @@ final class SessionMoves {
         affected.addAll(plan.relocations().values());
         affected.addAll(replacements.keySet());
         state.requireTracking(affected);
-        byte[] payload = JSON.writeValueAsBytes(Map.of(
-                "operationId",
-                java.util.UUID.randomUUID().toString(),
-                "source",
+        byte[] payload = JSON.writeValueAsBytes(new TransferredPlan(
+                UUID.randomUUID().toString(),
                 source,
-                "destination",
                 destination,
-                "originals",
-                originals,
-                "relocations",
+                Map.copyOf(originals),
                 plan.relocations(),
-                "replacements",
-                replacements));
-        if (payload.length > 64 * 1024 * 1024)
+                Map.copyOf(replacements)));
+        if (payload.length > 64 * 1024 * 1024) {
             throw new IllegalArgumentException("move plan exceeds transfer capacity");
+        }
         return new Pending(request, payload, Set.copyOf(affected));
     }
 
@@ -123,21 +130,29 @@ final class SessionMoves {
         return DocumentRevision.sha256(bytes).value().substring(7);
     }
 
-    Map<String, ?> commit(AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, Pending pending) {
-        if (state.uncertain || state.move != null || !state.baseCommit.equals(pending.request.baseCommit()))
+    BridgeReplies.Reply commit(
+            AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, Pending pending) {
+        if (state.uncertain || state.move != null || !state.baseCommit.equals(pending.request.baseCommit())) {
             throw new IllegalArgumentException("move baseline changed");
+        }
         state.move = pending;
         return write(actor, workspace, state, false);
     }
 
-    Map<String, ?> recover(AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state) {
-        if (state.move == null) throw new IllegalArgumentException("no pending move");
-        if (state.move.result != null) return pendingResult(state.move, "LOCAL_MOVE_PENDING");
-        if (state.move.attempt == null) return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
+    BridgeReplies.Reply recover(AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state) {
+        if (state.move == null) {
+            throw new IllegalArgumentException("no pending move");
+        }
+        if (state.move.result != null) {
+            return pendingResult(state.move, "LOCAL_MOVE_PENDING");
+        }
+        if (state.move.attempt == null) {
+            return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
+        }
         return write(actor, workspace, state, true);
     }
 
-    private Map<String, ?> write(
+    private BridgeReplies.Reply write(
             AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, boolean recovery) {
         Pending pending = state.move;
         try {
@@ -146,85 +161,82 @@ final class SessionMoves {
                     : service.move(actor, workspace, pending.request);
             return pendingResult(pending, "LOCAL_MOVE_PENDING");
         } catch (RepositoryWriteAmbiguousException unknown) {
-            if (pending.attempt == null) pending.attempt = unknown.attempt().orElse(null);
+            if (pending.attempt == null) {
+                pending.attempt = unknown.attempt().orElse(null);
+            }
             return pendingResult(pending, "WRITE_OUTCOME_UNKNOWN");
         } catch (RepositoryConflictException conflict) {
             state.move = null;
-            return Map.of("ok", false, "code", "REPOSITORY_CONFLICT");
-        } catch (io.github.core607.poketto.auth.AuthException
-                | io.github.core607.poketto.content.ContentRepositoryException
-                | IllegalArgumentException failure) {
-            if (!recovery) state.move = null;
+            return BridgeReplies.failed("REPOSITORY_CONFLICT");
+        } catch (AuthException | ContentRepositoryException | IllegalArgumentException failure) {
+            if (!recovery) {
+                state.move = null;
+            }
             throw failure;
         }
     }
 
-    Map<String, ?> installed(SelectedFileSaves.State state) {
+    BridgeReplies.Reply installed(SelectedFileSaves.State state) {
         Pending pending = Objects.requireNonNull(state.move);
-        if (pending.result == null) throw new IllegalStateException("move is not acknowledged");
+        if (pending.result == null) {
+            throw new IllegalStateException("move is not acknowledged");
+        }
         var result = pending.result;
         state.acknowledgeMove(result.commit(), pending.paths);
-        state.lastSave = Map.of(
-                "ok",
+        var reply = BridgeReplies.succeeded(new BridgeReplies.MoveInstalled(
+                result.commit(),
+                result.committed(),
+                result.snapshotUpdated(),
                 true,
-                "result",
-                Map.of(
-                        "commit",
-                        result.commit(),
-                        "committed",
-                        result.committed(),
-                        "snapshotUpdated",
-                        result.snapshotUpdated(),
-                        "worktreeUpdated",
-                        true,
-                        "source",
-                        pending.request.source(),
-                        "destination",
-                        pending.request.destination()));
-        return state.lastSave;
+                pending.request.source(),
+                pending.request.destination()));
+        state.lastSave = reply;
+        return reply;
     }
 
-    Map<String, ?> skipLocal(SelectedFileSaves.State state) {
+    BridgeReplies.Reply skipLocal(SelectedFileSaves.State state) {
         Pending pending = Objects.requireNonNull(state.move);
         var result = Objects.requireNonNull(pending.result, "move must be confirmed before skipping installation");
         // Local bytes did not advance: retain every per-file baseline to guard later saves.
         state.baseCommit = result.commit();
         state.move = null;
-        state.lastSave = Map.of(
-                "ok",
-                true,
-                "result",
-                Map.of(
-                        "commit",
-                        result.commit(),
-                        "committed",
-                        result.committed(),
-                        "worktreeUpdated",
-                        false,
-                        "localInstallationSkipped",
-                        true),
-                "message",
+        var reply = BridgeReplies.succeededWithMessage(
+                new BridgeReplies.MoveSkipped(result.commit(), result.committed(), false, true),
                 "Local files are unchanged. Use poketto sync on affected text and index paths before saving them.");
-        return state.lastSave;
+        state.lastSave = reply;
+        return reply;
     }
 
-    static Map<String, ?> pendingResult(Pending pending, String code) {
-        var result = new LinkedHashMap<String, Object>();
-        result.put("committed", pending.result != null && pending.result.committed());
-        result.put("commit", pending.result == null ? null : pending.result.commit());
-        result.put("worktreeUpdated", false);
-        result.put("source", pending.request.source());
-        result.put("destination", pending.request.destination());
-        return Map.of(
-                "ok",
-                false,
-                "code",
+    static BridgeReplies.Reply pendingResult(Pending pending, String code) {
+        return BridgeReplies.failedWith(
                 code,
-                "result",
-                result,
-                "message",
+                movePending(pending),
                 "Run poketto recover to finish installation. If local changes prevent it, poketto recover --skip-local keeps those files and releases the confirmed move for per-file synchronization.");
     }
+
+    /** The move as {@code poketto status} reports it, without the reply that usually wraps it. */
+    static BridgeReplies.MovePending movePending(Pending pending) {
+        return new BridgeReplies.MovePending(
+                pending.result != null && pending.result.committed(),
+                pending.result == null ? null : pending.result.commit(),
+                false,
+                pending.request.source(),
+                pending.request.destination());
+    }
+
+    /**
+     * The move as it crosses to the worker, streamed in bounded chunks rather than sent as an
+     * operation payload. The worker reads these field names directly, so renaming one here renames
+     * it on the wire.
+     */
+    record TransferredPlan(
+            String operationId,
+            String source,
+            String destination,
+            Map<String, RepositoryMovePlan.Original> originals,
+            Map<String, String> relocations,
+            // Jackson renders each replacement as base64, which is the form the worker decodes.
+            Map<String, byte[]> replacements) {}
 
     static final class Pending {
         final RepositoryMoveRequest request;

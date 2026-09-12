@@ -1,14 +1,16 @@
 package io.github.core607.poketto.assets.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectInserter;
 import org.junit.jupiter.api.Test;
@@ -34,7 +36,7 @@ class RepositoryImageCacheTests {
                     true);
         }
         var reads = new AtomicInteger();
-        java.util.function.Supplier<byte[]> loader = () -> {
+        Supplier<byte[]> loader = () -> {
             reads.incrementAndGet();
             return original;
         };
@@ -47,7 +49,7 @@ class RepositoryImageCacheTests {
                     .findFirst()
                     .orElseThrow();
         }
-        try (var channel = java.nio.channels.FileChannel.open(file, StandardOpenOption.WRITE)) {
+        try (var channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
             channel.truncate(original.length - 1L);
         }
         assertThat(cache.get(blob, loader).bytes()).isEqualTo(original);

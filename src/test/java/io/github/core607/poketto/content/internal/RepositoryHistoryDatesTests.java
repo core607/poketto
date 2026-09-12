@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
@@ -29,9 +30,11 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.TreeFormatter;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.filter.AndTreeFilter;
 import org.eclipse.jgit.treewalk.filter.PathFilter;
@@ -120,17 +123,24 @@ class RepositoryHistoryDatesTests {
                         int parent = random.nextInt(i);
                         parents.add(commits.get(parent));
                         state.putAll(states.get(parent));
-                        if (i > 2 && random.nextBoolean()) parents.add(commits.get(random.nextInt(i)));
+                        if (i > 2 && random.nextBoolean()) {
+                            parents.add(commits.get(random.nextInt(i)));
+                        }
                     }
                     for (String path : paths) {
-                        if (random.nextInt(3) == 0) state.remove(path);
-                        else if (random.nextBoolean()) state.put(path, "# " + random.nextInt(4));
+                        if (random.nextInt(3) == 0) {
+                            state.remove(path);
+                        } else if (random.nextBoolean()) {
+                            state.put(path, "# " + random.nextInt(4));
+                        }
                     }
                     var head =
                             commit(repository, state, START.plusSeconds(random.nextInt(100) - 50), parents, Map.of());
                     commits.add(head);
                     states.add(state);
-                    if (!state.isEmpty()) assertMatchesGit(repository, head, List.copyOf(state.keySet()));
+                    if (!state.isEmpty()) {
+                        assertMatchesGit(repository, head, List.copyOf(state.keySet()));
+                    }
                 }
             }
         }
@@ -155,10 +165,9 @@ class RepositoryHistoryDatesTests {
             // Inspect the actual private cache: date equality cannot reveal a retained RevTree's
             // ObjectIdOwnerMap.Entry.next link to other commits and their raw buffers.
             Class<?> readerType = Class.forName(RepositoryHistoryDates.class.getName() + "$BudgetedReader");
-            var constructor =
-                    readerType.getDeclaredConstructor(org.eclipse.jgit.lib.ObjectReader.class, long.class, List.class);
+            var constructor = readerType.getDeclaredConstructor(ObjectReader.class, long.class, List.class);
             constructor.setAccessible(true);
-            try (var reader = (org.eclipse.jgit.lib.ObjectReader) constructor.newInstance(
+            try (var reader = (ObjectReader) constructor.newInstance(
                             repository.newObjectReader(), 256L * 1024 * 1024, List.of("note.md"));
                     var walk = new RevWalk(reader)) {
                 var changed = readerType.getDeclaredMethod("changed", ObjectId.class, ObjectId.class);
@@ -237,7 +246,9 @@ class RepositoryHistoryDatesTests {
             try (var walk = new RevWalk(repository)) {
                 walk.setTreeFilter(AndTreeFilter.create(PathFilter.create(path), TreeFilter.ANY_DIFF));
                 walk.markStart(walk.parseCommit(head));
-                for (var commit : walk) dates.add(commit.getCommitterIdent().getWhenAsInstant());
+                for (var commit : walk) {
+                    dates.add(commit.getCommitterIdent().getWhenAsInstant());
+                }
             }
             assertThat(actual.get(path))
                     .as("%s at %s", path, head.name())
@@ -249,12 +260,13 @@ class RepositoryHistoryDatesTests {
 
     private static ObjectId longHistory(Repository repository) throws Exception {
         try (var inserter = repository.newObjectInserter()) {
-            var entries = new java.util.TreeMap<String, ObjectId>();
-            for (int i = 0; i < 334; i++)
+            var entries = new TreeMap<String, ObjectId>();
+            for (int i = 0; i < 334; i++) {
                 entries.put(
                         "文章%03d.md".formatted(i),
                         inserter.insert(Constants.OBJ_BLOB, ("# Article " + i).getBytes(StandardCharsets.UTF_8)));
-            var policy = new org.eclipse.jgit.lib.TreeFormatter();
+            }
+            var policy = new TreeFormatter();
             policy.append(
                     "publishing.yaml",
                     FileMode.REGULAR_FILE,
@@ -268,17 +280,20 @@ class RepositoryHistoryDatesTests {
                 entries.put(
                         "counter.txt",
                         inserter.insert(Constants.OBJ_BLOB, ("counter " + i).getBytes(StandardCharsets.UTF_8)));
-                var publicTree = new org.eclipse.jgit.lib.TreeFormatter();
+                var publicTree = new TreeFormatter();
                 for (var entry : entries.entrySet()) {
-                    if (!entry.getKey().equals(".poketto"))
+                    if (!entry.getKey().equals(".poketto")) {
                         publicTree.append(entry.getKey(), FileMode.REGULAR_FILE, entry.getValue());
+                    }
                 }
-                var tree = new org.eclipse.jgit.lib.TreeFormatter();
+                var tree = new TreeFormatter();
                 tree.append(".poketto", FileMode.TREE, entries.get(".poketto"));
                 tree.append("public", FileMode.TREE, inserter.insert(publicTree));
                 var commit = new CommitBuilder();
                 commit.setTreeId(inserter.insert(tree));
-                if (head != null) commit.setParentId(head);
+                if (head != null) {
+                    commit.setParentId(head);
+                }
                 var identity = new PersonIdent("Fixture", "fixture@invalid", START.plusSeconds(i), ZoneOffset.UTC);
                 commit.setAuthor(identity);
                 commit.setCommitter(identity);

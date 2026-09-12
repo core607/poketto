@@ -11,6 +11,7 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.transport.FetchConnection;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.transport.Transport;
+import org.eclipse.jgit.transport.TransportHttp;
 
 final class JGitRemoteGitTransport implements RemoteGitTransport {
 
@@ -82,7 +83,7 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
 
     private static void configureManaged(Transport transport, RepositoryBinding binding) {
         if (binding.managed()) {
-            ((org.eclipse.jgit.transport.TransportHttp) transport)
+            ((TransportHttp) transport)
                     .setHttpConnectionFactory(
                             new ManagedGitHttp(binding.location().toString()));
         }

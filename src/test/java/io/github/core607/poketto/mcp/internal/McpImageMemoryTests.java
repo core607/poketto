@@ -1,8 +1,12 @@
 package io.github.core607.poketto.mcp.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetBytes;
 import io.github.core607.poketto.assets.AssetService;
@@ -20,6 +24,7 @@ import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import io.modelcontextprotocol.spec.McpStreamableServerTransport;
 import jakarta.servlet.AsyncEvent;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
@@ -47,7 +52,7 @@ class McpImageMemoryTests {
         var json = new ObjectMapper();
         var filter = new McpBodyLimitFilter(json, memory);
         for (Object id : new Object[] {
-            "图".repeat(129), "x".repeat(1024 * 1024), java.math.BigInteger.TEN.pow(128), Map.of("invalid", "value")
+            "图".repeat(129), "x".repeat(1024 * 1024), BigInteger.TEN.pow(128), Map.of("invalid", "value")
         }) {
             var response = new MockHttpServletResponse();
             filter.doFilter(
@@ -356,20 +361,26 @@ class McpImageMemoryTests {
         try {
             while (true) {
                 try {
-                    if (!latch.await(10, TimeUnit.SECONDS)) throw new AssertionError("test producer was not released");
+                    if (!latch.await(10, TimeUnit.SECONDS)) {
+                        throw new AssertionError("test producer was not released");
+                    }
                     return;
                 } catch (InterruptedException ignored) {
                     interrupted = true;
                 }
             }
         } finally {
-            if (interrupted) Thread.currentThread().interrupt();
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
     private static void awaitReleased(ImageMemoryAdmission memory) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (memory.reservedBytes() != 0 && System.nanoTime() < deadline) Thread.onSpinWait();
+        while (memory.reservedBytes() != 0 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
         assertThat(memory.reservedBytes()).isZero();
     }
 

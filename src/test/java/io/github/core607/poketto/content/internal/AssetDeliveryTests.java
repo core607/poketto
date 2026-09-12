@@ -1,9 +1,21 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
 import io.github.core607.poketto.assets.AssetService;
@@ -25,6 +37,9 @@ import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
@@ -32,6 +47,8 @@ import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +56,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,15 +72,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.imageio.ImageIO;
+import org.assertj.core.api.ThrowableAssert;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.Repository;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -154,7 +178,7 @@ class AssetDeliveryTests {
                 .containsEntry(
                         "100%25.md",
                         "/admin?workspace=" + workspace + "&path="
-                                + java.net.URLEncoder.encode("public/" + folder + "/100%.md", StandardCharsets.UTF_8));
+                                + URLEncoder.encode("public/" + folder + "/100%.md", StandardCharsets.UTF_8));
         assertThat(service.readPrivateImage(
                                 actor, workspace, token(preview.images().get("photo%20%25%23.png")))
                         .bytes())
@@ -205,7 +229,9 @@ class AssetDeliveryTests {
     void overflowingGalleryPreservesTheDocumentAndFirst128Images() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("public/index.md", "# Still readable");
-        for (int i = 0; i < 129; i++) files.put("public/image-%03d.png".formatted(i), png(i));
+        for (int i = 0; i < 129; i++) {
+            files.put("public/image-%03d.png".formatted(i), png(i));
+        }
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -223,7 +249,9 @@ class AssetDeliveryTests {
     void exactly128ImagesRemainCompleteAndUnicodeTruncationKeepsJavaFilenameOrder() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("public/目录/index.md", "# Gallery");
-        for (int i = 0; i < 126; i++) files.put("public/目录/image-%03d.png".formatted(i), png(i));
+        for (int i = 0; i < 126; i++) {
+            files.put("public/目录/image-%03d.png".formatted(i), png(i));
+        }
         files.put("public/目录/中文.png", png(1));
         files.put("public/目录/\ue000.png", png(2));
         var commit = fixture.commitRemote(workspace, files);
@@ -303,7 +331,9 @@ class AssetDeliveryTests {
         files.put("public/a.png", new byte[RepositoryBlobReader.MAX_BLOB_BYTES + 1]);
         files.put("public/b.png", text("not a PNG"));
         files.put("public/c.png", png(1));
-        for (int i = 3; i < 129; i++) files.put("public/z-%03d.png".formatted(i), png(i));
+        for (int i = 3; i < 129; i++) {
+            files.put("public/z-%03d.png".formatted(i), png(i));
+        }
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
@@ -366,12 +396,9 @@ class AssetDeliveryTests {
     void bodyImagesHavePriorityAndExhaustedPageBudgetDoesNotReadMoreManagedOrGitBytes() {
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
-        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
-                        call.getArgument(0),
-                        call.getArgument(1),
-                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
-                        java.util.Set.of()));
+        when(blobs.media(any(), ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new RepositoryMediaSnapshot(
+                        call.getArgument(0), call.getArgument(1), RepositoryMediaIndex.empty(), Set.of()));
         var references = new ArrayList<ManagedAssetReference>();
         var source = new StringBuilder("# Text survives\n");
         for (int i = 0; i < 9; i++) {
@@ -405,20 +432,18 @@ class AssetDeliveryTests {
     void successfulSmallManagedReadsReturnUnusedPageAllowance() {
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
-        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
-                        call.getArgument(0),
-                        call.getArgument(1),
-                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
-                        java.util.Set.of()));
+        when(blobs.media(any(), ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new RepositoryMediaSnapshot(
+                        call.getArgument(0), call.getArgument(1), RepositoryMediaIndex.empty(), Set.of()));
         var reference = new ManagedAssetReference(UUID.randomUUID(), "a".repeat(64));
         var source = new StringBuilder("# Text\n");
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < 20; i++) {
             source.append("![Image](managed:")
                     .append(UUID.randomUUID())
                     .append(":")
                     .append("a".repeat(64))
                     .append(")\n");
+        }
         when(store.read(any(), any()))
                 .thenReturn(new ManagedImage(new ManagedAsset(reference, "image/png", 1), new byte[] {1}));
         when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
@@ -435,12 +460,9 @@ class AssetDeliveryTests {
     @Test
     void failedGitTargetsChargeOnceAndKnownSizeIsCheckedBeforeMaterialization() {
         var blobs = mock(RepositoryBlobReader.class);
-        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
-                        call.getArgument(0),
-                        call.getArgument(1),
-                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
-                        java.util.Set.of()));
+        when(blobs.media(any(), ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new RepositoryMediaSnapshot(
+                        call.getArgument(0), call.getArgument(1), RepositoryMediaIndex.empty(), Set.of()));
         var source = new StringBuilder("# Text\n![one](first.png)\n![same](./first.png)\n");
         var first = new RepositoryBlob(
                 workspace, "b".repeat(40), "first.png", "c".repeat(40), RepositoryBlobReader.MAX_BLOB_BYTES, true);
@@ -472,29 +494,25 @@ class AssetDeliveryTests {
         var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
         var store = mock(ManagedBlobStore.class);
         var blobs = mock(RepositoryBlobReader.class);
-        when(blobs.media(any(), org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(call -> new io.github.core607.poketto.content.RepositoryMediaSnapshot(
-                        call.getArgument(0),
-                        call.getArgument(1),
-                        io.github.core607.poketto.content.RepositoryMediaIndex.empty(),
-                        java.util.Set.of()));
+        when(blobs.media(any(), ArgumentMatchers.anyString()))
+                .thenAnswer(call -> new RepositoryMediaSnapshot(
+                        call.getArgument(0), call.getArgument(1), RepositoryMediaIndex.empty(), Set.of()));
         var body = new StringBuilder("# Text remains\n");
-        for (int i = 0; i < 9; i++)
+        for (int i = 0; i < 9; i++) {
             body.append("![Busy](managed:")
                     .append(UUID.randomUUID())
                     .append(":")
                     .append("a".repeat(64))
                     .append(")\n");
+        }
         byte[] image = png(3);
         RepositoryBlob candidate;
-        try (var formatter = new org.eclipse.jgit.lib.ObjectInserter.Formatter()) {
+        try (var formatter = new ObjectInserter.Formatter()) {
             candidate = new RepositoryBlob(
                     workspace,
                     "b".repeat(40),
                     "gallery.png",
-                    formatter
-                            .idFor(org.eclipse.jgit.lib.Constants.OBJ_BLOB, image)
-                            .name(),
+                    formatter.idFor(Constants.OBJ_BLOB, image).name(),
                     image.length,
                     true);
         }
@@ -587,7 +605,9 @@ class AssetDeliveryTests {
         assertThat(service.publicDocument(workspace, "/article")).isEmpty();
         Path cache = directory.resolve("image-cache");
         try (var entries = Files.list(cache)) {
-            for (Path entry : entries.toList()) Files.delete(entry);
+            for (Path entry : entries.toList()) {
+                Files.delete(entry);
+            }
         }
         Files.delete(cache);
         var replay = service.readPublicImage(workspace, grant);
@@ -606,7 +626,9 @@ class AssetDeliveryTests {
         RemoteGitTransport transport = new RemoteGitTransport() {
             @Override
             public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
-                if (offline.get()) throw new RemoteGitTransportException("synthetic offline authority");
+                if (offline.get()) {
+                    throw new RemoteGitTransportException("synthetic offline authority");
+                }
                 return delegate.fetchMain(repository, binding);
             }
 
@@ -618,7 +640,7 @@ class AssetDeliveryTests {
                     Path lock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
                     Files.createDirectories(lock.getParent());
                     Files.writeString(lock, "synthetic local ref lock after remote acknowledgement");
-                } catch (java.io.IOException failure) {
+                } catch (IOException failure) {
                     throw new RuntimeException(failure);
                 }
                 return status;
@@ -643,7 +665,7 @@ class AssetDeliveryTests {
                 clock,
                 snapshots::installAcknowledged,
                 snapshots::closePublication,
-                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
+                Mockito.mock(RepositoryMediaValidator.class));
         var change = new RepositoryTextChange(
                 RepositoryPublishingPolicy.PATH,
                 false,
@@ -657,7 +679,7 @@ class AssetDeliveryTests {
         // Previously issued authorization remains valid for its exact bytes, even after withdrawal.
         assertThat(service.readPublicImage(workspace, issued).bytes()).isEqualTo(png(1));
         offline.set(true);
-        org.junit.jupiter.api.Assertions.assertAll(
+        Assertions.assertAll(
                 () -> assertThatThrownBy(() -> snapshots.current(workspace))
                         .as("known remote withdrawal must close public search and listings")
                         .isInstanceOf(ContentRepositoryException.class),
@@ -691,7 +713,7 @@ class AssetDeliveryTests {
                 clock,
                 snapshots::installAcknowledged,
                 snapshots::closePublication,
-                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
+                Mockito.mock(RepositoryMediaValidator.class));
         Path blockedMarker = fixture.cache(workspace).resolve(".git/poketto-public-snapshot.tmp");
         Files.createDirectory(blockedMarker);
         var change = new RepositoryTextChange(
@@ -747,9 +769,10 @@ class AssetDeliveryTests {
         String renewed = articleToken(service, workspace, "/article", "image.png");
         assertThat(renewed).isNotEqualTo(original);
         clock.now = issued.plusSeconds(299);
-        for (int i = 0; i < 130; i++)
+        for (int i = 0; i < 130; i++) {
             assertThat(articleToken(service, workspace, "/article", "image.png"))
                     .isEqualTo(renewed);
+        }
         assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
         clock.now = issued.plusSeconds(300);
         assertNotFound(() -> service.readPublicImage(workspace, original));
@@ -783,7 +806,9 @@ class AssetDeliveryTests {
     void capacityOmitsOnlyNewImagesAndPreservesExistingGrantsAcrossWorkspaces(CapturedOutput output) throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("public/plain.md", "# Still readable");
-        for (int i = 0; i < 128; i++) files.put("public/article-" + i + ".md", text("![image](image.png)"));
+        for (int i = 0; i < 128; i++) {
+            files.put("public/article-" + i + ".md", text("![image](image.png)"));
+        }
         files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         WorkspaceId other = WorkspaceId.random();
@@ -796,17 +821,20 @@ class AssetDeliveryTests {
         snapshots.refresh(other);
         var service = service(fixture, snapshots);
         String original = articleToken(service, workspace, "/article-0", "image.png");
-        for (int i = 1; i < 127; i++) articleToken(service, workspace, "/article-" + i, "image.png");
+        for (int i = 1; i < 127; i++) {
+            articleToken(service, workspace, "/article-" + i, "image.png");
+        }
         var partial = service.publicDocument(other, "/article").orElseThrow();
         assertThat(partial.media().body()).contains("# Other workspace", "![new](new.png)");
         assertThat(partial.media().images()).containsOnlyKeys("known.png");
         String otherGrant = token(partial.media().images().get("known.png"));
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 8; i++) {
             assertThat(service.publicDocument(workspace, "/article-127")
                             .orElseThrow()
                             .media()
                             .images())
                     .isEmpty();
+        }
         assertThat(service.publicDocument(workspace, "/plain")
                         .orElseThrow()
                         .article()
@@ -847,7 +875,9 @@ class AssetDeliveryTests {
     void aBlockedCapacityWarningDoesNotBlockAnotherWorkspacesIssuedImage() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var files = files("public/article-0.md", "![image](image.png)");
-        for (int i = 1; i < 128; i++) files.put("public/article-" + i + ".md", text("![image](image.png)"));
+        for (int i = 1; i < 128; i++) {
+            files.put("public/article-" + i + ".md", text("![image](image.png)"));
+        }
         files.put("public/image.png", png(1));
         fixture.commitRemote(workspace, files);
         WorkspaceId other = WorkspaceId.random();
@@ -860,24 +890,30 @@ class AssetDeliveryTests {
         snapshots.refresh(other);
         var service = service(fixture, snapshots);
         String otherGrant = articleToken(service, other, "/article", "image.png");
-        for (int i = 0; i < 127; i++) articleToken(service, workspace, "/article-" + i, "image.png");
+        for (int i = 0; i < 127; i++) {
+            articleToken(service, workspace, "/article-" + i, "image.png");
+        }
 
         var logging = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var appender = new AppenderBase<ILoggingEvent>() {
             @Override
             protected void append(ILoggingEvent event) {
-                if (!event.getMessage().startsWith("Image grant capacity exhausted;")) return;
+                if (!event.getMessage().startsWith("Image grant capacity exhausted;")) {
+                    return;
+                }
                 logging.countDown();
                 try {
-                    if (!release.await(15, TimeUnit.SECONDS)) throw new AssertionError("warning release timed out");
+                    if (!release.await(15, TimeUnit.SECONDS)) {
+                        throw new AssertionError("warning release timed out");
+                    }
                 } catch (InterruptedException exception) {
                     Thread.currentThread().interrupt();
                     throw new AssertionError(exception);
                 }
             }
         };
-        var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(AssetService.class);
+        var logger = (Logger) LoggerFactory.getLogger(AssetService.class);
         appender.setContext(logger.getLoggerContext());
         appender.start();
         logger.addAppender(appender);
@@ -915,7 +951,9 @@ class AssetDeliveryTests {
                 if (pauseFetch.get()) {
                     fetching.countDown();
                     try {
-                        if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("fetch release timed out");
+                        if (!release.await(5, TimeUnit.SECONDS)) {
+                            throw new AssertionError("fetch release timed out");
+                        }
                     } catch (InterruptedException interrupted) {
                         throw new RuntimeException(interrupted);
                     }
@@ -1077,7 +1115,9 @@ class AssetDeliveryTests {
             var reading = pool.submit(() -> snapshots.withCurrent(workspace, snapshot -> {
                 inside.countDown();
                 try {
-                    if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("release timed out");
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new AssertionError("release timed out");
+                    }
                 } catch (InterruptedException interrupted) {
                     throw new RuntimeException(interrupted);
                 }
@@ -1109,7 +1149,9 @@ class AssetDeliveryTests {
     private AssetService service(
             RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, ImageMemoryAdmission memory) {
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(invocation -> {
-            if (!authorized.get()) throw new SecurityException("authorization revoked");
+            if (!authorized.get()) {
+                throw new SecurityException("authorization revoked");
+            }
             return ((Supplier<?>) invocation.getArgument(3)).get();
         });
         return new AssetService(
@@ -1172,7 +1214,7 @@ class AssetDeliveryTests {
         return actor;
     }
 
-    private static void assertNotFound(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+    private static void assertNotFound(ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action)
                 .isInstanceOfSatisfying(
                         AssetStorageException.class,
@@ -1184,7 +1226,7 @@ class AssetDeliveryTests {
 
         @Override
         public ZoneId getZone() {
-            return java.time.ZoneOffset.UTC;
+            return ZoneOffset.UTC;
         }
 
         @Override

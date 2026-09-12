@@ -33,15 +33,20 @@ final class CancellableMcpSession extends McpStreamableServerSession {
     @Override
     public Mono<Void> responseStream(McpSchema.JSONRPCRequest request, McpStreamableServerTransport transport) {
         String key = requestKey(request.id());
-        if (key == null)
+        if (key == null) {
             return transport
                     .closeGracefully()
                     .then(Mono.error(new IllegalArgumentException("Invalid bounded MCP request identifier")));
-        if (!request.method().equals("tools/call")) return delegate.responseStream(request, transport);
+        }
+        if (!request.method().equals("tools/call")) {
+            return delegate.responseStream(request, transport);
+        }
         return Mono.deferContextual(context -> {
             var cancellation = new McpCancellation();
             synchronized (this) {
-                if (closed || active.containsKey(key) || active.size() >= 4) return reject(transport, request.id());
+                if (closed || active.containsKey(key) || active.size() >= 4) {
+                    return reject(transport, request.id());
+                }
                 active.put(key, cancellation);
             }
             McpTransportContext previous = context.getOrDefault(McpTransportContext.KEY, McpTransportContext.EMPTY);
@@ -78,15 +83,21 @@ final class CancellableMcpSession extends McpStreamableServerSession {
 
     @Override
     public Mono<Void> accept(McpSchema.JSONRPCNotification notification) {
-        if (!notification.method().equals("notifications/cancelled")) return delegate.accept(notification);
+        if (!notification.method().equals("notifications/cancelled")) {
+            return delegate.accept(notification);
+        }
         return Mono.fromRunnable(() -> {
-            if (!(notification.params() instanceof Map<?, ?> params)) return;
+            if (!(notification.params() instanceof Map<?, ?> params)) {
+                return;
+            }
             String key = requestKey(params.get("requestId"));
             McpCancellation cancellation;
             synchronized (this) {
                 cancellation = active.get(key);
             }
-            if (cancellation != null) cancellation.cancel();
+            if (cancellation != null) {
+                cancellation.cancel();
+            }
         });
     }
 
@@ -101,7 +112,9 @@ final class CancellableMcpSession extends McpStreamableServerSession {
     }
 
     private static String requestKey(Object value) {
-        if (value instanceof String text) return text.length() <= 128 ? "s:" + text : null;
+        if (value instanceof String text) {
+            return text.length() <= 128 ? "s:" + text : null;
+        }
         if (value instanceof Number number && number.toString().length() <= 128) {
             try {
                 return "n:"

@@ -10,13 +10,24 @@ import java.util.stream.Collectors;
 
 final class DocumentPathRules {
 
-    private static final String MANAGED_PREFIX = "documents/";
+    private static final String MANAGED_ROOT = "documents";
+    private static final String MANAGED_PREFIX = MANAGED_ROOT + "/";
     // Windows cannot store these names, and the repository must check out on both platforms.
     private static final Pattern WINDOWS_RESERVED_NAME =
             Pattern.compile("(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(\\..*)?");
     private static final Pattern WINDOWS_INVALID_CHARACTER = Pattern.compile("[<>:\"|?*\\x00-\\x1f\\x7f]");
 
     private DocumentPathRules() {}
+
+    /**
+     * Whether a tree entry falls inside the managed document area. The bare root name counts:
+     * a repository may carry a regular file called {@code documents} where the directory
+     * belongs, and that has to reach {@link #validate} and be refused rather than be walked
+     * past as something this module does not manage.
+     */
+    static boolean isManaged(String path) {
+        return path.equals(MANAGED_ROOT) || path.startsWith(MANAGED_PREFIX);
+    }
 
     static String validate(String candidate) {
         Objects.requireNonNull(candidate, "document path must not be null");

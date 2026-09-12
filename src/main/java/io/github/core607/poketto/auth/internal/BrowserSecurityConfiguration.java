@@ -36,7 +36,9 @@ class BrowserSecurityConfiguration {
         return new AuthenticationProvider() {
             @Override
             public Authentication authenticate(Authentication authentication) {
-                if (auth.getIfAvailable() == null) throw new BadCredentialsException("Invalid credentials");
+                if (auth.getIfAvailable() == null) {
+                    throw new BadCredentialsException("Invalid credentials");
+                }
                 try {
                     var principal = auth.getObject()
                             .authenticatePassword(
