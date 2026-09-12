@@ -273,18 +273,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 requireOk(response, session);
                 var metadata = artifactMetadata(response);
+                var page = read(response, WorkerResponses.ArtifactPage.class);
                 long size = metadata.bytes();
-                if (!artifactId.equals(metadata.artifactId())
-                        || offset > size
-                        || !response.path("offset").isIntegralNumber()
-                        || response.path("offset").longValue() != offset
-                        || !response.path("data").isString()
-                        || response.path("data").stringValue().length() > 87384) {
+                // The identifier and the offset are echoes of this request.
+                if (!artifactId.equals(metadata.artifactId()) || offset > size || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
                 byte[] bytes;
                 try {
-                    bytes = Base64.getDecoder().decode(response.path("data").stringValue());
+                    bytes = page.decoded();
                 } catch (IllegalArgumentException invalid) {
                     throw new WorkerUnavailableException(invalid);
                 }
@@ -733,7 +730,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         throw new IllegalArgumentException("the worker refused to capture the selected file");
                     }
                     requireOk(manifest, session);
-                    List<String> absent = selectedPaths(manifest.path("absent"));
+                    List<String> absent = read(manifest, WorkerResponses.CaptureManifest.class)
+                            .absent();
                     if (!absent.isEmpty() && !absent.equals(List.of(path))) {
                         throw new WorkerUnavailableException();
                     }
@@ -763,22 +761,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
         }
         return BridgeReplies.failed("OPERATION_UNAVAILABLE");
-    }
-
-    private static List<String> selectedPaths(JsonNode values) {
-        if (!values.isArray() || values.size() > 64) {
-            throw new IllegalArgumentException("a selection must be an array of at most 64 paths");
-        }
-        var paths = new ArrayList<String>();
-        for (JsonNode value : values) {
-            if (!value.isString()
-                    || value.stringValue().isEmpty()
-                    || value.stringValue().getBytes(StandardCharsets.UTF_8).length > 4096) {
-                throw new IllegalArgumentException("each selected path must be text of at most 4096 UTF-8 bytes");
-            }
-            paths.add(value.stringValue());
-        }
-        return paths;
     }
 
     private BridgeReplies.Reply moveFiles(
@@ -1078,7 +1060,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the media index");
         }
         requireOk(manifest, session);
-        List<String> absent = selectedPaths(manifest.path("absent"));
+        List<String> absent =
+                read(manifest, WorkerResponses.CaptureManifest.class).absent();
         if (!absent.isEmpty() && !absent.equals(List.of(path))) {
             throw new WorkerUnavailableException();
         }
@@ -1124,21 +1107,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the imported file");
         }
         requireOk(manifest, session);
-        String captureId = manifest.path("captureId").asString("");
-        if (!UUID.fromString(captureId).toString().equals(captureId)) {
-            throw new WorkerUnavailableException();
-        }
+        var captured = read(manifest, WorkerResponses.CaptureManifest.class);
+        String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         ManagedAsset asset;
         try {
-            JsonNode files = manifest.path("writes");
-            if (!files.isArray()
-                    || files.size() != 1
-                    || !files.get(0).path("path").asString("").equals(file)) {
+            // One file was selected, so exactly that file must come back.
+            if (captured.writes().size() != 1
+                    || !captured.writes().getFirst().path().equals(file)) {
                 throw new WorkerUnavailableException();
             }
-            long size = files.get(0).path("bytes").asLong(-1);
-            String digest = files.get(0).path("sha256").asString("");
+            long size = captured.writes().getFirst().bytes();
+            String digest = captured.writes().getFirst().sha256();
             var previous = index.files().get(path);
             if (!replace
                     && previous != null

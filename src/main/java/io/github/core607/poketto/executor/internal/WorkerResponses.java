@@ -134,6 +134,26 @@ final class WorkerResponses {
         }
     }
 
+    /**
+     * One page of an artifact. The base64 bound is the largest encoding of the protocol's 64 KiB
+     * page, so a longer string is an answer this application will not decode.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record ArtifactPage(long offset, String data) {
+        /** Base64 of 65536 bytes, with its padding and the newlines a MIME encoder may insert. */
+        static final int MAX_ENCODED = 87384;
+
+        ArtifactPage {
+            require(offset >= 0, "offset", "must not be negative");
+            require(data != null, "data", "must be present");
+            require(data.length() <= MAX_ENCODED, "data", "must not exceed " + MAX_ENCODED + " encoded characters");
+        }
+
+        byte[] decoded() {
+            return Base64.getDecoder().decode(data);
+        }
+    }
+
     /** A staged transfer the worker opened for this command. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Transfer(String transferId) {
