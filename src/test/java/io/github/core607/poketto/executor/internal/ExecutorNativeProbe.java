@@ -945,8 +945,28 @@ public final class ExecutorNativeProbe {
                             .commit())
                     .isEqualTo(saved.commit());
             passed("media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically");
+            emptyMediaImport(executor);
             largeMediaImport(executor);
         }
+    }
+
+    private void emptyMediaImport(IsolatedRepositoryExecutor executor) throws Exception {
+        var rejected = execute(
+                executor,
+                "media-import",
+                "printf retained-draft > private/import-draft; : > private/empty.bin; "
+                        + "poketto media import private/empty.bin --as private/empty.dat --type application/octet-stream --key native_import_empty_01",
+                new Cancellation());
+        assertThat(rejected.exitCode()).isNotZero();
+        assertThat(rejected.stdout()).contains("INVALID_MEDIA_REQUEST");
+        var continued = execute(
+                executor,
+                "media-import",
+                "test -f private/empty.bin && test ! -s private/empty.bin && cat private/import-draft",
+                new Cancellation());
+        assertThat(continued.exitCode()).isZero();
+        assertThat(continued.stdout()).isEqualTo("retained-draft");
+        passed("empty-media-import-is-rejected-without-losing-unsaved-session-files");
     }
 
     private void largeMediaImport(IsolatedRepositoryExecutor executor) throws Exception {
