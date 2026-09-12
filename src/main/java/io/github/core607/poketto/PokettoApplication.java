@@ -4,8 +4,8 @@ import io.github.core607.poketto.auth.AdministratorSetup;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
 /** The single deployed process. Application modules are the packages beneath this one. */
+@SpringBootApplication
 public class PokettoApplication {
 
     public static void main(String[] args) {
