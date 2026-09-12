@@ -18,11 +18,14 @@ final class BridgeReplies {
 
     private BridgeReplies() {}
 
-    /** Anything a session can put where a reply belongs, including the absence of one. */
-    sealed interface Message permits Absent, Reply {}
+    /**
+     * A value a session retains and reports later, including the absence of one. The status
+     * reply embeds these directly, so each must serialize as the object the agent expects.
+     */
+    sealed interface Recorded permits Absent, Reply, ImportReceipt {}
 
     /** No reply yet. A session reports its last save and last import as {@code {}} until one exists. */
-    record Absent() implements Message {}
+    record Absent() implements Recorded {}
 
     /**
      * One reply. {@code ok} and {@code code} are the only parts the CLI contract fixes; the rest
@@ -38,7 +41,7 @@ final class BridgeReplies {
             String reason,
             String indexVersion,
             String message)
-            implements Message {
+            implements Recorded {
         Reply {
             require(ok || code != null, "code", "must name why a reply failed");
         }
@@ -75,6 +78,11 @@ final class BridgeReplies {
         return new Reply(true, null, result, null, null, null, null, null);
     }
 
+    /** A success that still has something to tell the agent, such as work it must do next. */
+    static Reply succeededWithMessage(Object result, String message) {
+        return new Reply(true, null, result, null, null, null, null, message);
+    }
+
     /**
      * A synchronization always returns its merged file; whether that counts as success is the
      * caller's decision, so the outcome and the code travel together.
@@ -98,8 +106,8 @@ final class BridgeReplies {
             boolean writeOutcomeUnknown,
             boolean movePending,
             Object move,
-            Object lastSave,
-            Object lastImport) {}
+            Recorded lastSave,
+            Recorded lastImport) {}
 
     record SaveResult(
             String commit, boolean committed, boolean snapshotUpdated, List<String> paths, boolean recovered) {}
@@ -144,7 +152,8 @@ final class BridgeReplies {
             long bytes,
             boolean originalStored,
             boolean indexUpdated,
-            boolean saved) {}
+            boolean saved)
+            implements Recorded {}
 
     record ExportResult(String path, long bytes, String sha256, String scope, boolean saved) {}
 
@@ -164,13 +173,4 @@ final class BridgeReplies {
             @JsonInclude(JsonInclude.Include.ALWAYS) Integer nextOffset) {}
 
     record MediaItem(String path, String mediaType, long size) {}
-
-    record ArtifactMetadata(
-            String artifactId,
-            String name,
-            String mediaType,
-            long bytes,
-            String sha256,
-            boolean truncated,
-            int expiresInSeconds) {}
 }

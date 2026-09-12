@@ -273,9 +273,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     throw new IllegalArgumentException("Invalid artifact range");
                 }
                 requireOk(response, session);
-                Map<String, Object> metadata = artifactMetadata(response);
-                long size = (long) metadata.get("bytes");
-                if (!artifactId.equals(metadata.get("artifactId"))
+                var metadata = artifactMetadata(response);
+                long size = metadata.bytes();
+                if (!artifactId.equals(metadata.artifactId())
                         || offset > size
                         || !response.path("offset").isIntegralNumber()
                         || response.path("offset").longValue() != offset
@@ -294,12 +294,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 return Optional.of(new ArtifactChunk(
                         artifactId,
-                        (String) metadata.get("name"),
-                        (String) metadata.get("mediaType"),
+                        metadata.name(),
+                        metadata.mediaType(),
                         size,
-                        (String) metadata.get("sha256"),
-                        (boolean) metadata.get("truncated"),
-                        (int) metadata.get("expiresInSeconds"),
+                        metadata.sha256(),
+                        metadata.truncated(),
+                        metadata.expiresInSeconds(),
                         offset,
                         bytes));
             }
@@ -316,7 +316,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private static Map<String, Object> artifactMetadata(JsonNode value) {
+    private static ArtifactMetadata artifactMetadata(JsonNode value) {
         try {
             String id = value.path("artifactId").stringValue();
             String name = value.path("name").stringValue();
@@ -342,21 +342,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || !value.path("truncated").isBoolean()) {
                 throw new WorkerUnavailableException();
             }
-            return Map.of(
-                    "artifactId",
-                    id,
-                    "name",
-                    name,
-                    "mediaType",
-                    type,
-                    "bytes",
-                    size,
-                    "sha256",
-                    digest,
-                    "truncated",
-                    value.path("truncated").booleanValue(),
-                    "expiresInSeconds",
-                    expires);
+            return new ArtifactMetadata(
+                    id, name, type, size, digest, value.path("truncated").booleanValue(), expires);
         } catch (RuntimeException invalid) {
             throw new WorkerUnavailableException();
         }
@@ -598,7 +585,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 requireLive(session);
                 authorize(session);
-                Map<String, ?> reply = bridgeReply(session, executionId, request);
+                var reply = bridgeReply(session, executionId, request);
                 requireLive(session);
                 authorize(session);
                 requireOk(
@@ -627,63 +614,46 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private Map<String, ?> bridgeReply(Session session, String executionId, JsonNode request) {
+    private BridgeReplies.Reply bridgeReply(Session session, String executionId, JsonNode request) {
         try {
             return bridgeOperation(session, executionId, request);
         } catch (MaterializationCapacity failure) {
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
+            return BridgeReplies.failed(
                     "MATERIALIZE_CAPACITY",
-                    "message",
                     "Insufficient session space. Free local space or export fewer files; existing files were preserved.");
         }
     }
 
-    private Map<String, ?> bridgeOperation(Session session, String executionId, JsonNode request) {
+    private BridgeReplies.Reply bridgeOperation(Session session, String executionId, JsonNode request) {
         JsonNode arguments = request.path("arguments");
         if (!arguments.isObject()) {
             throw new WorkerUnavailableException();
         }
         if (request.path("operation").asString("").equals("status") && arguments.isEmpty()) {
-            return Map.of(
-                    "ok",
-                    true,
-                    "result",
-                    Map.of(
-                            "scope",
-                            session.fullRead ? "full" : "public",
-                            "baseCommit",
-                            session.saveState.baseCommit,
-                            "writeOutcomeUnknown",
-                            session.saveState.uncertain
-                                    || (session.saveState.move != null && session.saveState.move.result == null),
-                            "movePending",
-                            session.saveState.move != null,
-                            "move",
-                            session.saveState.move == null
-                                    ? Map.of()
-                                    : SessionMoves.pendingResult(session.saveState.move, "PENDING")
-                                            .get("result"),
-                            "lastSave",
-                            session.saveState.lastSave,
-                            "lastImport",
-                            session.lastImport));
+            return BridgeReplies.succeeded(new BridgeReplies.Status(
+                    session.fullRead ? "full" : "public",
+                    session.saveState.baseCommit,
+                    session.saveState.uncertain
+                            || (session.saveState.move != null && session.saveState.move.result == null),
+                    session.saveState.move != null,
+                    session.saveState.move == null
+                            ? new BridgeReplies.Absent()
+                            : SessionMoves.movePending(session.saveState.move),
+                    session.saveState.lastSave,
+                    session.lastImport));
         }
         String operation = request.path("operation").asString("");
         if (operation.equals("export")) {
             try {
                 return exportPackage(session, executionId, arguments);
             } catch (AuthException denied) {
-                return Map.of("ok", false, "code", "ACCESS_DENIED");
+                return BridgeReplies.failed("ACCESS_DENIED");
             } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_EXPORT_SELECTION");
+                return BridgeReplies.failed("INVALID_EXPORT_SELECTION");
             } catch (ContentExportException unavailable) {
-                return Map.of(
-                        "ok", false, "code", "EXPORT_" + unavailable.reason().name());
+                return BridgeReplies.failed("EXPORT_" + unavailable.reason().name());
             } catch (ContentRepositoryException | AssetStorageException unavailable) {
-                return Map.of("ok", false, "code", "EXPORT_UNAVAILABLE");
+                return BridgeReplies.failed("EXPORT_UNAVAILABLE");
             }
         }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
@@ -716,14 +686,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 String code = result.path("code").asString("");
                 if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
                         .contains(code)) {
-                    return Map.of("ok", false, "code", code);
+                    return BridgeReplies.failed(code);
                 }
                 requireOk(result, session);
                 return operation.equals("artifact_create")
-                        ? Map.of("ok", true, "artifact", artifactMetadata(result.path("artifact")))
-                        : Map.of("ok", true, "removed", true);
+                        ? BridgeReplies.artifact(artifactMetadata(result.path("artifact")))
+                        : BridgeReplies.removed();
             } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_ARTIFACT");
+                return BridgeReplies.failed("INVALID_ARTIFACT");
             }
         }
         if (operation.equals("media_fetch") || operation.equals("media_import") || operation.equals("media_list")) {
@@ -735,19 +705,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         ? fetchMedia(session, executionId, arguments)
                         : importMedia(session, executionId, arguments);
             } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_MEDIA_REQUEST");
+                return BridgeReplies.failed("INVALID_MEDIA_REQUEST");
             } catch (AuthException denied) {
-                return Map.of("ok", false, "code", "ACCESS_DENIED");
+                return BridgeReplies.failed("ACCESS_DENIED");
             } catch (AssetStorageException unavailable) {
-                return Map.of(
-                        "ok",
-                        false,
-                        "code",
-                        "MEDIA_UNAVAILABLE",
-                        "reason",
-                        unavailable.reason().name());
+                return BridgeReplies.failedBecause(
+                        "MEDIA_UNAVAILABLE", unavailable.reason().name());
             } catch (ContentRepositoryException unavailable) {
-                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
             }
         }
         if (operation.equals("save")
@@ -755,7 +720,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || operation.equals("sync")
                 || operation.equals("move")) {
             if (!session.fullRead) {
-                return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+                return BridgeReplies.failed("READ_ONLY_SCOPE");
             }
             try {
                 auth.authorize(
@@ -788,7 +753,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
                 }
                 if (session.saveState.uncertain) {
-                    return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+                    return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
                 }
                 if (operation.equals("move")) {
                     if (arguments.size() != 2
@@ -847,14 +812,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 authorize(session);
                 return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
             } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_SELECTION");
+                return BridgeReplies.failed("INVALID_SELECTION");
             } catch (AuthException denied) {
-                return Map.of("ok", false, "code", "ACCESS_DENIED");
+                return BridgeReplies.failed("ACCESS_DENIED");
             } catch (ContentRepositoryException unavailable) {
-                return Map.of("ok", false, "code", "REPOSITORY_UNAVAILABLE");
+                return BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
             }
         }
-        return Map.of("ok", false, "code", "OPERATION_UNAVAILABLE");
+        return BridgeReplies.failed("OPERATION_UNAVAILABLE");
     }
 
     private static List<String> selectedPaths(JsonNode values) {
@@ -873,7 +838,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return paths;
     }
 
-    private Map<String, ?> moveFiles(
+    private BridgeReplies.Reply moveFiles(
             Session session, String executionId, SessionMoves.Pending pending, boolean recovery) {
         byte[] payload = pending.payload;
         JsonNode begun = requestLive(
@@ -888,7 +853,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (recovery) {
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
             }
-            return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+            return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
         }
         requireOk(begun, session);
         String transfer = begun.path("transferId").asString("");
@@ -913,7 +878,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     if (recovery) {
                         return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
                     }
-                    return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+                    return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(chunk, session);
                 if (chunk.path("receivedBytes").asInt(-1) != end) {
@@ -923,7 +888,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (!recovery) {
                 JsonNode checked = requestLive(session, "MOVE_CHECK", reference, Duration.ofSeconds(15));
                 if (checked.path("code").asString("").equals("MOVE_REJECTED")) {
-                    return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+                    return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(checked, session);
                 if (!checked.path("checked").path("ready").asBoolean(false)) {
@@ -1049,7 +1014,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private Map<String, ?> synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
+    private BridgeReplies.Reply synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
         byte[] content = plan.content().orElse("").getBytes(StandardCharsets.UTF_8);
         boolean installed = materialize(
                 session,
@@ -1062,27 +1027,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 false,
                 output -> output.write(content));
         if (!installed) {
-            return Map.of("ok", false, "code", "LOCAL_UPDATE_REJECTED");
+            return BridgeReplies.failed("LOCAL_UPDATE_REJECTED");
         }
         saves.acknowledgeSync(session.saveState, plan);
-        return Map.of(
-                "ok",
+        return BridgeReplies.outcome(
                 !plan.conflicted(),
-                "code",
                 plan.conflicted() ? "MERGE_CONFLICT" : "SYNCHRONIZED",
-                "result",
-                Map.of(
-                        "path",
-                        plan.path(),
-                        "baseCommit",
-                        plan.remoteCommit(),
-                        "saved",
-                        false,
-                        "conflicted",
-                        plan.conflicted()));
+                new BridgeReplies.SyncResult(plan.path(), plan.remoteCommit(), false, plan.conflicted()));
     }
 
-    private Map<String, ?> listMedia(Session session, String executionId, JsonNode arguments) {
+    private BridgeReplies.Reply listMedia(Session session, String executionId, JsonNode arguments) {
         var query = MediaListing.Query.parse(arguments);
         Map<String, RepositoryMediaIndex.Media> files;
         String version, source;
@@ -1114,7 +1068,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return MediaListing.page(files, query, version, source);
     }
 
-    private Map<String, ?> fetchMedia(Session session, String executionId, JsonNode arguments) {
+    private BridgeReplies.Reply fetchMedia(Session session, String executionId, JsonNode arguments) {
         if (arguments.size() != 3
                 || !arguments.path("path").isString()
                 || !(arguments.path("commit").isNull()
@@ -1158,7 +1112,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             var approved = session.publicExport.media().get(path);
             if (approved == null) {
-                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
             }
             download = media.publicDownload(
                     session.key.workspace(),
@@ -1170,7 +1124,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || !asset.reference().revision().equals(expected.revision())
                     || asset.size() != expected.size()
                     || !asset.mediaType().equals(expected.mediaType())) {
-                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
             }
             commit = session.commit;
             indexSource = "public-projection";
@@ -1187,25 +1141,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 true,
                 download::writeTo);
         if (!installed) {
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
-                    "LOCAL_FILE_EXISTS",
-                    "message",
-                    "A different local file exists; keep it or choose another --output path.");
+            return BridgeReplies.failed(
+                    "LOCAL_FILE_EXISTS", "A different local file exists; keep it or choose another --output path.");
         }
-        var result = new LinkedHashMap<String, Object>();
-        result.put("path", destination);
-        result.put("sourcePath", path);
-        result.put("indexSource", indexSource);
-        if (commit != null) {
-            result.put("commit", commit);
-        }
-        result.put("sha256", asset.reference().revision());
-        result.put("mediaType", asset.mediaType());
-        result.put("bytes", asset.size());
-        return Map.of("ok", true, "result", result);
+        return BridgeReplies.succeeded(new BridgeReplies.FetchResult(
+                destination, path, indexSource, commit, asset.reference().revision(), asset.mediaType(), asset.size()));
     }
 
     private Optional<String> captureOptional(Session session, String executionId, String path) {
@@ -1224,9 +1164,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         .get(path));
     }
 
-    private Map<String, ?> importMedia(Session session, String executionId, JsonNode arguments) {
+    private BridgeReplies.Reply importMedia(Session session, String executionId, JsonNode arguments) {
         if (!session.fullRead) {
-            return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
         }
         auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
         if (arguments.size() != 5
@@ -1254,13 +1194,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 session.saveState,
                                 RepositoryMediaIndex.PATH)
                         .expectedAbsence()) {
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
-                    "INDEX_MISSING",
-                    "message",
-                    "Restore or intentionally recreate the local media index before importing.");
+            return BridgeReplies.failed(
+                    "INDEX_MISSING", "Restore or intentionally recreate the local media index before importing.");
         }
         var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
                 .orElseGet(RepositoryMediaIndex::empty);
@@ -1271,7 +1206,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!existingGit.expectedAbsence()
                 && existingGit.diagnostics().stream()
                         .noneMatch(value -> value.code().equals("MANAGED_MEDIA"))) {
-            return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
+            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
         }
         JsonNode manifest = requestLive(
                 session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
@@ -1300,7 +1235,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     && (previous.size() != size
                             || !previous.revision().equals(digest)
                             || !previous.mediaType().equals(mediaType))) {
-                return Map.of("ok", false, "code", "MEDIA_PATH_EXISTS");
+                return BridgeReplies.failed("MEDIA_PATH_EXISTS");
             }
             try (var input = new CapturedBinaryInput(size, digest, (offset, limit) -> {
                 authorize(session);
@@ -1337,7 +1272,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
         var previous = index.files().get(path);
         if (previous != null && !previous.equals(entry) && !replace) {
-            return Map.of("ok", false, "code", "MEDIA_PATH_EXISTS", "result", session.lastImport);
+            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.lastImport);
         }
         entries.put(path, entry);
         byte[] changed = entry.equals(previous)
@@ -1355,40 +1290,27 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     false,
                     false,
                     output -> output.write(changed))) {
-                return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+                return BridgeReplies.failedWith("INDEX_CHANGED", session.lastImport);
             }
         } catch (MaterializationCapacity capacity) {
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
+            return BridgeReplies.failedWith(
                     "MATERIALIZE_CAPACITY",
-                    "result",
                     session.lastImport,
-                    "message",
                     "Original stored; local index was not updated. Free session space and retry the same bytes, type and key.");
         }
         session.lastImport = importReceipt(path, asset, true);
-        return Map.of("ok", true, "result", session.lastImport);
+        return BridgeReplies.succeeded(session.lastImport);
     }
 
-    private static Map<String, ?> importReceipt(String path, ManagedAsset asset, boolean indexed) {
-        return Map.of(
-                "path",
+    private static BridgeReplies.ImportReceipt importReceipt(String path, ManagedAsset asset, boolean indexed) {
+        return new BridgeReplies.ImportReceipt(
                 path,
-                "assetId",
                 asset.reference().assetId().toString(),
-                "sha256",
                 asset.reference().revision(),
-                "mediaType",
                 asset.mediaType(),
-                "bytes",
                 asset.size(),
-                "originalStored",
                 true,
-                "indexUpdated",
                 indexed,
-                "saved",
                 false);
     }
 
@@ -1397,7 +1319,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         void writeTo(OutputStream output) throws IOException;
     }
 
-    private Map<String, ?> exportPackage(Session session, String executionId, JsonNode arguments) {
+    private BridgeReplies.Reply exportPackage(Session session, String executionId, JsonNode arguments) {
         if (arguments.size() != 3
                 || !arguments.path("paths").isArray()
                 || !arguments.path("output").isString()
@@ -1437,29 +1359,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     true,
                     sink -> packages.copyTo(
                             session.principal, session.key.workspace(), receipt.handle(), client, sink))) {
-                return Map.of(
-                        "ok",
-                        false,
-                        "code",
+                return BridgeReplies.failed(
                         "LOCAL_FILE_CHANGED",
-                        "message",
                         "The output path is unavailable or contains different local bytes. Keep it or choose another --output.");
             }
-            return Map.of(
-                    "ok",
-                    true,
-                    "result",
-                    Map.of(
-                            "path",
-                            output,
-                            "bytes",
-                            receipt.bytes(),
-                            "sha256",
-                            receipt.sha256(),
-                            "scope",
-                            publicOnly ? "public" : "private",
-                            "saved",
-                            false));
+            return BridgeReplies.succeeded(new BridgeReplies.ExportResult(
+                    output, receipt.bytes(), receipt.sha256(), publicOnly ? "public" : "private", false));
         } finally {
             // Covers a close event that raced before create registered its build. No package handle
             // is exposed to the sandbox; every command owns only its materialized local result.
@@ -1782,7 +1687,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || result.path("artifactErrors").size() > 2) {
                 throw new WorkerUnavailableException();
             }
-            Map<String, Map<String, Object>> artifacts = new LinkedHashMap<>();
+            Map<String, ArtifactMetadata> artifacts = new LinkedHashMap<>();
             Map<String, String> artifactErrors = new LinkedHashMap<>();
             for (var entry : result.path("artifacts").properties()) {
                 if (!Set.of("stdout", "stderr").contains(entry.getKey())) {
@@ -1862,7 +1767,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
-        private Map<String, ?> lastImport = Map.of();
+        private BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

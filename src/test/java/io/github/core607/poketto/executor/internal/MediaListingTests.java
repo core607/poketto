@@ -50,9 +50,9 @@ class MediaListingTests {
         var files = new RepositoryMediaIndex(Map.of("music/one.png", media, "musicology/two.png", media)).files();
         var changed = MediaListing.page(
                 files, new MediaListing.Query("music/", 0, 100, "a".repeat(64), null), "b".repeat(64), "worktree");
-        assertThat(changed.get("ok")).isEqualTo(false);
-        assertThat(changed.get("code")).isEqualTo("MEDIA_INDEX_CHANGED");
-        assertThat(changed).doesNotContainKey("result");
+        assertThat(changed.ok()).isEqualTo(false);
+        assertThat(changed.code()).isEqualTo("MEDIA_INDEX_CHANGED");
+        assertThat(changed.result()).isNull();
         var page = json.valueToTree(MediaListing.page(
                         files, new MediaListing.Query("music/", 1, 100, null, null), "b".repeat(64), "worktree"))
                 .path("result");
