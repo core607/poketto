@@ -22,10 +22,7 @@ import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
-import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
@@ -530,17 +527,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             throw new IllegalArgumentException("text exceeds its size limit or contains NUL");
         }
         try {
-            var encoded = StandardCharsets.UTF_8
-                    .newEncoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .encode(CharBuffer.wrap(source));
-            if (encoded.remaining() > ContentLimits.MAX_DOCUMENT_BYTES) {
-                throw new IllegalArgumentException("text exceeds its byte limit");
-            }
-            byte[] bytes = new byte[encoded.remaining()];
-            encoded.get(bytes);
-            return bytes;
+            return StrictText.utf8(source, ContentLimits.MAX_DOCUMENT_BYTES, "text exceeds its byte limit");
         } catch (CharacterCodingException exception) {
             throw new IllegalArgumentException("replacement is not valid UTF-8 text");
         }

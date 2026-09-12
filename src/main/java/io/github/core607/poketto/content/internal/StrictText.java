@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
@@ -27,5 +28,26 @@ public final class StrictText {
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(bytes))
                 .toString();
+    }
+
+    /**
+     * Encodes text to UTF-8 with no substitution, refusing anything longer than {@code maxBytes}
+     * with {@code tooLarge} as its message. The bound is checked on the encoded buffer before the
+     * bytes are copied out of it, so text that encodes past the bound costs one buffer rather than
+     * two. Callers translate the coding failure themselves for the same reason they do on the way
+     * in: what unencodable text means belongs to whoever asked for it to be written.
+     */
+    static byte[] utf8(String source, int maxBytes, String tooLarge) throws CharacterCodingException {
+        ByteBuffer encoded = StandardCharsets.UTF_8
+                .newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .encode(CharBuffer.wrap(source));
+        if (encoded.remaining() > maxBytes) {
+            throw new IllegalArgumentException(tooLarge);
+        }
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        return bytes;
     }
 }

@@ -3,8 +3,6 @@ package io.github.core607.poketto.web.internal;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.PortableContentExports;
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,35 +48,13 @@ class ContentExportController {
             @AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID handle, HttpServletResponse response) {
         var workspace = workspaces.selected();
         var receipt = exports.describe(actor, workspace, handle, Optional.empty());
-        exports.copyTo(actor, workspace, handle, Optional.empty(), new OutputStream() {
-            private OutputStream stream;
-
-            private OutputStream stream() throws IOException {
-                if (stream == null) {
-                    // No success headers are committed before integrity and download authorization pass.
-                    response.setHeader("Cache-Control", "no-store");
-                    response.setHeader("X-Content-Type-Options", "nosniff");
-                    response.setHeader(
-                            "Content-Disposition",
-                            "attachment; filename=\"poketto-" + (receipt.publicOnly() ? "public" : "private")
-                                    + ".zip\"");
-                    response.setContentType("application/zip");
-                    response.setContentLengthLong(receipt.bytes());
-                    stream = response.getOutputStream();
-                }
-                return stream;
-            }
-
-            @Override
-            public void write(int value) throws IOException {
-                stream().write(value);
-            }
-
-            @Override
-            public void write(byte[] bytes, int offset, int count) throws IOException {
-                stream().write(bytes, offset, count);
-            }
-        });
+        exports.copyTo(actor, workspace, handle, Optional.empty(), new DeferredDownload(response, () -> {
+            response.setHeader(
+                    "Content-Disposition",
+                    "attachment; filename=\"poketto-" + (receipt.publicOnly() ? "public" : "private") + ".zip\"");
+            response.setContentType("application/zip");
+            response.setContentLengthLong(receipt.bytes());
+        }));
     }
 
     @PostMapping("/{handle}/release")

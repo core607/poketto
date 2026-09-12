@@ -28,7 +28,6 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -421,12 +420,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
             } catch (FileAlreadyExistsException ignored) {
                 // Another cooperating store may create the same workspace root.
             }
-            BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!attributes.isDirectory()
-                    || attributes.isSymbolicLink()
-                    || !cursor.toRealPath().equals(cursor)) {
-                throw unavailable();
-            }
+            StorageDirectories.requireContained(cursor);
         }
         return path;
     }
@@ -435,12 +429,7 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
         Path cursor = path.getRoot();
         for (Path segment : path) {
             cursor = cursor.resolve(segment);
-            BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!attributes.isDirectory()
-                    || attributes.isSymbolicLink()
-                    || !cursor.toRealPath().equals(cursor)) {
-                throw unavailable();
-            }
+            StorageDirectories.requireContained(cursor);
         }
     }
 
