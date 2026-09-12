@@ -315,37 +315,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /** The worker's own report about one artifact; its rules live in the record that carries it. */
     private static ArtifactMetadata artifactMetadata(JsonNode value) {
-        try {
-            String id = value.path("artifactId").stringValue();
-            String name = value.path("name").stringValue();
-            String type = value.path("mediaType").stringValue();
-            String digest = value.path("sha256").stringValue();
-            long size = value.path("bytes").longValue();
-            int expires = value.path("expiresInSeconds").intValue();
-            if (!UUID.fromString(id).toString().equals(id)
-                    || name.isEmpty()
-                    || name.length() > 255
-                    || name.contains("/")
-                    || name.contains("\\")
-                    || name.chars().anyMatch(c -> c < 32 || c == 127)
-                    || type.length() > 128
-                    || !type.matches("[a-z0-9.+-]+/[a-z0-9.+-]+")
-                    || !digest.matches("[0-9a-f]{64}")
-                    || !value.path("bytes").isIntegralNumber()
-                    || size < 0
-                    || size > 128L * 1024 * 1024
-                    || !value.path("expiresInSeconds").isIntegralNumber()
-                    || expires < 1
-                    || expires > 300
-                    || !value.path("truncated").isBoolean()) {
-                throw new WorkerUnavailableException();
-            }
-            return new ArtifactMetadata(
-                    id, name, type, size, digest, value.path("truncated").booleanValue(), expires);
-        } catch (RuntimeException invalid) {
-            throw new WorkerUnavailableException(invalid);
-        }
+        return read(value, ArtifactMetadata.class);
     }
 
     private void recoverRestartedLeases(SessionKey requested) {
