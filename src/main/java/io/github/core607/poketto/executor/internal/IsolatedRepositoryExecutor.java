@@ -36,7 +36,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -274,21 +273,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 requireOk(response, session);
                 var metadata = artifactMetadata(response);
+                var page = WorkerResponses.read(response, WorkerResponses.ArtifactPage.class);
                 long size = metadata.bytes();
-                if (!artifactId.equals(metadata.artifactId())
-                        || offset > size
-                        || !response.path("offset").isIntegralNumber()
-                        || response.path("offset").longValue() != offset
-                        || !response.path("data").isString()
-                        || response.path("data").stringValue().length() > 87384) {
+                // The identifier and the offset are echoes of this request.
+                if (!artifactId.equals(metadata.artifactId()) || offset > size || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
-                byte[] bytes;
-                try {
-                    bytes = Base64.getDecoder().decode(response.path("data").stringValue());
-                } catch (IllegalArgumentException invalid) {
-                    throw new WorkerUnavailableException(invalid);
-                }
+                byte[] bytes = page.decoded();
                 if (bytes.length != Math.min(limit, size - offset)) {
                     throw new WorkerUnavailableException();
                 }
@@ -316,37 +307,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /** The worker's own report about one artifact; its rules live in the record that carries it. */
     private static ArtifactMetadata artifactMetadata(JsonNode value) {
-        try {
-            String id = value.path("artifactId").stringValue();
-            String name = value.path("name").stringValue();
-            String type = value.path("mediaType").stringValue();
-            String digest = value.path("sha256").stringValue();
-            long size = value.path("bytes").longValue();
-            int expires = value.path("expiresInSeconds").intValue();
-            if (!UUID.fromString(id).toString().equals(id)
-                    || name.isEmpty()
-                    || name.length() > 255
-                    || name.contains("/")
-                    || name.contains("\\")
-                    || name.chars().anyMatch(c -> c < 32 || c == 127)
-                    || type.length() > 128
-                    || !type.matches("[a-z0-9.+-]+/[a-z0-9.+-]+")
-                    || !digest.matches("[0-9a-f]{64}")
-                    || !value.path("bytes").isIntegralNumber()
-                    || size < 0
-                    || size > 128L * 1024 * 1024
-                    || !value.path("expiresInSeconds").isIntegralNumber()
-                    || expires < 1
-                    || expires > 300
-                    || !value.path("truncated").isBoolean()) {
-                throw new WorkerUnavailableException();
-            }
-            return new ArtifactMetadata(
-                    id, name, type, size, digest, value.path("truncated").booleanValue(), expires);
-        } catch (RuntimeException invalid) {
-            throw new WorkerUnavailableException(invalid);
-        }
+        return WorkerResponses.read(value, ArtifactMetadata.class);
     }
 
     private void recoverRestartedLeases(SessionKey requested) {
@@ -762,7 +725,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         throw new IllegalArgumentException("the worker refused to capture the selected file");
                     }
                     requireOk(manifest, session);
-                    List<String> absent = selectedPaths(manifest.path("absent"));
+                    List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                            .absent();
                     if (!absent.isEmpty() && !absent.equals(List.of(path))) {
                         throw new WorkerUnavailableException();
                     }
@@ -794,22 +758,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return BridgeReplies.failed("OPERATION_UNAVAILABLE");
     }
 
-    private static List<String> selectedPaths(JsonNode values) {
-        if (!values.isArray() || values.size() > 64) {
-            throw new IllegalArgumentException("a selection must be an array of at most 64 paths");
-        }
-        var paths = new ArrayList<String>();
-        for (JsonNode value : values) {
-            if (!value.isString()
-                    || value.stringValue().isEmpty()
-                    || value.stringValue().getBytes(StandardCharsets.UTF_8).length > 4096) {
-                throw new IllegalArgumentException("each selected path must be text of at most 4096 UTF-8 bytes");
-            }
-            paths.add(value.stringValue());
-        }
-        return paths;
-    }
-
     private BridgeReplies.Reply moveFiles(
             Session session, String executionId, SessionMoves.Pending pending, boolean recovery) {
         byte[] payload = pending.payload;
@@ -828,10 +776,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
         }
         requireOk(begun, session);
-        String transfer = begun.path("transferId").asString("");
-        if (!UUID.fromString(transfer).toString().equals(transfer)) {
-            throw new WorkerUnavailableException();
-        }
+        String transfer =
+                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
         var reference = new WorkerRequests.Transfer(executionId, transfer);
         try {
             for (int offset = 0; offset < payload.length; offset += 65536) {
@@ -853,7 +799,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(chunk, session);
-                if (chunk.path("receivedBytes").asInt(-1) != end) {
+                if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
+                                .receivedBytes()
+                        != end) {
                     throw new WorkerUnavailableException();
                 }
             }
@@ -863,7 +811,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(checked, session);
-                if (!checked.path("checked").path("ready").asBoolean(false)) {
+                if (!WorkerResponses.read(checked, WorkerResponses.MovePreflight.class)
+                        .ready()) {
                     throw new WorkerUnavailableException();
                 }
                 authorize(session);
@@ -885,8 +834,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
             }
             requireOk(installed, session);
-            if (installed.path("installed").path("changedPaths").asInt(-1) != pending.paths.size()
-                    || !installed.path("installed").path("alreadyApplied").isBoolean()) {
+            if (WorkerResponses.read(installed, WorkerResponses.MoveInstallation.class)
+                            .installed()
+                            .changedPaths()
+                    != pending.paths.size()) {
                 throw new WorkerUnavailableException();
             }
             return saves.moves().installed(session.saveState);
@@ -917,29 +868,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the selected files");
         }
         requireOk(manifest, session);
-        String captureId = manifest.path("captureId").asString("");
-        if (!UUID.fromString(captureId).toString().equals(captureId)) {
-            throw new WorkerUnavailableException();
-        }
+        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
+        String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         try {
-            JsonNode files = manifest.path("writes");
-            if (!files.isArray()
-                    || files.size() != writes.size()
-                    || !selectedPaths(manifest.path("deletes")).equals(deletes)) {
+            // The manifest is well formed by construction; these compare it against this request.
+            if (captured.writes().size() != writes.size() || !captured.deletes().equals(deletes)) {
                 throw new WorkerUnavailableException();
             }
             var result = new LinkedHashMap<String, String>();
-            long total = 0;
-            for (int index = 0; index < files.size(); index++) {
-                JsonNode file = files.get(index);
-                String path = file.path("path").asString("");
-                long size = file.path("bytes").asLong(-1);
-                total += size;
-                if (!path.equals(writes.get(index))
-                        || result.containsKey(path)
-                        || size < 0
-                        || total > 4 * 1024 * 1024) {
+            for (int index = 0; index < captured.writes().size(); index++) {
+                var file = captured.writes().get(index);
+                String path = file.path();
+                long size = file.bytes();
+                if (!path.equals(writes.get(index)) || result.containsKey(path)) {
                     throw new WorkerUnavailableException();
                 }
                 var bytes = new ByteArrayOutputStream((int) size);
@@ -952,12 +894,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             new WorkerRequests.CaptureRead(executionId, captureId, index, bytes.size(), limit),
                             Duration.ofSeconds(3));
                     requireOk(chunk, session);
-                    if (!captureId.equals(chunk.path("captureId").asString(""))
-                            || chunk.path("index").asInt(-1) != index
-                            || chunk.path("offset").asInt(-1) != bytes.size()) {
+                    var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
+                    if (!captureId.equals(page.captureId()) || page.index() != index || page.offset() != bytes.size()) {
                         throw new WorkerUnavailableException();
                     }
-                    byte[] block = Base64.getDecoder().decode(chunk.path("data").asString(""));
+                    byte[] block = page.decoded();
                     if (block.length != limit) {
                         throw new WorkerUnavailableException();
                     }
@@ -967,7 +908,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 try {
                     if (!HexFormat.of()
                             .formatHex(MessageDigest.getInstance("SHA-256").digest(content))
-                            .equals(file.path("sha256").asString(""))) {
+                            .equals(file.sha256())) {
                         throw new WorkerUnavailableException();
                     }
                     result.put(
@@ -1118,7 +1059,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the media index");
         }
         requireOk(manifest, session);
-        List<String> absent = selectedPaths(manifest.path("absent"));
+        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                .absent();
         if (!absent.isEmpty() && !absent.equals(List.of(path))) {
             throw new WorkerUnavailableException();
         }
@@ -1164,21 +1106,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the imported file");
         }
         requireOk(manifest, session);
-        String captureId = manifest.path("captureId").asString("");
-        if (!UUID.fromString(captureId).toString().equals(captureId)) {
-            throw new WorkerUnavailableException();
-        }
+        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
+        String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         ManagedAsset asset;
         try {
-            JsonNode files = manifest.path("writes");
-            if (!files.isArray()
-                    || files.size() != 1
-                    || !files.get(0).path("path").asString("").equals(file)) {
+            // One file was selected, so exactly that file must come back.
+            if (captured.writes().size() != 1
+                    || !captured.writes().getFirst().path().equals(file)) {
                 throw new WorkerUnavailableException();
             }
-            long size = files.get(0).path("bytes").asLong(-1);
-            String digest = files.get(0).path("sha256").asString("");
+            long size = captured.writes().getFirst().bytes();
+            String digest = captured.writes().getFirst().sha256();
             var previous = index.files().get(path);
             if (!replace
                     && previous != null
@@ -1195,12 +1134,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
                         Duration.ofSeconds(3));
                 requireOk(chunk, session);
-                if (!captureId.equals(chunk.path("captureId").asString(""))
-                        || chunk.path("index").asInt(-1) != 0
-                        || chunk.path("offset").asLong(-1) != offset) {
+                var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
+                if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
-                return Base64.getDecoder().decode(chunk.path("data").asString(""));
+                return page.decoded();
             })) {
                 asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
                 if (!input.verified()
@@ -1330,10 +1268,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to stage the outgoing file");
         }
         requireOk(begun, session);
-        String transferId = begun.path("transferId").asString("");
-        if (!UUID.fromString(transferId).toString().equals(transferId)) {
-            throw new WorkerUnavailableException();
-        }
+        String transferId =
+                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
         var reference = new WorkerRequests.Transfer(executionId, transferId);
         try {
             var sink = new OutputStream() {
@@ -1366,7 +1302,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         checkMaterialization(chunk);
                         requireOk(chunk, session);
                         sent += count;
-                        if (chunk.path("receivedBytes").asLong(-1) != sent) {
+                        if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
+                                        .receivedBytes()
+                                != sent) {
                             throw new WorkerUnavailableException();
                         }
                         offset += count;
@@ -1388,11 +1326,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             checkMaterialization(committed);
             requireOk(committed, session);
-            JsonNode installed = committed.path("installed");
-            if (!installed.path("path").asString("").equals(path)
-                    || (delete
-                            ? !installed.path("sha256").isNull()
-                            : !installed.path("sha256").asString("").equals(digest))) {
+            var installed = WorkerResponses.read(committed, WorkerResponses.Materialization.class)
+                    .installed();
+            // A deletion is acknowledged by an explicit null digest. An absent key is a malformed
+            // answer and must not be read as a file that was erased.
+            JsonNode reported = committed.path("installed").path("sha256");
+            if (!installed.path().equals(path) || (delete ? !reported.isNull() : !digest.equals(installed.sha256()))) {
                 throw new WorkerUnavailableException();
             }
             return true;
@@ -1597,32 +1536,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private static ExecutionResult result(JsonNode result, String commit) {
         try {
-            String stdout = result.path("stdout").stringValue();
-            String stderr = result.path("stderr").stringValue();
-            if (!result.path("commit").asString("").equals(commit)
-                    || stdout == null
-                    || stderr == null
-                    || stdout.getBytes(StandardCharsets.UTF_8).length + stderr.getBytes(StandardCharsets.UTF_8).length
-                            > 3 * 64 * 1024
-                    || !result.path("exitCode").isIntegralNumber()
-                    || !result.path("stdoutTruncated").isBoolean()
-                    || !result.path("stderrTruncated").isBoolean()
-                    || !result.path("timedOut").isBoolean()) {
+            var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
+            // The commit is an echo of what this session pinned, so it is compared here.
+            if (!result.path("commit").asString("").equals(commit)) {
                 throw new WorkerUnavailableException();
             }
-            TerminationReason reason =
-                    switch (result.path("terminationReason").stringValue()) {
-                        case "session_closed", "client_shutdown" -> TerminationReason.CANCELLED;
-                        case "lease_expired", "sandbox_failed" -> TerminationReason.SANDBOX_FAILURE;
-                        default ->
-                            TerminationReason.valueOf(result.path("terminationReason")
-                                    .stringValue()
-                                    .toUpperCase(Locale.ROOT));
-                    };
-            boolean timedOut = result.path("timedOut").booleanValue();
-            if (timedOut != (reason == TerminationReason.TIMEOUT)) {
-                throw new WorkerUnavailableException();
-            }
+            TerminationReason reason = finished.reason();
             if (!result.path("artifacts").isObject()
                     || !result.path("artifactErrors").isObject()
                     || result.path("artifacts").size() > 2
@@ -1648,12 +1567,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             return new ExecutionResult(
                     commit,
-                    result.path("exitCode").intValue(),
-                    stdout,
-                    stderr,
-                    result.path("stdoutTruncated").booleanValue(),
-                    result.path("stderrTruncated").booleanValue(),
-                    timedOut,
+                    finished.exitCode(),
+                    finished.stdout(),
+                    finished.stderr(),
+                    finished.stdoutTruncated(),
+                    finished.stderrTruncated(),
+                    finished.timedOut(),
                     reason,
                     artifacts,
                     artifactErrors);
