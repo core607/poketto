@@ -77,6 +77,13 @@ class WorkerAnswerTests {
                         WorkerResponses.Handshake.class))
                 .describedAs("renewal must leave room for two lost attempts")
                 .isInstanceOf(WorkerUnavailableException.class);
+        for (String identity : new String[] {"\"workerBootId\":\"not-a-uuid\"", "\"workerBootId\":null"}) {
+            assertThatThrownBy(() -> WorkerResponses.read(
+                            json(good.replace("\"workerBootId\":\"" + UUID + "\"", identity)),
+                            WorkerResponses.Handshake.class))
+                    .describedAs(identity)
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
     }
 
     @Test

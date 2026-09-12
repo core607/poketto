@@ -84,6 +84,7 @@ final class WorkerResponses {
             int renewAfterSeconds) {
         Handshake {
             require(ok, "ok", "must be true for a handshake");
+            workerBootId = ProtocolValues.uuid(workerBootId, "workerBootId");
             require(version == 1, "version", "must be 1");
             require(maxFrameBytes == WorkerClient.MAX_FRAME, "maxFrameBytes", "must be " + WorkerClient.MAX_FRAME);
             require(codeActProtocol == 1, "codeActProtocol", "must be 1");
@@ -98,6 +99,7 @@ final class WorkerResponses {
                     "must be between 1 and a third of the lease");
         }
 
+        /** Already checked on construction, so this only converts what the record accepted. */
         UUID bootId() {
             return UUID.fromString(workerBootId);
         }
