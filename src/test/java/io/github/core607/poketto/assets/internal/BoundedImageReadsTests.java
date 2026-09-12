@@ -1,12 +1,14 @@
 package io.github.core607.poketto.assets.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,11 +22,13 @@ class BoundedImageReadsTests {
         int maximum = 32769;
         for (int length : new int[] {0, 1, 8191, 8192, 8193, maximum - 1, maximum, maximum + 1}) {
             byte[] bytes = new byte[length];
-            for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) i;
+            for (int i = 0; i < bytes.length; i++) {
+                bytes[i] = (byte) i;
+            }
             Files.write(file, bytes);
             try (var input = Files.newInputStream(file)) {
                 assertThat(BoundedImageReads.read(input, maximum))
-                        .isEqualTo(java.util.Arrays.copyOf(bytes, Math.min(length, maximum)));
+                        .isEqualTo(Arrays.copyOf(bytes, Math.min(length, maximum)));
                 assertThat(input.read()).isEqualTo(length > maximum ? bytes[maximum] & 255 : -1);
             }
         }
@@ -33,7 +37,7 @@ class BoundedImageReadsTests {
     @Test
     void everyUnderlyingReadIsSmallAndShortOrZeroReadsStillMakeProgress() throws Exception {
         byte[] bytes = new byte[20000];
-        java.util.Arrays.fill(bytes, (byte) 7);
+        Arrays.fill(bytes, (byte) 7);
         var input = new ByteArrayInputStream(bytes) {
             private boolean zero = true;
 

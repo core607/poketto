@@ -1,6 +1,7 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.security.MessageDigest;
@@ -13,7 +14,9 @@ class CapturedBinaryInputTests {
     @Test
     void streamsBoundedChunksAndVerifiesBeforeReportingCompleteInput() throws Exception {
         byte[] source = new byte[200000];
-        for (int i = 0; i < source.length; i++) source[i] = (byte) (i % 251);
+        for (int i = 0; i < source.length; i++) {
+            source[i] = (byte) (i % 251);
+        }
         var calls = new AtomicInteger();
         try (var input = new CapturedBinaryInput(source.length, hash(source), (offset, limit) -> {
             calls.incrementAndGet();

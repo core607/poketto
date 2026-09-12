@@ -1,8 +1,13 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -37,13 +42,13 @@ class SelectedFileSavesTests {
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         var result = saves.save(
                 actor, workspace, state, Map.of("private/secret.md", "first\r\n", "private/new.md", "new"), List.of());
-        assertThat(result.get("ok")).isEqualTo(true);
+        assertThat(result.ok()).isEqualTo(true);
         assertThat(state.baseCommit).isNotEqualTo(fixture.sourceCommit());
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "AGENTS.md")
                         .source())
                 .contains("operator-secret-needle");
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "second"), List.of("private/new.md"))
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/new.md")
                         .expectedAbsence())
@@ -51,7 +56,7 @@ class SelectedFileSavesTests {
         String acknowledged = state.baseCommit;
         fixture.competingWrite(auth, actor);
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "conflict"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
         assertThat(state.baseCommit).isEqualTo(acknowledged);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
@@ -70,14 +75,14 @@ class SelectedFileSavesTests {
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), patches, fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "uncertain"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "retry"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         verify(patches, times(1)).apply(any(), any(), any());
         assertThat(state.baseCommit).isEqualTo(fixture.sourceCommit());
-        assertThat(state.lastSave.get("code")).isEqualTo("WRITE_OUTCOME_UNKNOWN");
+        assertThat(((BridgeReplies.Reply) state.lastSave).code()).isEqualTo("WRITE_OUTCOME_UNKNOWN");
     }
 
     private static AuthPrincipal actor() {
@@ -106,10 +111,10 @@ class SelectedFileSavesTests {
         assertThat(plan.conflicted()).isFalse();
         saves.acknowledgeSync(state, plan);
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "local secret edit"), List.of())
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(saves.save(actor, workspace, state, Map.of("AGENTS.md", "old local guide edit"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "AGENTS.md")
                         .source())
@@ -133,21 +138,21 @@ class SelectedFileSavesTests {
         var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "original-attempt"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         String retained = state.attempt.orElseThrow().commit();
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "later-edit"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         fixture.restoreTransport();
-        assertThat(saves.recover(actor, workspace, state).get("ok")).isEqualTo(true);
+        assertThat(saves.recover(actor, workspace, state).ok()).isEqualTo(true);
         assertThat(state.baseCommit).isEqualTo(retained);
         assertThat(fixture.pushes()).isEqualTo(1);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
                         .source())
                 .contains("original-attempt");
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "later-edit"), List.of())
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(fixture.pushes()).isEqualTo(2);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")

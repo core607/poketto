@@ -2,6 +2,7 @@ package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -29,7 +30,9 @@ final class RepositoryCredentialCipher {
             throw invalidKey();
         }
         try {
-            if (decoded.length != 32) throw invalidKey();
+            if (decoded.length != 32) {
+                throw invalidKey();
+            }
             key = new SecretKeySpec(decoded, "AES");
         } finally {
             Arrays.fill(decoded, (byte) 0);
@@ -70,22 +73,27 @@ final class RepositoryCredentialCipher {
 
     Credentials decrypt(WorkspaceId workspace, String canonicalUri, byte[] envelope) {
         requireKey();
-        if (envelope == null || envelope.length < 33 || envelope.length > 20_000 || envelope[0] != 1)
+        if (envelope == null || envelope.length < 33 || envelope.length > 20_000 || envelope[0] != 1) {
             throw unavailable();
+        }
         byte[] plain = null;
         try {
             Cipher cipher = cipher(Cipher.DECRYPT_MODE, workspace, canonicalUri, Arrays.copyOfRange(envelope, 1, 13));
             plain = cipher.doFinal(envelope, 13, envelope.length - 13);
             ByteBuffer buffer = ByteBuffer.wrap(plain);
             int length = buffer.getInt();
-            if (length < 1 || length > buffer.remaining()) throw unavailable();
+            if (length < 1 || length > buffer.remaining()) {
+                throw unavailable();
+            }
             return new Credentials(
                     new String(plain, 4, length, StandardCharsets.UTF_8),
                     new String(plain, 4 + length, plain.length - 4 - length, StandardCharsets.UTF_8));
-        } catch (GeneralSecurityException | IllegalArgumentException | java.nio.BufferUnderflowException invalid) {
+        } catch (GeneralSecurityException | IllegalArgumentException | BufferUnderflowException invalid) {
             throw unavailable();
         } finally {
-            if (plain != null) Arrays.fill(plain, (byte) 0);
+            if (plain != null) {
+                Arrays.fill(plain, (byte) 0);
+            }
         }
     }
 
@@ -99,8 +107,9 @@ final class RepositoryCredentialCipher {
     }
 
     private void requireKey() {
-        if (key == null)
+        if (key == null) {
             throw new ContentRepositoryException("Workspace repository credential encryption is not configured");
+        }
     }
 
     private static IllegalArgumentException invalidKey() {
@@ -118,9 +127,10 @@ final class RepositoryCredentialCipher {
                     || username.length() > 256
                     || password == null
                     || password.isBlank()
-                    || password.length() > 4096)
+                    || password.length() > 4096) {
                 throw new IllegalArgumentException(
                         "Repository username and token are required and must fit their limits");
+            }
         }
 
         @Override

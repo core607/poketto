@@ -20,12 +20,16 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import tools.jackson.databind.ObjectMapper;
 
 /** Bounds request streams and reserves separate admission for small SDK lifecycle notifications. */
 final class McpBodyLimitFilter implements Filter {
+    // Both bounds come from the local execution supervisor record. A declared length is checked
+    // before dispatch, and an unknown-length body is read to the limit plus one byte and refused
+    // with 413, so an oversized request never reaches business handling.
     static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;
     static final int MAX_INITIALIZE_BYTES = 16 * 1024;
     private final Semaphore activePosts = new Semaphore(4);
@@ -77,21 +81,26 @@ final class McpBodyLimitFilter implements Filter {
         }
         AtomicBoolean released = new AtomicBoolean();
         Runnable release = () -> {
-            if (released.compareAndSet(false, true)) admission.release();
+            if (released.compareAndSet(false, true)) {
+                admission.release();
+            }
         };
         boolean imageWork = imageWork(prefix);
-        var reservation = imageWork
-                ? memory.acquire(ImageMemoryAdmission.MCP_BYTES)
-                : java.util.Optional.<ImageRequestScope>empty();
+        var reservation =
+                imageWork ? memory.acquire(ImageMemoryAdmission.MCP_BYTES) : Optional.<ImageRequestScope>empty();
         if (imageWork && reservation.isEmpty()) {
             release.run();
             reject(output, 429);
             return;
         }
         ImageRequestScope scope = reservation.orElse(null);
-        if (scope != null) http.setAttribute(ImageRequestScope.ATTRIBUTE, scope);
+        if (scope != null) {
+            http.setAttribute(ImageRequestScope.ATTRIBUTE, scope);
+        }
         Runnable complete = () -> {
-            if (scope != null) scope.responseComplete();
+            if (scope != null) {
+                scope.responseComplete();
+            }
             release.run();
         };
         AsyncListener listener = new AsyncListener() {
@@ -169,7 +178,9 @@ final class McpBodyLimitFilter implements Filter {
 
                         @Override
                         public ServletInputStream getInputStream() throws IOException {
-                            if (bounded != null) return bounded;
+                            if (bounded != null) {
+                                return bounded;
+                            }
                             bounded = new ServletInputStream() {
                                 @Override
                                 public int read() {
@@ -208,11 +219,15 @@ final class McpBodyLimitFilter implements Filter {
         } finally {
             if (http.isAsyncStarted()) {
                 try {
-                    if (!watching.get()) http.getAsyncContext().addListener(listener);
+                    if (!watching.get()) {
+                        http.getAsyncContext().addListener(listener);
+                    }
                 } catch (IllegalStateException exception) {
                     complete.run();
                 }
-            } else complete.run();
+            } else {
+                complete.run();
+            }
         }
     }
 
@@ -240,10 +255,14 @@ final class McpBodyLimitFilter implements Filter {
 
     private boolean imageWork(byte[] prefix) {
         // A large request may put the tool name after its arguments. Reserve before buffering it.
-        if (prefix.length > MAX_INITIALIZE_BYTES) return true;
+        if (prefix.length > MAX_INITIALIZE_BYTES) {
+            return true;
+        }
         try {
             var message = json.readTree(prefix);
-            if (!message.path("method").asString("").equals("tools/call")) return false;
+            if (!message.path("method").asString("").equals("tools/call")) {
+                return false;
+            }
             String tool = message.path("params").path("name").asString("");
             return tool.equals("get_asset") || tool.equals("put_asset") || tool.equals("get_artifact");
         } catch (RuntimeException invalid) {
@@ -252,7 +271,9 @@ final class McpBodyLimitFilter implements Filter {
     }
 
     private boolean control(byte[] body) {
-        if (body.length > MAX_INITIALIZE_BYTES) return false;
+        if (body.length > MAX_INITIALIZE_BYTES) {
+            return false;
+        }
         try {
             var message = json.readTree(body);
             String method = message.path("method").asString("");

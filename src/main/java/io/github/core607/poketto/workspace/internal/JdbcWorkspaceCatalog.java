@@ -3,6 +3,7 @@ package io.github.core607.poketto.workspace.internal;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
@@ -11,9 +12,10 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-final class JdbcWorkspaceCatalog implements WorkspaceCatalog, io.github.core607.poketto.workspace.WorkspaceRegistry {
+final class JdbcWorkspaceCatalog implements WorkspaceCatalog, WorkspaceRegistry {
 
     private static final String SELECT_COLUMNS = "workspace_id, display_name";
     private static final RowMapper<Workspace> WORKSPACE_ROW = JdbcWorkspaceCatalog::readWorkspace;
@@ -72,15 +74,17 @@ final class JdbcWorkspaceCatalog implements WorkspaceCatalog, io.github.core607.
 
     @Override
     public void create(WorkspaceId id, String displayName, String publicSlug) {
-        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Workspace creation requires an ownership transaction");
+        }
         if (id == null
                 || displayName == null
                 || displayName.isBlank()
                 || displayName.length() > 120
                 || publicSlug == null
-                || !publicSlug.matches("[a-z0-9][a-z0-9-]{1,62}[a-z0-9]"))
+                || !publicSlug.matches("[a-z0-9][a-z0-9-]{1,62}[a-z0-9]")) {
             throw new IllegalArgumentException("Invalid workspace name or slug");
+        }
         jdbc.update(
                 "insert into workspaces(workspace_id,display_name,public_slug,public_delivery) values (?,?,?,false)",
                 id.value(),

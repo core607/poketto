@@ -22,10 +22,14 @@ public final class AcceptanceApplication {
 
     public static void main(String[] args) throws Exception {
         Path root = Path.of(required("POKETTO_ACCEPTANCE_ROOT"));
-        if (!root.isAbsolute()) throw new IllegalArgumentException("acceptance root must be absolute");
+        if (!root.isAbsolute()) {
+            throw new IllegalArgumentException("acceptance root must be absolute");
+        }
         Files.createDirectories(root);
         try (var existing = Files.list(root)) {
-            if (existing.findAny().isPresent()) throw new IllegalArgumentException("acceptance root must be empty");
+            if (existing.findAny().isPresent()) {
+                throw new IllegalArgumentException("acceptance root must be empty");
+            }
         }
         String password = required("POKETTO_ACCEPTANCE_PASSWORD");
 
@@ -81,8 +85,9 @@ public final class AcceptanceApplication {
             write(directory, "public/drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
             BufferedImage image = new BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB);
             for (int y = 0; y < image.getHeight(); y++) {
-                for (int x = 0; x < image.getWidth(); x++)
+                for (int x = 0; x < image.getWidth(); x++) {
                     image.setRGB(x, y, ((120 + x / 4) << 16) | ((150 + y / 3) << 8) | 160);
+                }
             }
             ImageIO.write(image, "png", directory.resolve("public/sample.png").toFile());
             ImageIO.write(
@@ -108,8 +113,9 @@ public final class AcceptanceApplication {
 
     private static String required(String name) {
         String value = System.getenv(name);
-        if (value == null || value.isBlank())
+        if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " is required for synthetic acceptance");
+        }
         return value;
     }
 }

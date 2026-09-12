@@ -4,6 +4,11 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * One file as of one commit, including the case where it is absent. An expected absence is
+ * carried rather than signalled by a null source, because a writer needs to tell "this path
+ * is known to be empty" from "this path was never read" when it checks its precondition.
+ */
 public record RepositoryFile(
         WorkspaceId workspaceId,
         Optional<String> commit,

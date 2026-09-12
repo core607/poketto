@@ -477,10 +477,22 @@ class ReviewTests(unittest.TestCase):
         self.assertNotIn("application/vnd.github.v3.diff", workflow)
         self.assertNotIn("ref: ${{ github.event.pull_request.head", workflow)
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("github.event.changes.base != null", ci)
-        self.assertIn("github.event.changes.base == null && github.run_id || 'source'", ci)
-        self.assertIn("'metadata-only' || 'verify'", ci)
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}" + chr(10), ci)
+        self.assertNotIn("github.run_id || 'source'", ci)
         self.assertIn('unittest discover -s .github/review -p "test_*.py"', ci)
+        # Branch protection expects "verify" from the newest run of this workflow, including the
+        # run a title or body edit starts. The job must therefore always run under that exact
+        # name, and must actually verify: a run that reports success without executing its
+        # steps would hand a green required check to a commit whose verification failed.
+        verify = ci.split("\n  verify:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        self.assertIn("\n    name: verify\n", verify)
+        self.assertNotIn("\n    if:", verify)
+        self.assertNotIn("METADATA_ONLY", ci)
+        steps = [line for line in verify.splitlines() if line.startswith("      - name:")]
+        conditional = [line for line in verify.splitlines() if line.strip().startswith("if:")]
+        self.assertTrue(steps)
+        self.assertEqual(["if: failure()"], [line.strip() for line in conditional])
+        self.assertIn("./gradlew check --no-daemon", verify)
 
     def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):
         pr = self.github.current()

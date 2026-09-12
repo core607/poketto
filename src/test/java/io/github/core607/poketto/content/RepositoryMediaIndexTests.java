@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -88,7 +89,9 @@ class RepositoryMediaIndexTests {
     @Test
     void preservesAnIndexThatFitsCompactJsonWhenPrettyPrintingWouldExceedTheBound() {
         Map<String, RepositoryMediaIndex.Media> entries = new LinkedHashMap<>();
-        for (int i = 0; i < 4_500; i++) entries.put("private/file-" + i + ".pdf", MEDIA);
+        for (int i = 0; i < 4_500; i++) {
+            entries.put("private/file-" + i + ".pdf", MEDIA);
+        }
         var index = new RepositoryMediaIndex(entries);
         byte[] encoded = index.encode();
         assertThat(encoded.length).isLessThanOrEqualTo(RepositoryMediaIndex.MAX_BYTES);

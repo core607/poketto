@@ -1,40 +1,56 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.ContentExportException;
+import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.PortableContentExports;
+import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +62,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
     private final AuthService auth;
     private final RepositorySnapshotExports exports;
-    private final io.github.core607.poketto.content.PortableContentExports packages;
+    private final PortableContentExports packages;
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
     private final MediaFileService media;
@@ -74,7 +90,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
-            io.github.core607.poketto.content.PortableContentExports packages,
+            PortableContentExports packages,
             MediaFileService media,
             SelectedFileSaves saves,
             AuthService auth,
@@ -116,42 +132,56 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || timeout.compareTo(Duration.ofSeconds(60)) > 0
                 || requestedCommit
                         .filter(value -> !value.matches("[0-9a-f]{40}"))
-                        .isPresent()) throw new IllegalArgumentException("Invalid bounded execution request");
-        if (cancellation.isCancelled() || !executions.tryAcquire()) throw new WorkerUnavailableException();
+                        .isPresent()) {
+            throw new IllegalArgumentException("Invalid bounded execution request");
+        }
+        if (cancellation.isCancelled() || !executions.tryAcquire()) {
+            throw new WorkerUnavailableException();
+        }
         Session session = null;
         boolean ownsCommand = false;
         try {
             SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
             recoverRestartedLeases(key);
             synchronized (this) {
-                if (closed) throw new WorkerUnavailableException();
+                if (closed) {
+                    throw new WorkerUnavailableException();
+                }
                 session = sessions.get(key);
                 if (session == null) {
                     if (sessions.size() >= 1024
                             || sessions.values().stream()
                                             .filter(value -> !value.capacityReleased)
                                             .count()
-                                    >= maxSessions) throw new WorkerUnavailableException();
+                                    >= maxSessions) {
+                        throw new WorkerUnavailableException();
+                    }
                     boolean fullRead = access.capabilities().contains(Capability.READ_PRIVATE);
-                    if (!fullRead && requestedCommit.isPresent())
+                    if (!fullRead && requestedCommit.isPresent()) {
                         throw new IllegalArgumentException(
                                 "Public execution starts from current publication; omit commit");
+                    }
                     session = new Session(key, principal, fullRead);
                     sessions.put(key, session);
                 }
             }
-            if (!session.busy.compareAndSet(false, true)) throw new WorkerUnavailableException();
+            if (!session.busy.compareAndSet(false, true)) {
+                throw new WorkerUnavailableException();
+            }
             ownsCommand = true;
             Session selected = session;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(selected, "cancelled"))) {
                 requireLive(session);
                 if (session.commit != null
                         && requestedCommit.isPresent()
-                        && !session.commit.equals(requestedCommit.get()))
+                        && !session.commit.equals(requestedCommit.get())) {
                     throw new IllegalArgumentException(
                             "Execution session remains pinned; use a new MCP session for another commit");
+                }
                 authorize(session);
-                if (!session.ready) open(session, requestedCommit);
+                if (!session.ready) {
+                    open(session, requestedCommit);
+                }
                 requireLive(session);
                 authorize(session);
                 JsonNode response = executeWithBridge(session, command, timeout);
@@ -163,8 +193,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         || state.equals("CLOSED")
                         || result.terminationReason() == TerminationReason.CANCELLED
                         || result.terminationReason() == TerminationReason.REVOKED
-                        || result.terminationReason() == TerminationReason.SANDBOX_FAILURE)
+                        || result.terminationReason() == TerminationReason.SANDBOX_FAILURE) {
                     stopAndAwait(session, "cancelled");
+                }
                 return result;
             }
         } catch (RuntimeException exception) {
@@ -172,12 +203,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 try {
                     stopAndAwait(session, "cancelled");
                 } catch (RuntimeException closeFailure) {
-                    log.warn("Worker termination not acknowledged; lease renewal has stopped");
+                    log.warn("Worker termination not acknowledged; lease renewal has stopped", closeFailure);
                 }
             }
             throw exception;
         } finally {
-            if (session != null && ownsCommand) session.busy.set(false);
+            if (session != null && ownsCommand) {
+                session.busy.set(false);
+            }
             executions.release();
         }
     }
@@ -200,109 +233,84 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || offset < 0
                 || offset > 128L * 1024 * 1024
                 || limit < 1
-                || limit > 65536) throw new IllegalArgumentException("Invalid artifact read");
+                || limit > 65536) {
+            throw new IllegalArgumentException("Invalid artifact read");
+        }
         Session session;
         synchronized (this) {
             session = sessions.get(new SessionKey(principal.subjectId(), workspace, hash(serverSessionId)));
         }
-        if (session == null) return Optional.empty();
-        if (cancellation.isCancelled() || !executions.tryAcquire()) throw new WorkerUnavailableException();
+        if (session == null) {
+            return Optional.empty();
+        }
+        if (cancellation.isCancelled() || !executions.tryAcquire()) {
+            throw new WorkerUnavailableException();
+        }
         boolean ownsRead = false;
         try {
-            if (!session.busy.compareAndSet(false, true)) throw new WorkerUnavailableException();
+            if (!session.busy.compareAndSet(false, true)) {
+                throw new WorkerUnavailableException();
+            }
             ownsRead = true;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
                 requireLive(session);
                 authorize(session);
-                if (!session.ready) throw new WorkerUnavailableException();
+                if (!session.ready) {
+                    throw new WorkerUnavailableException();
+                }
                 JsonNode response = requestLive(
                         session,
                         "ARTIFACT_READ",
-                        Map.of("artifactId", artifactId, "offset", offset, "limit", limit),
+                        new WorkerRequests.ArtifactRead(artifactId, offset, limit),
                         Duration.ofSeconds(3));
                 requireLive(session);
                 authorize(session);
                 String code = response.path("code").asString("");
-                if (code.equals("ARTIFACT_UNAVAILABLE")) return Optional.empty();
-                if (code.equals("INVALID_ARTIFACT_RANGE")) throw new IllegalArgumentException("Invalid artifact range");
+                if (code.equals("ARTIFACT_UNAVAILABLE")) {
+                    return Optional.empty();
+                }
+                if (code.equals("INVALID_ARTIFACT_RANGE")) {
+                    throw new IllegalArgumentException("Invalid artifact range");
+                }
                 requireOk(response, session);
-                Map<String, Object> metadata = artifactMetadata(response);
-                long size = (long) metadata.get("bytes");
-                if (!artifactId.equals(metadata.get("artifactId"))
-                        || offset > size
-                        || !response.path("offset").isIntegralNumber()
-                        || response.path("offset").longValue() != offset
-                        || !response.path("data").isString()
-                        || response.path("data").stringValue().length() > 87384) throw new WorkerUnavailableException();
-                byte[] bytes;
-                try {
-                    bytes = Base64.getDecoder().decode(response.path("data").stringValue());
-                } catch (IllegalArgumentException invalid) {
+                var metadata = artifactMetadata(response);
+                var page = WorkerResponses.read(response, WorkerResponses.ArtifactPage.class);
+                long size = metadata.bytes();
+                // The identifier and the offset are echoes of this request.
+                if (!artifactId.equals(metadata.artifactId()) || offset > size || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
-                if (bytes.length != Math.min(limit, size - offset)) throw new WorkerUnavailableException();
+                byte[] bytes = page.decoded();
+                if (bytes.length != Math.min(limit, size - offset)) {
+                    throw new WorkerUnavailableException();
+                }
                 return Optional.of(new ArtifactChunk(
                         artifactId,
-                        (String) metadata.get("name"),
-                        (String) metadata.get("mediaType"),
+                        metadata.name(),
+                        metadata.mediaType(),
                         size,
-                        (String) metadata.get("sha256"),
-                        (boolean) metadata.get("truncated"),
-                        (int) metadata.get("expiresInSeconds"),
+                        metadata.sha256(),
+                        metadata.truncated(),
+                        metadata.expiresInSeconds(),
                         offset,
                         bytes));
             }
         } catch (RuntimeException failure) {
-            if (ownsRead && !(failure instanceof IllegalArgumentException)) stop(session, "cancelled");
+            if (ownsRead && !(failure instanceof IllegalArgumentException)) {
+                stop(session, "cancelled");
+            }
             throw failure;
         } finally {
-            if (ownsRead) session.busy.set(false);
+            if (ownsRead) {
+                session.busy.set(false);
+            }
             executions.release();
         }
     }
 
-    private static Map<String, Object> artifactMetadata(JsonNode value) {
-        try {
-            String id = value.path("artifactId").stringValue();
-            String name = value.path("name").stringValue();
-            String type = value.path("mediaType").stringValue();
-            String digest = value.path("sha256").stringValue();
-            long size = value.path("bytes").longValue();
-            int expires = value.path("expiresInSeconds").intValue();
-            if (!UUID.fromString(id).toString().equals(id)
-                    || name.isEmpty()
-                    || name.length() > 255
-                    || name.contains("/")
-                    || name.contains("\\")
-                    || name.chars().anyMatch(c -> c < 32 || c == 127)
-                    || type.length() > 128
-                    || !type.matches("[a-z0-9.+-]+/[a-z0-9.+-]+")
-                    || !digest.matches("[0-9a-f]{64}")
-                    || !value.path("bytes").isIntegralNumber()
-                    || size < 0
-                    || size > 128L * 1024 * 1024
-                    || !value.path("expiresInSeconds").isIntegralNumber()
-                    || expires < 1
-                    || expires > 300
-                    || !value.path("truncated").isBoolean()) throw new WorkerUnavailableException();
-            return Map.of(
-                    "artifactId",
-                    id,
-                    "name",
-                    name,
-                    "mediaType",
-                    type,
-                    "bytes",
-                    size,
-                    "sha256",
-                    digest,
-                    "truncated",
-                    value.path("truncated").booleanValue(),
-                    "expiresInSeconds",
-                    expires);
-        } catch (RuntimeException invalid) {
-            throw new WorkerUnavailableException();
-        }
+    /** The worker's own report about one artifact; its rules live in the record that carries it. */
+    private static ArtifactMetadata artifactMetadata(JsonNode value) {
+        return WorkerResponses.read(value, ArtifactMetadata.class);
     }
 
     private void recoverRestartedLeases(SessionKey requested) {
@@ -313,12 +321,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || sessions.values().stream()
                                     .filter(value -> !value.capacityReleased)
                                     .count()
-                            < maxSessions) return;
+                            < maxSessions) {
+                return;
+            }
             candidates = sessions.values().stream()
                     .filter(value -> !value.capacityReleased && value.openAttempted)
                     .toList();
         }
-        if (candidates.isEmpty()) return;
+        if (candidates.isEmpty()) {
+            return;
+        }
         WorkerClient.Hello current = worker.hello();
         // The root worker serves HELLO only after exclusive startup cleanup has stopped all old units.
         // Only candidates captured before this probe can be retired by its boot identity.
@@ -358,15 +370,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             JsonNode response = requestLive(
                     session,
                     "OPEN",
-                    Map.of(
-                            "exportId",
-                            export.exportId(),
-                            "bundleSha256",
-                            export.bundleSha256(),
-                            "bundleBytes",
-                            export.bundleBytes(),
-                            "commit",
-                            export.commit()),
+                    new WorkerRequests.Open(
+                            export.exportId(), export.bundleSha256(), export.bundleBytes(), export.commit()),
                     openTimeout);
             while (true) {
                 requireOk(response, session);
@@ -376,17 +381,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     session.ready = true;
                     return;
                 }
-                if (!state.equals("INITIALIZING") || System.nanoTime() >= deadline)
+                if (!state.equals("INITIALIZING") || System.nanoTime() >= deadline) {
                     throw new WorkerUnavailableException();
+                }
                 pause();
                 authorize(session);
-                response = requestLive(session, "RENEW", Map.of(), Duration.ofSeconds(3));
+                response = requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
             }
         } catch (RuntimeException exception) {
             try {
                 stopAndAwait(session, "cancelled");
             } catch (RuntimeException closeFailure) {
-                log.warn("Failed opening worker lease remains unconfirmed; renewal stopped");
+                log.warn("Failed opening worker lease remains unconfirmed; renewal stopped", closeFailure);
             }
             throw exception;
         } finally {
@@ -394,9 +400,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private io.github.core607.poketto.auth.WorkspaceAccess authorize(AuthPrincipal principal, WorkspaceId workspace) {
-        if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY)
+    private WorkspaceAccess authorize(AuthPrincipal principal, WorkspaceId workspace) {
+        if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) {
             throw new SecurityException("Execution requires an API key");
+        }
         return auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
     }
 
@@ -424,24 +431,28 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (!session.openAttempted
                     || session.stopping.get()
                     || System.nanoTime() < session.nextRenew
-                    || !session.renewing.compareAndSet(false, true)) continue;
+                    || !session.renewing.compareAndSet(false, true)) {
+                continue;
+            }
             try {
                 controls.execute(() -> {
                     try {
-                        if (session.stopping.get()) return;
+                        if (session.stopping.get()) {
+                            return;
+                        }
                         authorize(session);
-                        JsonNode response = requestLive(session, "RENEW", Map.of(), Duration.ofSeconds(3));
+                        JsonNode response =
+                                requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
                         requireOk(response, session);
                         String state = response.path("state").asString("");
-                        if (!List.of("INITIALIZING", "READY", "RUNNING").contains(state))
+                        if (!List.of("INITIALIZING", "READY", "RUNNING").contains(state)) {
                             throw new WorkerUnavailableException();
+                        }
                         session.nextRenew = System.nanoTime()
                                 + Duration.ofSeconds(session.hello.renewAfterSeconds())
                                         .toNanos();
                     } catch (RuntimeException exception) {
-                        log.warn(
-                                "Worker lease renewal failed ({})",
-                                exception.getClass().getSimpleName());
+                        log.warn("Worker lease renewal failed", exception);
                         stop(session, "cancelled");
                     } finally {
                         session.renewing.set(false);
@@ -459,7 +470,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || session.capacityReleased
                 || !session.stopped.isCompletedExceptionally()
                 || System.nanoTime() < session.nextRenew
-                || !session.renewing.compareAndSet(false, true)) return;
+                || !session.renewing.compareAndSet(false, true)) {
+            return;
+        }
         Runnable deferred = () -> {
             session.nextRenew = System.nanoTime()
                     + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
@@ -468,12 +481,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         try {
             controls.execute(() -> {
                 try {
-                    if (session.capacityReleased || !session.stopping.get()) return;
+                    if (session.capacityReleased || !session.stopping.get()) {
+                        return;
+                    }
                     // Closing remains allowed after revocation; no OPEN, EXEC or renewal is replayed.
                     closeWorker(session, session.closeReason);
                     releaseCapacity(session);
                 } catch (RuntimeException exception) {
-                    log.debug("Worker close remains unconfirmed; admission is retained");
+                    log.debug("Worker close remains unconfirmed; admission is retained", exception);
                 } finally {
                     deferred.run();
                 }
@@ -488,50 +503,58 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         var running = commandIo.submit(() -> requestLive(
                 session,
                 "EXEC",
-                Map.of(
-                        "executionId",
-                        executionId,
-                        "commit",
-                        session.commit,
-                        "command",
-                        command,
-                        "timeoutMillis",
-                        timeout.toMillis()),
+                new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
                 timeout.plusSeconds(5)));
         long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
         try {
             while (!running.isDone()) {
-                if (session.stopping.get()) break;
+                if (session.stopping.get()) {
+                    break;
+                }
                 authorize(session);
-                if (System.nanoTime() >= deadline) throw new WorkerUnavailableException();
+                if (System.nanoTime() >= deadline) {
+                    throw new WorkerUnavailableException();
+                }
                 JsonNode polled;
                 try {
-                    polled = requestLive(session, "BRIDGE_POLL", Map.of(), Duration.ofSeconds(3));
+                    polled =
+                            requestLive(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
                 } catch (RuntimeException failed) {
-                    if (session.stopping.get()) break;
+                    if (session.stopping.get()) {
+                        break;
+                    }
                     throw failed;
                 }
-                if (running.isDone() || session.stopping.get()) break;
+                if (running.isDone() || session.stopping.get()) {
+                    break;
+                }
                 if (!polled.path("ok").asBoolean(false)
                         && Set.of("LEASE_EXPIRED", "BRIDGE_UNAVAILABLE", "AUTH_REVOKED")
-                                .contains(polled.path("code").asString(""))) break;
+                                .contains(polled.path("code").asString(""))) {
+                    break;
+                }
                 requireOk(polled, session);
                 JsonNode request = polled.path("bridgeRequest");
-                if (request.isMissingNode() || request.isNull()) continue;
-                if (!executionId.equals(polled.path("executionId").asString("")))
+                if (request.isMissingNode() || request.isNull()) {
+                    continue;
+                }
+                if (!executionId.equals(polled.path("executionId").asString(""))) {
                     throw new WorkerUnavailableException();
+                }
                 String requestId = request.path("requestId").stringValue();
-                if (!UUID.fromString(requestId).toString().equals(requestId)) throw new WorkerUnavailableException();
+                if (!UUID.fromString(requestId).toString().equals(requestId)) {
+                    throw new WorkerUnavailableException();
+                }
                 requireLive(session);
                 authorize(session);
-                Map<String, ?> reply = bridgeReply(session, executionId, request);
+                var reply = bridgeReply(session, executionId, request);
                 requireLive(session);
                 authorize(session);
                 requireOk(
                         requestLive(
                                 session,
                                 "BRIDGE_COMPLETE",
-                                Map.of("executionId", executionId, "bridgeRequestId", requestId, "response", reply),
+                                new WorkerRequests.BridgeComplete(executionId, requestId, reply),
                                 Duration.ofSeconds(3)),
                         session);
             }
@@ -540,270 +563,286 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            throw new WorkerUnavailableException(interrupted);
+        } catch (ExecutionException failed) {
+            if (failed.getCause() instanceof RuntimeException failure) {
+                throw failure;
+            }
             throw new WorkerUnavailableException();
-        } catch (java.util.concurrent.ExecutionException failed) {
-            if (failed.getCause() instanceof RuntimeException failure) throw failure;
-            throw new WorkerUnavailableException();
-        } catch (java.util.concurrent.TimeoutException expired) {
-            throw new WorkerUnavailableException();
+        } catch (TimeoutException expired) {
+            throw new WorkerUnavailableException(expired);
         } finally {
             running.cancel(true);
         }
     }
 
-    private Map<String, ?> bridgeReply(Session session, String executionId, JsonNode request) {
+    private BridgeReplies.Reply bridgeReply(Session session, String executionId, JsonNode request) {
         try {
             return bridgeOperation(session, executionId, request);
         } catch (MaterializationCapacity failure) {
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
+            return BridgeReplies.failed(
                     "MATERIALIZE_CAPACITY",
-                    "message",
                     "Insufficient session space. Free local space or export fewer files; existing files were preserved.");
         }
     }
 
-    private Map<String, ?> bridgeOperation(Session session, String executionId, JsonNode request) {
+    /**
+     * Routes one command to the family that owns it. Each family translates the same exceptions
+     * into its own failure codes -- a rejected selection is INVALID_EXPORT_SELECTION, INVALID_ARTIFACT,
+     * INVALID_MEDIA_REQUEST or INVALID_SELECTION depending on who asked -- so the translation stays
+     * with the family rather than being shared, and the agent inside the sandbox is told which of
+     * its arguments was refused.
+     */
+    private BridgeReplies.Reply bridgeOperation(Session session, String executionId, JsonNode request) {
         JsonNode arguments = request.path("arguments");
-        if (!arguments.isObject()) throw new WorkerUnavailableException();
-        if (request.path("operation").asString("").equals("status") && arguments.isEmpty())
-            return Map.of(
-                    "ok",
-                    true,
-                    "result",
-                    Map.of(
-                            "scope",
-                            session.fullRead ? "full" : "public",
-                            "baseCommit",
-                            session.saveState.baseCommit,
-                            "writeOutcomeUnknown",
-                            session.saveState.uncertain
-                                    || (session.saveState.move != null && session.saveState.move.result == null),
-                            "movePending",
-                            session.saveState.move != null,
-                            "move",
-                            session.saveState.move == null
-                                    ? Map.of()
-                                    : SessionMoves.pendingResult(session.saveState.move, "PENDING")
-                                            .get("result"),
-                            "lastSave",
-                            session.saveState.lastSave,
-                            "lastImport",
-                            session.lastImport));
+        if (!arguments.isObject()) {
+            throw new WorkerUnavailableException();
+        }
         String operation = request.path("operation").asString("");
+        // A status call takes no argument. One that carries any is not a status call at all, and
+        // falls through to the unknown-operation reply rather than being answered with a guess.
+        if (operation.equals("status") && arguments.isEmpty()) {
+            return status(session);
+        }
         if (operation.equals("export")) {
-            try {
-                return exportPackage(session, executionId, arguments);
-            } catch (io.github.core607.poketto.auth.AuthException denied) {
-                return Map.of("ok", false, "code", "ACCESS_DENIED");
-            } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_EXPORT_SELECTION");
-            } catch (io.github.core607.poketto.content.ContentExportException unavailable) {
-                return Map.of(
-                        "ok", false, "code", "EXPORT_" + unavailable.reason().name());
-            } catch (io.github.core607.poketto.content.ContentRepositoryException
-                    | io.github.core607.poketto.assets.AssetStorageException unavailable) {
-                return Map.of("ok", false, "code", "EXPORT_UNAVAILABLE");
-            }
+            return exportCommand(session, executionId, arguments);
         }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
-            try {
-                Map<String, Object> data;
-                if (operation.equals("artifact_create")) {
-                    if (arguments.size() != 2
-                            || !arguments.path("path").isString()
-                            || !arguments.path("mediaType").isString()) throw new IllegalArgumentException();
-                    data = Map.of(
-                            "executionId",
-                            executionId,
-                            "path",
-                            arguments.path("path").stringValue(),
-                            "mediaType",
-                            arguments.path("mediaType").stringValue());
-                } else {
-                    if (arguments.size() != 1 || !arguments.path("artifactId").isString())
-                        throw new IllegalArgumentException();
-                    String id = arguments.path("artifactId").stringValue();
-                    if (!UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException();
-                    data = Map.of("artifactId", id);
-                }
-                authorize(session);
-                JsonNode result = requestLive(
-                        session,
-                        operation.equals("artifact_create") ? "ARTIFACT_CREATE" : "ARTIFACT_REMOVE",
-                        data,
-                        Duration.ofSeconds(10));
-                authorize(session);
-                String code = result.path("code").asString("");
-                if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
-                        .contains(code)) return Map.of("ok", false, "code", code);
-                requireOk(result, session);
-                return operation.equals("artifact_create")
-                        ? Map.of("ok", true, "artifact", artifactMetadata(result.path("artifact")))
-                        : Map.of("ok", true, "removed", true);
-            } catch (IllegalArgumentException invalid) {
-                return Map.of("ok", false, "code", "INVALID_ARTIFACT");
-            }
+            return artifactCommand(session, executionId, operation, arguments);
         }
         if (operation.equals("media_fetch")
                 || operation.equals("media_import")
                 || operation.equals("media_link")
                 || operation.equals("media_list")) {
-            try {
-                if (operation.equals("media_list")) return listMedia(session, executionId, arguments);
-                if (operation.equals("media_link")) return linkMedia(session, executionId, arguments);
-                return operation.equals("media_fetch")
-                        ? fetchMedia(session, executionId, arguments)
-                        : importMedia(session, executionId, arguments);
-            } catch (IllegalArgumentException invalid) {
-                return Map.of(
-                        "ok",
-                        false,
-                        "code",
-                        "INVALID_MEDIA_REQUEST",
-                        "reason",
-                        InvalidSelectionException.reason(invalid));
-            } catch (AuthException denied) {
-                return Map.of("ok", false, "code", "ACCESS_DENIED");
-            } catch (io.github.core607.poketto.assets.AssetStorageException unavailable) {
-                return Map.of(
-                        "ok",
-                        false,
-                        "code",
-                        "MEDIA_UNAVAILABLE",
-                        "reason",
-                        unavailable.reason().name());
-            } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
-                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
-            }
+            return mediaCommand(session, executionId, operation, arguments);
         }
         if (operation.equals("save")
                 || operation.equals("recover")
                 || operation.equals("sync")
                 || operation.equals("move")) {
-            if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
-            try {
-                auth.authorize(
+            return writeCommand(session, executionId, operation, arguments);
+        }
+        return BridgeReplies.failed("OPERATION_UNAVAILABLE");
+    }
+
+    /** Where this session's writes stand, as the agent needs to see them before deciding what to do. */
+    private static BridgeReplies.Reply status(Session session) {
+        return BridgeReplies.succeeded(new BridgeReplies.Status(
+                session.fullRead ? "full" : "public",
+                session.saveState.baseCommit,
+                session.saveState.uncertain
+                        || (session.saveState.move != null && session.saveState.move.result == null),
+                session.saveState.move != null,
+                session.saveState.move == null
+                        ? new BridgeReplies.Absent()
+                        : SessionMoves.movePending(session.saveState.move),
+                session.saveState.lastSave,
+                session.lastImport));
+    }
+
+    private BridgeReplies.Reply exportCommand(Session session, String executionId, JsonNode arguments) {
+        try {
+            return exportPackage(session, executionId, arguments);
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failed("INVALID_EXPORT_SELECTION");
+        } catch (ContentExportException unavailable) {
+            return BridgeReplies.failed("EXPORT_" + unavailable.reason().name());
+        } catch (ContentRepositoryException | AssetStorageException unavailable) {
+            return BridgeReplies.failed("EXPORT_UNAVAILABLE");
+        }
+    }
+
+    /**
+     * Creates or releases one retained artifact. The worker's own refusals pass through unchanged,
+     * because the agent distinguishes a missing artifact from a full store from a bad request.
+     */
+    private BridgeReplies.Reply artifactCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        boolean create = operation.equals("artifact_create");
+        try {
+            WorkerRequests.Data data;
+            if (create) {
+                var selected = BridgeArguments.artifactCreate(arguments);
+                data = new WorkerRequests.ArtifactCreate(executionId, selected.path(), selected.mediaType());
+            } else {
+                data = new WorkerRequests.ArtifactRemove(
+                        BridgeArguments.artifactRemove(arguments).artifactId());
+            }
+            authorize(session);
+            JsonNode result =
+                    requestLive(session, create ? "ARTIFACT_CREATE" : "ARTIFACT_REMOVE", data, Duration.ofSeconds(10));
+            authorize(session);
+            String code = result.path("code").asString("");
+            if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
+                    .contains(code)) {
+                return BridgeReplies.failed(code);
+            }
+            requireOk(result, session);
+            return create ? BridgeReplies.artifact(artifactMetadata(result.path("artifact"))) : BridgeReplies.removed();
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failed("INVALID_ARTIFACT");
+        }
+    }
+
+    private BridgeReplies.Reply mediaCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        try {
+            return switch (operation) {
+                case "media_list" -> listMedia(session, executionId, arguments);
+                case "media_link" -> linkMedia(session, executionId, arguments);
+                case "media_fetch" -> fetchMedia(session, executionId, arguments);
+                default -> importMedia(session, executionId, arguments);
+            };
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failedBecause("INVALID_MEDIA_REQUEST", InvalidSelectionException.reason(invalid));
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        } catch (AssetStorageException unavailable) {
+            return BridgeReplies.failedBecause(
+                    "MEDIA_UNAVAILABLE", unavailable.reason().name());
+        } catch (ContentRepositoryException unavailable) {
+            return BridgeReplies.failed("MEDIA_UNAVAILABLE");
+        }
+    }
+
+    /**
+     * The four commands that reconcile the sandbox with the repository. Three of them write to it;
+     * sync only reads, which is why the capability it needs is the lesser one. All four share the
+     * full-read scope check and the refusal to start while an earlier write is unresolved, so those
+     * stay here and only the command itself differs.
+     */
+    private BridgeReplies.Reply writeCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        if (!session.fullRead) {
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
+        }
+        try {
+            auth.authorize(
+                    session.principal,
+                    session.key.workspace(),
+                    operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
+            // Recovery is the one command allowed while a write is unresolved: it exists to resolve
+            // one. The guards below would otherwise refuse it and leave the session stuck.
+            if (operation.equals("recover")) {
+                return recoverCommand(session, executionId, arguments);
+            }
+            if (session.saveState.move != null) {
+                return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
+            }
+            if (session.saveState.uncertain) {
+                return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+            }
+            return switch (operation) {
+                case "move" -> moveCommand(session, executionId, arguments);
+                case "sync" -> syncCommand(session, executionId, arguments);
+                default -> saveCommand(session, executionId, arguments);
+            };
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failedBecause("INVALID_SELECTION", InvalidSelectionException.reason(invalid));
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        } catch (ContentRepositoryException unavailable) {
+            return BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
+        }
+    }
+
+    /**
+     * Finishes whichever write was left unresolved. A move that the remote acknowledged still has
+     * to be installed locally, and {@code --skip-local} releases that installation instead, which
+     * is only meaningful once the remote outcome is known.
+     */
+    private BridgeReplies.Reply recoverCommand(Session session, String executionId, JsonNode arguments) {
+        boolean skipLocal = BridgeArguments.recoverSkipsLocal(arguments);
+        if (session.saveState.move != null) {
+            var recovered = saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
+            if (session.saveState.move == null || session.saveState.move.result == null) {
+                return recovered;
+            }
+            if (skipLocal) {
+                return saves.moves().skipLocal(session.saveState);
+            }
+            return moveFiles(session, executionId, session.saveState.move, true);
+        }
+        if (skipLocal) {
+            throw new IllegalArgumentException("no confirmed move to skip");
+        }
+        return saves.recover(session.principal, session.key.workspace(), session.saveState);
+    }
+
+    private BridgeReplies.Reply moveCommand(Session session, String executionId, JsonNode arguments) {
+        var selected = BridgeArguments.move(arguments);
+        var pending = saves.moves()
+                .prepare(
                         session.principal,
                         session.key.workspace(),
-                        operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
-                if (operation.equals("recover")) {
-                    boolean skipLocal =
-                            arguments.size() == 1 && arguments.path("skipLocal").asBoolean(false);
-                    if (!arguments.isEmpty() && !skipLocal) throw new IllegalArgumentException();
-                    if (session.saveState.move != null) {
-                        var recovered =
-                                saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
-                        if (session.saveState.move == null || session.saveState.move.result == null) return recovered;
-                        if (skipLocal) return saves.moves().skipLocal(session.saveState);
-                        return moveFiles(session, executionId, session.saveState.move, true);
-                    }
-                    if (skipLocal) throw new IllegalArgumentException("no confirmed move to skip");
-                    return saves.recover(session.principal, session.key.workspace(), session.saveState);
-                }
-                if (session.saveState.move != null)
-                    return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
-                if (session.saveState.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
-                if (operation.equals("move")) {
-                    if (arguments.size() != 2
-                            || !arguments.path("source").isString()
-                            || !arguments.path("destination").isString()) throw new IllegalArgumentException();
-                    var pending = saves.moves()
-                            .prepare(
-                                    session.principal,
-                                    session.key.workspace(),
-                                    session.saveState,
-                                    arguments.path("source").stringValue(),
-                                    arguments.path("destination").stringValue(),
-                                    captureOptional(session, executionId, RepositoryMediaIndex.PATH));
-                    return moveFiles(session, executionId, pending, false);
-                }
-                if (operation.equals("sync")) {
-                    if (arguments.size() != 1 || !arguments.path("path").isString())
-                        throw new IllegalArgumentException();
-                    String path = arguments.path("path").stringValue();
-                    JsonNode manifest = requestLive(
-                            session,
-                            "CAPTURE_OPTIONAL",
-                            Map.of("executionId", executionId, "path", path),
-                            Duration.ofSeconds(5));
-                    if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
-                        throw InvalidSelectionException.capture(
-                                manifest.path("reason").asString(""));
-                    requireOk(manifest, session);
-                    List<String> absent = selectedPaths(manifest.path("absent"));
-                    if (!absent.isEmpty() && !absent.equals(List.of(path))) throw new WorkerUnavailableException();
-                    var captured = readCapture(
-                            session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of());
-                    var plan = saves.prepareSync(
-                            session.principal,
-                            session.key.workspace(),
-                            session.saveState,
-                            path,
-                            Optional.ofNullable(captured.get(path)));
-                    return synchronizeFile(session, executionId, plan);
-                }
-                if (arguments.size() != 2 || !arguments.has("writes") || !arguments.has("deletes"))
-                    throw new IllegalArgumentException();
-                List<String> writes = selectedPaths(arguments.path("writes"));
-                List<String> deletes = selectedPaths(arguments.path("deletes"));
-                if (writes.size() + deletes.size() < 1 || writes.size() + deletes.size() > 64)
-                    throw new IllegalArgumentException();
-                var captured = capture(session, executionId, writes, deletes);
-                requireLive(session);
-                authorize(session);
-                return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
-            } catch (IllegalArgumentException invalid) {
-                return Map.of(
-                        "ok", false, "code", "INVALID_SELECTION", "reason", InvalidSelectionException.reason(invalid));
-            } catch (AuthException denied) {
-                return Map.of("ok", false, "code", "ACCESS_DENIED");
-            } catch (io.github.core607.poketto.content.ContentRepositoryException unavailable) {
-                return Map.of("ok", false, "code", "REPOSITORY_UNAVAILABLE");
-            }
-        }
-        return Map.of("ok", false, "code", "OPERATION_UNAVAILABLE");
+                        session.saveState,
+                        selected.source(),
+                        selected.destination(),
+                        captureOptional(session, executionId, RepositoryMediaIndex.PATH));
+        return moveFiles(session, executionId, pending, false);
     }
 
-    private static List<String> selectedPaths(JsonNode values) {
-        if (!values.isArray() || values.size() > 64) throw new IllegalArgumentException();
-        var paths = new ArrayList<String>();
-        for (JsonNode value : values) {
-            if (!value.isString()
-                    || value.stringValue().isEmpty()
-                    || value.stringValue().getBytes(StandardCharsets.UTF_8).length > 4096)
-                throw new IllegalArgumentException();
-            paths.add(value.stringValue());
+    /**
+     * Merges one file against its own baseline. The capture is optional because the agent may have
+     * deleted the file, and an absent path is a deletion to reconcile rather than a missing input.
+     */
+    private BridgeReplies.Reply syncCommand(Session session, String executionId, JsonNode arguments) {
+        String path = BridgeArguments.sync(arguments).path();
+        JsonNode manifest = requestLive(
+                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
-        return paths;
+        requireOk(manifest, session);
+        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                .absent();
+        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
+            throw new WorkerUnavailableException();
+        }
+        var captured =
+                readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of());
+        var plan = saves.prepareSync(
+                session.principal,
+                session.key.workspace(),
+                session.saveState,
+                path,
+                Optional.ofNullable(captured.get(path)));
+        return synchronizeFile(session, executionId, plan);
     }
 
-    private Map<String, ?> moveFiles(
+    private BridgeReplies.Reply saveCommand(Session session, String executionId, JsonNode arguments) {
+        var selection = BridgeArguments.save(arguments);
+        List<String> writes = selection.writes();
+        List<String> deletes = selection.deletes();
+        var captured = capture(session, executionId, writes, deletes);
+        requireLive(session);
+        authorize(session);
+        return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
+    }
+
+    private BridgeReplies.Reply moveFiles(
             Session session, String executionId, SessionMoves.Pending pending, boolean recovery) {
         byte[] payload = pending.payload;
         JsonNode begun = requestLive(
                 session,
                 "MOVE_BEGIN",
-                Map.of(
-                        "executionId",
+                new WorkerRequests.MoveBegin(
                         executionId,
-                        "bytes",
                         payload.length,
-                        "sha256",
-                        io.github.core607.poketto.content.DocumentRevision.sha256(payload)
-                                .value()
-                                .substring(7)),
+                        DocumentRevision.sha256(payload).value().substring(7)),
                 Duration.ofSeconds(3));
         if (begun.path("code").asString("").equals("MOVE_REJECTED")) {
-            if (recovery) return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
-            return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+            if (recovery) {
+                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+            }
+            return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
         }
         requireOk(begun, session);
-        String transfer = begun.path("transferId").asString("");
-        if (!UUID.fromString(transfer).toString().equals(transfer)) throw new WorkerUnavailableException();
-        var reference = Map.of("executionId", executionId, "transferId", transfer);
+        String transfer =
+                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
+        var reference = new WorkerRequests.Transfer(executionId, transfer);
         try {
             for (int offset = 0; offset < payload.length; offset += 65536) {
                 authorize(session);
@@ -811,33 +850,41 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 JsonNode chunk = requestLive(
                         session,
                         "MOVE_CHUNK",
-                        Map.of(
-                                "executionId",
+                        new WorkerRequests.TransferChunk(
                                 executionId,
-                                "transferId",
                                 transfer,
-                                "offset",
                                 offset,
-                                "data",
-                                Base64.getEncoder().encodeToString(java.util.Arrays.copyOfRange(payload, offset, end))),
+                                Base64.getEncoder().encodeToString(Arrays.copyOfRange(payload, offset, end))),
                         Duration.ofSeconds(3));
                 if (chunk.path("code").asString("").equals("MOVE_REJECTED")) {
-                    if (recovery) return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
-                    return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+                    if (recovery) {
+                        return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
+                    }
+                    return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(chunk, session);
-                if (chunk.path("receivedBytes").asInt(-1) != end) throw new WorkerUnavailableException();
+                if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
+                                .receivedBytes()
+                        != end) {
+                    throw new WorkerUnavailableException();
+                }
             }
             if (!recovery) {
                 JsonNode checked = requestLive(session, "MOVE_CHECK", reference, Duration.ofSeconds(15));
-                if (checked.path("code").asString("").equals("MOVE_REJECTED"))
-                    return Map.of("ok", false, "code", "LOCAL_MOVE_REJECTED");
+                if (checked.path("code").asString("").equals("MOVE_REJECTED")) {
+                    return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
+                }
                 requireOk(checked, session);
-                if (!checked.path("checked").path("ready").asBoolean(false)) throw new WorkerUnavailableException();
+                if (!WorkerResponses.read(checked, WorkerResponses.MovePreflight.class)
+                        .ready()) {
+                    throw new WorkerUnavailableException();
+                }
                 authorize(session);
                 var committed =
                         saves.moves().commit(session.principal, session.key.workspace(), session.saveState, pending);
-                if (session.saveState.move == null || pending.result == null) return committed;
+                if (session.saveState.move == null || pending.result == null) {
+                    return committed;
+                }
             }
             authorize(session);
             JsonNode installed;
@@ -847,18 +894,24 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 // Git is acknowledged. Keep the plan so a live worker can reconcile its receipt.
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
             }
-            if (installed.path("code").asString("").equals("MOVE_REJECTED"))
+            if (installed.path("code").asString("").equals("MOVE_REJECTED")) {
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
+            }
             requireOk(installed, session);
-            if (installed.path("installed").path("changedPaths").asInt(-1) != pending.paths.size()
-                    || !installed.path("installed").path("alreadyApplied").isBoolean())
+            if (WorkerResponses.read(installed, WorkerResponses.MoveInstallation.class)
+                            .installed()
+                            .changedPaths()
+                    != pending.paths.size()) {
                 throw new WorkerUnavailableException();
+            }
             return saves.moves().installed(session.saveState);
         } finally {
             try {
                 requestLive(session, "MOVE_ABORT", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                log.warn("Worker move staging cleanup was not acknowledged; command cleanup will release its slot");
+                log.warn(
+                        "Worker move staging cleanup was not acknowledged; command cleanup will release its slot",
+                        cleanupFailure);
             }
         }
     }
@@ -868,33 +921,33 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session,
                 "CAPTURE_BEGIN",
-                Map.of("executionId", executionId, "writes", writes, "deletes", deletes),
+                new WorkerRequests.CaptureBegin(executionId, writes, deletes),
                 Duration.ofSeconds(5));
         return readCapture(session, executionId, manifest, writes, deletes);
     }
 
     private Map<String, String> readCapture(
             Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
             throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
+        }
         requireOk(manifest, session);
-        String captureId = manifest.path("captureId").asString("");
-        if (!UUID.fromString(captureId).toString().equals(captureId)) throw new WorkerUnavailableException();
-        Map<String, ?> reference = Map.of("executionId", executionId, "captureId", captureId);
+        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
+        String captureId = captured.captureId();
+        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         try {
-            JsonNode files = manifest.path("writes");
-            if (!files.isArray()
-                    || files.size() != writes.size()
-                    || !selectedPaths(manifest.path("deletes")).equals(deletes)) throw new WorkerUnavailableException();
+            // The manifest is well formed by construction; these compare it against this request.
+            if (captured.writes().size() != writes.size() || !captured.deletes().equals(deletes)) {
+                throw new WorkerUnavailableException();
+            }
             var result = new LinkedHashMap<String, String>();
-            long total = 0;
-            for (int index = 0; index < files.size(); index++) {
-                JsonNode file = files.get(index);
-                String path = file.path("path").asString("");
-                long size = file.path("bytes").asLong(-1);
-                total += size;
-                if (!path.equals(writes.get(index)) || result.containsKey(path) || size < 0 || total > 4 * 1024 * 1024)
+            for (int index = 0; index < captured.writes().size(); index++) {
+                var file = captured.writes().get(index);
+                String path = file.path();
+                long size = file.bytes();
+                if (!path.equals(writes.get(index)) || result.containsKey(path)) {
                     throw new WorkerUnavailableException();
+                }
                 var bytes = new ByteArrayOutputStream((int) size);
                 while (bytes.size() < size) {
                     authorize(session);
@@ -902,31 +955,26 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     JsonNode chunk = requestLive(
                             session,
                             "CAPTURE_READ",
-                            Map.of(
-                                    "executionId",
-                                    executionId,
-                                    "captureId",
-                                    captureId,
-                                    "index",
-                                    index,
-                                    "offset",
-                                    bytes.size(),
-                                    "limit",
-                                    limit),
+                            new WorkerRequests.CaptureRead(executionId, captureId, index, bytes.size(), limit),
                             Duration.ofSeconds(3));
                     requireOk(chunk, session);
-                    if (!captureId.equals(chunk.path("captureId").asString(""))
-                            || chunk.path("index").asInt(-1) != index
-                            || chunk.path("offset").asInt(-1) != bytes.size()) throw new WorkerUnavailableException();
-                    byte[] block = Base64.getDecoder().decode(chunk.path("data").asString(""));
-                    if (block.length != limit) throw new WorkerUnavailableException();
+                    var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
+                    if (!captureId.equals(page.captureId()) || page.index() != index || page.offset() != bytes.size()) {
+                        throw new WorkerUnavailableException();
+                    }
+                    byte[] block = page.decoded();
+                    if (block.length != limit) {
+                        throw new WorkerUnavailableException();
+                    }
                     bytes.writeBytes(block);
                 }
                 byte[] content = bytes.toByteArray();
                 try {
                     if (!HexFormat.of()
                             .formatHex(MessageDigest.getInstance("SHA-256").digest(content))
-                            .equals(file.path("sha256").asString(""))) throw new WorkerUnavailableException();
+                            .equals(file.sha256())) {
+                        throw new WorkerUnavailableException();
+                    }
                     result.put(
                             path,
                             StandardCharsets.UTF_8
@@ -935,8 +983,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                                     .decode(ByteBuffer.wrap(content))
                                     .toString());
-                } catch (java.security.NoSuchAlgorithmException | java.nio.charset.CharacterCodingException invalid) {
-                    throw new WorkerUnavailableException();
+                } catch (NoSuchAlgorithmException | CharacterCodingException invalid) {
+                    throw new WorkerUnavailableException(invalid);
                 }
             }
             return result;
@@ -945,7 +993,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private Map<String, ?> synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
+    private BridgeReplies.Reply synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
         byte[] content = plan.content().orElse("").getBytes(StandardCharsets.UTF_8);
         boolean installed = materialize(
                 session,
@@ -957,26 +1005,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 plan.content().isEmpty(),
                 false,
                 output -> output.write(content));
-        if (!installed) return Map.of("ok", false, "code", "LOCAL_UPDATE_REJECTED");
+        if (!installed) {
+            return BridgeReplies.failed("LOCAL_UPDATE_REJECTED");
+        }
         saves.acknowledgeSync(session.saveState, plan);
-        return Map.of(
-                "ok",
+        return BridgeReplies.outcome(
                 !plan.conflicted(),
-                "code",
                 plan.conflicted() ? "MERGE_CONFLICT" : "SYNCHRONIZED",
-                "result",
-                Map.of(
-                        "path",
-                        plan.path(),
-                        "baseCommit",
-                        plan.remoteCommit(),
-                        "saved",
-                        false,
-                        "conflicted",
-                        plan.conflicted()));
+                new BridgeReplies.SyncResult(plan.path(), plan.remoteCommit(), false, plan.conflicted()));
     }
 
-    private Map<String, ?> listMedia(Session session, String executionId, JsonNode arguments) {
+    private BridgeReplies.Reply listMedia(Session session, String executionId, JsonNode arguments) {
         var query = MediaListing.Query.parse(arguments);
         Map<String, RepositoryMediaIndex.Media> files;
         String version, source;
@@ -996,8 +1035,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 version = hash(catalog.commit());
             }
         } else {
-            if (query.commit() != null)
+            if (query.commit() != null) {
                 throw new IllegalArgumentException("public media uses only its current projection");
+            }
             files = new LinkedHashMap<>();
             session.publicExport.media().forEach((path, media) -> files.put(path, media.original()));
             source = "public-projection";
@@ -1007,27 +1047,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return MediaListing.page(files, query, version, source);
     }
 
-    private Map<String, ?> fetchMedia(Session session, String executionId, JsonNode arguments) {
-        if (arguments.size() != 3
-                || !arguments.path("path").isString()
-                || !(arguments.path("commit").isNull()
-                        || arguments.path("commit").isString())
-                || !(arguments.path("output").isNull()
-                        || arguments.path("output").isString())) throw new IllegalArgumentException();
-        String path = arguments.path("path").stringValue();
-        String destination = arguments.path("output").isNull()
-                ? path
-                : arguments.path("output").stringValue();
-        Optional<String> requested = arguments.path("commit").isNull()
-                ? Optional.empty()
-                : Optional.of(arguments.path("commit").stringValue());
+    private BridgeReplies.Reply fetchMedia(Session session, String executionId, JsonNode arguments) {
+        var selected = BridgeArguments.mediaFetch(arguments);
+        String path = selected.path();
+        String destination = selected.output() == null ? path : selected.output();
+        Optional<String> requested = Optional.ofNullable(selected.commit());
         MediaFileService.Download download;
         String commit = null;
         String indexSource;
         if (session.fullRead) {
             if (requested.isPresent()) {
                 commit = requested.orElseThrow();
-                if (!commit.matches("[0-9a-f]{40}")) throw new IllegalArgumentException();
+                if (!commit.matches("[0-9a-f]{40}")) {
+                    throw new IllegalArgumentException("a pinned commit must be 40 lowercase hex characters");
+                }
                 download = media.privateDownload(session.principal, session.key.workspace(), Optional.of(commit), path);
                 indexSource = "repository";
             } else {
@@ -1042,10 +1075,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 indexSource = "worktree";
             }
         } else {
-            if (requested.isPresent())
+            if (requested.isPresent()) {
                 throw new IllegalArgumentException("public media uses only its current projection");
+            }
             var approved = session.publicExport.media().get(path);
-            if (approved == null) return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+            if (approved == null) {
+                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
+            }
             download = media.publicDownload(
                     session.key.workspace(),
                     approved.route(),
@@ -1055,8 +1091,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (!asset.reference().assetId().equals(expected.assetId())
                     || !asset.reference().revision().equals(expected.revision())
                     || asset.size() != expected.size()
-                    || !asset.mediaType().equals(expected.mediaType()))
-                return Map.of("ok", false, "code", "MEDIA_UNAVAILABLE");
+                    || !asset.mediaType().equals(expected.mediaType())) {
+                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
+            }
             commit = session.commit;
             indexSource = "public-projection";
         }
@@ -1071,147 +1108,123 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 false,
                 true,
                 download::writeTo);
-        if (!installed)
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
-                    "LOCAL_FILE_EXISTS",
-                    "message",
-                    "A different local file exists; keep it or choose another --output path.");
-        var result = new LinkedHashMap<String, Object>();
-        result.put("path", destination);
-        result.put("sourcePath", path);
-        result.put("indexSource", indexSource);
-        if (commit != null) result.put("commit", commit);
-        result.put("sha256", asset.reference().revision());
-        result.put("mediaType", asset.mediaType());
-        result.put("bytes", asset.size());
-        return Map.of("ok", true, "result", result);
+        if (!installed) {
+            return BridgeReplies.failed(
+                    "LOCAL_FILE_EXISTS", "A different local file exists; keep it or choose another --output path.");
+        }
+        return BridgeReplies.succeeded(new BridgeReplies.FetchResult(
+                destination, path, indexSource, commit, asset.reference().revision(), asset.mediaType(), asset.size()));
     }
 
     private Optional<String> captureOptional(Session session, String executionId, String path) {
         JsonNode manifest = requestLive(
-                session, "CAPTURE_OPTIONAL", Map.of("executionId", executionId, "path", path), Duration.ofSeconds(5));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
             throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
+        }
         requireOk(manifest, session);
-        List<String> absent = selectedPaths(manifest.path("absent"));
-        if (!absent.isEmpty() && !absent.equals(List.of(path))) throw new WorkerUnavailableException();
+        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                .absent();
+        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
+            throw new WorkerUnavailableException();
+        }
         return Optional.ofNullable(
                 readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of())
                         .get(path));
     }
 
-    private Map<String, ?> importMedia(Session session, String executionId, JsonNode arguments) {
-        if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+    private BridgeReplies.Reply importMedia(Session session, String executionId, JsonNode arguments) {
+        if (!session.fullRead) {
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
+        }
         auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        if (arguments.size() != 5
-                || !arguments.path("file").isString()
-                || !arguments.path("path").isString()
-                || !arguments.path("mediaType").isString()
-                || !arguments.path("key").isString()
-                || !arguments.path("replace").isBoolean()) throw new IllegalArgumentException();
-        String file = arguments.path("file").stringValue(),
-                path = arguments.path("path").stringValue();
-        String mediaType = arguments.path("mediaType").stringValue(),
-                key = arguments.path("key").stringValue();
-        boolean replace = arguments.path("replace").booleanValue();
-        if (!key.matches("[A-Za-z0-9_-]{16,128}")) throw new IllegalArgumentException();
-        io.github.core607.poketto.assets.ManagedAsset.validateMediaType(mediaType);
+        var selected = BridgeArguments.mediaImport(arguments);
+        String file = selected.file(), path = selected.path();
+        String mediaType = selected.mediaType(), key = selected.key();
+        boolean replace = selected.replace();
         LocalMediaIndex local = localMediaIndex(session, executionId);
-        if (local == null) return missingMediaIndex();
-        var index = local.index();
-        if (!availableMediaPath(session, local, path, mediaType))
-            return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
+        if (local == null) {
+            return missingMediaIndex();
+        }
+        RepositoryMediaIndex index = local.index();
+        if (!availableMediaPath(session, local, path, mediaType)) {
+            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
+        }
         JsonNode manifest = requestLive(
-                session, "CAPTURE_BINARY", Map.of("executionId", executionId, "path", file), Duration.ofSeconds(8));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED"))
+                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
             throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
+        }
         requireOk(manifest, session);
-        String captureId = manifest.path("captureId").asString("");
-        if (!UUID.fromString(captureId).toString().equals(captureId)) throw new WorkerUnavailableException();
-        Map<String, ?> reference = Map.of("executionId", executionId, "captureId", captureId);
-        io.github.core607.poketto.assets.ManagedAsset asset;
+        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
+        String captureId = captured.captureId();
+        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
+        ManagedAsset asset;
         try {
-            JsonNode files = manifest.path("writes");
-            if (!files.isArray()
-                    || files.size() != 1
-                    || !files.get(0).path("path").asString("").equals(file)) throw new WorkerUnavailableException();
-            long size = files.get(0).path("bytes").asLong(-1);
-            String digest = files.get(0).path("sha256").asString("");
+            // One file was selected, so exactly that file must come back.
+            if (captured.writes().size() != 1
+                    || !captured.writes().getFirst().path().equals(file)) {
+                throw new WorkerUnavailableException();
+            }
+            long size = captured.writes().getFirst().bytes();
+            String digest = captured.writes().getFirst().sha256();
             var previous = index.files().get(path);
             if (!replace
                     && previous != null
                     && (previous.size() != size
                             || !previous.revision().equals(digest)
-                            || !previous.mediaType().equals(mediaType)))
-                return Map.of("ok", false, "code", "MEDIA_PATH_EXISTS");
+                            || !previous.mediaType().equals(mediaType))) {
+                return BridgeReplies.failed("MEDIA_PATH_EXISTS");
+            }
             try (var input = new CapturedBinaryInput(size, digest, (offset, limit) -> {
                 authorize(session);
                 JsonNode chunk = requestLive(
                         session,
                         "CAPTURE_READ",
-                        Map.of(
-                                "executionId",
-                                executionId,
-                                "captureId",
-                                captureId,
-                                "index",
-                                0,
-                                "offset",
-                                offset,
-                                "limit",
-                                limit),
+                        new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
                         Duration.ofSeconds(3));
                 requireOk(chunk, session);
-                if (!captureId.equals(chunk.path("captureId").asString(""))
-                        || chunk.path("index").asInt(-1) != 0
-                        || chunk.path("offset").asLong(-1) != offset) throw new WorkerUnavailableException();
-                return Base64.getDecoder().decode(chunk.path("data").asString(""));
+                var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
+                if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
+                    throw new WorkerUnavailableException();
+                }
+                return page.decoded();
             })) {
                 asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
                 if (!input.verified()
                         || asset.size() != size
                         || !asset.reference().revision().equals(digest)
-                        || !asset.mediaType().equals(mediaType)) throw new WorkerUnavailableException();
+                        || !asset.mediaType().equals(mediaType)) {
+                    throw new WorkerUnavailableException();
+                }
             }
         } finally {
             try {
                 requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                log.warn("Binary capture release was not acknowledged; command cleanup will release its staging file");
+                log.warn(
+                        "Binary capture release was not acknowledged; command cleanup will release its staging file",
+                        cleanupFailure);
             }
         }
         return indexMedia(session, executionId, path, asset, local, replace);
     }
 
-    private Map<String, ?> linkMedia(Session session, String executionId, JsonNode arguments) {
-        if (!session.fullRead) return Map.of("ok", false, "code", "READ_ONLY_SCOPE");
+    private BridgeReplies.Reply linkMedia(Session session, String executionId, JsonNode arguments) {
+        if (!session.fullRead) {
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
+        }
         auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        if (arguments.size() != 4
-                || !arguments.path("path").isString()
-                || !arguments.path("assetId").isString()
-                || !arguments.path("revision").isString()
-                || !arguments.path("replace").isBoolean()) throw new IllegalArgumentException();
-        String path = arguments.path("path").stringValue();
-        String id = arguments.path("assetId").stringValue();
-        UUID assetId = UUID.fromString(id);
-        if (!assetId.toString().equals(id)) throw new IllegalArgumentException();
-        var reference = new io.github.core607.poketto.assets.ManagedAssetReference(
-                assetId, arguments.path("revision").stringValue());
+        BridgeArguments.MediaLink selected = BridgeArguments.mediaLink(arguments);
         LocalMediaIndex local = localMediaIndex(session, executionId);
-        if (local == null) return missingMediaIndex();
-        var asset = media.describeOriginal(session.principal, session.key.workspace(), reference);
-        if (!availableMediaPath(session, local, path, asset.mediaType()))
-            return Map.of("ok", false, "code", "MEDIA_PATH_COLLIDES_WITH_GIT");
-        return indexMedia(
-                session,
-                executionId,
-                path,
-                asset,
-                local,
-                arguments.path("replace").booleanValue());
+        if (local == null) {
+            return missingMediaIndex();
+        }
+        ManagedAsset asset = media.describeOriginal(session.principal, session.key.workspace(), selected.reference());
+        if (!availableMediaPath(session, local, selected.path(), asset.mediaType())) {
+            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
+        }
+        return indexMedia(session, executionId, selected.path(), asset, local, selected.replace());
     }
 
     private record LocalMediaIndex(Optional<String> source, RepositoryMediaIndex index) {}
@@ -1224,20 +1237,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                                 session.key.workspace(),
                                 session.saveState,
                                 RepositoryMediaIndex.PATH)
-                        .expectedAbsence()) return null;
+                        .expectedAbsence()) {
+            return null;
+        }
         return new LocalMediaIndex(
                 source,
                 source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
                         .orElseGet(RepositoryMediaIndex::empty));
     }
 
-    private static Map<String, ?> missingMediaIndex() {
-        return Map.of(
-                "ok",
-                false,
-                "code",
+    private static BridgeReplies.Reply missingMediaIndex() {
+        return BridgeReplies.failed(
                 "INDEX_MISSING",
-                "message",
                 "Restore or intentionally recreate the local media index before importing or linking.");
     }
 
@@ -1246,29 +1257,31 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
         new RepositoryMediaIndex(
                 entries); // Validate the entire logical namespace before changing originals or the index.
-        var existingGit = saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
+        RepositoryFile existingGit =
+                saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
         return existingGit.expectedAbsence()
                 || existingGit.diagnostics().stream()
                         .anyMatch(value -> value.code().equals("MANAGED_MEDIA"));
     }
 
-    private Map<String, ?> indexMedia(
+    private BridgeReplies.Reply indexMedia(
             Session session,
             String executionId,
             String path,
-            io.github.core607.poketto.assets.ManagedAsset asset,
+            ManagedAsset asset,
             LocalMediaIndex local,
             boolean replace) {
         auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        var source = local.source();
-        var index = local.index();
+        Optional<String> source = local.source();
+        RepositoryMediaIndex index = local.index();
         var entries = new LinkedHashMap<>(index.files());
         session.lastImport = importReceipt(path, asset, false);
         var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
         var previous = index.files().get(path);
-        if (previous != null && !previous.equals(entry) && !replace)
-            return Map.of("ok", false, "code", "MEDIA_PATH_EXISTS", "result", session.lastImport);
+        if (previous != null && !previous.equals(entry) && !replace) {
+            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.lastImport);
+        }
         entries.put(path, entry);
         byte[] changed = entry.equals(previous)
                 ? source.orElseThrow().getBytes(StandardCharsets.UTF_8)
@@ -1284,67 +1297,46 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     source.map(IsolatedRepositoryExecutor::hash).orElse(null),
                     false,
                     false,
-                    output -> output.write(changed)))
-                return Map.of("ok", false, "code", "INDEX_CHANGED", "result", session.lastImport);
+                    output -> output.write(changed))) {
+                return BridgeReplies.failedWith("INDEX_CHANGED", session.lastImport);
+            }
         } catch (MaterializationCapacity capacity) {
-            return Map.of(
-                    "ok",
-                    false,
-                    "code",
+            return BridgeReplies.failedWith(
                     "MATERIALIZE_CAPACITY",
-                    "result",
                     session.lastImport,
-                    "message",
                     "Original stored; local index was not updated. Free session space and retry the same import or link.");
         }
         session.lastImport = importReceipt(path, asset, true);
-        return Map.of("ok", true, "result", session.lastImport);
+        return BridgeReplies.succeeded(session.lastImport);
     }
 
-    private static Map<String, ?> importReceipt(
-            String path, io.github.core607.poketto.assets.ManagedAsset asset, boolean indexed) {
-        return Map.of(
-                "path",
+    private static BridgeReplies.ImportReceipt importReceipt(String path, ManagedAsset asset, boolean indexed) {
+        return new BridgeReplies.ImportReceipt(
                 path,
-                "assetId",
                 asset.reference().assetId().toString(),
-                "sha256",
                 asset.reference().revision(),
-                "mediaType",
                 asset.mediaType(),
-                "bytes",
                 asset.size(),
-                "originalStored",
                 true,
-                "indexUpdated",
                 indexed,
-                "saved",
                 false);
     }
 
     @FunctionalInterface
     private interface FileSource {
-        void writeTo(java.io.OutputStream output) throws java.io.IOException;
+        void writeTo(OutputStream output) throws IOException;
     }
 
-    private Map<String, ?> exportPackage(Session session, String executionId, JsonNode arguments) {
-        if (arguments.size() != 3
-                || !arguments.path("paths").isArray()
-                || !arguments.path("output").isString()
-                || !arguments.path("publicOnly").isBoolean()) throw new IllegalArgumentException();
-        var selections = new ArrayList<String>();
-        for (JsonNode path : arguments.path("paths")) {
-            if (!path.isString()) throw new IllegalArgumentException();
-            selections.add(path.stringValue());
-        }
-        String output = arguments.path("output").stringValue();
-        SessionExportSelection.validate(output);
+    private BridgeReplies.Reply exportPackage(Session session, String executionId, JsonNode arguments) {
+        var requested = BridgeArguments.export(arguments);
+        List<String> selections = requested.paths();
+        String output = requested.output();
         synchronized (session) {
             requireLive(session);
         }
         authorize(session);
         var selected = SessionExportSelection.resolve(selections, session.fullRead ? null : session.publicExport);
-        boolean publicOnly = !session.fullRead || arguments.path("publicOnly").booleanValue();
+        boolean publicOnly = !session.fullRead || requested.publicOnly();
         var client = Optional.of(session.key.sessionHash());
         try {
             var receipt = packages.create(session.principal, session.key.workspace(), selected, publicOnly, client);
@@ -1362,29 +1354,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     false,
                     true,
                     sink -> packages.copyTo(
-                            session.principal, session.key.workspace(), receipt.handle(), client, sink)))
-                return Map.of(
-                        "ok",
-                        false,
-                        "code",
+                            session.principal, session.key.workspace(), receipt.handle(), client, sink))) {
+                return BridgeReplies.failed(
                         "LOCAL_FILE_CHANGED",
-                        "message",
                         "The output path is unavailable or contains different local bytes. Keep it or choose another --output.");
-            return Map.of(
-                    "ok",
-                    true,
-                    "result",
-                    Map.of(
-                            "path",
-                            output,
-                            "bytes",
-                            receipt.bytes(),
-                            "sha256",
-                            receipt.sha256(),
-                            "scope",
-                            publicOnly ? "public" : "private",
-                            "saved",
-                            false));
+            }
+            return BridgeReplies.succeeded(new BridgeReplies.ExportResult(
+                    output, receipt.bytes(), receipt.sha256(), publicOnly ? "public" : "private", false));
         } finally {
             // Covers a close event that raced before create registered its build. No package handle
             // is exposed to the sandbox; every command owns only its materialized local result.
@@ -1402,23 +1378,19 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             boolean delete,
             boolean allowIdentical,
             FileSource source) {
-        var metadata = new LinkedHashMap<String, Object>();
-        metadata.put("executionId", executionId);
-        metadata.put("path", path);
-        metadata.put("bytes", size);
-        metadata.put("sha256", digest);
-        metadata.put("expectedSha256", expected);
-        metadata.put("delete", delete);
-        metadata.put("allowIdentical", allowIdentical);
+        var metadata =
+                new WorkerRequests.MaterializeBegin(executionId, path, size, digest, expected, delete, allowIdentical);
         JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
         checkMaterialization(begun);
-        if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) throw new IllegalArgumentException();
+        if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) {
+            throw new IllegalArgumentException("the worker refused to stage the outgoing file");
+        }
         requireOk(begun, session);
-        String transferId = begun.path("transferId").asString("");
-        if (!UUID.fromString(transferId).toString().equals(transferId)) throw new WorkerUnavailableException();
-        Map<String, ?> reference = Map.of("executionId", executionId, "transferId", transferId);
+        String transferId =
+                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
+        var reference = new WorkerRequests.Transfer(executionId, transferId);
         try {
-            var sink = new java.io.OutputStream() {
+            var sink = new OutputStream() {
                 long sent;
 
                 @Override
@@ -1428,65 +1400,73 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
                 @Override
                 public void write(byte[] bytes, int offset, int length) {
-                    java.util.Objects.checkFromIndexSize(offset, length, bytes.length);
-                    if (length > size - sent)
+                    Objects.checkFromIndexSize(offset, length, bytes.length);
+                    if (length > size - sent) {
                         throw new IllegalArgumentException("media source exceeds its declared size");
+                    }
                     while (length > 0) {
                         authorize(session);
                         int count = Math.min(65536, length);
                         JsonNode chunk = requestLive(
                                 session,
                                 "MATERIALIZE_CHUNK",
-                                Map.of(
-                                        "executionId",
+                                new WorkerRequests.TransferChunk(
                                         executionId,
-                                        "transferId",
                                         transferId,
-                                        "offset",
                                         sent,
-                                        "data",
                                         Base64.getEncoder()
-                                                .encodeToString(
-                                                        java.util.Arrays.copyOfRange(bytes, offset, offset + count))),
+                                                .encodeToString(Arrays.copyOfRange(bytes, offset, offset + count))),
                                 Duration.ofSeconds(3));
                         checkMaterialization(chunk);
                         requireOk(chunk, session);
                         sent += count;
-                        if (chunk.path("receivedBytes").asLong(-1) != sent) throw new WorkerUnavailableException();
+                        if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
+                                        .receivedBytes()
+                                != sent) {
+                            throw new WorkerUnavailableException();
+                        }
                         offset += count;
                         length -= count;
                     }
                 }
             };
-            var output = new java.io.BufferedOutputStream(sink, 65536);
+            var output = new BufferedOutputStream(sink, 65536);
             // Flush only after the source succeeds. Closing on failure could replay a buffered chunk.
             source.writeTo(output);
             output.flush();
-            if (sink.sent != size) throw new IllegalArgumentException("media source is incomplete");
+            if (sink.sent != size) {
+                throw new IllegalArgumentException("media source is incomplete");
+            }
             authorize(session);
             JsonNode committed = requestLive(session, "MATERIALIZE_COMMIT", reference, Duration.ofSeconds(5));
-            if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED")) return false;
+            if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED")) {
+                return false;
+            }
             checkMaterialization(committed);
             requireOk(committed, session);
-            JsonNode installed = committed.path("installed");
-            if (!installed.path("path").asString("").equals(path)
-                    || (delete
-                            ? !installed.path("sha256").isNull()
-                            : !installed.path("sha256").asString("").equals(digest)))
+            var installed = WorkerResponses.read(committed, WorkerResponses.Materialization.class)
+                    .installed();
+            // A deletion is acknowledged by an explicit null digest. An absent key is a malformed
+            // answer and must not be read as a file that was erased.
+            JsonNode reported = committed.path("installed").path("sha256");
+            if (!installed.path().equals(path) || (delete ? !reported.isNull() : !digest.equals(installed.sha256()))) {
                 throw new WorkerUnavailableException();
+            }
             return true;
-        } catch (java.io.IOException failure) {
-            throw new WorkerUnavailableException();
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure);
         } finally {
             try {
                 requestLive(session, "MATERIALIZE_ABORT", reference, Duration.ofSeconds(3));
             } catch (RuntimeException cleanupFailure) {
-                log.warn("Worker transfer cleanup was not acknowledged; command cleanup will release its slot");
+                log.warn(
+                        "Worker transfer cleanup was not acknowledged; command cleanup will release its slot",
+                        cleanupFailure);
             }
         }
     }
 
-    private JsonNode requestLive(Session session, String operation, Map<String, ?> data, Duration timeout) {
+    private JsonNode requestLive(Session session, String operation, WorkerRequests.Data data, Duration timeout) {
         WorkerClient.PreparedRequest request;
         synchronized (session) {
             requireLive(session);
@@ -1497,8 +1477,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private CompletableFuture<Void> stop(Session session, String reason) {
         synchronized (session) {
-            if (session.capacityReleased) return CompletableFuture.completedFuture(null);
-            if (!session.stopping.compareAndSet(false, true)) return session.stopped;
+            if (session.capacityReleased) {
+                return CompletableFuture.completedFuture(null);
+            }
+            if (!session.stopping.compareAndSet(false, true)) {
+                return session.stopped;
+            }
             session.closeReason = reason;
             packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
             if (!session.openAttempted) {
@@ -1527,31 +1511,52 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         try {
             stop(session, reason).get(closeTimeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
         } catch (Exception exception) {
-            if (exception instanceof InterruptedException)
+            if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
+            }
             throw new WorkerUnavailableException();
         }
     }
 
+    /**
+     * Frees the admission slot. The session leaves the table only once its MCP session has also
+     * ended: until then it must stay reachable by key, so a later command for the same key finds
+     * the stopping session instead of opening a second lease beside it.
+     */
     private synchronized void releaseCapacity(Session session) {
         session.capacityReleased = true;
-        if (session.detached) sessions.remove(session.key, session);
+        if (session.detached) {
+            sessions.remove(session.key, session);
+        }
     }
 
     private void closeWorker(Session session, String reason) {
         long deadline = System.nanoTime() + closeTimeout.toNanos();
         while (System.nanoTime() < deadline) {
             JsonNode response = worker.request(
-                    session.hello, session.identity(), "CLOSE", Map.of("reason", reason), Duration.ofSeconds(3));
+                    session.hello,
+                    session.identity(),
+                    "CLOSE",
+                    new WorkerRequests.Close(reason),
+                    Duration.ofSeconds(3));
             requireOk(response, session);
             String state = response.path("state").asString("");
-            if (state.equals("CLOSED")) return;
-            if (!state.equals("CLOSING")) throw new WorkerUnavailableException();
+            if (state.equals("CLOSED")) {
+                return;
+            }
+            if (!state.equals("CLOSING")) {
+                throw new WorkerUnavailableException();
+            }
             pause();
         }
         throw new WorkerUnavailableException();
     }
 
+    /**
+     * The MCP session ended, so nothing will ask this lease for more work. The session is removed
+     * only if its capacity was already released; otherwise the release path removes it, and one of
+     * the two orders always applies because both run under this object's monitor.
+     */
     @EventListener
     void closed(McpSessionClosed event) {
         SessionKey key = new SessionKey(event.keyId(), event.workspaceId(), hash(event.sessionId()));
@@ -1560,10 +1565,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             session = sessions.get(key);
             if (session != null) {
                 session.detached = true;
-                if (session.capacityReleased) sessions.remove(key, session);
+                if (session.capacityReleased) {
+                    sessions.remove(key, session);
+                }
             }
         }
-        if (session != null) stopAndAwait(session, "session_closed");
+        if (session != null) {
+            stopAndAwait(session, "session_closed");
+        }
     }
 
     @EventListener
@@ -1588,15 +1597,23 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         hello,
                         identity,
                         "REVOKE",
-                        Map.of("keyIds", event.apiKeyIds(), "accountIds", event.accountIds()),
+                        new WorkerRequests.Revoke(event.apiKeyIds(), event.accountIds()),
                         Duration.ofSeconds(3));
-                if (!response.path("ok").booleanValue()) throw new WorkerUnavailableException();
+                if (!response.path("ok").booleanValue()) {
+                    throw new WorkerUnavailableException();
+                }
                 String state = response.path("state").asString("");
-                if (state.equals("CLOSED")) break;
-                if (!state.equals("CLOSING") || System.nanoTime() >= deadline) throw new WorkerUnavailableException();
+                if (state.equals("CLOSED")) {
+                    break;
+                }
+                if (!state.equals("CLOSING") || System.nanoTime() >= deadline) {
+                    throw new WorkerUnavailableException();
+                }
                 pause();
             }
-            for (Session session : affected) stopAndAwait(session, "session_closed");
+            for (Session session : affected) {
+                stopAndAwait(session, "session_closed");
+            }
         } catch (RuntimeException exception) {
             log.error("Revoked worker process-tree termination is unconfirmed; matching leases are no longer renewed");
             throw exception;
@@ -1625,9 +1642,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private static void requireLive(Session session) {
-        if (session.stopping.get()) throw new WorkerUnavailableException();
+        if (session.stopping.get()) {
+            throw new WorkerUnavailableException();
+        }
     }
 
+    /**
+     * Accepts an answer only if it succeeded and belongs to this lease and commit. A refusal
+     * carries no detail to the caller, because a worker failure is not something the caller can
+     * act on and its text could name host paths or command bytes.
+     *
+     * <p>The rejection code does reach the log, which is where an operator diagnoses this. It is
+     * printed only when it matches the shape the protocol defines for a code, so a worker that
+     * puts something else in that field cannot write arbitrary text into the log.
+     */
     private static void requireOk(JsonNode response, Session session) {
         if (!response.path("ok").booleanValue()) {
             String code = response.path("code").asString("INVALID_RESPONSE");
@@ -1638,65 +1666,58 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!response.path("ok").booleanValue()
                 || !response.path("leaseId").asString("").equals(session.leaseId.toString())
                 || (response.hasNonNull("commit")
-                        && !response.path("commit").asString("").equals(session.commit)))
+                        && !response.path("commit").asString("").equals(session.commit))) {
             throw new WorkerUnavailableException();
+        }
     }
 
     private static ExecutionResult result(JsonNode result, String commit) {
         try {
-            String stdout = result.path("stdout").stringValue();
-            String stderr = result.path("stderr").stringValue();
-            if (!result.path("commit").asString("").equals(commit)
-                    || stdout == null
-                    || stderr == null
-                    || stdout.getBytes(StandardCharsets.UTF_8).length + stderr.getBytes(StandardCharsets.UTF_8).length
-                            > 3 * 64 * 1024
-                    || !result.path("exitCode").isIntegralNumber()
-                    || !result.path("stdoutTruncated").isBoolean()
-                    || !result.path("stderrTruncated").isBoolean()
-                    || !result.path("timedOut").isBoolean()) throw new WorkerUnavailableException();
-            TerminationReason reason =
-                    switch (result.path("terminationReason").stringValue()) {
-                        case "session_closed", "client_shutdown" -> TerminationReason.CANCELLED;
-                        case "lease_expired", "sandbox_failed" -> TerminationReason.SANDBOX_FAILURE;
-                        default ->
-                            TerminationReason.valueOf(result.path("terminationReason")
-                                    .stringValue()
-                                    .toUpperCase(Locale.ROOT));
-                    };
-            boolean timedOut = result.path("timedOut").booleanValue();
-            if (timedOut != (reason == TerminationReason.TIMEOUT)) throw new WorkerUnavailableException();
+            var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
+            // The commit is an echo of what this session pinned, so it is compared here.
+            if (!result.path("commit").asString("").equals(commit)) {
+                throw new WorkerUnavailableException();
+            }
+            TerminationReason reason = finished.reason();
             if (!result.path("artifacts").isObject()
                     || !result.path("artifactErrors").isObject()
                     || result.path("artifacts").size() > 2
-                    || result.path("artifactErrors").size() > 2) throw new WorkerUnavailableException();
-            Map<String, Map<String, Object>> artifacts = new LinkedHashMap<>();
+                    || result.path("artifactErrors").size() > 2) {
+                throw new WorkerUnavailableException();
+            }
+            Map<String, ArtifactMetadata> artifacts = new LinkedHashMap<>();
             Map<String, String> artifactErrors = new LinkedHashMap<>();
             for (var entry : result.path("artifacts").properties()) {
-                if (!Set.of("stdout", "stderr").contains(entry.getKey())) throw new WorkerUnavailableException();
+                if (!Set.of("stdout", "stderr").contains(entry.getKey())) {
+                    throw new WorkerUnavailableException();
+                }
                 artifacts.put(entry.getKey(), artifactMetadata(entry.getValue()));
             }
             for (var entry : result.path("artifactErrors").properties()) {
                 if (!Set.of("stdout", "stderr").contains(entry.getKey())
                         || artifacts.containsKey(entry.getKey())
                         || !Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY")
-                                .contains(entry.getValue().asString(""))) throw new WorkerUnavailableException();
+                                .contains(entry.getValue().asString(""))) {
+                    throw new WorkerUnavailableException();
+                }
                 artifactErrors.put(entry.getKey(), entry.getValue().stringValue());
             }
             return new ExecutionResult(
                     commit,
-                    result.path("exitCode").intValue(),
-                    stdout,
-                    stderr,
-                    result.path("stdoutTruncated").booleanValue(),
-                    result.path("stderrTruncated").booleanValue(),
-                    timedOut,
+                    finished.exitCode(),
+                    finished.stdout(),
+                    finished.stderr(),
+                    finished.stdoutTruncated(),
+                    finished.stderrTruncated(),
+                    finished.timedOut(),
                     reason,
                     artifacts,
                     artifactErrors);
         } catch (RuntimeException exception) {
             String reason = result.path("terminationReason").asString("");
             log.warn(
+                    // The exception's own text can quote the answer, which may hold command
+                    // output, so only its type and the reason's vetted shape are recorded.
                     "Invalid worker execution result ({}; termination={})",
                     exception.getClass().getSimpleName(),
                     reason.matches("[a-z_]{1,32}") ? reason : "invalid");
@@ -1726,11 +1747,46 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private static void checkMaterialization(JsonNode response) {
         String code = response.path("code").asString("");
-        if (code.equals("MATERIALIZE_CAPACITY")) throw new MaterializationCapacity();
+        if (code.equals("MATERIALIZE_CAPACITY")) {
+            throw new MaterializationCapacity();
+        }
     }
 
     private static final class MaterializationCapacity extends RuntimeException {}
 
+    /**
+     * One MCP client's execution lease, from admission to removal.
+     *
+     * <p>A session is created on the first command, opens a worker lease, serves commands one at a
+     * time, and is then stopped either because the client went away or because something failed. It
+     * is removed from the table only when both of two independent things have happened: the worker
+     * lease is confirmed released, and the MCP session it belonged to is gone. Either can happen
+     * first, so neither alone may remove it. Keeping a session whose lease is unconfirmed is what
+     * prevents its admission slot from being reused while a worker process may still be running.
+     *
+     * <p>The flags below are set by different threads: commands run on the caller's thread, renewal
+     * and close reconciliation on the control pool, and closure and revocation on Spring's event
+     * threads. Each flag is therefore a one-way latch or a compare-and-set claim, never a plain
+     * read-modify-write.
+     *
+     * <ul>
+     *   <li>{@code openAttempted} - a lease may exist at the worker from here on, so cleanup must
+     *       run even if opening failed. Nothing before this point can have left worker state.
+     *   <li>{@code ready} - the worker reported READY, so commands may run. Set once, never unset;
+     *       a session that stops is discarded rather than returned to a not-ready state.
+     *   <li>{@code busy} - one command or artifact read owns this session. Claimed with
+     *       compare-and-set, because the protocol allows exactly one command per lease at a time.
+     *   <li>{@code renewing} - the control pool owns the next lease action. Also a claim, so a slow
+     *       renewal cannot overlap the reconciliation that follows a failed close.
+     *   <li>{@code stopping} - termination has begun. Renewal stops honouring this session, and
+     *       close reconciliation takes over.
+     *   <li>{@code stopped} - completed when termination finishes, so a caller can wait for the
+     *       worker's process tree to be gone rather than assume it.
+     *   <li>{@code capacityReleased} - the admission slot is free again. Set only after the worker
+     *       confirms CLOSED or a different worker boot proves the old lease cannot exist.
+     *   <li>{@code detached} - the MCP session ended, so no new command can arrive for this key.
+     * </ul>
+     */
     private static final class Session {
         private final SessionKey key;
         private final AuthPrincipal principal;
@@ -1744,7 +1800,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
-        private Map<String, ?> lastImport = Map.of();
+        private BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

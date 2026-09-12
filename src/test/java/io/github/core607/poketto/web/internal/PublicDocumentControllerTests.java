@@ -8,18 +8,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryContentReader;
+import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -106,8 +118,9 @@ class PublicDocumentControllerTests {
         mvc.perform(get("/api/public/documents").param("offset", "1").param("limit", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].route").value("/older"));
-        for (String limit : List.of("0", "101", "-1"))
+        for (String limit : List.of("0", "101", "-1")) {
             mvc.perform(get("/api/public/documents").param("limit", limit)).andExpect(status().isBadRequest());
+        }
         mvc.perform(get("/api/public/documents").param("query", "a".repeat(201)))
                 .andExpect(status().isBadRequest());
     }
@@ -161,7 +174,9 @@ class PublicDocumentControllerTests {
         public PublicContentSnapshot current(WorkspaceId workspace) {
             assertThat(workspace).isEqualTo(DEFAULT.id());
             calls++;
-            if (failure != null) throw failure;
+            if (failure != null) {
+                throw failure;
+            }
             return new PublicContentSnapshot(
                     workspace,
                     Optional.of("a".repeat(40)),
@@ -189,7 +204,7 @@ class PublicDocumentControllerTests {
         }
 
         @Override
-        public <T> T withCurrent(WorkspaceId workspace, java.util.function.Function<PublicContentSnapshot, T> action) {
+        public <T> T withCurrent(WorkspaceId workspace, Function<PublicContentSnapshot, T> action) {
             return action.apply(current(workspace));
         }
     }
@@ -218,22 +233,21 @@ class PublicDocumentControllerTests {
 
         @Bean
         PublicDocuments publicDocuments(FakeSnapshots snapshots, WorkspaceCatalog workspaces) {
-            var assets = new io.github.core607.poketto.assets.AssetService(
-                    org.mockito.Mockito.mock(io.github.core607.poketto.auth.AuthService.class),
-                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryContentReader.class),
-                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryBlobReader.class),
-                    org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMarkdownInspector.class),
+            var assets = new AssetService(
+                    Mockito.mock(AuthService.class),
+                    Mockito.mock(RepositoryContentReader.class),
+                    Mockito.mock(RepositoryBlobReader.class),
+                    Mockito.mock(RepositoryMarkdownInspector.class),
                     snapshots,
                     () -> {
                         throw new IllegalStateException("no managed fixture");
                     },
-                    java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "unused-public-images")
+                    Path.of(System.getProperty("java.io.tmpdir"), "unused-public-images")
                             .toAbsolutePath(),
                     16L * 1024 * 1024,
                     128,
-                    java.time.Clock.fixed(VERIFIED, java.time.ZoneOffset.UTC),
-                    new io.github.core607.poketto.assets.ImageMemoryAdmission(
-                            256L * 1024 * 1024, 16, java.time.Duration.ZERO));
+                    Clock.fixed(VERIFIED, ZoneOffset.UTC),
+                    new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
             return new PublicDocuments(snapshots, workspaces, assets);
         }
     }

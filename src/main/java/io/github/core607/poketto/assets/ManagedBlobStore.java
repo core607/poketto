@@ -1,8 +1,10 @@
 package io.github.core607.poketto.assets;
 
+import io.github.core607.poketto.assets.internal.LocalManagedBlobStore;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Path;
 
 /**
  * Authoritative original-byte storage. Entrances must authorize the workspace and operation before
@@ -14,13 +16,13 @@ public interface ManagedBlobStore {
     int MAX_FILE_BYTES = 128 * 1024 * 1024;
 
     /** The root must be application-owned, exclusively managed here, and outside disposable caches. */
-    static ManagedBlobStore local(java.nio.file.Path root) {
-        return new io.github.core607.poketto.assets.internal.LocalManagedBlobStore(root);
+    static ManagedBlobStore local(Path root) {
+        return new LocalManagedBlobStore(root);
     }
 
     /** Restricts new originals to a deployment bound; existing originals remain readable. */
-    static ManagedBlobStore local(java.nio.file.Path root, int maxFileBytes) {
-        return new io.github.core607.poketto.assets.internal.LocalManagedBlobStore(root, maxFileBytes);
+    static ManagedBlobStore local(Path root, int maxFileBytes) {
+        return new LocalManagedBlobStore(root, maxFileBytes);
     }
 
     /**

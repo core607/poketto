@@ -8,9 +8,15 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Shared conservative working-set reservations; byte limits do not measure the JVM's total heap. */
 public final class ImageMemoryAdmission {
+    // Shares below, not separate budgets. There is one process-wide pool, and the repository
+    // authoring record fixes what each kind of work reserves from it. One MCP image request takes
+    // the whole default pool and waits for it, so a browser page competing at that moment gets
+    // nothing: page rendering reserves without waiting and drops the image instead of queueing.
     public static final long BROWSER_BYTES = 128L * 1024 * 1024;
     public static final long MCP_BYTES = 256L * 1024 * 1024;
+    /** Admission counts whole mebibytes, so a budget divides into a small number of permits. */
     private static final long UNIT = 1024 * 1024;
+
     private final int capacity;
     private final int maximumWaiters;
     private final long waitNanos;
@@ -47,13 +53,23 @@ public final class ImageMemoryAdmission {
     }
 
     private Optional<ImageRequestScope> acquire(long bytes, boolean mayWait) {
-        if (bytes <= 0 || bytes % UNIT != 0) throw new IllegalArgumentException("image reservation must use whole MiB");
+        if (bytes <= 0 || bytes % UNIT != 0) {
+            throw new IllegalArgumentException("image reservation must use whole MiB");
+        }
         int units = Math.toIntExact(bytes / UNIT);
-        if (units > capacity) return rejected();
+        if (units > capacity) {
+            return rejected();
+        }
         try {
-            if (available.tryAcquire(units, 0, TimeUnit.NANOSECONDS)) return reservation(units);
-            if (!mayWait) return rejected();
-            if (!waiters.tryAcquire()) return rejected();
+            if (available.tryAcquire(units, 0, TimeUnit.NANOSECONDS)) {
+                return reservation(units);
+            }
+            if (!mayWait) {
+                return rejected();
+            }
+            if (!waiters.tryAcquire()) {
+                return rejected();
+            }
             try {
                 return available.tryAcquire(units, waitNanos, TimeUnit.NANOSECONDS) ? reservation(units) : rejected();
             } finally {

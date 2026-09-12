@@ -3,7 +3,12 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,13 +20,11 @@ class ContentRepositoryTemplateTests {
 
     @Test
     void repositoryTemplateStartsClosedAndEnablingItPublishesOnlySelectedContent() throws Exception {
-        var files = new java.util.LinkedHashMap<String, byte[]>();
+        var files = new LinkedHashMap<String, byte[]>();
         Path template = Path.of("content-template");
-        try (var paths = java.nio.file.Files.walk(template)) {
-            for (Path file : paths.filter(java.nio.file.Files::isRegularFile).toList()) {
-                files.put(
-                        template.relativize(file).toString().replace('\\', '/'),
-                        java.nio.file.Files.readAllBytes(file));
+        try (var paths = Files.walk(template)) {
+            for (Path file : paths.filter(Files::isRegularFile).toList()) {
+                files.put(template.relativize(file).toString().replace('\\', '/'), Files.readAllBytes(file));
             }
         }
         assertThat(files)
@@ -30,8 +33,7 @@ class ContentRepositoryTemplateTests {
         files.put("private/new.md", text("# New private content"));
         var fixture = new RemoteRepositoryFixture(directory);
         fixture.commitRemote(workspace, files);
-        var snapshots = new JGitPublicContentSnapshots(
-                fixture.authority(), java.time.Clock.systemUTC(), java.time.Duration.ofHours(1));
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
         assertThat(snapshots.refresh(workspace).articles()).isEmpty();
         files.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-root\n"));
         fixture.commitRemote(workspace, files);
@@ -41,6 +43,6 @@ class ContentRepositoryTemplateTests {
     }
 
     private static byte[] text(String source) {
-        return source.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return source.getBytes(StandardCharsets.UTF_8);
     }
 }

@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.ManagedOriginalTransfers;
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -11,9 +12,14 @@ import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import io.github.core607.poketto.content.RepositoryMediaValidator;
+import io.github.core607.poketto.content.RepositoryOriginalTransfers;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.function.Supplier;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,9 +30,9 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AssetsConfiguration {
     @Bean
-    io.github.core607.poketto.content.RepositoryOriginalTransfers repositoryOriginalTransfers(
+    RepositoryOriginalTransfers repositoryOriginalTransfers(
             @Qualifier("managedOriginals") Supplier<ManagedBlobStore> originals) {
-        return new io.github.core607.poketto.assets.ManagedOriginalTransfers(originals);
+        return new ManagedOriginalTransfers(originals);
     }
 
     @Bean
@@ -43,15 +49,15 @@ class AssetsConfiguration {
             @Value("${poketto.assets.memory-budget-bytes:268435456}") long bytes,
             @Value("${poketto.assets.memory-max-waiters:16}") int waiters,
             @Value("${poketto.assets.memory-wait-millis:2000}") long waitMillis,
-            org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry> registries) {
+            ObjectProvider<MeterRegistry> registries) {
         if (bytes < ImageMemoryAdmission.MCP_BYTES) {
             throw new IllegalArgumentException("image memory budget must admit one complete MCP image response");
         }
-        var admission = new ImageMemoryAdmission(bytes, waiters, java.time.Duration.ofMillis(waitMillis));
+        var admission = new ImageMemoryAdmission(bytes, waiters, Duration.ofMillis(waitMillis));
         registries.ifAvailable(registry -> {
             registry.gauge("poketto.images.admission.reserved.bytes", admission, ImageMemoryAdmission::reservedBytes);
             registry.gauge("poketto.images.admission.waiters", admission, ImageMemoryAdmission::waitingRequests);
-            io.micrometer.core.instrument.FunctionCounter.builder(
+            FunctionCounter.builder(
                             "poketto.images.admission.rejected", admission, ImageMemoryAdmission::rejectedRequests)
                     .register(registry);
         });
@@ -62,16 +68,18 @@ class AssetsConfiguration {
     Supplier<ManagedBlobStore> managedOriginals(
             @Value("${poketto.data-dir}") Path directory,
             @Value("${poketto.assets.max-file-bytes:134217728}") int maxFileBytes) {
-        if (maxFileBytes < 1 || maxFileBytes > ManagedBlobStore.MAX_FILE_BYTES)
+        if (maxFileBytes < 1 || maxFileBytes > ManagedBlobStore.MAX_FILE_BYTES) {
             throw new IllegalArgumentException("managed file upload bound must be between 1 and 128 MiB");
+        }
         // Constructing ordinary application services must not require unsupported Windows directory fsync.
         return new Supplier<>() {
             private ManagedBlobStore initialized;
 
             @Override
             public synchronized ManagedBlobStore get() {
-                if (initialized == null)
+                if (initialized == null) {
                     initialized = ManagedBlobStore.local(directory.resolve("managed-originals"), maxFileBytes);
+                }
                 return initialized;
             }
         };
@@ -85,8 +93,9 @@ class AssetsConfiguration {
                 var stored = originals
                         .get()
                         .describe(workspace, new ManagedAssetReference(entry.assetId(), entry.revision()));
-                if (!stored.mediaType().equals(entry.mediaType()) || stored.size() != entry.size())
+                if (!stored.mediaType().equals(entry.mediaType()) || stored.size() != entry.size()) {
                     throw new IllegalArgumentException("media index metadata does not match its workspace original");
+                }
             }
         };
     }

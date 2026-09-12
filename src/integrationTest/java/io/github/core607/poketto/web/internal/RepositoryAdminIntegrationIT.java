@@ -1,14 +1,19 @@
 package io.github.core607.poketto.web.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.URI;
@@ -19,12 +24,16 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.zip.ZipInputStream;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
@@ -62,7 +71,7 @@ class RepositoryAdminIntegrationIT {
             DockerImageName.parse(System.getProperty("poketto.postgres.image")).asCompatibleSubstituteFor("postgres"));
 
     @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) throws java.io.IOException {
+    static void properties(DynamicPropertyRegistry registry) throws IOException {
         // Windows TEMP may be an 8.3 alias; image storage requires canonical ancestors.
         directory = directory.toRealPath();
         Path remote = directory.resolve("remote.git");
@@ -317,7 +326,9 @@ class RepositoryAdminIntegrationIT {
             http(client, "GET", "/api/public/document?route=" + encode("/explicit ?%#"), null, null, 404);
             overflowingGalleryOverHttp(client, csrf);
             // Durable managed originals require native directory synchronization; CI exercises this on Linux.
-            if (System.getProperty("os.name").equals("Linux")) rawMediaUploadOverHttp(client, csrf);
+            if (System.getProperty("os.name").equals("Linux")) {
+                rawMediaUploadOverHttp(client, csrf);
+            }
         }
     }
 
@@ -338,9 +349,10 @@ class RepositoryAdminIntegrationIT {
             var image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
             for (int i = 0; i < 129; i++) {
                 for (String name : List.of(
-                        "public/album/photo-%03d.png", "public/album/hidden-%03d.png", "private/image-%03d.png"))
+                        "public/album/photo-%03d.png", "public/album/hidden-%03d.png", "private/image-%03d.png")) {
                     ImageIO.write(
                             image, "png", checkout.resolve(name.formatted(i)).toFile());
+                }
             }
             git.add().addFilepattern(".").call();
             git.commit()
@@ -420,9 +432,8 @@ class RepositoryAdminIntegrationIT {
         assertThat(json.readTree(repeated.body())).isEqualTo(uploaded);
         assertThat(uploaded.get("size").longValue()).isEqualTo(bytes.length);
         assertThat(uploaded.get("reference").get("revision").stringValue())
-                .isEqualTo(java.util.HexFormat.of()
-                        .formatHex(java.security.MessageDigest.getInstance("SHA-256")
-                                .digest(bytes)));
+                .isEqualTo(HexFormat.of()
+                        .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
         assertThat(http(client, "GET", scoped("/api/admin/repository/tree"), null, null, 200)
                         .get("commit")
                         .stringValue())
@@ -522,14 +533,13 @@ class RepositoryAdminIntegrationIT {
         assertThat(downloaded.headers().firstValue("Cache-Control").orElseThrow())
                 .isEqualTo("no-store");
         assertThat(downloaded.body().length).isEqualTo(receipt.path("bytes").longValue());
-        assertThat(java.util.HexFormat.of()
-                        .formatHex(java.security.MessageDigest.getInstance("SHA-256")
-                                .digest(downloaded.body())))
+        assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(downloaded.body())))
                 .isEqualTo(receipt.path("sha256").stringValue());
-        var entries = new java.util.TreeMap<String, byte[]>();
-        try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(downloaded.body()))) {
-            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry())
+        var entries = new TreeMap<String, byte[]>();
+        try (var zip = new ZipInputStream(new ByteArrayInputStream(downloaded.body()))) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
                 entries.put(entry.getName(), zip.readAllBytes());
+            }
         }
         assertThat(entries).hasSize(2);
         assertThat(entries.get("media/original-1.pdf")).containsExactly(original);
@@ -561,13 +571,16 @@ class RepositoryAdminIntegrationIT {
             throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
                 .timeout(Duration.ofSeconds(15));
-        if (csrf != null)
+        if (csrf != null) {
             request.header(
                     csrf.get("headerName").stringValue(), csrf.get("token").stringValue());
-        if (payload == null) request.method(method, HttpRequest.BodyPublishers.noBody());
-        else
+        }
+        if (payload == null) {
+            request.method(method, HttpRequest.BodyPublishers.noBody());
+        } else {
             request.header("Content-Type", "application/json")
                     .method(method, HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload)));
+        }
         var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("%s %s", method, path).isEqualTo(status);
         return json.readTree(response.body());
@@ -579,7 +592,9 @@ class RepositoryAdminIntegrationIT {
 
     private Csrf csrf(MockHttpSession session) throws Exception {
         var request = get("/api/auth/csrf");
-        if (session != null) request.session(session);
+        if (session != null) {
+            request.session(session);
+        }
         MvcResult result = mvc.perform(request).andExpect(status().isOk()).andReturn();
         JsonNode token = body(result);
         return new Csrf(
@@ -604,7 +619,9 @@ class RepositoryAdminIntegrationIT {
 
     private String scoped(String path) {
         String workspace = catalog.defaultWorkspace().id().toString();
-        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        if (path.equals("/api/auth/me")) {
+            return "/api/auth/workspaces/" + workspace + "/me";
+        }
         return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

@@ -1,7 +1,11 @@
 package io.github.core607.poketto.auth.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -10,6 +14,7 @@ import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.ServletInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -171,7 +176,7 @@ class BrowserBodySecurityTests {
             this.declared = declared;
             setServletPath(path);
             setContentType(type);
-            setContent("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            setContent("{}".getBytes(StandardCharsets.UTF_8));
         }
 
         @Override

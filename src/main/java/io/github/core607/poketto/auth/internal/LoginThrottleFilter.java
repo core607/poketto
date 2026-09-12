@@ -22,8 +22,9 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
     private final Map<String, Attempts> attempts = new HashMap<>();
 
     LoginThrottleFilter(Clock clock, int perAccount, int perAddress, int maxEntries, Duration window) {
-        if (perAccount < 1 || perAddress < 1 || maxEntries < 2 || window.isNegative() || window.isZero())
+        if (perAccount < 1 || perAddress < 1 || maxEntries < 2 || window.isNegative() || window.isZero()) {
             throw new IllegalArgumentException("login throttle limits must be positive");
+        }
         this.clock = clock;
         this.perAccount = perAccount;
         this.perAddress = perAddress;
@@ -51,19 +52,26 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
 
     synchronized boolean take(String address, String login) {
         // Match UsernamePasswordAuthenticationFilter before choosing an account bucket.
-        if (login != null) login = login.trim();
+        if (login != null) {
+            login = login.trim();
+        }
         long now = clock.millis();
         attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt() <= now);
         String ipKey = "ip:" + (address == null || address.length() > 128 ? "unknown" : address);
         String accountKey =
                 login == null ? null : "account:" + (login.length() > 64 ? "invalid" : login.toLowerCase(Locale.ROOT));
-        if (!canTake(ipKey, perAddress, now) || (accountKey != null && !canTake(accountKey, perAccount, now)))
+        if (!canTake(ipKey, perAddress, now) || (accountKey != null && !canTake(accountKey, perAccount, now))) {
             return false;
+        }
         int additional = (attempts.containsKey(ipKey) ? 0 : 1)
                 + (accountKey == null || attempts.containsKey(accountKey) ? 0 : 1);
-        if (attempts.size() + additional > maxEntries) return false;
+        if (attempts.size() + additional > maxEntries) {
+            return false;
+        }
         increment(ipKey, now);
-        if (accountKey != null) increment(accountKey, now);
+        if (accountKey != null) {
+            increment(accountKey, now);
+        }
         return true;
     }
 

@@ -1,9 +1,11 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -27,7 +29,7 @@ class PortableArchiveWriterTests {
 
     @Test
     void createsAReadableDiskArchiveWithExactTextAndBinaryBytes() throws Exception {
-        byte[] text = "![image](../../media/picture.bin)\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] text = "![image](../../media/picture.bin)\n".getBytes(StandardCharsets.UTF_8);
         byte[] binary = new byte[] {0, -1, 1, 2};
         Path path = root.resolve("export.zip");
         try (var output = Files.newOutputStream(path)) {
@@ -86,7 +88,9 @@ class PortableArchiveWriterTests {
         });
         assertThatThrownBy(() -> PortableArchiveWriter.write(
                         new ByteArrayOutputStream(), List.of(source), limits(131072, 262144), () -> {
-                            if (revoked.get()) throw new SecurityException("revoked");
+                            if (revoked.get()) {
+                                throw new SecurityException("revoked");
+                            }
                         }))
                 .isInstanceOf(SecurityException.class);
     }

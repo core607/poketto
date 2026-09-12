@@ -17,6 +17,9 @@ record RepositoryProperties(
         Integer refreshSeconds,
         Integer staleAfterSeconds) {
 
+    // Starting values, all overridable by configuration. They are defaults rather than limits:
+    // a deployment needing different numbers sets them without a code change, which is why no
+    // decision record fixes them.
     private static final int DEFAULT_CACHE_MAX_WORKSPACES = 32;
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_REFRESH_SECONDS = 30;
