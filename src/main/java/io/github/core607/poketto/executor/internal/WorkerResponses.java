@@ -138,4 +138,66 @@ final class WorkerResponses {
             transferId = ProtocolValues.uuid(transferId, "transferId");
         }
     }
+
+    /**
+     * How many bytes of a staged transfer the worker has. The caller compares it with what it has
+     * sent, because a transfer that acknowledges a different total is not one it can continue.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TransferProgress(long receivedBytes) {
+        TransferProgress {
+            require(receivedBytes >= 0, "receivedBytes", "must not be negative");
+        }
+    }
+
+    /** A move's preflight. Anything but a ready plan leaves the repository untouched. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record MovePreflight(Checked checked) {
+        boolean ready() {
+            return checked != null && checked.ready();
+        }
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        record Checked(boolean ready) {}
+    }
+
+    /**
+     * A move the worker installed locally. The changed-path count is compared with the plan, so a
+     * partial installation cannot be read as a complete one.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record MoveInstallation(Installed installed) {
+        MoveInstallation {
+            require(installed != null, "installed", "must be present");
+        }
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        record Installed(int changedPaths, Boolean alreadyApplied) {
+            Installed {
+                require(changedPaths >= 0, "changedPaths", "must not be negative");
+                require(alreadyApplied != null, "alreadyApplied", "must be present");
+            }
+        }
+    }
+
+    /**
+     * A file the worker installed or deleted. A deletion reports a null digest, which is how the
+     * caller tells an erased path from a written one.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Materialization(Installed installed) {
+        Materialization {
+            require(installed != null, "installed", "must be present");
+        }
+
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        record Installed(String path, String sha256) {
+            Installed {
+                ProtocolValues.boundedText(path, 4096, "path");
+                if (sha256 != null) {
+                    ProtocolValues.hex(sha256, 64, "sha256");
+                }
+            }
+        }
+    }
 }

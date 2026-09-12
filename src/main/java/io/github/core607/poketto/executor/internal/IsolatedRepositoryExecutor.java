@@ -828,10 +828,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
         }
         requireOk(begun, session);
-        String transfer = begun.path("transferId").asString("");
-        if (!UUID.fromString(transfer).toString().equals(transfer)) {
-            throw new WorkerUnavailableException();
-        }
+        String transfer = read(begun, WorkerResponses.Transfer.class).transferId();
         var reference = new WorkerRequests.Transfer(executionId, transfer);
         try {
             for (int offset = 0; offset < payload.length; offset += 65536) {
@@ -853,7 +850,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(chunk, session);
-                if (chunk.path("receivedBytes").asInt(-1) != end) {
+                if (read(chunk, WorkerResponses.TransferProgress.class).receivedBytes() != end) {
                     throw new WorkerUnavailableException();
                 }
             }
@@ -863,7 +860,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(checked, session);
-                if (!checked.path("checked").path("ready").asBoolean(false)) {
+                if (!read(checked, WorkerResponses.MovePreflight.class).ready()) {
                     throw new WorkerUnavailableException();
                 }
                 authorize(session);
@@ -885,8 +882,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
             }
             requireOk(installed, session);
-            if (installed.path("installed").path("changedPaths").asInt(-1) != pending.paths.size()
-                    || !installed.path("installed").path("alreadyApplied").isBoolean()) {
+            if (read(installed, WorkerResponses.MoveInstallation.class)
+                            .installed()
+                            .changedPaths()
+                    != pending.paths.size()) {
                 throw new WorkerUnavailableException();
             }
             return saves.moves().installed(session.saveState);
@@ -1320,10 +1319,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to stage the outgoing file");
         }
         requireOk(begun, session);
-        String transferId = begun.path("transferId").asString("");
-        if (!UUID.fromString(transferId).toString().equals(transferId)) {
-            throw new WorkerUnavailableException();
-        }
+        String transferId = read(begun, WorkerResponses.Transfer.class).transferId();
         var reference = new WorkerRequests.Transfer(executionId, transferId);
         try {
             var sink = new OutputStream() {
@@ -1356,7 +1352,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         checkMaterialization(chunk);
                         requireOk(chunk, session);
                         sent += count;
-                        if (chunk.path("receivedBytes").asLong(-1) != sent) {
+                        if (read(chunk, WorkerResponses.TransferProgress.class).receivedBytes() != sent) {
                             throw new WorkerUnavailableException();
                         }
                         offset += count;
@@ -1378,11 +1374,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             checkMaterialization(committed);
             requireOk(committed, session);
-            JsonNode installed = committed.path("installed");
-            if (!installed.path("path").asString("").equals(path)
-                    || (delete
-                            ? !installed.path("sha256").isNull()
-                            : !installed.path("sha256").asString("").equals(digest))) {
+            var installed =
+                    read(committed, WorkerResponses.Materialization.class).installed();
+            if (!installed.path().equals(path)
+                    || (delete ? installed.sha256() != null : !digest.equals(installed.sha256()))) {
                 throw new WorkerUnavailableException();
             }
             return true;
@@ -1562,6 +1557,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         controls.shutdownNow();
         commandIo.shutdownNow();
+    }
+
+    /**
+     * A worker answer that does not parse is transport failure, never a rejected request: the
+     * application must not infer from it that the command did or did not run.
+     */
+    private static <T> T read(JsonNode response, Class<T> shape) {
+        try {
+            return WorkerResponses.read(response, shape);
+        } catch (IllegalArgumentException malformed) {
+            throw new WorkerUnavailableException(malformed);
+        }
     }
 
     private static void requireLive(Session session) {
