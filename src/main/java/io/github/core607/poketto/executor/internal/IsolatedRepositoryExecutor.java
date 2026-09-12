@@ -660,21 +660,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             try {
                 WorkerRequests.Data data;
                 if (operation.equals("artifact_create")) {
-                    if (arguments.size() != 2
-                            || !arguments.path("path").isString()
-                            || !arguments.path("mediaType").isString()) {
-                        throw new IllegalArgumentException("artifact_create takes exactly a path and a mediaType");
-                    }
-                    data = new WorkerRequests.ArtifactCreate(
-                            executionId,
-                            arguments.path("path").stringValue(),
-                            arguments.path("mediaType").stringValue());
+                    var selected = BridgeArguments.artifactCreate(arguments);
+                    data = new WorkerRequests.ArtifactCreate(executionId, selected.path(), selected.mediaType());
                 } else {
-                    if (arguments.size() != 1 || !arguments.path("artifactId").isString()) {
-                        throw new IllegalArgumentException("artifact_remove takes exactly an artifactId");
-                    }
                     data = new WorkerRequests.ArtifactRemove(
-                            arguments.path("artifactId").stringValue());
+                            BridgeArguments.artifactRemove(arguments).artifactId());
                 }
                 authorize(session);
                 JsonNode result = requestLive(
@@ -728,11 +718,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         session.key.workspace(),
                         operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
                 if (operation.equals("recover")) {
-                    boolean skipLocal =
-                            arguments.size() == 1 && arguments.path("skipLocal").asBoolean(false);
-                    if (!arguments.isEmpty() && !skipLocal) {
-                        throw new IllegalArgumentException();
-                    }
+                    boolean skipLocal = BridgeArguments.recoverSkipsLocal(arguments);
                     if (session.saveState.move != null) {
                         var recovered =
                                 saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
@@ -756,26 +742,19 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
                 }
                 if (operation.equals("move")) {
-                    if (arguments.size() != 2
-                            || !arguments.path("source").isString()
-                            || !arguments.path("destination").isString()) {
-                        throw new IllegalArgumentException();
-                    }
+                    var selected = BridgeArguments.move(arguments);
                     var pending = saves.moves()
                             .prepare(
                                     session.principal,
                                     session.key.workspace(),
                                     session.saveState,
-                                    arguments.path("source").stringValue(),
-                                    arguments.path("destination").stringValue(),
+                                    selected.source(),
+                                    selected.destination(),
                                     captureOptional(session, executionId, RepositoryMediaIndex.PATH));
                     return moveFiles(session, executionId, pending, false);
                 }
                 if (operation.equals("sync")) {
-                    if (arguments.size() != 1 || !arguments.path("path").isString()) {
-                        throw new IllegalArgumentException();
-                    }
-                    String path = arguments.path("path").stringValue();
+                    String path = BridgeArguments.sync(arguments).path();
                     JsonNode manifest = requestLive(
                             session,
                             "CAPTURE_OPTIONAL",
@@ -799,14 +778,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             Optional.ofNullable(captured.get(path)));
                     return synchronizeFile(session, executionId, plan);
                 }
-                if (arguments.size() != 2 || !arguments.has("writes") || !arguments.has("deletes")) {
-                    throw new IllegalArgumentException();
-                }
-                List<String> writes = selectedPaths(arguments.path("writes"));
-                List<String> deletes = selectedPaths(arguments.path("deletes"));
-                if (writes.size() + deletes.size() < 1 || writes.size() + deletes.size() > 64) {
-                    throw new IllegalArgumentException();
-                }
+                var selection = BridgeArguments.save(arguments);
+                List<String> writes = selection.writes();
+                List<String> deletes = selection.deletes();
                 var captured = capture(session, executionId, writes, deletes);
                 requireLive(session);
                 authorize(session);
@@ -1069,21 +1043,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private BridgeReplies.Reply fetchMedia(Session session, String executionId, JsonNode arguments) {
-        if (arguments.size() != 3
-                || !arguments.path("path").isString()
-                || !(arguments.path("commit").isNull()
-                        || arguments.path("commit").isString())
-                || !(arguments.path("output").isNull()
-                        || arguments.path("output").isString())) {
-            throw new IllegalArgumentException();
-        }
-        String path = arguments.path("path").stringValue();
-        String destination = arguments.path("output").isNull()
-                ? path
-                : arguments.path("output").stringValue();
-        Optional<String> requested = arguments.path("commit").isNull()
-                ? Optional.empty()
-                : Optional.of(arguments.path("commit").stringValue());
+        var selected = BridgeArguments.mediaFetch(arguments);
+        String path = selected.path();
+        String destination = selected.output() == null ? path : selected.output();
+        Optional<String> requested = Optional.ofNullable(selected.commit());
         MediaFileService.Download download;
         String commit = null;
         String indexSource;
@@ -1169,23 +1132,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failed("READ_ONLY_SCOPE");
         }
         auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        if (arguments.size() != 5
-                || !arguments.path("file").isString()
-                || !arguments.path("path").isString()
-                || !arguments.path("mediaType").isString()
-                || !arguments.path("key").isString()
-                || !arguments.path("replace").isBoolean()) {
-            throw new IllegalArgumentException();
-        }
-        String file = arguments.path("file").stringValue(),
-                path = arguments.path("path").stringValue();
-        String mediaType = arguments.path("mediaType").stringValue(),
-                key = arguments.path("key").stringValue();
-        boolean replace = arguments.path("replace").booleanValue();
-        if (!key.matches("[A-Za-z0-9_-]{16,128}")) {
-            throw new IllegalArgumentException();
-        }
-        ManagedAsset.validateMediaType(mediaType);
+        var selected = BridgeArguments.mediaImport(arguments);
+        String file = selected.file(), path = selected.path();
+        String mediaType = selected.mediaType(), key = selected.key();
+        boolean replace = selected.replace();
         Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
         if (source.isEmpty()
                 && !saves.baselineFile(
@@ -1320,27 +1270,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private BridgeReplies.Reply exportPackage(Session session, String executionId, JsonNode arguments) {
-        if (arguments.size() != 3
-                || !arguments.path("paths").isArray()
-                || !arguments.path("output").isString()
-                || !arguments.path("publicOnly").isBoolean()) {
-            throw new IllegalArgumentException();
-        }
-        var selections = new ArrayList<String>();
-        for (JsonNode path : arguments.path("paths")) {
-            if (!path.isString()) {
-                throw new IllegalArgumentException();
-            }
-            selections.add(path.stringValue());
-        }
-        String output = arguments.path("output").stringValue();
-        SessionExportSelection.validate(output);
+        var requested = BridgeArguments.export(arguments);
+        List<String> selections = requested.paths();
+        String output = requested.output();
         synchronized (session) {
             requireLive(session);
         }
         authorize(session);
         var selected = SessionExportSelection.resolve(selections, session.fullRead ? null : session.publicExport);
-        boolean publicOnly = !session.fullRead || arguments.path("publicOnly").booleanValue();
+        boolean publicOnly = !session.fullRead || requested.publicOnly();
         var client = Optional.of(session.key.sessionHash());
         try {
             var receipt = packages.create(session.principal, session.key.workspace(), selected, publicOnly, client);
