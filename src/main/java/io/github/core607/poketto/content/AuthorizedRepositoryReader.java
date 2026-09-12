@@ -45,55 +45,26 @@ public final class AuthorizedRepositoryReader {
             int offset,
             int limit) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        if (query == null
-                || tag == null
-                || query.length() > 200
-                || tag.length() > 64
-                || offset < 0
-                || offset > 10_000
-                || limit < 1
-                || limit > 100
-                || (from != null && to != null && from.isAfter(to))) {
-            throw new IllegalArgumentException("search exceeds its bounds or has an invalid date range");
-        }
+        var search = new DocumentSearch(query, tag, from, to, offset, limit);
         RepositoryTree tree = reader.readTree(workspace, commit);
         List<RepositoryDocument> matches = tree.documents().stream()
-                .filter(document -> query.isEmpty()
-                        || document.title().contains(query)
-                        || document.body().contains(query))
-                .filter(document -> tag.isEmpty() || document.tags().contains(tag))
-                .filter(document -> from == null || !document.createdAt().isBefore(from))
-                .filter(document -> to == null || !document.createdAt().isAfter(to))
+                .filter(document ->
+                        search.matches(document.title(), document.body(), document.tags(), document.createdAt()))
                 .toList();
         return new SearchPage(
                 tree.commit().orElse(null),
-                matches.stream()
-                        .skip(offset)
-                        .limit(limit)
+                search.page(matches).stream()
                         .map(document -> new SearchHit(
                                 document.file().path(),
                                 document.title(),
                                 document.tags(),
                                 document.createdAt(),
                                 document.updatedAt(),
-                                snippet(document.body(), query)))
+                                search.snippet(document.body())))
                         .toList(),
                 matches.size(),
                 offset,
                 limit);
-    }
-
-    private static String snippet(String body, String query) {
-        int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
-        int start = Math.max(0, match - 60);
-        int end = Math.min(body.length(), start + 240);
-        if (start > 0 && Character.isLowSurrogate(body.charAt(start))) {
-            start--;
-        }
-        if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) {
-            end--;
-        }
-        return body.substring(start, end);
     }
 
     public record SearchHit(
