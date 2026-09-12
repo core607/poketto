@@ -44,36 +44,30 @@ class OAuthController {
     }
 
     @GetMapping({"/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"})
-    Map<String, Object> resource(HttpServletResponse response) {
+    ProtectedResource resource(HttpServletResponse response) {
         headers(response);
-        return Map.of(
-                "resource",
+        return new ProtectedResource(
                 oauth.resource(),
-                "authorization_servers",
                 List.of(oauth.issuer()),
-                "scopes_supported",
                 OAuthService.SUPPORTED.stream().sorted().toList(),
-                "bearer_methods_supported",
                 List.of("header"));
     }
 
     @GetMapping("/.well-known/oauth-authorization-server")
-    Map<String, Object> metadata(HttpServletResponse response) {
+    ServerMetadata metadata(HttpServletResponse response) {
         headers(response);
-        return Map.ofEntries(
-                Map.entry("issuer", oauth.issuer()),
-                Map.entry("authorization_endpoint", endpoint("authorize")),
-                Map.entry("token_endpoint", endpoint("token")),
-                Map.entry("registration_endpoint", endpoint("register")),
-                Map.entry("revocation_endpoint", endpoint("revoke")),
-                Map.entry("response_types_supported", List.of("code")),
-                Map.entry("grant_types_supported", List.of("authorization_code", "refresh_token")),
-                Map.entry("token_endpoint_auth_methods_supported", List.of("none")),
-                Map.entry("code_challenge_methods_supported", List.of("S256")),
-                Map.entry("authorization_response_iss_parameter_supported", true),
-                Map.entry(
-                        "scopes_supported",
-                        OAuthService.SUPPORTED.stream().sorted().toList()));
+        return new ServerMetadata(
+                oauth.issuer(),
+                endpoint("authorize"),
+                endpoint("token"),
+                endpoint("register"),
+                endpoint("revoke"),
+                List.of("code"),
+                List.of("authorization_code", "refresh_token"),
+                List.of("none"),
+                List.of("S256"),
+                true,
+                OAuthService.SUPPORTED.stream().sorted().toList());
     }
 
     @PostMapping(value = "/api/auth/oauth/register", consumes = "application/json")
@@ -93,18 +87,12 @@ class OAuthController {
                 oauth.register(body.client_name() == null ? "MCP client" : body.client_name(), body.redirect_uris());
         return ResponseEntity.status(201)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of(
-                        "client_id",
+                .body(new RegisteredClient(
                         client.id(),
-                        "client_name",
                         client.name(),
-                        "redirect_uris",
                         client.redirectUris(),
-                        "token_endpoint_auth_method",
                         "none",
-                        "grant_types",
                         List.of("authorization_code", "refresh_token"),
-                        "response_types",
                         List.of("code")));
     }
 
@@ -138,17 +126,16 @@ class OAuthController {
     }
 
     @GetMapping("/api/auth/oauth/consent")
-    Map<String, Object> consent(@RequestParam String request, HttpSession session, Authentication authentication) {
+    Consent consent(@RequestParam String request, HttpSession session, Authentication authentication) {
         principal(authentication);
         synchronized (session) {
             var value = lookup(session, request);
-            return Map.of(
-                    "clientName", value.client().name(), "redirectUri", value.redirectUri(), "scopes", value.scopes());
+            return new Consent(value.client().name(), value.redirectUri(), value.scopes());
         }
     }
 
     @PostMapping("/api/auth/oauth/consent")
-    Map<String, String> consent(@RequestBody Decision decision, HttpSession session, Authentication authentication) {
+    Redirect consent(@RequestBody Decision decision, HttpSession session, Authentication authentication) {
         if (decision.allow() && decision.workspaceId() == null) {
             throw OAuthService.failure("invalid_request");
         }
@@ -161,7 +148,7 @@ class OAuthController {
                     decision.scopes(),
                     decision.allow());
             pending(session).remove(decision.request());
-            return Map.of("redirect", redirect);
+            return new Redirect(redirect);
         }
     }
 
@@ -198,8 +185,8 @@ class OAuthController {
     }
 
     @GetMapping("/api/admin/workspaces/{workspaceId}/connections")
-    Map<String, Object> connections(Authentication authentication, @PathVariable String workspaceId) {
-        return Map.of("items", oauth.connections(principal(authentication), WorkspaceId.parse(workspaceId)));
+    Connections connections(Authentication authentication, @PathVariable String workspaceId) {
+        return new Connections(oauth.connections(principal(authentication), WorkspaceId.parse(workspaceId)));
     }
 
     @DeleteMapping("/api/admin/workspaces/{workspaceId}/connections/{id}")
@@ -214,21 +201,19 @@ class OAuthController {
         int code = failure.getMessage().equals("temporarily_unavailable")
                 ? 429
                 : failure.getMessage().equals("access_denied") ? 403 : 400;
-        return ResponseEntity.status(code)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of("error", failure.getMessage()));
+        return ResponseEntity.status(code).cacheControl(CacheControl.noStore()).body(new Failure(failure.getMessage()));
     }
 
     @ExceptionHandler(AuthException.class)
     ResponseEntity<?> denied() {
-        return ResponseEntity.status(403).cacheControl(CacheControl.noStore()).body(Map.of("error", "access_denied"));
+        return ResponseEntity.status(403).cacheControl(CacheControl.noStore()).body(new Failure("access_denied"));
     }
 
     @ExceptionHandler({TransientDataAccessException.class, TransactionTimedOutException.class})
     ResponseEntity<?> busy() {
         return ResponseEntity.status(429)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of("error", "temporarily_unavailable"));
+                .body(new Failure("temporarily_unavailable"));
     }
 
     @ExceptionHandler(UncategorizedSQLException.class)
@@ -295,6 +280,47 @@ class OAuthController {
         response.setHeader("Pragma", "no-cache");
         response.setHeader("Referrer-Policy", "no-referrer");
     }
+
+    /**
+     * The documents this endpoint publishes. Their component names are the JSON field names that
+     * the OAuth metadata specifications fix, so each one is spelled as the wire spells it.
+     */
+    record ProtectedResource(
+            String resource,
+            List<String> authorization_servers,
+            List<String> scopes_supported,
+            List<String> bearer_methods_supported) {}
+
+    record ServerMetadata(
+            String issuer,
+            String authorization_endpoint,
+            String token_endpoint,
+            String registration_endpoint,
+            String revocation_endpoint,
+            List<String> response_types_supported,
+            List<String> grant_types_supported,
+            List<String> token_endpoint_auth_methods_supported,
+            List<String> code_challenge_methods_supported,
+            boolean authorization_response_iss_parameter_supported,
+            List<String> scopes_supported) {}
+
+    record RegisteredClient(
+            String client_id,
+            String client_name,
+            List<String> redirect_uris,
+            String token_endpoint_auth_method,
+            List<String> grant_types,
+            List<String> response_types) {}
+
+    /** The browser consent view, which is this application's own shape rather than a specified one. */
+    record Consent(String clientName, String redirectUri, Set<String> scopes) {}
+
+    record Redirect(String redirect) {}
+
+    record Connections(List<OAuthService.ConnectionInfo> items) {}
+
+    /** An OAuth error body carries the code alone; the reason never leaves the log. */
+    record Failure(String error) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Registration(
