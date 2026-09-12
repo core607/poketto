@@ -53,8 +53,11 @@ final class WorkerClient {
         try {
             var handshake = WorkerResponses.read(response, WorkerResponses.Handshake.class);
             return new Hello(handshake.bootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
+        } catch (WorkerUnavailableException rejected) {
+            log.warn("Worker handshake rejected", rejected);
+            throw rejected;
         } catch (RuntimeException exception) {
-            log.warn("Worker handshake rejected ({})", exception.getClass().getSimpleName());
+            log.warn("Worker handshake rejected", exception);
             throw new WorkerUnavailableException(exception);
         }
     }

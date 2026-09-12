@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -22,9 +23,11 @@ import tools.jackson.databind.json.JsonMapper;
  * constructor cannot see, and a failure code selects a branch rather than describing a malformed
  * answer. A record that tried to own either would have to be handed the caller's state.
  *
- * <p>Every rejection is an {@link IllegalArgumentException}. The worker is a machine, so a malformed
- * answer is transport failure: each caller remaps it to {@link WorkerUnavailableException}, which is
- * what tells the application never to infer that the command ran.
+ * <p>An answer that does not parse leaves through {@link WorkerUnavailableException}, and that is
+ * the only way out. The worker is a machine, so a malformed answer is transport failure, never a
+ * rejected request: telling the agent its selection was invalid would invite it to retry a command
+ * that may already have run. Raising the right exception here, rather than at each caller, is what
+ * keeps a caller from reaching a different conclusion by forgetting to translate.
  */
 final class WorkerResponses {
 
@@ -33,15 +36,20 @@ final class WorkerResponses {
      * configured for HTTP, and an answer from the worker must not change meaning because someone
      * later relaxes that configuration.
      */
-    private static final ObjectMapper JSON = JsonMapper.builder().build();
+    private static final ObjectMapper JSON = JsonMapper.builder()
+            // A missing number or flag must not arrive as zero or false. An answer that omits an
+            // exit code or an offset is malformed, and reading it as success would be worse than
+            // refusing it.
+            .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+            .build();
 
     private WorkerResponses() {}
 
     static <T> T read(JsonNode response, Class<T> shape) {
         try {
             return JSON.treeToValue(response, shape);
-        } catch (JacksonException malformed) {
-            throw new IllegalArgumentException(shape.getSimpleName() + " is not a valid worker answer", malformed);
+        } catch (JacksonException | IllegalArgumentException malformed) {
+            throw new WorkerUnavailableException(malformed);
         }
     }
 
@@ -95,9 +103,14 @@ final class WorkerResponses {
 
         CaptureManifest {
             captureId = ProtocolValues.uuid(captureId, "captureId");
-            writes = writes == null ? List.of() : List.copyOf(writes);
-            deletes = ProtocolValues.paths(deletes == null ? List.of() : deletes, 64, "deletes");
-            absent = ProtocolValues.paths(absent == null ? List.of() : absent, 64, "absent");
+            // The worker reports all three lists on every capture, so an absent one is a malformed
+            // answer rather than an empty selection.
+            require(writes != null, "writes", "must be present");
+            require(deletes != null, "deletes", "must be present");
+            require(absent != null, "absent", "must be present");
+            writes = List.copyOf(writes);
+            deletes = ProtocolValues.paths(deletes, 64, "deletes");
+            absent = ProtocolValues.paths(absent, 64, "absent");
             long total = 0;
             for (CapturedFile file : writes) {
                 total += file.bytes();
@@ -260,6 +273,11 @@ final class WorkerResponses {
             require(installed != null, "installed", "must be present");
         }
 
+        /**
+         * A deletion reports a null digest. This record cannot tell an explicit null from an absent
+         * key, and that difference decides whether a file was erased, so the caller checks the key
+         * is there before reading a deletion as done.
+         */
         @JsonIgnoreProperties(ignoreUnknown = true)
         record Installed(String path, String sha256) {
             Installed {

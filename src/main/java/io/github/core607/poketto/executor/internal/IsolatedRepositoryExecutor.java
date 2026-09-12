@@ -273,7 +273,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 requireOk(response, session);
                 var metadata = artifactMetadata(response);
-                var page = read(response, WorkerResponses.ArtifactPage.class);
+                var page = WorkerResponses.read(response, WorkerResponses.ArtifactPage.class);
                 long size = metadata.bytes();
                 // The identifier and the offset are echoes of this request.
                 if (!artifactId.equals(metadata.artifactId()) || offset > size || page.offset() != offset) {
@@ -314,7 +314,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     /** The worker's own report about one artifact; its rules live in the record that carries it. */
     private static ArtifactMetadata artifactMetadata(JsonNode value) {
-        return read(value, ArtifactMetadata.class);
+        return WorkerResponses.read(value, ArtifactMetadata.class);
     }
 
     private void recoverRestartedLeases(SessionKey requested) {
@@ -730,7 +730,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         throw new IllegalArgumentException("the worker refused to capture the selected file");
                     }
                     requireOk(manifest, session);
-                    List<String> absent = read(manifest, WorkerResponses.CaptureManifest.class)
+                    List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
                             .absent();
                     if (!absent.isEmpty() && !absent.equals(List.of(path))) {
                         throw new WorkerUnavailableException();
@@ -781,7 +781,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
         }
         requireOk(begun, session);
-        String transfer = read(begun, WorkerResponses.Transfer.class).transferId();
+        String transfer =
+                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
         var reference = new WorkerRequests.Transfer(executionId, transfer);
         try {
             for (int offset = 0; offset < payload.length; offset += 65536) {
@@ -803,7 +804,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(chunk, session);
-                if (read(chunk, WorkerResponses.TransferProgress.class).receivedBytes() != end) {
+                if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
+                                .receivedBytes()
+                        != end) {
                     throw new WorkerUnavailableException();
                 }
             }
@@ -813,7 +816,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
                 }
                 requireOk(checked, session);
-                if (!read(checked, WorkerResponses.MovePreflight.class).ready()) {
+                if (!WorkerResponses.read(checked, WorkerResponses.MovePreflight.class)
+                        .ready()) {
                     throw new WorkerUnavailableException();
                 }
                 authorize(session);
@@ -835,7 +839,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
             }
             requireOk(installed, session);
-            if (read(installed, WorkerResponses.MoveInstallation.class)
+            if (WorkerResponses.read(installed, WorkerResponses.MoveInstallation.class)
                             .installed()
                             .changedPaths()
                     != pending.paths.size()) {
@@ -1060,8 +1064,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the media index");
         }
         requireOk(manifest, session);
-        List<String> absent =
-                read(manifest, WorkerResponses.CaptureManifest.class).absent();
+        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                .absent();
         if (!absent.isEmpty() && !absent.equals(List.of(path))) {
             throw new WorkerUnavailableException();
         }
@@ -1107,7 +1111,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to capture the imported file");
         }
         requireOk(manifest, session);
-        var captured = read(manifest, WorkerResponses.CaptureManifest.class);
+        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
         String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         ManagedAsset asset;
@@ -1135,7 +1139,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
                         Duration.ofSeconds(3));
                 requireOk(chunk, session);
-                var page = read(chunk, WorkerResponses.CaptureChunk.class);
+                var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
                 if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
                     throw new WorkerUnavailableException();
                 }
@@ -1269,7 +1273,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("the worker refused to stage the outgoing file");
         }
         requireOk(begun, session);
-        String transferId = read(begun, WorkerResponses.Transfer.class).transferId();
+        String transferId =
+                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
         var reference = new WorkerRequests.Transfer(executionId, transferId);
         try {
             var sink = new OutputStream() {
@@ -1302,7 +1307,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         checkMaterialization(chunk);
                         requireOk(chunk, session);
                         sent += count;
-                        if (read(chunk, WorkerResponses.TransferProgress.class).receivedBytes() != sent) {
+                        if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
+                                        .receivedBytes()
+                                != sent) {
                             throw new WorkerUnavailableException();
                         }
                         offset += count;
@@ -1324,10 +1331,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             checkMaterialization(committed);
             requireOk(committed, session);
-            var installed =
-                    read(committed, WorkerResponses.Materialization.class).installed();
-            if (!installed.path().equals(path)
-                    || (delete ? installed.sha256() != null : !digest.equals(installed.sha256()))) {
+            var installed = WorkerResponses.read(committed, WorkerResponses.Materialization.class)
+                    .installed();
+            // A deletion is acknowledged by an explicit null digest. An absent key is a malformed
+            // answer and must not be read as a file that was erased.
+            JsonNode reported = committed.path("installed").path("sha256");
+            if (!installed.path().equals(path) || (delete ? !reported.isNull() : !digest.equals(installed.sha256()))) {
                 throw new WorkerUnavailableException();
             }
             return true;
@@ -1507,18 +1516,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         controls.shutdownNow();
         commandIo.shutdownNow();
-    }
-
-    /**
-     * A worker answer that does not parse is transport failure, never a rejected request: the
-     * application must not infer from it that the command did or did not run.
-     */
-    private static <T> T read(JsonNode response, Class<T> shape) {
-        try {
-            return WorkerResponses.read(response, shape);
-        } catch (IllegalArgumentException malformed) {
-            throw new WorkerUnavailableException(malformed);
-        }
     }
 
     private static void requireLive(Session session) {
