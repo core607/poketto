@@ -8,8 +8,10 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Shared conservative working-set reservations; byte limits do not measure the JVM's total heap. */
 public final class ImageMemoryAdmission {
-    // Separate budgets so a burst of MCP image work cannot starve browser page rendering, and
-    // neither exceeds what the repository authoring record reserves for image work.
+    // Shares below, not separate budgets. There is one process-wide pool, and the repository
+    // authoring record fixes what each kind of work reserves from it. One MCP image request takes
+    // the whole default pool and waits for it, so a browser page competing at that moment gets
+    // nothing: page rendering reserves without waiting and drops the image instead of queueing.
     public static final long BROWSER_BYTES = 128L * 1024 * 1024;
     public static final long MCP_BYTES = 256L * 1024 * 1024;
     /** Admission counts whole mebibytes, so a budget divides into a small number of permits. */

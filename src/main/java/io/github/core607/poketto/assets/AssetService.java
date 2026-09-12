@@ -47,9 +47,10 @@ public final class AssetService {
     private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
     private static final Duration MINIMUM_REUSABLE_LIFETIME = Duration.ofMinutes(1);
     private static final Duration CAPACITY_WARNING_INTERVAL = Duration.ofMinutes(1);
-    // Image work is admitted against one of two budgets. Rendering a page is latency-sensitive
-    // and gets the smaller one; listing an inventory is not, and may hold more at once without
-    // making a reader wait behind it.
+    // Two different things, despite the similar names. The first is what one page's image work
+    // may reserve from the shared admission pool at a time. The second is not a reservation at
+    // all: it caps the bytes one inventory request may account for in total, while each of its
+    // images still reserves the same per-image share as a page does.
     private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
     private final AuthService auth;
