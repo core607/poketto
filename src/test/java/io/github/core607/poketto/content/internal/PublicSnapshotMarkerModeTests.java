@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -71,7 +72,9 @@ class PublicSnapshotMarkerModeTests {
 
         @Override
         public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
-            if (offline) throw new RemoteGitTransportException("synthetic offline authority");
+            if (offline) {
+                throw new RemoteGitTransportException("synthetic offline authority");
+            }
             return delegate.fetchMain(repository, binding);
         }
 

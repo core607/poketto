@@ -16,11 +16,15 @@ public final class ImageRequestScope {
 
     /** Call inside the actual read/encode operation, not around scheduling or a cancellable future. */
     public synchronized Producer producer() {
-        if (responseComplete || released) throw new IllegalStateException("image response has completed");
+        if (responseComplete || released) {
+            throw new IllegalStateException("image response has completed");
+        }
         producers++;
         AtomicBoolean closed = new AtomicBoolean();
         return () -> {
-            if (closed.compareAndSet(false, true)) producerFinished();
+            if (closed.compareAndSet(false, true)) {
+                producerFinished();
+            }
         };
     }
 

@@ -6,16 +6,15 @@ import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,7 +41,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private final RemoteGitTransport transport;
     private final int maxCachedWorkspaces;
     private final Clock clock;
-    private final Map<WorkspaceId, CacheLock> workspaceLocks = new java.util.HashMap<>();
+    private final Map<WorkspaceId, CacheLock> workspaceLocks = new HashMap<>();
     private final ReentrantLock cacheLifecycleLock = new ReentrantLock();
 
     JGitRemoteRepositoryAuthority(
@@ -135,8 +134,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             Path cache = paths.contentDirectory(workspaceId);
             cacheLifecycleLock.lock();
             try {
-                if (!Files.isDirectory(cache) || isEmpty(cache))
+                if (!Files.isDirectory(cache) || isEmpty(cache)) {
                     throw failure(workspaceId, "no repository cache exists");
+                }
                 opened = openExistingCache(cache, workspaceId);
                 try {
                     touch(cache);
@@ -159,8 +159,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 if (protectedUntil != null) {
                     synchronized (workspaceLocks) {
                         validateProtection(protectedUntil);
-                        if (protectedUntil.isAfter(workspaceLock.protectedUntil))
+                        if (protectedUntil.isAfter(workspaceLock.protectedUntil)) {
                             workspaceLock.protectedUntil = protectedUntil;
+                        }
                     }
                 }
                 return result;
@@ -174,8 +175,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     private void validateProtection(Instant expiresAt) {
         Instant now = clock.instant();
-        if (!now.isBefore(expiresAt) || expiresAt.isAfter(now.plus(MAX_PROTECTION)))
+        if (!now.isBefore(expiresAt) || expiresAt.isAfter(now.plus(MAX_PROTECTION))) {
             throw new ContentRepositoryException("repository source protection must expire within five minutes");
+        }
     }
 
     @Override
@@ -416,7 +418,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private static Repository openExistingCache(Path cache, WorkspaceId workspaceId) throws IOException {
         FileRepositoryBuilder builder = new FileRepositoryBuilder();
         builder.findGitDir(cache.toFile());
-        if (builder.getGitDir() == null) throw failure(workspaceId, "repository cache is not a Git worktree");
+        if (builder.getGitDir() == null) {
+            throw failure(workspaceId, "repository cache is not a Git worktree");
+        }
         Repository repository = builder.build();
         try {
             if (repository.isBare()
@@ -491,7 +495,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             RefUpdate update = repository.updateRef(MAIN);
             if (commit.equals(ObjectId.zeroId())) {
                 ObjectId previous = repository.resolve(MAIN);
-                if (previous == null) return;
+                if (previous == null) {
+                    return;
+                }
                 // JGit rejects deletion of the checked-out branch. Detach HEAD only while the
                 // workspace mutex is held, then restore the symbolic unborn HEAD without pruning.
                 RefUpdate detached = repository.updateRef(Constants.HEAD, true);
@@ -508,7 +514,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     try {
                         requireRefChange(repository.updateRef(Constants.HEAD).link(MAIN), "HEAD relink");
                     } catch (IOException | RuntimeException | Error relinkFailure) {
-                        if (deletionFailure == null) throw relinkFailure;
+                        if (deletionFailure == null) {
+                            throw relinkFailure;
+                        }
                         deletionFailure.addSuppressed(relinkFailure);
                     }
                 }
@@ -568,12 +576,12 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private List<Path> existingCaches() {
         Path root = paths.workspacesDirectory();
         if (!Files.isDirectory(root)) {
-            return new java.util.ArrayList<>();
+            return new ArrayList<>();
         }
         try (var workspaceDirectories = Files.list(root)) {
             // Foreign directories are not caches this authority may evict, so counting them
             // toward the bound would let them permanently exhaust the cache capacity.
-            return new java.util.ArrayList<>(workspaceDirectories
+            return new ArrayList<>(workspaceDirectories
                     .filter(JGitRemoteRepositoryAuthority::isWorkspaceDirectory)
                     .map(path -> path.resolve("content"))
                     .filter(Files::isDirectory)
@@ -651,31 +659,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             return;
         }
         try {
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                    clearReadOnly(file);
-                    Files.delete(file);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
-                    if (failure != null) {
-                        throw failure;
-                    }
-                    Files.delete(directory);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            LocalFileTrees.delete(root);
         } catch (IOException exception) {
             throw new ContentRepositoryException("repository cache cannot be evicted");
-        }
-    }
-
-    private static void clearReadOnly(Path path) throws IOException {
-        if (Files.getFileStore(path).supportsFileAttributeView("dos")) {
-            Files.setAttribute(path, "dos:readonly", false);
         }
     }
 

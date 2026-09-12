@@ -12,6 +12,8 @@ import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -25,6 +27,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.web.servlet.function.EntityResponse;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 @Configuration(proxyBeanMethods = false)
@@ -58,10 +61,12 @@ class McpTransportConfiguration {
                 .maxSessions(maxSessions)
                 .sessionIdleTimeout(Duration.ofSeconds(idleSeconds))
                 .contextExtractor(request -> {
-                    var context = new java.util.HashMap<String, Object>();
+                    var context = new HashMap<String, Object>();
                     context.put(McpSessions.IDENTITY_CONTEXT, sessions.currentIdentity());
                     Object scope = request.servletRequest().getAttribute(ImageRequestScope.ATTRIBUTE);
-                    if (scope instanceof ImageRequestScope) context.put(ImageRequestScope.ATTRIBUTE, scope);
+                    if (scope instanceof ImageRequestScope) {
+                        context.put(ImageRequestScope.ATTRIBUTE, scope);
+                    }
                     return McpTransportContext.create(context);
                 })
                 .build();
@@ -78,12 +83,16 @@ class McpTransportConfiguration {
     RouterFunction<ServerResponse> mcpRouter(WebMvcStreamableServerTransportProvider delegate, McpSessions sessions) {
         return delegate.getRouterFunction().filter((request, next) -> {
             var headers = request.headers().header("Mcp-Session-Id");
-            if (headers.size() > 1) return rejected(400);
+            if (headers.size() > 1) {
+                return rejected(400);
+            }
             String sessionId = headers.isEmpty() ? null : headers.getFirst();
             try {
                 var identity = sessions.currentIdentity();
                 if (sessionId != null) {
-                    if (!sessionId.matches("[A-Za-z0-9._:-]{1,128}")) return rejected(404);
+                    if (!sessionId.matches("[A-Za-z0-9._:-]{1,128}")) {
+                        return rejected(404);
+                    }
                     sessions.check(sessionId, identity);
                 }
                 ServerResponse response = next.handle(request);
@@ -108,10 +117,9 @@ class McpTransportConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(
-            tools.jackson.databind.ObjectMapper json, ImageMemoryAdmission memory) {
+    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(ObjectMapper json, ImageMemoryAdmission memory) {
         var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json, memory));
-        registration.setUrlPatterns(java.util.List.of("/mcp"));
+        registration.setUrlPatterns(List.of("/mcp"));
         registration.setOrder(-99);
         registration.setAsyncSupported(true);
         return registration;

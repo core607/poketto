@@ -7,14 +7,20 @@ public final class WorkspaceHttpRoutes {
     private WorkspaceHttpRoutes() {}
 
     public static WorkspaceId workspace(String path) {
-        if (!path.startsWith(ADMIN)) throw new IllegalArgumentException("A workspace route is required");
+        if (!path.startsWith(ADMIN)) {
+            throw new IllegalArgumentException("A workspace route is required");
+        }
         int end = path.indexOf('/', ADMIN.length());
-        if (end < 0) throw new IllegalArgumentException("A workspace operation is required");
+        if (end < 0) {
+            throw new IllegalArgumentException("A workspace operation is required");
+        }
         return WorkspaceId.parse(path.substring(ADMIN.length(), end));
     }
 
     public static String operation(String path) {
-        if (!path.startsWith(ADMIN)) return path;
+        if (!path.startsWith(ADMIN)) {
+            return path;
+        }
         try {
             workspace(path);
         } catch (IllegalArgumentException invalid) {

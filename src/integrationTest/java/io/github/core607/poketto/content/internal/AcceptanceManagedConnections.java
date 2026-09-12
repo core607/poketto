@@ -4,6 +4,9 @@ import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Synthetic provider boundary for browser acceptance; encryption, binding writes and CAS use production code. */
@@ -26,7 +29,7 @@ final class AcceptanceManagedConnections implements RepositoryConnections, AutoC
         return delegate.available();
     }
 
-    public java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+    public Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
         return delegate.connectionInfo(workspace);
     }
 
@@ -35,13 +38,19 @@ final class AcceptanceManagedConnections implements RepositoryConnections, AutoC
     }
 
     public Verified verify(WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealed) {
-        var credentials = cipher.decrypt(workspace, coordinates.canonicalUri(), sealed);
-        if (!coordinates.canonicalUri().equals("https://github.com/example/acceptance")
-                || !credentials.username().equals("fixture")
-                || !java.util.Set.of("fixture-token-initial", "fixture-token-replacement")
-                        .contains(credentials.password()))
+        RepositoryCredentialCipher.Credentials credentials =
+                cipher.decrypt(workspace, coordinates.canonicalUri(), sealed);
+        if (!matchesFixture(coordinates, credentials)) {
             throw new RepositoryConnectionException(RepositoryConnectionException.Code.PERMISSION_DENIED);
+        }
         return new Verified("github:acceptance-fixture", true);
+    }
+
+    private static boolean matchesFixture(
+            RepositoryCoordinates coordinates, RepositoryCredentialCipher.Credentials credentials) {
+        return coordinates.canonicalUri().equals("https://github.com/example/acceptance")
+                && credentials.username().equals("fixture")
+                && Set.of("fixture-token-initial", "fixture-token-replacement").contains(credentials.password());
     }
 
     public void install(WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealed, Verified verified) {
@@ -49,14 +58,15 @@ final class AcceptanceManagedConnections implements RepositoryConnections, AutoC
     }
 
     public CredentialRotation prepareRotation(WorkspaceId workspace, String username, String token) {
-        var before = jdbc.queryForMap(
+        Map<String, Object> before = jdbc.queryForMap(
                 "select canonical_uri,provider_identity,sealed_credentials from content_repository_bindings where workspace_id=?",
                 workspace.value());
-        var coordinates = RepositoryCoordinates.parse((String) before.get("canonical_uri"));
+        RepositoryCoordinates coordinates = RepositoryCoordinates.parse((String) before.get("canonical_uri"));
         byte[] replacement = seal(workspace, coordinates, username, token);
-        var verified = verify(workspace, coordinates, replacement);
-        if (!verified.providerIdentity().equals(before.get("provider_identity")))
+        Verified verified = verify(workspace, coordinates, replacement);
+        if (!verified.providerIdentity().equals(before.get("provider_identity"))) {
             throw new RepositoryConnectionException(RepositoryConnectionException.Code.REPOSITORY_CHANGED);
+        }
         return new CredentialRotation(
                 workspace,
                 coordinates.canonicalUri(),

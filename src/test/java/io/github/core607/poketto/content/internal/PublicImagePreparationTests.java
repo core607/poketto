@@ -1,9 +1,18 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.AdditionalAnswers.delegatesTo;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetStorageException;
@@ -13,6 +22,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -45,6 +55,7 @@ import org.eclipse.jgit.lib.ObjectReader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 class PublicImagePreparationTests {
     @TempDir
@@ -126,7 +137,7 @@ class PublicImagePreparationTests {
                 clock,
                 state.snapshots::installAcknowledged,
                 state.snapshots::closePublication,
-                org.mockito.Mockito.mock(io.github.core607.poketto.content.RepositoryMediaValidator.class));
+                Mockito.mock(RepositoryMediaValidator.class));
         try (var pool = Executors.newFixedThreadPool(2)) {
             var preparing = pool.submit(() -> state.service.publicDocument(workspace, "/article"));
             String committed;
@@ -224,7 +235,9 @@ class PublicImagePreparationTests {
                     assertThatThrownBy(() -> pool.submit(() -> state.snapshots.refresh(workspace))
                                     .get(5, TimeUnit.SECONDS))
                             .hasCauseInstanceOf(ContentRepositoryException.class);
-                } else clock.now = clock.now.plusSeconds(10);
+                } else {
+                    clock.now = clock.now.plusSeconds(10);
+                }
             } finally {
                 release.countDown();
             }
@@ -243,7 +256,9 @@ class PublicImagePreparationTests {
         var sequence = new AtomicInteger();
         state.gate.before = id -> {
             int index = sequence.getAndIncrement();
-            if (index >= 2) throw new AssertionError("preparation retry was not bounded");
+            if (index >= 2) {
+                throw new AssertionError("preparation retry was not bounded");
+            }
             entered[index].countDown();
             await(release[index]);
         };
@@ -261,7 +276,9 @@ class PublicImagePreparationTests {
                         .cause()
                         .hasMessageContaining("both image preparation attempts");
             } finally {
-                for (var latch : release) latch.countDown();
+                for (var latch : release) {
+                    latch.countDown();
+                }
             }
         }
         assertThat(sequence).hasValue(2);

@@ -1,11 +1,20 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.RepositoryConnectionException.Code.*;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.DUPLICATE;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.INVALID_INPUT;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.PRIVATE_REPOSITORY_REQUIRED;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.REPOSITORY_CHANGED;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.UNAVAILABLE;
 
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.eclipse.jgit.transport.Transport;
@@ -36,7 +45,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         return cipher.available();
     }
 
-    public java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+    public Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
         return jdbc
                 .query(
                         "select canonical_uri,updated_at from content_repository_bindings where workspace_id=?",
@@ -60,8 +69,12 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
             WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealedCredentials, boolean creating) {
         var credentials = cipher.decrypt(workspace, coordinates.canonicalUri(), sealedCredentials);
         var metadata = providers.read(coordinates, credentials);
-        if (!metadata.privateRepository()) throw new RepositoryConnectionException(PRIVATE_REPOSITORY_REQUIRED);
-        if (creating) rejectDefaultDuplicate(metadata);
+        if (!metadata.privateRepository()) {
+            throw new RepositoryConnectionException(PRIVATE_REPOSITORY_REQUIRED);
+        }
+        if (creating) {
+            rejectDefaultDuplicate(metadata);
+        }
         try (var repository = new InMemoryRepository(new DfsRepositoryDescription());
                 Transport transport = Transport.open(repository, new URIish(coordinates.transportUri()))) {
             transport.setCredentialsProvider(
@@ -71,8 +84,9 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
             try (var fetch = transport.openFetch()) {
                 boolean hasBranches =
                         fetch.getRefs().stream().anyMatch(ref -> ref.getName().startsWith("refs/heads/"));
-                if (hasBranches && fetch.getRef("refs/heads/main") == null)
+                if (hasBranches && fetch.getRef("refs/heads/main") == null) {
                     throw new RepositoryConnectionException(INVALID_INPUT);
+                }
             }
             // Receive-pack advertisement checks Git write access without changing any remote ref.
             try (var push = transport.openPush()) {
@@ -88,24 +102,33 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
 
     private void rejectDefaultDuplicate(RepositoryProviderClient.Metadata candidate) {
         RepositoryCoordinates operator = comparableOperator(configured.remoteUri());
-        if (operator == null) return;
+        if (operator == null) {
+            return;
+        }
         // The operator binding is authoritative too. Resolve its immutable identity so a rename
         // or provider-side redirect cannot make it look like an unrelated managed repository.
-        if (operator.canonicalUri().equals(candidate.coordinates().canonicalUri()))
+        if (operator.canonicalUri().equals(candidate.coordinates().canonicalUri())) {
             throw new RepositoryConnectionException(DUPLICATE);
-        if (!operator.provider().equals(candidate.coordinates().provider())) return;
+        }
+        if (!operator.provider().equals(candidate.coordinates().provider())) {
+            return;
+        }
         var existing = providers.read(
                 operator, new RepositoryCredentialCipher.Credentials(configured.username(), configured.password()));
-        if (existing.identity().equals(candidate.identity())) throw new RepositoryConnectionException(DUPLICATE);
+        if (existing.identity().equals(candidate.identity())) {
+            throw new RepositoryConnectionException(DUPLICATE);
+        }
     }
 
     static RepositoryCoordinates comparableOperator(String remote) {
-        if (remote == null) return null;
+        if (remote == null) {
+            return null;
+        }
         try {
-            String host = java.net.URI.create(remote).getHost();
-            if (host != null
-                    && !java.util.Set.of("github.com", "cnb.cool").contains(host.toLowerCase(java.util.Locale.ROOT)))
+            String host = URI.create(remote).getHost();
+            if (host != null && !Set.of("github.com", "cnb.cool").contains(host.toLowerCase(Locale.ROOT))) {
                 return null;
+            }
             return RepositoryCoordinates.parse(remote);
         } catch (IllegalArgumentException invalid) {
             throw new RepositoryConnectionException(UNAVAILABLE);
@@ -126,27 +149,33 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
     }
 
     public CredentialRotation prepareRotation(WorkspaceId workspace, String username, String token) {
-        if (TransactionSynchronizationManager.isActualTransactionActive())
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Credential validation must run outside a database transaction");
+        }
         var rows = jdbc.query(
                 "select canonical_uri,provider_identity,sealed_credentials from content_repository_bindings where workspace_id=?",
                 (row, number) -> new CredentialRotation(
                         workspace, row.getString(1), row.getString(2), row.getBytes(3), row.getBytes(3)),
                 workspace.value());
-        if (rows.isEmpty()) throw new RepositoryConnectionException(UNAVAILABLE);
+        if (rows.isEmpty()) {
+            throw new RepositoryConnectionException(UNAVAILABLE);
+        }
         var before = rows.getFirst();
         var coordinates = RepositoryCoordinates.parse(before.canonicalUri());
         byte[] sealed = seal(workspace, coordinates, username, token);
         var verified = verify(workspace, coordinates, sealed, false);
-        if (!verified.providerIdentity().equals(before.providerIdentity()))
+        if (!verified.providerIdentity().equals(before.providerIdentity())) {
             throw new RepositoryConnectionException(REPOSITORY_CHANGED);
+        }
         return new CredentialRotation(
                 workspace, before.canonicalUri(), before.providerIdentity(), before.previousCredentials(), sealed);
     }
 
     public void applyRotation(WorkspaceId workspace, CredentialRotation rotation) {
         requireTransaction();
-        if (!workspace.equals(rotation.workspace())) throw new RepositoryConnectionException(REPOSITORY_CHANGED);
+        if (!workspace.equals(rotation.workspace())) {
+            throw new RepositoryConnectionException(REPOSITORY_CHANGED);
+        }
         cipher.decrypt(workspace, rotation.canonicalUri(), rotation.replacementCredentials());
         int changed = jdbc.update(
                 "update content_repository_bindings set sealed_credentials=?,updated_at=current_timestamp where workspace_id=? and canonical_uri=? and provider_identity=? and sealed_credentials=?",
@@ -155,7 +184,9 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
                 rotation.canonicalUri(),
                 rotation.providerIdentity(),
                 rotation.previousCredentials());
-        if (changed != 1) throw new RepositoryConnectionException(REPOSITORY_CHANGED);
+        if (changed != 1) {
+            throw new RepositoryConnectionException(REPOSITORY_CHANGED);
+        }
     }
 
     RepositoryBinding binding(WorkspaceId workspace) {
@@ -169,7 +200,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
                                 new URIish(coordinates.transportUri()),
                                 new UsernamePasswordCredentialsProvider(credentials.username(), credentials.password()),
                                 true);
-                    } catch (java.net.URISyntaxException invalid) {
+                    } catch (URISyntaxException invalid) {
                         throw new RepositoryConnectionException(UNAVAILABLE);
                     }
                 },
@@ -178,8 +209,9 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
     }
 
     private static void requireTransaction() {
-        if (!TransactionSynchronizationManager.isActualTransactionActive())
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Repository binding mutation requires a workspace transaction");
+        }
     }
 
     @Override

@@ -1,6 +1,8 @@
 package io.github.core607.poketto.auth;
 
-import static io.github.core607.poketto.auth.AuthException.Code.*;
+import static io.github.core607.poketto.auth.AuthException.Code.DENIED;
+import static io.github.core607.poketto.auth.AuthException.Code.INVALID_INPUT;
+import static io.github.core607.poketto.auth.AuthException.Code.INVALID_INVITATION;
 
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -8,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -38,7 +41,7 @@ public final class RegistrationService {
     }
 
     /** Serializes an account-level operation with other account mutations in the same transaction. */
-    public <T> T withAccount(AuthPrincipal actor, java.util.function.Supplier<T> operation) {
+    public <T> T withAccount(AuthPrincipal actor, Supplier<T> operation) {
         return transactions.execute(status -> {
             account(actor, true);
             return operation.get();
@@ -46,13 +49,17 @@ public final class RegistrationService {
     }
 
     private AccountIdentity account(AuthPrincipal actor, boolean lock) {
-        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw new AuthException(DENIED);
+        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) {
+            throw new AuthException(DENIED);
+        }
         var identities = jdbc.query(
                 "select account_id, login_name, instance_admin from auth_accounts where account_id=?"
                         + (lock ? " for update" : ""),
                 (row, number) -> new AccountIdentity(row.getObject(1, UUID.class), row.getString(2), row.getBoolean(3)),
                 actor.accountId());
-        if (identities.isEmpty()) throw new AuthException(DENIED);
+        if (identities.isEmpty()) {
+            throw new AuthException(DENIED);
+        }
         return identities.getFirst();
     }
 
@@ -64,7 +71,9 @@ public final class RegistrationService {
         return transactions.execute(status -> {
             // Serialize issuance per account so an allowance policy can count and reserve atomically.
             AccountIdentity issuer = account(actor, true);
-            if (!policy.mayIssue(issuer)) throw new AuthException(DENIED);
+            if (!policy.mayIssue(issuer)) {
+                throw new AuthException(DENIED);
+            }
             String token = auth.randomToken("registration_");
             UUID id = UUID.randomUUID();
             Instant now = clock.instant();
@@ -108,16 +117,21 @@ public final class RegistrationService {
                         row.getBoolean(3),
                         row.getBoolean(4)),
                 digest);
-        if (values.isEmpty()) throw new AuthException(INVALID_INVITATION);
-        Invitation value = values.getFirst();
-        if (value.revoked() || value.used() || !clock.instant().isBefore(value.expiresAt()))
+        if (values.isEmpty()) {
             throw new AuthException(INVALID_INVITATION);
+        }
+        Invitation value = values.getFirst();
+        if (value.revoked() || value.used() || !clock.instant().isBefore(value.expiresAt())) {
+            throw new AuthException(INVALID_INVITATION);
+        }
         return value;
     }
 
     public AuthService.Page<AuthService.InvitationInfo> invitations(AuthPrincipal actor, int offset, int limit) {
         UUID issuer = account(actor).accountId();
-        if (offset < 0 || offset > 100_000 || limit < 1 || limit > 100) throw new AuthException(INVALID_INPUT);
+        if (offset < 0 || offset > 100_000 || limit < 1 || limit > 100) {
+            throw new AuthException(INVALID_INPUT);
+        }
         var values = jdbc.query(
                 "select invitation_id,expires_at,revoked_at is not null,used_at is not null "
                         + "from auth_registration_invitations where created_by=? "

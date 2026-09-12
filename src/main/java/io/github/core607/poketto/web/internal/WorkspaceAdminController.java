@@ -5,6 +5,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.IssuedToken;
 import io.github.core607.poketto.auth.MembershipRole;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -47,7 +48,9 @@ class WorkspaceAdminController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @PathVariable UUID accountId,
             @RequestBody MembershipRequest body) {
-        if (body.active() == null) throw new IllegalArgumentException("active is required");
+        if (body.active() == null) {
+            throw new IllegalArgumentException("active is required");
+        }
         auth.changeMembership(principal, workspaces.selected(), accountId, body.role(), body.active());
     }
 
@@ -83,8 +86,9 @@ class WorkspaceAdminController {
     @ResponseStatus(HttpStatus.CREATED)
     IssuedSecretResponse key(@AuthenticationPrincipal AuthPrincipal principal, @RequestBody KeyRequest body) {
         if (body.accountId() == null
-                || (body.capabilities() != null && body.capabilities().stream().anyMatch(java.util.Objects::isNull)))
+                || (body.capabilities() != null && body.capabilities().stream().anyMatch(Objects::isNull))) {
             throw new IllegalArgumentException("key holder and capabilities must be valid");
+        }
         return issued(auth.createApiKey(principal, workspaces.selected(), body.accountId(), body.capabilities()));
     }
 

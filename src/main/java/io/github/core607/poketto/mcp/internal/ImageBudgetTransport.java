@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.ImageRequestScope;
 import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStreamableServerTransport;
+import java.util.function.Supplier;
 import reactor.core.publisher.Mono;
 
 /** Accounts for the actual blocking WebMVC JSON/SSE write even when a subscriber cancels. */
@@ -26,7 +27,7 @@ final class ImageBudgetTransport implements McpStreamableServerTransport {
         return send(() -> delegate.sendMessage(message, eventId));
     }
 
-    private Mono<Void> send(java.util.function.Supplier<Mono<Void>> operation) {
+    private Mono<Void> send(Supplier<Mono<Void>> operation) {
         return Mono.fromRunnable(() -> {
             // The guard is inside the executing operation, never a doFinally cancellation callback.
             try (var producer = scope.producer()) {

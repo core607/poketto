@@ -1,8 +1,15 @@
 package io.github.core607.poketto.assets.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -57,8 +64,9 @@ class MediaCatalogTests {
                 .isSameAs(denied);
         reset(auth);
         doReturn(expected).when(repository).media(workspace, expected.commit());
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 5; i++) {
             assertThat(service.privateCatalog(actor, workspace, Optional.empty()))
                     .isSameAs(expected);
+        }
     }
 }

@@ -5,9 +5,7 @@ import io.github.core607.poketto.content.DocumentContent;
 import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.content.DocumentMetadata;
 import io.github.core607.poketto.content.DocumentVisibility;
-import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -272,12 +270,7 @@ final class CanonicalDocumentCodec {
 
     private static String decodeUtf8(byte[] bytes) {
         try {
-            return StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
+            return StrictText.utf8(bytes);
         } catch (CharacterCodingException exception) {
             throw new IllegalArgumentException("document must be valid UTF-8", exception);
         }

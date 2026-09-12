@@ -1,6 +1,8 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.RepositoryConnectionException.Code.*;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.PERMISSION_DENIED;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.REPOSITORY_CHANGED;
+import static io.github.core607.poketto.content.RepositoryConnectionException.Code.UNAVAILABLE;
 
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryCoordinates;
@@ -25,7 +27,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Provider metadata supplies an immutable identity; Git URLs alone cannot identify renamed repositories. */
 final class RepositoryProviderClient implements AutoCloseable {
+    /**
+     * How much of a provider's answer this client will read. No decision record fixes this
+     * value; it is a defensive ceiling on a third-party response, large enough for the
+     * repository metadata both providers return and small enough that a hostile or broken
+     * endpoint cannot stream indefinitely into memory.
+     */
     private static final int MAX_METADATA_BYTES = 128 * 1024;
+
     private final JsonMapper json = JsonMapper.builder().build();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -55,9 +64,12 @@ final class RepositoryProviderClient implements AutoCloseable {
                     .GET()
                     .build();
             HttpResponse<byte[]> response = http.send(request, info -> new BoundedBody(MAX_METADATA_BYTES));
-            if (response.statusCode() == 401 || response.statusCode() == 403)
+            if (response.statusCode() == 401 || response.statusCode() == 403) {
                 throw new RepositoryConnectionException(PERMISSION_DENIED);
-            if (response.statusCode() != 200) throw new RepositoryConnectionException(UNAVAILABLE);
+            }
+            if (response.statusCode() != 200) {
+                throw new RepositoryConnectionException(UNAVAILABLE);
+            }
             return parse(coordinates, json.readTree(response.body()));
         } catch (IOException exception) {
             throw new RepositoryConnectionException(UNAVAILABLE);
@@ -73,38 +85,25 @@ final class RepositoryProviderClient implements AutoCloseable {
 
     static Metadata parse(RepositoryCoordinates requested, JsonNode data) {
         try {
-            if (data == null || !data.isObject()) throw new IllegalArgumentException();
-            String id = data.path("id").asText();
             boolean github = requested.provider().equals("github");
-            if (!id.matches(github ? "[1-9][0-9]{0,39}" : "[a-zA-Z0-9_-]{1,128}")) throw new IllegalArgumentException();
-            String path = data.path(github ? "full_name" : "path").asText();
+            JsonNode fields = ProviderValues.object(data);
+            // Identity is settled before anything else is read, so a reply about another
+            // repository is reported as that and not as a malformed answer.
+            String id = ProviderValues.identifier(fields, github ? "[1-9][0-9]{0,39}" : "[a-zA-Z0-9_-]{1,128}");
+            String path = ProviderValues.text(fields, github ? "full_name" : "path");
             RepositoryCoordinates canonical =
                     RepositoryCoordinates.parse("https://" + (github ? "github.com" : "cnb.cool") + "/" + path);
-            if (!canonical.canonicalUri().equals(requested.canonicalUri()))
+            if (!canonical.canonicalUri().equals(requested.canonicalUri())) {
                 throw new RepositoryConnectionException(REPOSITORY_CHANGED);
-            boolean privateRepository;
-            if (github) {
-                if (!data.path("private").isBoolean()
-                        || !data.path("archived").isBoolean()
-                        || !data.path("disabled").isBoolean()) throw new IllegalArgumentException();
-                if (data.path("archived").asBoolean() || data.path("disabled").asBoolean())
-                    throw new RepositoryConnectionException(UNAVAILABLE);
-                if (!data.path("permissions").path("push").asBoolean(false))
-                    throw new RepositoryConnectionException(PERMISSION_DENIED);
-                privateRepository = data.path("private").asBoolean();
-            } else {
-                String visibility = data.path("visibility_level").asText();
-                if (!Set.of("Private", "Public", "Secret").contains(visibility)
-                        || !data.path("status").isInt()
-                        || !data.path("freeze").isBoolean()) throw new IllegalArgumentException();
-                if (data.path("status").intValue() != 0 || data.path("freeze").asBoolean())
-                    throw new RepositoryConnectionException(UNAVAILABLE);
-                if (!Set.of("Developer", "Master", "Owner")
-                        .contains(data.path("access").asText()))
-                    throw new RepositoryConnectionException(PERMISSION_DENIED);
-                privateRepository = !visibility.equals("Public");
             }
-            return new Metadata(canonical, requested.provider() + ":" + id, privateRepository);
+            Described described = github ? GitHubRepository.of(id, path, fields) : CnbRepository.of(id, path, fields);
+            if (!described.usable()) {
+                throw new RepositoryConnectionException(UNAVAILABLE);
+            }
+            if (!described.writable()) {
+                throw new RepositoryConnectionException(PERMISSION_DENIED);
+            }
+            return new Metadata(canonical, requested.provider() + ":" + id, described.privateRepository());
         } catch (RepositoryConnectionException expected) {
             throw expected;
         } catch (RuntimeException invalid) {
@@ -115,6 +114,130 @@ final class RepositoryProviderClient implements AutoCloseable {
     @Override
     public void close() {
         http.close();
+    }
+
+    /**
+     * What a provider says about one repository. Each provider answers with its own field names
+     * and its own spelling of the same three facts, so each has its own record and both are read
+     * strictly: a field of the wrong type is a malformed answer, not a value to coerce.
+     *
+     * <p>An absent permission is not an error. It means the account cannot write, which is a denial
+     * rather than an unusable provider, so the distinction is kept in {@link #writable()}.
+     */
+    sealed interface Described permits GitHubRepository, CnbRepository {
+        String id();
+
+        String path();
+
+        boolean privateRepository();
+
+        /** The repository still accepts work at all. */
+        boolean usable();
+
+        /** This account may push to it. */
+        boolean writable();
+    }
+
+    record GitHubRepository(
+            String id, String path, boolean privateRepository, boolean archived, boolean disabled, boolean push)
+            implements Described {
+        static GitHubRepository of(String id, String path, JsonNode fields) {
+            return new GitHubRepository(
+                    id,
+                    path,
+                    ProviderValues.flag(fields, "private"),
+                    ProviderValues.flag(fields, "archived"),
+                    ProviderValues.flag(fields, "disabled"),
+                    fields.path("permissions").path("push").asBoolean(false));
+        }
+
+        @Override
+        public boolean usable() {
+            return !archived && !disabled;
+        }
+
+        @Override
+        public boolean writable() {
+            return push;
+        }
+    }
+
+    record CnbRepository(String id, String path, String visibility, int status, boolean frozen, String access)
+            implements Described {
+        private static final Set<String> VISIBILITY = Set.of("Private", "Public", "Secret");
+        private static final Set<String> WRITERS = Set.of("Developer", "Master", "Owner");
+
+        CnbRepository {
+            if (!VISIBILITY.contains(visibility)) {
+                throw new IllegalArgumentException("repository visibility must be one of " + VISIBILITY);
+            }
+        }
+
+        static CnbRepository of(String id, String path, JsonNode fields) {
+            return new CnbRepository(
+                    id,
+                    path,
+                    ProviderValues.text(fields, "visibility_level"),
+                    ProviderValues.number(fields, "status"),
+                    ProviderValues.flag(fields, "freeze"),
+                    fields.path("access").asText());
+        }
+
+        @Override
+        public boolean privateRepository() {
+            return !visibility.equals("Public");
+        }
+
+        @Override
+        public boolean usable() {
+            return status == 0 && !frozen;
+        }
+
+        @Override
+        public boolean writable() {
+            return WRITERS.contains(access);
+        }
+    }
+
+    /** Strict readers. A provider answer is machine output; a wrong type means a wrong answer. */
+    private static final class ProviderValues {
+        private ProviderValues() {}
+
+        static JsonNode object(JsonNode data) {
+            if (data == null || !data.isObject()) {
+                throw new IllegalArgumentException("provider metadata must be a JSON object");
+            }
+            return data;
+        }
+
+        /** Both providers answer with their own identifier shape; GitHub's arrives as a number. */
+        static String identifier(JsonNode fields, String shape) {
+            String id = fields.path("id").asText();
+            if (!id.matches(shape)) {
+                throw new IllegalArgumentException("provider repository id does not match " + shape);
+            }
+            return id;
+        }
+
+        static String text(JsonNode fields, String field) {
+            return fields.path(field).asText();
+        }
+
+        static boolean flag(JsonNode fields, String field) {
+            JsonNode value = fields.path(field);
+            if (!value.isBoolean()) {
+                throw new IllegalArgumentException(field + " must be a boolean");
+            }
+            return value.booleanValue();
+        }
+
+        static int number(JsonNode fields, String field) {
+            JsonNode value = fields.path(field);
+            if (!value.isInt()) {
+                throw new IllegalArgumentException(field + " must be an integer");
+            }
+            return value.intValue();
+        }
     }
 
     record Metadata(RepositoryCoordinates coordinates, String identity, boolean privateRepository) {

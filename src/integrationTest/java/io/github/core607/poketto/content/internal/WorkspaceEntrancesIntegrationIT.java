@@ -1,8 +1,10 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -11,7 +13,11 @@ import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,8 +25,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -132,8 +140,9 @@ class WorkspaceEntrancesIntegrationIT {
             "assets",
             "exports/unknown/metadata"
         };
-        for (String operation : denied)
+        for (String operation : denied) {
             mvc.perform(get(route(first, operation)).session(guestSession)).andExpect(status().isForbidden());
+        }
         var firstWrite = csrf(ownerSession, post(route(first, "repository/patch")))
                 .contentType("application/json")
                 .content(patch("# First workspace\n"));
@@ -156,8 +165,8 @@ class WorkspaceEntrancesIntegrationIT {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.source").value(entry.getValue()));
             try (var git = Git.open(remotes.get(entry.getKey()).toFile());
-                    var walk = new org.eclipse.jgit.revwalk.RevWalk(git.getRepository());
-                    var tree = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                    var walk = new RevWalk(git.getRepository());
+                    var tree = TreeWalk.forPath(
                             git.getRepository(),
                             "private/shared.md",
                             walk.parseCommit(git.getRepository().resolve("refs/heads/main"))
@@ -166,7 +175,7 @@ class WorkspaceEntrancesIntegrationIT {
                                 git.getRepository()
                                         .open(tree.getObjectId(0), Constants.OBJ_BLOB)
                                         .getBytes(),
-                                java.nio.charset.StandardCharsets.UTF_8))
+                                StandardCharsets.UTF_8))
                         .isEqualTo(entry.getValue());
             }
         }
@@ -185,11 +194,10 @@ class WorkspaceEntrancesIntegrationIT {
     }
 
     private String patch(String source) throws Exception {
-        var request = new java.util.LinkedHashMap<String, Object>();
+        var request = new LinkedHashMap<String, Object>();
         request.put("baseCommit", null);
         request.put(
-                "changes",
-                java.util.List.of(Map.of("path", "private/shared.md", "expectedAbsence", true, "content", source)));
+                "changes", List.of(Map.of("path", "private/shared.md", "expectedAbsence", true, "content", source)));
         return json.writeValueAsString(request);
     }
 
@@ -228,7 +236,7 @@ class WorkspaceEntrancesIntegrationIT {
                                     .toUri()
                                     .toString()),
                             new UsernamePasswordCredentialsProvider("fixture", "fixture"));
-                } catch (java.net.URISyntaxException exception) {
+                } catch (URISyntaxException exception) {
                     throw new IllegalStateException(exception);
                 }
             };

@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.eclipse.jgit.lib.FileMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -40,7 +41,9 @@ class RepositoryContentReaderTests {
             "a%20b.md",
             "目录 空格%#/index.md",
             "末尾 .md"
-        }) files.put(path, bytes("# 原文\r\n"));
+        }) {
+            files.put(path, bytes("# 原文\r\n"));
+        }
         files.put("custom.md", bytes("---\nroute: '/自定义 空格%#? '\n---\n# Custom"));
         var commit = fixture.commitRemote(workspace, files);
         var reader = new JGitRepositoryContentReader(fixture.authority());
@@ -335,7 +338,7 @@ class RepositoryContentReaderTests {
                         bytes("# A"),
                         "a.md",
                         bytes("# a")),
-                Map.of("link.md", org.eclipse.jgit.lib.FileMode.SYMLINK));
+                Map.of("link.md", FileMode.SYMLINK));
         var reader = new JGitRepositoryContentReader(fixture.authority());
         var tree = reader.readTree(workspace, Optional.empty());
         assertThat(tree.documents())

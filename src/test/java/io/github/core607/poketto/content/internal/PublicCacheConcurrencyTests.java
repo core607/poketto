@@ -1,10 +1,17 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -177,7 +184,7 @@ class PublicCacheConcurrencyTests {
         assertThat(state.service.readPublicImage(workspace, original).bytes()).isEqualTo(png());
         clock.now = clock.now.plusSeconds(300);
         assertThatThrownBy(() -> state.service.readPublicImage(workspace, original))
-                .isInstanceOf(io.github.core607.poketto.assets.AssetStorageException.class);
+                .isInstanceOf(AssetStorageException.class);
     }
 
     @Test
@@ -356,7 +363,9 @@ class PublicCacheConcurrencyTests {
                 await(gate.release);
             }
             ObjectId commit = delegate.fetchMain(repository, binding);
-            if (gate != null) gate.fetched.countDown();
+            if (gate != null) {
+                gate.fetched.countDown();
+            }
             return commit;
         }
 

@@ -1,11 +1,18 @@
 package io.github.core607.poketto.auth;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.eclipse.jgit.api.Git;
@@ -37,7 +44,7 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "poketto.security.allowed-origins=https://site.example.invalid")
 @AutoConfigureMockMvc
-@Import(io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class)
+@Import(RemoteRepositoryIntegrationConfiguration.class)
 class AdminPaginationIntegrationIT {
     @Container
     @ServiceConnection
@@ -130,7 +137,7 @@ class AdminPaginationIntegrationIT {
                 .andExpect(status().isNoContent());
         assertThatThrownBy(() -> auth.authenticateApiKey(original.get("token").stringValue()))
                 .isInstanceOf(AuthException.class);
-        for (String endpoint : java.util.List.of("keys", "members", "invitations")) {
+        for (String endpoint : List.of("keys", "members", "invitations")) {
             mvc.perform(get(scoped("/api/admin/") + endpoint)
                             .session(session.session())
                             .param("limit", "101"))
@@ -216,7 +223,9 @@ class AdminPaginationIntegrationIT {
 
     private Csrf csrf(MockHttpSession existing) throws Exception {
         var request = get("/api/auth/csrf");
-        if (existing != null) request.session(existing);
+        if (existing != null) {
+            request.session(existing);
+        }
         MvcResult result = mvc.perform(request).andExpect(status().isOk()).andReturn();
         JsonNode response = body(result);
         return new Csrf(
@@ -227,7 +236,9 @@ class AdminPaginationIntegrationIT {
 
     private MockHttpServletRequestBuilder request(MockHttpServletRequestBuilder request, Csrf session, Object body) {
         request.session(session.session()).header("Origin", ORIGIN).header(session.header(), session.token());
-        if (body != null) request.contentType("application/json").content(json.writeValueAsString(body));
+        if (body != null) {
+            request.contentType("application/json").content(json.writeValueAsString(body));
+        }
         return request;
     }
 
@@ -248,7 +259,9 @@ class AdminPaginationIntegrationIT {
 
     private String scoped(String path) {
         String workspace = workspaces.defaultWorkspace().id().toString();
-        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        if (path.equals("/api/auth/me")) {
+            return "/api/auth/workspaces/" + workspace + "/me";
+        }
         return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

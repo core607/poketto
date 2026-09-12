@@ -1,6 +1,6 @@
 package io.github.core607.poketto.auth;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
 import java.util.ArrayList;
@@ -87,8 +87,9 @@ class AdministratorSetupIntegrationIT {
                     .isZero();
             assertThat(jdbc.queryForObject("select initialized_at is null from auth_initialization", Boolean.class))
                     .isTrue();
-            if (input.password != null && input.prompted && input.username != null)
+            if (input.password != null && input.prompted && input.username != null) {
                 assertThat(input.password).containsOnly('\0');
+            }
         }
     }
 

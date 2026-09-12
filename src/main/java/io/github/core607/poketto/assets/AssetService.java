@@ -16,8 +16,11 @@ import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryMediaSnapshot;
+import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -30,6 +33,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -43,6 +47,11 @@ public final class AssetService {
     private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
     private static final Duration MINIMUM_REUSABLE_LIFETIME = Duration.ofMinutes(1);
     private static final Duration CAPACITY_WARNING_INTERVAL = Duration.ofMinutes(1);
+    // Neither of these reserves anything. Both cap the bytes one request may account for in
+    // total, one for a page and one for an inventory listing. What actually reserves from the
+    // shared admission pool is ImageMemoryAdmission.BROWSER_BYTES, and both paths take that same
+    // per-image share. Raising a bound here therefore lets a request consider more images; it
+    // does not give any of them more memory.
     private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
     private final AuthService auth;
@@ -73,8 +82,9 @@ public final class AssetService {
             int maxGrants,
             Clock clock,
             ImageMemoryAdmission memory) {
-        if (maxGrants < 128 || maxGrants > 100_000)
+        if (maxGrants < 128 || maxGrants > 100_000) {
             throw new IllegalArgumentException("image grant capacity must be 128 to 100000");
+        }
         this.auth = auth;
         this.content = content;
         this.blobs = blobs;
@@ -84,7 +94,7 @@ public final class AssetService {
         this.cache = new RepositoryImageCache(cacheDirectory, cacheBytes);
         this.clock = clock;
         this.maxGrants = maxGrants;
-        this.memory = java.util.Objects.requireNonNull(memory);
+        this.memory = Objects.requireNonNull(memory);
     }
 
     public ManagedAsset upload(AuthPrincipal actor, WorkspaceId workspace, String operationKey, InputStream original) {
@@ -105,14 +115,15 @@ public final class AssetService {
 
     public AssetBytes readExact(AuthPrincipal actor, WorkspaceId workspace, AssetSource source) {
         AssetBytes image = preparePrivate(actor, workspace, () -> {
-            if (source instanceof AssetSource.Managed managedSource)
+            if (source instanceof AssetSource.Managed managedSource) {
                 return bytes(workspace, new Managed(managedSource.reference()));
+            }
             AssetSource.Repository repositorySource = (AssetSource.Repository) source;
             String commit =
                     blobs.selectCommit(workspace, repositorySource.commit()).orElseThrow(AssetService::notFound);
             RepositoryMediaSnapshot catalog = availableMedia(workspace, commit);
             var indexed = catalog == null ? null : catalog.index().files().get(repositorySource.path());
-            if (indexed != null)
+            if (indexed != null) {
                 return bytes(
                         workspace,
                         new Indexed(
@@ -120,6 +131,7 @@ public final class AssetService {
                                 repositorySource.path(),
                                 indexed,
                                 catalog.publicPaths().contains(repositorySource.path())));
+            }
             RepositoryBlob blob =
                     blobs.find(workspace, commit, repositorySource.path()).orElseThrow(AssetService::notFound);
             return bytes(workspace, new Git(blob));
@@ -134,18 +146,22 @@ public final class AssetService {
             String prefix,
             int offset,
             int limit) {
-        if (offset < 0 || offset > 1000 || limit < 1 || limit > 100)
+        if (offset < 0 || offset > 1000 || limit < 1 || limit > 100) {
             throw new IllegalArgumentException("repository image page exceeds its bounds");
+        }
         RepositoryImagePage page = preparePrivate(actor, workspace, () -> {
             Optional<String> commit = blobs.selectCommit(workspace, requested);
-            if (commit.isEmpty()) return new RepositoryImagePage(null, List.of(), 0, offset, limit, List.of());
+            if (commit.isEmpty()) {
+                return new RepositoryImagePage(null, List.of(), 0, offset, limit, List.of());
+            }
             List<RepositoryImagePage.Item> images = new ArrayList<>();
             List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
             long totalBytes = 0;
             for (RepositoryBlob blob : blobs.images(workspace, commit.orElseThrow(), prefix)) {
                 totalBytes += blob.size();
-                if (totalBytes > INVENTORY_IMAGE_BYTES)
+                if (totalBytes > INVENTORY_IMAGE_BYTES) {
                     throw new ContentRepositoryException("repository image inventory byte bound exceeded");
+                }
                 var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES);
                 if (reservation.isEmpty()) {
                     diagnostics.add(new RepositoryDiagnostic(
@@ -187,8 +203,7 @@ public final class AssetService {
                     routes.put(
                             document.file().path(),
                             "/admin?workspace=" + workspace + "&path="
-                                    + java.net.URLEncoder.encode(
-                                            document.file().path(), java.nio.charset.StandardCharsets.UTF_8));
+                                    + URLEncoder.encode(document.file().path(), StandardCharsets.UTF_8));
                 }
             }
             return prepareMedia(workspace, path, draft.body(), commit.orElse(null), draft.folderPage(), routes, false);
@@ -209,9 +224,13 @@ public final class AssetService {
         for (int attempt = 0; attempt < 2; attempt++) {
             PublicContentSnapshot snapshot = snapshots.withCurrent(workspace, value -> value);
             var article = article(snapshot, route);
-            if (article.isEmpty()) return Optional.empty();
+            if (article.isEmpty()) {
+                return Optional.empty();
+            }
             Map<String, String> routes = new HashMap<>();
-            for (var item : snapshot.articles()) routes.put(item.repositoryPath(), item.route());
+            for (var item : snapshot.articles()) {
+                routes.put(item.repositoryPath(), item.route());
+            }
             var value = article.orElseThrow();
             PreparedMedia prepared = prepareMedia(
                     workspace,
@@ -223,17 +242,25 @@ public final class AssetService {
                     true);
             PageAttempt completed = snapshots.withCurrent(workspace, current -> {
                 var currentArticle = article(current, route);
-                if (currentArticle.isEmpty()) return new PageAttempt(false, Optional.empty());
-                if (!current.commit().equals(snapshot.commit())) return new PageAttempt(true, Optional.empty());
-                if (!currentArticle.orElseThrow().equals(value))
+                if (currentArticle.isEmpty()) {
+                    return new PageAttempt(false, Optional.empty());
+                }
+                if (!current.commit().equals(snapshot.commit())) {
+                    return new PageAttempt(true, Optional.empty());
+                }
+                if (!currentArticle.orElseThrow().equals(value)) {
                     throw new ContentRepositoryException("public article differs within the selected commit");
+                }
                 ResolvedMedia media = finishMedia(workspace, value.repositoryPath(), "", current.expiresAt(), prepared);
                 Instant now = clock.instant();
-                if (now.isBefore(current.verifiedAt()) || !now.isBefore(current.expiresAt()))
+                if (now.isBefore(current.verifiedAt()) || !now.isBefore(current.expiresAt())) {
                     throw new ContentRepositoryException("public snapshot expired during image resolution");
+                }
                 return new PageAttempt(false, Optional.of(new ResolvedPublicDocument(current, value, media)));
             });
-            if (!completed.retry()) return completed.page();
+            if (!completed.retry()) {
+                return completed.page();
+            }
         }
         throw new ContentRepositoryException("public snapshot changed during both image preparation attempts");
     }
@@ -248,13 +275,17 @@ public final class AssetService {
     }
 
     private void requireCurrentIndexedPublication(Grant grant) {
-        if (!(grant.key().target() instanceof Indexed indexed)) return;
+        if (!(grant.key().target() instanceof Indexed indexed)) {
+            return;
+        }
         snapshots.withCurrent(grant.key().workspace(), snapshot -> {
             if (!indexed.publicPath()
                     || !snapshot.commit().equals(Optional.of(grant.key().commit()))
                     || snapshot.articles().stream()
                             .noneMatch(article ->
-                                    article.repositoryPath().equals(grant.key().page()))) throw notFound();
+                                    article.repositoryPath().equals(grant.key().page()))) {
+                throw notFound();
+            }
             return null;
         });
     }
@@ -318,9 +349,15 @@ public final class AssetService {
             }
             MarkdownDestinations.path(path, authored).ifPresent(target -> {
                 String selected = routes.get(target);
-                if (selected == null) selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
-                if (selected == null) selected = routes.get(target + ".md");
-                if (selected == null && publicOnly && routes.containsValue("/" + target)) selected = "/" + target;
+                if (selected == null) {
+                    selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
+                }
+                if (selected == null) {
+                    selected = routes.get(target + ".md");
+                }
+                if (selected == null && publicOnly && routes.containsValue("/" + target)) {
+                    selected = "/" + target;
+                }
                 if (selected == null
                         && catalog != null
                         && catalog.index().files().containsKey(target)
@@ -329,23 +366,34 @@ public final class AssetService {
                             authored,
                             downloadUrl(workspace, publicOnly, commit, routes.get(path), target) + fragment(authored));
                 }
-                if (selected != null) links.put(authored, selected + fragment(authored));
+                if (selected != null) {
+                    links.put(authored, selected + fragment(authored));
+                }
             });
         }
         Map<String, Target> images = new LinkedHashMap<>();
         Map<Target, Boolean> resolved = new HashMap<>();
         Set<String> inlinePaths = new HashSet<>();
-        for (String authored : destinations.images())
+        for (String authored : destinations.images()) {
             MarkdownDestinations.path(path, authored).ifPresent(inlinePaths::add);
+        }
         long[] bytes = {0};
         for (String authored : destinations.images()) {
             try {
                 Optional<Target> selected = target(workspace, commit, path, authored, catalog);
-                if (selected.isEmpty()) continue;
+                if (selected.isEmpty()) {
+                    continue;
+                }
                 Target target = selected.orElseThrow();
-                if (target instanceof Git git && publicOnly && !git.blob().publicPath()) continue;
-                if (target instanceof Indexed indexed && publicOnly && !indexed.publicPath()) continue;
-                if (prepareImage(workspace, target, resolved, bytes)) images.put(authored, target);
+                if (target instanceof Git git && publicOnly && !git.blob().publicPath()) {
+                    continue;
+                }
+                if (target instanceof Indexed indexed && publicOnly && !indexed.publicPath()) {
+                    continue;
+                }
+                if (prepareImage(workspace, target, resolved, bytes)) {
+                    images.put(authored, target);
+                }
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
                 // An unavailable image retains its Markdown placeholder, without an authored URL fallback.
             }
@@ -357,20 +405,27 @@ public final class AssetService {
             try {
                 var siblings = blobs.siblings(workspace, commit, path, 128, publicOnly, inlinePaths);
                 galleryCandidates = siblings.items().size();
-                if (siblings.partial()) galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                if (siblings.partial()) {
+                    galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                }
                 for (RepositoryBlob blob : siblings.items()) {
-                    if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) continue;
+                    if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) {
+                        continue;
+                    }
                     Target target = new Git(blob);
-                    if (prepareImage(workspace, target, resolved, bytes))
+                    if (prepareImage(workspace, target, resolved, bytes)) {
                         gallery.add(new PreparedGallery(
                                 target, blob.path().substring(blob.path().lastIndexOf('/') + 1)));
-                    else galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                    } else {
+                        galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                    }
                 }
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
                 galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
             }
-            if (catalog == null && galleryStatus != ResolvedMedia.GalleryStatus.UNAVAILABLE)
+            if (catalog == null && galleryStatus != ResolvedMedia.GalleryStatus.UNAVAILABLE) {
                 galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+            }
             if (catalog != null) {
                 String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
                 int candidates = galleryCandidates;
@@ -380,7 +435,9 @@ public final class AssetService {
                             || name.substring(prefix.length()).contains("/")
                             || inlinePaths.contains(name)
                             || !entry.getValue().mediaType().startsWith("image/")
-                            || (publicOnly && !catalog.publicPaths().contains(name))) continue;
+                            || (publicOnly && !catalog.publicPaths().contains(name))) {
+                        continue;
+                    }
                     if (candidates++ >= 128) {
                         galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
                         break;
@@ -391,9 +448,11 @@ public final class AssetService {
                             entry.getValue(),
                             catalog.publicPaths().contains(name));
                     try {
-                        if (prepareImage(workspace, target, resolved, bytes))
+                        if (prepareImage(workspace, target, resolved, bytes)) {
                             gallery.add(new PreparedGallery(target, name.substring(prefix.length())));
-                        else galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                        } else {
+                            galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                        }
                     } catch (AssetStorageException | ContentRepositoryException unavailable) {
                         galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
                     }
@@ -404,7 +463,9 @@ public final class AssetService {
     }
 
     private boolean prepareImage(WorkspaceId workspace, Target target, Map<Target, Boolean> resolved, long[] total) {
-        if (resolved.containsKey(target)) return resolved.get(target);
+        if (resolved.containsKey(target)) {
+            return resolved.get(target);
+        }
         long allowance = target instanceof Git git ? git.blob().size() : ManagedBlobStore.MAX_UPLOAD_BYTES;
         if (allowance > PAGE_IMAGE_BYTES - total[0]) {
             resolved.put(target, false);
@@ -425,7 +486,9 @@ public final class AssetService {
             return true;
         } catch (AssetStorageException unavailable) {
             resolved.put(target, false);
-            if (unavailable.reason() == AssetStorageException.Reason.UNAVAILABLE) throw unavailable;
+            if (unavailable.reason() == AssetStorageException.Reason.UNAVAILABLE) {
+                throw unavailable;
+            }
             return false;
         } catch (ContentRepositoryException unavailable) {
             resolved.put(target, false);
@@ -441,14 +504,19 @@ public final class AssetService {
         Map<String, String> images = new LinkedHashMap<>();
         for (var image : prepared.images().entrySet()) {
             String url = imageUrl(workspace, page, prepared.commit(), actor, expires, image.getValue(), resolved);
-            if (url != null) images.put(image.getKey(), url);
+            if (url != null) {
+                images.put(image.getKey(), url);
+            }
         }
         List<ResolvedMedia.GalleryImage> gallery = new ArrayList<>();
         var status = prepared.galleryStatus();
         for (var image : prepared.gallery()) {
             String url = imageUrl(workspace, page, prepared.commit(), actor, expires, image.target(), resolved);
-            if (url != null) gallery.add(new ResolvedMedia.GalleryImage(url, image.alt()));
-            else if (status == ResolvedMedia.GalleryStatus.COMPLETE) status = ResolvedMedia.GalleryStatus.PARTIAL;
+            if (url != null) {
+                gallery.add(new ResolvedMedia.GalleryImage(url, image.alt()));
+            } else if (status == ResolvedMedia.GalleryStatus.COMPLETE) {
+                status = ResolvedMedia.GalleryStatus.PARTIAL;
+            }
         }
         return new ResolvedMedia(
                 prepared.body(), prepared.commit(), prepared.links(), prepared.downloads(), images, gallery, status);
@@ -462,16 +530,18 @@ public final class AssetService {
             Instant expires,
             Target target,
             Map<Target, String> resolved) {
-        if (resolved.containsKey(target)) return resolved.get(target);
+        if (resolved.containsKey(target)) {
+            return resolved.get(target);
+        }
         String url = null;
         try {
             Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor), expires);
-            if (token.isPresent())
+            if (token.isPresent()) {
                 url = (actor.isEmpty()
                                 ? "/api/public/assets/"
-                                : io.github.core607.poketto.workspace.WorkspaceHttpRoutes.admin(workspace)
-                                        + "/assets/images/")
+                                : WorkspaceHttpRoutes.admin(workspace) + "/assets/images/")
                         + token.orElseThrow();
+            }
         } catch (AssetStorageException unavailable) {
             // Validation and publication are separate; unavailable source protection issues no URL.
         }
@@ -483,30 +553,37 @@ public final class AssetService {
             WorkspaceId workspace, String commit, String path, String authored, RepositoryMediaSnapshot catalog) {
         if (authored.startsWith("managed:")) {
             String[] fields = authored.split(":", -1);
-            if (fields.length != 3) return Optional.empty();
+            if (fields.length != 3) {
+                return Optional.empty();
+            }
             try {
                 UUID id = UUID.fromString(fields[1]);
-                if (!id.toString().equals(fields[1])) return Optional.empty();
+                if (!id.toString().equals(fields[1])) {
+                    return Optional.empty();
+                }
                 return Optional.of(new Managed(new ManagedAssetReference(id, fields[2])));
             } catch (IllegalArgumentException invalid) {
                 return Optional.empty();
             }
         }
-        if (commit == null) return Optional.empty();
+        if (commit == null) {
+            return Optional.empty();
+        }
         return MarkdownDestinations.path(path, authored)
                 .filter(value -> !value.isEmpty())
                 .flatMap(value -> {
                     var media = catalog == null ? null : catalog.index().files().get(value);
-                    if (media != null)
+                    if (media != null) {
                         return Optional.of(new Indexed(
                                 commit, value, media, catalog.publicPaths().contains(value)));
+                    }
                     return blobs.find(workspace, commit, value).map(Git::new).map(target -> (Target) target);
                 });
     }
 
     private RepositoryMediaSnapshot availableMedia(WorkspaceId workspace, String commit) {
         try {
-            return java.util.Objects.requireNonNull(blobs.media(workspace, commit));
+            return Objects.requireNonNull(blobs.media(workspace, commit));
         } catch (ContentRepositoryException unavailable) {
             // Git paths retain their independent immutable-object and publication checks.
             return null;
@@ -519,7 +596,9 @@ public final class AssetService {
             ManagedImage image =
                     managed.get().read(workspace, new ManagedAssetReference(entry.assetId(), entry.revision()));
             if (image.asset().size() != entry.size()
-                    || !image.asset().mediaType().equals(entry.mediaType())) throw notFound();
+                    || !image.asset().mediaType().equals(entry.mediaType())) {
+                throw notFound();
+            }
             return new AssetBytes(
                     new AssetSource.Repository(Optional.of(value.commit()), value.path()),
                     entry.revision(),
@@ -535,7 +614,9 @@ public final class AssetService {
                     image.bytes());
         }
         RepositoryBlob blob = ((Git) target).blob();
-        if (!blob.workspaceId().equals(workspace)) throw notFound();
+        if (!blob.workspaceId().equals(workspace)) {
+            throw notFound();
+        }
         var image = cache.get(blob, () -> blobs.read(blob));
         return new AssetBytes(
                 new AssetSource.Repository(Optional.of(blob.commit()), blob.path()),
@@ -549,7 +630,9 @@ public final class AssetService {
         Instant expires = preparedAt.plus(GRANT_LIFETIME).isBefore(snapshotExpires)
                 ? preparedAt.plus(GRANT_LIFETIME)
                 : snapshotExpires;
-        if (!preparedAt.isBefore(expires)) throw notFound();
+        if (!preparedAt.isBefore(expires)) {
+            throw notFound();
+        }
         if (key.target() instanceof Git git) {
             // Source retention and its workspace lock must never run under the global grant lock.
             try {
@@ -562,15 +645,18 @@ public final class AssetService {
         synchronized (this) {
             Instant now = clock.instant();
             purge(now);
-            if (now.isBefore(preparedAt) || !now.isBefore(expires)) throw notFound();
+            if (now.isBefore(preparedAt) || !now.isBefore(expires)) {
+                throw notFound();
+            }
             String token = reusable.get(key);
             if (token != null) {
                 Instant previousExpires = grants.get(token).expires();
                 // A snapshot near expiry cannot give a replacement token a longer useful lifetime.
                 if (!previousExpires.isAfter(expires)
                         && (previousExpires.equals(expires)
-                                || !previousExpires.isBefore(now.plus(MINIMUM_REUSABLE_LIFETIME))))
+                                || !previousExpires.isBefore(now.plus(MINIMUM_REUSABLE_LIFETIME)))) {
                     return Optional.of(token);
+                }
             }
             if (grants.size() >= maxGrants) {
                 warning = capacityWarning(now);
@@ -596,7 +682,9 @@ public final class AssetService {
 
     /** Captures only counts under the grant lock; log output must happen after leaving it. */
     private CapacityWarning capacityWarning(Instant now) {
-        if (capacityOmissions < Long.MAX_VALUE) capacityOmissions++;
+        if (capacityOmissions < Long.MAX_VALUE) {
+            capacityOmissions++;
+        }
         if (capacityWarningAt == null
                 || now.isBefore(capacityWarningAt)
                 || !now.isBefore(capacityWarningAt.plus(CAPACITY_WARNING_INTERVAL))) {
@@ -609,13 +697,17 @@ public final class AssetService {
     }
 
     private synchronized Grant grant(WorkspaceId workspace, String token, String actor) {
-        if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) throw notFound();
+        if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
+            throw notFound();
+        }
         Instant now = clock.instant();
         purge(now);
         Grant grant = grants.get(token);
         if (grant == null
                 || !grant.key().workspace().equals(workspace)
-                || !grant.key().actor().equals(actor)) throw notFound();
+                || !grant.key().actor().equals(actor)) {
+            throw notFound();
+        }
         return grant;
     }
 
@@ -637,7 +729,9 @@ public final class AssetService {
 
     private static String fragment(String href) {
         int start = href.indexOf('#');
-        if (start < 0) return "";
+        if (start < 0) {
+            return "";
+        }
         String value = href.substring(start);
         return value.length() <= 256 && value.codePoints().noneMatch(Character::isISOControl) ? value : "";
     }
@@ -653,14 +747,12 @@ public final class AssetService {
 
     private static String downloadUrl(
             WorkspaceId workspace, boolean publicOnly, String commit, String route, String path) {
-        String prefix = publicOnly
-                ? "/api/public/media?"
-                : io.github.core607.poketto.workspace.WorkspaceHttpRoutes.admin(workspace) + "/media?";
+        String prefix = publicOnly ? "/api/public/media?" : WorkspaceHttpRoutes.admin(workspace) + "/media?";
         return prefix + "commit=" + commit + "&path=" + query(path) + (publicOnly ? "&route=" + query(route) : "");
     }
 
     private static String query(String value) {
-        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private record Managed(ManagedAssetReference reference) implements Target {}

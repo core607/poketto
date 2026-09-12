@@ -1,7 +1,9 @@
 package io.github.core607.poketto.spaces;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
@@ -12,6 +14,8 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -54,11 +58,10 @@ public final class SpaceCreationService {
 
     public ConnectionInfo connectionInfo(AuthPrincipal actor, WorkspaceId workspace) {
         accounts.account(actor);
-        return auth.withAuthorization(
-                actor, workspace, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
-                    var binding = repositories.connectionInfo(workspace);
-                    return new ConnectionInfo(binding.isPresent(), repositories.available(), binding.orElse(null));
-                });
+        return auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
+            Optional<RepositoryConnections.ConnectionInfo> binding = repositories.connectionInfo(workspace);
+            return new ConnectionInfo(binding.isPresent(), repositories.available(), binding.orElse(null));
+        });
     }
 
     public record ConnectionInfo(
@@ -66,15 +69,16 @@ public final class SpaceCreationService {
 
     public void rotateCredentials(AuthPrincipal actor, WorkspaceId workspace, String username, String token) {
         accounts.account(actor);
-        auth.authorize(actor, workspace, io.github.core607.poketto.auth.Capability.MANAGE_KEYS);
-        if (!admission.tryAcquire()) throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+        auth.authorize(actor, workspace, Capability.MANAGE_KEYS);
+        if (!admission.tryAcquire()) {
+            throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+        }
         try {
             var rotation = repositories.prepareRotation(workspace, username, token);
-            auth.withAuthorization(
-                    actor, workspace, java.util.Set.of(io.github.core607.poketto.auth.Capability.MANAGE_KEYS), () -> {
-                        repositories.applyRotation(workspace, rotation);
-                        return null;
-                    });
+            auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
+                repositories.applyRotation(workspace, rotation);
+                return null;
+            });
         } finally {
             admission.release();
         }
@@ -94,10 +98,13 @@ public final class SpaceCreationService {
                 || displayName.isBlank()
                 || displayName.length() > 120
                 || slug == null
-                || !slug.matches("[a-z0-9][a-z0-9-]{1,62}[a-z0-9]"))
+                || !slug.matches("[a-z0-9][a-z0-9-]{1,62}[a-z0-9]")) {
             throw new IllegalArgumentException("Invalid workspace name or slug");
+        }
         var coordinates = RepositoryCoordinates.parse(repository);
-        if (!admission.tryAcquire()) throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+        if (!admission.tryAcquire()) {
+            throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+        }
         try {
             UUID lease = UUID.randomUUID();
             Attempt attempt = accounts.withAccount(actor, () -> {
@@ -106,14 +113,17 @@ public final class SpaceCreationService {
                 if (previous != null) {
                     if (!previous.name().equals(displayName.strip())
                             || !previous.slug().equals(slug)
-                            || !previous.uri().equals(coordinates.canonicalUri()))
+                            || !previous.uri().equals(coordinates.canonicalUri())) {
                         throw new IllegalArgumentException("Request ID belongs to different workspace details");
+                    }
                     if (previous.stage().equals("READY")
                             || (previous.stage().equals("VALIDATING")
                                     && previous.updated()
                                             .toInstant()
                                             .plus(Duration.ofMinutes(5))
-                                            .isAfter(clock.instant()))) return previous;
+                                            .isAfter(clock.instant()))) {
+                        return previous;
+                    }
                 }
                 WorkspaceId id = previous == null ? WorkspaceId.random() : previous.workspace();
                 byte[] sealed = previous != null && username == null && token == null
@@ -136,12 +146,16 @@ public final class SpaceCreationService {
                         Timestamp.from(clock.instant()));
                 return find(actor, requestId, false);
             });
-            if (!attempt.lease().equals(lease)) return result(attempt);
+            if (!attempt.lease().equals(lease)) {
+                return result(attempt);
+            }
             try {
                 var verified = repositories.verify(attempt.workspace(), coordinates, attempt.sealed());
                 return transactions.execute(status -> {
                     Attempt current = find(actor, requestId, true);
-                    if (!current.lease().equals(lease)) return result(current);
+                    if (!current.lease().equals(lease)) {
+                        return result(current);
+                    }
                     accounts.account(actor);
                     workspaces.create(attempt.workspace(), attempt.name(), attempt.slug());
                     auth.establishWorkspaceOwner(actor, attempt.workspace());
@@ -176,9 +190,9 @@ public final class SpaceCreationService {
     public Result status(AuthPrincipal actor, UUID requestId) {
         accounts.account(actor);
         Attempt value = find(actor, requestId, false);
-        if (value == null)
-            throw new io.github.core607.poketto.auth.AuthException(
-                    io.github.core607.poketto.auth.AuthException.Code.DENIED);
+        if (value == null) {
+            throw new AuthException(AuthException.Code.DENIED);
+        }
         return result(value);
     }
 

@@ -4,7 +4,10 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryFile;
+import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
@@ -12,11 +15,15 @@ import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /** Uses only authoritative revisions; sandbox Git refs and indexes never supply write preconditions. */
 final class SelectedFileSaves {
@@ -29,7 +36,7 @@ final class SelectedFileSaves {
             AuthService auth,
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
-            io.github.core607.poketto.content.RepositoryMoveService moves) {
+            RepositoryMoveService moves) {
         this.auth = auth;
         this.reader = reader;
         this.patches = patches;
@@ -40,64 +47,67 @@ final class SelectedFileSaves {
         return moves;
     }
 
-    Map<String, ?> save(
+    BridgeReplies.Reply save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
-        if (state.move != null) return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
-        if (state.uncertain) return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+        if (state.move != null) {
+            return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
+        }
+        if (state.uncertain) {
+            return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+        }
         var paths = new HashSet<>(writes.keySet());
         if (writes.size() + deletes.size() < 1
                 || writes.size() + deletes.size() > RepositoryPatch.MAX_CHANGES
-                || deletes.stream().anyMatch(path -> !paths.add(path)))
+                || deletes.stream().anyMatch(path -> !paths.add(path))) {
             throw new IllegalArgumentException("Select distinct files within the save bound");
+        }
         var changes = new ArrayList<RepositoryTextChange>();
         state.requireTracking(paths);
         for (String path : paths) {
             String expectedCommit = state.baseline(path);
             var baseline = reader.getFile(actor, workspace, Optional.of(expectedCommit), path);
             if (!baseline.commit().equals(Optional.of(expectedCommit))
-                    || (!baseline.expectedAbsence() && baseline.revision().isEmpty()))
+                    || (!baseline.expectedAbsence() && baseline.revision().isEmpty())) {
                 throw new IllegalArgumentException("Selected path has no writable text baseline");
+            }
             changes.add(new RepositoryTextChange(
                     path, baseline.expectedAbsence(), baseline.revision(), Optional.ofNullable(writes.get(path))));
         }
         RepositoryPatch patch = new RepositoryPatch(Optional.of(state.baseCommit), changes);
+        BridgeReplies.Reply reply;
         try {
             var result = patches.apply(actor, workspace, patch);
             // Only these selected files changed in the new authoritative tree. All other local
             // edits retain their old authoritative contents as their next save preconditions.
-            completed(state, result, List.copyOf(paths), false);
+            reply = completed(state, result, List.copyOf(paths), false);
         } catch (RepositoryWriteAmbiguousException unknown) {
             state.pending = patch;
             state.attempt = unknown.attempt();
             state.uncertain = true;
-            state.lastSave = Map.of(
-                    "ok",
-                    false,
-                    "code",
+            reply = BridgeReplies.failed(
                     "WRITE_OUTCOME_UNKNOWN",
-                    "message",
                     "Run poketto recover to reconcile the retained commit before another save; local edits are retained.");
         } catch (RepositoryConflictException conflict) {
-            state.lastSave = Map.of(
-                    "ok",
-                    false,
-                    "code",
-                    "REPOSITORY_CONFLICT",
-                    "message",
-                    "Remote main changed; local edits and the host baseline are retained.");
+            reply = BridgeReplies.failed(
+                    "REPOSITORY_CONFLICT", "Remote main changed; local edits and the host baseline are retained.");
         }
-        return state.lastSave;
+        state.lastSave = reply;
+        return reply;
     }
 
-    Map<String, ?> recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
+    BridgeReplies.Reply recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
-        if (!state.uncertain) return Map.of("ok", true, "result", Map.of("recoveryNeeded", false));
-        if (state.pending == null || state.attempt.isEmpty())
-            return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+        if (!state.uncertain) {
+            return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
+        }
+        if (state.pending == null || state.attempt.isEmpty()) {
+            return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+        }
+        BridgeReplies.Reply reply;
         try {
             var result = patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
-            completed(
+            reply = completed(
                     state,
                     result,
                     state.pending.changes().stream()
@@ -106,54 +116,39 @@ final class SelectedFileSaves {
                     true);
         } catch (RepositoryWriteAmbiguousException unknown) {
             // Retain the same original patch and commit even if the recovery reply is also lost.
-            state.lastSave = Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+            reply = BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         } catch (RepositoryConflictException conflict) {
             state.uncertain = false;
             state.pending = null;
             state.attempt = Optional.empty();
-            state.lastSave = Map.of(
-                    "ok",
-                    false,
-                    "code",
+            reply = BridgeReplies.failed(
                     "REPOSITORY_CONFLICT",
-                    "message",
                     "Remote main diverged from the retained attempt; local edits and baseline are retained.");
         }
-        return state.lastSave;
+        state.lastSave = reply;
+        return reply;
     }
 
-    private static void completed(State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
+    private static BridgeReplies.Reply completed(
+            State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
         state.baseCommit = result.commit();
         paths.forEach(path -> state.baselines.put(path, result.commit()));
         state.uncertain = false;
         state.pending = null;
         state.attempt = Optional.empty();
-        state.lastSave = Map.of(
-                "ok",
-                true,
-                "result",
-                Map.of(
-                        "commit",
-                        result.commit(),
-                        "committed",
-                        result.committed(),
-                        "snapshotUpdated",
-                        result.snapshotUpdated(),
-                        "paths",
-                        paths,
-                        "recovered",
-                        recovered));
+        return BridgeReplies.succeeded(new BridgeReplies.SaveResult(
+                result.commit(), result.committed(), result.snapshotUpdated(), paths, recovered));
     }
 
     /** Confined to one session's admitted execute owner and its serial bridge loop; renewal never accesses it. */
     static final class State {
         private final String originalCommit;
-        private final Map<String, String> baselines = new java.util.HashMap<>();
+        private final Map<String, String> baselines = new HashMap<>();
         String baseCommit;
         boolean uncertain;
         RepositoryPatch pending;
         Optional<RepositoryWriteAttempt> attempt = Optional.empty();
-        Map<String, ?> lastSave = Map.of();
+        BridgeReplies.Recorded lastSave = new BridgeReplies.Absent();
         SessionMoves.Pending move;
 
         State(String baseCommit) {
@@ -165,59 +160,61 @@ final class SelectedFileSaves {
             return baselines.getOrDefault(path, originalCommit);
         }
 
-        void acknowledgeMove(String commit, java.util.Set<String> paths) {
+        void acknowledgeMove(String commit, Set<String> paths) {
             requireTracking(paths);
             paths.forEach(path -> baselines.put(path, commit));
             baseCommit = commit;
             move = null;
         }
 
-        void requireTracking(java.util.Collection<String> paths) {
+        void requireTracking(Collection<String> paths) {
             long additional = paths.stream()
                     .distinct()
                     .filter(path -> !baselines.containsKey(path))
                     .count();
-            if (baselines.size() + additional > 16384)
+            if (baselines.size() + additional > 16384) {
                 throw new IllegalArgumentException("session baseline capacity exhausted");
+            }
         }
     }
 
     SyncPlan prepareSync(AuthPrincipal actor, WorkspaceId workspace, State state, String path, Optional<String> local) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        if (state.uncertain || state.move != null)
+        if (state.uncertain || state.move != null) {
             throw new IllegalArgumentException("recover the pending write before synchronizing");
+        }
         state.requireTracking(List.of(path));
         String previous = state.baseline(path);
         var original = reader.getFile(actor, workspace, Optional.of(previous), path);
         var remote = reader.getFile(actor, workspace, Optional.empty(), path);
         if ((!original.expectedAbsence() && original.source().isEmpty())
                 || (!remote.expectedAbsence() && remote.source().isEmpty())
-                || remote.commit().isEmpty())
+                || remote.commit().isEmpty()) {
             throw new IllegalArgumentException("synchronization requires a text path and an existing remote commit");
+        }
         var merged = TextReconciliation.merge(original.source(), local, remote.source());
         return new SyncPlan(
                 path,
                 state.baseCommit,
                 previous,
                 remote.commit().orElseThrow(),
-                local.map(value -> io.github.core607.poketto.content.DocumentRevision.sha256(
-                                value.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                local.map(value -> DocumentRevision.sha256(value.getBytes(StandardCharsets.UTF_8))
                         .value()
                         .substring(7)),
                 merged.content(),
                 merged.conflicted());
     }
 
-    io.github.core607.poketto.content.RepositoryFile baselineFile(
-            AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
+    RepositoryFile baselineFile(AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
         return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
     }
 
     void acknowledgeSync(State state, SyncPlan plan) {
         if (state.uncertain
                 || !state.baseCommit.equals(plan.previousCommit())
-                || !state.baseline(plan.path()).equals(plan.previousPathCommit()))
+                || !state.baseline(plan.path()).equals(plan.previousPathCommit())) {
             throw new IllegalStateException("session baseline changed during synchronization");
+        }
         state.requireTracking(List.of(plan.path()));
         state.baselines.put(plan.path(), plan.remoteCommit());
         state.baseCommit = plan.remoteCommit();

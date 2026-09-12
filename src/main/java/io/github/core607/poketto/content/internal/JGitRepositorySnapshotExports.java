@@ -16,6 +16,7 @@ import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -25,19 +26,33 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.ObjectWalk;
+import org.eclipse.jgit.revwalk.RevObject;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.pack.PackConfig;
 import org.eclipse.jgit.transport.BundleWriter;
+import org.eclipse.jgit.treewalk.TreeWalk;
 
 final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     private final RepositoryAuthority authority;
@@ -51,10 +66,10 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     private record PublicRevision(WorkspaceId workspace, String commit) {}
 
-    private final java.util.Map<PublicRevision, String> publicFingerprints =
-            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(64, 0.75f, true) {
+    private final Map<PublicRevision, String> publicFingerprints =
+            Collections.synchronizedMap(new LinkedHashMap<>(64, 0.75f, true) {
                 @Override
-                protected boolean removeEldestEntry(java.util.Map.Entry<PublicRevision, String> eldest) {
+                protected boolean removeEldestEntry(Map.Entry<PublicRevision, String> eldest) {
                     return size() > 64;
                 }
             });
@@ -71,8 +86,9 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 || maxBytes > 1024L * 1024 * 1024
                 || timeout.isNegative()
                 || timeout.isZero()
-                || timeout.compareTo(Duration.ofMinutes(2)) > 0)
+                || timeout.compareTo(Duration.ofMinutes(2)) > 0) {
             throw new IllegalArgumentException("invalid repository export bounds");
+        }
         this.authority = authority;
         this.auth = auth;
         this.snapshots = snapshots;
@@ -99,29 +115,28 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
             clearAbandoned();
             Files.createDirectory(repositoryPath);
             privatePermissions(repositoryPath, true);
-            try (var git = org.eclipse.jgit.api.Git.init()
+            try (var git = Git.init()
                             .setBare(true)
                             .setDirectory(repositoryPath.toFile())
                             .call();
                     var inserter = git.getRepository().newObjectInserter()) {
-                var index = org.eclipse.jgit.dircache.DirCache.newInCore();
+                var index = DirCache.newInCore();
                 var builder = index.builder();
                 for (var file : projection.files().entrySet().stream()
-                        .sorted((a, b) -> java.util.Arrays.compareUnsigned(
-                                a.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                                b.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                        .sorted((a, b) -> Arrays.compareUnsigned(
+                                a.getKey().getBytes(StandardCharsets.UTF_8),
+                                b.getKey().getBytes(StandardCharsets.UTF_8)))
                         .toList()) {
                     checkDeadline(deadline);
-                    var entry = new org.eclipse.jgit.dircache.DirCacheEntry(file.getKey());
-                    entry.setFileMode(org.eclipse.jgit.lib.FileMode.REGULAR_FILE);
+                    var entry = new DirCacheEntry(file.getKey());
+                    entry.setFileMode(FileMode.REGULAR_FILE);
                     entry.setObjectId(inserter.insert(Constants.OBJ_BLOB, file.getValue()));
                     builder.add(entry);
                 }
                 builder.finish();
-                var baseline = new org.eclipse.jgit.lib.CommitBuilder();
+                var baseline = new CommitBuilder();
                 baseline.setTreeId(index.writeTree(inserter));
-                var author = new org.eclipse.jgit.lib.PersonIdent(
-                        "Poketto", "poketto@invalid", java.time.Instant.EPOCH, java.time.ZoneOffset.UTC);
+                var author = new PersonIdent("Poketto", "poketto@invalid", Instant.EPOCH, ZoneOffset.UTC);
                 baseline.setAuthor(author);
                 baseline.setCommitter(author);
                 baseline.setMessage("Public reading projection\n");
@@ -147,7 +162,9 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
                 snapshots.withCurrent(workspace, current -> {
                     if (!current.commit().equals(snapshot.commit())
-                            || !current.articles().equals(snapshot.articles())) throw unavailable();
+                            || !current.articles().equals(snapshot.articles())) {
+                        throw unavailable();
+                    }
                     return null;
                 });
                 long size = Files.size(pending);
@@ -188,22 +205,30 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     private PublicExecutionProjection.Projection projection(
             WorkspaceId workspace, PublicContentSnapshot snapshot, long deadline) {
-        if (!workspace.equals(snapshot.workspaceId())) throw unavailable();
+        if (!workspace.equals(snapshot.workspaceId())) {
+            throw unavailable();
+        }
         String authorityCommit = snapshot.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
         return authority.readImmutableObjects(workspace, objects -> {
             var policy = JGitPublicContentSnapshots.policy(objects, authorityCommit);
-            if (policy.state() != RepositoryPublishingPolicy.State.ENABLED) throw unavailable();
+            if (policy.state() != RepositoryPublishingPolicy.State.ENABLED) {
+                throw unavailable();
+            }
             RepositoryMediaIndex index = RepositoryMediaIndex.empty();
             try (RevWalk commits = new RevWalk(objects);
-                    var entry = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                    var entry = TreeWalk.forPath(
                             objects,
                             RepositoryMediaIndex.PATH,
                             commits.parseCommit(ObjectId.fromString(authorityCommit))
                                     .getTree())) {
                 if (entry != null) {
-                    if (!org.eclipse.jgit.lib.FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) throw unavailable();
+                    if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
+                        throw unavailable();
+                    }
                     var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
-                    if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) throw unavailable();
+                    if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) {
+                        throw unavailable();
+                    }
                     index = RepositoryMediaIndex.parse(blob.getBytes(RepositoryMediaIndex.MAX_BYTES));
                 }
             }
@@ -216,7 +241,9 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     @Override
     public void requireCurrentPublic(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported) {
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
-        if (!workspace.equals(exported.workspaceId())) throw unavailable();
+        if (!workspace.equals(exported.workspaceId())) {
+            throw unavailable();
+        }
         var current = snapshots.withCurrent(workspace, value -> value);
         String commit = current.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
         var revision = new PublicRevision(workspace, commit);
@@ -226,41 +253,29 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                     projection(workspace, current, System.nanoTime() + timeout.toNanos()));
             publicFingerprints.put(revision, fingerprint);
         }
-        if (!fingerprint.equals(exported.projectionSha256())) throw unavailable();
+        if (!fingerprint.equals(exported.projectionSha256())) {
+            throw unavailable();
+        }
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         snapshots.withCurrent(workspace, latest -> {
-            if (!latest.commit().equals(current.commit())) throw unavailable();
+            if (!latest.commit().equals(current.commit())) {
+                throw unavailable();
+            }
             return null;
         });
     }
 
     private void removeProjection(Path path) throws IOException {
-        if (!path.getParent().equals(staging) || !path.getFileName().toString().matches("[0-9a-f-]{36}\\.projection"))
+        if (!path.getParent().equals(staging) || !path.getFileName().toString().matches("[0-9a-f-]{36}\\.projection")) {
             throw unavailable();
-        if (!Files.exists(path, NOFOLLOW_LINKS)) return;
-        if (!Files.isDirectory(path, NOFOLLOW_LINKS) || !path.toRealPath().equals(path)) throw unavailable();
-        Files.walkFileTree(path, new java.nio.file.SimpleFileVisitor<>() {
-            @Override
-            public java.nio.file.FileVisitResult visitFile(
-                    Path file, java.nio.file.attribute.BasicFileAttributes attributes) throws IOException {
-                // JGit makes loose objects read-only; Windows requires clearing that flag before deletion.
-                if (attributes.isRegularFile()) {
-                    var dos = Files.getFileAttributeView(
-                            file, java.nio.file.attribute.DosFileAttributeView.class, NOFOLLOW_LINKS);
-                    if (dos != null) dos.setReadOnly(false);
-                }
-                Files.delete(file);
-                return java.nio.file.FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public java.nio.file.FileVisitResult postVisitDirectory(Path directory, IOException failure)
-                    throws IOException {
-                if (failure != null) throw failure;
-                Files.delete(directory);
-                return java.nio.file.FileVisitResult.CONTINUE;
-            }
-        });
+        }
+        if (!Files.exists(path, NOFOLLOW_LINKS)) {
+            return;
+        }
+        if (!Files.isDirectory(path, NOFOLLOW_LINKS) || !path.toRealPath().equals(path)) {
+            throw unavailable();
+        }
+        LocalFileTrees.delete(path);
     }
 
     @Override
@@ -277,7 +292,9 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                         String commit = requested.orElseGet(
                                 () -> snapshot.commitId().orElseThrow(JGitRepositorySnapshotExports::unavailable));
                         if (!commit.matches("[0-9a-f]{40}")
-                                || snapshot.commitId().isEmpty()) throw unavailable();
+                                || snapshot.commitId().isEmpty()) {
+                            throw unavailable();
+                        }
                         try (RevWalk walk = new RevWalk(repository)) {
                             walk.markStart(walk.parseCommit(
                                     ObjectId.fromString(snapshot.commitId().orElseThrow())));
@@ -285,13 +302,17 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                             int count = 0;
                             for (var item : walk) {
                                 checkDeadline(deadline);
-                                if (++count > 100_000) throw unavailable();
+                                if (++count > 100_000) {
+                                    throw unavailable();
+                                }
                                 if (item.name().equals(commit)) {
                                     found = true;
                                     break;
                                 }
                             }
-                            if (!found) throw unavailable();
+                            if (!found) {
+                                throw unavailable();
+                            }
                         }
                         preflight(repository, commit, deadline);
                         safeStaging();
@@ -338,19 +359,25 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
             int count = 0;
             while (walk.next() != null) {
                 checkDeadline(deadline);
-                if (++count > 100_000) throw unavailable();
+                if (++count > 100_000) {
+                    throw unavailable();
+                }
             }
             long rawBytes = 0;
-            org.eclipse.jgit.revwalk.RevObject object;
+            RevObject object;
             while ((object = walk.nextObject()) != null) {
                 checkDeadline(deadline);
-                if (++count > 250_000) throw unavailable();
+                if (++count > 250_000) {
+                    throw unavailable();
+                }
                 if (object.getType() == Constants.OBJ_BLOB) {
                     rawBytes += repository
                             .getObjectDatabase()
                             .open(object, Constants.OBJ_BLOB)
                             .getSize();
-                    if (rawBytes > maxBytes * 2) throw unavailable();
+                    if (rawBytes > maxBytes * 2) {
+                        throw unavailable();
+                    }
                 }
             }
         }
@@ -358,11 +385,15 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     @Override
     public void release(UUID exportId) {
-        if (!exports.contains(exportId)) return;
+        if (!exports.contains(exportId)) {
+            return;
+        }
         try {
             safeStaging();
             Path file = staging.resolve(exportId + ".bundle");
-            if (Files.exists(file, NOFOLLOW_LINKS) && !Files.isRegularFile(file, NOFOLLOW_LINKS)) throw unavailable();
+            if (Files.exists(file, NOFOLLOW_LINKS) && !Files.isRegularFile(file, NOFOLLOW_LINKS)) {
+                throw unavailable();
+            }
             Files.deleteIfExists(file);
             exports.remove(exportId);
         } catch (IOException exception) {
@@ -374,20 +405,28 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         Path path = staging.getRoot();
         for (Path segment : staging) {
             path = path.resolve(segment);
-            if (!Files.exists(path, NOFOLLOW_LINKS)) Files.createDirectory(path);
-            if (!Files.isDirectory(path, NOFOLLOW_LINKS) || !path.toRealPath().equals(path)) throw unavailable();
+            if (!Files.exists(path, NOFOLLOW_LINKS)) {
+                Files.createDirectory(path);
+            }
+            if (!Files.isDirectory(path, NOFOLLOW_LINKS) || !path.toRealPath().equals(path)) {
+                throw unavailable();
+            }
         }
         privatePermissions(staging, true);
     }
 
     private synchronized void clearAbandoned() throws IOException {
-        if (initialized) return;
+        if (initialized) {
+            return;
+        }
         try (var files = Files.newDirectoryStream(staging)) {
             int count = 0;
             for (Path file : files) {
                 if (Files.isDirectory(file, NOFOLLOW_LINKS)
                         && file.getFileName().toString().matches("[0-9a-f-]{36}\\.projection")) {
-                    if (++count > 1024) throw unavailable();
+                    if (++count > 1024) {
+                        throw unavailable();
+                    }
                     removeProjection(file);
                     continue;
                 }
@@ -396,8 +435,9 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                         || !file.getFileName()
                                 .toString()
                                 .matches(
-                                        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(pending|bundle)"))
+                                        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(pending|bundle)")) {
                     throw unavailable();
+                }
                 Files.delete(file);
             }
         }
@@ -405,12 +445,15 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     }
 
     private static void privatePermissions(Path path, boolean directory) throws IOException {
-        if (Files.getFileAttributeView(path, PosixFileAttributeView.class, NOFOLLOW_LINKS) != null)
+        if (Files.getFileAttributeView(path, PosixFileAttributeView.class, NOFOLLOW_LINKS) != null) {
             Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------"));
+        }
     }
 
     private static void checkDeadline(long deadline) {
-        if (System.nanoTime() > deadline || Thread.currentThread().isInterrupted()) throw unavailable();
+        if (System.nanoTime() > deadline || Thread.currentThread().isInterrupted()) {
+            throw unavailable();
+        }
     }
 
     private static ContentRepositoryException unavailable() {
@@ -431,14 +474,18 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         @Override
         public void write(int value) throws IOException {
             checkDeadline(deadline);
-            if (++bytes > maximum) throw unavailable();
+            if (++bytes > maximum) {
+                throw unavailable();
+            }
             out.write(value);
         }
 
         @Override
         public void write(byte[] value, int offset, int length) throws IOException {
             checkDeadline(deadline);
-            if (length > maximum - bytes) throw unavailable();
+            if (length > maximum - bytes) {
+                throw unavailable();
+            }
             bytes += length;
             out.write(value, offset, length);
         }

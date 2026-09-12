@@ -19,11 +19,15 @@ final class PortableArchiveWriter {
 
     record Entry(String path, long bytes, Source source) {
         Entry {
-            if (path == null || path.isEmpty() || path.length() > 1024)
+            if (path == null || path.isEmpty() || path.length() > 1024) {
                 throw new IllegalArgumentException("invalid export path");
-            for (String segment : path.split("/", -1)) RepositoryPathRules.validate(segment);
-            if (RepositoryPathRules.reserved(path) || bytes < 0)
+            }
+            for (String segment : path.split("/", -1)) {
+                RepositoryPathRules.validate(segment);
+            }
+            if (RepositoryPathRules.reserved(path) || bytes < 0) {
                 throw new IllegalArgumentException("invalid export entry");
+            }
             Objects.requireNonNull(source);
         }
     }
@@ -36,34 +40,40 @@ final class PortableArchiveWriter {
                     || zipBytes < 1
                     || timeout.isNegative()
                     || timeout.isZero()
-                    || timeout.compareTo(Duration.ofMinutes(10)) > 0)
+                    || timeout.compareTo(Duration.ofMinutes(10)) > 0) {
                 throw new IllegalArgumentException("invalid export bounds");
+            }
         }
     }
 
     static void write(OutputStream staging, List<Entry> entries, Limits limits, Runnable authorize) throws IOException {
         entries = List.copyOf(entries);
-        if (entries.isEmpty() || entries.size() > limits.entries())
+        if (entries.isEmpty() || entries.size() > limits.entries()) {
             throw new IllegalArgumentException("export entry bound exceeded");
+        }
         var names = new HashSet<String>();
         long bytes = 0;
         for (Entry entry : entries) {
-            if (entry.bytes() > limits.sourceBytes() - bytes)
+            if (entry.bytes() > limits.sourceBytes() - bytes) {
                 throw new IllegalArgumentException("export source byte bound exceeded");
+            }
             bytes += entry.bytes();
-            if (!names.add(DocumentPathRules.collisionKey(entry.path())))
+            if (!names.add(DocumentPathRules.collisionKey(entry.path()))) {
                 throw new IllegalArgumentException("export path collision");
+            }
         }
         for (String name : names) {
             for (int slash = name.indexOf('/'); slash >= 0; slash = name.indexOf('/', slash + 1)) {
-                if (names.contains(name.substring(0, slash)))
+                if (names.contains(name.substring(0, slash))) {
                     throw new IllegalArgumentException("export file and directory collision");
+                }
             }
         }
         long deadline = System.nanoTime() + limits.timeout().toNanos();
         Runnable deadlineCheck = () -> {
-            if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline)
+            if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) {
                 throw new IllegalStateException("export deadline exceeded");
+            }
         };
         Runnable check = () -> {
             deadlineCheck.run();
@@ -80,7 +90,9 @@ final class PortableArchiveWriter {
                 zip.putNextEntry(header);
                 var content = new CountedOutput(zip, entry.bytes(), check);
                 entry.source().copyTo(content);
-                if (content.bytes != entry.bytes()) throw new IOException("export original is incomplete");
+                if (content.bytes != entry.bytes()) {
+                    throw new IOException("export original is incomplete");
+                }
                 zip.closeEntry();
             }
             check.run();
@@ -108,7 +120,9 @@ final class PortableArchiveWriter {
         @Override
         public void write(byte[] data, int offset, int length) throws IOException {
             Objects.checkFromIndexSize(offset, length, data.length);
-            if (length > maximum - bytes) throw new IOException("export byte bound exceeded");
+            if (length > maximum - bytes) {
+                throw new IOException("export byte bound exceeded");
+            }
             for (int sent = 0; sent < length; ) {
                 check.run();
                 int count = Math.min(65536, length - sent);
