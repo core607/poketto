@@ -585,177 +585,236 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /**
+     * Routes one command to the family that owns it. Each family translates the same exceptions
+     * into its own failure codes -- a rejected selection is INVALID_EXPORT_SELECTION, INVALID_ARTIFACT,
+     * INVALID_MEDIA_REQUEST or INVALID_SELECTION depending on who asked -- so the translation stays
+     * with the family rather than being shared, and the agent inside the sandbox is told which of
+     * its arguments was refused.
+     */
     private BridgeReplies.Reply bridgeOperation(Session session, String executionId, JsonNode request) {
         JsonNode arguments = request.path("arguments");
         if (!arguments.isObject()) {
             throw new WorkerUnavailableException();
         }
-        if (request.path("operation").asString("").equals("status") && arguments.isEmpty()) {
-            return BridgeReplies.succeeded(new BridgeReplies.Status(
-                    session.fullRead ? "full" : "public",
-                    session.saveState.baseCommit,
-                    session.saveState.uncertain
-                            || (session.saveState.move != null && session.saveState.move.result == null),
-                    session.saveState.move != null,
-                    session.saveState.move == null
-                            ? new BridgeReplies.Absent()
-                            : SessionMoves.movePending(session.saveState.move),
-                    session.saveState.lastSave,
-                    session.lastImport));
-        }
         String operation = request.path("operation").asString("");
+        // A status call takes no argument. One that carries any is not a status call at all, and
+        // falls through to the unknown-operation reply rather than being answered with a guess.
+        if (operation.equals("status") && arguments.isEmpty()) {
+            return status(session);
+        }
         if (operation.equals("export")) {
-            try {
-                return exportPackage(session, executionId, arguments);
-            } catch (AuthException denied) {
-                return BridgeReplies.failed("ACCESS_DENIED");
-            } catch (IllegalArgumentException invalid) {
-                return BridgeReplies.failed("INVALID_EXPORT_SELECTION");
-            } catch (ContentExportException unavailable) {
-                return BridgeReplies.failed("EXPORT_" + unavailable.reason().name());
-            } catch (ContentRepositoryException | AssetStorageException unavailable) {
-                return BridgeReplies.failed("EXPORT_UNAVAILABLE");
-            }
+            return exportCommand(session, executionId, arguments);
         }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
-            try {
-                WorkerRequests.Data data;
-                if (operation.equals("artifact_create")) {
-                    var selected = BridgeArguments.artifactCreate(arguments);
-                    data = new WorkerRequests.ArtifactCreate(executionId, selected.path(), selected.mediaType());
-                } else {
-                    data = new WorkerRequests.ArtifactRemove(
-                            BridgeArguments.artifactRemove(arguments).artifactId());
-                }
-                authorize(session);
-                JsonNode result = requestLive(
-                        session,
-                        operation.equals("artifact_create") ? "ARTIFACT_CREATE" : "ARTIFACT_REMOVE",
-                        data,
-                        Duration.ofSeconds(10));
-                authorize(session);
-                String code = result.path("code").asString("");
-                if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
-                        .contains(code)) {
-                    return BridgeReplies.failed(code);
-                }
-                requireOk(result, session);
-                return operation.equals("artifact_create")
-                        ? BridgeReplies.artifact(artifactMetadata(result.path("artifact")))
-                        : BridgeReplies.removed();
-            } catch (IllegalArgumentException invalid) {
-                return BridgeReplies.failed("INVALID_ARTIFACT");
-            }
+            return artifactCommand(session, executionId, operation, arguments);
         }
         if (operation.equals("media_fetch") || operation.equals("media_import") || operation.equals("media_list")) {
-            try {
-                if (operation.equals("media_list")) {
-                    return listMedia(session, executionId, arguments);
-                }
-                return operation.equals("media_fetch")
-                        ? fetchMedia(session, executionId, arguments)
-                        : importMedia(session, executionId, arguments);
-            } catch (IllegalArgumentException invalid) {
-                return BridgeReplies.failed("INVALID_MEDIA_REQUEST");
-            } catch (AuthException denied) {
-                return BridgeReplies.failed("ACCESS_DENIED");
-            } catch (AssetStorageException unavailable) {
-                return BridgeReplies.failedBecause(
-                        "MEDIA_UNAVAILABLE", unavailable.reason().name());
-            } catch (ContentRepositoryException unavailable) {
-                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
-            }
+            return mediaCommand(session, executionId, operation, arguments);
         }
         if (operation.equals("save")
                 || operation.equals("recover")
                 || operation.equals("sync")
                 || operation.equals("move")) {
-            if (!session.fullRead) {
-                return BridgeReplies.failed("READ_ONLY_SCOPE");
-            }
-            try {
-                auth.authorize(
-                        session.principal,
-                        session.key.workspace(),
-                        operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
-                if (operation.equals("recover")) {
-                    boolean skipLocal = BridgeArguments.recoverSkipsLocal(arguments);
-                    if (session.saveState.move != null) {
-                        var recovered =
-                                saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
-                        if (session.saveState.move == null || session.saveState.move.result == null) {
-                            return recovered;
-                        }
-                        if (skipLocal) {
-                            return saves.moves().skipLocal(session.saveState);
-                        }
-                        return moveFiles(session, executionId, session.saveState.move, true);
-                    }
-                    if (skipLocal) {
-                        throw new IllegalArgumentException("no confirmed move to skip");
-                    }
-                    return saves.recover(session.principal, session.key.workspace(), session.saveState);
-                }
-                if (session.saveState.move != null) {
-                    return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
-                }
-                if (session.saveState.uncertain) {
-                    return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
-                }
-                if (operation.equals("move")) {
-                    var selected = BridgeArguments.move(arguments);
-                    var pending = saves.moves()
-                            .prepare(
-                                    session.principal,
-                                    session.key.workspace(),
-                                    session.saveState,
-                                    selected.source(),
-                                    selected.destination(),
-                                    captureOptional(session, executionId, RepositoryMediaIndex.PATH));
-                    return moveFiles(session, executionId, pending, false);
-                }
-                if (operation.equals("sync")) {
-                    String path = BridgeArguments.sync(arguments).path();
-                    JsonNode manifest = requestLive(
-                            session,
-                            "CAPTURE_OPTIONAL",
-                            new WorkerRequests.CapturePath(executionId, path),
-                            Duration.ofSeconds(5));
-                    if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-                        throw new IllegalArgumentException("the worker refused to capture the selected file");
-                    }
-                    requireOk(manifest, session);
-                    List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
-                            .absent();
-                    if (!absent.isEmpty() && !absent.equals(List.of(path))) {
-                        throw new WorkerUnavailableException();
-                    }
-                    var captured = readCapture(
-                            session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of());
-                    var plan = saves.prepareSync(
-                            session.principal,
-                            session.key.workspace(),
-                            session.saveState,
-                            path,
-                            Optional.ofNullable(captured.get(path)));
-                    return synchronizeFile(session, executionId, plan);
-                }
-                var selection = BridgeArguments.save(arguments);
-                List<String> writes = selection.writes();
-                List<String> deletes = selection.deletes();
-                var captured = capture(session, executionId, writes, deletes);
-                requireLive(session);
-                authorize(session);
-                return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
-            } catch (IllegalArgumentException invalid) {
-                return BridgeReplies.failed("INVALID_SELECTION");
-            } catch (AuthException denied) {
-                return BridgeReplies.failed("ACCESS_DENIED");
-            } catch (ContentRepositoryException unavailable) {
-                return BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
-            }
+            return writeCommand(session, executionId, operation, arguments);
         }
         return BridgeReplies.failed("OPERATION_UNAVAILABLE");
+    }
+
+    /** Where this session's writes stand, as the agent needs to see them before deciding what to do. */
+    private static BridgeReplies.Reply status(Session session) {
+        return BridgeReplies.succeeded(new BridgeReplies.Status(
+                session.fullRead ? "full" : "public",
+                session.saveState.baseCommit,
+                session.saveState.uncertain
+                        || (session.saveState.move != null && session.saveState.move.result == null),
+                session.saveState.move != null,
+                session.saveState.move == null
+                        ? new BridgeReplies.Absent()
+                        : SessionMoves.movePending(session.saveState.move),
+                session.saveState.lastSave,
+                session.lastImport));
+    }
+
+    private BridgeReplies.Reply exportCommand(Session session, String executionId, JsonNode arguments) {
+        try {
+            return exportPackage(session, executionId, arguments);
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failed("INVALID_EXPORT_SELECTION");
+        } catch (ContentExportException unavailable) {
+            return BridgeReplies.failed("EXPORT_" + unavailable.reason().name());
+        } catch (ContentRepositoryException | AssetStorageException unavailable) {
+            return BridgeReplies.failed("EXPORT_UNAVAILABLE");
+        }
+    }
+
+    /**
+     * Creates or releases one retained artifact. The worker's own refusals pass through unchanged,
+     * because the agent distinguishes a missing artifact from a full store from a bad request.
+     */
+    private BridgeReplies.Reply artifactCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        boolean create = operation.equals("artifact_create");
+        try {
+            WorkerRequests.Data data;
+            if (create) {
+                var selected = BridgeArguments.artifactCreate(arguments);
+                data = new WorkerRequests.ArtifactCreate(executionId, selected.path(), selected.mediaType());
+            } else {
+                data = new WorkerRequests.ArtifactRemove(
+                        BridgeArguments.artifactRemove(arguments).artifactId());
+            }
+            authorize(session);
+            JsonNode result =
+                    requestLive(session, create ? "ARTIFACT_CREATE" : "ARTIFACT_REMOVE", data, Duration.ofSeconds(10));
+            authorize(session);
+            String code = result.path("code").asString("");
+            if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
+                    .contains(code)) {
+                return BridgeReplies.failed(code);
+            }
+            requireOk(result, session);
+            return create ? BridgeReplies.artifact(artifactMetadata(result.path("artifact"))) : BridgeReplies.removed();
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failed("INVALID_ARTIFACT");
+        }
+    }
+
+    private BridgeReplies.Reply mediaCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        try {
+            return switch (operation) {
+                case "media_list" -> listMedia(session, executionId, arguments);
+                case "media_fetch" -> fetchMedia(session, executionId, arguments);
+                default -> importMedia(session, executionId, arguments);
+            };
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failed("INVALID_MEDIA_REQUEST");
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        } catch (AssetStorageException unavailable) {
+            return BridgeReplies.failedBecause(
+                    "MEDIA_UNAVAILABLE", unavailable.reason().name());
+        } catch (ContentRepositoryException unavailable) {
+            return BridgeReplies.failed("MEDIA_UNAVAILABLE");
+        }
+    }
+
+    /**
+     * The four commands that reconcile the sandbox with the repository. Three of them write to it;
+     * sync only reads, which is why the capability it needs is the lesser one. All four share the
+     * full-read scope check and the refusal to start while an earlier write is unresolved, so those
+     * stay here and only the command itself differs.
+     */
+    private BridgeReplies.Reply writeCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        if (!session.fullRead) {
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
+        }
+        try {
+            auth.authorize(
+                    session.principal,
+                    session.key.workspace(),
+                    operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
+            // Recovery is the one command allowed while a write is unresolved: it exists to resolve
+            // one. The guards below would otherwise refuse it and leave the session stuck.
+            if (operation.equals("recover")) {
+                return recoverCommand(session, executionId, arguments);
+            }
+            if (session.saveState.move != null) {
+                return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
+            }
+            if (session.saveState.uncertain) {
+                return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+            }
+            return switch (operation) {
+                case "move" -> moveCommand(session, executionId, arguments);
+                case "sync" -> syncCommand(session, executionId, arguments);
+                default -> saveCommand(session, executionId, arguments);
+            };
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failed("INVALID_SELECTION");
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        } catch (ContentRepositoryException unavailable) {
+            return BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
+        }
+    }
+
+    /**
+     * Finishes whichever write was left unresolved. A move that the remote acknowledged still has
+     * to be installed locally, and {@code --skip-local} releases that installation instead, which
+     * is only meaningful once the remote outcome is known.
+     */
+    private BridgeReplies.Reply recoverCommand(Session session, String executionId, JsonNode arguments) {
+        boolean skipLocal = BridgeArguments.recoverSkipsLocal(arguments);
+        if (session.saveState.move != null) {
+            var recovered = saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
+            if (session.saveState.move == null || session.saveState.move.result == null) {
+                return recovered;
+            }
+            if (skipLocal) {
+                return saves.moves().skipLocal(session.saveState);
+            }
+            return moveFiles(session, executionId, session.saveState.move, true);
+        }
+        if (skipLocal) {
+            throw new IllegalArgumentException("no confirmed move to skip");
+        }
+        return saves.recover(session.principal, session.key.workspace(), session.saveState);
+    }
+
+    private BridgeReplies.Reply moveCommand(Session session, String executionId, JsonNode arguments) {
+        var selected = BridgeArguments.move(arguments);
+        var pending = saves.moves()
+                .prepare(
+                        session.principal,
+                        session.key.workspace(),
+                        session.saveState,
+                        selected.source(),
+                        selected.destination(),
+                        captureOptional(session, executionId, RepositoryMediaIndex.PATH));
+        return moveFiles(session, executionId, pending, false);
+    }
+
+    /**
+     * Merges one file against its own baseline. The capture is optional because the agent may have
+     * deleted the file, and an absent path is a deletion to reconcile rather than a missing input.
+     */
+    private BridgeReplies.Reply syncCommand(Session session, String executionId, JsonNode arguments) {
+        String path = BridgeArguments.sync(arguments).path();
+        JsonNode manifest = requestLive(
+                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
+        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
+            throw new IllegalArgumentException("the worker refused to capture the selected file");
+        }
+        requireOk(manifest, session);
+        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                .absent();
+        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
+            throw new WorkerUnavailableException();
+        }
+        var captured =
+                readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of());
+        var plan = saves.prepareSync(
+                session.principal,
+                session.key.workspace(),
+                session.saveState,
+                path,
+                Optional.ofNullable(captured.get(path)));
+        return synchronizeFile(session, executionId, plan);
+    }
+
+    private BridgeReplies.Reply saveCommand(Session session, String executionId, JsonNode arguments) {
+        var selection = BridgeArguments.save(arguments);
+        List<String> writes = selection.writes();
+        List<String> deletes = selection.deletes();
+        var captured = capture(session, executionId, writes, deletes);
+        requireLive(session);
+        authorize(session);
+        return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
     }
 
     private BridgeReplies.Reply moveFiles(
