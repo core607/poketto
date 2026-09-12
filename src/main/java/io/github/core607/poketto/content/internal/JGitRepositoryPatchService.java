@@ -22,10 +22,7 @@ import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
-import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
@@ -530,17 +527,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             throw new IllegalArgumentException("text exceeds its size limit or contains NUL");
         }
         try {
-            var encoded = StandardCharsets.UTF_8
-                    .newEncoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .encode(CharBuffer.wrap(source));
-            if (encoded.remaining() > ContentLimits.MAX_DOCUMENT_BYTES) {
-                throw new IllegalArgumentException("text exceeds its byte limit");
-            }
-            byte[] bytes = new byte[encoded.remaining()];
-            encoded.get(bytes);
-            return bytes;
+            return StrictText.utf8(source, ContentLimits.MAX_DOCUMENT_BYTES, "text exceeds its byte limit");
         } catch (CharacterCodingException exception) {
             throw new IllegalArgumentException("replacement is not valid UTF-8 text");
         }
@@ -558,7 +545,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                     throw new RepositoryConflictException("expected file no longer exists");
                 }
                 FileMode mode = entry.getFileMode();
-                if (!mode.equals(FileMode.REGULAR_FILE) && !mode.equals(FileMode.EXECUTABLE_FILE)) {
+                if (!RepositoryBlobs.isFile(mode)) {
                     throw new IllegalArgumentException("patch target must be a regular text file");
                 }
                 ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);
@@ -609,8 +596,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             }
             if (RepositoryPathRules.markdown(path)
                     && !RepositoryPathRules.reserved(path)
-                    && (entry.getFileMode().equals(FileMode.REGULAR_FILE)
-                            || entry.getFileMode().equals(FileMode.EXECUTABLE_FILE))) {
+                    && RepositoryBlobs.isFile(entry.getFileMode())) {
                 count++;
                 bytes += replacements.containsKey(path)
                         ? replacements.get(path).length
@@ -674,8 +660,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
         if (entry == null) {
             return RepositoryPublishingPolicy.missing();
         }
-        if (!entry.getFileMode().equals(FileMode.REGULAR_FILE)
-                && !entry.getFileMode().equals(FileMode.EXECUTABLE_FILE)) {
+        if (!RepositoryBlobs.isFile(entry.getFileMode())) {
             return RepositoryPublishingPolicy.parse(null);
         }
         ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);
@@ -690,7 +675,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
         if (entry == null) {
             return RepositoryMediaIndex.empty();
         }
-        if (!FileMode.REGULAR_FILE.equals(entry.getFileMode())) {
+        if (!RepositoryBlobs.isPlainFile(entry.getFileMode())) {
             throw new IllegalArgumentException("repository media index must be a regular file");
         }
         ObjectLoader blob = repository.open(entry.getObjectId(), Constants.OBJ_BLOB);

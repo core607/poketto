@@ -28,7 +28,6 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
@@ -203,11 +202,10 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
             walk.setRecursive(true);
             while (walk.next()) {
                 String path = walk.getPathString();
-                if (!path.equals("documents") && !path.startsWith("documents/")) {
+                if (!DocumentPathRules.isManaged(path)) {
                     continue;
                 }
-                if (!(FileMode.REGULAR_FILE.equals(walk.getFileMode(0))
-                        || FileMode.EXECUTABLE_FILE.equals(walk.getFileMode(0)))) {
+                if (!RepositoryBlobs.isFile(walk.getFileMode(0))) {
                     throw new ContentRepositoryException(
                             "workspace " + workspaceId + " has a non-file managed document at " + path);
                 }

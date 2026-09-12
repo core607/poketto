@@ -91,7 +91,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                     if (entry == null) {
                         return new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of());
                     }
-                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) {
+                    if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
                         throw unavailable();
                     }
                     var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
@@ -169,7 +169,9 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                         throw unavailable();
                     }
                     String path = folder + tree.getPathString();
-                    if (!regular(tree.getFileMode(0)) || !imagePath(path) || inlinePaths.contains(path)) {
+                    if (!RepositoryBlobs.isFile(tree.getFileMode(0))
+                            || !imagePath(path)
+                            || inlinePaths.contains(path)) {
                         continue;
                     }
                     try {
@@ -253,7 +255,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                             || !path.toLowerCase(Locale.ROOT).matches(".*\\.(png|jpe?g|gif|webp)")) {
                         continue;
                     }
-                    if (!regular(tree.getFileMode(0))) {
+                    if (!RepositoryBlobs.isFile(tree.getFileMode(0))) {
                         continue;
                     }
                     long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
@@ -293,7 +295,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                             commits.parseCommit(ObjectId.fromString(descriptor.commit()))
                                     .getTree())) {
                 if (entry == null
-                        || !regular(entry.getFileMode(0))
+                        || !RepositoryBlobs.isFile(entry.getFileMode(0))
                         || !entry.getObjectId(0).name().equals(descriptor.objectId())) {
                     throw unavailable();
                 }
@@ -320,7 +322,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                             commits.parseCommit(ObjectId.fromString(descriptor.commit()))
                                     .getTree())) {
                 if (entry == null
-                        || !regular(entry.getFileMode(0))
+                        || !RepositoryBlobs.isFile(entry.getFileMode(0))
                         || !entry.getObjectId(0).name().equals(descriptor.objectId())) {
                     throw unavailable();
                 }
@@ -343,7 +345,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                         objects,
                         path,
                         commits.parseCommit(ObjectId.fromString(commit)).getTree())) {
-            if (entry == null || !regular(entry.getFileMode(0))) {
+            if (entry == null || !RepositoryBlobs.isFile(entry.getFileMode(0))) {
                 return Optional.empty();
             }
             long size = objects.getObjectSize(entry.getObjectId(0), Constants.OBJ_BLOB);
@@ -353,10 +355,6 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
             return Optional.of(new RepositoryBlob(
                     workspace, commit, path, entry.getObjectId(0).name(), size, policy.permitsPath(path)));
         }
-    }
-
-    private static boolean regular(FileMode mode) {
-        return FileMode.REGULAR_FILE.equals(mode) || FileMode.EXECUTABLE_FILE.equals(mode);
     }
 
     private static void validateCommit(String commit) {

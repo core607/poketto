@@ -1,9 +1,9 @@
 package io.github.core607.poketto.content;
 
+import io.github.core607.poketto.content.internal.MarkdownNodes;
+import io.github.core607.poketto.content.internal.StrictText;
 import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -43,16 +43,7 @@ public final class MarkdownDestinations {
             if (links.size() + images.size() > 256) {
                 throw new IllegalArgumentException("Markdown reference count exceeds its bound");
             }
-            if (node.getFirstChild() != null) {
-                node = node.getFirstChild();
-            } else {
-                while (node != null && node.getNext() == null) {
-                    node = node.getParent();
-                }
-                if (node != null) {
-                    node = node.getNext();
-                }
-            }
+            node = MarkdownNodes.next(node);
         }
         return new Destinations(links, images);
     }
@@ -91,12 +82,7 @@ public final class MarkdownDestinations {
                     i += Character.charCount(codePoint);
                 }
             }
-            String decoded = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes.toByteArray()))
-                    .toString();
+            String decoded = StrictText.utf8(bytes.toByteArray());
             if (decoded.startsWith("//")
                     || decoded.indexOf('\\') >= 0
                     || decoded.indexOf(':') >= 0

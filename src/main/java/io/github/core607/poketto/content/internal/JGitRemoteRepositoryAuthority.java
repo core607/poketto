@@ -6,11 +6,8 @@ import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
@@ -662,31 +659,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             return;
         }
         try {
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                    clearReadOnly(file);
-                    Files.delete(file);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
-                    if (failure != null) {
-                        throw failure;
-                    }
-                    Files.delete(directory);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            LocalFileTrees.delete(root);
         } catch (IOException exception) {
             throw new ContentRepositoryException("repository cache cannot be evicted");
-        }
-    }
-
-    private static void clearReadOnly(Path path) throws IOException {
-        if (Files.getFileStore(path).supportsFileAttributeView("dos")) {
-            Files.setAttribute(path, "dos:readonly", false);
         }
     }
 

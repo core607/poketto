@@ -65,6 +65,30 @@ class RepositoryPatchServiceTests {
     private final RepositoryMediaValidator mediaValidator = mock(RepositoryMediaValidator.class);
 
     @Test
+    void aMoveRepairsALinkWrittenByAMarkdownFileAtTheRepositoryRoot() throws Exception {
+        // Link repair covers every Markdown file in the tree, not only the ones under a directory.
+        // A root file has no directory to climb out of, so its repaired link is the target's own
+        // path; nothing else in the suite reaches that branch of the relative-link walk.
+        var fixture = new RemoteRepositoryFixture(directory);
+        ObjectId base = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        "README.md",
+                        bytes("# Workspace\n[note](private/box/note.md)"),
+                        "private/box/note.md",
+                        bytes("# Note")));
+        var result = service(fixture, (id, snapshot) -> {})
+                .move(
+                        principal,
+                        workspace,
+                        new RepositoryMoveRequest(base.name(), "private/box/note.md", "private/deeper/note.md"));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.getFile(workspace, Optional.empty(), "README.md").source())
+                .contains("# Workspace\n[note](private/deeper/note.md)");
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(result.commit());
+    }
+
+    @Test
     void publicMovePreservesAnAlreadyIneligibleReferenceWithoutPublishingItsTarget() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         ObjectId base = fixture.commitRemote(

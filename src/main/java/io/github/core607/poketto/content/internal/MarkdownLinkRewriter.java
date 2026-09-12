@@ -46,16 +46,7 @@ final class MarkdownLinkRewriter {
                     }
                 }
             }
-            if (node.getFirstChild() != null) {
-                node = node.getFirstChild();
-            } else {
-                while (node != null && node.getNext() == null) {
-                    node = node.getParent();
-                }
-                if (node != null) {
-                    node = node.getNext();
-                }
-            }
+            node = MarkdownNodes.next(node);
         }
         edits.sort(Comparator.comparingInt(Edit::start).reversed());
         StringBuilder result = new StringBuilder(body);

@@ -1,8 +1,7 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.content.internal.RepositoryPathRules;
-import java.nio.ByteBuffer;
-import java.nio.charset.CodingErrorAction;
+import io.github.core607.poketto.content.internal.StrictText;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.Collections;
@@ -85,12 +84,7 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
             throw invalid();
         }
         try {
-            String source = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
+            String source = StrictText.utf8(bytes);
             JsonNode root = JSON.readTree(source);
             fields(root, ROOT_FIELDS);
             JsonNode version = root.get("version");

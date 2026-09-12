@@ -1,9 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentLimits;
-import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -31,12 +29,7 @@ final class RepositoryMarkdownParser {
 
     static String decode(byte[] bytes) {
         try {
-            String source = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
+            String source = StrictText.utf8(bytes);
             if (source.indexOf('\0') >= 0) {
                 throw new IllegalArgumentException("text must not contain NUL bytes");
             }

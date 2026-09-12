@@ -7,7 +7,6 @@ import io.github.core607.poketto.content.RepositoryMoveDependencyException;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -16,7 +15,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.Repository;
 
 /** Builds one candidate from immutable base objects. It neither fetches media nor advances authority. */
@@ -50,7 +48,7 @@ final class RepositoryMovePlanner {
             if (entry == null) {
                 continue;
             }
-            if (!regular(entry.mode())) {
+            if (!RepositoryBlobs.isFile(entry.mode())) {
                 throw new IllegalArgumentException("moves cannot include symlinks or submodules");
             }
             copies.put(move.getValue(), entry);
@@ -74,7 +72,7 @@ final class RepositoryMovePlanner {
             String path = file.getKey();
             if (!RepositoryPathRules.markdown(path)
                     || RepositoryPathRules.reserved(path)
-                    || !regular(file.getValue().mode())) {
+                    || !RepositoryBlobs.isFile(file.getValue().mode())) {
                 continue;
             }
             var blob = repository.open(file.getValue().objectId(), Constants.OBJ_BLOB);
@@ -113,7 +111,7 @@ final class RepositoryMovePlanner {
                 String newTarget = relocated.getOrDefault(target, target);
                 if (!newPath.equals(oldPath) || !newTarget.equals(target)) {
                     boolean unsupportedTarget = files.containsKey(target)
-                            && !regular(files.get(target).mode());
+                            && !RepositoryBlobs.isFile(files.get(target).mode());
                     boolean invalidBefore =
                             policy.permitsPath(oldPath) && (!policy.permitsPath(target) || unsupportedTarget);
                     boolean invalidAfter =
@@ -122,7 +120,7 @@ final class RepositoryMovePlanner {
                         throw new RepositoryMoveDependencyException();
                     }
                     String fragment = authored.contains("#") ? authored.substring(authored.indexOf('#')) : "";
-                    return relative(newPath, newTarget) + fragment;
+                    return RelativeLinks.from(newPath, newTarget) + fragment;
                 }
                 return authored;
             });
@@ -184,36 +182,5 @@ final class RepositoryMovePlanner {
             }
         }
         return moved;
-    }
-
-    private static boolean regular(FileMode mode) {
-        return mode.equals(FileMode.REGULAR_FILE) || mode.equals(FileMode.EXECUTABLE_FILE);
-    }
-
-    private static String relative(String document, String target) {
-        String[] from = document.split("/");
-        String[] to = target.split("/");
-        int common = 0;
-        while (common < from.length - 1 && common < to.length && from[common].equals(to[common])) {
-            common++;
-        }
-        var segments = new ArrayList<String>();
-        for (int i = common; i < from.length - 1; i++) {
-            segments.add("..");
-        }
-        for (int i = common; i < to.length; i++) {
-            segments.add(to[i]);
-        }
-        String path = String.join("/", segments);
-        StringBuilder encoded = new StringBuilder();
-        for (byte value : path.getBytes(StandardCharsets.UTF_8)) {
-            int c = Byte.toUnsignedInt(value);
-            if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || "-._~/".indexOf(c) >= 0) {
-                encoded.append((char) c);
-            } else {
-                encoded.append('%').append(Character.forDigit(c >>> 4, 16)).append(Character.forDigit(c & 15, 16));
-            }
-        }
-        return encoded.toString();
     }
 }

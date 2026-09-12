@@ -17,14 +17,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.DosFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.DigestOutputStream;
@@ -226,7 +222,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                             commits.parseCommit(ObjectId.fromString(authorityCommit))
                                     .getTree())) {
                 if (entry != null) {
-                    if (!FileMode.REGULAR_FILE.equals(entry.getFileMode(0))) {
+                    if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
                         throw unavailable();
                     }
                     var blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
@@ -279,29 +275,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         if (!Files.isDirectory(path, NOFOLLOW_LINKS) || !path.toRealPath().equals(path)) {
             throw unavailable();
         }
-        Files.walkFileTree(path, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
-                // JGit makes loose objects read-only; Windows requires clearing that flag before deletion.
-                if (attributes.isRegularFile()) {
-                    var dos = Files.getFileAttributeView(file, DosFileAttributeView.class, NOFOLLOW_LINKS);
-                    if (dos != null) {
-                        dos.setReadOnly(false);
-                    }
-                }
-                Files.delete(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
-                if (failure != null) {
-                    throw failure;
-                }
-                Files.delete(directory);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        LocalFileTrees.delete(path);
     }
 
     @Override

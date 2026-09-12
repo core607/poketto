@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -201,12 +200,7 @@ public final class RepositoryImageCache {
             if (create && !Files.exists(cursor, NOFOLLOW_LINKS)) {
                 Files.createDirectory(cursor);
             }
-            BasicFileAttributes attributes = Files.readAttributes(cursor, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (!attributes.isDirectory()
-                    || attributes.isSymbolicLink()
-                    || !cursor.toRealPath().equals(cursor)) {
-                throw unavailable();
-            }
+            StorageDirectories.requireContained(cursor);
         }
     }
 

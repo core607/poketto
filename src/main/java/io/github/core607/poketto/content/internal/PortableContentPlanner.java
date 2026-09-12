@@ -19,7 +19,6 @@ import io.github.core607.poketto.content.RepositoryOriginalTransfers;
 import io.github.core607.poketto.content.RepositoryTree;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -299,7 +298,7 @@ final class PortableContentPlanner {
                     throw unavailable();
                 }
                 String target = managed(raw, UUID.fromString(fields[1]), fields[2], -1, "");
-                return relative(archive, target) + fragment;
+                return RelativeLinks.from(archive, target) + fragment;
             }
             var resolved = MarkdownDestinations.path(source, authored);
             if (resolved.isEmpty()) {
@@ -317,13 +316,13 @@ final class PortableContentPlanner {
                 target = routes.get(raw);
             }
             if (target != null && !target.isEmpty()) {
-                return relative(archive, target) + fragment;
+                return RelativeLinks.from(archive, target) + fragment;
             }
             if (raw.startsWith("/") && articleRoutes.contains(raw)) {
                 return authored;
             }
             if (media.index().files().containsKey(path)) {
-                return relative(archive, indexed(path)) + fragment;
+                return RelativeLinks.from(archive, indexed(path)) + fragment;
             }
             // Article links never recursively add documents. Public exports must not name private targets.
             if (RepositoryPathRules.markdown(path)) {
@@ -348,7 +347,7 @@ final class PortableContentPlanner {
                 originalPaths.put(key, generated);
                 bound();
             }
-            return relative(archive, originalPaths.get(key)) + fragment;
+            return RelativeLinks.from(archive, originalPaths.get(key)) + fragment;
         }
 
         String nextMedia(long size, String extension) {
@@ -421,24 +420,6 @@ final class PortableContentPlanner {
             }
         }
         return false;
-    }
-
-    private static String relative(String document, String target) {
-        String value = Path.of(document)
-                .getParent()
-                .relativize(Path.of(target))
-                .toString()
-                .replace('\\', '/');
-        var encoded = new StringBuilder();
-        for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
-            int c = Byte.toUnsignedInt(b);
-            if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || "-._~/".indexOf(c) >= 0) {
-                encoded.append((char) c);
-            } else {
-                encoded.append('%').append(Character.forDigit(c >>> 4, 16)).append(Character.forDigit(c & 15, 16));
-            }
-        }
-        return encoded.toString();
     }
 
     private static String suffix(String path) {
