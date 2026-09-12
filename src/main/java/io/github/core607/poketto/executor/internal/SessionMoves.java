@@ -109,19 +109,13 @@ final class SessionMoves {
         affected.addAll(plan.relocations().values());
         affected.addAll(replacements.keySet());
         state.requireTracking(affected);
-        byte[] payload = JSON.writeValueAsBytes(Map.of(
-                "operationId",
+        byte[] payload = JSON.writeValueAsBytes(new TransferredPlan(
                 UUID.randomUUID().toString(),
-                "source",
                 source,
-                "destination",
                 destination,
-                "originals",
-                originals,
-                "relocations",
+                Map.copyOf(originals),
                 plan.relocations(),
-                "replacements",
-                replacements));
+                Map.copyOf(replacements)));
         if (payload.length > 64 * 1024 * 1024) {
             throw new IllegalArgumentException("move plan exceeds transfer capacity");
         }
@@ -229,6 +223,20 @@ final class SessionMoves {
                 pending.request.source(),
                 pending.request.destination());
     }
+
+    /**
+     * The move as it crosses to the worker, streamed in bounded chunks rather than sent as an
+     * operation payload. The worker reads these field names directly, so renaming one here renames
+     * it on the wire.
+     */
+    record TransferredPlan(
+            String operationId,
+            String source,
+            String destination,
+            Map<String, RepositoryMovePlan.Original> originals,
+            Map<String, String> relocations,
+            // Jackson renders each replacement as base64, which is the form the worker decodes.
+            Map<String, byte[]> replacements) {}
 
     static final class Pending {
         final RepositoryMoveRequest request;
