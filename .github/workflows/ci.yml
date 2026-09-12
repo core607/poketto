@@ -10,19 +10,22 @@ on:
 permissions:
   contents: read
 
-# Pull-request runs may be superseded; a main run carries publication and deployment, which
-# must finish once started.
+# One verification per ref at a time. A pull-request run may be superseded, including by the run a
+# title or body edit starts: that run verifies the same commit, so replacing an unfinished one costs
+# nothing and avoids two full verifications competing over the same commit. A main run carries
+# publication and deployment, which must finish once started.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && github.run_id || 'source' }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
-    # An ignored metadata edit must neither cancel verification nor publish a skipped check
-    # named "verify" that could replace the required result for the same commit.
-    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'verify' }}
-    # Title/body edits do not rerun verification; retargeting changes the tested base.
-    if: github.event.action != 'edited' || github.event.changes.base != null
+    # Every run of this workflow verifies and reports under this fixed name. Branch protection
+    # requires the "verify" context and keeps expecting it from the newest run, so a run that
+    # renames or skips the job leaves the requirement unmet and the pull request unmergeable.
+    # Reporting success without verifying would be worse: a title edit would then hand a green
+    # required check to a commit whose verification failed. An edit therefore verifies again.
+    name: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
