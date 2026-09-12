@@ -477,7 +477,8 @@ class ReviewTests(unittest.TestCase):
         self.assertNotIn("application/vnd.github.v3.diff", workflow)
         self.assertNotIn("ref: ${{ github.event.pull_request.head", workflow)
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("github.event.changes.base == null && github.run_id || 'source'", ci)
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}" + chr(10), ci)
+        self.assertNotIn("github.run_id || 'source'", ci)
         self.assertIn('unittest discover -s .github/review -p "test_*.py"', ci)
         # Branch protection expects "verify" from the newest run of this workflow, including the
         # run a title or body edit starts. The job must therefore always run under that exact

@@ -10,10 +10,12 @@ on:
 permissions:
   contents: read
 
-# Pull-request runs may be superseded; a main run carries publication and deployment, which
-# must finish once started.
+# One verification per ref at a time. A pull-request run may be superseded, including by the run a
+# title or body edit starts: that run verifies the same commit, so replacing an unfinished one costs
+# nothing and avoids two full verifications competing over the same commit. A main run carries
+# publication and deployment, which must finish once started.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && github.run_id || 'source' }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
