@@ -47,10 +47,11 @@ public final class AssetService {
     private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
     private static final Duration MINIMUM_REUSABLE_LIFETIME = Duration.ofMinutes(1);
     private static final Duration CAPACITY_WARNING_INTERVAL = Duration.ofMinutes(1);
-    // Two different things, despite the similar names. The first is what one page's image work
-    // may reserve from the shared admission pool at a time. The second is not a reservation at
-    // all: it caps the bytes one inventory request may account for in total, while each of its
-    // images still reserves the same per-image share as a page does.
+    // Neither of these reserves anything. Both cap the bytes one request may account for in
+    // total, one for a page and one for an inventory listing. What actually reserves from the
+    // shared admission pool is ImageMemoryAdmission.BROWSER_BYTES, and both paths take that same
+    // per-image share. Raising a bound here therefore lets a request consider more images; it
+    // does not give any of them more memory.
     private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
     private final AuthService auth;
