@@ -47,7 +47,7 @@ The remaining violations are the suppressed length limits: 6 production files ov
 
 An exemption names a method, not a signature, so where an exempted name is overloaded its siblings are exempted too. That covers 4 methods that are currently under the limit: the second `initialize` in `LocalPortableContentExports.java` and the second `fetchMedia`, `open`, and `readCapture` in `IsolatedRepositoryExecutor.java`. Matching a signature in XPath would need the parameter list spelled out in the suppression, which rots against ordinary refactoring; the name is the readable granularity.
 
-The suppression list is a debt register. The largest entry, `IsolatedRepositoryExecutor.java`, is split when the worker protocol moves to records; the others shrink when their owners are touched.
+The suppression list is a debt register. The largest entry, `IsolatedRepositoryExecutor.java`, is split when the worker protocol moves to records; the others shrink when their owners are touched. Four entries have since gone, three of them from the worker-response records and one from the dispatcher split recorded in [shared checks](2026-09-12-shared-checks.md), which also treats the repeated checks underneath the lengths.
 
 Checkstyle parses each Java release with its own grammar. A language feature the pinned version cannot parse fails `checkstyleMain` visibly and is resolved by upgrading the pin, as with the formatter.
 
