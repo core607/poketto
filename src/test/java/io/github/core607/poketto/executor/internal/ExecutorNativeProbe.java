@@ -379,9 +379,9 @@ public final class ExecutorNativeProbe {
         assertThat(complete.stdout()).isEqualTo("x".repeat(16384));
         assertThat(complete.stdoutTruncated()).isTrue();
         assertThat(complete.artifactErrors()).isEmpty();
-        Map<String, Object> full = complete.artifacts().get("stdout");
-        assertThat(full.get("truncated")).isEqualTo(false);
-        assertThat(readArtifact(executor, "first", (String) full.get("artifactId")))
+        var full = complete.artifacts().get("stdout");
+        assertThat(full.truncated()).isFalse();
+        assertThat(readArtifact(executor, "first", full.artifactId()))
                 .isEqualTo("x".repeat(65537).getBytes(StandardCharsets.UTF_8));
         passed("long-output-retains-complete-bytes-behind-bounded-preview");
 
@@ -393,9 +393,9 @@ public final class ExecutorNativeProbe {
         assertThat(limited.terminationReason()).isEqualTo(RepositoryExecutor.TerminationReason.OUTPUT_LIMIT);
         assertThat(limited.stdout()).isEqualTo("z".repeat(16384));
         assertThat(limited.artifactErrors()).isEmpty();
-        Map<String, Object> prefix = limited.artifacts().get("stdout");
-        assertThat(prefix.get("truncated")).isEqualTo(true);
-        assertThat(readArtifact(executor, "first", (String) prefix.get("artifactId")))
+        var prefix = limited.artifacts().get("stdout");
+        assertThat(prefix.truncated()).isTrue();
+        assertThat(readArtifact(executor, "first", prefix.artifactId()))
                 .isEqualTo("z".repeat(4 * 1024 * 1024).getBytes(StandardCharsets.UTF_8));
         assertThat(execute(executor, "first", "cat after-output-limit", new Cancellation())
                         .stdout())
@@ -933,7 +933,7 @@ public final class ExecutorNativeProbe {
             doAnswer(call -> {
                         WorkerClient.PreparedRequest request = call.getArgument(0);
                         var payload = JSON.readTree(
-                                Base64.getUrlDecoder().decode(request.envelope().get("payload")));
+                                Base64.getUrlDecoder().decode(request.envelope().payload()));
                         if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get()) {
                             return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
                         }

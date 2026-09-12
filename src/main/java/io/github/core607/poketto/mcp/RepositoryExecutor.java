@@ -57,6 +57,16 @@ public interface RepositoryExecutor {
         }
     }
 
+    /** Immutable metadata for one retained artifact, as the worker reported it. */
+    record ArtifactMetadata(
+            String artifactId,
+            String name,
+            String mediaType,
+            long bytes,
+            String sha256,
+            boolean truncated,
+            int expiresInSeconds) {}
+
     record ExecutionResult(
             String commit,
             int exitCode,
@@ -66,7 +76,7 @@ public interface RepositoryExecutor {
             boolean stderrTruncated,
             boolean timedOut,
             TerminationReason terminationReason,
-            Map<String, Map<String, Object>> artifacts,
+            Map<String, ArtifactMetadata> artifacts,
             Map<String, String> artifactErrors) {
         public ExecutionResult {
             artifacts = Map.copyOf(artifacts);

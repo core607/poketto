@@ -78,11 +78,11 @@ class SessionMovesTests {
                 .containsEntry("private/unsaved.pdf", draft)
                 .containsKey("private/archive/manual.pdf")
                 .doesNotContainKey("private/manual.pdf");
-        assertThat(saves.moves().commit(actor, workspace, state, pending).get("code"))
+        assertThat(saves.moves().commit(actor, workspace, state, pending).code())
                 .isEqualTo("LOCAL_MOVE_PENDING");
         assertThat(state.baseCommit).isEqualTo(initial);
         assertThat(saves.save(actor, workspace, state, Map.of("private/later.md", "later"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("RECOVER_MOVE_FIRST");
         var remote =
                 RepositoryMediaIndex.parse(reader.getFile(actor, workspace, Optional.empty(), RepositoryMediaIndex.PATH)
@@ -116,13 +116,13 @@ class SessionMovesTests {
         state.move = null;
         saves.moves().commit(actor, workspace, state, pending);
         String committed = pending.result.commit();
-        assertThat(saves.moves().skipLocal(state).get("ok")).isEqualTo(true);
+        assertThat(saves.moves().skipLocal(state).ok()).isEqualTo(true);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
         assertThat(state.baseline("private/secret.md")).isEqualTo(fixture.sourceCommit());
         assertThat(state.baseline("private/moved.md")).isEqualTo(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/moved.md", "later local edit"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
         var plan = saves.prepareSync(actor, workspace, state, "private/moved.md", Optional.empty());
         assertThat(plan).isNotNull();
@@ -140,14 +140,14 @@ class SessionMovesTests {
         var pending = saves.moves()
                 .prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         byte[] original = pending.payload.clone();
-        assertThat(saves.moves().commit(actor, workspace, state, pending).get("code"))
+        assertThat(saves.moves().commit(actor, workspace, state, pending).code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         assertThat(pending.attempt).isNotNull();
         assertThatThrownBy(() ->
                         saves.moves().prepare(actor, workspace, state, "article.md", "other.md", Optional.empty()))
                 .isInstanceOf(IllegalArgumentException.class);
         fixture.restoreTransport();
-        assertThat(saves.moves().recover(actor, workspace, state).get("code")).isEqualTo("LOCAL_MOVE_PENDING");
+        assertThat(saves.moves().recover(actor, workspace, state).code()).isEqualTo("LOCAL_MOVE_PENDING");
         assertThat(pending.result.commit()).isEqualTo(pending.attempt.commit());
         assertThat(pending.payload).containsExactly(original);
         assertThat(fixture.pushes()).isEqualTo(1);

@@ -47,14 +47,14 @@ final class SelectedFileSaves {
         return moves;
     }
 
-    Map<String, ?> save(
+    BridgeReplies.Reply save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
         if (state.move != null) {
             return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
         }
         if (state.uncertain) {
-            return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+            return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
         var paths = new HashSet<>(writes.keySet());
         if (writes.size() + deletes.size() < 1
@@ -75,45 +75,39 @@ final class SelectedFileSaves {
                     path, baseline.expectedAbsence(), baseline.revision(), Optional.ofNullable(writes.get(path))));
         }
         RepositoryPatch patch = new RepositoryPatch(Optional.of(state.baseCommit), changes);
+        BridgeReplies.Reply reply;
         try {
             var result = patches.apply(actor, workspace, patch);
             // Only these selected files changed in the new authoritative tree. All other local
             // edits retain their old authoritative contents as their next save preconditions.
-            completed(state, result, List.copyOf(paths), false);
+            reply = completed(state, result, List.copyOf(paths), false);
         } catch (RepositoryWriteAmbiguousException unknown) {
             state.pending = patch;
             state.attempt = unknown.attempt();
             state.uncertain = true;
-            state.lastSave = Map.of(
-                    "ok",
-                    false,
-                    "code",
+            reply = BridgeReplies.failed(
                     "WRITE_OUTCOME_UNKNOWN",
-                    "message",
                     "Run poketto recover to reconcile the retained commit before another save; local edits are retained.");
         } catch (RepositoryConflictException conflict) {
-            state.lastSave = Map.of(
-                    "ok",
-                    false,
-                    "code",
-                    "REPOSITORY_CONFLICT",
-                    "message",
-                    "Remote main changed; local edits and the host baseline are retained.");
+            reply = BridgeReplies.failed(
+                    "REPOSITORY_CONFLICT", "Remote main changed; local edits and the host baseline are retained.");
         }
-        return state.lastSave;
+        state.lastSave = reply;
+        return reply;
     }
 
-    Map<String, ?> recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
+    BridgeReplies.Reply recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
         if (!state.uncertain) {
-            return Map.of("ok", true, "result", Map.of("recoveryNeeded", false));
+            return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
         }
         if (state.pending == null || state.attempt.isEmpty()) {
-            return Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+            return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
+        BridgeReplies.Reply reply;
         try {
             var result = patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
-            completed(
+            reply = completed(
                     state,
                     result,
                     state.pending.changes().stream()
@@ -122,43 +116,28 @@ final class SelectedFileSaves {
                     true);
         } catch (RepositoryWriteAmbiguousException unknown) {
             // Retain the same original patch and commit even if the recovery reply is also lost.
-            state.lastSave = Map.of("ok", false, "code", "WRITE_OUTCOME_UNKNOWN");
+            reply = BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         } catch (RepositoryConflictException conflict) {
             state.uncertain = false;
             state.pending = null;
             state.attempt = Optional.empty();
-            state.lastSave = Map.of(
-                    "ok",
-                    false,
-                    "code",
+            reply = BridgeReplies.failed(
                     "REPOSITORY_CONFLICT",
-                    "message",
                     "Remote main diverged from the retained attempt; local edits and baseline are retained.");
         }
-        return state.lastSave;
+        state.lastSave = reply;
+        return reply;
     }
 
-    private static void completed(State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
+    private static BridgeReplies.Reply completed(
+            State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
         state.baseCommit = result.commit();
         paths.forEach(path -> state.baselines.put(path, result.commit()));
         state.uncertain = false;
         state.pending = null;
         state.attempt = Optional.empty();
-        state.lastSave = Map.of(
-                "ok",
-                true,
-                "result",
-                Map.of(
-                        "commit",
-                        result.commit(),
-                        "committed",
-                        result.committed(),
-                        "snapshotUpdated",
-                        result.snapshotUpdated(),
-                        "paths",
-                        paths,
-                        "recovered",
-                        recovered));
+        return BridgeReplies.succeeded(new BridgeReplies.SaveResult(
+                result.commit(), result.committed(), result.snapshotUpdated(), paths, recovered));
     }
 
     /** Confined to one session's admitted execute owner and its serial bridge loop; renewal never accesses it. */
@@ -169,7 +148,7 @@ final class SelectedFileSaves {
         boolean uncertain;
         RepositoryPatch pending;
         Optional<RepositoryWriteAttempt> attempt = Optional.empty();
-        Map<String, ?> lastSave = Map.of();
+        BridgeReplies.Recorded lastSave = new BridgeReplies.Absent();
         SessionMoves.Pending move;
 
         State(String baseCommit) {

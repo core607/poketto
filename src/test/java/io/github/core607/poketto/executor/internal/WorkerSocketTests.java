@@ -524,12 +524,14 @@ class WorkerSocketTests {
             var identity = new WorkerClient.Identity(
                     UUID.randomUUID(), UUID.randomUUID(), WORKSPACE.value(), "0".repeat(64), UUID.randomUUID());
             peer.wrongRequestId = true;
-            assertThatThrownBy(() -> client.request(hello, identity, "EXEC", Map.of(), Duration.ofSeconds(1)))
+            assertThatThrownBy(() ->
+                            client.request(hello, identity, "EXEC", new WorkerRequests.Renew(), Duration.ofSeconds(1)))
                     .isInstanceOf(WorkerUnavailableException.class);
             peer.wrongRequestId = false;
             peer.stallExec = true;
             long start = System.nanoTime();
-            assertThatThrownBy(() -> client.request(hello, identity, "EXEC", Map.of(), Duration.ofMillis(100)))
+            assertThatThrownBy(() ->
+                            client.request(hello, identity, "EXEC", new WorkerRequests.Renew(), Duration.ofMillis(100)))
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(2));
             assertThat(peer.operations("EXEC")).hasSize(2);

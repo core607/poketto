@@ -12,7 +12,7 @@ final class SessionExportSelection {
 
     static List<String> resolve(List<String> selections, RepositorySnapshotExports.PublicExport projection) {
         if (selections.isEmpty() || selections.size() > 128) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("an export selects 1 to 128 paths");
         }
         var normalized = new LinkedHashSet<String>();
         for (String selection : selections) {
@@ -21,7 +21,7 @@ final class SessionExportSelection {
                 validate(path);
             }
             if (!normalized.add(path)) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("an export must not select the same path twice");
             }
         }
         if (projection == null) {
@@ -37,12 +37,12 @@ final class SessionExportSelection {
                     sources.add(entry.getValue());
                     matched = true;
                     if (sources.size() > 128) {
-                        throw new IllegalArgumentException();
+                        throw new IllegalArgumentException("an export expands to at most 128 source paths");
                     }
                 }
             }
             if (!matched) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("an export selection matches no published path");
             }
         }
         return List.copyOf(sources);
@@ -52,7 +52,7 @@ final class SessionExportSelection {
         RepositoryPaths.validate(path);
         for (String part : path.split("/")) {
             if (part.startsWith(".") || part.equalsIgnoreCase("AGENTS.md")) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("an export must not select a dot path or AGENTS.md");
             }
         }
     }

@@ -3,7 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
@@ -24,7 +24,8 @@ final class MediaListing {
                     || !arguments.path("offset").canConvertToInt()
                     || !arguments.path("limit").isIntegralNumber()
                     || !arguments.path("limit").canConvertToInt()) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException(
+                        "a media listing takes a prefix, offset, limit, indexVersion and commit");
             }
             String prefix = arguments.path("prefix").stringValue();
             int offset = arguments.path("offset").intValue(),
@@ -35,7 +36,7 @@ final class MediaListing {
                     || offset > RepositoryMediaIndex.MAX_FILES
                     || limit < 1
                     || limit > 200) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("a media listing offset and limit must be within their bounds");
             }
             return new Query(
                     prefix,
@@ -50,45 +51,33 @@ final class MediaListing {
                 return null;
             }
             if (!value.isString() || !value.stringValue().matches("[0-9a-f]{" + length + "}")) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException(
+                        "an optional hash must be null or lowercase hex of its exact length");
             }
             return value.stringValue();
         }
     }
 
-    static Map<String, ?> page(
+    static BridgeReplies.Reply page(
             Map<String, RepositoryMediaIndex.Media> files, Query query, String version, String source) {
         if (query.version() != null && !query.version().equals(version)) {
-            return Map.of("ok", false, "code", "MEDIA_INDEX_CHANGED", "indexVersion", version);
+            return BridgeReplies.staleIndex(version);
         }
         var matches = files.entrySet().stream()
                 .filter(entry -> entry.getKey().startsWith(query.prefix()))
                 .sorted(Map.Entry.comparingByKey())
                 .toList();
-        var items = new ArrayList<Map<String, Object>>();
-        var result = new LinkedHashMap<String, Object>();
-        result.put("indexSource", source);
-        result.put("indexVersion", version);
-        if (query.commit() != null) {
-            result.put("commit", query.commit());
-        }
-        result.put("items", items);
-        result.put("total", matches.size());
-        result.put("offset", query.offset());
-        result.put("nextOffset", null);
-        Map<String, Object> response = Map.of("ok", true, "result", result);
+        var items = new ArrayList<BridgeReplies.MediaItem>();
         int next = Math.min(query.offset(), matches.size());
         while (next < matches.size() && items.size() < query.limit()) {
             var entry = matches.get(next);
-            items.add(Map.of(
-                    "path",
+            items.add(new BridgeReplies.MediaItem(
                     entry.getKey(),
-                    "mediaType",
                     entry.getValue().mediaType(),
-                    "size",
                     entry.getValue().size()));
-            result.put("nextOffset", next + 1 < matches.size() ? next + 1 : null);
-            if (JSON.writeValueAsBytes(response).length > MAX_PAGE_BYTES) {
+            // Measure the page as the caller will receive it, cursor included, before keeping it.
+            var candidate = page(items, query, version, source, matches.size(), next + 1);
+            if (JSON.writeValueAsBytes(candidate).length > MAX_PAGE_BYTES) {
                 items.removeLast();
                 if (items.isEmpty()) {
                     throw new IllegalArgumentException("Media entry exceeds page bound");
@@ -97,8 +86,19 @@ final class MediaListing {
             }
             next++;
         }
-        result.put("nextOffset", next < matches.size() ? next : null);
-        return response;
+        return page(items, query, version, source, matches.size(), next);
+    }
+
+    private static BridgeReplies.Reply page(
+            List<BridgeReplies.MediaItem> items, Query query, String version, String source, int total, int next) {
+        return BridgeReplies.succeeded(new BridgeReplies.MediaPage(
+                source,
+                version,
+                query.commit(),
+                List.copyOf(items),
+                total,
+                query.offset(),
+                next < total ? next : null));
     }
 
     private MediaListing() {}
