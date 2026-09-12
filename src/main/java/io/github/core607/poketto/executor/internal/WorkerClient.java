@@ -24,7 +24,13 @@ import tools.jackson.databind.ObjectMapper;
 /** One bounded Unix-socket exchange per operation; EXEC is never replayed after an uncertain response. */
 final class WorkerClient {
     private static final Logger log = LoggerFactory.getLogger(WorkerClient.class);
+    /**
+     * The wire-version-1 frame ceiling from the worker reference, applied to both directions. The
+     * handshake refuses a worker that advertises anything else, because a larger frame on one side
+     * would be silently truncated by the other.
+     */
     static final int MAX_FRAME = 1024 * 1024;
+
     private final Path socket;
     private final PrivateKey signingKey;
     private final Runnable verifySocket;
