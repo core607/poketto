@@ -3,6 +3,11 @@ package io.github.core607.poketto.content;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.function.Function;
 
+/**
+ * The public site's view of a workspace. Readers take one verified, unexpired snapshot and
+ * never fetch on their own, so a slow or failing remote cannot turn a page request into a
+ * network call, and missing or invalid publication policy exposes nothing.
+ */
 public interface PublicContentSnapshots {
     void ensureReady(WorkspaceId workspaceId);
 

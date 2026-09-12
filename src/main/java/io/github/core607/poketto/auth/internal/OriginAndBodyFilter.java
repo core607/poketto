@@ -25,7 +25,9 @@ import java.util.Set;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 final class OriginAndBodyFilter extends OncePerRequestFilter {
+    /** Authentication body bound from the workspace identity record. */
     static final int MAX_AUTH_BODY = 16 * 1024;
+
     private final Set<String> origins;
 
     OriginAndBodyFilter(Set<String> origins) {

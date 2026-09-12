@@ -91,9 +91,14 @@ class ExecutorConfiguration {
     private static PrivateKey privateKey(Path path) {
         try {
             ancestors(path);
+            // Every check reads the path itself, never what a link points at: following one would
+            // let anyone who can create a link inside a writable directory substitute another file
+            // between the check and the read.
             if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > 16 * 1024) {
                 throw new IllegalArgumentException("the signing key must be a regular file of at most 16 KiB");
             }
+            // This key signs every request the worker trusts. Any access beyond its owner means
+            // another account on this host could sign requests as the application.
             var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
             if (permissions.stream()
                     .anyMatch(permission -> permission.name().startsWith("GROUP_")
@@ -115,11 +120,17 @@ class ExecutorConfiguration {
     private static void socketPermissions(Path path) {
         try {
             ancestors(path);
+            // A directory anyone else owns can be renamed or replaced, which moves the socket this
+            // application connects to. Requiring root ownership the whole way up means only root
+            // can put a different endpoint where the worker is expected to be.
             for (Path parent = path.getParent(); parent != null; parent = parent.getParent()) {
                 if (!Files.getOwner(parent, LinkOption.NOFOLLOW_LINKS).getName().equals("root")) {
                     throw new IllegalArgumentException("every ancestor of a protected path must be owned by root");
                 }
             }
+            // The endpoint must be a socket owned by root and closed to everyone outside its
+            // group: a regular file or a socket someone else can bind would let another account
+            // answer in the worker's place, and the application would sign real leases to it.
             var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
             int mode = (Integer) Files.getAttribute(path, "unix:mode", LinkOption.NOFOLLOW_LINKS);
             if ((mode & 0170000) != 0140000
@@ -141,6 +152,8 @@ class ExecutorConfiguration {
         if (!path.isAbsolute() || !path.equals(path.normalize())) {
             throw new IllegalArgumentException("a protected path must be absolute and already normalized");
         }
+        // Checked from the path upwards, because a link anywhere along the way makes every
+        // check below it describe a different file than the one that will be opened.
         for (Path current = path; current != null; current = current.getParent()) {
             if (Files.isSymbolicLink(current)) {
                 throw new IllegalArgumentException("a protected path must not traverse a symbolic link");

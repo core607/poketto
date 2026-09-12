@@ -31,6 +31,10 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 /** Path walks keep independent merge state and share only immutable, bounded Git objects. */
 final class RepositoryHistoryDates {
+    // Every bound below is one of the work budgets the repository authoring record fixes for
+    // history dating. They bound work rather than correctness: exhausting one raises a
+    // repository error naming the budget in the log, and never invents a date or calls a
+    // document malformed. Public snapshot installation stays closed on failure.
     static final int MAX_COMMITS = 100_000;
     private static final long MAX_COMMIT_BYTES = 64L * 1024 * 1024;
     private static final long MAX_TREE_BYTES = 256L * 1024 * 1024;

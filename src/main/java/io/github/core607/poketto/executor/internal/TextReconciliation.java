@@ -13,6 +13,10 @@ import org.eclipse.jgit.merge.MergeAlgorithm;
 import org.eclipse.jgit.merge.MergeFormatter;
 
 final class TextReconciliation {
+    /**
+     * A three-way merge holds the local, base and remote texts at once plus its result, so
+     * the bound is four times the largest single document rather than a number of its own.
+     */
     private static final int MAX_BYTES = 4 * ContentLimits.MAX_DOCUMENT_BYTES;
 
     static Result merge(Optional<String> base, Optional<String> local, Optional<String> remote) {

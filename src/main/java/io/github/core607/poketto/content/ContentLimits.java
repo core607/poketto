@@ -3,6 +3,11 @@ package io.github.core607.poketto.content;
 /**
  * Fixed resource bounds of the content format. A document or workspace beyond a bound is invalid
  * content rather than a configuration matter, so the bounds are constants, not properties.
+ *
+ * <p>Every value here is the one in the bounds table of the decision record
+ * {@code notes/implemented/2026-09-04-validated-content-snapshot.md}, which owns them. Changing one
+ * here without changing that record leaves the repository disagreeing with itself about what a
+ * valid workspace is.
  */
 public final class ContentLimits {
 
@@ -15,6 +20,7 @@ public final class ContentLimits {
     /** Longest title after trimming, in Unicode code points. */
     public static final int MAX_TITLE_LENGTH = 200;
 
+    /** Most tags one document may carry. */
     public static final int MAX_TAGS = 32;
 
     /** Longest tag after trimming, in Unicode code points. */

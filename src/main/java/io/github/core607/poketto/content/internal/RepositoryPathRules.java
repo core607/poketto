@@ -4,6 +4,11 @@ import io.github.core607.poketto.content.ContentLimits;
 import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * What a repository-relative path may be. These rules run before a path reaches Git or the
+ * filesystem, so traversal, absolute paths and backslash separators are refused at the
+ * boundary rather than relied on to fail later.
+ */
 public final class RepositoryPathRules {
     private RepositoryPathRules() {}
 

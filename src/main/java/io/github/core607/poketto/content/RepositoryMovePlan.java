@@ -18,8 +18,12 @@ public record RepositoryMovePlan(
         Map<String, Original> originals,
         Map<String, String> relocations,
         Map<String, byte[]> replacements) {
+    /** Paths one move may affect, from the atomic content moves record. */
     public static final int MAX_CHANGED_PATHS = 16_384;
+
+    /** Replacement text one move may carry, from the atomic content moves record. */
     public static final int MAX_REPLACEMENT_BYTES = 32 * 1024 * 1024;
+    /** Largest original a move may relocate, the same per-file bound the blob store applies. */
     public static final long MAX_ORIGINAL_BYTES = 128L * 1024 * 1024;
 
     /** Optional means an indexed original may never have been materialized in this session. */

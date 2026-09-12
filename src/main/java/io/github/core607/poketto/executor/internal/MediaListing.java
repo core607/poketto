@@ -11,7 +11,13 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Lists logical index metadata, not proof that an original is currently available. */
 final class MediaListing {
+    /**
+     * The page bound the worker reference states for {@code poketto media list}. A page is built
+     * up to this size and then trimmed, so an entry that cannot fit alone is a listing this
+     * protocol cannot express rather than a page to send half of.
+     */
     static final int MAX_PAGE_BYTES = 12 * 1024;
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     record Query(String prefix, int offset, int limit, String version, String commit) {

@@ -27,6 +27,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Bounds request streams and reserves separate admission for small SDK lifecycle notifications. */
 final class McpBodyLimitFilter implements Filter {
+    // Both bounds come from the local execution supervisor record. A declared length is checked
+    // before dispatch, and an unknown-length body is read to the limit plus one byte and refused
+    // with 413, so an oversized request never reaches business handling.
     static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;
     static final int MAX_INITIALIZE_BYTES = 16 * 1024;
     private final Semaphore activePosts = new Semaphore(4);

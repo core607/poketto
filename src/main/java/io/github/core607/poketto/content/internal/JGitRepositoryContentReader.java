@@ -35,7 +35,9 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 final class JGitRepositoryContentReader implements RepositoryContentReader {
+    /** Tree entries one scan visits, from the repository authoring record. */
     private static final int MAX_TREE_ENTRIES = 100_000;
+
     private final RepositoryAuthority authority;
     private final RepositoryMarkdownParser parser = new RepositoryMarkdownParser();
 

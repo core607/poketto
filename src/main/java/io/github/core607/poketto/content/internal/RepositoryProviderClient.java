@@ -27,7 +27,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Provider metadata supplies an immutable identity; Git URLs alone cannot identify renamed repositories. */
 final class RepositoryProviderClient implements AutoCloseable {
+    /**
+     * How much of a provider's answer this client will read. No decision record fixes this
+     * value; it is a defensive ceiling on a third-party response, large enough for the
+     * repository metadata both providers return and small enough that a hostile or broken
+     * endpoint cannot stream indefinitely into memory.
+     */
     private static final int MAX_METADATA_BYTES = 128 * 1024;
+
     private final JsonMapper json = JsonMapper.builder().build();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))

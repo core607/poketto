@@ -21,8 +21,11 @@ import org.yaml.snakeyaml.nodes.Tag;
 final class RepositoryPublishingPolicy {
 
     static final String PATH = ".poketto/publishing.yaml";
+    /** Largest publishing policy document, from the phase-one record. */
     static final int MAX_BYTES = 16 * 1024;
+    /** Exclusion patterns one publishing policy may declare, from the phase-one record. */
     static final int MAX_EXCLUSIONS = 64;
+
     private static final Set<String> FIELDS = Set.of("enabled", "mode", "exclude");
 
     enum State {

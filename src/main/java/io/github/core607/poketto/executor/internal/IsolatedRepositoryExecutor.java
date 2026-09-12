@@ -1400,6 +1400,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /**
+     * Frees the admission slot. The session leaves the table only once its MCP session has also
+     * ended: until then it must stay reachable by key, so a later command for the same key finds
+     * the stopping session instead of opening a second lease beside it.
+     */
     private synchronized void releaseCapacity(Session session) {
         session.capacityReleased = true;
         if (session.detached) {
@@ -1429,6 +1434,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         throw new WorkerUnavailableException();
     }
 
+    /**
+     * The MCP session ended, so nothing will ask this lease for more work. The session is removed
+     * only if its capacity was already released; otherwise the release path removes it, and one of
+     * the two orders always applies because both run under this object's monitor.
+     */
     @EventListener
     void closed(McpSessionClosed event) {
         SessionKey key = new SessionKey(event.keyId(), event.workspaceId(), hash(event.sessionId()));
@@ -1519,6 +1529,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /**
+     * Accepts an answer only if it succeeded and belongs to this lease and commit. A refusal
+     * carries no detail to the caller, because a worker failure is not something the caller can
+     * act on and its text could name host paths or command bytes.
+     *
+     * <p>The rejection code does reach the log, which is where an operator diagnoses this. It is
+     * printed only when it matches the shape the protocol defines for a code, so a worker that
+     * puts something else in that field cannot write arbitrary text into the log.
+     */
     private static void requireOk(JsonNode response, Session session) {
         if (!response.path("ok").booleanValue()) {
             String code = response.path("code").asString("INVALID_RESPONSE");
@@ -1579,6 +1598,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } catch (RuntimeException exception) {
             String reason = result.path("terminationReason").asString("");
             log.warn(
+                    // The exception's own text can quote the answer, which may hold command
+                    // output, so only its type and the reason's vetted shape are recorded.
                     "Invalid worker execution result ({}; termination={})",
                     exception.getClass().getSimpleName(),
                     reason.matches("[a-z_]{1,32}") ? reason : "invalid");
@@ -1615,6 +1636,39 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private static final class MaterializationCapacity extends RuntimeException {}
 
+    /**
+     * One MCP client's execution lease, from admission to removal.
+     *
+     * <p>A session is created on the first command, opens a worker lease, serves commands one at a
+     * time, and is then stopped either because the client went away or because something failed. It
+     * is removed from the table only when both of two independent things have happened: the worker
+     * lease is confirmed released, and the MCP session it belonged to is gone. Either can happen
+     * first, so neither alone may remove it. Keeping a session whose lease is unconfirmed is what
+     * prevents its admission slot from being reused while a worker process may still be running.
+     *
+     * <p>The flags below are set by different threads: commands run on the caller's thread, renewal
+     * and close reconciliation on the control pool, and closure and revocation on Spring's event
+     * threads. Each flag is therefore a one-way latch or a compare-and-set claim, never a plain
+     * read-modify-write.
+     *
+     * <ul>
+     *   <li>{@code openAttempted} - a lease may exist at the worker from here on, so cleanup must
+     *       run even if opening failed. Nothing before this point can have left worker state.
+     *   <li>{@code ready} - the worker reported READY, so commands may run. Set once, never unset;
+     *       a session that stops is discarded rather than returned to a not-ready state.
+     *   <li>{@code busy} - one command or artifact read owns this session. Claimed with
+     *       compare-and-set, because the protocol allows exactly one command per lease at a time.
+     *   <li>{@code renewing} - the control pool owns the next lease action. Also a claim, so a slow
+     *       renewal cannot overlap the reconciliation that follows a failed close.
+     *   <li>{@code stopping} - termination has begun. Renewal stops honouring this session, and
+     *       close reconciliation takes over.
+     *   <li>{@code stopped} - completed when termination finishes, so a caller can wait for the
+     *       worker's process tree to be gone rather than assume it.
+     *   <li>{@code capacityReleased} - the admission slot is free again. Set only after the worker
+     *       confirms CLOSED or a different worker boot proves the old lease cannot exist.
+     *   <li>{@code detached} - the MCP session ended, so no new command can arrive for this key.
+     * </ul>
+     */
     private static final class Session {
         private final SessionKey key;
         private final AuthPrincipal principal;

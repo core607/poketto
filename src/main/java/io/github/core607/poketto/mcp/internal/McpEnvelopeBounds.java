@@ -6,7 +6,14 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Streams envelope limits before the SDK constructs its argument tree or echoes a request id. */
 final class McpEnvelopeBounds {
+    /**
+     * How much JSON structure one envelope may contain before the SDK builds an argument
+     * tree from it. Both bounds come from the local execution supervisor record and are
+     * applied by streaming preflight, so a deeply nested or enormous envelope is refused
+     * before anything allocates a tree for it.
+     */
     static final int MAX_TOKENS = 4096;
+
     static final int MAX_DEPTH = 32;
     private final ObjectMapper json;
 
