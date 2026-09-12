@@ -9,17 +9,25 @@ final class BoundedImageReads {
     private BoundedImageReads() {}
 
     static byte[] read(InputStream input, int maximum) throws IOException {
-        if (maximum < 1) throw new IllegalArgumentException("positive image read bound required");
+        if (maximum < 1) {
+            throw new IllegalArgumentException("positive image read bound required");
+        }
         byte[] block = new byte[Math.min(8192, maximum)];
         var output = new ByteArrayOutputStream(block.length);
         while (output.size() < maximum) {
             int count = input.read(block, 0, Math.min(block.length, maximum - output.size()));
-            if (count < 0) break;
+            if (count < 0) {
+                break;
+            }
             if (count == 0) {
                 int single = input.read();
-                if (single < 0) break;
+                if (single < 0) {
+                    break;
+                }
                 output.write(single);
-            } else output.write(block, 0, count);
+            } else {
+                output.write(block, 0, count);
+            }
         }
         return output.toByteArray();
     }

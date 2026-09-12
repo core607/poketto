@@ -1,8 +1,7 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.content.internal.RepositoryPathRules;
-import java.nio.ByteBuffer;
-import java.nio.charset.CodingErrorAction;
+import io.github.core607.poketto.content.internal.StrictText;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.Collections;
@@ -22,7 +21,9 @@ import tools.jackson.databind.json.JsonMapper;
 public record RepositoryMediaIndex(Map<String, Media> files) {
     public static final String PATH = ".poketto/assets.json";
     public static final int MAX_BYTES = ContentLimits.MAX_DOCUMENT_BYTES;
+    /** Entries one media index may hold, matching the managed document count per workspace. */
     public static final int MAX_FILES = 10_000;
+
     private static final Set<String> ROOT_FIELDS = Set.of("version", "files");
     private static final Set<String> MEDIA_FIELDS = Set.of("assetId", "revision", "mediaType", "size");
     private static final JsonMapper JSON = JsonMapper.builder()
@@ -31,21 +32,29 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
             .build();
 
     public RepositoryMediaIndex {
-        if (files == null || files.size() > MAX_FILES) throw invalid();
+        if (files == null || files.size() > MAX_FILES) {
+            throw invalid();
+        }
         TreeMap<String, Media> ordered = new TreeMap<>();
         Set<String> keys = new HashSet<>();
         for (var file : files.entrySet()) {
             String path = RepositoryPathRules.validate(file.getKey());
             String key = collisionKey(path);
-            if (file.getValue() == null || !keys.add(key) || key.endsWith(".md")) throw invalid();
+            if (file.getValue() == null || !keys.add(key) || key.endsWith(".md")) {
+                throw invalid();
+            }
             for (String segment : key.split("/")) {
-                if (segment.equals(".poketto")) throw invalid();
+                if (segment.equals(".poketto")) {
+                    throw invalid();
+                }
             }
             ordered.put(path, file.getValue());
         }
         for (String key : keys) {
             for (int slash = key.indexOf('/'); slash >= 0; slash = key.indexOf('/', slash + 1)) {
-                if (keys.contains(key.substring(0, slash))) throw invalid();
+                if (keys.contains(key.substring(0, slash))) {
+                    throw invalid();
+                }
             }
         }
         files = Collections.unmodifiableMap(ordered);
@@ -59,7 +68,9 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
                     || mediaType == null
                     || !mediaType.matches("[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}")
                     || size < 1
-                    || size > 128L * 1024 * 1024) throw invalid();
+                    || size > 128L * 1024 * 1024) {
+                throw invalid();
+            }
         }
     }
 
@@ -69,14 +80,11 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
 
     /** Strict UTF-8 JSON, with no unknown fields, duplicate keys, coercion or trailing document. */
     public static RepositoryMediaIndex parse(byte[] bytes) {
-        if (bytes == null || bytes.length == 0 || bytes.length > MAX_BYTES) throw invalid();
+        if (bytes == null || bytes.length == 0 || bytes.length > MAX_BYTES) {
+            throw invalid();
+        }
         try {
-            String source = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
+            String source = StrictText.utf8(bytes);
             JsonNode root = JSON.readTree(source);
             fields(root, ROOT_FIELDS);
             JsonNode version = root.get("version");
@@ -85,7 +93,9 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
                     || version.intValue() != 1
                     || !version.asText().equals("1")
                     || !entries.isObject()
-                    || entries.size() > MAX_FILES) throw invalid();
+                    || entries.size() > MAX_FILES) {
+                throw invalid();
+            }
             Map<String, Media> files = new TreeMap<>();
             for (String path : entries.propertyNames()) {
                 JsonNode entry = entries.get(path);
@@ -94,7 +104,9 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
                 UUID uuid = UUID.fromString(id);
                 if (!uuid.toString().equals(id)
                         || !entry.get("size").isIntegralNumber()
-                        || !entry.get("size").canConvertToLong()) throw invalid();
+                        || !entry.get("size").canConvertToLong()) {
+                    throw invalid();
+                }
                 files.put(
                         path,
                         new Media(
@@ -123,32 +135,48 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
         });
         byte[] bytes = (JSON.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n")
                 .getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > MAX_BYTES) bytes = JSON.writeValueAsBytes(root);
-        if (bytes.length > MAX_BYTES) throw invalid();
+        if (bytes.length > MAX_BYTES) {
+            bytes = JSON.writeValueAsBytes(root);
+        }
+        if (bytes.length > MAX_BYTES) {
+            throw invalid();
+        }
         return bytes;
     }
 
     /** Rejects media overlays over Git files, symlinks, submodules or their parent/child paths. */
     public void requireNoGitCollisions(Iterable<String> gitPaths) {
         TreeSet<String> git = new TreeSet<>();
-        for (String path : gitPaths) git.add(collisionKey(path));
+        for (String path : gitPaths) {
+            git.add(collisionKey(path));
+        }
         for (String path : files.keySet()) {
             String key = collisionKey(path);
-            if (git.contains(key)) throw invalid();
+            if (git.contains(key)) {
+                throw invalid();
+            }
             for (int slash = key.indexOf('/'); slash >= 0; slash = key.indexOf('/', slash + 1)) {
-                if (git.contains(key.substring(0, slash))) throw invalid();
+                if (git.contains(key.substring(0, slash))) {
+                    throw invalid();
+                }
             }
             String next = git.ceiling(key + "/");
-            if (next != null && next.startsWith(key + "/")) throw invalid();
+            if (next != null && next.startsWith(key + "/")) {
+                throw invalid();
+            }
         }
     }
 
     private static void fields(JsonNode node, Set<String> fields) {
-        if (node == null || !node.isObject() || !new HashSet<>(node.propertyNames()).equals(fields)) throw invalid();
+        if (node == null || !node.isObject() || !new HashSet<>(node.propertyNames()).equals(fields)) {
+            throw invalid();
+        }
     }
 
     private static String text(JsonNode node) {
-        if (!node.isString()) throw invalid();
+        if (!node.isString()) {
+            throw invalid();
+        }
         return node.stringValue();
     }
 

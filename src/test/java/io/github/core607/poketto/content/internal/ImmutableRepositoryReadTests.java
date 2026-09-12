@@ -1,9 +1,20 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.AdditionalAnswers.delegatesTo;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryBlob;
@@ -16,7 +27,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -216,7 +229,7 @@ class ImmutableRepositoryReadTests {
         assertThat(blobs.find(workspace, descriptor.commit(), descriptor.path()))
                 .contains(descriptor);
         assertThat(blobs.images(workspace, descriptor.commit(), "")).containsExactly(descriptor);
-        assertThat(blobs.siblings(workspace, descriptor.commit(), "public/article.md", 128, false, java.util.Set.of())
+        assertThat(blobs.siblings(workspace, descriptor.commit(), "public/article.md", 128, false, Set.of())
                         .items())
                 .containsExactly(descriptor);
         assertThat(blobs.read(descriptor)).isEqualTo(image);
@@ -281,7 +294,9 @@ class ImmutableRepositoryReadTests {
                 doCallRealMethod().when(opened).close();
                 opened.close();
             }
-            if (Files.exists(moved)) Files.move(moved, cache);
+            if (Files.exists(moved)) {
+                Files.move(moved, cache);
+            }
         }
         fixture.authority().readObjects(other, snapshot -> snapshot.commitId());
         assertThat(cache).doesNotExist();
@@ -296,9 +311,15 @@ class ImmutableRepositoryReadTests {
                 Repository observed = spy(repository);
                 Path headLock = repository.getDirectory().toPath().resolve("HEAD.lock");
                 Path mainLock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
-                if (operation.equals("HEAD detach")) Files.createFile(headLock);
-                if (operation.equals("main delete")) Files.createFile(mainLock);
-                if (operation.equals("HEAD relink")) failRelinkWithRealLock(observed, headLock);
+                if (operation.equals("HEAD detach")) {
+                    Files.createFile(headLock);
+                }
+                if (operation.equals("main delete")) {
+                    Files.createFile(mainLock);
+                }
+                if (operation.equals("HEAD relink")) {
+                    failRelinkWithRealLock(observed, headLock);
+                }
                 try {
                     assertThatThrownBy(() -> removeMain(observed))
                             .isInstanceOf(ContentRepositoryException.class)
@@ -371,7 +392,7 @@ class ImmutableRepositoryReadTests {
         var descriptor = load(fixture);
         var blobs = new JGitRepositoryBlobReader(fixture.authority());
         assertThat(blobs.read(descriptor)).isEqualTo(image);
-        for (var forged : java.util.List.of(
+        for (var forged : List.of(
                 new RepositoryBlob(
                         workspace, "1".repeat(40), descriptor.path(), descriptor.objectId(), descriptor.size(), true),
                 new RepositoryBlob(

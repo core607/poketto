@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,7 +31,7 @@ public class AcceptanceRepositories {
                                 .toUri()
                                 .toString()),
                         new UsernamePasswordCredentialsProvider("fixture", "fixture"));
-            } catch (java.net.URISyntaxException exception) {
+            } catch (URISyntaxException exception) {
                 throw new IllegalStateException(exception);
             }
         };

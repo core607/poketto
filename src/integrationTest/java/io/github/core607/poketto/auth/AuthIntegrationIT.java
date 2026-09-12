@@ -1,6 +1,7 @@
 package io.github.core607.poketto.auth;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
@@ -17,6 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -280,8 +282,9 @@ class AuthIntegrationIT {
         var invitation = auth.createInvitation(owner, workspace, Set.of());
         auth.acceptInvitation(member, invitation.token());
         assertThat(auth.authorize(member, workspace).capabilities()).containsExactly(Capability.EXECUTE_REPOSITORY);
-        for (Capability permission : AuthService.CONTENT_PERMISSIONS)
+        for (Capability permission : AuthService.CONTENT_PERMISSIONS) {
             assertCode(() -> auth.authorize(member, workspace, permission), AuthException.Code.DENIED);
+        }
         var stronger = auth.createInvitation(owner, workspace, AuthService.CONTENT_PERMISSIONS);
         auth.acceptInvitation(member, stronger.token());
         assertCode(() -> auth.authorize(member, workspace, Capability.READ_PRIVATE), AuthException.Code.DENIED);
@@ -347,8 +350,7 @@ class AuthIntegrationIT {
             var revoke = executor.submit(() ->
                     auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of()));
             try {
-                assertThatThrownBy(() -> revoke.get(100, TimeUnit.MILLISECONDS))
-                        .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                assertThatThrownBy(() -> revoke.get(100, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
             } finally {
                 release.countDown();
             }
@@ -388,8 +390,7 @@ class AuthIntegrationIT {
                     }));
             assertThat(inside.await(5, TimeUnit.SECONDS)).isTrue();
             var revoke = executor.submit(() -> auth.revokeApiKey(owner, workspace, token.id()));
-            assertThatThrownBy(() -> revoke.get(150, TimeUnit.MILLISECONDS))
-                    .isInstanceOf(java.util.concurrent.TimeoutException.class);
+            assertThatThrownBy(() -> revoke.get(150, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
             release.countDown();
             assertThat(write.get(5, TimeUnit.SECONDS)).isEqualTo("committed");
             revoke.get(5, TimeUnit.SECONDS);
@@ -492,7 +493,9 @@ class AuthIntegrationIT {
 
     private static void await(CountDownLatch latch) {
         try {
-            if (!latch.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("test coordination timeout");
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("test coordination timeout");
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(exception);
@@ -517,7 +520,9 @@ class AuthIntegrationIT {
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             go.countDown();
             List<Object> results = new ArrayList<>();
-            for (var future : futures) results.add(future.get(15, TimeUnit.SECONDS));
+            for (var future : futures) {
+                results.add(future.get(15, TimeUnit.SECONDS));
+            }
             return results;
         }
     }

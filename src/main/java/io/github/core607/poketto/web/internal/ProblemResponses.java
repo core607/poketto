@@ -1,6 +1,7 @@
 package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.content.ContentExportException;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentConflictException;
 import io.github.core607.poketto.content.DocumentNotFoundException;
@@ -36,8 +37,8 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         return problem;
     }
 
-    @ExceptionHandler(io.github.core607.poketto.content.ContentExportException.class)
-    ProblemDetail exportFailure(io.github.core607.poketto.content.ContentExportException exception) {
+    @ExceptionHandler(ContentExportException.class)
+    ProblemDetail exportFailure(ContentExportException exception) {
         HttpStatus status =
                 switch (exception.reason()) {
                     case CAPACITY -> HttpStatus.TOO_MANY_REQUESTS;

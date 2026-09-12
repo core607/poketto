@@ -7,12 +7,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.transport.RefSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +37,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class)
+@Import(RemoteRepositoryIntegrationConfiguration.class)
 class PostgresIntegrationIT {
 
     @TempDir
@@ -148,7 +150,7 @@ class PostgresIntegrationIT {
             String remote = dataDirectory.resolve("remote.git").toUri().toString();
             git.push()
                     .setRemote(remote)
-                    .setRefSpecs(new org.eclipse.jgit.transport.RefSpec("refs/heads/main:refs/heads/main"))
+                    .setRefSpecs(new RefSpec("refs/heads/main:refs/heads/main"))
                     .call();
             snapshots.refresh(workspace.id());
             mvc.perform(get("/api/public/documents"))
@@ -163,7 +165,7 @@ class PostgresIntegrationIT {
                     .call();
             git.push()
                     .setRemote(remote)
-                    .setRefSpecs(new org.eclipse.jgit.transport.RefSpec("refs/heads/main:refs/heads/main"))
+                    .setRefSpecs(new RefSpec("refs/heads/main:refs/heads/main"))
                     .call();
             snapshots.refresh(workspace.id());
         }

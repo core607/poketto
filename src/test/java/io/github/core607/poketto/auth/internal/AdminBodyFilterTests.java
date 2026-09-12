@@ -1,12 +1,16 @@
 package io.github.core607.poketto.auth.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.fail;
 
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +25,7 @@ class AdminBodyFilterTests {
     @Test
     void mediaDownloadsNeitherOccupyNorRequireRequestBodyCapacity() throws Exception {
         var filter = new AdminBodyFilter(1);
-        for (String method : java.util.List.of("GET", "HEAD")) {
+        for (String method : List.of("GET", "HEAD")) {
             var download = new MockHttpServletRequest(
                     method, "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media");
             download.setServletPath("/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media");
@@ -43,8 +47,8 @@ class AdminBodyFilterTests {
     @Test
     void rawMediaDispatchDoesNotPrebufferItsBodyAndRejectsFormParsingTypes() throws Exception {
         var filter = new AdminBodyFilter(1);
-        for (String type : java.util.List.of(
-                "application/octet-stream", "application/x-www-form-urlencoded", "multipart/form-data")) {
+        for (String type :
+                List.of("application/octet-stream", "application/x-www-form-urlencoded", "multipart/form-data")) {
             var opened = new AtomicBoolean();
             var request =
                     new MockHttpServletRequest(
@@ -72,7 +76,9 @@ class AdminBodyFilterTests {
             filter.doFilter(request, response, (req, res) -> dispatched.set(true));
             assertThat(opened).isFalse();
             assertThat(dispatched.get()).isEqualTo(type.equals("application/octet-stream"));
-            if (!dispatched.get()) assertThat(response.getStatus()).isEqualTo(415);
+            if (!dispatched.get()) {
+                assertThat(response.getStatus()).isEqualTo(415);
+            }
         }
     }
 
@@ -161,7 +167,9 @@ class AdminBodyFilterTests {
         var filter = new AdminBodyFilter(1);
         for (boolean checked : new boolean[] {true, false}) {
             assertThatThrownBy(() -> filter.doFilter(request(true, true), new MockHttpServletResponse(), (req, res) -> {
-                        if (checked) throw new ServletException("failed part parsing");
+                        if (checked) {
+                            throw new ServletException("failed part parsing");
+                        }
                         throw new IllegalStateException("failed controller");
                     }))
                     .isInstanceOf(checked ? ServletException.class : IllegalStateException.class);
@@ -239,7 +247,9 @@ class AdminBodyFilterTests {
 
     private static void await(CountDownLatch latch) {
         try {
-            if (!latch.await(5, TimeUnit.SECONDS)) throw new AssertionError("latch timeout");
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("latch timeout");
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AssertionError(exception);
@@ -254,7 +264,7 @@ class AdminBodyFilterTests {
                         ? "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/assets"
                         : "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/preview");
         request.setContentType(multipart ? "multipart/form-data; boundary=x" : "application/json");
-        request.setContent("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        request.setContent("{}".getBytes(StandardCharsets.UTF_8));
         return request;
     }
 

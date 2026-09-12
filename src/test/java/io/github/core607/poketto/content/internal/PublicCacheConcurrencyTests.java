@@ -1,14 +1,24 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
@@ -20,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -177,7 +188,7 @@ class PublicCacheConcurrencyTests {
         assertThat(state.service.readPublicImage(workspace, original).bytes()).isEqualTo(png());
         clock.now = clock.now.plusSeconds(300);
         assertThatThrownBy(() -> state.service.readPublicImage(workspace, original))
-                .isInstanceOf(io.github.core607.poketto.assets.AssetStorageException.class);
+                .isInstanceOf(AssetStorageException.class);
     }
 
     @Test
@@ -280,11 +291,11 @@ class PublicCacheConcurrencyTests {
         var blobs = new JGitRepositoryBlobReader(fixture.authority());
         var auth = mock(AuthService.class);
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         when(auth.withAuthorization(any(), any(), any(), any()))
                 .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get());
         var actor = mock(AuthPrincipal.class);
@@ -362,7 +373,9 @@ class PublicCacheConcurrencyTests {
                 await(gate.release);
             }
             ObjectId commit = delegate.fetchMain(repository, binding);
-            if (gate != null) gate.fetched.countDown();
+            if (gate != null) {
+                gate.fetched.countDown();
+            }
             return commit;
         }
 

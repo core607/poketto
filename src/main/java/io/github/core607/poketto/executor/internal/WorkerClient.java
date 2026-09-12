@@ -8,13 +8,12 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.Signature;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -25,7 +24,13 @@ import tools.jackson.databind.ObjectMapper;
 /** One bounded Unix-socket exchange per operation; EXEC is never replayed after an uncertain response. */
 final class WorkerClient {
     private static final Logger log = LoggerFactory.getLogger(WorkerClient.class);
+    /**
+     * The wire-version-1 frame ceiling from the worker reference, applied to both directions. The
+     * handshake refuses a worker that advertises anything else, because a larger frame on one side
+     * would be silently truncated by the other.
+     */
     static final int MAX_FRAME = 1024 * 1024;
+
     private final Path socket;
     private final PrivateKey signingKey;
     private final Runnable verifySocket;
@@ -50,46 +55,40 @@ final class WorkerClient {
     }
 
     Hello hello() {
-        JsonNode response = exchange(Map.of("operation", "HELLO", "version", 1), Duration.ofSeconds(3));
+        JsonNode response = exchange(new WorkerRequests.Hello(), Duration.ofSeconds(3));
         try {
-            require(response.path("ok").booleanValue()
-                    && response.path("version").intValue() == 1);
-            require(response.path("maxFrameBytes").intValue() == MAX_FRAME);
-            require(response.path("codeActProtocol").asInt(0) == 1);
-            require(response.path("artifactProtocol").asInt(0) == 1);
-            require(response.path("moveProtocol").asInt(0) == 1);
-            require(response.path("exportProtocol").asInt(0) == 1);
-            UUID boot = UUID.fromString(response.path("workerBootId").stringValue());
-            int lease = response.path("leaseSeconds").intValue();
-            int renew = response.path("renewAfterSeconds").intValue();
-            require(lease >= 10 && lease <= 3600 && renew >= 1 && renew <= lease / 3);
-            return new Hello(boot, lease, renew);
+            var handshake = WorkerResponses.read(response, WorkerResponses.Handshake.class);
+            return new Hello(handshake.bootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
+        } catch (WorkerUnavailableException rejected) {
+            log.warn("Worker handshake rejected", rejected);
+            throw rejected;
         } catch (RuntimeException exception) {
-            throw new WorkerUnavailableException();
+            log.warn("Worker handshake rejected", exception);
+            throw new WorkerUnavailableException(exception);
         }
     }
 
-    JsonNode request(Hello hello, Identity identity, String operation, Map<String, ?> data, Duration timeout) {
+    JsonNode request(Hello hello, Identity identity, String operation, WorkerRequests.Data data, Duration timeout) {
         return send(prepare(hello, identity, operation, data), timeout);
     }
 
-    PreparedRequest prepare(Hello hello, Identity identity, String operation, Map<String, ?> data) {
+    PreparedRequest prepare(Hello hello, Identity identity, String operation, WorkerRequests.Data data) {
         UUID requestId = UUID.randomUUID();
         long issued = clock.instant().getEpochSecond();
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("version", 1);
-        payload.put("workerBootId", hello.workerBootId());
-        payload.put("appBootId", appBoot);
-        payload.put("operation", operation);
-        payload.put("requestId", requestId);
-        payload.put("issuedAt", issued);
-        payload.put("expiresAt", issued + hello.leaseSeconds());
-        payload.put("principalId", identity.principalId());
-        payload.put("accountId", identity.accountId());
-        payload.put("workspaceId", identity.workspaceId());
-        payload.put("serverSessionHash", identity.serverSessionHash());
-        payload.put("leaseId", identity.leaseId());
-        payload.put("data", data);
+        var payload = new Payload(
+                1,
+                hello.workerBootId(),
+                appBoot,
+                operation,
+                requestId,
+                issued,
+                issued + hello.leaseSeconds(),
+                identity.principalId(),
+                identity.accountId(),
+                identity.workspaceId(),
+                identity.serverSessionHash(),
+                identity.leaseId(),
+                data);
         try {
             byte[] bytes = json.writeValueAsBytes(payload);
             Signature signer = Signature.getInstance("Ed25519");
@@ -97,14 +96,12 @@ final class WorkerClient {
             signer.update(bytes);
             var encoding = Base64.getUrlEncoder().withoutPadding();
             return new PreparedRequest(
-                    requestId,
-                    Map.of(
-                            "payload",
-                            encoding.encodeToString(bytes),
-                            "signature",
-                            encoding.encodeToString(signer.sign())));
-        } catch (Exception exception) {
-            throw new WorkerUnavailableException();
+                    requestId, new Envelope(encoding.encodeToString(bytes), encoding.encodeToString(signer.sign())));
+        } catch (GeneralSecurityException | RuntimeException exception) {
+            log.warn(
+                    "Worker request could not be signed ({})",
+                    exception.getClass().getSimpleName());
+            throw new WorkerUnavailableException(exception);
         }
     }
 
@@ -116,7 +113,29 @@ final class WorkerClient {
         return response;
     }
 
-    record PreparedRequest(UUID requestId, Map<String, String> envelope) {}
+    record PreparedRequest(UUID requestId, Envelope envelope) {}
+
+    /** The signed wrapper. Its two fields are the complete frame; the worker rejects any other key. */
+    record Envelope(String payload, String signature) {}
+
+    /**
+     * The signed request. The worker compares this field set exactly, so every component below is
+     * required and no component may be added without changing the worker.
+     */
+    record Payload(
+            int version,
+            UUID workerBootId,
+            UUID appBootId,
+            String operation,
+            UUID requestId,
+            long issuedAt,
+            long expiresAt,
+            UUID principalId,
+            UUID accountId,
+            UUID workspaceId,
+            String serverSessionHash,
+            UUID leaseId,
+            WorkerRequests.Data data) {}
 
     private JsonNode exchange(Object request, Duration timeout) {
         verifySocket.run();
@@ -128,7 +147,9 @@ final class WorkerClient {
                 Selector selector = Selector.open()) {
             channel.configureBlocking(false);
             if (!channel.connect(UnixDomainSocketAddress.of(socket))) {
-                while (!channel.finishConnect()) ready(channel, selector, SelectionKey.OP_CONNECT, deadline);
+                while (!channel.finishConnect()) {
+                    ready(channel, selector, SelectionKey.OP_CONNECT, deadline);
+                }
             }
             phase = "peer-verification";
             verifyPeer.accept(channel);
@@ -139,7 +160,9 @@ final class WorkerClient {
                     .flip();
             while (output.hasRemaining()) {
                 deadline(deadline);
-                if (channel.write(output) == 0) ready(channel, selector, SelectionKey.OP_WRITE, deadline);
+                if (channel.write(output) == 0) {
+                    ready(channel, selector, SelectionKey.OP_WRITE, deadline);
+                }
             }
             phase = "response-header";
             ByteBuffer prefix = ByteBuffer.allocate(4);
@@ -156,7 +179,7 @@ final class WorkerClient {
                     "Worker exchange failed during {} ({})",
                     phase,
                     exception.getClass().getSimpleName());
-            throw new WorkerUnavailableException();
+            throw new WorkerUnavailableException(exception);
         }
     }
 
@@ -165,8 +188,12 @@ final class WorkerClient {
         while (body.hasRemaining()) {
             deadline(deadline);
             int read = channel.read(body);
-            if (read < 0) throw new IOException("incomplete worker frame");
-            if (read == 0) ready(channel, selector, SelectionKey.OP_READ, deadline);
+            if (read < 0) {
+                throw new IOException("incomplete worker frame");
+            }
+            if (read == 0) {
+                ready(channel, selector, SelectionKey.OP_READ, deadline);
+            }
         }
     }
 
@@ -180,12 +207,15 @@ final class WorkerClient {
     }
 
     private static void deadline(long deadline) throws IOException {
-        if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline)
+        if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) {
             throw new IOException("worker exchange deadline elapsed");
+        }
     }
 
     private static void require(boolean valid) {
-        if (!valid) throw new WorkerUnavailableException();
+        if (!valid) {
+            throw new WorkerUnavailableException();
+        }
     }
 
     record Hello(UUID workerBootId, int leaseSeconds, int renewAfterSeconds) {}

@@ -26,7 +26,9 @@ final class McpCancellation implements ExecutionCancellation {
         Object registration = new Object();
         synchronized (this) {
             if (!cancelled) {
-                if (!finished) callbacks.put(registration, terminate);
+                if (!finished) {
+                    callbacks.put(registration, terminate);
+                }
                 return () -> {
                     synchronized (this) {
                         callbacks.remove(registration);
@@ -41,7 +43,9 @@ final class McpCancellation implements ExecutionCancellation {
     void cancel() {
         ArrayList<Runnable> pending;
         synchronized (this) {
-            if (cancelled || finished) return;
+            if (cancelled || finished) {
+                return;
+            }
             cancelled = true;
             pending = new ArrayList<>(callbacks.values());
             callbacks.clear();

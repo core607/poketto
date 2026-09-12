@@ -2,6 +2,7 @@ package io.github.core607.poketto.assets;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /** Only mapped destinations may become local links or images; absent image mappings never fall back to authored URLs. */
 public record ResolvedMedia(
@@ -17,7 +18,7 @@ public record ResolvedMedia(
         downloads = Map.copyOf(downloads);
         images = Map.copyOf(images);
         gallery = List.copyOf(gallery);
-        java.util.Objects.requireNonNull(galleryStatus);
+        Objects.requireNonNull(galleryStatus);
     }
 
     public enum GalleryStatus {

@@ -1,12 +1,19 @@
 package io.github.core607.poketto.auth;
 
-import static io.github.core607.poketto.auth.AuthException.Code.*;
+import static io.github.core607.poketto.auth.AuthException.Code.ALREADY_INITIALIZED;
+import static io.github.core607.poketto.auth.AuthException.Code.DENIED;
+import static io.github.core607.poketto.auth.AuthException.Code.INVALID_CREDENTIALS;
+import static io.github.core607.poketto.auth.AuthException.Code.INVALID_INPUT;
+import static io.github.core607.poketto.auth.AuthException.Code.INVALID_INVITATION;
+import static io.github.core607.poketto.auth.AuthException.Code.LAST_OWNER;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -14,9 +21,11 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -76,7 +85,9 @@ public final class AuthService {
             Boolean initialized = jdbc.queryForObject(
                     "select initialized_at is not null from auth_initialization where singleton = true for update",
                     Boolean.class);
-            if (Boolean.TRUE.equals(initialized)) throw failure(ALREADY_INITIALIZED);
+            if (Boolean.TRUE.equals(initialized)) {
+                throw failure(ALREADY_INITIALIZED);
+            }
             UUID workspace = jdbc.queryForObject(
                     "select workspace_id from workspaces where is_default = true for update", UUID.class);
             UUID account = createAccount(normalized, encoded, true);
@@ -91,7 +102,9 @@ public final class AuthService {
 
     /** Uniform credential rejection includes missing accounts; the HTTP caller must also throttle attempts. */
     public AuthPrincipal authenticatePassword(String login, String password) {
-        if (password == null || password.length() > 256) throw failure(INVALID_CREDENTIALS);
+        if (password == null || password.length() > 256) {
+            throw failure(INVALID_CREDENTIALS);
+        }
         String normalized;
         try {
             normalized = loginName(login);
@@ -104,7 +117,9 @@ public final class AuthService {
                 normalized);
         String encoded =
                 accounts.isEmpty() ? dummyPasswordHash : accounts.getFirst().hash();
-        if (!passwords.matches(password, encoded) || accounts.isEmpty()) throw failure(INVALID_CREDENTIALS);
+        if (!passwords.matches(password, encoded) || accounts.isEmpty()) {
+            throw failure(INVALID_CREDENTIALS);
+        }
         AccountCredential account = accounts.getFirst();
         if (passwords.upgradeEncoding(encoded)) {
             jdbc.update(
@@ -135,18 +150,24 @@ public final class AuthService {
                 oauthResource,
                 timestamp(),
                 oauthResource);
-        if (matches.isEmpty()) throw failure(INVALID_CREDENTIALS);
+        if (matches.isEmpty()) {
+            throw failure(INVALID_CREDENTIALS);
+        }
         return matches.getFirst();
     }
 
     public WorkspaceAccess authorize(AuthPrincipal principal, WorkspaceId workspace, Capability... required) {
-        if (principal == null || workspace == null) throw failure(DENIED);
+        if (principal == null || workspace == null) {
+            throw failure(DENIED);
+        }
         List<Membership> memberships = jdbc.query(
                 "select role, permissions from auth_memberships where workspace_id = ? and account_id = ? and suspended_at is null",
                 (rs, row) -> new Membership(MembershipRole.valueOf(rs.getString(1)), readCapabilities(rs, 2)),
                 workspace.value(),
                 principal.accountId());
-        if (memberships.isEmpty()) throw failure(DENIED);
+        if (memberships.isEmpty()) {
+            throw failure(DENIED);
+        }
         Membership membership = memberships.getFirst();
         MembershipRole role = membership.role();
         Set<Capability> holderCapabilities = memberCapabilities(role, membership.permissions());
@@ -168,16 +189,22 @@ public final class AuthService {
                     workspace.value(),
                     timestamp(),
                     oauthResource);
-            if (stored.isEmpty()) throw failure(DENIED);
-            capabilities = new java.util.HashSet<>(stored.getFirst());
+            if (stored.isEmpty()) {
+                throw failure(DENIED);
+            }
+            capabilities = new HashSet<>(stored.getFirst());
             capabilities.retainAll(holderCapabilities);
         }
-        if (!capabilities.containsAll(Arrays.asList(required))) throw failure(DENIED);
+        if (!capabilities.containsAll(Arrays.asList(required))) {
+            throw failure(DENIED);
+        }
         return new WorkspaceAccess(workspace, principal, role, capabilities);
     }
 
     private static Set<Capability> memberCapabilities(MembershipRole role, Set<Capability> permissions) {
-        if (role == MembershipRole.OWNER) return EnumSet.allOf(Capability.class);
+        if (role == MembershipRole.OWNER) {
+            return EnumSet.allOf(Capability.class);
+        }
         // Execution is an independent machine grant. Membership permits public-scope use;
         // private reads, writes and publication still require their explicit content permissions.
         Set<Capability> result = EnumSet.of(Capability.EXECUTE_REPOSITORY);
@@ -187,14 +214,15 @@ public final class AuthService {
 
     private static Set<Capability> contentPermissions(Set<Capability> requested) {
         if (requested == null
-                || requested.stream().anyMatch(java.util.Objects::isNull)
+                || requested.stream().anyMatch(Objects::isNull)
                 || !CONTENT_PERMISSIONS.containsAll(requested)
-                || (requested.contains(Capability.WRITE_PRIVATE) && !requested.contains(Capability.READ_PRIVATE)))
+                || (requested.contains(Capability.WRITE_PRIVATE) && !requested.contains(Capability.READ_PRIVATE))) {
             throw failure(INVALID_INPUT);
+        }
         return Set.copyOf(requested);
     }
 
-    private static Set<Capability> readCapabilities(java.sql.ResultSet row, int column) throws java.sql.SQLException {
+    private static Set<Capability> readCapabilities(ResultSet row, int column) throws SQLException {
         return Arrays.stream((String[]) row.getArray(column).getArray())
                 .map(Capability::valueOf)
                 .collect(Collectors.toSet());
@@ -203,20 +231,26 @@ public final class AuthService {
     private record Membership(MembershipRole role, Set<Capability> permissions) {}
     /** Machine workspace selection comes exclusively from the durable credential binding. */
     public WorkspaceId workspaceForKey(AuthPrincipal principal) {
-        if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) throw failure(DENIED);
+        if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) {
+            throw failure(DENIED);
+        }
         var rows = jdbc.query(
                 "select workspace_id from auth_api_keys where key_id=? and account_id=? and revoked_at is null",
                 (rs, row) -> new WorkspaceId(rs.getObject(1, UUID.class)),
                 principal.subjectId(),
                 principal.accountId());
-        if (rows.size() != 1) throw failure(DENIED);
+        if (rows.size() != 1) {
+            throw failure(DENIED);
+        }
         WorkspaceId workspace = rows.getFirst();
         authorize(principal, workspace);
         return workspace;
     }
 
     public Page<WorkspaceMembership> workspaces(AuthPrincipal principal, int offset, int limit) {
-        if (principal == null || principal.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure(DENIED);
+        if (principal == null || principal.kind() != AuthPrincipal.Kind.ACCOUNT) {
+            throw failure(DENIED);
+        }
         validatePage(offset, limit);
         long total = jdbc.queryForObject(
                 "select count(*) from auth_memberships where account_id=? and suspended_at is null",
@@ -243,9 +277,12 @@ public final class AuthService {
 
     /** The caller creates the empty catalog row in this same transaction; existing spaces cannot be claimed. */
     public void establishWorkspaceOwner(AuthPrincipal actor, WorkspaceId workspace) {
-        if (!TransactionSynchronizationManager.isActualTransactionActive())
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Workspace ownership requires a creation transaction");
-        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure(DENIED);
+        }
+        if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) {
+            throw failure(DENIED);
+        }
         lockWorkspace(workspace);
         if (!jdbc.queryForObject(
                         "select exists(select 1 from auth_accounts where account_id=?)",
@@ -254,7 +291,9 @@ public final class AuthService {
                 || jdbc.queryForObject(
                         "select exists(select 1 from auth_memberships where workspace_id=?)",
                         Boolean.class,
-                        workspace.value())) throw failure(DENIED);
+                        workspace.value())) {
+            throw failure(DENIED);
+        }
         jdbc.update(
                 "insert into auth_memberships(workspace_id,account_id,role) values (?,?,'OWNER')",
                 workspace.value(),
@@ -337,7 +376,9 @@ public final class AuthService {
 
     /** Repeating a consumed token succeeds only for its original account with an active membership. */
     public WorkspaceId acceptInvitation(AuthPrincipal account, String token) {
-        if (account == null || account.kind() != AuthPrincipal.Kind.ACCOUNT) throw failure(DENIED);
+        if (account == null || account.kind() != AuthPrincipal.Kind.ACCOUNT) {
+            throw failure(DENIED);
+        }
         return transactions.execute(status -> {
             Invitation invitation = lockInvitation(token);
             requireUsableInvitation(invitation, account.accountId());
@@ -377,7 +418,9 @@ public final class AuthService {
             boolean active,
             Set<Capability> requested) {
         Set<Capability> permissions = contentPermissions(requested);
-        if (role == null || account == null) throw failure(INVALID_INPUT);
+        if (role == null || account == null) {
+            throw failure(INVALID_INPUT);
+        }
         transactions.executeWithoutResult(status -> {
             lockWorkspace(workspace);
             requireHumanOwner(actor, workspace);
@@ -391,14 +434,18 @@ public final class AuthService {
                             readCapabilities(rs, 4)),
                     workspace.value(),
                     account);
-            if (members.isEmpty()) throw failure(DENIED);
+            if (members.isEmpty()) {
+                throw failure(DENIED);
+            }
             MemberInfo before = members.getFirst();
             if (before.active() && before.role() == MembershipRole.OWNER && (!active || role != MembershipRole.OWNER)) {
                 Integer owners = jdbc.queryForObject(
                         "select count(*) from auth_memberships where workspace_id = ? and role = 'OWNER' and suspended_at is null",
                         Integer.class,
                         workspace.value());
-                if (owners == null || owners <= 1) throw failure(LAST_OWNER);
+                if (owners == null || owners <= 1) {
+                    throw failure(LAST_OWNER);
+                }
             }
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
@@ -413,43 +460,49 @@ public final class AuthService {
                 statement.setObject(5, account);
                 return statement;
             });
-            // Demotion also removes issued authority, including execution and key-management grants.
-            if (!active || (before.role() == MembershipRole.OWNER && role != MembershipRole.OWNER)) {
-                List<UUID> keys = jdbc.query(
-                        """
+            revokeMembershipKeys(workspace, account, before, role, active, permissions);
+        });
+    }
+
+    private void revokeMembershipKeys(
+            WorkspaceId workspace,
+            UUID account,
+            MemberInfo before,
+            MembershipRole role,
+            boolean active,
+            Set<Capability> permissions) {
+        // Demotion also removes issued authority, including execution and key-management grants.
+        if (!active || (before.role() == MembershipRole.OWNER && role != MembershipRole.OWNER)) {
+            List<UUID> keys = jdbc.query(
+                    """
                         update auth_api_keys set revoked_at = ? where workspace_id = ? and revoked_at is null
                         and (account_id = ? or created_by = ?) returning key_id
-                        """,
-                        (rs, row) -> rs.getObject(1, UUID.class),
-                        timestamp(),
-                        workspace.value(),
-                        account,
-                        account);
-                publishRevocation(new AuthRevocation(workspace, Set.of(account), Set.copyOf(keys)));
-            } else {
-                Set<Capability> removed =
-                        new java.util.HashSet<>(memberCapabilities(before.role(), before.permissions()));
-                removed.removeAll(memberCapabilities(role, permissions));
-                if (!removed.isEmpty()) {
-                    List<UUID> keys = jdbc.query(
-                            connection -> {
-                                var statement = connection.prepareStatement(
-                                        "update auth_api_keys set revoked_at=? where workspace_id=? and account_id=? and revoked_at is null and capabilities && ? returning key_id");
-                                statement.setTimestamp(1, timestamp());
-                                statement.setObject(2, workspace.value());
-                                statement.setObject(3, account);
-                                statement.setArray(
-                                        4,
-                                        connection.createArrayOf(
-                                                "text",
-                                                removed.stream().map(Enum::name).toArray(String[]::new)));
-                                return statement;
-                            },
-                            (rs, row) -> rs.getObject(1, UUID.class));
-                    if (!keys.isEmpty()) publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
+                        """, (rs, row) -> rs.getObject(1, UUID.class), timestamp(), workspace.value(), account, account);
+            publishRevocation(new AuthRevocation(workspace, Set.of(account), Set.copyOf(keys)));
+        } else {
+            Set<Capability> removed = new HashSet<>(memberCapabilities(before.role(), before.permissions()));
+            removed.removeAll(memberCapabilities(role, permissions));
+            if (!removed.isEmpty()) {
+                List<UUID> keys = jdbc.query(
+                        connection -> {
+                            var statement = connection.prepareStatement(
+                                    "update auth_api_keys set revoked_at=? where workspace_id=? and account_id=? and revoked_at is null and capabilities && ? returning key_id");
+                            statement.setTimestamp(1, timestamp());
+                            statement.setObject(2, workspace.value());
+                            statement.setObject(3, account);
+                            statement.setArray(
+                                    4,
+                                    connection.createArrayOf(
+                                            "text",
+                                            removed.stream().map(Enum::name).toArray(String[]::new)));
+                            return statement;
+                        },
+                        (rs, row) -> rs.getObject(1, UUID.class));
+                if (!keys.isEmpty()) {
+                    publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
                 }
             }
-        });
+        }
     }
 
     /** Owners may issue keys; machine owners additionally need MANAGE_KEYS and cannot grant beyond their own capabilities. */
@@ -463,7 +516,9 @@ public final class AuthService {
         if (actor == null
                 || actor.kind() != AuthPrincipal.Kind.ACCOUNT
                 || requested == null
-                || requested.contains(Capability.MANAGE_KEYS)) throw failure(DENIED);
+                || requested.contains(Capability.MANAGE_KEYS)) {
+            throw failure(DENIED);
+        }
         return issueApiKey(actor, workspace, actor.accountId(), requested, true);
     }
 
@@ -474,7 +529,9 @@ public final class AuthService {
             lockWorkspace(workspace);
             WorkspaceAccess access = oauth ? authorize(actor, workspace) : requireKeyManager(actor, workspace);
             if (actor.kind() == AuthPrincipal.Kind.API_KEY
-                    && !access.capabilities().containsAll(capabilities)) throw failure(DENIED);
+                    && !access.capabilities().containsAll(capabilities)) {
+                throw failure(DENIED);
+            }
             List<Membership> holders = jdbc.query(
                     "select role,permissions from auth_memberships where workspace_id = ? and account_id = ? and suspended_at is null",
                     (rs, row) -> new Membership(MembershipRole.valueOf(rs.getString(1)), readCapabilities(rs, 2)),
@@ -484,7 +541,9 @@ public final class AuthService {
                     || !memberCapabilities(
                                     holders.getFirst().role(),
                                     holders.getFirst().permissions())
-                            .containsAll(capabilities)) throw failure(DENIED);
+                            .containsAll(capabilities)) {
+                throw failure(DENIED);
+            }
             String token = randomToken("pk_");
             UUID id = UUID.randomUUID();
             jdbc.update(connection -> {
@@ -537,7 +596,9 @@ public final class AuthService {
                     timestamp(),
                     workspace.value(),
                     keyId);
-            if (!keys.isEmpty()) publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
+            if (!keys.isEmpty()) {
+                publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
+            }
         });
     }
 
@@ -557,7 +618,9 @@ public final class AuthService {
                 "select workspace_id from auth_invitations where token_digest = ?",
                 (rs, row) -> new WorkspaceId(rs.getObject(1, UUID.class)),
                 hash);
-        if (workspaces.isEmpty()) throw failure(INVALID_INVITATION);
+        if (workspaces.isEmpty()) {
+            throw failure(INVALID_INVITATION);
+        }
         WorkspaceId workspace = workspaces.getFirst();
         lockWorkspace(workspace);
         List<Invitation> found = jdbc.query(
@@ -570,15 +633,18 @@ public final class AuthService {
                         rs.getObject(4, UUID.class),
                         readCapabilities(rs, 5)),
                 hash);
-        if (found.isEmpty()) throw failure(INVALID_INVITATION);
+        if (found.isEmpty()) {
+            throw failure(INVALID_INVITATION);
+        }
         return found.getFirst();
     }
 
     private void requireUsableInvitation(Invitation invitation, UUID account) {
         if (invitation.revoked()
                 || !clock.instant().isBefore(invitation.expires())
-                || (invitation.usedBy() != null && !invitation.usedBy().equals(account)))
+                || (invitation.usedBy() != null && !invitation.usedBy().equals(account))) {
             throw failure(INVALID_INVITATION);
+        }
     }
 
     private void join(Invitation invitation, UUID account) {
@@ -587,7 +653,9 @@ public final class AuthService {
                 (rs, row) -> rs.getBoolean(1),
                 invitation.workspace().value(),
                 account);
-        if (!membership.isEmpty() && !membership.getFirst()) throw failure(INVALID_INVITATION);
+        if (!membership.isEmpty() && !membership.getFirst()) {
+            throw failure(INVALID_INVITATION);
+        }
         jdbc.update(connection -> {
             var statement = connection.prepareStatement(
                     "insert into auth_memberships (workspace_id,account_id,role,permissions) values (?,?,'MEMBER',?) on conflict(workspace_id,account_id) do nothing");
@@ -609,14 +677,18 @@ public final class AuthService {
 
     private WorkspaceAccess requireKeyManager(AuthPrincipal actor, WorkspaceId workspace) {
         WorkspaceAccess access = authorize(actor, workspace, Capability.MANAGE_KEYS);
-        if (access.role() != MembershipRole.OWNER) throw failure(DENIED);
+        if (access.role() != MembershipRole.OWNER) {
+            throw failure(DENIED);
+        }
         return access;
     }
 
     private void requireHumanOwner(AuthPrincipal actor, WorkspaceId workspace) {
         if (actor == null
                 || actor.kind() != AuthPrincipal.Kind.ACCOUNT
-                || authorize(actor, workspace).role() != MembershipRole.OWNER) throw failure(DENIED);
+                || authorize(actor, workspace).role() != MembershipRole.OWNER) {
+            throw failure(DENIED);
+        }
     }
 
     private void lockWorkspace(WorkspaceId workspace) {
@@ -625,7 +697,9 @@ public final class AuthService {
                                 "select workspace_id from workspaces where workspace_id = ? for update",
                                 (rs, row) -> rs.getObject(1),
                                 workspace.value())
-                        .isEmpty()) throw failure(DENIED);
+                        .isEmpty()) {
+            throw failure(DENIED);
+        }
     }
 
     UUID createAccount(String login, String encoded, boolean administrator) {
@@ -653,14 +727,20 @@ public final class AuthService {
     }
 
     String encodePassword(String password) {
-        if (password == null || password.length() < 12 || password.length() > 256) throw failure(INVALID_INPUT);
+        if (password == null || password.length() < 12 || password.length() > 256) {
+            throw failure(INVALID_INPUT);
+        }
         return passwords.encode(password);
     }
 
     String loginName(String login) {
-        if (login == null || login.length() > 64) throw failure(INVALID_INPUT);
+        if (login == null || login.length() > 64) {
+            throw failure(INVALID_INPUT);
+        }
         String normalized = login.toLowerCase(Locale.ROOT);
-        if (!normalized.matches("[a-z0-9][a-z0-9._-]{2,63}")) throw failure(INVALID_INPUT);
+        if (!normalized.matches("[a-z0-9][a-z0-9._-]{2,63}")) {
+            throw failure(INVALID_INPUT);
+        }
         return normalized;
     }
 
@@ -706,7 +786,9 @@ public final class AuthService {
             Set<Capability> permissions) {}
 
     private static void validatePage(int offset, int limit) {
-        if (offset < 0 || limit < 1 || limit > 100) throw failure(INVALID_INPUT);
+        if (offset < 0 || limit < 1 || limit > 100) {
+            throw failure(INVALID_INPUT);
+        }
     }
 
     public record Page<T>(List<T> items, long total, int offset, int limit) {

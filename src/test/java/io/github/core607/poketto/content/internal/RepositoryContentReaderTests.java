@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.eclipse.jgit.lib.FileMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -36,16 +37,18 @@ class RepositoryContentReaderTests {
                         "public/excluded/note.md", bytes("# Private\n"),
                         "private/note.md", bytes("# Private\n")));
         var reader = new JGitRepositoryContentReader(fixture.authority());
-        for (String path : new String[] {"public/note.md", "public/new.md"})
+        for (String path : new String[] {"public/note.md", "public/new.md"}) {
             assertThat(reader.getFile(workspace, Optional.of(commit.name()), path)
                             .publicScope())
                     .isTrue();
+        }
         for (String path : new String[] {
             "public/excluded/note.md", "public/excluded/new.md", "private/note.md", "public/.hidden.md"
-        })
+        }) {
             assertThat(reader.getFile(workspace, Optional.of(commit.name()), path)
                             .publicScope())
                     .isFalse();
+        }
         assertThat(reader.readTree(workspace, Optional.empty()).documents())
                 .allSatisfy(document -> assertThat(document.file().publicScope())
                         .isEqualTo(document.file().path().equals("public/note.md")));
@@ -67,7 +70,9 @@ class RepositoryContentReaderTests {
             "a%20b.md",
             "目录 空格%#/index.md",
             "末尾 .md"
-        }) files.put(path, bytes("# 原文\r\n"));
+        }) {
+            files.put(path, bytes("# 原文\r\n"));
+        }
         files.put("custom.md", bytes("---\nroute: '/自定义 空格%#? '\n---\n# Custom"));
         var commit = fixture.commitRemote(workspace, files);
         var reader = new JGitRepositoryContentReader(fixture.authority());
@@ -362,7 +367,7 @@ class RepositoryContentReaderTests {
                         bytes("# A"),
                         "a.md",
                         bytes("# a")),
-                Map.of("link.md", org.eclipse.jgit.lib.FileMode.SYMLINK));
+                Map.of("link.md", FileMode.SYMLINK));
         var reader = new JGitRepositoryContentReader(fixture.authority());
         var tree = reader.readTree(workspace, Optional.empty());
         assertThat(tree.documents())

@@ -2,6 +2,7 @@ package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,13 +26,14 @@ public interface RepositorySnapshotExports {
             Export export,
             String authorityCommit,
             String projectionSha256,
-            java.util.Map<String, String> sourcePaths,
-            java.util.Map<String, PublicMedia> media) {
+            Map<String, String> sourcePaths,
+            Map<String, PublicMedia> media) {
         public PublicExport {
-            sourcePaths = java.util.Map.copyOf(sourcePaths);
-            media = java.util.Map.copyOf(media);
-            if (!sourcePaths.keySet().containsAll(media.keySet()))
+            sourcePaths = Map.copyOf(sourcePaths);
+            media = Map.copyOf(media);
+            if (!sourcePaths.keySet().containsAll(media.keySet())) {
                 throw new IllegalArgumentException("public media requires a source mapping");
+            }
         }
     }
 

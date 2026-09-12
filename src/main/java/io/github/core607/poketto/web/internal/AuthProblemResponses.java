@@ -1,13 +1,14 @@
 package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthException;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
-@org.springframework.core.annotation.Order(-10)
+@Order(-10)
 class AuthProblemResponses {
     @ExceptionHandler(AuthException.class)
     ProblemDetail auth(AuthException exception) {

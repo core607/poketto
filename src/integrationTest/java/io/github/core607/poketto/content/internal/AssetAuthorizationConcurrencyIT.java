@@ -1,11 +1,17 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -26,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -42,6 +49,7 @@ import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -123,7 +131,7 @@ class AssetAuthorizationConcurrencyIT {
         try (var producer = requestScope.producer()) {
             byte[] visible = png(index + 10), secret = png(index + 100);
             String source = "# Public page\n![visible](visible.png)\n";
-            var files = new java.util.HashMap<String, byte[]>();
+            var files = new HashMap<String, byte[]>();
             files.put(
                     ".poketto/publishing.yaml", "enabled: true\nmode: public-root\n".getBytes(StandardCharsets.UTF_8));
             files.put("public/page.md", source.getBytes(StandardCharsets.UTF_8));
@@ -137,7 +145,7 @@ class AssetAuthorizationConcurrencyIT {
             assertThat(assets.readPrivateImage(member, workspace, publicToken).bytes())
                     .isEqualTo(visible);
             assertThatThrownBy(() -> assets.readPublicImage(workspace, publicToken))
-                    .isInstanceOf(io.github.core607.poketto.assets.AssetStorageException.class);
+                    .isInstanceOf(AssetStorageException.class);
             assertThatThrownBy(() -> assets.preview(member, workspace, "private/page.md", draft, Optional.empty()))
                     .isInstanceOf(AuthException.class);
             auth.changeMembership(
@@ -175,7 +183,9 @@ class AssetAuthorizationConcurrencyIT {
     @Test
     void keyRevocationAndMemberSuspensionFinishBeforeAllPrivateImageReads() throws Exception {
         for (boolean key : new boolean[] {true, false}) {
-            for (Operation operation : Operation.values()) assertRevocation(operation, key, false);
+            for (Operation operation : Operation.values()) {
+                assertRevocation(operation, key, false);
+            }
         }
     }
 
@@ -225,9 +235,10 @@ class AssetAuthorizationConcurrencyIT {
                     if (descriptor.path().equals(folder + "/image.png")) {
                         entered.countDown();
                         await(release);
-                        if (failPreparation)
+                        if (failPreparation) {
                             throw new ContentRepositoryException(
                                     "private preparation diagnostic: " + descriptor.path());
+                        }
                     }
                     return invocation.callRealMethod();
                 })
@@ -259,10 +270,12 @@ class AssetAuthorizationConcurrencyIT {
     }
 
     private Object execute(Operation operation, AuthPrincipal principal, String folder, String body, String token) {
-        if (operation == Operation.PREVIEW)
+        if (operation == Operation.PREVIEW) {
             return assets.preview(principal, workspace, folder + "/article.md", body, Optional.empty());
-        if (operation == Operation.INVENTORY)
+        }
+        if (operation == Operation.INVENTORY) {
             return assets.repositoryImages(principal, workspace, Optional.empty(), folder + "/", 0, 100);
+        }
         // HTTP/MCP callers own the response scope through serialization. This service-entry test
         // supplies that same ownership while exercising the real final authorization boundary.
         var scope = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
@@ -297,7 +310,9 @@ class AssetAuthorizationConcurrencyIT {
             var commit = new CommitBuilder();
             commit.setTreeId(cache.writeTree(inserter));
             var previous = repository.resolve(Constants.R_HEADS + "main");
-            if (previous != null) commit.setParentId(previous);
+            if (previous != null) {
+                commit.setParentId(previous);
+            }
             var identity = new PersonIdent("Test Owner", "owner@invalid", Instant.now(), ZoneOffset.UTC);
             commit.setAuthor(identity);
             commit.setCommitter(identity);
@@ -306,10 +321,7 @@ class AssetAuthorizationConcurrencyIT {
             inserter.flush();
             var update = repository.updateRef(Constants.R_HEADS + "main");
             update.setNewObjectId(id);
-            assertThat(update.update())
-                    .isIn(
-                            org.eclipse.jgit.lib.RefUpdate.Result.NEW,
-                            org.eclipse.jgit.lib.RefUpdate.Result.FAST_FORWARD);
+            assertThat(update.update()).isIn(RefUpdate.Result.NEW, RefUpdate.Result.FAST_FORWARD);
         }
     }
 

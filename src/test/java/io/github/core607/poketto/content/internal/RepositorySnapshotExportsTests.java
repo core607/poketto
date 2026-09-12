@@ -1,12 +1,22 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
@@ -16,11 +26,16 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.revwalk.ObjectWalk;
+import org.eclipse.jgit.revwalk.RevObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,7 +50,7 @@ class RepositorySnapshotExportsTests {
     @Test
     void publicValidityIgnoresPrivateCommitsButRejectsChangedPublicationAndOtherWorkspaces() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
-        var tree = new java.util.LinkedHashMap<String, byte[]>();
+        var tree = new LinkedHashMap<String, byte[]>();
         tree.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-root\n"));
         tree.put("public/article.md", text("# Public\nContent"));
         fixture.commitRemote(workspace, tree);
@@ -67,10 +82,8 @@ class RepositorySnapshotExportsTests {
     @Test
     void publicExportDenialPrecedesSnapshotAndRepositoryAccess() {
         RepositoryAuthority authority = mock(RepositoryAuthority.class);
-        var snapshots = mock(io.github.core607.poketto.content.PublicContentSnapshots.class);
-        doThrow(new SecurityException("denied"))
-                .when(auth)
-                .authorize(actor, workspace, io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY);
+        var snapshots = mock(PublicContentSnapshots.class);
+        doThrow(new SecurityException("denied")).when(auth).authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         var exports = new JGitRepositorySnapshotExports(
                 authority, auth, directory.resolve("exports"), 1024, Duration.ofSeconds(5), snapshots);
         assertThatThrownBy(() -> exports.createPublic(actor, workspace)).isInstanceOf(SecurityException.class);
@@ -97,7 +110,7 @@ class RepositorySnapshotExportsTests {
                 1024 * 1024,
                 Duration.ofSeconds(5),
                 snapshots);
-        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var calls = new AtomicInteger();
         doAnswer(call -> {
                     if (calls.incrementAndGet() == 2) {
                         fixture.commitRemote(
@@ -108,7 +121,7 @@ class RepositorySnapshotExportsTests {
                     return null;
                 })
                 .when(auth)
-                .authorize(actor, workspace, io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY);
+                .authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         assertThatThrownBy(() -> exports.createPublic(actor, workspace)).isInstanceOf(ContentRepositoryException.class);
         try (var files = Files.list(directory.resolve("exports"))) {
             assertThat(files).isEmpty();
@@ -178,12 +191,12 @@ class RepositorySnapshotExportsTests {
                     .doesNotContainValue(hiddenMedia);
             assertThat(copy.resolve("_media/1-report.pdf")).doesNotExist();
             try (var reader = clone.getRepository().newObjectReader();
-                    var objects = new org.eclipse.jgit.revwalk.ObjectWalk(reader)) {
+                    var objects = new ObjectWalk(reader)) {
                 objects.markStart(objects.parseCommit(clone.getRepository().resolve("HEAD")));
                 while (objects.next() != null) {}
-                org.eclipse.jgit.revwalk.RevObject object;
+                RevObject object;
                 while ((object = objects.nextObject()) != null) {
-                    if (object.getType() == org.eclipse.jgit.lib.Constants.OBJ_BLOB)
+                    if (object.getType() == Constants.OBJ_BLOB) {
                         assertThat(new String(reader.open(object).getBytes(), StandardCharsets.UTF_8))
                                 .doesNotContain(
                                         "private/secret",
@@ -192,11 +205,11 @@ class RepositorySnapshotExportsTests {
                                         "hidden comment needle",
                                         "private operator instructions needle",
                                         source.name());
+                    }
                 }
             }
         }
-        verify(auth, atLeast(2))
-                .authorize(actor, workspace, io.github.core607.poketto.auth.Capability.EXECUTE_REPOSITORY);
+        verify(auth, atLeast(2)).authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         verify(auth, never()).withAuthorization(any(), any(), any(), any());
         exports.release(value.export().exportId());
         try (var files = Files.list(directory.resolve("exports"))) {
@@ -266,7 +279,7 @@ class RepositorySnapshotExportsTests {
                 directory.resolve("exports"),
                 1024,
                 Duration.ofSeconds(5),
-                mock(io.github.core607.poketto.content.PublicContentSnapshots.class));
+                mock(PublicContentSnapshots.class));
         assertThatThrownBy(() -> exports.create(actor, workspace, Optional.empty()))
                 .isInstanceOf(SecurityException.class);
         verifyNoInteractions(authority);
@@ -282,7 +295,7 @@ class RepositorySnapshotExportsTests {
                 directory.toRealPath().resolve("exports"),
                 bytes,
                 Duration.ofSeconds(5),
-                mock(io.github.core607.poketto.content.PublicContentSnapshots.class));
+                mock(PublicContentSnapshots.class));
     }
 
     private static byte[] text(String source) {

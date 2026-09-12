@@ -1,9 +1,18 @@
 package io.github.core607.poketto.workspace.internal;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.github.core607.poketto.auth.*;
-import io.github.core607.poketto.content.*;
+import io.github.core607.poketto.auth.AuthException;
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
+import io.github.core607.poketto.auth.RegistrationService;
+import io.github.core607.poketto.content.RepositoryConnectionException;
+import io.github.core607.poketto.content.RepositoryConnections;
+import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
@@ -24,6 +33,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -105,10 +115,7 @@ class SpaceCreationIntegrationIT {
         assertThatThrownBy(() -> service(now)
                         .create(
                                 auth.authenticateApiKey(auth.createApiKey(
-                                                actor,
-                                                workspace,
-                                                actor.accountId(),
-                                                java.util.Set.of(Capability.READ_PRIVATE))
+                                                actor, workspace, actor.accountId(), Set.of(Capability.READ_PRIVATE))
                                         .token()),
                                 UUID.randomUUID(),
                                 "Name",
@@ -246,13 +253,17 @@ class SpaceCreationIntegrationIT {
             if (entered != null) {
                 entered.countDown();
                 try {
-                    if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("fixture timeout");
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("fixture timeout");
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new IllegalStateException(e);
                 }
             }
-            if (fail) throw new RepositoryConnectionException(RepositoryConnectionException.Code.PERMISSION_DENIED);
+            if (fail) {
+                throw new RepositoryConnectionException(RepositoryConnectionException.Code.PERMISSION_DENIED);
+            }
             return new Verified(identity, true);
         }
 
@@ -267,13 +278,13 @@ class SpaceCreationIntegrationIT {
         }
 
         public CredentialRotation prepareRotation(WorkspaceId workspace, String username, String token) {
-            assertThat(
-                            org.springframework.transaction.support.TransactionSynchronizationManager
-                                    .isActualTransactionActive())
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
             rotationEntered.countDown();
             try {
-                if (!rotationRelease.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("fixture timeout");
+                if (!rotationRelease.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("fixture timeout");
+                }
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException(error);

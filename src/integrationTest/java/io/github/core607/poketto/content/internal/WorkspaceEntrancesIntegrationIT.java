@@ -1,17 +1,28 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.RegistrationService;
+import io.github.core607.poketto.content.RepositoryMoveRequest;
+import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,8 +30,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -98,7 +111,7 @@ class WorkspaceEntrancesIntegrationIT {
     JdbcTemplate jdbc;
 
     @Autowired
-    io.github.core607.poketto.content.RepositoryMoveService moves;
+    RepositoryMoveService moves;
 
     @Test
     void independentTabRoutesWriteDifferentGitAuthoritiesAndForeignMembershipCannotReadEitherEntrance()
@@ -136,8 +149,9 @@ class WorkspaceEntrancesIntegrationIT {
             "assets",
             "exports/unknown/metadata"
         };
-        for (String operation : denied)
+        for (String operation : denied) {
             mvc.perform(get(route(first, operation)).session(guestSession)).andExpect(status().isForbidden());
+        }
         var firstWrite = csrf(ownerSession, post(route(first, "repository/patch")))
                 .contentType("application/json")
                 .content(patch("# First workspace\n"));
@@ -160,8 +174,8 @@ class WorkspaceEntrancesIntegrationIT {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.source").value(entry.getValue()));
             try (var git = Git.open(remotes.get(entry.getKey()).toFile());
-                    var walk = new org.eclipse.jgit.revwalk.RevWalk(git.getRepository());
-                    var tree = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                    var walk = new RevWalk(git.getRepository());
+                    var tree = TreeWalk.forPath(
                             git.getRepository(),
                             "private/shared.md",
                             walk.parseCommit(git.getRepository().resolve("refs/heads/main"))
@@ -170,7 +184,7 @@ class WorkspaceEntrancesIntegrationIT {
                                 git.getRepository()
                                         .open(tree.getObjectId(0), Constants.OBJ_BLOB)
                                         .getBytes(),
-                                java.nio.charset.StandardCharsets.UTF_8))
+                                StandardCharsets.UTF_8))
                         .isEqualTo(entry.getValue());
             }
         }
@@ -261,11 +275,12 @@ class WorkspaceEntrancesIntegrationIT {
             "public/.hidden/secret.md",
             "public/AGENTS.md",
             ".poketto/publishing.yaml"
-        })
+        }) {
             mvc.perform(get(route(second, "repository/file"))
                             .param("path", path)
                             .session(guestSession))
                     .andExpect(status().isForbidden());
+        }
         mvc.perform(get(route(second, "repository/search"))
                         .param("query", "Secret")
                         .session(guestSession))
@@ -290,7 +305,7 @@ class WorkspaceEntrancesIntegrationIT {
                 "baseCommit",
                 current,
                 "changes",
-                java.util.List.of(Map.of(
+                List.of(Map.of(
                         "path",
                         "public/a.md",
                         "expectedAbsence",
@@ -304,12 +319,7 @@ class WorkspaceEntrancesIntegrationIT {
                         .content(json.writeValueAsString(publicEdit)))
                 .andExpect(status().isForbidden());
         auth.changeMembership(
-                owner,
-                second,
-                guest.accountId(),
-                io.github.core607.poketto.auth.MembershipRole.MEMBER,
-                true,
-                Set.of(Capability.PUBLISH));
+                owner, second, guest.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.PUBLISH));
         var publishedEdit = mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
                         .contentType("application/json")
                         .content(json.writeValueAsString(publicEdit)))
@@ -324,7 +334,7 @@ class WorkspaceEntrancesIntegrationIT {
                     "baseCommit",
                     updated,
                     "changes",
-                    java.util.List.of(Map.of(
+                    List.of(Map.of(
                             "path",
                             deniedPath,
                             "expectedAbsence",
@@ -339,8 +349,8 @@ class WorkspaceEntrancesIntegrationIT {
                     .andExpect(status().isForbidden());
         }
         try (var git = Git.open(remotes.get(second).toFile());
-                var walk = new org.eclipse.jgit.revwalk.RevWalk(git.getRepository());
-                var fileTree = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                var walk = new RevWalk(git.getRepository());
+                var fileTree = TreeWalk.forPath(
                         git.getRepository(),
                         "public/a.md",
                         walk.parseCommit(git.getRepository().resolve("refs/heads/main"))
@@ -350,13 +360,10 @@ class WorkspaceEntrancesIntegrationIT {
                             git.getRepository()
                                     .open(fileTree.getObjectId(0), Constants.OBJ_BLOB)
                                     .getBytes(),
-                            java.nio.charset.StandardCharsets.UTF_8))
+                            StandardCharsets.UTF_8))
                     .isEqualTo("# Updated public source\n");
         }
-        var plan = moves.plan(
-                guest,
-                second,
-                new io.github.core607.poketto.content.RepositoryMoveRequest(updated, "public/a.md", "public/moved.md"));
+        var plan = moves.plan(guest, second, new RepositoryMoveRequest(updated, "public/a.md", "public/moved.md"));
         assertThat(plan.originals().keySet()).allMatch(path -> path.startsWith("public/"));
         var moved = mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
                         .contentType("application/json")
@@ -383,7 +390,7 @@ class WorkspaceEntrancesIntegrationIT {
                                 "baseCommit",
                                 movedCommit,
                                 "changes",
-                                java.util.List.of(Map.of(
+                                List.of(Map.of(
                                         "path",
                                         "private/backlink.md",
                                         "expectedAbsence",
@@ -395,15 +402,13 @@ class WorkspaceEntrancesIntegrationIT {
         String linkedCommit = json.readTree(backlink.getResponse().getContentAsString())
                 .path("commit")
                 .asString();
-        var linkedMove = new io.github.core607.poketto.content.RepositoryMoveRequest(
-                linkedCommit, "public/moved.md", "public/final.md");
-        assertThatThrownBy(() -> moves.plan(guest, second, linkedMove))
-                .isInstanceOf(io.github.core607.poketto.auth.AuthException.class);
+        var linkedMove = new RepositoryMoveRequest(linkedCommit, "public/moved.md", "public/final.md");
+        assertThatThrownBy(() -> moves.plan(guest, second, linkedMove)).isInstanceOf(AuthException.class);
         auth.changeMembership(
                 owner,
                 second,
                 guest.accountId(),
-                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                MembershipRole.MEMBER,
                 true,
                 Set.of(Capability.READ_PRIVATE, Capability.PUBLISH));
         var moveBody = json.writeValueAsString(
@@ -419,7 +424,7 @@ class WorkspaceEntrancesIntegrationIT {
                 owner,
                 second,
                 guest.accountId(),
-                io.github.core607.poketto.auth.MembershipRole.MEMBER,
+                MembershipRole.MEMBER,
                 true,
                 Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE, Capability.PUBLISH));
         mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
@@ -432,12 +437,7 @@ class WorkspaceEntrancesIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source").value("# Private backlink\n[Public](../public/final.md)\n"));
         auth.changeMembership(
-                owner,
-                second,
-                guest.accountId(),
-                io.github.core607.poketto.auth.MembershipRole.MEMBER,
-                true,
-                Set.of(Capability.READ_PRIVATE));
+                owner, second, guest.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
         mvc.perform(get(route(second, "repository/file"))
                         .param("path", "private/shared.md")
                         .param("commit", previous)
@@ -445,22 +445,15 @@ class WorkspaceEntrancesIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source").value("# Second workspace\n"))
                 .andExpect(jsonPath("$.publicScope").value(false));
-        auth.changeMembership(
-                owner,
-                second,
-                guest.accountId(),
-                io.github.core607.poketto.auth.MembershipRole.MEMBER,
-                false,
-                Set.of());
+        auth.changeMembership(owner, second, guest.accountId(), MembershipRole.MEMBER, false, Set.of());
         mvc.perform(get(route(second, "repository/tree")).session(guestSession)).andExpect(status().isForbidden());
     }
 
     private String patch(String source) throws Exception {
-        var request = new java.util.LinkedHashMap<String, Object>();
+        var request = new LinkedHashMap<String, Object>();
         request.put("baseCommit", null);
         request.put(
-                "changes",
-                java.util.List.of(Map.of("path", "private/shared.md", "expectedAbsence", true, "content", source)));
+                "changes", List.of(Map.of("path", "private/shared.md", "expectedAbsence", true, "content", source)));
         return json.writeValueAsString(request);
     }
 
@@ -499,7 +492,7 @@ class WorkspaceEntrancesIntegrationIT {
                                     .toUri()
                                     .toString()),
                             new UsernamePasswordCredentialsProvider("fixture", "fixture"));
-                } catch (java.net.URISyntaxException exception) {
+                } catch (URISyntaxException exception) {
                     throw new IllegalStateException(exception);
                 }
             };

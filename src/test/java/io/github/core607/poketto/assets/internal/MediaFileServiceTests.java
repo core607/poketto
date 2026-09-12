@@ -1,26 +1,57 @@
 package io.github.core607.poketto.assets.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
-import io.github.core607.poketto.assets.*;
-import io.github.core607.poketto.auth.*;
-import io.github.core607.poketto.content.*;
+import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ManagedAsset;
+import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.auth.AuthException;
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicContentSnapshot;
+import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import org.assertj.core.api.ThrowableAssert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -51,8 +82,8 @@ class MediaFileServiceTests {
                         call.getArgument(1),
                         call.getArgument(0),
                         MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(Capability.class)));
-        java.util.Arrays.fill(bytes, (byte) 42);
+                        EnumSet.allOf(Capability.class)));
+        Arrays.fill(bytes, (byte) 42);
         store = ManagedBlobStore.local(directory.resolve("originals"));
         asset = store.uploadFile(workspace, "synthetic-media-01", "application/pdf", new ByteArrayInputStream(bytes));
         var entry = new RepositoryMediaIndex.Media(
@@ -107,7 +138,9 @@ class MediaFileServiceTests {
             var initial = snapshot;
             AtomicBoolean revoked = new AtomicBoolean();
             doAnswer(call -> {
-                        if (revoked.get()) throw new AuthException(AuthException.Code.DENIED);
+                        if (revoked.get()) {
+                            throw new AuthException(AuthException.Code.DENIED);
+                        }
                         return new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, Set.of());
                     })
                     .when(auth)
@@ -123,19 +156,23 @@ class MediaFileServiceTests {
                 @Override
                 public void write(byte[] data, int offset, int length) {
                     count.addAndGet(length);
-                    if (membershipLoss) revoked.set(true);
-                    else
+                    if (membershipLoss) {
+                        revoked.set(true);
+                    } else {
                         snapshot = new PublicContentSnapshot(
                                 workspace,
                                 Optional.of("b".repeat(40)),
                                 initial.verifiedAt(),
                                 initial.expiresAt(),
                                 List.of());
+                    }
                 }
             };
-            if (membershipLoss)
+            if (membershipLoss) {
                 assertThatThrownBy(() -> download.writeTo(output)).isInstanceOf(AuthException.class);
-            else assertMissing(() -> download.writeTo(output));
+            } else {
+                assertMissing(() -> download.writeTo(output));
+            }
             assertThat(count.get()).isPositive().isLessThanOrEqualTo(256 * 1024);
             snapshot = initial;
         }
@@ -178,7 +215,9 @@ class MediaFileServiceTests {
     void privateRevocationAndPublicWithdrawalStopStreamingWithinTheAuthorizedBlock() {
         AtomicBoolean revoked = new AtomicBoolean();
         doAnswer(invocation -> {
-                    if (revoked.get()) throw new IllegalStateException("revoked");
+                    if (revoked.get()) {
+                        throw new IllegalStateException("revoked");
+                    }
                     return null;
                 })
                 .when(auth)
@@ -210,7 +249,9 @@ class MediaFileServiceTests {
     void completedDownloadDoesNotRecheckAfterItsLastByteAndFailuresKeepTheirCause() {
         var revoked = new AtomicBoolean();
         doAnswer(call -> {
-                    if (revoked.get()) throw new IllegalStateException("revoked");
+                    if (revoked.get()) {
+                        throw new IllegalStateException("revoked");
+                    }
                     return null;
                 })
                 .when(auth)
@@ -220,12 +261,16 @@ class MediaFileServiceTests {
                 .writeTo(new OutputStream() {
                     @Override
                     public void write(int value) {
-                        if (count.incrementAndGet() == bytes.length) revoked.set(true);
+                        if (count.incrementAndGet() == bytes.length) {
+                            revoked.set(true);
+                        }
                     }
 
                     @Override
                     public void write(byte[] data, int offset, int length) {
-                        if (count.addAndGet(length) == bytes.length) revoked.set(true);
+                        if (count.addAndGet(length) == bytes.length) {
+                            revoked.set(true);
+                        }
                     }
                 });
         assertThat(count).hasValue(bytes.length);
@@ -235,13 +280,13 @@ class MediaFileServiceTests {
         var download = service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf");
         assertThatThrownBy(() -> download.writeTo(new OutputStream() {
                     @Override
-                    public void write(int value) throws java.io.IOException {
+                    public void write(int value) throws IOException {
                         revoked.set(true);
-                        throw new java.io.IOException("synthetic write failure");
+                        throw new IOException("synthetic write failure");
                     }
 
                     @Override
-                    public void write(byte[] data, int offset, int length) throws java.io.IOException {
+                    public void write(byte[] data, int offset, int length) throws IOException {
                         write(0);
                     }
                 }))
@@ -268,53 +313,56 @@ class MediaFileServiceTests {
                                         otherAsset.mediaType(),
                                         otherAsset.size()))),
                         Set.of()));
-        var firstTwo = new java.util.concurrent.CountDownLatch(2);
-        var allFour = new java.util.concurrent.CountDownLatch(4);
-        var release = new java.util.concurrent.CountDownLatch(1);
+        var firstTwo = new CountDownLatch(2);
+        var allFour = new CountDownLatch(4);
+        var release = new CountDownLatch(1);
         OutputStream blocked = new OutputStream() {
             @Override
-            public void write(int value) throws java.io.IOException {
+            public void write(int value) throws IOException {
                 write(new byte[] {(byte) value}, 0, 1);
             }
 
             @Override
-            public void write(byte[] data, int offset, int length) throws java.io.IOException {
+            public void write(byte[] data, int offset, int length) throws IOException {
                 firstTwo.countDown();
                 allFour.countDown();
                 try {
-                    if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS))
-                        throw new java.io.IOException("fixture timed out");
+                    if (!release.await(10, TimeUnit.SECONDS)) {
+                        throw new IOException("fixture timed out");
+                    }
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    throw new java.io.IOException(interrupted);
+                    throw new IOException(interrupted);
                 }
             }
         };
-        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures = new ArrayList<Future<?>>();
             try {
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 2; i++) {
                     futures.add(executor.submit(
                             () -> service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
                                     .writeTo(blocked)));
-                assertThat(firstTwo.await(5, java.util.concurrent.TimeUnit.SECONDS))
-                        .isTrue();
+                }
+                assertThat(firstTwo.await(5, TimeUnit.SECONDS)).isTrue();
                 assertUnavailable(
                         () -> service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf")
                                 .writeTo(OutputStream.nullOutputStream()));
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 2; i++) {
                     futures.add(executor.submit(
                             () -> service.privateDownload(actor, other, Optional.empty(), "private/source.pdf")
                                     .writeTo(blocked)));
-                assertThat(allFour.await(5, java.util.concurrent.TimeUnit.SECONDS))
-                        .isTrue();
+                }
+                assertThat(allFour.await(5, TimeUnit.SECONDS)).isTrue();
                 var untouched = new ByteArrayInputStream(bytes);
                 assertUnavailable(() -> service.upload(
                         actor, WorkspaceId.random(), "saturated-upload-01", "application/pdf", untouched));
                 assertThat(untouched.available()).isEqualTo(bytes.length);
             } finally {
                 release.countDown();
-                for (var future : futures) future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                for (var future : futures) {
+                    future.get(5, TimeUnit.SECONDS);
+                }
             }
         }
         var output = new ByteArrayOutputStream();
@@ -346,47 +394,47 @@ class MediaFileServiceTests {
                     .thenAnswer(
                             call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(publicSnapshot));
         }
-        var started = new java.util.concurrent.CountDownLatch(2);
-        var firstStarted = new java.util.concurrent.CountDownLatch(1);
-        var release = new java.util.concurrent.CountDownLatch(1);
+        var started = new CountDownLatch(2);
+        var firstStarted = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
         OutputStream blocked = new OutputStream() {
             @Override
-            public void write(int value) throws java.io.IOException {
+            public void write(int value) throws IOException {
                 write(new byte[] {(byte) value}, 0, 1);
             }
 
             @Override
-            public void write(byte[] data, int offset, int length) throws java.io.IOException {
+            public void write(byte[] data, int offset, int length) throws IOException {
                 started.countDown();
                 firstStarted.countDown();
                 try {
-                    if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS))
-                        throw new java.io.IOException("fixture timed out");
+                    if (!release.await(10, TimeUnit.SECONDS)) {
+                        throw new IOException("fixture timed out");
+                    }
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    throw new java.io.IOException(interrupted);
+                    throw new IOException(interrupted);
                 }
             }
         };
-        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            var readers = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var readers = new ArrayList<Future<?>>();
             try {
                 readers.add(
                         executor.submit(() -> service.publicDownload(workspace, commit, "/note", "public/source.pdf")
                                 .writeTo(blocked)));
-                assertThat(firstStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
-                        .isTrue();
+                assertThat(firstStarted.await(5, TimeUnit.SECONDS)).isTrue();
                 assertUnavailable(() -> service.publicDownload(workspace, commit, "/note", "public/source.pdf")
                         .writeTo(OutputStream.nullOutputStream()));
                 readers.add(executor.submit(
                         () -> service.publicDownload(workspaces.get(1), commit, "/note", "public/source.pdf")
                                 .writeTo(blocked)));
-                assertThat(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
-                        .isTrue();
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
                 clearInvocations(repository);
-                for (var selected : workspaces)
+                for (var selected : workspaces) {
                     assertUnavailable(() -> service.publicDownload(selected, commit, "/note", "public/source.pdf")
                             .writeTo(OutputStream.nullOutputStream()));
+                }
                 verifyNoInteractions(repository);
                 for (var selected : workspaces.subList(0, 2)) {
                     var uploaded = service.upload(
@@ -399,7 +447,9 @@ class MediaFileServiceTests {
                 assertThat(privateBytes.toByteArray()).isEqualTo(bytes);
             } finally {
                 release.countDown();
-                for (var reader : readers) reader.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                for (var reader : readers) {
+                    reader.get(5, TimeUnit.SECONDS);
+                }
             }
         }
         var publicBytes = new ByteArrayOutputStream();
@@ -407,7 +457,7 @@ class MediaFileServiceTests {
         assertThat(publicBytes.toByteArray()).isEqualTo(bytes);
     }
 
-    private static void assertUnavailable(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+    private static void assertUnavailable(ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action)
                 .isInstanceOfSatisfying(
                         AssetStorageException.class,
@@ -441,7 +491,7 @@ class MediaFileServiceTests {
         verify(auth, never()).authorize(actor, workspace, Capability.PUBLISH);
     }
 
-    private static void assertMissing(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+    private static void assertMissing(ThrowableAssert.ThrowingCallable action) {
         assertThatThrownBy(action)
                 .isInstanceOfSatisfying(
                         AssetStorageException.class,

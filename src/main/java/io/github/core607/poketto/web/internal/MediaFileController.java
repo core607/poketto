@@ -8,7 +8,6 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -68,36 +67,15 @@ class MediaFileController {
     }
 
     private static void send(MediaFileService.Download download, HttpServletResponse response) {
-        download.writeTo(new OutputStream() {
-            private OutputStream stream;
-
-            private OutputStream stream() throws IOException {
-                if (stream == null) {
-                    // Delay headers until the store has verified original length and digest.
-                    response.setHeader("Cache-Control", "no-store");
-                    response.setHeader("X-Content-Type-Options", "nosniff");
-                    response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
-                    response.setHeader(
-                            "Content-Disposition",
-                            ContentDisposition.attachment()
-                                    .filename(download.filename(), StandardCharsets.UTF_8)
-                                    .build()
-                                    .toString());
-                    response.setContentLengthLong(download.size());
-                    stream = response.getOutputStream();
-                }
-                return stream;
-            }
-
-            @Override
-            public void write(int value) throws IOException {
-                stream().write(value);
-            }
-
-            @Override
-            public void write(byte[] bytes, int offset, int length) throws IOException {
-                stream().write(bytes, offset, length);
-            }
-        });
+        download.writeTo(new DeferredDownload(response, () -> {
+            response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+            response.setHeader(
+                    "Content-Disposition",
+                    ContentDisposition.attachment()
+                            .filename(download.filename(), StandardCharsets.UTF_8)
+                            .build()
+                            .toString());
+            response.setContentLengthLong(download.size());
+        }));
     }
 }

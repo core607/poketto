@@ -109,7 +109,7 @@ final class ContentWorktree {
 
     private static Optional<byte[]> blobAt(Repository repository, ObjectId tree, String path) throws IOException {
         try (TreeWalk walk = TreeWalk.forPath(repository, path, tree)) {
-            if (walk == null || !FileMode.REGULAR_FILE.equals(walk.getFileMode(0))) {
+            if (walk == null || !RepositoryBlobs.isPlainFile(walk.getFileMode(0))) {
                 return Optional.empty();
             }
             return Optional.of(

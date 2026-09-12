@@ -1,12 +1,28 @@
 package io.github.core607.poketto.content.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import io.github.core607.poketto.assets.*;
-import io.github.core607.poketto.auth.*;
-import io.github.core607.poketto.content.*;
+import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.AssetSource;
+import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.assets.ManagedAsset;
+import io.github.core607.poketto.assets.ManagedBlobStore;
+import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.assets.ResolvedMedia;
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.RepositoryBlobReader;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -15,9 +31,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
@@ -74,14 +92,14 @@ class IndexedMediaDeliveryTests {
         var blobs = new JGitRepositoryBlobReader(fixture.authority());
         var auth = mock(AuthService.class);
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         var actor = mock(AuthPrincipal.class);
         when(actor.kind()).thenReturn(AuthPrincipal.Kind.ACCOUNT);
-        when(actor.subjectId()).thenReturn(java.util.UUID.randomUUID());
+        when(actor.subjectId()).thenReturn(UUID.randomUUID());
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());

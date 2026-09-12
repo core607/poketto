@@ -1,17 +1,25 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +27,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
@@ -32,11 +42,11 @@ class SessionMovesTests {
 
     private PublicExecutionNativeFixture fixture(boolean loseReply) throws Exception {
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         when(actor.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
         when(actor.subjectId()).thenReturn(UUID.randomUUID());
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
@@ -46,7 +56,7 @@ class SessionMovesTests {
     }
 
     @Test
-    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+    @EnabledOnOs(OS.LINUX)
     void indexMergeKeepsUnselectedDraftMappingsOutOfTheRemoteCommit() throws Exception {
         var fixture = fixture(false);
         String initial = fixture.seedMedia(auth, actor, new byte[] {1}, new byte[] {2});
@@ -78,11 +88,11 @@ class SessionMovesTests {
                 .containsEntry("private/unsaved.pdf", draft)
                 .containsKey("private/archive/manual.pdf")
                 .doesNotContainKey("private/manual.pdf");
-        assertThat(saves.moves().commit(actor, workspace, state, pending).get("code"))
+        assertThat(saves.moves().commit(actor, workspace, state, pending).code())
                 .isEqualTo("LOCAL_MOVE_PENDING");
         assertThat(state.baseCommit).isEqualTo(initial);
         assertThat(saves.save(actor, workspace, state, Map.of("private/later.md", "later"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("RECOVER_MOVE_FIRST");
         var remote =
                 RepositoryMediaIndex.parse(reader.getFile(actor, workspace, Optional.empty(), RepositoryMediaIndex.PATH)
@@ -116,13 +126,13 @@ class SessionMovesTests {
         state.move = null;
         saves.moves().commit(actor, workspace, state, pending);
         String committed = pending.result.commit();
-        assertThat(saves.moves().skipLocal(state).get("ok")).isEqualTo(true);
+        assertThat(saves.moves().skipLocal(state).ok()).isEqualTo(true);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
         assertThat(state.baseline("private/secret.md")).isEqualTo(fixture.sourceCommit());
         assertThat(state.baseline("private/moved.md")).isEqualTo(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/moved.md", "later local edit"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
         var plan = saves.prepareSync(actor, workspace, state, "private/moved.md", Optional.empty());
         assertThat(plan).isNotNull();
@@ -140,14 +150,14 @@ class SessionMovesTests {
         var pending = saves.moves()
                 .prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         byte[] original = pending.payload.clone();
-        assertThat(saves.moves().commit(actor, workspace, state, pending).get("code"))
+        assertThat(saves.moves().commit(actor, workspace, state, pending).code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         assertThat(pending.attempt).isNotNull();
         assertThatThrownBy(() ->
                         saves.moves().prepare(actor, workspace, state, "article.md", "other.md", Optional.empty()))
                 .isInstanceOf(IllegalArgumentException.class);
         fixture.restoreTransport();
-        assertThat(saves.moves().recover(actor, workspace, state).get("code")).isEqualTo("LOCAL_MOVE_PENDING");
+        assertThat(saves.moves().recover(actor, workspace, state).code()).isEqualTo("LOCAL_MOVE_PENDING");
         assertThat(pending.result.commit()).isEqualTo(pending.attempt.commit());
         assertThat(pending.payload).containsExactly(original);
         assertThat(fixture.pushes()).isEqualTo(1);

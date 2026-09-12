@@ -61,8 +61,9 @@ class RepositoryAdminController {
 
     @PostMapping("/move")
     PatchResult move(@AuthenticationPrincipal AuthPrincipal actor, @RequestBody MoveRequest request) {
-        if (request.source() == null || request.destination() == null)
+        if (request.source() == null || request.destination() == null) {
             throw new IllegalArgumentException("move source and destination are required");
+        }
         var move = new RepositoryMoveRequest(request.baseCommit(), request.source(), request.destination());
         return result(moves.move(actor, workspaces.selected(), move));
     }

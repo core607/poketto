@@ -1,17 +1,26 @@
 package io.github.core607.poketto.auth;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import jakarta.servlet.Filter;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.Part;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -23,12 +32,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.awaitility.Awaitility;
 import org.eclipse.jgit.api.Git;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,10 +73,7 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "poketto.security.allowed-origins=https://site.example.invalid")
 @AutoConfigureMockMvc
-@Import({
-    io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration.class,
-    BrowserSecurityIntegrationIT.BodyObservation.class
-})
+@Import({RemoteRepositoryIntegrationConfiguration.class, BrowserSecurityIntegrationIT.BodyObservation.class})
 class BrowserSecurityIntegrationIT {
     @Container
     @ServiceConnection
@@ -96,7 +106,7 @@ class BrowserSecurityIntegrationIT {
     @LocalServerPort
     int port;
 
-    private final Map<Socket, String> pendingIds = new java.util.IdentityHashMap<>();
+    private final Map<Socket, String> pendingIds = new IdentityHashMap<>();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -259,7 +269,7 @@ class BrowserSecurityIntegrationIT {
                         put(scoped("/api/admin/members/")
                                 + member.get("accountId").stringValue()),
                         ownerSession,
-                        Map.of("role", "MEMBER", "active", false, "permissions", java.util.List.of())))
+                        Map.of("role", "MEMBER", "active", false, "permissions", List.of())))
                 .andExpect(status().isNoContent());
         mvc.perform(get(scoped("/api/auth/me")).session(memberSession.session()))
                 .andExpect(status().isForbidden());
@@ -267,11 +277,11 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(request(
                         put(scoped("/api/admin/members/") + owner.accountId()),
                         ownerSession,
-                        Map.of("role", "OWNER", "active", false, "permissions", java.util.List.of())))
+                        Map.of("role", "OWNER", "active", false, "permissions", List.of())))
                 .andExpect(status().isConflict());
         mvc.perform(get(scoped("/api/admin/invitations")).session(ownerSession.session()))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(token))));
+                .andExpect(content().string(Matchers.not(Matchers.containsString(token))));
     }
 
     @Test
@@ -295,8 +305,8 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(get(scoped("/api/admin/keys")).session(session.session()))
                 .andExpect(status().isOk())
                 .andExpect(content()
-                        .string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(
-                                key.get("token").stringValue()))));
+                        .string(Matchers.not(
+                                Matchers.containsString(key.get("token").stringValue()))));
         mvc.perform(request(delete(scoped("/api/admin/keys/") + key.get("id").stringValue()), session, null))
                 .andExpect(status().isNoContent());
         mvc.perform(post("/mcp").header("Authorization", bearer)).andExpect(status().isUnauthorized());
@@ -317,7 +327,7 @@ class BrowserSecurityIntegrationIT {
                         .param("password", unknown))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist("Location"))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(unknown))));
+                .andExpect(content().string(Matchers.not(Matchers.containsString(unknown))));
         mvc.perform(post("/api/auth/register")
                         .session(session.session())
                         .header(session.header(), session.token())
@@ -329,7 +339,7 @@ class BrowserSecurityIntegrationIT {
                         session,
                         Map.of("token", unknown, "login", "unknown-owner", "password", secret())))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(unknown))));
+                .andExpect(content().string(Matchers.not(Matchers.containsString(unknown))));
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 
@@ -365,8 +375,7 @@ class BrowserSecurityIntegrationIT {
         String payload = json.writeValueAsString(
                 Map.of("token", registrationToken, "login", "chunk-owner", "password", secret()));
         int padding = 16384 - payload.getBytes(StandardCharsets.UTF_8).length;
-        for (String overLimit :
-                java.util.List.of(payload + " ".repeat(padding + 1), " ".repeat(padding + 1) + payload)) {
+        for (String overLimit : List.of(payload + " ".repeat(padding + 1), " ".repeat(padding + 1) + payload)) {
             byte[] bytes = overLimit.getBytes(StandardCharsets.UTF_8);
             HttpResponse<String> rejected = client.send(
                     HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/auth/register"))
@@ -477,7 +486,7 @@ class BrowserSecurityIntegrationIT {
                         .param("password", password))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "300"));
-        for (String variant : java.util.List.of(" throttled-user", "throttled-user ", "\tTHROTTLED-USER\t")) {
+        for (String variant : List.of(" throttled-user", "throttled-user ", "\tTHROTTLED-USER\t")) {
             mvc.perform(post("/api/auth/login")
                             .session(session.session())
                             .header(session.header(), session.token())
@@ -515,7 +524,7 @@ class BrowserSecurityIntegrationIT {
                         "multipart/form-data; boundary=synthetic",
                         true,
                         session)) {
-            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
                 assertThat(BodyObservation.accesses.get(pendingIds.get(first)).get())
                         .isPositive();
                 assertThat(BodyObservation.accesses.get(pendingIds.get(second)).get())
@@ -528,7 +537,7 @@ class BrowserSecurityIntegrationIT {
                         .hasValue(0);
             }
             first.close();
-            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
                 HttpResponse<String> response = HttpClient.newHttpClient()
                         .send(
                                 HttpRequest.newBuilder(URI.create(
@@ -619,7 +628,9 @@ class BrowserSecurityIntegrationIT {
             assertThat(line).isNotNull();
             int status = Integer.parseInt(line.split(" ", 3)[1]);
             while ((line = reader.readLine()) != null && !line.isEmpty()) {}
-            if (status != 100) return status;
+            if (status != 100) {
+                return status;
+            }
         }
     }
 
@@ -640,14 +651,13 @@ class BrowserSecurityIntegrationIT {
                 chain.doFilter(
                         new HttpServletRequestWrapper(http) {
                             @Override
-                            public ServletInputStream getInputStream() throws java.io.IOException {
+                            public ServletInputStream getInputStream() throws IOException {
                                 observed.incrementAndGet();
                                 return super.getInputStream();
                             }
 
                             @Override
-                            public Collection<Part> getParts()
-                                    throws java.io.IOException, jakarta.servlet.ServletException {
+                            public Collection<Part> getParts() throws IOException, ServletException {
                                 observed.incrementAndGet();
                                 return super.getParts();
                             }
@@ -686,7 +696,9 @@ class BrowserSecurityIntegrationIT {
 
     private Csrf csrf(MockHttpSession existing) throws Exception {
         var request = get("/api/auth/csrf");
-        if (existing != null) request.session(existing);
+        if (existing != null) {
+            request.session(existing);
+        }
         MvcResult result = mvc.perform(request).andExpect(status().isOk()).andReturn();
         JsonNode response = body(result);
         return new Csrf(
@@ -697,7 +709,9 @@ class BrowserSecurityIntegrationIT {
 
     private MockHttpServletRequestBuilder request(MockHttpServletRequestBuilder request, Csrf session, Object body) {
         request.session(session.session()).header("Origin", ORIGIN).header(session.header(), session.token());
-        if (body != null) request.contentType("application/json").content(json.writeValueAsString(body));
+        if (body != null) {
+            request.contentType("application/json").content(json.writeValueAsString(body));
+        }
         return request;
     }
 
@@ -718,7 +732,9 @@ class BrowserSecurityIntegrationIT {
 
     private String scoped(String path) {
         String workspace = workspaces.defaultWorkspace().id().toString();
-        if (path.equals("/api/auth/me")) return "/api/auth/workspaces/" + workspace + "/me";
+        if (path.equals("/api/auth/me")) {
+            return "/api/auth/workspaces/" + workspace + "/me";
+        }
         return "/api/admin/workspaces/" + workspace + path.substring("/api/admin".length());
     }
 }

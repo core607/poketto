@@ -1,19 +1,32 @@
 package io.github.core607.poketto.executor.internal;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -25,25 +38,21 @@ class SelectedFileSavesTests {
         var auth = mock(AuthService.class);
         var actor = actor();
         var workspace = WorkspaceId.random();
-        var allowed = java.util.Set.of(
-                io.github.core607.poketto.auth.Capability.READ_PRIVATE,
-                io.github.core607.poketto.auth.Capability.PUBLISH);
+        var allowed = Set.of(Capability.READ_PRIVATE, Capability.PUBLISH);
         doAnswer(call -> {
-                    io.github.core607.poketto.auth.Capability[] required =
-                            (io.github.core607.poketto.auth.Capability[]) call.getRawArguments()[2];
-                    if (!allowed.containsAll(java.util.List.of(required)))
-                        throw new io.github.core607.poketto.auth.AuthException(
-                                io.github.core607.poketto.auth.AuthException.Code.DENIED);
-                    return new io.github.core607.poketto.auth.WorkspaceAccess(
-                            workspace, actor, io.github.core607.poketto.auth.MembershipRole.MEMBER, allowed);
+                    Capability[] required = (Capability[]) call.getRawArguments()[2];
+                    if (!allowed.containsAll(List.of(required))) {
+                        throw new AuthException(AuthException.Code.DENIED);
+                    }
+                    return new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, allowed);
                 })
                 .when(auth)
-                .authorize(eq(actor), eq(workspace), any(io.github.core607.poketto.auth.Capability[].class));
+                .authorize(eq(actor), eq(workspace), any(Capability[].class));
         doAnswer(call -> {
-                    java.util.Set<?> required = call.getArgument(2);
-                    if (!allowed.containsAll(required))
-                        throw new io.github.core607.poketto.auth.AuthException(
-                                io.github.core607.poketto.auth.AuthException.Code.DENIED);
+                    Set<?> required = call.getArgument(2);
+                    if (!allowed.containsAll(required)) {
+                        throw new AuthException(AuthException.Code.DENIED);
+                    }
                     return ((Supplier<?>) call.getArgument(3)).get();
                 })
                 .when(auth)
@@ -53,14 +62,14 @@ class SelectedFileSavesTests {
         var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("public/article.md", "# Public edit\n"), List.of())
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "public/article.md")
                         .source())
                 .contains("# Public edit\n");
         String committed = state.baseCommit;
         assertThatThrownBy(() -> saves.save(actor, workspace, state, Map.of("private/secret.md", "denied"), List.of()))
-                .isInstanceOf(io.github.core607.poketto.auth.AuthException.class);
+                .isInstanceOf(AuthException.class);
         assertThat(state.baseCommit).isEqualTo(committed);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
                         .source())
@@ -74,11 +83,11 @@ class SelectedFileSavesTests {
     void selectedSavesAdvanceOnlyHostBaselineAndRetainItOnARealRemoteConflict() throws Exception {
         var auth = mock(AuthService.class);
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
@@ -90,13 +99,13 @@ class SelectedFileSavesTests {
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         var result = saves.save(
                 actor, workspace, state, Map.of("private/secret.md", "first\r\n", "private/new.md", "new"), List.of());
-        assertThat(result.get("ok")).isEqualTo(true);
+        assertThat(result.ok()).isEqualTo(true);
         assertThat(state.baseCommit).isNotEqualTo(fixture.sourceCommit());
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "AGENTS.md")
                         .source())
                 .contains("operator-secret-needle");
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "second"), List.of("private/new.md"))
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/new.md")
                         .expectedAbsence())
@@ -104,7 +113,7 @@ class SelectedFileSavesTests {
         String acknowledged = state.baseCommit;
         fixture.competingWrite(auth, actor);
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "conflict"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
         assertThat(state.baseCommit).isEqualTo(acknowledged);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
@@ -119,11 +128,11 @@ class SelectedFileSavesTests {
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
@@ -132,14 +141,14 @@ class SelectedFileSavesTests {
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), patches, fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "uncertain"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "retry"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         verify(patches, times(1)).apply(any(), any(), any());
         assertThat(state.baseCommit).isEqualTo(fixture.sourceCommit());
-        assertThat(state.lastSave.get("code")).isEqualTo("WRITE_OUTCOME_UNKNOWN");
+        assertThat(((BridgeReplies.Reply) state.lastSave).code()).isEqualTo("WRITE_OUTCOME_UNKNOWN");
     }
 
     private static AuthPrincipal actor() {
@@ -153,11 +162,11 @@ class SelectedFileSavesTests {
     void synchronizingOnePathNeverAcceptsNewRemoteRevisionsForUnselectedLocalFiles() throws Exception {
         var auth = mock(AuthService.class);
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
@@ -174,10 +183,10 @@ class SelectedFileSavesTests {
         assertThat(plan.conflicted()).isFalse();
         saves.acknowledgeSync(state, plan);
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "local secret edit"), List.of())
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(saves.save(actor, workspace, state, Map.of("AGENTS.md", "old local guide edit"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "AGENTS.md")
                         .source())
@@ -192,11 +201,11 @@ class SelectedFileSavesTests {
     void recoveryAcknowledgesTheOriginalSaveAndAllowsLaterLocalEditsToBeSavedSeparately() throws Exception {
         var auth = mock(AuthService.class);
         when(auth.authorize(any(), any()))
-                .thenAnswer(call -> new io.github.core607.poketto.auth.WorkspaceAccess(
+                .thenAnswer(call -> new WorkspaceAccess(
                         call.getArgument(1),
                         call.getArgument(0),
-                        io.github.core607.poketto.auth.MembershipRole.OWNER,
-                        java.util.EnumSet.allOf(io.github.core607.poketto.auth.Capability.class)));
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         var actor = actor();
         var workspace = WorkspaceId.random();
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())
@@ -207,21 +216,21 @@ class SelectedFileSavesTests {
         var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "original-attempt"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         String retained = state.attempt.orElseThrow().commit();
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "later-edit"), List.of())
-                        .get("code"))
+                        .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
         fixture.restoreTransport();
-        assertThat(saves.recover(actor, workspace, state).get("ok")).isEqualTo(true);
+        assertThat(saves.recover(actor, workspace, state).ok()).isEqualTo(true);
         assertThat(state.baseCommit).isEqualTo(retained);
         assertThat(fixture.pushes()).isEqualTo(1);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
                         .source())
                 .contains("original-attempt");
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "later-edit"), List.of())
-                        .get("ok"))
+                        .ok())
                 .isEqualTo(true);
         assertThat(fixture.pushes()).isEqualTo(2);
         assertThat(reader.getFile(actor, workspace, Optional.empty(), "private/secret.md")
