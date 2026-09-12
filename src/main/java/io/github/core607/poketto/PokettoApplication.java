@@ -5,6 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
+/** The single deployed process. Application modules are the packages beneath this one. */
 public class PokettoApplication {
 
     public static void main(String[] args) {

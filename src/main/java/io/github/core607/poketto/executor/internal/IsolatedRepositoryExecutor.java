@@ -1529,6 +1529,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /**
+     * Accepts an answer only if it succeeded and belongs to this lease and commit. A refusal
+     * carries no detail to the caller, because a worker failure is not something the caller can
+     * act on and its text could name host paths or command bytes.
+     *
+     * <p>The rejection code does reach the log, which is where an operator diagnoses this. It is
+     * printed only when it matches the shape the protocol defines for a code, so a worker that
+     * puts something else in that field cannot write arbitrary text into the log.
+     */
     private static void requireOk(JsonNode response, Session session) {
         if (!response.path("ok").booleanValue()) {
             String code = response.path("code").asString("INVALID_RESPONSE");
@@ -1589,6 +1598,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } catch (RuntimeException exception) {
             String reason = result.path("terminationReason").asString("");
             log.warn(
+                    // The exception's own text can quote the answer, which may hold command
+                    // output, so only its type and the reason's vetted shape are recorded.
                     "Invalid worker execution result ({}; termination={})",
                     exception.getClass().getSimpleName(),
                     reason.matches("[a-z_]{1,32}") ? reason : "invalid");
