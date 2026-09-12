@@ -21,35 +21,32 @@ Two pull requests reached that state: one after an unrelated body edit, and one 
 
 ## Decision
 
-The `verify` job always runs and always reports under its fixed name. A job-level `METADATA_ONLY`
-variable carries the same condition as before, and every step is guarded by it, so a title or body
-edit starts a runner, runs nothing, and publishes a successful `verify` for a commit that an earlier
-run already verified. Retargeting still has `METADATA_ONLY` false and verifies in full.
+The `verify` job always runs, always verifies, and always reports under its fixed name. A title or
+body edit therefore starts a full verification of a commit that was already verified, and its result
+is the truth about that commit rather than a restatement of an earlier one.
 
 The concurrency group is unchanged: a metadata edit already gets its own group keyed by run id, so
-it cannot cancel a verification that is still running for the same commit.
+the extra verification cannot cancel one that is still running for the same commit.
 
 ## Alternatives
 
-Removing `edited` from the trigger list is the smallest change and would end the problem, but a
-retarget would then never re-verify against its new base. That the branch must also be up to date
-makes a follow-up push likely rather than certain, and "likely" is not a gate.
+Skipping the steps while still reporting `verify` as successful is cheaper and was rejected as
+unsafe. It reports a conclusion the run did not establish, so a commit whose verification failed,
+was cancelled, or is still running would gain a newer green required check as soon as anyone edited
+the title. The downstream review gate has the same hole: it admits a run whose job is named `verify`
+with conclusion success, which a step-skipping run would satisfy without having verified anything.
 
-Moving the real work into a separate job and leaving `verify` as a gate that reports its result
-keeps the steps unguarded, at the cost of an extra job, a second runner, and a hand-written result
-translation. The guard is repeated once per step here instead, which keeps the dependency graph and
-the publication jobs untouched.
+Removing `edited` from the trigger list ends the stuck state at no cost, but a retarget would then
+never re-verify against its new base. Requiring the branch to be up to date makes a follow-up push
+likely rather than certain, and likely is not a gate.
 
 Keeping the skip and relying on maintainers to push an empty commit was the status quo. It costs a
-full verification cycle and strands the pull request until someone recognizes the cause.
+full verification cycle anyway and strands the pull request until someone recognizes the cause.
 
 ## Consequences
 
-A title or body edit now starts a runner that does nothing for a few seconds. That is the price of
-a required check that always reports.
-
-Every step in the job carries the same guard. A step added without it would run during a metadata
-edit, which is visible as unexpected work rather than as a silent gap.
+A title or body edit now costs one full verification. Setting the description when the pull request
+is opened avoids that cost; editing it afterwards is correct but not free.
 
 A pull request already stranded by the old behavior is not repaired by this change. It still needs a
 new head commit, because the unmet expectation belongs to the commit that was current at the time.
@@ -58,12 +55,12 @@ new head commit, because the unmet expectation belongs to the commit that was cu
 
 `.github/review/test_review.py` pinned the previous design by asserting that `ci.yml` contained the
 job-level condition and the conditional job name. Both are gone, so that test now encodes the new
-invariant instead: the job carries no job-level condition, its name is exactly `verify`, it declares
-`METADATA_ONLY`, and the number of guarded lines equals the number of steps. A step added without
-the guard fails that count.
+invariant instead: the job carries no job-level condition, its name is exactly `verify`, no variable
+decides whether to verify, the only conditional step is the failure-report upload, and the
+verification command is still there. A change that reintroduces a skip fails it.
 
 ## Verification
 
 - The workflow's own pull request runs `verify` to success on push.
-- Editing that pull request's body afterwards starts a second run whose steps are all skipped and
-  which still publishes `verify` as successful, leaving the pull request mergeable.
+- Editing that pull request's body afterwards starts a second run that verifies again and reports
+  `verify` under the same name, leaving the pull request mergeable.
