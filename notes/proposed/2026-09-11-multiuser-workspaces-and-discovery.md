@@ -52,7 +52,7 @@ Search query, pagination, and space scope live in URLs. Browser-history-local st
 
 Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix.
 
-The [website delivery boundary](2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
+The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
 
 ## Administration experience
 

@@ -57,7 +57,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 新建路径输入框默认从 `private/` 开始。移动选择器中的私有／公开目录按钮在切换根目录时保留分类路径；选定目标后，提交移动才会写入仓库。移动目录包含其中的索引媒体，单独移动文档不会带走共享依赖。
 
-托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。关闭网站或替换公开快照也会使已签发的图片地址失效；刷新页面可取得当前地址。私有预览重新验证当前身份。[网站交付边界](../notes/proposed/2026-09-14-workspace-public-delivery.md)记录这次授权变化，[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)继续规定存储保证与限制。
+托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。关闭网站或替换公开快照也会使已签发的图片地址失效；刷新页面可取得当前地址。私有预览重新验证当前身份。[网站交付边界](../notes/implemented/2026-09-14-workspace-public-delivery.md)记录这次授权变化，[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)继续规定存储保证与限制。
 
 人类 owner 可在所选空间的“网站发布”面板，或通过 `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication` 读取和修改网站开关。修改须携带会话 CSRF token，并明确提交 `{ "enabled": true }` 或 `{ "enabled": false }`；省略字段会报错。面板会要求确认，回包不确定时须重新读取状态后再操作。关闭网站不影响成员读取获准访问的仓库文件。
 

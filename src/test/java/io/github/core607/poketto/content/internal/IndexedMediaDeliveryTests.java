@@ -128,6 +128,9 @@ class IndexedMediaDeliveryTests {
                 .contains(firstCommit.name());
         var preview = assets.preview(actor, workspace, "public/index.md", body, Optional.of(firstCommit.name()));
         assertThat(preview.images()).containsKeys("picture.png", "../private/picture.png");
+        String privateImage = preview.images().get("../private/picture.png");
+        String privateToken = privateImage.substring(privateImage.lastIndexOf('/') + 1);
+        assertThatThrownBy(() -> assets.readPublicImage(privateToken)).isInstanceOf(AssetStorageException.class);
         assertThat(preview.downloads().get("../private/source.pdf"))
                 .startsWith("/api/admin/workspaces/" + workspace + "/media?");
         String token = page.media().images().get("picture.png").substring("/api/public/assets/".length());
