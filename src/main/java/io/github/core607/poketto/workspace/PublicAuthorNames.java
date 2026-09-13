@@ -12,12 +12,17 @@ public final class PublicAuthorNames {
         if (name.codePointCount(0, name.length()) > 120) {
             throw new IllegalArgumentException("Public author name must not exceed 120 Unicode code points");
         }
-        if (name.codePoints()
-                .anyMatch(point -> Character.isISOControl(point)
-                        || (point >= Character.MIN_SURROGATE && point <= Character.MAX_SURROGATE))) {
+        if (name.codePoints().anyMatch(PublicAuthorNames::invalidCharacter)) {
             throw new IllegalArgumentException("Public author name must be single-line Unicode text");
         }
         return name;
+    }
+
+    private static boolean invalidCharacter(int point) {
+        return Character.isISOControl(point)
+                || Character.getType(point) == Character.LINE_SEPARATOR
+                || Character.getType(point) == Character.PARAGRAPH_SEPARATOR
+                || (point >= Character.MIN_SURROGATE && point <= Character.MAX_SURROGATE);
     }
 
     public static String select(String article, String workspace) {
