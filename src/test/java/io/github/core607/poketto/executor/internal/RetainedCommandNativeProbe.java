@@ -2,7 +2,11 @@ package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -165,10 +169,23 @@ final class RetainedCommandNativeProbe {
                         Duration.ofSeconds(30),
                         cancellation));
         awaitRunning(worker, before);
-        cancellation.cancel();
-        assertThatThrownBy(() -> running.get(15, TimeUnit.SECONDS))
-                .isInstanceOf(ExecutionException.class)
-                .hasCauseInstanceOf(RuntimeException.class);
+        var acknowledgeClose = new AtomicBoolean();
+        WorkerClient intercepted = lostCloseAcknowledgement(worker, acknowledgeClose);
+        Field field = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
+        field.setAccessible(true);
+        field.set(executor, intercepted);
+        try {
+            assertThatThrownBy(cancellation::cancel).isInstanceOf(WorkerUnavailableException.class);
+            assertThatThrownBy(() -> running.get(15, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(RuntimeException.class);
+            assertWriterBusy(store, before);
+            acknowledgeClose.set(true);
+            awaitWriterRelease(store, before);
+        } finally {
+            acknowledgeClose.set(true);
+            field.set(executor, worker);
+        }
         RetainedCopyRecord interrupted = store.read(before.owner(), before.copyId());
         assertThat(interrupted.command()).isNotNull();
         assertThat(interrupted.acknowledged().id())
@@ -177,6 +194,49 @@ final class RetainedCommandNativeProbe {
             assertThat(released).isNotNull();
         }
         return interrupted;
+    }
+
+    private static WorkerClient lostCloseAcknowledgement(WorkerClient worker, AtomicBoolean acknowledgeClose) {
+        WorkerClient intercepted = spy(worker);
+        doAnswer(call -> {
+                    JsonNode reply = worker.request(
+                            call.getArgument(0),
+                            call.getArgument(1),
+                            call.getArgument(2),
+                            call.getArgument(3),
+                            call.getArgument(4));
+                    if (!acknowledgeClose.get()) {
+                        throw new WorkerUnavailableException();
+                    }
+                    return reply;
+                })
+                .when(intercepted)
+                .request(any(), any(), eq("CLOSE"), any(), any());
+        return intercepted;
+    }
+
+    private static void assertWriterBusy(RetainedCopyStore store, RetainedCopyRecord record) {
+        assertThatThrownBy(() -> {
+                    try (var incorrectlyReleased = store.writer(record.owner(), record.copyId())) {
+                        throw new AssertionError("An unconfirmed close released the retained writer lock");
+                    }
+                })
+                .isInstanceOf(RetainedCopyException.class)
+                .hasMessageContaining("BUSY");
+    }
+
+    private static void awaitWriterRelease(RetainedCopyStore store, RetainedCopyRecord record) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+        while (true) {
+            try (var released = store.writer(record.owner(), record.copyId())) {
+                assertThat(released).isNotNull();
+                return;
+            } catch (RetainedCopyException busy) {
+                assertThat(busy.reason()).isEqualTo(RetainedCopyException.Reason.BUSY);
+            }
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(50);
+        }
     }
 
     private void awaitRunning(WorkerClient worker, RetainedCopyRecord record) throws Exception {

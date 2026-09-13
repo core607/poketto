@@ -321,8 +321,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return;
         }
         session.retainedRecord = retained.record();
-        if (session.stopping.get() && !session.stopped.isDone()) {
-            session.stopped.whenComplete((ignored, failure) -> retained.close());
+        if (session.stopping.get()) {
+            session.contained.thenRun(retained::close);
         } else {
             retained.close();
         }
@@ -1710,6 +1710,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             releasedCopies.increment();
         }
         session.capacityReleased = true;
+        session.contained.complete(null);
         if (session.detached) {
             sessions.remove(session.key, session);
         }
@@ -1984,6 +1985,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private final AtomicBoolean stopping = new AtomicBoolean();
         private final AtomicBoolean renewing = new AtomicBoolean();
         private final CompletableFuture<Void> stopped = new CompletableFuture<>();
+        private final CompletableFuture<Void> contained = new CompletableFuture<>();
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
