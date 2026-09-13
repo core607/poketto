@@ -1,0 +1,66 @@
+{
+  "sourceCommit": "9ef80c5de0b0005206ba5cb84359fe155fc24da0",
+  "sourceState": "Recorded as base plus changed-file hashes before the browser run; committed without source changes afterward",
+  "baseCommit": "c7da6b39cdbb9cfb2440b6b2c4c166dfe46d6a7d",
+  "sourceFilesSha256": {
+    "build.gradle.kts": "4f6cc1e0720708dca268349d70583053cefa6382ddcaa3401fcee923153e8569",
+    "docs/usage.md": "f579c9ea18a0987d298911d1fd0018b405aa7510c2b11909cb8941bb6b5d2189",
+    "docs/usage.zh.md": "9118aa0c194d037392d164dad47654f52cd30cd825ba2679b146e9206568733c",
+    "frontend/components/articles.tsx": "641318ace031afd29304078dc651b39bb5d1d1259df0c2047b9a7725f03b0f8b",
+    "frontend/tests/rendering.test.tsx": "e5ee059e78470ac26e0f9bfbd01e01ac09922a1ca26ad8aeb15250a11b0830c6",
+    "notes/proposed/2026-09-11-multiuser-workspaces-and-discovery.md": "7366ebb5661f114910e70da24b95da5a5207a90dd19f0758ee640d58a2ab0c2a",
+    "src/integrationTest/java/io/github/core607/poketto/web/internal/RepositoryAdminIntegrationIT.java": "133df5c9c08db5025bf5d1a53f5aa1e1571307234f83d89b8f590dbd13d14a9f",
+    "src/main/java/io/github/core607/poketto/content/AuthorizedRepositoryReader.java": "83fc0b826465712b9dae5c70c05bca8f88d6768282c31a7361a063249dcfae1d",
+    "src/main/java/io/github/core607/poketto/content/DocumentSearch.java": "ccfccb256a2df10fbaefda5339c9e095fe04e719617b399ec40c46bacd1cd57c",
+    "src/main/java/io/github/core607/poketto/content/MarkdownText.java": "01e25528213803796be18db3c658278dd38fb70222993e88f0a841f25b569d5a",
+    "src/main/java/io/github/core607/poketto/web/internal/PublicDocuments.java": "6b3a065331254e2e861f4616780b048c2aec1e6792e6112d9fd581132ad8aad3",
+    "src/test/java/io/github/core607/poketto/content/MarkdownTextTests.java": "b729e93c9a9003716c8d412479b9b4b92570bc54e3d1160f3333e5754c4987f7",
+    "src/test/java/io/github/core607/poketto/web/internal/PublicDocumentControllerTests.java": "3769bfe0208e492b09e12199d5413c62db9a8f6597bb158d1980d907b10ccc5d"
+  },
+  "startCommand": "docker compose --env-file .gradle/visible-acceptance.env -f acceptance/compose.yaml -p poketto-visible-text up -d --no-build",
+  "frontendBuild": "docker compose --env-file .gradle/visible-acceptance.env -f acceptance/compose.yaml -p poketto-visible-text build frontend",
+  "dependencies": [
+    "real Spring application",
+    "pinned PostgreSQL 17.11",
+    "production Next.js build",
+    "same-origin Caddy",
+    "synthetic remote Git repository"
+  ],
+  "browser": "Codex In-app Browser",
+  "viewport": {
+    "devicePixelRatio": 2,
+    "width": 1280,
+    "height": 720
+  },
+  "screenshot": {
+    "source": "Unedited JPEG returned by the standard viewport screenshot API and recovered from this task tool output",
+    "file": "search.jpg",
+    "sha256": "27416b3474673b8c542f7443d81c9fd030f23efba4968474c2e35e9c07cbb035",
+    "capturedAt": "2026-09-13T17:58:46Z"
+  },
+  "observations": {
+    "visibleLinkLabelMatches": 1,
+    "mobileScrollWidth": 390,
+    "markdownDestinationsInSnippet": false,
+    "mobileWidth": 390,
+    "duplicateOpeningTitleInSnippet": false,
+    "hiddenLinkDestinationMatches": 0,
+    "mobileHeight": 844,
+    "privateSentinelMatches": 0
+  },
+  "checks": [
+    "full local unit suite passed before footnote reachability and final excerpt refinement",
+    "final MarkdownTextTests: 7 passed",
+    "public controller and authenticated RepositoryAdminIntegrationIT passed",
+    "Java style checks passed",
+    "frontendCheck passed",
+    "repoCheck passed",
+    "git diff --check passed"
+  ],
+  "cleanup": "all four fixture containers, both fixture volumes and network removed",
+  "limitations": [
+    "Synthetic local HTTP fixture; no production HTTPS or external repository-provider acceptance",
+    "This change does not implement discovery, collections, body-heading suppression, match highlighting or return-state restoration",
+    "Mobile overflow was checked through layout measurements; only the desktop screenshot is published"
+  ]
+}
