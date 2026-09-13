@@ -102,12 +102,13 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
     }
 
     public MediaFileService media(AuthService auth) {
-        return new MediaFileService(auth, new JGitRepositoryBlobReader(repository.authority()), snapshots, () -> {
-            if (originals == null) {
-                originals = ManagedBlobStore.local(fixtureRoot.resolve("originals"));
-            }
-            return originals;
-        });
+        return new MediaFileService(
+                auth, new JGitRepositoryBlobReader(repository.authority()), snapshots, snapshots, () -> {
+                    if (originals == null) {
+                        originals = ManagedBlobStore.local(fixtureRoot.resolve("originals"));
+                    }
+                    return originals;
+                });
     }
 
     public PortableContentExports packages(AuthService auth) {

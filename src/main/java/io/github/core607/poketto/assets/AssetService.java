@@ -356,20 +356,19 @@ public final class AssetService {
 
     public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
         Grant grant = grant(workspace, token, "");
-        requireCurrentIndexedPublication(grant);
+        requireCurrentPublication(grant);
         AssetBytes image = bytes(workspace, grant.key().target());
         grant(workspace, token, "");
-        requireCurrentIndexedPublication(grant);
+        requireCurrentPublication(grant);
         return image;
     }
 
-    private void requireCurrentIndexedPublication(Grant grant) {
-        if (!(grant.key().target() instanceof Indexed indexed)) {
-            return;
+    private void requireCurrentPublication(Grant grant) {
+        if (grant.key().target() instanceof Indexed indexed && !indexed.publicPath()) {
+            throw notFound();
         }
         snapshots.withCurrent(grant.key().workspace(), snapshot -> {
-            if (!indexed.publicPath()
-                    || !snapshot.commit().equals(Optional.of(grant.key().commit()))
+            if (!snapshot.commit().equals(Optional.of(grant.key().commit()))
                     || snapshot.articles().stream()
                             .noneMatch(article ->
                                     article.repositoryPath().equals(grant.key().page()))) {

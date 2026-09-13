@@ -35,9 +35,10 @@ class MediaCatalogTests {
         when(repository.selectCommit(workspace, Optional.of(expected.commit())))
                 .thenReturn(Optional.of(expected.commit()));
         doReturn(expected).when(repository).media(workspace, expected.commit());
-        var service = new MediaFileService(auth, repository, mock(PublicContentSnapshots.class), () -> {
-            throw new AssertionError("Listing must not open original storage");
-        });
+        var service = new MediaFileService(
+                auth, repository, mock(PublicContentSnapshots.class), mock(PublicContentSnapshots.class), () -> {
+                    throw new AssertionError("Listing must not open original storage");
+                });
         assertThat(service.privateCatalog(actor, workspace, Optional.of(expected.commit())))
                 .isSameAs(expected);
         verify(auth, times(2)).authorize(actor, workspace, Capability.READ_PRIVATE);
@@ -57,9 +58,10 @@ class MediaCatalogTests {
             when(auth.authorize(actor, workspace, Capability.READ_PRIVATE)).thenThrow(denied);
             return expected;
         });
-        var service = new MediaFileService(auth, repository, mock(PublicContentSnapshots.class), () -> {
-            throw new AssertionError("Listing must not open original storage");
-        });
+        var service = new MediaFileService(
+                auth, repository, mock(PublicContentSnapshots.class), mock(PublicContentSnapshots.class), () -> {
+                    throw new AssertionError("Listing must not open original storage");
+                });
         assertThatThrownBy(() -> service.privateCatalog(actor, workspace, Optional.empty()))
                 .isSameAs(denied);
         reset(auth);

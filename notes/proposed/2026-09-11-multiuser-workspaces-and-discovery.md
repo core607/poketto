@@ -50,6 +50,8 @@ Search query, pagination, and space scope live in URLs. Browser-history-local st
 
 Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix.
 
+The [website delivery boundary](2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
+
 ## Administration experience
 
 New note and New folder actions operate in the selected directory. New notes and uploads default to private; full path entry remains an advanced action. Filename search covers all authorized files, not just expanded tree entries, and is distinct from body search.

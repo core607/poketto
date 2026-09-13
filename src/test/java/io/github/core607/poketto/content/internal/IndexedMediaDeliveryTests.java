@@ -131,7 +131,7 @@ class IndexedMediaDeliveryTests {
                 .startsWith("/api/admin/workspaces/" + workspace + "/media?");
         String token = page.media().images().get("picture.png").substring("/api/public/assets/".length());
         assertThat(assets.readPublicImage(workspace, token).bytes()).isEqualTo(image);
-        var media = new MediaFileService(auth, blobs, snapshots, () -> store);
+        var media = new MediaFileService(auth, blobs, snapshots, snapshots, () -> store);
         var downloaded = new ByteArrayOutputStream();
         media.publicDownload(workspace, firstCommit.name(), "/", "public/source.pdf")
                 .writeTo(downloaded);

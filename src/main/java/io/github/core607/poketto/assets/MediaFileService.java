@@ -31,6 +31,7 @@ public final class MediaFileService {
     private final AuthService auth;
     private final RepositoryBlobReader repository;
     private final PublicContentSnapshots snapshots;
+    private final PublicContentSnapshots website;
     private final Supplier<ManagedBlobStore> originals;
     private final Map<WorkspaceId, Integer> active = new HashMap<>();
     private final Set<WorkspaceId> publicTransfers = new HashSet<>();
@@ -40,10 +41,12 @@ public final class MediaFileService {
             AuthService auth,
             RepositoryBlobReader repository,
             PublicContentSnapshots snapshots,
+            PublicContentSnapshots website,
             Supplier<ManagedBlobStore> originals) {
         this.auth = auth;
         this.repository = repository;
         this.snapshots = snapshots;
+        this.website = website;
         this.originals = originals;
     }
 
@@ -184,8 +187,8 @@ public final class MediaFileService {
     }
 
     public Download publicDownload(WorkspaceId workspace, String commit, String route, String path) {
-        PublicArticle article = snapshots.withCurrent(workspace, snapshot -> publicArticle(snapshot, commit, route));
-        Runnable check = () -> snapshots.withCurrent(workspace, snapshot -> {
+        PublicArticle article = website.withCurrent(workspace, snapshot -> publicArticle(snapshot, commit, route));
+        Runnable check = () -> website.withCurrent(workspace, snapshot -> {
             if (!publicArticle(snapshot, commit, route).equals(article)) {
                 throw missing();
             }
@@ -206,8 +209,7 @@ public final class MediaFileService {
 
     /** Resolves only a currently referenced public original; callers must not return the source commit as public history. */
     public Download publicDownload(WorkspaceId workspace, String route, String path) {
-        String commit =
-                snapshots.withCurrent(workspace, value -> value.commit().orElseThrow(MediaFileService::missing));
+        String commit = website.withCurrent(workspace, value -> value.commit().orElseThrow(MediaFileService::missing));
         return publicDownload(workspace, commit, route, path);
     }
 

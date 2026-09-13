@@ -1,6 +1,8 @@
 # Repository Authoring Foundations
 
 Date: 2026-09-05
+
+The [workspace website delivery proposal](../proposed/2026-09-14-workspace-public-delivery.md) replaces the issued-image survival rule for the multi-user delivery. The original five-minute replay behavior below records the earlier decision; repository authority, durable originals and source-retention bounds remain independently applicable.
 Status: Implemented
 
 ## Scope
