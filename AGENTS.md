@@ -1,21 +1,21 @@
 # AGENTS.md
 
-Poketto is a repository-native personal knowledge service whose public face is a blog. Every production workspace uses [remote Git repository authority](notes/implemented/2026-09-01-remote-repository-authority.md); the primary single-server profile keeps a disposable local repository cache and uses an authoritative local ManagedBlobStore for Poketto uploads, a disposable cache for read-only repository images, and local SRT. The [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) selects authoritative OSS, derived image caching, and remote SRT through configuration. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted target decisions while they await implementation and must not be described as shipped.
+Poketto is a repository-native personal knowledge service whose public face is a blog. Remote Git is content authority; workspace repositories cached locally are disposable. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted targets awaiting implementation and must not be described as shipped.
 
-The public README, requirements note and [usage reference](docs/usage.md) have .zh.md counterparts; edit both sides in the same change (see [translate-docs](.agents/skills/translate-docs/SKILL.md)). Agent instructions and skills are English-only.
+The public README, requirements note and [usage reference](docs/usage.md) have .zh.md counterparts; make the smallest corresponding edit to both sides in the same change. The extended [translate-docs](.agents/skills/translate-docs/SKILL.md) workflow is user-invoked only.
 
 ## Arrival guide
 
-Current phase: development. The executable baseline is established; product capabilities are implemented only from an assigned, settled task.
+Current phase: development. Implement product capabilities only from an assigned, settled task; do not infer work from the roadmap or implement ideas still under discussion.
 
-The [CodeAct content and media contract](notes/implemented/2026-09-09-codeact-content-and-media.md) defines the current content boundary. New product work requires an assigned, settled task.
+Read the owning code and documents needed for the task. Local wording and mechanical edits need only directly relevant context. Use these routes when their subject is affected:
 
-An agent arriving for the first time:
+- Product behavior, permissions, or data ownership: the [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) and the owning decisions, including any record the change implements or supersedes.
+- Content and media: the [CodeAct contract](notes/implemented/2026-09-09-codeact-content-and-media.md).
+- Build, module boundaries, database test image, or CI: the [development baseline](notes/implemented/2026-08-26-development-baseline.md).
+- Java changes or reviews: the [Java style rules](docs/java-style.md).
 
-1. Read this file, then the requirements note. Read the [development baseline](notes/implemented/2026-08-26-development-baseline.md) when changing the build, module boundaries, database test image, or CI.
-2. In your first reply, state your understanding of the project and current task; continue when the task is already assigned and settled. Do not infer a product task from the roadmap or implement ideas still under discussion.
-3. Work on a short-lived branch. Keep product code inside the owning application module and add evidence that exercises the changed behavior.
-4. Never push or create a pull request without the user's explicit authorization; never push directly to main.
+Keep product code inside the owning application module. Within the authorized scope, finish implementation, applicable verification, and fixes for regressions introduced by the change. Continue until the requested outcome is verified or a concrete blocker needs user input; a first implementation alone is not completion.
 
 ## Phase clause (delete this section at the first release)
 
@@ -30,20 +30,12 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew bootRun` | Start the application locally |
 | `./gradlew test` | Run fast unit, context, and module-boundary tests |
 | `./gradlew integrationTest` | Run database integration tests against pinned official PostgreSQL 17 |
-| `./gradlew linuxStorageTest` | On Windows, run required storage tests on a native Linux disk volume in Docker |
 | `./gradlew frontendCheck` | Run pinned frontend formatting, type checks, tests, and production build |
-| `./gradlew stageAcceptanceRuntime` | Stage real application classes and synthetic browser fixtures |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
-| `./gradlew deployScriptTests` | Run the deployment script tests against fake docker, curl, and ssh |
-| `./gradlew existingDeploymentTests` | Verify existing-installation updates and retry reconciliation on Linux in Docker |
-| `./gradlew gatewayConfigCheck` | Validate the Caddy configuration using its pinned real container |
-| `./gradlew proxyForwardingCheck` | Verify real Caddy/Tomcat address and login buckets with isolated Docker clients |
-| `./gradlew appImageIdentityCheck` | Verify the production image identity and protected executor socket access |
-| `./gradlew executorServiceTests` | Run required executor protocol and lifecycle tests on Linux; Windows uses Docker |
-| `./gradlew spotlessApply` | Rewrite Java sources into the canonical format |
-| `./gradlew checkstyleMain checkstyleTest checkstyleIntegrationTest` | Check Java sources against the style gate |
 | `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |
 | `./gradlew check` | Run the complete local and CI verification suite |
+
+Use [pre-push-checks](.agents/skills/pre-push-checks/SKILL.md) for delivery verification and specialized commands. Select evidence for the changed surface; a full local suite is not the default.
 
 ## Decision records (notes/)
 
@@ -60,27 +52,11 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 ## Rules
 
 - Agent instructions and skills are English-only. Notes are English by default unless covered by the bilingual pairs declared above.
-- Read [prose-standard](.agents/skills/prose-standard/SKILL.md) before writing any document.
+- Preserve factual obligations, conditions, exceptions, and consequences; remove repetition and authoring-session narration. Use [prose-standard](.agents/skills/prose-standard/SKILL.md) for substantive writing, rewriting, or prose audits.
 - Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report it and block actions and completion claims that depend on it; continue only authorized work whose outcome does not depend on that check, without claiming the check passed.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.
-- Treat main as protected and never push directly; changes go through short-lived branches and PRs. Restore platform enforcement before the repository becomes public.
+- Work on short-lived branches; never push directly to main. Pushing and creating a PR each require explicit user authorization for that action and scope. Restore platform enforcement before the repository becomes public.
 - No credentials in the repository, ever. `.env` is the first line of .gitignore.
-
-## Java style
-
-Checkstyle gates the braces, import, and length rules below and fails `check` on a violation; the [Java style baseline](notes/implemented/2026-09-12-java-style-baseline.md) records the rationale. The remaining rules bind new and changed code and are enforced in review.
-
-- Every `if`, `else`, `for`, and `while` body uses braces, including single statements.
-- Request and response shapes are records serialized by Jackson; do not build them with `Map.of("key", value, ...)`. Literal-key maps are allowed only at a protocol boundary that has no fixed schema, and only in one adapter class.
-- Inputs are deserialized into records that validate on construction; do not hand-check `JsonNode.path(...).isX()` chains in business code.
-- A guard clause tests one condition or calls a named validator; no multi-line `||` chains ending in `throw`.
-- Every thrown exception carries a message, and a wrapped exception keeps the original as its `cause`. Client responses may hide details; logs record the cause with its stack trace.
-- Catch specific exception types. `catch (RuntimeException e)` is allowed only at a boundary that logs at WARN with the exception and re-maps it once.
-- Import types; write a fully qualified name only to resolve a real name clash.
-- Use `var` only when the type is visible on the right-hand side: a constructor, a literal, or a method named after its type.
-- Records, sealed interfaces, and pattern matching are the preferred way to model data and variants; keep using them.
-- A method stays under 60 code lines and a file under 600 lines; split by responsibility. Code that already exceeded a limit is exempted one file at a time in [config/checkstyle/suppressions.xml](config/checkstyle/suppressions.xml) and one method at a time in [config/checkstyle/xpath-suppressions.xml](config/checkstyle/xpath-suppressions.xml); new code gets no entry, including a new method in an exempted file.
-- Formatting is owned by Spotless; do not hand-format.
 
 ## Skills (.agents/skills/)
 
@@ -92,7 +68,7 @@ Skills own reusable workflows and specialized decision standards. Keep each entr
 
 | Skill | Purpose |
 |---|---|
-| [prose-standard](.agents/skills/prose-standard/SKILL.md) | Prose baseline; read before writing any document |
+| [prose-standard](.agents/skills/prose-standard/SKILL.md) | Substantive writing, rewriting, and prose audits |
 | [trim-cot-leakage](.agents/skills/trim-cot-leakage/SKILL.md) | Remove references only the authoring session could resolve |
 | [doc-standards](.agents/skills/doc-standards/SKILL.md) | Where content belongs + the document audit checklist |
 | [review](.agents/skills/review/SKILL.md) | Semantic review of a change: correctness, lifecycle, security, evidence; report only unless fixes are explicitly requested |

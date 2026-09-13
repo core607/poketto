@@ -1,6 +1,6 @@
 ---
 name: review
-description: Use when reviewing a PR or asked to "look over this change". Applies to any reviewer, including agents from other vendors.
+description: Use when reviewing a pull request or a specified repository change.
 ---
 
 # Reviewing a Poketto Change
@@ -12,7 +12,7 @@ This skill is guidance, not a complete checklist. For a review-only request, **o
 1. Verify the live base and exact head. Fetch them when necessary; do not trust an old branch name or PR summary.
 2. Inspect committed, staged, unstaged, and untracked paths that belong to the requested change.
 3. Read the diff and enough owning code, requirements, configuration, tests, and documentation to understand both sides of every changed interface.
-4. Read [AGENTS.md](../../../AGENTS.md), the [requirements note](../../../notes/implemented/2026-08-25-requirements-and-architecture.md), applicable subtree rules, and every decision record the change claims to implement or supersede.
+4. Follow [AGENTS.md](../../../AGENTS.md) and applicable subtree rules. Use its document routes for the affected subject, and read every decision record the change claims to implement or supersede. Local wording and mechanical changes do not require an unrelated architecture survey.
 
 ## Priorities
 

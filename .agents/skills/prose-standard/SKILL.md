@@ -1,13 +1,13 @@
 ---
 name: prose-standard
-description: Use before writing or editing any document in Poketto (notes, README, comments, commit message bodies). Defines the prose baseline and the acceptance test.
+description: Use for substantive repository prose writing, rewriting, or audits, including contracts in comments. Typo and mechanical edits follow the baseline in AGENTS.md.
 ---
 
 # Prose Standard
 
 Write enough to preserve the reader's contract, then remove repetition, narration, and decoration. The acceptance test is not merely that the text is short: a reader should understand every obligation and consequence in one pass.
 
-This skill owns editorial judgment. Use [doc-standards](../doc-standards/SKILL.md) for placement and structure, and [trim-cot-leakage](../trim-cot-leakage/SKILL.md) for prose tied to an authoring session.
+This skill owns editorial judgment. Use [doc-standards](../doc-standards/SKILL.md) when document placement or structure needs a decision, and [trim-cot-leakage](../trim-cot-leakage/SKILL.md) when prose depends on an authoring session.
 
 ## Preserve the complete proposition
 
@@ -40,11 +40,8 @@ Add prose when code and structure do not communicate a required fact. Do not wri
 
 ## Workflow
 
-1. Confirm the requested scope and applicable [AGENTS.md](../../../AGENTS.md) files.
-2. Read the owning code, requirement, or decision before judging its prose.
-3. Classify each passage as keep, add, trim, restructure, relocate, or defer.
-4. Make only changes authorized by the task; review requests report findings without editing.
-5. Update the authoritative source before generated or copied derivatives.
-6. Re-read the result without the old text. Confirm that every obligation, exception, failure, and reference remains complete.
+Read the owning code, requirement, or decision needed to establish the affected claims. Make only changes authorized by the task; a review-only request reports findings without editing. Update the authoritative source before generated or copied derivatives.
+
+Read the result independently of the old text. Every relevant obligation, exception, failure, and reference must remain complete; classification of each passage is useful for a broad audit, not required for a local edit.
 
 When two versions both preserve the complete proposition, prefer clearer ownership and fewer repeated facts. Do not manufacture edits merely to reduce a word count.
