@@ -14,7 +14,7 @@ export function Gallery({
 }) {
   const safe = items.filter((item) => safeImage(item.src, preview));
   const [selected, setSelected] = useState<number | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
   const active = selected === null ? undefined : safe[selected];
@@ -26,7 +26,6 @@ export function Gallery({
       opener.current?.focus();
     }
   }, [open]);
-  useEffect(() => setFailed(false), [active?.src]);
   const close = () => setSelected(null);
   const step = (direction: number) =>
     setSelected((current) =>
@@ -78,6 +77,19 @@ export function Gallery({
           if (event.target === event.currentTarget) close();
         }}
         onKeyDown={(event) => {
+          if (event.key === "Tab") {
+            const controls =
+              event.currentTarget.querySelectorAll<HTMLButtonElement>("button");
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (
+              (!event.shiftKey && event.target === last) ||
+              (event.shiftKey && event.target === first)
+            ) {
+              event.preventDefault();
+              (event.shiftKey ? last : first)?.focus();
+            }
+          }
           if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
             event.preventDefault();
             step(event.key === "ArrowLeft" ? -1 : 1);
@@ -94,27 +106,27 @@ export function Gallery({
             </button>
           </header>
           {active &&
-            (failed ? (
+            (failedSource === active.src ? (
               <p role="alert">图片暂时无法读取，请重新打开页面。</p>
             ) : (
               <img
                 src={active.src}
                 alt={active.alt}
-                onError={() => setFailed(true)}
+                onError={() => setFailedSource(active.src)}
               />
             ))}
           <p>{active?.alt}</p>
           <nav aria-label="图片切换">
             <button
               type="button"
-              disabled={selected === null || selected <= 0}
+              aria-disabled={selected === null || selected <= 0}
               onClick={() => step(-1)}
             >
               ← 上一张
             </button>
             <button
               type="button"
-              disabled={selected === null || selected >= safe.length - 1}
+              aria-disabled={selected === null || selected >= safe.length - 1}
               onClick={() => step(1)}
             >
               下一张 →

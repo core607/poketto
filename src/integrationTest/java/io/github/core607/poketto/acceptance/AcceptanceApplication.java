@@ -110,12 +110,10 @@ public final class AcceptanceApplication {
             }
             ImageIO.write(
                     image, "png", directory.resolve("public/相册/02-evening.png").toFile());
-            // Container-valid bytes with invalid pixel compression exercise the browser image error.
+            // A JPEG header without a pixel stream exercises the browser image error.
             Files.write(
-                    directory.resolve("public/相册/03-unreadable.png"),
-                    Base64.getDecoder()
-                            .decode(
-                                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACElEQVRub3QtemxpYq351UYAAAAASUVORK5CYII="));
+                    directory.resolve("public/相册/03-unreadable.jpg"),
+                    Base64.getDecoder().decode("/9j/wAALCAAgACABAREA/9k="));
             git.add().addFilepattern(".").call();
             git.commit()
                     .setMessage("Create synthetic acceptance content")

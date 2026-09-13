@@ -1562,7 +1562,7 @@ td select {
   border: 1px solid var(--line);
   border-radius: 0.3rem;
 }
-.lightbox-content button:disabled {
+.lightbox-content button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
 }
