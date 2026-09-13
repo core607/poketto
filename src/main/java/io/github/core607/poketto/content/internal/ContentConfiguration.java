@@ -7,9 +7,9 @@ import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.slf4j.LoggerFactory;
@@ -118,10 +118,13 @@ class ContentConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
     ContentSnapshotRefresher contentSnapshotRefresher(
-            PublicContentSnapshots store, Supplier<WorkspaceId> defaultWorkspaceId, RepositoryProperties properties) {
+            PublicContentSnapshots store,
+            Supplier<WorkspaceId> defaultWorkspaceId,
+            RepositoryProperties properties,
+            WorkspacePublications publications) {
         return new ContentSnapshotRefresher(
                 store::refresh,
-                () -> List.of(defaultWorkspaceId.get()),
+                new PublishedWorkspaceRefreshBatch(publications, defaultWorkspaceId),
                 Duration.ofSeconds(properties.refreshSeconds()));
     }
 

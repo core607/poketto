@@ -6,8 +6,12 @@ export function date(value: string) {
     timeZone: "UTC",
   }).format(new Date(value));
 }
-export function articleHref(route: string) {
+export function spaceHref(space?: string) {
+  return space ? `/s/${encodeURIComponent(space)}` : "";
+}
+export function articleHref(route: string, space?: string) {
   return (
+    spaceHref(space) +
     "/read" +
     (route === "/" ? "" : route.split("/").map(encodeURIComponent).join("/"))
   );

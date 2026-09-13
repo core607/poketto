@@ -14,7 +14,10 @@ import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.content.RepositoryTextChange;
+import io.github.core607.poketto.content.WebsiteContentSnapshots;
+import io.github.core607.poketto.workspace.PublicationUnavailableException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -102,12 +105,27 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
     }
 
     public MediaFileService media(AuthService auth) {
-        return new MediaFileService(auth, new JGitRepositoryBlobReader(repository.authority()), snapshots, () -> {
-            if (originals == null) {
-                originals = ManagedBlobStore.local(fixtureRoot.resolve("originals"));
-            }
-            return originals;
-        });
+        return media(auth, true);
+    }
+
+    public MediaFileService media(AuthService auth, boolean websiteEnabled) {
+        var publications = Mockito.mock(WorkspacePublications.class);
+        if (!websiteEnabled) {
+            Mockito.doThrow(new PublicationUnavailableException())
+                    .when(publications)
+                    .requireEnabled(workspace);
+        }
+        return new MediaFileService(
+                auth,
+                new JGitRepositoryBlobReader(repository.authority()),
+                snapshots,
+                new WebsiteContentSnapshots(snapshots, publications),
+                () -> {
+                    if (originals == null) {
+                        originals = ManagedBlobStore.local(fixtureRoot.resolve("originals"));
+                    }
+                    return originals;
+                });
     }
 
     public PortableContentExports packages(AuthService auth) {

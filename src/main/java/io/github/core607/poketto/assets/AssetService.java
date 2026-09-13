@@ -354,22 +354,27 @@ public final class AssetService {
         throw new ContentRepositoryException("public snapshot changed during both image preparation attempts");
     }
 
+    /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
+    public AssetBytes readPublicImage(String token) {
+        Grant selected = grant(token, "");
+        return readPublicImage(selected.key().workspace(), token);
+    }
+
     public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
         Grant grant = grant(workspace, token, "");
-        requireCurrentIndexedPublication(grant);
+        requireCurrentPublication(grant);
         AssetBytes image = bytes(workspace, grant.key().target());
         grant(workspace, token, "");
-        requireCurrentIndexedPublication(grant);
+        requireCurrentPublication(grant);
         return image;
     }
 
-    private void requireCurrentIndexedPublication(Grant grant) {
-        if (!(grant.key().target() instanceof Indexed indexed)) {
-            return;
+    private void requireCurrentPublication(Grant grant) {
+        if (grant.key().target() instanceof Indexed indexed && !indexed.publicPath()) {
+            throw notFound();
         }
         snapshots.withCurrent(grant.key().workspace(), snapshot -> {
-            if (!indexed.publicPath()
-                    || !snapshot.commit().equals(Optional.of(grant.key().commit()))
+            if (!snapshot.commit().equals(Optional.of(grant.key().commit()))
                     || snapshot.articles().stream()
                             .noneMatch(article ->
                                     article.repositoryPath().equals(grant.key().page()))) {
@@ -818,15 +823,21 @@ public final class AssetService {
     }
 
     private synchronized Grant grant(WorkspaceId workspace, String token, String actor) {
+        Grant grant = grant(token, actor);
+        if (!grant.key().workspace().equals(workspace)) {
+            throw notFound();
+        }
+        return grant;
+    }
+
+    private synchronized Grant grant(String token, String actor) {
         if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
             throw notFound();
         }
         Instant now = clock.instant();
         purge(now);
         Grant grant = grants.get(token);
-        if (grant == null
-                || !grant.key().workspace().equals(workspace)
-                || !grant.key().actor().equals(actor)) {
+        if (grant == null || !grant.key().actor().equals(actor)) {
             throw notFound();
         }
         return grant;
@@ -869,7 +880,8 @@ public final class AssetService {
     private static String downloadUrl(
             WorkspaceId workspace, boolean publicOnly, String commit, String route, String path) {
         String prefix = publicOnly ? "/api/public/media?" : WorkspaceHttpRoutes.admin(workspace) + "/media?";
-        return prefix + "commit=" + commit + "&path=" + query(path) + (publicOnly ? "&route=" + query(route) : "");
+        return prefix + "commit=" + commit + "&path=" + query(path)
+                + (publicOnly ? "&route=" + query(route) + "&workspace=" + workspace : "");
     }
 
     private static String query(String value) {

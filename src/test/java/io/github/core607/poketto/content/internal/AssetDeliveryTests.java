@@ -19,7 +19,6 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
 import io.github.core607.poketto.assets.AssetService;
-import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedAsset;
@@ -630,11 +629,11 @@ class AssetDeliveryTests {
     }
 
     @Test
-    void oldGrantKeepsExactBytesAfterWithdrawalAndDerivedCacheDeletion() throws Exception {
+    void oldGrantCannotRepopulateTheDerivedCacheAfterWithdrawal() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         var oldFiles = files("public/article.md", "# Article\n![image](image.png)");
         oldFiles.put("public/image.png", png(1));
-        String old = fixture.commitRemote(workspace, oldFiles).name();
+        fixture.commitRemote(workspace, oldFiles);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
         AssetService service = service(fixture, snapshots);
@@ -655,10 +654,8 @@ class AssetDeliveryTests {
             }
         }
         Files.delete(cache);
-        var replay = service.readPublicImage(workspace, grant);
-        assertThat(replay.bytes()).isEqualTo(png(1));
-        assertThat(((AssetSource.Repository) replay.source()).commit()).contains(old);
-        assertThat(directory.resolve("image-cache")).isDirectory();
+        assertNotFound(() -> service.readPublicImage(workspace, grant));
+        assertThat(directory.resolve("image-cache")).doesNotExist();
         assertNotFound(() -> service.readPublicImage(WorkspaceId.random(), grant));
         clock.now = clock.now.plusSeconds(300);
         assertNotFound(() -> service.readPublicImage(workspace, grant));
@@ -721,8 +718,8 @@ class AssetDeliveryTests {
                 .isInstanceOf(RepositoryWriteAmbiguousException.class)
                 .hasMessageContaining("remote acknowledged");
         assertThat(fixture.remoteHead(workspace)).isNotEqualTo(base);
-        // Previously issued authorization remains valid for its exact bytes, even after withdrawal.
-        assertThat(service.readPublicImage(workspace, issued).bytes()).isEqualTo(png(1));
+        assertThatThrownBy(() -> service.readPublicImage(workspace, issued))
+                .isInstanceOf(ContentRepositoryException.class);
         offline.set(true);
         Assertions.assertAll(
                 () -> assertThatThrownBy(() -> snapshots.current(workspace))
@@ -739,7 +736,7 @@ class AssetDeliveryTests {
         Files.delete(fixture.cache(workspace).resolve(".git/refs/heads/main.lock"));
         assertThat(snapshots.refresh(workspace).articles()).isEmpty();
         assertThat(service.publicDocument(workspace, "/other")).isEmpty();
-        assertThat(service.readPublicImage(workspace, issued).bytes()).isEqualTo(png(1));
+        assertNotFound(() -> service.readPublicImage(workspace, issued));
         clock.now = clock.now.plusSeconds(300);
         assertNotFound(() -> service.readPublicImage(workspace, issued));
     }
@@ -1045,10 +1042,10 @@ class AssetDeliveryTests {
         } finally {
             release.countDown();
         }
-        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        assertNotFound(() -> service.readPublicImage(workspace, original));
         clock.now = clock.now.plusSeconds(1);
         assertNotFound(() -> service.readPublicImage(workspace, original));
-        assertThat(service.readPublicImage(workspace, renewed).bytes()).isEqualTo(png(1));
+        assertNotFound(() -> service.readPublicImage(workspace, renewed));
         clock.now = clock.now.plusSeconds(299);
         assertNotFound(() -> service.readPublicImage(workspace, renewed));
     }

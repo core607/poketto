@@ -1,14 +1,16 @@
 import type { ArticlePage } from "../lib/types";
-import { articleHref, date } from "../lib/format";
+import { articleHref, date, spaceHref } from "../lib/format";
 
 export function ArticleList({
   page,
   base = "/",
   parameters = {},
+  space,
 }: {
   page: ArticlePage;
   base?: string;
   parameters?: Record<string, string>;
+  space?: string;
 }) {
   const pageHref = (offset: number) =>
     base + "?" + new URLSearchParams({ ...parameters, offset: String(offset) });
@@ -22,16 +24,21 @@ export function ArticleList({
                 <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
                 <span>／</span>
                 {item.tags.slice(0, 3).map((tag) => (
-                  <a href={"/tags?tag=" + encodeURIComponent(tag)} key={tag}>
+                  <a
+                    href={
+                      spaceHref(space) + "/tags?tag=" + encodeURIComponent(tag)
+                    }
+                    key={tag}
+                  >
                     {tag}
                   </a>
                 ))}
               </div>
               <h2>
-                <a href={articleHref(item.route)}>{item.title}</a>
+                <a href={articleHref(item.route, space)}>{item.title}</a>
               </h2>
               <p>{item.snippet}</p>
-              <a className="read-link" href={articleHref(item.route)}>
+              <a className="read-link" href={articleHref(item.route, space)}>
                 继续阅读 <span aria-hidden>↗</span>
               </a>
             </article>

@@ -3,7 +3,9 @@ package io.github.core607.poketto.web.internal;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.WebsiteContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -23,7 +25,11 @@ class WebConfiguration {
     }
 
     @Bean
-    PublicDocuments publicDocuments(PublicContentSnapshots store, WorkspaceCatalog workspaces, AssetService assets) {
-        return new PublicDocuments(store, workspaces, assets);
+    PublicDocuments publicDocuments(
+            PublicContentSnapshots store,
+            WorkspaceCatalog workspaces,
+            AssetService assets,
+            WorkspacePublications publications) {
+        return new PublicDocuments(new WebsiteContentSnapshots(store, publications), workspaces, assets);
     }
 }

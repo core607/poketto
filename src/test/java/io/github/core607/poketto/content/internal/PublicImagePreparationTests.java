@@ -75,7 +75,7 @@ class PublicImagePreparationTests {
     }
 
     @Test
-    void withdrawalFinishesDuringPayloadPreparationAndOnlyAnEarlierGrantSurvives() throws Exception {
+    void withdrawalFinishesDuringPayloadPreparationAndRejectsEarlierGrants() throws Exception {
         var state = state(Duration.ofHours(1));
         String existing = token(state.service
                 .publicDocument(workspace, "/article")
@@ -110,7 +110,8 @@ class PublicImagePreparationTests {
         verify(state.blobs, never()).protect(any(), any());
         assertThat(memory.reservedBytes()).isZero();
         clearImageCache();
-        assertThat(state.service.readPublicImage(workspace, existing).bytes()).isEqualTo(png(1));
+        assertThatThrownBy(() -> state.service.readPublicImage(workspace, existing))
+                .isInstanceOf(AssetStorageException.class);
         clock.now = clock.now.plusSeconds(300);
         assertThatThrownBy(() -> state.service.readPublicImage(workspace, existing))
                 .isInstanceOf(AssetStorageException.class);

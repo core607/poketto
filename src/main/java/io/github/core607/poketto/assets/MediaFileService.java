@@ -31,6 +31,7 @@ public final class MediaFileService {
     private final AuthService auth;
     private final RepositoryBlobReader repository;
     private final PublicContentSnapshots snapshots;
+    private final PublicContentSnapshots website;
     private final Supplier<ManagedBlobStore> originals;
     private final Map<WorkspaceId, Integer> active = new HashMap<>();
     private final Set<WorkspaceId> publicTransfers = new HashSet<>();
@@ -40,10 +41,12 @@ public final class MediaFileService {
             AuthService auth,
             RepositoryBlobReader repository,
             PublicContentSnapshots snapshots,
+            PublicContentSnapshots website,
             Supplier<ManagedBlobStore> originals) {
         this.auth = auth;
         this.repository = repository;
         this.snapshots = snapshots;
+        this.website = website;
         this.originals = originals;
     }
 
@@ -184,31 +187,48 @@ public final class MediaFileService {
     }
 
     public Download publicDownload(WorkspaceId workspace, String commit, String route, String path) {
-        PublicArticle article = snapshots.withCurrent(workspace, snapshot -> publicArticle(snapshot, commit, route));
-        Runnable check = () -> snapshots.withCurrent(workspace, snapshot -> {
-            if (!publicArticle(snapshot, commit, route).equals(article)) {
-                throw missing();
-            }
-            return null;
-        });
-        try (var admission = admit(workspace, true)) {
+        return referencedDownload(website, workspace, commit, route, path, () -> {}, true);
+    }
+
+    /** Member projections use current repository publication, independently of anonymous website delivery. */
+    public Download memberProjectionDownload(AuthPrincipal actor, WorkspaceId workspace, String route, String path) {
+        Runnable identity = () -> auth.authorize(actor, workspace);
+        identity.run();
+        String commit =
+                snapshots.withCurrent(workspace, value -> value.commit().orElseThrow(MediaFileService::missing));
+        return referencedDownload(snapshots, workspace, commit, route, path, identity, false);
+    }
+
+    private Download referencedDownload(
+            PublicContentSnapshots source,
+            WorkspaceId workspace,
+            String commit,
+            String route,
+            String path,
+            Runnable identity,
+            boolean anonymous) {
+        identity.run();
+        PublicArticle article = source.withCurrent(workspace, snapshot -> publicArticle(snapshot, commit, route));
+        Runnable check = () -> {
+            identity.run();
+            source.withCurrent(workspace, snapshot -> {
+                if (!publicArticle(snapshot, commit, route).equals(article)) {
+                    throw missing();
+                }
+                return null;
+            });
+        };
+        try (var admission = admit(workspace, anonymous)) {
             var catalog = repository.media(workspace, commit);
             if (!catalog.publicPaths().contains(path) || !references(article, path)) {
                 throw missing();
             }
             ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
             check.run();
-            return new Download(workspace, path, asset, check, true);
+            return new Download(workspace, path, asset, check, anonymous);
         } catch (RuntimeException failure) {
             throw checkedFailure(check, failure);
         }
-    }
-
-    /** Resolves only a currently referenced public original; callers must not return the source commit as public history. */
-    public Download publicDownload(WorkspaceId workspace, String route, String path) {
-        String commit =
-                snapshots.withCurrent(workspace, value -> value.commit().orElseThrow(MediaFileService::missing));
-        return publicDownload(workspace, commit, route, path);
     }
 
     private ManagedAsset resolve(WorkspaceId workspace, RepositoryMediaIndex.Media entry) {

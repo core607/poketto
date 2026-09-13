@@ -185,7 +185,8 @@ class PublicCacheConcurrencyTests {
                 assertThat(state.service.publicDocument(workspace, "/article")).isEmpty();
             }
         }
-        assertThat(state.service.readPublicImage(workspace, original).bytes()).isEqualTo(png());
+        assertThatThrownBy(() -> state.service.readPublicImage(workspace, original))
+                .isInstanceOf(invalid ? ContentRepositoryException.class : AssetStorageException.class);
         clock.now = clock.now.plusSeconds(300);
         assertThatThrownBy(() -> state.service.readPublicImage(workspace, original))
                 .isInstanceOf(AssetStorageException.class);
