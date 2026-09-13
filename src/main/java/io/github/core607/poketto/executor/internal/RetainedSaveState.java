@@ -6,8 +6,8 @@ import io.github.core607.poketto.content.RepositoryMovePlan;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
+import io.github.core607.poketto.content.RepositoryPaths;
 import io.github.core607.poketto.content.RepositoryWriteAttempt;
-import io.github.core607.poketto.content.internal.RepositoryPathRules;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
@@ -31,7 +31,7 @@ record RetainedSaveState(
         baselines = Map.copyOf(baselines);
         require(baselines.size() <= 16384, "baselines", "must not exceed 16384 paths");
         baselines.forEach((path, revision) -> {
-            RepositoryPathRules.validate(path);
+            RepositoryPaths.validate(path);
             commit(revision);
         });
         require(uncertain == (pending != null), "pending save", "must match the uncertain state");
@@ -52,7 +52,7 @@ record RetainedSaveState(
         require(pending.baseCommit().equals(Optional.of(baseCommit)), "pending save", "must retain its base commit");
         long bytes = 0;
         for (var change : pending.changes()) {
-            RepositoryPathRules.validate(change.path());
+            RepositoryPaths.validate(change.path());
             if (change.content().isPresent()) {
                 bytes += change.content().orElseThrow().getBytes(StandardCharsets.UTF_8).length;
             }
@@ -84,7 +84,7 @@ record RetainedSaveState(
                     !paths.isEmpty() && paths.size() <= RepositoryMovePlan.MAX_CHANGED_PATHS,
                     "move paths",
                     "must be within the move path budget");
-            paths.forEach(RepositoryPathRules::validate);
+            paths.forEach(RepositoryPaths::validate);
             if (result != null) {
                 commit(result.commit());
                 require(
