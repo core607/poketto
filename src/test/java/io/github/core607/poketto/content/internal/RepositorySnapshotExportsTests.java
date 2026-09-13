@@ -223,6 +223,64 @@ class RepositorySnapshotExportsTests {
     }
 
     @Test
+    void publicProjectionResolvesReadmeOnlyFolderLinksAndPrefersIndexLandings() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var source = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryPublishingPolicy.PATH,
+                        text("enabled: true\nmode: public-root\n"),
+                        "public/home.md",
+                        text(
+                                "# Home\n\n[README guide](guide/)\n[Index guide](indexed/)\n[Hidden](../private/hidden.md)\n"),
+                        "public/guide/README.md",
+                        text("# README guide\n\nREADMEONLYTARGET\n"),
+                        "public/indexed/index.md",
+                        text("# Index guide\n\nINDEXTARGET\n"),
+                        "public/indexed/README.md",
+                        text("# Shadow README\n\nSHADOWREADME\n"),
+                        "private/hidden.md",
+                        text("HIDDENSOURCE\n")));
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var exports = new JGitRepositorySnapshotExports(
+                fixture.authority(),
+                auth,
+                directory.toRealPath().resolve("exports"),
+                1024 * 1024,
+                Duration.ofSeconds(5),
+                snapshots);
+        var value = exports.createPublic(actor, workspace);
+        assertThat(value.authorityCommit()).isEqualTo(source.name());
+        assertThat(value.sourcePaths())
+                .containsEntry("guide/index.md", "public/guide/README.md")
+                .containsEntry("indexed/index.md", "public/indexed/index.md")
+                .doesNotContainValue("public/indexed/README.md")
+                .doesNotContainValue("private/hidden.md");
+
+        Path bundle = directory.resolve("exports").resolve(value.export().exportId() + ".bundle");
+        Path copy = directory.resolve("folder-link-projection");
+        try (Git clone = Git.cloneRepository()
+                .setURI(bundle.toUri().toString())
+                .setBranch("refs/heads/snapshot")
+                .setDirectory(copy.toFile())
+                .call()) {
+            assertThat(clone.getRepository().getObjectDatabase().has(source)).isFalse();
+            assertThat(copy.resolve("private")).doesNotExist();
+            assertThat(copy.resolve("indexed/README.md")).doesNotExist();
+            assertThat(Files.readString(copy.resolve("home/index.md")))
+                    .contains("../guide/index.md", "../indexed/index.md")
+                    .doesNotContain("private/", "HIDDENSOURCE", "SHADOWREADME");
+            assertThat(Files.readString(copy.resolve("guide/index.md"))).contains("READMEONLYTARGET");
+            assertThat(Files.readString(copy.resolve("indexed/index.md")))
+                    .contains("INDEXTARGET")
+                    .doesNotContain("SHADOWREADME");
+        }
+        exports.release(value.export().exportId());
+        assertThat(bundle).doesNotExist();
+    }
+
+    @Test
     void exportsOnlyPinnedAncestryAndBytesWithoutSourceConfiguration() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var first = fixture.commitRemote(workspace, Map.of("private/中文.md", text("# 原文\r\n")));

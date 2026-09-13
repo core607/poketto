@@ -300,7 +300,10 @@ final class PublicExecutionProjection {
         if (target == null && !image) {
             target = articles.get(original);
             if (target == null) {
-                target = articles.get(original + "/index.md");
+                target = articles.get(original.isEmpty() ? "index.md" : original + "/index.md");
+            }
+            if (target == null) {
+                target = articles.get(original.isEmpty() ? "README.md" : original + "/README.md");
             }
             if (target == null) {
                 target = articles.get(original + ".md");
