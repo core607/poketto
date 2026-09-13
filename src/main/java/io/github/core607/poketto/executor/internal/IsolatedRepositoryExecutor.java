@@ -70,6 +70,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
     private final MediaFileService media;
+    private final RetainedCopyStore retention;
     private final int maxSessions;
     private final Duration openTimeout;
     private final Duration closeTimeout;
@@ -102,6 +103,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
+            RetainedCopyStore retention,
             PortableContentExports packages,
             MediaFileService media,
             SelectedFileSaves saves,
@@ -111,6 +113,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
+        this.retention = retention;
         this.packages = packages;
         this.media = media;
         this.saves = saves;
@@ -157,6 +160,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw rejected("operation_limit");
         }
         Session session = null;
+        RetainedCommand retained = null;
         boolean ownsCommand = false;
         boolean createdCopy = false;
         try {
@@ -192,6 +196,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw rejected("session_busy");
             }
             ownsCommand = true;
+            if (retention != null) {
+                retained = admitRetained(session);
+            }
             Session selected = session;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(selected, "cancelled"))) {
                 requireLive(session);
@@ -207,11 +214,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 requireLive(session);
                 authorize(session);
-                JsonNode response = executeWithBridge(session, command, timeout);
+                UUID executionId = UUID.randomUUID();
+                prepareRetained(session, retained, executionId);
+                JsonNode response = executeWithBridge(session, executionId.toString(), command, timeout);
                 requireOk(response, session);
                 authorize(session);
                 ExecutionResult result = result(response.path("result"), session.copyId.toString(), session.commit);
                 String state = response.path("state").asString("");
+                if (retained != null) {
+                    if (!state.equals("READY")) {
+                        throw new RetainedCopyException(RetainedCopyException.Reason.UNCERTAIN);
+                    }
+                    retained.complete(session.saveState.snapshot());
+                    authorize(session);
+                }
                 if (state.equals("CLOSING")
                         || state.equals("CLOSED")
                         || result.terminationReason() == TerminationReason.CANCELLED
@@ -231,10 +247,84 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             throw exception;
         } finally {
-            if (session != null && ownsCommand) {
-                session.busy.set(false);
+            try {
+                releaseRetained(session, retained);
+            } finally {
+                if (session != null && ownsCommand) {
+                    session.busy.set(false);
+                }
+                executions.release();
             }
-            executions.release();
+        }
+    }
+
+    private RetainedCommand admitRetained(Session session) {
+        var owner = new RetainedCopyRecord.Owner(
+                session.key.principal(), session.key.workspace().value());
+        return new RetainedCommand(
+                retention, owner, session.copyId, session.retainedRecord, new RetainedCommand.Port() {
+                    @Override
+                    public WorkerResponses.CheckpointReply capture(
+                            UUID id, long expiresAt, Optional<UUID> executionId) {
+                        return captureRetained(session, id, expiresAt, executionId);
+                    }
+
+                    @Override
+                    public void remove(RetainedCopyRecord.Checkpoint checkpoint) {
+                        authorize(session);
+                        WorkerResponses.read(
+                                requestLive(
+                                        session,
+                                        "CHECKPOINT_REMOVE",
+                                        new WorkerRequests.CheckpointReference(
+                                                checkpoint.id().toString(), checkpoint.sha256(), checkpoint.bytes()),
+                                        Duration.ofSeconds(5)),
+                                WorkerResponses.CheckpointRemoved.class);
+                    }
+                });
+    }
+
+    private WorkerResponses.CheckpointReply captureRetained(
+            Session session, UUID id, long expiresAt, Optional<UUID> executionId) {
+        authorize(session);
+        String scope = session.fullRead ? "full" : "public";
+        WorkerRequests.Data data = executionId.isPresent()
+                ? new WorkerRequests.ActiveCheckpoint(
+                        id.toString(),
+                        expiresAt,
+                        scope,
+                        executionId.orElseThrow().toString())
+                : new WorkerRequests.Checkpoint(id.toString(), expiresAt, scope);
+        JsonNode reply = requestLive(
+                session, executionId.isPresent() ? "CHECKPOINT_ACTIVE" : "CHECKPOINT", data, Duration.ofSeconds(30));
+        requireOk(reply, session);
+        authorize(session);
+        return WorkerResponses.read(reply, WorkerResponses.CheckpointReply.class);
+    }
+
+    private static void prepareRetained(Session session, RetainedCommand retained, UUID executionId) {
+        if (retained == null) {
+            return;
+        }
+        retained.initialize(
+                session.key.sessionHash(),
+                session.fullRead,
+                session.publicExport,
+                new RetainedCopyRecord.Writer(session.hello.workerBootId(), session.leaseId),
+                session.saveState.snapshot());
+        session.saveState = SelectedFileSaves.State.restore(session.saveState.snapshot(), retained::retain);
+        retained.begin(executionId);
+    }
+
+    private static void releaseRetained(Session session, RetainedCommand retained) {
+        if (retained == null) {
+            return;
+        }
+        session.retainedRecord = retained.record();
+        if (session.stopping.get() && !session.stopped.isDone()) {
+            session.stopped.whenComplete((ignored, failure) -> retained.close());
+        } else {
+            retained.close();
         }
     }
 
@@ -439,7 +529,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private void open(Session session, Optional<String> requested) {
-        session.hello = worker.hello();
+        session.hello = retention == null ? worker.hello() : worker.retainedHello();
         requireLive(session);
         RepositorySnapshotExports.Export export;
         if (session.fullRead) {
@@ -591,8 +681,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private JsonNode executeWithBridge(Session session, String command, Duration timeout) {
-        String executionId = UUID.randomUUID().toString();
+    private JsonNode executeWithBridge(Session session, String executionId, String command, Duration timeout) {
         var running = commandIo.submit(() -> requestLive(
                 session,
                 "EXEC",
@@ -1898,6 +1987,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
+        private RetainedCopyRecord retainedRecord;
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

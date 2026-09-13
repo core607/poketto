@@ -86,6 +86,13 @@ final class WorkerResponses {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record CheckpointRemoved(boolean ok, boolean removed) {
+        CheckpointRemoved {
+            require(ok && removed, "checkpoint removal", "must be acknowledged");
+        }
+    }
+
     /**
      * Decoding happens after parsing succeeded, so it is the one step where a broken worker could
      * still be reported as a caller mistake. It leaves the same way an unparseable frame does.

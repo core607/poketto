@@ -184,6 +184,7 @@ class WorkerSocketTests {
                 .recover(eq(actor), eq(WORKSPACE), any());
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         saves,
@@ -368,6 +369,7 @@ class WorkerSocketTests {
         var actor = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         packages,
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -722,6 +724,7 @@ class WorkerSocketTests {
 
     private static IsolatedRepositoryExecutor executor(AuthService auth, RepositorySnapshotExports exports, Peer peer) {
         return new IsolatedRepositoryExecutor(
+                null,
                 mock(PortableContentExports.class),
                 mock(MediaFileService.class),
                 mock(SelectedFileSaves.class),
@@ -897,6 +900,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -965,6 +969,7 @@ class WorkerSocketTests {
                 .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1004,6 +1009,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1045,6 +1051,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1103,6 +1110,7 @@ class WorkerSocketTests {
         var auth = fullAuth();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1182,6 +1190,7 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
+                            null,
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
                             mock(SelectedFileSaves.class),
@@ -1267,6 +1276,7 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
+                            null,
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
                             mock(SelectedFileSaves.class),
@@ -1368,6 +1378,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1440,6 +1451,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),

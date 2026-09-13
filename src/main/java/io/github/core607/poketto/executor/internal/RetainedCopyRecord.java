@@ -2,6 +2,7 @@ package io.github.core607.poketto.executor.internal;
 
 import static io.github.core607.poketto.executor.internal.ProtocolValues.require;
 
+import io.github.core607.poketto.content.RepositorySnapshotExports;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -14,6 +15,7 @@ record RetainedCopyRecord(
         long generation,
         String transportHash,
         boolean fullRead,
+        RepositorySnapshotExports.PublicExport publicExport,
         long expiresAt,
         Writer writer,
         Checkpoint acknowledged,
@@ -30,6 +32,8 @@ record RetainedCopyRecord(
         require(expiresAt > 0, "retention expiry", "must be positive");
         Objects.requireNonNull(writer, "retained writer lease must be present");
         Objects.requireNonNull(acknowledged, "acknowledged checkpoint must be present");
+        RetainedPublicProjection.validate(
+                owner, fullRead, publicExport, acknowledged.state().originalCommit());
         if (command != null) {
             require(
                     command.checkpoint()

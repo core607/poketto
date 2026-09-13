@@ -71,6 +71,10 @@ final class RetainedCopyStore {
         });
     }
 
+    long newExpiry() {
+        return Math.addExact(clock.millis(), limits.retention().toMillis());
+    }
+
     /** Hold across the entire command and its host writes; reload the generation after acquisition. */
     RetainedFileLocks.Held writer(RetainedCopyRecord.Owner owner, UUID copyId) {
         return locked(() -> {
@@ -146,6 +150,10 @@ final class RetainedCopyStore {
                 "worker lease transfer",
                 "must advance the writer generation");
         require(next.fullRead() == current.fullRead(), "retained scope", "must not change during recovery");
+        require(
+                Objects.equals(next.publicExport(), current.publicExport()),
+                "public projection",
+                "must not change during recovery");
         require(
                 next.acknowledged()
                         .state()

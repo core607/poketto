@@ -233,7 +233,10 @@ with socket.socket(socket.AF_UNIX) as connection:
             'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
-            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
+            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000,
+            'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
+            'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
+            'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'

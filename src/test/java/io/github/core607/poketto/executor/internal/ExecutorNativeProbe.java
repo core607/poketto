@@ -38,6 +38,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -158,8 +159,17 @@ public final class ExecutorNativeProbe {
 
     private IsolatedRepositoryExecutor adapter(
             Path socket, int maxSessions, RepositorySnapshotExports selectedExports) {
+        return adapter(socket, maxSessions, selectedExports, Optional.empty());
+    }
+
+    private IsolatedRepositoryExecutor adapter(
+            Path socket,
+            int maxSessions,
+            RepositorySnapshotExports selectedExports,
+            Optional<RetainedCopyStore> retention) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        retention,
                         auth,
                         selectedExports,
                         mock(PortableContentExports.class),
@@ -193,8 +203,23 @@ public final class ExecutorNativeProbe {
         passed("root-owned-socket-rejects-non-root-peer", "observation", Map.of("accepted", true, "requestBytes", 0));
     }
 
+    private void retainedCommands() throws Exception {
+        new RetainedCommandNativeProbe(
+                        path("publicFixture").resolve("retained"),
+                        path("exports"),
+                        path("socket"),
+                        path("privateKey"),
+                        auth,
+                        principal,
+                        workspace,
+                        JSON)
+                .run();
+        passed("retained-command-checkpoints-pair-saves-imports-and-nonzero-work-with-restorable-worker-bytes");
+    }
+
     private void run() throws Exception {
         rejectNonRootPeer();
+        retainedCommands();
         copyIdentityGuard();
         publicProjection();
         selectedSaves();
@@ -588,6 +613,7 @@ public final class ExecutorNativeProbe {
                 String session = full ? "export-full" : "export-public";
                 try (var executor = new ExecutorConfiguration()
                         .isolatedRepositoryExecutor(
+                                Optional.empty(),
                                 auth,
                                 fixture.exports(),
                                 fixture.packages(auth),
@@ -784,6 +810,7 @@ public final class ExecutorNativeProbe {
         }
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1030,6 +1057,7 @@ public final class ExecutorNativeProbe {
                 + other.reference().revision();
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1175,6 +1203,7 @@ public final class ExecutorNativeProbe {
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1249,6 +1278,7 @@ public final class ExecutorNativeProbe {
         privateRead.set(false);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1329,6 +1359,7 @@ public final class ExecutorNativeProbe {
     private IsolatedRepositoryExecutor moveAdapter(PublicExecutionNativeFixture fixture) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1615,6 +1646,7 @@ public final class ExecutorNativeProbe {
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1681,6 +1713,7 @@ public final class ExecutorNativeProbe {
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
+                        Optional.empty(),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1845,8 +1878,12 @@ public final class ExecutorNativeProbe {
 
     private void publicProjection() throws Exception {
         var fixture = new PublicExecutionNativeFixture(path("publicFixture"), path("exports"), auth, workspace);
+        var retention = new RetainedCopyStore(
+                path("publicFixture").resolve("public-records"),
+                new RetainedCopyStore.Limits(8, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofMinutes(10)),
+                Clock.systemUTC());
         privateRead.set(false);
-        try (var executor = adapter(path("socket"), 8, fixture.exports())) {
+        try (var executor = adapter(path("socket"), 8, fixture.exports(), Optional.of(retention))) {
             var result = client.execute(
                     executor,
                     principal,
@@ -1868,6 +1905,12 @@ public final class ExecutorNativeProbe {
                     .contains("\"scope\": \"public\"", "\"baseCommit\": \"" + result.commit() + "\"");
             assertThat(result.stdout()).contains("READ_ONLY_SCOPE");
             assertThat(result.commit()).isNotEqualTo(fixture.sourceCommit());
+            RetainedCopyRecord record = retention.read(
+                    new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value()),
+                    UUID.fromString(result.copyId()));
+            assertThat(record.fullRead()).isFalse();
+            assertThat(record.publicExport().authorityCommit()).isEqualTo(fixture.sourceCommit());
+            assertThat(record.publicExport().sourcePaths()).containsEntry("article/index.md", "public/article.md");
             passed("public-scope-real-projection-has-no-private-files-metadata-or-original-history");
             var publicArtifact = execute(
                     executor,

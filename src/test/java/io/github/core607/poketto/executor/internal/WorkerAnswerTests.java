@@ -18,6 +18,18 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class WorkerAnswerTests {
     @Test
+    void checkpointRemovalHasAnOwnerScopedAcknowledgementWithoutALiveLease() {
+        assertThat(WorkerResponses.read(json("{\"ok\":true,\"removed\":true}"), WorkerResponses.CheckpointRemoved.class)
+                        .removed())
+                .isTrue();
+        for (String reply :
+                new String[] {"{\"ok\":true}", "{\"ok\":false,\"removed\":true}", "{\"ok\":true,\"removed\":false}"}) {
+            assertThatThrownBy(() -> WorkerResponses.read(json(reply), WorkerResponses.CheckpointRemoved.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+    }
+
+    @Test
     void retainedHandshakeNeverFallsBackWhenCheckpointsAreMissingOrDisabled() {
         assertThat(WorkerResponses.read(
                                 json("{\"ok\":true,\"checkpointProtocol\":1}"),
