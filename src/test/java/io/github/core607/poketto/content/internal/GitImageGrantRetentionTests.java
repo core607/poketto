@@ -18,6 +18,9 @@ import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
@@ -32,6 +35,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -367,6 +371,12 @@ class GitImageGrantRetentionTests {
     private AssetService service(
             RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, RepositoryBlobReader blobs) {
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         when(auth.withAuthorization(any(), any(), any(), any()))
                 .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get());
         return new AssetService(

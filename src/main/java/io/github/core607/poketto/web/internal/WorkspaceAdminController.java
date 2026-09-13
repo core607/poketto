@@ -51,11 +51,12 @@ class WorkspaceAdminController {
         if (body.active() == null) {
             throw new IllegalArgumentException("active is required");
         }
-        auth.changeMembership(principal, workspaces.selected(), accountId, body.role(), body.active());
+        auth.changeMembership(
+                principal, workspaces.selected(), accountId, body.role(), body.active(), body.permissions());
     }
 
     @GetMapping("/invitations")
-    AuthService.Page<AuthService.InvitationInfo> invitations(
+    AuthService.Page<AuthService.WorkspaceInvitationInfo> invitations(
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
@@ -64,8 +65,12 @@ class WorkspaceAdminController {
 
     @PostMapping("/invitations")
     @ResponseStatus(HttpStatus.CREATED)
-    IssuedSecretResponse invite(@AuthenticationPrincipal AuthPrincipal principal) {
-        return issued(auth.createInvitation(principal, workspaces.selected()));
+    IssuedSecretResponse invite(
+            @AuthenticationPrincipal AuthPrincipal principal, @RequestBody(required = false) InvitationRequest body) {
+        return issued(auth.createInvitation(
+                principal,
+                workspaces.selected(),
+                body == null || body.permissions() == null ? Set.of() : body.permissions()));
     }
 
     @DeleteMapping("/invitations/{id}")
@@ -102,7 +107,9 @@ class WorkspaceAdminController {
         return new IssuedSecretResponse(token.id(), token.token());
     }
 
-    record MembershipRequest(MembershipRole role, Boolean active) {}
+    record MembershipRequest(MembershipRole role, Boolean active, Set<Capability> permissions) {}
+
+    record InvitationRequest(Set<Capability> permissions) {}
 
     record KeyRequest(UUID accountId, Set<Capability> capabilities) {}
 

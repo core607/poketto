@@ -714,10 +714,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failed("READ_ONLY_SCOPE");
         }
         try {
-            auth.authorize(
-                    session.principal,
-                    session.key.workspace(),
-                    operation.equals("sync") ? Capability.READ_PRIVATE : Capability.WRITE_PRIVATE);
+            authorize(session);
             // Recovery is the one command allowed while a write is unresolved: it exists to resolve
             // one. The guards below would otherwise refuse it and leave the session stuck.
             if (operation.equals("recover")) {
