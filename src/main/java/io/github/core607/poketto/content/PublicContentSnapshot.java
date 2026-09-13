@@ -11,7 +11,17 @@ public record PublicContentSnapshot(
         Optional<String> commit,
         Instant verifiedAt,
         Instant expiresAt,
-        List<PublicArticle> articles) {
+        List<PublicArticle> articles,
+        PublicCollections collections) {
+    public PublicContentSnapshot(
+            WorkspaceId workspaceId,
+            Optional<String> commit,
+            Instant verifiedAt,
+            Instant expiresAt,
+            List<PublicArticle> articles) {
+        this(workspaceId, commit, verifiedAt, expiresAt, articles, new PublicCollections(articles));
+    }
+
     public PublicContentSnapshot {
         articles = List.copyOf(articles);
     }

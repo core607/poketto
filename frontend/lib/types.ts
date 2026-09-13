@@ -45,7 +45,20 @@ export type Article = Snapshot &
     downloads?: Record<string, string>;
     gallery?: { src: string; alt: string }[];
     galleryStatus: GalleryStatus;
+    navigation: CollectionNavigation;
   };
+export type ArticleReference = { route: string; title: string };
+export type CollectionNavigation = {
+  entries: ArticleReference[];
+  available: boolean;
+  memberships: {
+    collection: ArticleReference;
+    position: number;
+    total: number;
+    previous: ArticleReference | null;
+    next: ArticleReference | null;
+  }[];
+};
 export type TagPage = Snapshot & {
   tags: string[];
   total: number;

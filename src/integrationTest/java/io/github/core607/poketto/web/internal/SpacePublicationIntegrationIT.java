@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -266,6 +267,52 @@ class SpacePublicationIntegrationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].space").value("home"));
+        verifyCollectionReading(owner, second);
+    }
+
+    private void verifyCollectionReading(AuthPrincipal owner, WorkspaceId workspace) throws Exception {
+        Path root = directory.resolve("second.git-seed");
+        try (Git git = Git.open(root.toFile())) {
+            Files.createDirectories(root.resolve("public/guide"));
+            Files.writeString(root.resolve("public/end.md"), "# Final article");
+            Files.writeString(
+                    root.resolve("public/guide/index.md"),
+                    "# Ordered guide\n\n[First](../note.md#part)\n[Again](../note.md)\n"
+                            + "[Hidden](../../private/secret.md)\n[Missing](missing.md)\n"
+                            + "[External](https://example.invalid)\n[Last](../end.md)\n");
+            Files.writeString(root.resolve("public/index.md"), "# Another guide\n\n[Same article](note.md)\n");
+            git.add().addFilepattern("public").call();
+            git.commit()
+                    .setAuthor("Fixture", "fixture@example.invalid")
+                    .setMessage("Add reading guides")
+                    .call();
+            git.push().setRemote("origin").setPushAll().call();
+        }
+        snapshots.refresh(workspace);
+        service.setEnabled(owner, workspace, true);
+        String endpoint = "/api/public/spaces/second-site/document";
+        mvc.perform(get(endpoint).param("route", "/guide"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.navigation.available").value(true))
+                .andExpect(jsonPath("$.navigation.entries.length()").value(2))
+                .andExpect(jsonPath("$.navigation.entries[0].route").value("/note"))
+                .andExpect(jsonPath("$.navigation.entries[1].route").value("/end"));
+        mvc.perform(get(endpoint).param("route", "/note"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.navigation.memberships.length()").value(2))
+                .andExpect(jsonPath("$.navigation.memberships[?(@.collection.route == '/guide')].next.route")
+                        .value(contains("/end")));
+        mvc.perform(get(endpoint).param("route", "/end"))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.navigation.memberships[0].previous.route").value("/note"))
+                .andExpect(jsonPath("$.navigation.memberships[0].position").value(2))
+                .andExpect(jsonPath("$.navigation.memberships[0].next").isEmpty());
+        mvc.perform(get("/api/public/spaces/home/document").param("route", "/note"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.navigation.memberships").isEmpty());
+        service.setEnabled(owner, workspace, false);
+        mvc.perform(get(endpoint).param("route", "/guide")).andExpect(status().isNotFound());
     }
 
     private String verifyDiscovery() throws Exception {

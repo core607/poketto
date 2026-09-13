@@ -13,6 +13,7 @@ export function Markdown({
   downloads = {},
   preview = false,
   space,
+  collection,
 }: {
   source: string;
   images?: Record<string, string>;
@@ -20,6 +21,7 @@ export function Markdown({
   downloads?: Record<string, string>;
   preview?: boolean;
   space?: string;
+  collection?: { route: string; entries: { route: string }[] };
 }) {
   const resolvedImages = new Map(
     Object.entries(images).map(([authored, target]) => [
@@ -30,7 +32,7 @@ export function Markdown({
   const resolvedLinks = new Map(
     Object.entries(links).map(([authored, target]) => [
       normalizeUri(authored),
-      resolvedLink(authored, target, preview, space),
+      resolvedLink(authored, target, preview, space, collection),
     ]),
   );
   const resolvedDownloads = new Map(
@@ -119,6 +121,7 @@ function resolvedLink(
   target: string,
   preview: boolean,
   space?: string,
+  collection?: { route: string; entries: { route: string }[] },
 ) {
   if (target.startsWith("#")) return safeLink(headingFragment(target));
   if (preview && target.startsWith("/admin?")) {
@@ -140,6 +143,9 @@ function resolvedLink(
       : target;
   return safeLink(
     articleHref(route, space) +
+      (collection?.entries.some((entry) => entry.route === route)
+        ? "?" + new URLSearchParams({ collection: collection.route })
+        : "") +
       (route !== target ? headingFragment(fragment) : ""),
   );
 }

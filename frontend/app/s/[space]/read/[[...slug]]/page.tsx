@@ -3,6 +3,7 @@ import { spaceArticle, PublicApiError } from "../../../../../lib/public-api";
 import { date, spaceHref } from "../../../../../lib/format";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
+import { CollectionNavigation } from "../../../../../components/collection-navigation";
 
 export async function generateMetadata({
   params,
@@ -20,8 +21,10 @@ export async function generateMetadata({
 
 export default async function Article({
   params,
+  searchParams,
 }: {
   params: Promise<{ space: string; slug?: string[] }>;
+  searchParams?: Promise<{ collection?: string | string[] }>;
 }) {
   const { space, slug = [] } = await params;
   // Next's page catch-all segments are URI-encoded; metadata params are decoded.
@@ -46,6 +49,7 @@ export default async function Article({
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
   });
+  const selected = (await searchParams)?.collection;
   return (
     <article className="reading-shell">
       <a href={spaceHref(space)} className="back-link">
@@ -68,12 +72,24 @@ export default async function Article({
           ))}
         </div>
       </header>
+      <CollectionNavigation
+        navigation={value.navigation}
+        selected={typeof selected === "string" ? selected : undefined}
+        route={value.route}
+        space={space}
+      />
       <Markdown
         space={space}
         source={value.body}
         images={value.images}
         links={value.links}
         downloads={value.downloads}
+        collection={
+          value.navigation && {
+            route: value.route,
+            entries: value.navigation.entries,
+          }
+        }
       />
       <Gallery items={value.gallery} status={value.galleryStatus} />
       <footer className="article-footer">

@@ -455,6 +455,7 @@ public final class AssetService {
         final RepositoryMediaSnapshot catalog = media;
         Map<String, String> links = new LinkedHashMap<>();
         Map<String, String> downloads = new LinkedHashMap<>();
+        Set<String> publicRoutes = publicOnly ? Set.copyOf(routes.values()) : Set.of();
         for (String authored : destinations.links()) {
             if (authored.startsWith("#")
                     && authored.length() <= 256
@@ -463,16 +464,8 @@ public final class AssetService {
                 continue;
             }
             MarkdownDestinations.path(path, authored).ifPresent(target -> {
-                String selected = routes.get(target);
-                if (selected == null) {
-                    selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
-                }
-                if (selected == null) {
-                    selected = routes.get(target + ".md");
-                }
-                if (selected == null && publicOnly && routes.containsValue("/" + target)) {
-                    selected = "/" + target;
-                }
+                String selected = MarkdownDestinations.route(path, authored, routes, publicRoutes)
+                        .orElse(null);
                 if (selected == null
                         && catalog != null
                         && catalog.index().files().containsKey(target)
