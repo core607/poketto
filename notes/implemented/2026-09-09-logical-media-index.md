@@ -39,3 +39,7 @@ Changed media mappings require `PUBLISH` when either their prior or candidate pa
 Directory reads with media scan at most 100,000 Git entries to reject namespace overlays. Original metadata validation does not hash all original bytes on every text save; uploads acknowledge durable immutable objects and delivery verifies bytes. Index state is not proof of current read or publication authority.
 
 `RepositoryMediaIndexTests`, `RepositoryDirectoryReaderTests`, `RepositoryPatchServiceTests` and `ManagedAssetDeliveryTests` cover strict parsing, namespace collisions, pinned virtual directories, explicit media reads, index/text atomicity, publication authorization and workspace metadata resolution. Native storage replay and real Spring/PostgreSQL integration remain required before release.
+
+## Linking existing originals
+
+The executor CLI accepts `poketto media link LOGICAL_PATH --asset ID --revision REV [--replace]` for originals already uploaded to the same workspace. The host looks up immutable metadata under current read authorization; private-write permission is required to update the local index. Import and link share namespace validation, tracked-Git collision checks and compare-and-replace installation. Neither links nor uploads publish references: the selected index and text still require an authorized save. This avoids retransmitting original bytes solely to create a logical reference.

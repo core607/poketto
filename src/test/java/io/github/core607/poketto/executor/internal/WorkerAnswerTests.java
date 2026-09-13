@@ -17,6 +17,33 @@ import tools.jackson.databind.json.JsonMapper;
  * then be read as a command that succeeded at the position the caller expected.
  */
 class WorkerAnswerTests {
+    @Test
+    void binaryCaptureKeepsItsOriginalFileBoundWithoutIncreasingTheTextBudget() {
+        String file = "{\"path\":\"private/large.bin\",\"bytes\":%d,\"sha256\":\"" + "a".repeat(64) + "\"}";
+        String manifest = "{\"captureId\":\"" + UUID + "\",\"writes\":[%s],\"deletes\":[],\"absent\":[]}";
+        for (long size : new long[] {4L * 1024 * 1024 + 1, 128L * 1024 * 1024}) {
+            var response = json(manifest.formatted(file.formatted(size)));
+            assertThat(WorkerResponses.read(response, WorkerResponses.BinaryCaptureManifest.class)
+                            .writes()
+                            .getFirst()
+                            .bytes())
+                    .isEqualTo(size);
+            assertThatThrownBy(() -> WorkerResponses.read(response, WorkerResponses.CaptureManifest.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+        var empty = json(manifest.formatted(file.formatted(0)));
+        assertThat(WorkerResponses.read(empty, WorkerResponses.BinaryCaptureManifest.class)
+                        .writes()
+                        .getFirst()
+                        .bytes())
+                .isZero();
+        var oversized = json(manifest.formatted(file.formatted(128L * 1024 * 1024 + 1)));
+        assertThatThrownBy(() -> WorkerResponses.read(oversized, WorkerResponses.BinaryCaptureManifest.class))
+                .isInstanceOf(WorkerUnavailableException.class);
+        String overflow = manifest.formatted(file.formatted(Long.MAX_VALUE) + "," + file.formatted(Long.MAX_VALUE));
+        assertThatThrownBy(() -> WorkerResponses.read(json(overflow), WorkerResponses.CaptureManifest.class))
+                .isInstanceOf(WorkerUnavailableException.class);
+    }
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String UUID = "22222222-2222-4222-8222-222222222222";
