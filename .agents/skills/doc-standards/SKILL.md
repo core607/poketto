@@ -1,13 +1,13 @@
 ---
 name: doc-standards
-description: Use when writing, moving, or auditing documents, or when asked to "trim the docs", "review the docs", "where does this belong", or when a document runs too long. For prose judgment see prose-standard.
+description: Use when choosing document ownership or structure, moving documents, or auditing documentation organization. Local wording edits use prose-standard when needed.
 ---
 
 # Document Placement and Audit
 
 This skill is guidance, not a box-ticking checklist.
 
-Use [prose-standard](../prose-standard/SKILL.md) for required factual coverage and editorial judgment. Decision records follow the lifecycle rules in [AGENTS.md](../../../AGENTS.md); archived records are outside routine audits.
+Use [prose-standard](../prose-standard/SKILL.md) when the task includes substantive prose changes or editorial judgment. Decision records follow the lifecycle rules in [AGENTS.md](../../../AGENTS.md); archived records are outside routine audits.
 
 ## Placement routing
 
@@ -53,6 +53,6 @@ Relocate first: move content to its owner and leave a linking line when readers 
 
 ## Validate and report
 
-For any document change, run the available repository link, pairing, formatting, and generated-freshness checks plus `git diff --check`. If a required check does not exist yet, state that limitation; do not invent a passing substitute.
+For a document change, run `./gradlew repoCheck` and `git diff --check`; synchronize generated skill stubs when their source metadata or invocation policy changes. Inspect affected counterparts and links not covered by the repository checks. Distinguish manual inspection from a machine gate.
 
-Report documents moved, authoritative homes chosen, deliberate long-form keeps, paired counterparts changed, and the exact checks run.
+Report the relevant moves, ownership decisions, counterpart changes, and checks; include deliberate long-form keeps only when length was part of the task.

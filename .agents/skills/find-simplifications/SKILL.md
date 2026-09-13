@@ -1,13 +1,13 @@
 ---
 name: find-simplifications
-description: Use when asked to find simplification opportunities, clean up code, or shrink the maintenance surface, or when implementation reveals dead code, duplication, or overbuilding.
+description: Use when assessing simplification opportunities or implementing a specific cleanup of the maintained code surface.
 ---
 
 # Finding Simplifications
 
 This skill is guidance, not a checklist. Discovery produces **well-evidenced proposals** (notes or inline TODOs). An explicitly requested, specific cleanup may proceed through the normal change process once the evidence below supports it; propose unresolved behavior or architecture decisions before implementing them.
 
-Read [AGENTS.md](../../../AGENTS.md), the [requirements note](../../../notes/implemented/2026-08-25-requirements-and-architecture.md), and any decision record that owns the area before calling a structure unnecessary. A recorded decision is evidence to understand, not immunity from reconsideration.
+Follow the task-specific document routes in [AGENTS.md](../../../AGENTS.md) and read decisions that own the candidate before calling a structure unnecessary. A recorded decision is evidence to understand, not immunity from reconsideration.
 
 ## Strong candidate shapes
 
@@ -23,7 +23,7 @@ Typos, isolated naming preferences, and "this looks complex" without call-site e
 
 ## Survey before selecting
 
-Start with the largest or most cross-cutting production surfaces, not only symbols a static tool reports. Search exact names, wire strings, configuration keys, event names, and both direct and dynamic registration paths with `rg`. Inspect every hit before classifying it.
+For a repository-wide survey, start with large or cross-cutting production surfaces as well as static-tool candidates. For a specific cleanup, start with the named candidate and trace its consumers; expand only when those dependencies require it. Search exact names, wire strings, configuration keys, event names, and direct and dynamic registration paths with `rg`. Inspect every relevant hit before classifying it.
 
 Separate consumers into:
 
