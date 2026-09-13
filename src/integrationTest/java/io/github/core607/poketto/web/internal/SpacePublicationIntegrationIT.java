@@ -15,6 +15,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.internal.PublicationRepositories;
 import io.github.core607.poketto.spaces.SpacePublicationService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -119,6 +120,9 @@ class SpacePublicationIntegrationIT {
 
     @Autowired
     ObjectMapper json;
+
+    @Autowired
+    RepositoryContentReader content;
 
     @Autowired
     AuthService auth;
@@ -281,7 +285,8 @@ class SpacePublicationIntegrationIT {
                             + "[Hidden](../../private/secret.md)\n[Missing](missing.md)\n"
                             + "[External](https://example.invalid)\n[Last](../end.md)\n");
             Files.writeString(root.resolve("public/index.md"), "# Another guide\n\n[Same article](note.md)\n");
-            git.add().addFilepattern("public").call();
+            seedFolderLandings(root);
+            git.add().addFilepattern(".").call();
             git.commit()
                     .setAuthor("Fixture", "fixture@example.invalid")
                     .setMessage("Add reading guides")
@@ -291,6 +296,7 @@ class SpacePublicationIntegrationIT {
         snapshots.refresh(workspace);
         service.setEnabled(owner, workspace, true);
         String endpoint = "/api/public/spaces/second-site/document";
+        verifyFolderLandings(endpoint, workspace);
         mvc.perform(get(endpoint).param("route", "/guide"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.navigation.available").value(true))
@@ -313,6 +319,37 @@ class SpacePublicationIntegrationIT {
                 .andExpect(jsonPath("$.navigation.memberships").isEmpty());
         service.setEnabled(owner, workspace, false);
         mvc.perform(get(endpoint).param("route", "/guide")).andExpect(status().isNotFound());
+    }
+
+    private static void seedFolderLandings(Path root) throws Exception {
+        Files.createDirectories(root.resolve("public/album"));
+        Files.writeString(root.resolve("public/guide/README.md"), "# Shadowed landing source");
+        Files.writeString(root.resolve("public/album/README.md"), "# Album from README\n\nOriginal caption.");
+        Files.writeString(root.resolve("public/album/index.md"), "# Excluded index sentinel");
+        Files.writeString(
+                root.resolve(".poketto/publishing.yaml"),
+                "enabled: true\nmode: public-root\nexclude: [public/album/index.md]\n");
+        Files.writeString(
+                root.resolve("public/index.md"), "# Another guide\n\n[Same article](note.md)\n[Album](album/)\n");
+        Files.copy(root.resolve("public/picture.png"), root.resolve("public/album/first.png"));
+        Files.copy(root.resolve("public/picture.png"), root.resolve("public/album/second.png"));
+    }
+
+    private void verifyFolderLandings(String endpoint, WorkspaceId workspace) throws Exception {
+        mvc.perform(get(endpoint).param("route", "/album"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Album from README"))
+                .andExpect(jsonPath("$.folderPage").value(true))
+                .andExpect(jsonPath("$.gallery.length()").value(2));
+        mvc.perform(get(endpoint).param("route", "/"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.links['album/']").value("/album"));
+        mvc.perform(get("/api/public/spaces/second-site/documents").param("query", "Shadowed landing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        assertThat(content.getFile(workspace, Optional.empty(), "public/guide/README.md")
+                        .source())
+                .contains("# Shadowed landing source");
     }
 
     private String verifyDiscovery() throws Exception {

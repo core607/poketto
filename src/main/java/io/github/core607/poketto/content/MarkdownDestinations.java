@@ -129,6 +129,9 @@ public final class MarkdownDestinations {
                 selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
             }
             if (selected == null) {
+                selected = routes.get(target.isEmpty() ? "README.md" : target + "/README.md");
+            }
+            if (selected == null) {
                 selected = routes.get(target + ".md");
             }
             if (selected == null && publicRoutes.contains("/" + target)) {
