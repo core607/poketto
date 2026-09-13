@@ -24,6 +24,7 @@ final class RetainedCommand implements AutoCloseable {
     private UUID executionId;
     private boolean resumed;
     private RetainedCopyRecord.Checkpoint resumedPoint;
+    private RetainedOriginalLookup originalLookup;
 
     RetainedCommand(
             RetainedCopyStore store,
@@ -287,10 +288,22 @@ final class RetainedCommand implements AutoCloseable {
                 record.generation(), record.expiresAt(), resumed, record.lastInterruptedCommand());
     }
 
+    RetainedOriginalLookup originals(RetainedBaselineStore originals) {
+        if (!record.fullRead()) {
+            return null;
+        }
+        if (originalLookup == null) {
+            originalLookup = new RetainedOriginalLookup(originals, writer, record.originalBaseline());
+        }
+        return originalLookup;
+    }
+
     @Override
     public void close() {
-        try {
-            writer.close();
+        try (writer) {
+            if (originalLookup != null) {
+                originalLookup.close();
+            }
         } catch (IOException failure) {
             log.warn("Retained writer lock could not be released", failure);
             throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);

@@ -618,7 +618,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 sink -> saves.visitOriginal(
                         session.principal, session.key.workspace(), session.commit, originals.traversalLimits(), sink));
         session.retainedRecord = retained.record();
-        session.saveState = SelectedFileSaves.State.restore(session.saveState.snapshot(), retained::retain);
+        session.saveState = SelectedFileSaves.State.restore(
+                session.saveState.snapshot(), retained::retain, retained.originals(originals));
         retained.begin(executionId);
     }
 

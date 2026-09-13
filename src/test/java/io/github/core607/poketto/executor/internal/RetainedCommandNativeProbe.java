@@ -102,6 +102,8 @@ final class RetainedCommandNativeProbe {
                 restoreAdapter(fixture, store, record);
             }
             expireAndReclaim(fixture);
+            new RetainedOriginalNativeProbe(auth, actor, workspace, CANCELLATION)
+                    .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
             restoreMovedText(fixture);
         }
     }

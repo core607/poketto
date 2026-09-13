@@ -211,6 +211,7 @@ final class SelectedFileSaves {
     static final class State {
         private final String originalCommit;
         private final SaveStateCheckpoint checkpoint;
+        private final RetainedOriginalLookup originals;
         private final Map<String, String> baselines = new HashMap<>();
         private final Map<String, RetainedFileBaseline> fileBaselines = new HashMap<>();
         String baseCommit;
@@ -226,9 +227,14 @@ final class SelectedFileSaves {
         }
 
         State(String baseCommit, SaveStateCheckpoint checkpoint) {
+            this(baseCommit, checkpoint, null);
+        }
+
+        private State(String baseCommit, SaveStateCheckpoint checkpoint, RetainedOriginalLookup originals) {
             this.originalCommit = baseCommit;
             this.baseCommit = baseCommit;
             this.checkpoint = Objects.requireNonNull(checkpoint, "save checkpoint must be present");
+            this.originals = originals;
         }
 
         boolean tracked() {
@@ -236,7 +242,7 @@ final class SelectedFileSaves {
         }
 
         State copy() {
-            return restore(snapshot(), checkpoint);
+            return restore(snapshot(), checkpoint, originals);
         }
 
         void install(State proposed) {
@@ -281,7 +287,12 @@ final class SelectedFileSaves {
         }
 
         static State restore(RetainedSaveState snapshot, SaveStateCheckpoint checkpoint) {
-            var state = new State(snapshot.originalCommit(), checkpoint);
+            return restore(snapshot, checkpoint, null);
+        }
+
+        static State restore(
+                RetainedSaveState snapshot, SaveStateCheckpoint checkpoint, RetainedOriginalLookup originals) {
+            var state = new State(snapshot.originalCommit(), checkpoint, originals);
             state.baseCommit = snapshot.baseCommit();
             state.baselines.putAll(snapshot.baselines());
             state.fileBaselines.putAll(snapshot.fileBaselines());
@@ -357,6 +368,11 @@ final class SelectedFileSaves {
         if (retained != null) {
             return auth.withAuthorization(
                     actor, workspace, Set.of(Capability.READ_PRIVATE), () -> retained.file(workspace, path));
+        }
+        if (state.originals != null && state.baseline(path).equals(state.originalCommit)) {
+            auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+            RepositoryFile file = state.originals.file(actor, workspace, state.originalCommit, path);
+            return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> file);
         }
         return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
     }
