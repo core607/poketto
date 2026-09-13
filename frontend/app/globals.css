@@ -1530,6 +1530,7 @@ td select {
 .image-lightbox {
   width: min(94vw, 1100px);
   max-height: 94dvh;
+  margin: auto;
   padding: 1rem;
   background: var(--paper);
   color: var(--ink);
