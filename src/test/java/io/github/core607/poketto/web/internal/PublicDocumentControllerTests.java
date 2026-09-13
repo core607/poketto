@@ -65,6 +65,7 @@ class PublicDocumentControllerTests {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[0].route").value("/城市/雨"))
+                .andExpect(jsonPath("$.items[0].snippet").value("Literal [.*] 知识"))
                 .andExpect(jsonPath("$.commit").value("a".repeat(40)))
                 .andExpect(jsonPath("$.verifiedAt").value(VERIFIED.toString()))
                 .andExpect(

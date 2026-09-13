@@ -32,7 +32,7 @@ final class PublicDocuments {
                 .filter(article -> search.matches(article.title(), article.body(), article.tags(), article.createdAt()))
                 .toList();
         List<PublicDocumentSummary> items = search.page(matches).stream()
-                .map(article -> PublicDocumentSummary.of(article, search.snippet(article.body())))
+                .map(article -> PublicDocumentSummary.of(article, search.snippet(article.title(), article.body())))
                 .toList();
         return new Page(
                 snapshot.commit().orElse(null),
