@@ -29,6 +29,37 @@ export function articles(parameters: Record<string, string> = {}) {
 export const article = cache(function article(route: string) {
   return get<Article>("/api/public/document?" + new URLSearchParams({ route }));
 });
+export type PublicSpace = { slug: string; displayName: string };
+export const defaultSpace = cache(() =>
+  get<PublicSpace>("/api/public/default-space"),
+);
+export const spaceInfo = cache((slug: string) =>
+  get<PublicSpace>(`/api/public/spaces/${encodeURIComponent(slug)}`),
+);
+export const spaceArticle = cache((slug: string, route: string) =>
+  get<Article>(
+    `/api/public/spaces/${encodeURIComponent(slug)}/document?` +
+      new URLSearchParams({ route }),
+  ),
+);
+export function spaceArticles(
+  slug: string,
+  parameters: Record<string, string> = {},
+) {
+  return get<ArticlePage>(
+    `/api/public/spaces/${encodeURIComponent(slug)}/documents?` +
+      new URLSearchParams(parameters),
+  );
+}
+export function spaceTags(
+  slug: string,
+  parameters: Record<string, string> = {},
+) {
+  return get<TagPage>(
+    `/api/public/spaces/${encodeURIComponent(slug)}/tags?` +
+      new URLSearchParams(parameters),
+  );
+}
 export function tags(parameters: Record<string, string> = {}) {
   return get<TagPage>("/api/public/tags?" + new URLSearchParams(parameters));
 }

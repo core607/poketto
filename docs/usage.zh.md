@@ -59,7 +59,9 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。关闭网站或替换公开快照也会使已签发的图片地址失效；刷新页面可取得当前地址。私有预览重新验证当前身份。[网站交付边界](../notes/proposed/2026-09-14-workspace-public-delivery.md)记录这次授权变化，[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)继续规定存储保证与限制。
 
-人类 owner 可通过 `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication` 读取和修改网站开关。修改须携带会话 CSRF token，并明确提交 `{ "enabled": true }` 或 `{ "enabled": false }`；省略字段会报错。关闭网站不影响成员读取获准访问的仓库文件。浏览器发布控制和多个空间的规范公开路由仍在开发中。
+人类 owner 可在所选空间的“网站发布”面板，或通过 `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication` 读取和修改网站开关。修改须携带会话 CSRF token，并明确提交 `{ "enabled": true }` 或 `{ "enabled": false }`；省略字段会报错。面板会要求确认，回包不确定时须重新读取状态后再操作。关闭网站不影响成员读取获准访问的仓库文件。
+
+已开启的网站以 `/s/{slug}` 为入口，各自提供 `/search`、`/tags`、`/archive` 和 `/read/...` 页面。对应的 `/api/public/spaces/{slug}` 接口将文章和媒体限定在该空间内。未知或关闭的空间返回 404。后台每轮最多轮转刷新八个已开启的空间，并刷新默认空间供仓库健康检查使用。刚开启的网站可能要等刷新成功后才能访问；网页请求不会拉取远端 Git。公开原件下载 URL 除页面路由、commit 和逻辑路径外，还必须携带 `workspace` 查询参数；不透明图片 token 本身已绑定空间。
 
 `POST /api/admin/workspaces/{workspaceId}/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/workspaces/{workspaceId}/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
 

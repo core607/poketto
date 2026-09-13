@@ -18,6 +18,14 @@ Read the committed switch before and after each bounded public snapshot operatio
 
 Public image tokens require the currently approved page commit and page path on every replay, for Git, indexed and legacy managed images alike. A snapshot replacement invalidates old tokens even when only an unrelated file changed; reloading the page obtains fresh tokens. Token expiry and source-retention limits remain upper bounds, not permission to serve a withdrawn page. Reject withdrawn tokens before repopulating a derived cache, and recheck publication after image preparation.
 
+## Space entrances and refresh
+
+The owner panel confirms an explicit desired website state. It displays success only after an authoritative response and requires rereading after an ambiguous write. Switching spaces invalidates pending confirmations and old responses.
+
+Canonical pages live below `/s/{slug}`; article, search, tags and archive links stay within that space. Public slug APIs disclose only enabled website names, never account identifiers. Image tokens select their own workspace; original-download URLs explicitly bind workspace, page route, commit and logical media path. The old default article entrance redirects to the canonical default-space route after validating the requested article.
+
+Background refresh reads keyset pages of at most eight enabled workspaces, with the default workspace included once per pass for operational health. A short final page restarts the cursor; an empty tail retries from the beginning. Work remains sequential, so one unavailable remote does not stop later refreshes. Page requests never perform remote fetches. The refresh interval is a delay between batches, not a freshness guarantee for every space; remote latency and the number of spaces affect the revisit time. Expired snapshots fail closed. Large-catalog admission and retained-snapshot memory bounds need separate verification before claiming multi-user capacity.
+
 ## Alternatives and consequences
 
 Checking only the page controller would leave existing image and download URLs usable after withdrawal. Applying the switch to every repository-public read would incorrectly block members. Waiting for the five-minute token expiry contradicts the accepted withdrawal behavior.
@@ -28,6 +36,6 @@ Revalidating every old reference against a newer page could preserve more cached
 
 Verify human-owner and CSRF enforcement using real PostgreSQL and HTTP entry points. An enabled page must issue a working image URL; disabling the website must reject both the page and that earlier URL while preserving an authorized member's public-file and original-file access. Verify independent workspace switches and disabled-space exclusion from slug lookup and pagination. Exercise withdrawn Git-image cache replay, force-pushed history, preparation races and token expiry through the native Linux suite.
 
-The boundary implementation and focused tests precede the browser control and canonical cross-space routes. This record remains proposed until those entrances are integrated and exercised through the running application. Cross-space discovery batches, author attribution, collections and reading-return state remain owned by the broader multi-user record.
+This record remains proposed until the browser control and canonical space routes are exercised through the running application. Cross-space discovery batches, author attribution, collections and reading-return state remain owned by the broader multi-user record.
 
 The same-topic audit retains the authoring foundations for repository authority, durable originals, image bounds and publication synchronization, and retains the browser-interface record for rendering and same-origin boundaries. Neither record is archived; the broader multi-user proposal remains active.

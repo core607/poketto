@@ -490,7 +490,8 @@ class RepositoryAdminIntegrationIT {
                                         "---\nroute: /http-media\n---\n[Download](source.pdf)\n"))),
                 200);
         String query =
-                "?commit=" + publication.get("commit").stringValue() + "&route=/http-media&path=public/source.pdf";
+                "?commit=" + publication.get("commit").stringValue() + "&route=/http-media&path=public/source.pdf"
+                        + "&workspace=" + catalog.defaultWorkspace().id();
         try (var anonymous =
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             for (var reader : List.of(anonymous, client)) {

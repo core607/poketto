@@ -14,13 +14,14 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
-import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
+import io.github.core607.poketto.content.internal.PublicationRepositories;
 import io.github.core607.poketto.spaces.SpacePublicationService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -52,7 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(RemoteRepositoryIntegrationConfiguration.class)
+@Import(PublicationRepositories.class)
 class SpacePublicationIntegrationIT {
     @Container
     @ServiceConnection
@@ -71,25 +72,34 @@ class SpacePublicationIntegrationIT {
                 .setInitialBranch("main")
                 .setDirectory(remote.toFile())
                 .call()) {}
-        seed(remote);
+        seed(remote, "Visible", 0);
+        Path second = directory.resolve("second.git");
+        try (Git ignored = Git.init()
+                .setBare(true)
+                .setInitialBranch("main")
+                .setDirectory(second.toFile())
+                .call()) {}
+        seed(second, "Second unique sentinel", 0xff00ff);
         properties.add("poketto.data-dir", directory::toString);
         properties.add("poketto.test.repository-path", remote::toString);
     }
 
-    private static void seed(Path remote) throws Exception {
-        Path root = directory.resolve("seed");
+    private static void seed(Path remote, String title, int color) throws Exception {
+        Path root = directory.resolve(remote.getFileName() + "-seed");
         try (Git git =
                 Git.init().setInitialBranch("main").setDirectory(root.toFile()).call()) {
             Files.createDirectories(root.resolve(".poketto"));
             Files.createDirectories(root.resolve("public"));
             Files.createDirectories(root.resolve("private"));
             Files.writeString(root.resolve(".poketto/publishing.yaml"), "enabled: true\nmode: public-root\n");
-            Files.writeString(root.resolve("public/note.md"), "# Visible\n\n![Picture](picture.png)\n");
+            Files.writeString(
+                    root.resolve("public/note.md"),
+                    "# " + title + "\n\n![Picture](picture.png)\n\n[Download](source.pdf)\n");
+            Files.writeString(root.resolve("public/source.pdf"), "%PDF-1.7\n" + title);
             Files.writeString(root.resolve("private/secret.md"), "# Private sentinel\n");
-            ImageIO.write(
-                    new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB),
-                    "png",
-                    root.resolve("public/picture.png").toFile());
+            var picture = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+            picture.setRGB(0, 0, color);
+            ImageIO.write(picture, "png", root.resolve("public/picture.png").toFile());
             git.add().addFilepattern(".").call();
             git.commit()
                     .setAuthor("Fixture", "fixture@example.invalid")
@@ -197,8 +207,8 @@ class SpacePublicationIntegrationIT {
                 .isInstanceOf(AuthException.class);
     }
 
-    private void verifyCatalog(AuthPrincipal owner, WorkspaceId first) {
-        WorkspaceId second = WorkspaceId.random();
+    private void verifyCatalog(AuthPrincipal owner, WorkspaceId first) throws Exception {
+        WorkspaceId second = PublicationRepositories.SECOND;
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             registry.create(second, "Second site", "second-site");
             auth.establishWorkspaceOwner(owner, second);
@@ -206,6 +216,7 @@ class SpacePublicationIntegrationIT {
         assertThat(publications.settings(second).enabled()).isFalse();
         assertThat(publications.findPublished("second-site")).isEmpty();
         assertThat(publications.findPublished("../second-site")).isEmpty();
+        mvc.perform(get("/api/public/spaces/second-site")).andExpect(status().isNotFound());
         assertThatThrownBy(() -> publications.setEnabled(second, true)).isInstanceOf(IllegalStateException.class);
         service.setEnabled(owner, second, true);
         assertThat(publications.findPublished("home")).isEmpty();
@@ -216,6 +227,38 @@ class SpacePublicationIntegrationIT {
                 .containsExactly(second);
         assertThat(publications.publishedAfter(Optional.of(second), 1)).isEmpty();
         assertThat(publications.settings(first).enabled()).isFalse();
+        verifyScopedContent(owner, first, second);
+    }
+
+    private void verifyScopedContent(AuthPrincipal owner, WorkspaceId first, WorkspaceId second) throws Exception {
+        snapshots.refresh(second);
+        mvc.perform(get("/api/public/spaces/home")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/spaces/second-site"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Second site"))
+                .andExpect(jsonPath("$.workspaceId").doesNotExist());
+        var result = mvc.perform(get("/api/public/spaces/second-site/document").param("route", "/note"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Second unique sentinel"))
+                .andReturn();
+        var document = json.readTree(result.getResponse().getContentAsString());
+        String image = document.get("images").get("picture.png").stringValue();
+        byte[] delivered = mvc.perform(get(image))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+        try (var stream = new ByteArrayInputStream(delivered)) {
+            assertThat(ImageIO.read(stream).getRGB(0, 0) & 0xffffff).isEqualTo(0xff00ff);
+        }
+        mvc.perform(get("/api/public/spaces/second-site/documents").param("query", "Visible"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get("/api/public/spaces/second-site/document").param("route", "/secret"))
+                .andExpect(status().isNotFound());
+        service.setEnabled(owner, second, false);
+        mvc.perform(get("/api/public/spaces/second-site/documents")).andExpect(status().isNotFound());
+        mvc.perform(get(image)).andExpect(status().isServiceUnavailable());
     }
 
     private String publicImage() throws Exception {

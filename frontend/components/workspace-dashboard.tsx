@@ -11,6 +11,7 @@ import { Members } from "./members";
 import { Keys } from "./keys";
 import { Connections } from "./connections";
 import { RepositoryConnection } from "./repository-connection";
+import { SpacePublication } from "./space-publication";
 
 export type SpaceSummary = {
   workspaceId: string;
@@ -25,6 +26,7 @@ const tabs = {
   keys: "访问密钥",
   connections: "已连接应用",
   repository: "仓库连接",
+  publication: "网站发布",
 };
 type Tab = keyof typeof tabs;
 
@@ -176,6 +178,12 @@ export function WorkspaceDashboard({
       {activeTab === "connections" && <Connections />}
       {activeTab === "repository" && identity?.role === "OWNER" && (
         <RepositoryConnection
+          key={identity.workspaceId}
+          workspaceId={identity.workspaceId}
+        />
+      )}
+      {activeTab === "publication" && identity?.role === "OWNER" && (
+        <SpacePublication
           key={identity.workspaceId}
           workspaceId={identity.workspaceId}
         />

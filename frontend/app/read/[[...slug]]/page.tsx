@@ -1,8 +1,6 @@
-import { notFound } from "next/navigation";
-import { article, PublicApiError } from "../../../lib/public-api";
-import { date } from "../../../lib/format";
-import { Markdown } from "../../../components/markdown";
-import { Gallery } from "../../../components/gallery";
+import { notFound, permanentRedirect } from "next/navigation";
+import { article, defaultSpace, PublicApiError } from "../../../lib/public-api";
+import { articleHref } from "../../../lib/format";
 
 export async function generateMetadata({
   params,
@@ -42,40 +40,10 @@ export default async function Article({
   )
     notFound();
   const route = "/" + segments.join("/");
-  const value = await article(route).catch((error) => {
+  await article(route).catch((error) => {
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
   });
-  return (
-    <article className="reading-shell">
-      <a href="/" className="back-link">
-        ← 回到文章
-      </a>
-      <header className="reading-header">
-        <div className="article-meta">
-          <time dateTime={value.createdAt}>{date(value.createdAt)}</time>
-          {value.folderPage && <span>文件夹笔记</span>}
-        </div>
-        <h1>{value.title}</h1>
-        <div className="tag-row">
-          {value.tags.map((tag) => (
-            <a href={"/tags?tag=" + encodeURIComponent(tag)} key={tag}>
-              {tag}
-            </a>
-          ))}
-        </div>
-      </header>
-      <Markdown
-        source={value.body}
-        images={value.images}
-        links={value.links}
-        downloads={value.downloads}
-      />
-      <Gallery items={value.gallery} status={value.galleryStatus} />
-      <footer className="article-footer">
-        最后更新于 {date(value.updatedAt)}
-        <a href="/">更多记录 ↗</a>
-      </footer>
-    </article>
-  );
+  const space = await defaultSpace();
+  permanentRedirect(articleHref(route, space.slug));
 }

@@ -124,6 +124,7 @@ class IndexedMediaDeliveryTests {
         assertThat(page.media().links()).doesNotContainKey("source.pdf");
         assertThat(page.media().downloads().get("source.pdf"))
                 .startsWith("/api/public/media?")
+                .contains("workspace=" + workspace)
                 .contains(firstCommit.name());
         var preview = assets.preview(actor, workspace, "public/index.md", body, Optional.of(firstCommit.name()));
         assertThat(preview.images()).containsKeys("picture.png", "../private/picture.png");
@@ -131,6 +132,7 @@ class IndexedMediaDeliveryTests {
                 .startsWith("/api/admin/workspaces/" + workspace + "/media?");
         String token = page.media().images().get("picture.png").substring("/api/public/assets/".length());
         assertThat(assets.readPublicImage(workspace, token).bytes()).isEqualTo(image);
+        assertThat(assets.readPublicImage(token).bytes()).isEqualTo(image);
         var media = new MediaFileService(auth, blobs, snapshots, snapshots, () -> store);
         var downloaded = new ByteArrayOutputStream();
         media.publicDownload(workspace, firstCommit.name(), "/", "public/source.pdf")

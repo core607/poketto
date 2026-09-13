@@ -4,7 +4,10 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "../app/page";
-import Article, { generateMetadata } from "../app/read/[[...slug]]/page";
+import Article, {
+  generateMetadata,
+} from "../app/s/[space]/read/[[...slug]]/page";
+import DefaultArticle from "../app/read/[[...slug]]/page";
 import { articleHref } from "../lib/format";
 
 function document(route: string) {
@@ -36,6 +39,7 @@ test("article page sends decoded route bytes to HTTP API while metadata keeps li
   const requests: string[] = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url!, "http://localhost");
+    assert.equal(url.pathname, "/api/public/spaces/second-site/document");
     const route = url.searchParams.get("route")!;
     requests.push(route);
     response.setHeader("Content-Type", "application/json");
@@ -61,13 +65,15 @@ test("article page sends decoded route bytes to HTTP API while metadata keeps li
       href === "/read" ? [] : href.slice("/read/".length).split("/");
     const metadataSlug = route === "/" ? [] : route.slice(1).split("/");
     const html = renderToStaticMarkup(
-      await Article({ params: Promise.resolve({ slug: pageSlug }) }),
+      await Article({
+        params: Promise.resolve({ space: "second-site", slug: pageSlug }),
+      }),
     );
     assert.match(html, /<article class="reading-shell">/);
     assert.match(html, /正文应该出现在初始 HTML 中。/);
     assert.deepEqual(
       await generateMetadata({
-        params: Promise.resolve({ slug: metadataSlug }),
+        params: Promise.resolve({ space: "second-site", slug: metadataSlug }),
       }),
       { title: "路径验收文章" },
     );
@@ -87,7 +93,9 @@ test("article page rejects malformed escapes and encoded path separators before 
     "",
   ]) {
     await assert.rejects(
-      Article({ params: Promise.resolve({ slug: [segment] }) }),
+      Article({
+        params: Promise.resolve({ space: "second-site", slug: [segment] }),
+      }),
       /NEXT_HTTP_ERROR_FALLBACK;404/,
     );
   }
@@ -130,7 +138,9 @@ test("home and article keep text and empty gallery status in their initial HTML"
     galleryStatus = status;
     const values = [
       await Home({ searchParams: Promise.resolve({}) }),
-      await Article({ params: Promise.resolve({ slug: ["album"] }) }),
+      await Article({
+        params: Promise.resolve({ space: "second-site", slug: ["album"] }),
+      }),
     ];
     for (const value of values) {
       const html = renderToStaticMarkup(value);
@@ -139,4 +149,50 @@ test("home and article keep text and empty gallery status in their initial HTML"
       assert.doesNotMatch(html, /<img/);
     }
   }
+});
+
+test("default article redirect preserves literal route bytes and never redirects a missing article", async (t) => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url!, "http://localhost");
+    response.setHeader("Content-Type", "application/json");
+    if (url.pathname === "/api/public/default-space") {
+      response.end(JSON.stringify({ slug: "home", displayName: "Home" }));
+    } else if (
+      url.pathname === "/api/public/document" &&
+      url.searchParams.get("route") === "/100%/#标题"
+    ) {
+      response.end(JSON.stringify(document("/100%/#标题")));
+    } else {
+      response.statusCode = 404;
+      response.end("{}");
+    }
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const previous = process.env.POKETTO_API_BASE_URL;
+  t.after(() => {
+    if (previous === undefined) delete process.env.POKETTO_API_BASE_URL;
+    else process.env.POKETTO_API_BASE_URL = previous;
+    server.closeAllConnections();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  process.env.POKETTO_API_BASE_URL = `http://127.0.0.1:${address.port}`;
+  await assert.rejects(
+    DefaultArticle({
+      params: Promise.resolve({ slug: ["100%25", "%23%E6%A0%87%E9%A2%98"] }),
+    }),
+    (error: unknown) =>
+      !!error &&
+      typeof error === "object" &&
+      "digest" in error &&
+      String(error.digest).includes(
+        "/s/home/read/100%25/%23%E6%A0%87%E9%A2%98;308;",
+      ),
+  );
+  await assert.rejects(
+    DefaultArticle({ params: Promise.resolve({ slug: ["missing"] }) }),
+    /NEXT_HTTP_ERROR_FALLBACK;404/,
+  );
 });
