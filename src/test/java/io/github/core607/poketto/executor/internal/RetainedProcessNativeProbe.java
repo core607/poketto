@@ -17,6 +17,7 @@ import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -59,7 +60,7 @@ public final class RetainedProcessNativeProbe {
     private RetainedProcessNativeProbe(Path configuration, String mode) throws Exception {
         config = JSON.readTree(Files.readString(configuration));
         scenario = mode.substring(mode.lastIndexOf('-') + 1);
-        if (!Set.of("acknowledged", "interrupted").contains(scenario)) {
+        if (!Set.of("acknowledged", "interrupted", "uncertain").contains(scenario)) {
             throw new IllegalArgumentException("Unknown process-loss scenario");
         }
         root = path("publicFixture").resolve("process-" + scenario);
@@ -149,10 +150,42 @@ public final class RetainedProcessNativeProbe {
             if (scenario.equals("interrupted")) {
                 before = interruptibleCommand(executor, before);
             }
-            Files.writeString(root.resolve("before.json"), JSON.writeValueAsString(before));
-            System.out.println(JSON.writeValueAsString(new Ready(scenario)));
-            requestKill();
+            if (scenario.equals("uncertain")) {
+                uncertainCommand(executor, fixture, before);
+            }
+            readyToKill(before);
         }
+    }
+
+    private void uncertainCommand(
+            IsolatedRepositoryExecutor executor,
+            PublicExecutionNativeFixture fixture,
+            RetainedCopyRecord acknowledged) {
+        fixture.afterSuccessfulPush(candidate -> {
+            RetainedCopyRecord record = records.read(owner(), acknowledged.copyId());
+            assertThat(record.command()).isNotNull();
+            RetainedSaveState state = record.command().checkpoint().state();
+            assertThat(state.uncertain()).isTrue();
+            assertThat(state.attempt().commit()).isEqualTo(candidate);
+            assertThat(record.acknowledged()).isEqualTo(acknowledged.acknowledged());
+            try {
+                readyToKill(record);
+            } catch (IOException | InterruptedException failure) {
+                throw new IllegalStateException("Could not signal process loss after the remote push", failure);
+            }
+        });
+        execute(
+                executor,
+                "producer",
+                new RepositoryExecutor.CopyRequest(acknowledged.copyId().toString(), acknowledged.generation(), false),
+                "set -eu; printf 'candidate before process loss' > private/uncertain.md; poketto save private/uncertain.md");
+        throw new IllegalStateException("Producer returned past the remote-push termination barrier");
+    }
+
+    private void readyToKill(RetainedCopyRecord before) throws IOException, InterruptedException {
+        Files.writeString(root.resolve("before.json"), JSON.writeValueAsString(before));
+        System.out.println(JSON.writeValueAsString(new Ready(scenario)));
+        requestKill();
     }
 
     private RetainedCopyRecord interruptibleCommand(
@@ -196,7 +229,7 @@ public final class RetainedProcessNativeProbe {
         throw new IllegalStateException("Running command did not persist its acknowledged host save");
     }
 
-    private void requestKill() throws Exception {
+    private void requestKill() throws IOException, InterruptedException {
         Path control = path("control");
         var request = new Control("kill-application", UUID.randomUUID());
         Files.writeString(control.resolve("request.tmp"), JSON.writeValueAsString(request));
@@ -208,14 +241,18 @@ public final class RetainedProcessNativeProbe {
 
     private void resume() throws Exception {
         var before = JSON.readValue(Files.readString(root.resolve("before.json")), RetainedCopyRecord.class);
-        assertThat(records.read(owner(), before.copyId())).isEqualTo(before);
+        assertThat(encoded(records.read(owner(), before.copyId()))).isEqualTo(encoded(before));
         RetainedSaveState selected = before.command() == null
                 ? before.acknowledged().state()
                 : before.command().checkpoint().state();
         try (var fixture = PublicExecutionNativeFixture.reopen(
                         root.resolve("authority"), path("exports"), auth, workspace);
                 var executor = adapter(fixture)) {
-            assertThat(fixture.sourceCommit()).isEqualTo(selected.baseCommit());
+            assertThat(fixture.sourceCommit())
+                    .isEqualTo(
+                            selected.attempt() == null
+                                    ? selected.baseCommit()
+                                    : selected.attempt().commit());
             String inspection = inspection(before);
             var result = execute(
                     executor,
@@ -224,6 +261,9 @@ public final class RetainedProcessNativeProbe {
                     inspection);
             RetainedCopyRecord after = records.read(owner(), before.copyId());
             assertRestored(before, after, selected, result);
+            if (selected.uncertain()) {
+                after = reconcile(executor, fixture, after, selected);
+            }
             execute(
                     executor,
                     "another-new-transport",
@@ -242,6 +282,33 @@ public final class RetainedProcessNativeProbe {
                 classHash(IsolatedRepositoryExecutor.class))));
     }
 
+    private RetainedCopyRecord reconcile(
+            IsolatedRepositoryExecutor executor,
+            PublicExecutionNativeFixture fixture,
+            RetainedCopyRecord before,
+            RetainedSaveState selected) {
+        execute(
+                executor,
+                "reconcile-new-process",
+                new RepositoryExecutor.CopyRequest(before.copyId().toString(), before.generation(), true),
+                "poketto recover");
+        RetainedCopyRecord after = records.read(owner(), before.copyId());
+        assertThat(fixture.pushes())
+                .as("reconciliation must not repeat an acknowledged remote push")
+                .isZero();
+        assertThat(after.acknowledged().state().uncertain()).isFalse();
+        assertThat(after.acknowledged().state().attempt()).isNull();
+        assertThat(after.acknowledged().state().baseCommit())
+                .isEqualTo(selected.attempt().commit());
+        assertThat(after.acknowledged().state().lastSave().value().path("ok").booleanValue())
+                .isTrue();
+        assertThat(fixture.reader(auth)
+                        .getFile(actor, workspace, Optional.empty(), "private/uncertain.md")
+                        .source())
+                .contains("candidate before process loss");
+        return after;
+    }
+
     private static String inspection(RetainedCopyRecord before) {
         String command = "set -eu; test \"$(git rev-parse HEAD)\" = "
                 + before.acknowledged().state().originalCommit()
@@ -249,7 +316,9 @@ public final class RetainedProcessNativeProbe {
                 + "test \"$(cat private/saved-before.md)\" = 'saved before loss'; "
                 + "python3 -c \"from pathlib import Path; assert Path('private/draft.bin').read_bytes() == bytes([0,255,9])\"; ";
         if (before.command() != null) {
-            command += "test \"$(cat private/inside.md)\" = 'host acknowledged during command'; ";
+            command += before.command().checkpoint().state().uncertain()
+                    ? "test \"$(cat private/uncertain.md)\" = 'candidate before process loss'; "
+                    : "test \"$(cat private/inside.md)\" = 'host acknowledged during command'; ";
         }
         return command + "poketto status";
     }
@@ -264,7 +333,7 @@ public final class RetainedProcessNativeProbe {
         assertThat(after.writer().appBootId()).isNotEqualTo(before.writer().appBootId());
         assertThat(after.writer().workerBootId()).isEqualTo(before.writer().workerBootId());
         assertThat(after.originalBaseline()).isEqualTo(before.originalBaseline());
-        assertThat(after.acknowledged().state()).isEqualTo(selected);
+        assertThat(encoded(after.acknowledged().state())).isEqualTo(encoded(selected));
         assertThat(result.retention().resumed()).isTrue();
         assertThat(result.retention().lastInterruptedCommand())
                 .isEqualTo(before.command() == null ? null : before.command().id());
@@ -286,6 +355,11 @@ public final class RetainedProcessNativeProbe {
 
     private RetainedCopyRecord.Owner owner() {
         return new RetainedCopyRecord.Owner(actor.subjectId(), workspace.value());
+    }
+
+    private static JsonNode encoded(Object value) {
+        // Compare persisted values, including commit byte arrays, through their actual JSON encoding.
+        return JSON.readTree(JSON.writeValueAsBytes(value));
     }
 
     private Path path(String name) {

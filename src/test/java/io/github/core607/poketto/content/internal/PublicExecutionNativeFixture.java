@@ -25,10 +25,12 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -49,6 +51,7 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
     private LocalPortableContentExports packages;
     private final AtomicBoolean offline = new AtomicBoolean();
     private final AtomicInteger pushes = new AtomicInteger();
+    private Consumer<String> afterSuccessfulPush = ignored -> {};
 
     public PublicExecutionNativeFixture(Path root, Path staging, AuthService auth, WorkspaceId workspace)
             throws Exception {
@@ -85,6 +88,9 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
             public PushStatus pushMain(
                     Repository repo, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
                 var result = delegate.pushMain(repo, binding, expected, candidate);
+                if (result == PushStatus.UPDATED) {
+                    afterSuccessfulPush.accept(candidate.name());
+                }
                 if (pushes.incrementAndGet() == 1 && loseFirstReply) {
                     offline.set(true);
                     throw new RemoteGitTransportException("synthetic lost-response outage");
@@ -131,6 +137,11 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public RepositorySnapshotExports exports() {
         return exports;
+    }
+
+    /** Called after the real remote ref advances but before its reply reaches the host writer. */
+    public void afterSuccessfulPush(Consumer<String> observer) {
+        afterSuccessfulPush = Objects.requireNonNull(observer, "native push observer must be present");
     }
 
     public MediaFileService media(AuthService auth) {

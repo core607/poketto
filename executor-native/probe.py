@@ -179,7 +179,8 @@ with socket.socket(socket.AF_UNIX) as connection:
                 request = json.loads(request_file.read_text())
                 assert str(uuid.UUID(request['id'])) == request['id']
                 if request['operation'] == 'kill-application':
-                    assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted')
+                    assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted',
+                                    'retained-produce-uncertain')
                     assert killed_pid is None
                     killed_pid = int(run(['systemctl', 'show', '--value', '-p', 'MainPID', app_unit]))
                     assert killed_pid > 1 and Path(f'/proc/{killed_pid}/exe').resolve(strict=True) == java
@@ -283,7 +284,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         if args.scenario == 'retained-process':
-            for case in ('acknowledged', 'interrupted'):
+            for case in ('acknowledged', 'interrupted', 'uncertain'):
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:

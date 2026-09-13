@@ -83,9 +83,12 @@ the omitted scenarios. Each mode uses a fresh native fixture and checks cleanup.
 
 `--scenario retained-process` runs independent producer and recovery JVMs. The
 controller verifies the producer service's Java process and sends SIGKILL after
-an acknowledged command or during a command with a checkpointed host save. A new
+an acknowledged command, during a command with a checkpointed host save, or after
+the remote Git ref advances but before that reply reaches the host writer. A new
 JVM reopens the same synthetic Git authority without reseeding, explicitly resumes
-the same copy, inspects its retained state and saves the restored draft. The worker
+the same copy, inspects its retained state and saves the restored draft. The
+uncertain-write case explicitly reconciles its exact candidate without another
+push. The worker
 boot stays unchanged. This focused mode checks lease closure and fixture cleanup;
 it does not rerun the complete adapter batch.
 
@@ -213,3 +216,5 @@ The [worker lifecycle run](evidence/2026-09-13-retained-worker-lifecycle.json) k
 The [explicit discard run](evidence/2026-09-13-retained-discard.json) refuses stale generations and busy writers, then loses real CLOSE replies and verifies that metadata and the writer remain intact until containment is confirmed. Retrying discards the copy; another retry returns `ABSENT`, recovery is refused, and a fresh copy includes remote saves without the discarded draft. Owners can also discard after private-read denial or publication withdrawal. All 43 native scenarios, independent checkpoint collection, process-loss expiry and cleanup pass. Separately, 306 Linux storage cases and MCP input, catalog, socket, module, style and HTTP protocol checks pass. Authentication remains synthetic; additional crash-window and actual-client acceptance are pending.
 
 The [JVM process-loss run](evidence/2026-09-13-retained-jvm-process-loss.json) verifies external SIGKILL at both focused-mode boundaries. New JVMs recover original commits, draft text and binary bytes, original archives, per-file baselines and save receipts; the interrupted command remains identified. Saving the restored draft succeeds and authoritative Git readback confirms its content. Both cases, worker lease closure and fixture cleanup pass. Authentication remains synthetic. The run does not cover the remaining persistence/push/response crash windows or actual-client acceptance.
+
+The [post-push process-loss run](evidence/2026-09-13-retained-push-process-loss.json) adds external SIGKILL after the real remote accepts a commit but before the host writer receives its reply. Recovery retains the exact candidate and pending state. `poketto recover` confirms the candidate, clears uncertainty and preserves the saved file with zero additional pushes. All three focused process-loss cases, lease closure and cleanup pass. Authentication remains synthetic; command-acknowledgement publication boundaries and real-account/client acceptance remain pending.
