@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test, { type TestContext } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import Home from "../app/page";
+import { PublicSpacePage } from "../components/public-space";
 import Archive from "../app/archive/page";
 import Search from "../app/search/page";
 import Tags from "../app/tags/page";
@@ -11,12 +11,12 @@ import Tags from "../app/tags/page";
 type Offset = string | string[] | undefined;
 const pages = [
   {
-    title: "最近的记录",
+    title: "公开记录",
     max: 10000,
     limit: "12",
     filter: {},
     render: (offset: Offset) =>
-      Home({ searchParams: Promise.resolve({ offset }) }),
+      PublicSpacePage({ slug: "home", view: "home", parameters: { offset } }),
   },
   {
     title: "归档",
@@ -57,7 +57,11 @@ async function backend(t: TestContext) {
   const server = createServer((request, response) => {
     const url = new URL(request.url!, "http://localhost");
     response.setHeader("Content-Type", "application/json");
-    if (url.pathname === "/api/public/document") {
+    if (url.pathname === "/api/public/spaces/home") {
+      response.end(JSON.stringify({ slug: "home", displayName: "Home" }));
+      return;
+    }
+    if (url.pathname.endsWith("/document")) {
       response.writeHead(404).end("{}");
       return;
     }

@@ -6,6 +6,7 @@ import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.WebsiteContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePublications;
+import java.time.Clock;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -15,6 +16,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class WebConfiguration {
+    @Bean
+    PublicDiscovery publicDiscovery(PublicContentSnapshots snapshots, WorkspacePublications publications) {
+        return new PublicDiscovery(
+                publications, new WebsiteContentSnapshots(snapshots, publications), Clock.systemUTC());
+    }
+
     @Bean
     FilterRegistrationBean<ImageMemoryFilter> imageMemoryFilter(ImageMemoryAdmission admission) {
         var registration = new FilterRegistrationBean<>(new ImageMemoryFilter(admission));

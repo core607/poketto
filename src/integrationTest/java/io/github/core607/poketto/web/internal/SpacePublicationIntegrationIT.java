@@ -257,9 +257,35 @@ class SpacePublicationIntegrationIT {
                 .andExpect(jsonPath("$.total").value(0));
         mvc.perform(get("/api/public/spaces/second-site/document").param("route", "/secret"))
                 .andExpect(status().isNotFound());
+        service.setEnabled(owner, first, true);
+        String batch = verifyDiscovery();
         service.setEnabled(owner, second, false);
         mvc.perform(get("/api/public/spaces/second-site/documents")).andExpect(status().isNotFound());
         mvc.perform(get(image)).andExpect(status().isServiceUnavailable());
+        mvc.perform(get("/api/public/discovery").param("batch", batch))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].space").value("home"));
+    }
+
+    private String verifyDiscovery() throws Exception {
+        var first = mvc.perform(get("/api/public/discovery"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        var parsed = json.readTree(first);
+        String batch = parsed.get("batch").stringValue();
+        var replay = mvc.perform(get("/api/public/discovery").param("batch", batch))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(json.readTree(replay)).isEqualTo(parsed);
+        assertThat(first).contains("Second unique sentinel", "Visible").doesNotContain("Private sentinel");
+        mvc.perform(get("/api/public/discovery").param("batch", "missing")).andExpect(status().isGone());
+        return batch;
     }
 
     private String publicImage() throws Exception {
