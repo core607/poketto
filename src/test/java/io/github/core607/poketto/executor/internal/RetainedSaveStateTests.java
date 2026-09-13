@@ -44,7 +44,7 @@ class RetainedSaveStateTests {
         assertThat(restored.attempt.orElseThrow().commit()).isEqualTo(CANDIDATE);
         assertThat(restored.attempt.orElseThrow().object()).containsExactly(0, 1, 2, -1);
         assertThat(JSON.<JsonNode>valueToTree(restored.lastSave)).isEqualTo(JSON.valueToTree(state.lastSave));
-        state.acknowledgeMove(CANDIDATE, Set.of("untouched.md"));
+        state.acknowledgeMove(CANDIDATE, Set.of("untouched.md"), Map.of());
         assertThat(restored.baseline("untouched.md")).isEqualTo(ORIGINAL);
         assertThat(snapshot.baselines()).containsOnlyKeys("changed.md");
     }
@@ -272,7 +272,7 @@ class RetainedSaveStateTests {
 
     private static SelectedFileSaves.State stateWithIndependentBaselines() {
         var state = new SelectedFileSaves.State(ORIGINAL);
-        state.acknowledgeMove(ADVANCED, Set.of("changed.md"));
+        state.acknowledgeMove(ADVANCED, Set.of("changed.md"), Map.of());
         return state;
     }
 

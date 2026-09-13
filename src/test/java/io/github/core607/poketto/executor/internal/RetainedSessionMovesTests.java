@@ -14,17 +14,28 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.json.JsonMapper;
 
 class RetainedSessionMovesTests {
     @TempDir
@@ -52,6 +63,11 @@ class RetainedSessionMovesTests {
         assertThat(retained.getFirst().move().payload()).containsExactly(original);
         assertThat(retained.get(1).move().attempt().commit()).isEqualTo(state.move.result.commit());
         assertThat(retained.get(2).move().result()).isNotNull();
+        assertThat(retained.get(2).move().fileBaselines())
+                .containsEntry(
+                        "private/moved.md",
+                        new RetainedFileBaseline(state.move.result.commit(), "current-secret-needle"))
+                .containsEntry("private/secret.md", new RetainedFileBaseline(state.move.result.commit(), null));
         assertThat(plan.result).isNull();
         assertThat(plan.attempt).isNull();
         String committed = state.move.result.commit();
@@ -60,6 +76,16 @@ class RetainedSessionMovesTests {
         assertThat(retained.getLast().move()).isNull();
         assertThat(state.baseline("private/moved.md")).isEqualTo(committed);
         assertThat(state.baseline("AGENTS.md")).isEqualTo(fixture.sourceCommit());
+        var json = JsonMapper.builder().build();
+        var snapshot = json.readValue(json.writeValueAsBytes(state.snapshot()), RetainedSaveState.class);
+        var reopened = SelectedFileSaves.State.restore(snapshot, value -> {});
+        var unavailable = mock(AuthorizedRepositoryReader.class);
+        when(unavailable.getFile(any(), any(), any(), any()))
+                .thenThrow(new ContentRepositoryException("historical objects unavailable"));
+        var saves = new SelectedFileSaves(auth, unavailable, fixture.patches(auth), fixture.moves(auth));
+        assertThat(saves.save(actor, workspace, reopened, Map.of("private/moved.md", "after reopen"), List.of())
+                        .ok())
+                .isTrue();
     }
 
     @Test
@@ -138,6 +164,65 @@ class RetainedSessionMovesTests {
         assertThat(state.baseCommit).isEqualTo(committed);
         assertThat(state.baseline("private/moved.md")).isEqualTo(fixture.sourceCommit());
         assertThat(fixture.pushes()).isEqualTo(1);
+    }
+
+    @Test
+    void failedBaselineReadAfterPushKeepsTheCandidateForRecoveryWithoutDuplicateMove() throws Exception {
+        PublicExecutionNativeFixture fixture = fixture();
+        var unavailable = new AtomicBoolean(true);
+        var reader = mock(AuthorizedRepositoryReader.class);
+        var delegate = fixture.reader(auth);
+        when(reader.getFile(any(), any(), any(), any())).thenAnswer(call -> {
+            Optional<String> commit = call.getArgument(2);
+            if (unavailable.get() && !commit.equals(Optional.of(fixture.sourceCommit()))) {
+                throw new ContentRepositoryException("acknowledged objects temporarily unavailable");
+            }
+            return delegate.getFile(call.getArgument(0), call.getArgument(1), commit, call.getArgument(3));
+        });
+        var state = new SelectedFileSaves.State(fixture.sourceCommit(), value -> {});
+        var moves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth)).moves();
+        var plan = moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
+        assertThatThrownBy(() -> moves.commit(actor, workspace, state, plan))
+                .isInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("temporarily unavailable");
+        assertThat(fixture.pushes()).isEqualTo(1);
+        assertThat(state.move.attempt).isNotNull();
+        assertThat(state.move.result).isNull();
+        unavailable.set(false);
+        assertThat(moves.recover(actor, workspace, state).code()).isEqualTo("LOCAL_MOVE_PENDING");
+        assertThat(fixture.pushes()).isEqualTo(1);
+        assertThat(state.move.fileBaselines.get("private/moved.md").source()).isEqualTo("current-secret-needle");
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void moveRetainsRemoteIndexWithoutUnselectedLocalMediaMappings() throws Exception {
+        PublicExecutionNativeFixture fixture = fixture();
+        String base = fixture.seedMedia(auth, actor, new byte[] {1, 2}, new byte[] {3, 4});
+        String source = fixture.reader(auth)
+                .getFile(actor, workspace, Optional.of(base), RepositoryMediaIndex.PATH)
+                .source()
+                .orElseThrow();
+        var original = RepositoryMediaIndex.parse(source.getBytes(StandardCharsets.UTF_8));
+        var localFiles = new LinkedHashMap<>(original.files());
+        localFiles.put("private/unsaved.pdf", localFiles.get("private/manual.pdf"));
+        String local = new String(new RepositoryMediaIndex(localFiles).encode(), StandardCharsets.UTF_8);
+        var state = new SelectedFileSaves.State(base, value -> {});
+        SessionMoves moves = moves(fixture);
+        var plan =
+                moves.prepare(actor, workspace, state, "private/manual.pdf", "private/moved.pdf", Optional.of(local));
+        assertThat(moves.commit(actor, workspace, state, plan).code()).isEqualTo("LOCAL_MOVE_PENDING");
+        var transfer = JsonMapper.builder().build().readValue(plan.payload, SessionMoves.TransferredPlan.class);
+        assertThat(RepositoryMediaIndex.parse(transfer.replacements().get(RepositoryMediaIndex.PATH))
+                        .files())
+                .containsKey("private/unsaved.pdf");
+        assertThat(moves.installed(state).ok()).isTrue();
+        String retained =
+                state.snapshot().fileBaselines().get(RepositoryMediaIndex.PATH).source();
+        assertThat(RepositoryMediaIndex.parse(retained.getBytes(StandardCharsets.UTF_8))
+                        .files())
+                .containsKey("private/moved.pdf")
+                .doesNotContainKeys("private/manual.pdf", "private/unsaved.pdf");
     }
 
     private SessionMoves moves(PublicExecutionNativeFixture fixture) {

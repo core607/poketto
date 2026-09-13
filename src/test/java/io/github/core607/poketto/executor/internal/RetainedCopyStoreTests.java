@@ -187,7 +187,7 @@ class RetainedCopyStoreTests {
         var initial = initial();
         first.create(initial);
         var live = SelectedFileSaves.State.restore(initial.acknowledged().state());
-        live.acknowledgeMove("2".repeat(40), Set.of("one.md"));
+        live.acknowledgeMove("2".repeat(40), Set.of("one.md"), Map.of());
         var pending = new RetainedCopyRecord.Command(
                 UUID.randomUUID(),
                 RetainedCopyRecord.Outcome.RUNNING,

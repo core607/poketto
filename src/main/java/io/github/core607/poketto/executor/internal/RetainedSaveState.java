@@ -80,7 +80,8 @@ record RetainedSaveState(
             byte[] payload,
             Set<String> paths,
             RepositoryWriteAttempt attempt,
-            RepositoryPatchResult result) {
+            RepositoryPatchResult result,
+            Map<String, RetainedFileBaseline> fileBaselines) {
         Move {
             Objects.requireNonNull(request, "retained move request must be present");
             Objects.requireNonNull(payload, "retained move payload must be present");
@@ -95,6 +96,14 @@ record RetainedSaveState(
                     "move paths",
                     "must be within the move path budget");
             paths.forEach(RepositoryPaths::validate);
+            fileBaselines = Map.copyOf(fileBaselines);
+            require(paths.containsAll(fileBaselines.keySet()), "move file baselines", "must belong to affected paths");
+            for (var baseline : fileBaselines.values()) {
+                require(
+                        result != null && baseline.commit().equals(result.commit()),
+                        "move file baseline",
+                        "requires the acknowledged move commit");
+            }
             if (result != null) {
                 commit(result.commit());
                 require(
@@ -107,13 +116,20 @@ record RetainedSaveState(
         static Move capture(SessionMoves.Pending pending) {
             return pending == null
                     ? null
-                    : new Move(pending.request, pending.payload, pending.paths, pending.attempt, pending.result);
+                    : new Move(
+                            pending.request,
+                            pending.payload,
+                            pending.paths,
+                            pending.attempt,
+                            pending.result,
+                            pending.fileBaselines);
         }
 
         SessionMoves.Pending restore() {
             var pending = new SessionMoves.Pending(request, payload(), paths);
             pending.attempt = attempt;
             pending.result = result;
+            pending.fileBaselines = fileBaselines;
             return pending;
         }
 

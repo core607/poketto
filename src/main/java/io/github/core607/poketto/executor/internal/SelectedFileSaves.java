@@ -293,10 +293,11 @@ final class SelectedFileSaves {
             return baselines.getOrDefault(path, originalCommit);
         }
 
-        void acknowledgeMove(String commit, Set<String> paths) {
+        void acknowledgeMove(String commit, Set<String> paths, Map<String, RetainedFileBaseline> retainedFiles) {
             requireTracking(paths);
             paths.forEach(path -> baselines.put(path, commit));
             paths.forEach(fileBaselines::remove);
+            fileBaselines.putAll(retainedFiles);
             baseCommit = commit;
             move = null;
         }

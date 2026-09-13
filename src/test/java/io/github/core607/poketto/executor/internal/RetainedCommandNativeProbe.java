@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
@@ -95,10 +98,16 @@ final class RetainedCommandNativeProbe {
                 restoreAdapter(fixture, store, record);
             }
             expireAndReclaim(fixture);
+            restoreMovedText(fixture);
         }
     }
 
     private IsolatedRepositoryExecutor adapter(PublicExecutionNativeFixture fixture, RetainedCopyStore store) {
+        return adapter(fixture, store, fixture.reader(auth));
+    }
+
+    private IsolatedRepositoryExecutor adapter(
+            PublicExecutionNativeFixture fixture, RetainedCopyStore store, AuthorizedRepositoryReader reader) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
                         Optional.of(store),
@@ -106,7 +115,7 @@ final class RetainedCommandNativeProbe {
                         fixture.exports(),
                         mock(PortableContentExports.class),
                         fixture.media(auth),
-                        fixture.reader(auth),
+                        reader,
                         fixture.patches(auth),
                         fixture.moves(auth),
                         json,
@@ -115,6 +124,63 @@ final class RetainedCommandNativeProbe {
                         4,
                         45,
                         8);
+    }
+
+    private void restoreMovedText(PublicExecutionNativeFixture fixture) {
+        var store = new RetainedCopyStore(
+                root.resolve("move-records"),
+                new RetainedCopyStore.Limits(2, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofMinutes(10)),
+                Clock.systemUTC());
+        RetainedCopyRecord record;
+        try (var executor = adapter(fixture, store)) {
+            var result = recoveredCommand(
+                    executor,
+                    "move-native",
+                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    "set -eu; poketto move private/secret.md private/moved.md; "
+                            + "test ! -e private/secret.md; test \"$(cat private/moved.md)\" = current-secret-needle");
+            record = store.read(
+                    new RetainedCopyRecord.Owner(actor.subjectId(), workspace.value()),
+                    UUID.fromString(result.copyId()));
+            assertThat(record.acknowledged()
+                            .state()
+                            .fileBaselines()
+                            .get("private/moved.md")
+                            .source())
+                    .isEqualTo("current-secret-needle");
+            assertThat(record.acknowledged()
+                            .state()
+                            .fileBaselines()
+                            .get("private/secret.md")
+                            .source())
+                    .isNull();
+        }
+        var reader = spy(fixture.reader(auth));
+        doThrow(new ContentRepositoryException("historical moved text unavailable"))
+                .when(reader)
+                .getFile(
+                        eq(actor),
+                        eq(workspace),
+                        eq(Optional.of(record.acknowledged().state().baseCommit())),
+                        eq("private/moved.md"));
+        try (var executor = adapter(fixture, store, reader)) {
+            recoveredCommand(
+                    executor,
+                    "move-resumed",
+                    new RepositoryExecutor.CopyRequest(record.copyId().toString(), 1L, true),
+                    "set -eu; test ! -e private/secret.md; "
+                            + "test \"$(cat private/moved.md)\" = current-secret-needle; "
+                            + "printf 'after native recovery' > private/moved.md; poketto save private/moved.md");
+            var after = store.read(record.owner(), record.copyId());
+            assertThat(after.acknowledged().state().originalCommit())
+                    .isEqualTo(record.acknowledged().state().originalCommit());
+            assertThat(after.acknowledged()
+                            .state()
+                            .fileBaselines()
+                            .get("private/moved.md")
+                            .source())
+                    .isEqualTo("after native recovery");
+        }
     }
 
     private void expireAndReclaim(PublicExecutionNativeFixture fixture) throws Exception {
@@ -178,6 +244,12 @@ final class RetainedCommandNativeProbe {
         assertThat(first.acknowledged().state().baseCommit())
                 .isNotEqualTo(first.acknowledged().state().originalCommit());
         assertThat(first.acknowledged().state().baselines()).containsKey("public/article.md");
+        assertThat(first.acknowledged()
+                        .state()
+                        .fileBaselines()
+                        .get("public/article.md")
+                        .source())
+                .isEqualTo("acknowledged text");
         assertThat(first.acknowledged().state().originalCommit()).isEqualTo(saved.commit());
         RepositoryExecutor.ExecutionResult imported = execute(
                 executor,
@@ -346,6 +418,8 @@ final class RetainedCommandNativeProbe {
             RetainedCopyRecord after = store.read(record.owner(), record.copyId());
             assertThat(after.acknowledged().state().baseCommit())
                     .isEqualTo(record.acknowledged().state().baseCommit());
+            assertThat(after.acknowledged().state().fileBaselines())
+                    .isEqualTo(record.acknowledged().state().fileBaselines());
             assertThat(json.writeValueAsString(after.acknowledged().state().lastImport()))
                     .isEqualTo(json.writeValueAsString(
                             record.acknowledged().state().lastImport()));

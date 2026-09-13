@@ -182,8 +182,26 @@ final class SessionMoves {
         }
         SelectedFileSaves.State proposed = state.copy();
         proposed.move.result = result;
+        if (state.tracked()) {
+            proposed.move.fileBaselines = fileBaselines(actor, workspace, result.commit(), pending.paths);
+        }
         state.install(proposed);
         return pendingResult(state.move, "LOCAL_MOVE_PENDING");
+    }
+
+    private Map<String, RetainedFileBaseline> fileBaselines(
+            AuthPrincipal actor, WorkspaceId workspace, String commit, Set<String> paths) {
+        var result = new LinkedHashMap<String, RetainedFileBaseline>();
+        for (String path : paths) {
+            var file = reader.getFile(actor, workspace, Optional.of(commit), path);
+            if (!file.commit().equals(Optional.of(commit))) {
+                throw new ContentRepositoryException("acknowledged move baseline is unavailable");
+            }
+            if (file.expectedAbsence() || file.source().isPresent()) {
+                result.put(path, new RetainedFileBaseline(commit, file.source().orElse(null)));
+            }
+        }
+        return Map.copyOf(result);
     }
 
     private RepositoryPatchResult writeRemote(
@@ -227,7 +245,7 @@ final class SessionMoves {
         }
         RepositoryPatchResult result = pending.result;
         SelectedFileSaves.State proposed = state.copy();
-        proposed.acknowledgeMove(result.commit(), pending.paths);
+        proposed.acknowledgeMove(result.commit(), pending.paths, pending.fileBaselines);
         BridgeReplies.Reply reply = BridgeReplies.succeeded(new BridgeReplies.MoveInstalled(
                 result.commit(),
                 result.committed(),
@@ -293,6 +311,7 @@ final class SessionMoves {
         final Set<String> paths;
         RepositoryWriteAttempt attempt;
         RepositoryPatchResult result;
+        Map<String, RetainedFileBaseline> fileBaselines = Map.of();
 
         Pending(RepositoryMoveRequest request, byte[] payload, Set<String> paths) {
             this.request = request;
