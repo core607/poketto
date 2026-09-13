@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'retained-process'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -216,6 +216,11 @@ with socket.socket(socket.AF_UNIX) as connection:
             scenario = mode.removeprefix('retained-resume-')
             assert any(item.get('test') == 'retained-jvm-loss-' + scenario and item.get('result') == 'PASS'
                        for item in parsed)
+        elif mode == 'media':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits',
+                'member-projection-fetch-survives-website-shutdown-without-source-history',
+                'public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal'}
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -289,7 +294,7 @@ with socket.socket(socket.AF_UNIX) as connection:
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:
-            execute_java('main' if args.scenario == 'all' else 'exports')
+            execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
             expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
             assert str(uuid.UUID(expired)) == expired
@@ -297,8 +302,12 @@ with socket.socket(socket.AF_UNIX) as connection:
             passed('expired-checkpoint-reclaimed-by-worker-without-client-removal')
             execute_java('abandon')
         no_processes(wait=22)
-        passed('retained-process-recovery-closes-worker-leases' if args.scenario == 'retained-process'
-               else 'java-process-loss-expires-real-worker-lease')
+        if args.scenario == 'retained-process':
+            passed('retained-process-recovery-closes-worker-leases')
+        elif args.scenario == 'all':
+            passed('java-process-loss-expires-real-worker-lease')
+        else:
+            passed('selected-scenario-closes-worker-leases')
         control({'operation': 'assert-source-unchanged'})
         print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'resourcePoolSha256': digest(root / 'resource_pool.py'),

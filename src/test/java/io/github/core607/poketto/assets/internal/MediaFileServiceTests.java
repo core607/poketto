@@ -24,6 +24,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -112,7 +113,7 @@ class MediaFileServiceTests {
                 .thenAnswer(
                         invocation -> ((Function<PublicContentSnapshot, ?>) invocation.getArgument(1)).apply(snapshot));
         when(snapshots.refresh(workspace)).thenAnswer(call -> snapshot);
-        service = new MediaFileService(auth, repository, snapshots, () -> store);
+        service = new MediaFileService(auth, repository, snapshots, snapshots, () -> store);
     }
 
     @Test
@@ -144,6 +145,32 @@ class MediaFileServiceTests {
         assertMissing(
                 () -> service.privateDownload(actor, workspace, Optional.of("b".repeat(40)), "public/source.pdf"));
         assertMissing(() -> service.publicDownload(workspace, commit, "/note", "public/source.pdf"));
+    }
+
+    @Test
+    void aDisabledWebsiteDoesNotDisableMemberPublicOriginalDownloads() {
+        when(auth.authorize(actor, workspace))
+                .thenReturn(new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, Set.of()));
+        PublicContentSnapshots closedWebsite = mock(PublicContentSnapshots.class);
+        when(closedWebsite.withCurrent(eq(workspace), any()))
+                .thenThrow(new ContentRepositoryException("Website disabled"));
+        var isolated = new MediaFileService(auth, repository, snapshots, closedWebsite, () -> store);
+        var output = new ByteArrayOutputStream();
+        isolated.privateDownload(actor, workspace, Optional.of(commit), "public/source.pdf")
+                .writeTo(output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
+        output.reset();
+        isolated.memberProjectionDownload(actor, workspace, "/note", "public/source.pdf")
+                .writeTo(output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
+        verifyNoInteractions(closedWebsite);
+        assertThatThrownBy(() -> isolated.publicDownload(workspace, commit, "/note", "public/source.pdf"))
+                .isInstanceOf(ContentRepositoryException.class);
+        var retained = isolated.memberProjectionDownload(actor, workspace, "/note", "public/source.pdf");
+        when(auth.authorize(actor, workspace)).thenThrow(new AuthException(AuthException.Code.DENIED));
+        output.reset();
+        assertThatThrownBy(() -> retained.writeTo(output)).isInstanceOf(AuthException.class);
+        assertThat(output.size()).isZero();
     }
 
     @Test
@@ -492,7 +519,7 @@ class MediaFileServiceTests {
         assertThatThrownBy(() -> download.writeTo(output)).isInstanceOf(AssetStorageException.class);
         assertThat(output.size()).isZero();
         var boundedStore = ManagedBlobStore.local(directory.resolve("bounded"), 32);
-        var bounded = new MediaFileService(auth, repository, snapshots, () -> boundedStore);
+        var bounded = new MediaFileService(auth, repository, snapshots, snapshots, () -> boundedStore);
         assertThatThrownBy(() -> bounded.upload(
                         actor, workspace, "bounded-upload-01", "text/html", new ByteArrayInputStream(new byte[33])))
                 .isInstanceOfSatisfying(

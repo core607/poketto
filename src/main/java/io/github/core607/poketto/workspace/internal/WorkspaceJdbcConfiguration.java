@@ -14,6 +14,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 class WorkspaceJdbcConfiguration {
 
     @Bean
+    JdbcWorkspacePublications workspacePublications(JdbcTemplate jdbc) {
+        return new JdbcWorkspacePublications(jdbc);
+    }
+
+    @Bean
     JdbcWorkspaceCatalog workspaceCatalog(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         return new JdbcWorkspaceCatalog(jdbc, new TransactionTemplate(transactionManager));
     }

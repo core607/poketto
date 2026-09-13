@@ -122,7 +122,7 @@ class GitImageGrantRetentionTests {
     }
 
     @Test
-    void unbornAndForcePushedMainPreserveTheExactIssuedImage() throws Exception {
+    void unbornAndForcePushedMainInvalidateTheOldPublicImageGrant() throws Exception {
         var fixture = fixture(1);
         var snapshots = snapshots(fixture);
         var service = service(fixture, snapshots, new JGitRepositoryBlobReader(fixture.authority()));
@@ -134,12 +134,14 @@ class GitImageGrantRetentionTests {
         }
         assertThat(snapshots.refresh(workspace).articles()).isEmpty();
         clearDerivedImages();
-        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        assertThatThrownBy(() -> service.readPublicImage(workspace, original))
+                .isInstanceOf(AssetStorageException.class);
         fixture.commitRemote(workspace, files(2));
         snapshots.refresh(workspace);
         String replacement = publicToken(service);
         clearDerivedImages();
-        assertThat(service.readPublicImage(workspace, original).bytes()).isEqualTo(png(1));
+        assertThatThrownBy(() -> service.readPublicImage(workspace, original))
+                .isInstanceOf(AssetStorageException.class);
         assertThat(service.readPublicImage(workspace, replacement).bytes()).isEqualTo(png(2));
         assertCapacityOccupied(fixture);
     }

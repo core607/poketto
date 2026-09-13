@@ -127,7 +127,8 @@ class RepositoryAdminIntegrationIT {
                         .param("path", "private/中文.md"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.expectedAbsence").value(true));
-        String source = "\uFEFF---\r\ntags: [日常]\r\nunknown: retained\r\n---\r\n# 中文\r\n" + "原文".repeat(10_000);
+        String source = "\uFEFF---\r\ntags: [日常]\r\nunknown: retained\r\n---\r\n# 中文\r\n" + "原文".repeat(10_000)
+                + "\n\n[旅行可见](https://example.org/hidden-destination)";
         String path = "private/中文.md";
         var create = Map.of("changes", List.of(Map.of("path", path, "expectedAbsence", true, "content", source)));
         mvc.perform(post(scoped("/api/admin/repository/patch"))
@@ -162,6 +163,20 @@ class RepositoryAdminIntegrationIT {
                         .param("query", "原.*文"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get(scoped("/api/admin/repository/search"))
+                        .session(editor.session())
+                        .param("query", "hidden-destination"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        JsonNode visibleSearch = body(mvc.perform(get(scoped("/api/admin/repository/search"))
+                        .session(editor.session())
+                        .param("query", "旅行可见"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andReturn());
+        assertThat(visibleSearch.get("items").get(0).get("snippet").stringValue())
+                .contains("旅行可见")
+                .doesNotContain("https://", "hidden-destination", "[", "]");
         mvc.perform(get("/api/public/documents").param("query", "原文"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(0));
@@ -475,7 +490,8 @@ class RepositoryAdminIntegrationIT {
                                         "---\nroute: /http-media\n---\n[Download](source.pdf)\n"))),
                 200);
         String query =
-                "?commit=" + publication.get("commit").stringValue() + "&route=/http-media&path=public/source.pdf";
+                "?commit=" + publication.get("commit").stringValue() + "&route=/http-media&path=public/source.pdf"
+                        + "&workspace=" + catalog.defaultWorkspace().id();
         try (var anonymous =
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             for (var reader : List.of(anonymous, client)) {

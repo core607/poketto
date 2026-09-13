@@ -3,7 +3,6 @@ package io.github.core607.poketto.web.internal;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthPrincipal;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,11 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class MediaFileController {
     private final MediaFileService media;
-    private final WorkspaceCatalog workspaces;
 
-    MediaFileController(MediaFileService media, WorkspaceCatalog workspaces) {
+    MediaFileController(MediaFileService media) {
         this.media = media;
-        this.workspaces = workspaces;
     }
 
     @PostMapping(
@@ -59,11 +56,12 @@ class MediaFileController {
 
     @GetMapping("/api/public/media")
     void publicDownload(
+            @RequestParam String workspace,
             @RequestParam String path,
             @RequestParam String commit,
             @RequestParam String route,
             HttpServletResponse response) {
-        send(media.publicDownload(workspaces.defaultWorkspace().id(), commit, route, path), response);
+        send(media.publicDownload(WorkspaceId.parse(workspace), commit, route, path), response);
     }
 
     private static void send(MediaFileService.Download download, HttpServletResponse response) {

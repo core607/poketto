@@ -51,11 +51,21 @@ exclude:
 
 Markdown 元数据可选，未修改的源码字节保持原样。默认路由省略 `public/` 和 `.md`；显式路由保持不变，但不能赋予公开权限。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由（`public/index.md` 对应 `/`），并提供不递归、不重复正文图片的同目录图库。
 
+公开搜索和授权后的管理端搜索按标题及解析后的 Markdown 阅读文本作字面匹配。链接文字、图片描述、代码、表格单元格和被引用的脚注参与匹配；隐藏的目标地址、原始 HTML 和未引用的脚注定义不参与。摘要合并空白，仅在开头的一级标题文字与页面标题相同时省略它，再围绕命中位置生成有长度上限的片段。存储的 Markdown 和文章正文保持原样。
+
 认证后的 `/api/admin/workspaces/{workspaceId}/repository` 入口提供 Markdown 索引、分页目录列表、文件读取、搜索、预览、原子补丁与移动。浏览器目标选择器可以移动文件或文件夹，并在同一次提交中修复 Markdown 引用。文本变更须在 base commit 下携带 revision 或明确的缺失条件；移动在该版本检查来源和目标。冲突或不明确结果须重新读取后再决定是否重试。`/api/admin/workspaces/{workspaceId}/assets` 图片上传要求 `Idempotency-Key`，最多接收 16 MiB，返回不可变引用，不写 Git、不发布。
 
 新建路径输入框默认从 `private/` 开始。移动选择器中的私有／公开目录按钮在切换根目录时保留分类路径；选定目标后，提交移动才会写入仓库。移动目录包含其中的索引媒体，单独移动文档不会带走共享依赖。
 
-托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)。
+托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。关闭网站或替换公开快照也会使已签发的图片地址失效；刷新页面可取得当前地址。私有预览重新验证当前身份。[网站交付边界](../notes/implemented/2026-09-14-workspace-public-delivery.md)记录这次授权变化，[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)继续规定存储保证与限制。
+
+人类 owner 可在所选空间的“网站发布”面板，或通过 `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication` 读取和修改网站开关。修改须携带会话 CSRF token，并明确提交 `{ "enabled": true }` 或 `{ "enabled": false }`；省略字段会报错。面板会要求确认，回包不确定时须重新读取状态后再操作。关闭网站不影响成员读取获准访问的仓库文件。
+
+已开启的网站以 `/s/{slug}` 为入口，各自提供 `/search`、`/tags`、`/archive` 和 `/read/...` 页面。对应的 `/api/public/spaces/{slug}` 接口将文章和媒体限定在该空间内。未知或关闭的空间返回 404。后台每轮最多轮转刷新八个已开启的空间，并刷新默认空间供仓库健康检查使用。刚开启的网站可能要等刷新成功后才能访问；网页请求不会拉取远端 Git。公开原件下载 URL 除页面路由、commit 和逻辑路径外，还必须携带 `workspace` 查询参数；不透明图片 token 本身已绑定空间。
+
+站点首页从已开启的公开空间抽取内容，组成顺序稳定的浏览批次。翻页和浏览器返回保持顺序；点击“换一批”才重新抽取。撤下内容会从既有批次中隐藏对应卡片。批次最长保留 30 分钟，重启或缓存淘汰可能使其提前过期；过期链接会提供重新开始入口。每批最多从 32 个空间各抽取四页，后续批次继续遍历空间目录；发现页不是完整搜索。详见[发现批次](../notes/implemented/2026-09-14-public-discovery-batches.md)。
+
+文件夹入口正文中的文章链接按作者编排顺序组成合集。从入口开始阅读时，上下篇和返回链接保留所选合集；直接打开文章则列出所属合集，不自动猜测。重复链接只计一次，私有、缺失或外站目标不进入目录，最后一篇有明确提示。文章开头与页面标题相同的一级标题会隐藏，但保留原有锚点；Markdown 原文和编辑器预览不变。详见[合集阅读](../notes/implemented/2026-09-14-collection-reading.md)。
 
 `POST /api/admin/workspaces/{workspaceId}/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/workspaces/{workspaceId}/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
 

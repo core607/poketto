@@ -108,7 +108,7 @@ public final class AuthorizedRepositoryReader {
                                         document.tags(),
                                         document.createdAt(),
                                         document.updatedAt(),
-                                        search.snippet(document.body())))
+                                        search.snippet(document.title(), document.body())))
                                 .toList(),
                         matches.size(),
                         offset,

@@ -13,6 +13,8 @@ import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import io.github.core607.poketto.content.RepositoryMediaValidator;
 import io.github.core607.poketto.content.RepositoryOriginalTransfers;
+import io.github.core607.poketto.content.WebsiteContentSnapshots;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.file.Path;
@@ -40,8 +42,10 @@ class AssetsConfiguration {
             AuthService auth,
             RepositoryBlobReader repository,
             PublicContentSnapshots snapshots,
+            WorkspacePublications publications,
             @Qualifier("managedOriginals") Supplier<ManagedBlobStore> originals) {
-        return new MediaFileService(auth, repository, snapshots, originals);
+        return new MediaFileService(
+                auth, repository, snapshots, new WebsiteContentSnapshots(snapshots, publications), originals);
     }
 
     @Bean
@@ -107,6 +111,7 @@ class AssetsConfiguration {
             RepositoryBlobReader blobs,
             RepositoryMarkdownInspector markdown,
             PublicContentSnapshots snapshots,
+            WorkspacePublications publications,
             @Value("${poketto.data-dir}") Path directory,
             @Value("${poketto.assets.cache-max-bytes:134217728}") long cacheBytes,
             @Value("${poketto.assets.max-grants:2048}") int maxGrants,
@@ -117,7 +122,7 @@ class AssetsConfiguration {
                 content,
                 blobs,
                 markdown,
-                snapshots,
+                new WebsiteContentSnapshots(snapshots, publications),
                 managed,
                 directory.resolve("derived/repository-images"),
                 cacheBytes,

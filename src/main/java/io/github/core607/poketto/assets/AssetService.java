@@ -6,6 +6,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.MarkdownDestinations;
+import io.github.core607.poketto.content.MarkdownResolutionLimitException;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -354,22 +355,27 @@ public final class AssetService {
         throw new ContentRepositoryException("public snapshot changed during both image preparation attempts");
     }
 
+    /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
+    public AssetBytes readPublicImage(String token) {
+        Grant selected = grant(token, "");
+        return readPublicImage(selected.key().workspace(), token);
+    }
+
     public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
         Grant grant = grant(workspace, token, "");
-        requireCurrentIndexedPublication(grant);
+        requireCurrentPublication(grant);
         AssetBytes image = bytes(workspace, grant.key().target());
         grant(workspace, token, "");
-        requireCurrentIndexedPublication(grant);
+        requireCurrentPublication(grant);
         return image;
     }
 
-    private void requireCurrentIndexedPublication(Grant grant) {
-        if (!(grant.key().target() instanceof Indexed indexed)) {
-            return;
+    private void requireCurrentPublication(Grant grant) {
+        if (grant.key().target() instanceof Indexed indexed && !indexed.publicPath()) {
+            throw notFound();
         }
         snapshots.withCurrent(grant.key().workspace(), snapshot -> {
-            if (!indexed.publicPath()
-                    || !snapshot.commit().equals(Optional.of(grant.key().commit()))
+            if (!snapshot.commit().equals(Optional.of(grant.key().commit()))
                     || snapshot.articles().stream()
                             .noneMatch(article ->
                                     article.repositoryPath().equals(grant.key().page()))) {
@@ -437,7 +443,13 @@ public final class AssetService {
             boolean publicOnly,
             boolean anonymous,
             Predicate<String> managedAllowed) {
-        var destinations = MarkdownDestinations.parse(body);
+        MarkdownDestinations.Destinations destinations;
+        try {
+            destinations = MarkdownDestinations.parse(body);
+        } catch (MarkdownResolutionLimitException limit) {
+            return new PreparedMedia(
+                    body, commit, Map.of(), Map.of(), Map.of(), List.of(), ResolvedMedia.GalleryStatus.UNAVAILABLE);
+        }
         RepositoryMediaSnapshot media = null;
         if (commit != null
                 && (folder
@@ -450,6 +462,7 @@ public final class AssetService {
         final RepositoryMediaSnapshot catalog = media;
         Map<String, String> links = new LinkedHashMap<>();
         Map<String, String> downloads = new LinkedHashMap<>();
+        Set<String> publicRoutes = publicOnly ? Set.copyOf(routes.values()) : Set.of();
         for (String authored : destinations.links()) {
             if (authored.startsWith("#")
                     && authored.length() <= 256
@@ -458,16 +471,8 @@ public final class AssetService {
                 continue;
             }
             MarkdownDestinations.path(path, authored).ifPresent(target -> {
-                String selected = routes.get(target);
-                if (selected == null) {
-                    selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
-                }
-                if (selected == null) {
-                    selected = routes.get(target + ".md");
-                }
-                if (selected == null && publicOnly && routes.containsValue("/" + target)) {
-                    selected = "/" + target;
-                }
+                String selected = MarkdownDestinations.route(path, authored, routes, publicRoutes)
+                        .orElse(null);
                 if (selected == null
                         && catalog != null
                         && catalog.index().files().containsKey(target)
@@ -818,15 +823,21 @@ public final class AssetService {
     }
 
     private synchronized Grant grant(WorkspaceId workspace, String token, String actor) {
+        Grant grant = grant(token, actor);
+        if (!grant.key().workspace().equals(workspace)) {
+            throw notFound();
+        }
+        return grant;
+    }
+
+    private synchronized Grant grant(String token, String actor) {
         if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
             throw notFound();
         }
         Instant now = clock.instant();
         purge(now);
         Grant grant = grants.get(token);
-        if (grant == null
-                || !grant.key().workspace().equals(workspace)
-                || !grant.key().actor().equals(actor)) {
+        if (grant == null || !grant.key().actor().equals(actor)) {
             throw notFound();
         }
         return grant;
@@ -869,7 +880,8 @@ public final class AssetService {
     private static String downloadUrl(
             WorkspaceId workspace, boolean publicOnly, String commit, String route, String path) {
         String prefix = publicOnly ? "/api/public/media?" : WorkspaceHttpRoutes.admin(workspace) + "/media?";
-        return prefix + "commit=" + commit + "&path=" + query(path) + (publicOnly ? "&route=" + query(route) : "");
+        return prefix + "commit=" + commit + "&path=" + query(path)
+                + (publicOnly ? "&route=" + query(route) + "&workspace=" + workspace : "");
     }
 
     private static String query(String value) {

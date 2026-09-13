@@ -53,7 +53,9 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
      * unfiltered browse with an empty page.
      */
     public boolean matches(String title, String body, List<String> tags, Instant createdAt) {
-        return (query.isEmpty() || title.contains(query) || body.contains(query))
+        return (query.isEmpty()
+                        || title.contains(query)
+                        || MarkdownText.visible(body).contains(query))
                 && (tag.isEmpty() || tags.contains(tag))
                 && (from == null || !createdAt.isBefore(from))
                 && (to == null || !createdAt.isAfter(to));
@@ -66,16 +68,18 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
 
     /**
      * The excerpt shown beside a hit, cut around the first occurrence of the query. Both edges are
-     * pulled back off a surrogate pair, so the excerpt never ends in half of a character that the
+     * kept outside surrogate pairs, so the excerpt never ends in half of a character that the
      * reader would receive as a replacement glyph.
      */
-    public String snippet(String body) {
+    public String snippet(String title, String markdown) {
+        String body = MarkdownText.summary(title, markdown);
         int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
-        int start = Math.max(0, match - SNIPPET_LEAD);
-        int end = Math.min(body.length(), start + SNIPPET_LENGTH);
+        int lead = Math.min(SNIPPET_LEAD, SNIPPET_LENGTH - query.length());
+        int start = Math.max(0, match - lead);
         if (start > 0 && Character.isLowSurrogate(body.charAt(start))) {
-            start--;
+            start++;
         }
+        int end = Math.min(body.length(), start + SNIPPET_LENGTH);
         if (end < body.length() && end > 0 && Character.isHighSurrogate(body.charAt(end - 1))) {
             end--;
         }

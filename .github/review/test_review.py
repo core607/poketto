@@ -477,7 +477,10 @@ class ReviewTests(unittest.TestCase):
         self.assertNotIn("application/vnd.github.v3.diff", workflow)
         self.assertNotIn("ref: ${{ github.event.pull_request.head", workflow)
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}" + chr(10), ci)
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' "
+                      "&& format('pr-{0}', github.event.pull_request.number) "
+                      "|| format('branch-{0}', github.ref) }}" + chr(10), ci)
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", ci)
         self.assertNotIn("github.run_id || 'source'", ci)
         self.assertIn('unittest discover -s .github/review -p "test_*.py"', ci)
         # Branch protection expects "verify" from the newest run of this workflow, including the

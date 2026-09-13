@@ -15,7 +15,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.workspace.Workspace;
-import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -27,8 +26,6 @@ class MediaFileControllerTests {
     @Test
     void activeOriginalsAreAttachmentsAndPreOutputFailuresDoNotCommitDownloadHeaders() throws Exception {
         var workspace = new Workspace(WorkspaceId.random(), "Synthetic");
-        var workspaces = mock(WorkspaceCatalog.class);
-        when(workspaces.defaultWorkspace()).thenReturn(workspace);
         var media = mock(MediaFileService.class);
         var download = mock(MediaFileService.Download.class);
         byte[] bytes = "<svg onload='alert(1)'/>".getBytes(StandardCharsets.UTF_8);
@@ -42,10 +39,11 @@ class MediaFileControllerTests {
                 })
                 .when(download)
                 .writeTo(any());
-        var mvc = MockMvcBuilders.standaloneSetup(new MediaFileController(media, workspaces))
+        var mvc = MockMvcBuilders.standaloneSetup(new MediaFileController(media))
                 .setControllerAdvice(new ProblemResponses())
                 .build();
         var request = get("/api/public/media")
+                .param("workspace", workspace.id().toString())
                 .param("commit", "a".repeat(40))
                 .param("route", "/note")
                 .param("path", "public/原件.svg");

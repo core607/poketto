@@ -23,7 +23,7 @@ The executable baseline serves canonical documents through a read-only public AP
 
 ## Delivery boundary
 
-Deliver a single-host installation with a blog, authenticated administration, and repository MCP access from Codex and Claude Code. Remote `main` remains authoritative for content. The operator supplies an existing private content repository without moving Markdown into `documents/`, adding mandatory frontmatter, or reformatting untouched files. Repository coordinates, host addresses, domains, credentials, and machine-specific operating records remain private operator configuration.
+Deliver a single-host installation with a blog, authenticated administration, and repository MCP access from Codex and Claude Code. Remote `main` remains authoritative for content. The operator supplies an existing private content repository without moving Markdown into `documents/`, adding mandatory frontmatter, or reformatting untouched files. Repository coordinates, host addresses, credentials, and machine-specific operating records remain private operator configuration. The public domain is operator configuration as well; the README links the author's own instance.
 
 The public interface includes an article stream, article and folder pages, tags, archive, bounded search, RSS, and sitemap. Administration includes a file tree, Markdown editing and preview, image selection and upload, invitations, memberships, and API keys. Interface text is Simplified Chinese; interface language switching is outside this delivery.
 

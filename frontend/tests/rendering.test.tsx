@@ -170,7 +170,8 @@ test("article stream contains readable titles and links in initial server HTML",
             tags: ["知识"],
             createdAt: "2026-09-01T00:00:00Z",
             updatedAt: "2026-09-01T00:00:00Z",
-            snippet: "不需要 JavaScript 也能读到的文字。",
+            snippet:
+              "不需要 JavaScript 也能读到的文字。\n# literal ![code](literal) <script>text</script>",
           },
         ],
       }}
@@ -178,6 +179,8 @@ test("article stream contains readable titles and links in initial server HTML",
   );
   assert.match(html, /一篇记录/);
   assert.match(html, /不需要 JavaScript/);
+  assert.match(html, /# literal !\[code\]\(literal\)/);
+  assert.match(html, /&lt;script&gt;text&lt;\/script&gt;/);
   assert.match(html, /href="\/read\/note"/);
   assert.doesNotMatch(html, /<script/);
 });
@@ -362,4 +365,34 @@ test("empty incomplete galleries expose a notice without unsafe image fallbacks"
       assert.doesNotMatch(html, /<img|private\/image|Hidden/);
     }
   }
+});
+test("reading omits only the duplicate opening title while retaining fragment targets", () => {
+  const html = renderToStaticMarkup(
+    <Markdown
+      source={"\n# A *small* note\n\nBody\n\n# A small note"}
+      pageTitle="A small note"
+    />,
+  );
+  assert.match(
+    html,
+    /<span id="poketto-heading-a-small-note" aria-hidden="true"><\/span>/,
+  );
+  assert.match(
+    html,
+    /<h1 id="poketto-heading-a-small-note-1">A small note<\/h1>/,
+  );
+  for (const source of ["# Different", "Preface\n\n# A small note"]) {
+    assert.match(
+      renderToStaticMarkup(
+        <Markdown source={source} pageTitle="A small note" />,
+      ),
+      /<h1 /,
+    );
+  }
+  assert.match(
+    renderToStaticMarkup(
+      <Markdown source="# A small note" pageTitle="A small note" preview />,
+    ),
+    /<h1 /,
+  );
 });

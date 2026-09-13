@@ -4,6 +4,24 @@ export type Snapshot = {
   verifiedAt: string;
   expiresAt: string;
 };
+export type DiscoveryPage = {
+  batch: string;
+  expiresAt: string;
+  offset: number;
+  limit: number;
+  nextOffset: number | null;
+  previousOffset: number | null;
+  items: {
+    space: string;
+    spaceName: string;
+    route: string;
+    title: string;
+    snippet: string;
+    tags: string[];
+    createdAt: string;
+    folderPage: boolean;
+  }[];
+};
 export type ArticleSummary = {
   route: string;
   title: string;
@@ -27,7 +45,20 @@ export type Article = Snapshot &
     downloads?: Record<string, string>;
     gallery?: { src: string; alt: string }[];
     galleryStatus: GalleryStatus;
+    navigation: CollectionNavigation;
   };
+export type ArticleReference = { route: string; title: string };
+export type CollectionNavigation = {
+  entries: ArticleReference[];
+  available: boolean;
+  memberships: {
+    collection: ArticleReference;
+    position: number;
+    total: number;
+    previous: ArticleReference | null;
+    next: ArticleReference | null;
+  }[];
+};
 export type TagPage = Snapshot & {
   tags: string[];
   total: number;

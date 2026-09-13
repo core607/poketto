@@ -71,12 +71,18 @@ public final class AcceptanceApplication {
                     directory,
                     ".poketto/publishing.yaml",
                     "enabled: true\nmode: public-root\nexclude: [public/drafts/**]\n");
-            write(directory, "public/index.md", "# 窗边的知识站\n\n这是一份隔离验收样例，用于检查真实的阅读、图片和编辑流程。\n\n[翻开第一篇](随记/雨后.md)\n");
+            write(
+                    directory,
+                    "public/index.md",
+                    "# 窗边的知识站\n\n这是一份隔离验收样例，用于检查真实的阅读、图片和编辑流程。\n\n[翻开第一篇](随记/雨后.md)\n\n[继续读写作](手册/写作.md)\n");
             write(
                     directory,
                     "public/随记/雨后.md",
                     "---\ntitle: 雨停之后，留一页给散步\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
-            write(directory, "public/手册/index.md", "# 使用手册\n\n文件夹页面附带同目录的图片画廊。\n");
+            write(
+                    directory,
+                    "public/手册/index.md",
+                    "# 使用手册\n\n文件夹页面附带同目录的图片画廊。\n\n[开始写作](写作.md)\n\n[再读雨后](../随记/雨后.md)\n");
             write(
                     directory,
                     "public/手册/写作.md",

@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.assets.ResolvedMedia;
 import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicCollections;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import java.time.Instant;
 import java.util.List;
@@ -23,7 +24,8 @@ record PublicDocument(
         Map<String, String> downloads,
         Map<String, String> images,
         List<ResolvedMedia.GalleryImage> gallery,
-        ResolvedMedia.GalleryStatus galleryStatus) {
+        ResolvedMedia.GalleryStatus galleryStatus,
+        PublicCollections.Navigation navigation) {
     static PublicDocument of(PublicArticle article, PublicContentSnapshot snapshot, ResolvedMedia media) {
         return new PublicDocument(
                 snapshot.commit().orElse(null),
@@ -40,6 +42,7 @@ record PublicDocument(
                 media.downloads(),
                 media.images(),
                 media.gallery(),
-                media.galleryStatus());
+                media.galleryStatus(),
+                snapshot.collections().forArticle(article.route()));
     }
 }

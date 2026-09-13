@@ -44,11 +44,15 @@ Collection entries follow resolved article links in the landing document's autho
 
 Summaries come from parsed visible Markdown text before truncation. Link labels remain without URL syntax; duplicate opening titles are omitted from summaries. Article rendering omits only a first level-one heading equal to the separately rendered page title.
 
+Reading-text extraction is shared by public and authorized management search. CommonMark nodes and the table, strikethrough, task-list and footnote extensions retain authored prose, code and image descriptions without interpreting link destinations as text. Only reachable footnote definitions participate, in reference order. Text normalization and summary generation are transient reads; they never rewrite repository content. Summary suppression does not itself suppress the separately rendered article heading; that remains a frontend reading requirement.
+
 Site search covers enabled public spaces; space search fixes one space. Authenticated management search fixes both a space and the caller's current authorization. Literal visible-text matching is retained without semantic search. Titles and snippets highlight matches using escaped text nodes and `mark`, while article bodies retain normal reading. Snippets surround visible matches rather than raw URL or Markdown bytes.
 
 Search query, pagination, and space scope live in URLs. Browser-history-local state preserves the result anchor and scroll offset. Articles entered from search offer Return to results; direct entries use their space or collection. Browser Back must continue to work. Raw or cross-origin return URLs are not trusted navigation targets.
 
 Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix.
+
+The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
 
 ## Administration experience
 

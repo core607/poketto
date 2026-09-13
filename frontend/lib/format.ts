@@ -6,8 +6,12 @@ export function date(value: string) {
     timeZone: "UTC",
   }).format(new Date(value));
 }
-export function articleHref(route: string) {
+export function spaceHref(space?: string) {
+  return space ? `/s/${encodeURIComponent(space)}` : "";
+}
+export function articleHref(route: string, space?: string) {
   return (
+    spaceHref(space) +
     "/read" +
     (route === "/" ? "" : route.split("/").map(encodeURIComponent).join("/"))
   );
@@ -24,6 +28,13 @@ export function xml(value: string) {
         "'": "&apos;",
       })[character]!,
   );
+}
+export function collectionArticleHref(
+  route: string,
+  space: string,
+  collection: string,
+) {
+  return articleHref(route, space) + "?" + new URLSearchParams({ collection });
 }
 export function safeLink(value: string): string | undefined {
   if (!value || /[\u0000-\u0020\u007f\\]/.test(value) || value.startsWith("//"))
