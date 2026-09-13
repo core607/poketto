@@ -93,7 +93,8 @@ class RepositoryAdminController {
                 file.source().orElse(null),
                 file.revision().map(DocumentRevision::value).orElse(null),
                 file.expectedAbsence(),
-                file.diagnostics());
+                file.diagnostics(),
+                file.publicScope());
     }
 
     @GetMapping("/search")
@@ -155,7 +156,8 @@ class RepositoryAdminController {
             String source,
             String revision,
             boolean expectedAbsence,
-            List<RepositoryDiagnostic> diagnostics) {}
+            List<RepositoryDiagnostic> diagnostics,
+            boolean publicScope) {}
 
     record Change(String path, boolean expectedAbsence, String expectedRevision, String content) {}
 

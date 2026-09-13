@@ -69,7 +69,9 @@ export function Editor({
     file !== null && (source !== (file.source ?? "") || path !== file.path);
   const unreadable =
     file !== null && file.source === null && !file.expectedAbsence;
-  const writable = identity.capabilities.includes("WRITE_PRIVATE");
+  const writable = identity.capabilities.includes(
+    file?.publicScope ? "PUBLISH" : "WRITE_PRIVATE",
+  );
   async function reloadTree() {
     const next = await api<RepositoryTree>("/api/admin/repository/tree");
     setTree(next);
@@ -128,11 +130,11 @@ export function Editor({
     setError("");
     setNotice("");
     setConflict(false);
-    setPreview({ galleryStatus: "COMPLETE" });
     try {
       const result = await api<RepositoryFile>(
         "/api/admin/repository/file?" + new URLSearchParams({ path: target }),
       );
+      setPreview({ galleryStatus: "COMPLETE" });
       setFile(result);
       setPath(result.path);
       setSource(result.source ?? "");
@@ -332,6 +334,7 @@ export function Editor({
           {...moveSelection}
           fallbackFocus={editorRoot.current}
           canPublish={identity.capabilities.includes("PUBLISH")}
+          canWritePrivate={identity.capabilities.includes("WRITE_PRIVATE")}
           onClose={() => setMoveSelection(null)}
           onMove={move}
         />
@@ -611,6 +614,10 @@ export function Editor({
                     key={path}
                     path={path}
                     commit={file.commit}
+                    canUpload={identity.capabilities.includes("WRITE_PRIVATE")}
+                    canReadPrivate={identity.capabilities.includes(
+                      "READ_PRIVATE",
+                    )}
                     onInsert={insert}
                   />
                 )}

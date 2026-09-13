@@ -180,7 +180,7 @@ class AdminPaginationIntegrationIT {
         mvc.perform(request(
                         put(scoped("/api/admin/members/") + lastMember),
                         session,
-                        Map.of("role", "MEMBER", "active", false)))
+                        Map.of("role", "MEMBER", "active", false, "permissions", List.of())))
                 .andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject(
                         "select suspended_at is not null from auth_memberships where workspace_id = ? and account_id = ?",

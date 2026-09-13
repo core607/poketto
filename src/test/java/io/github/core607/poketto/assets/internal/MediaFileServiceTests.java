@@ -9,6 +9,7 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,9 +18,12 @@ import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -36,6 +40,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,6 +78,12 @@ class MediaFileServiceTests {
 
     @BeforeEach
     void prepare() {
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         Arrays.fill(bytes, (byte) 42);
         store = ManagedBlobStore.local(directory.resolve("originals"));
         asset = store.uploadFile(workspace, "synthetic-media-01", "application/pdf", new ByteArrayInputStream(bytes));
@@ -100,6 +111,7 @@ class MediaFileServiceTests {
         when(snapshots.withCurrent(eq(workspace), any()))
                 .thenAnswer(
                         invocation -> ((Function<PublicContentSnapshot, ?>) invocation.getArgument(1)).apply(snapshot));
+        when(snapshots.refresh(workspace)).thenAnswer(call -> snapshot);
         service = new MediaFileService(auth, repository, snapshots, () -> store);
     }
 
@@ -114,6 +126,84 @@ class MediaFileServiceTests {
                 .thenThrow(new IllegalStateException("revoked"));
         assertThatThrownBy(() -> service.describeOriginal(actor, workspace, asset.reference()))
                 .hasMessage("revoked");
+    }
+
+    @Test
+    void membersDownloadOnlyCurrentPublicOriginalsWithoutAnAnonymousArticleReference() {
+        when(auth.authorize(actor, workspace))
+                .thenReturn(new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, Set.of()));
+        snapshot = new PublicContentSnapshot(
+                workspace, Optional.of(commit), snapshot.verifiedAt(), snapshot.expiresAt(), List.of());
+        var output = new ByteArrayOutputStream();
+        service.privateDownload(actor, workspace, Optional.of(commit), "public/source.pdf")
+                .writeTo(output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
+        verify(snapshots, times(1)).refresh(workspace);
+        verify(repository, never()).selectCommit(any(), any());
+        assertMissing(() -> service.privateDownload(actor, workspace, Optional.empty(), "private/source.pdf"));
+        assertMissing(
+                () -> service.privateDownload(actor, workspace, Optional.of("b".repeat(40)), "public/source.pdf"));
+        assertMissing(() -> service.publicDownload(workspace, commit, "/note", "public/source.pdf"));
+    }
+
+    @Test
+    void membershipAndSourceWithdrawalStopMemberStreamsWithoutPerBlockNetworkFetches() {
+        for (boolean membershipLoss : new boolean[] {true, false}) {
+            var initial = snapshot;
+            AtomicBoolean revoked = new AtomicBoolean();
+            doAnswer(call -> {
+                        if (revoked.get()) {
+                            throw new AuthException(AuthException.Code.DENIED);
+                        }
+                        return new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, Set.of());
+                    })
+                    .when(auth)
+                    .authorize(actor, workspace);
+            var download = service.privateDownload(actor, workspace, Optional.empty(), "public/source.pdf");
+            AtomicLong count = new AtomicLong();
+            var output = new OutputStream() {
+                @Override
+                public void write(int value) {
+                    throw new AssertionError("expected bounded bulk output");
+                }
+
+                @Override
+                public void write(byte[] data, int offset, int length) {
+                    count.addAndGet(length);
+                    if (membershipLoss) {
+                        revoked.set(true);
+                    } else {
+                        snapshot = new PublicContentSnapshot(
+                                workspace,
+                                Optional.of("b".repeat(40)),
+                                initial.verifiedAt(),
+                                initial.expiresAt(),
+                                List.of());
+                    }
+                }
+            };
+            if (membershipLoss) {
+                assertThatThrownBy(() -> download.writeTo(output)).isInstanceOf(AuthException.class);
+            } else {
+                assertMissing(() -> download.writeTo(output));
+            }
+            assertThat(count.get()).isPositive().isLessThanOrEqualTo(256 * 1024);
+            snapshot = initial;
+        }
+        verify(snapshots, times(2)).refresh(workspace);
+        verify(repository, never()).selectCommit(any(), any());
+    }
+
+    @Test
+    void aRetainedMemberDownloadCannotStartAfterItsSourceSnapshotChanges() {
+        when(auth.authorize(actor, workspace))
+                .thenReturn(new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, Set.of()));
+        var download = service.privateDownload(actor, workspace, Optional.empty(), "public/source.pdf");
+        snapshot = new PublicContentSnapshot(
+                workspace, Optional.of("b".repeat(40)), snapshot.verifiedAt(), snapshot.expiresAt(), List.of());
+        var output = new ByteArrayOutputStream();
+        assertMissing(() -> download.writeTo(output));
+        assertThat(output.size()).isZero();
     }
 
     @Test
