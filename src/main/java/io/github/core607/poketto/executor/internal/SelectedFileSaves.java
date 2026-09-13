@@ -204,6 +204,7 @@ final class SelectedFileSaves {
         RepositoryPatch pending;
         Optional<RepositoryWriteAttempt> attempt = Optional.empty();
         BridgeReplies.Recorded lastSave = new BridgeReplies.Absent();
+        BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         SessionMoves.Pending move;
 
         State(String baseCommit) {
@@ -241,6 +242,7 @@ final class SelectedFileSaves {
             pending = proposed.pending;
             attempt = proposed.attempt;
             lastSave = proposed.lastSave;
+            lastImport = proposed.lastImport;
             move = proposed.move;
         }
 
@@ -253,7 +255,8 @@ final class SelectedFileSaves {
                     pending,
                     attempt.orElse(null),
                     RetainedSaveState.Move.capture(move),
-                    BridgeReplies.RestoredReceipt.capture(lastSave));
+                    BridgeReplies.RestoredReceipt.capture(lastSave),
+                    BridgeReplies.RestoredReceipt.capture(lastImport));
         }
 
         static State restore(RetainedSaveState snapshot) {
@@ -269,7 +272,14 @@ final class SelectedFileSaves {
             state.attempt = Optional.ofNullable(snapshot.attempt());
             state.move = snapshot.move() == null ? null : snapshot.move().restore();
             state.lastSave = snapshot.lastSave();
+            state.lastImport = snapshot.lastImport();
             return state;
+        }
+
+        void acknowledgeImport(BridgeReplies.ImportReceipt receipt) {
+            State proposed = copy();
+            proposed.lastImport = Objects.requireNonNull(receipt, "import receipt must be present");
+            install(proposed);
         }
 
         String baseline(String path) {

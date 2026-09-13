@@ -189,7 +189,7 @@ class RetainedCopyStoreTests {
                 UUID.randomUUID(),
                 RetainedCopyRecord.Outcome.RUNNING,
                 new RetainedCopyRecord.Checkpoint(
-                        UUID.randomUUID(), "e".repeat(64), 30, live.snapshot(), receipt("unconfirmed command")));
+                        UUID.randomUUID(), "e".repeat(64), 30, withImport(live.snapshot(), "unconfirmed command")));
         var next = changed(initial, 1, 1, initial.transportHash(), initial.acknowledged(), pending);
         first.replace(0, 1, next);
 
@@ -293,7 +293,10 @@ class RetainedCopyStoreTests {
         var initial = initial();
         store.create(initial);
         var checkpoint = new RetainedCopyRecord.Checkpoint(
-                UUID.randomUUID(), "d".repeat(64), 10, initial.acknowledged().state(), receipt("x".repeat(6000)));
+                UUID.randomUUID(),
+                "d".repeat(64),
+                10,
+                withImport(initial.acknowledged().state(), "x".repeat(6000)));
         var next = changed(initial, 1, 1, initial.transportHash(), checkpoint, null);
         assertFailure(() -> store.replace(0, 1, next), RetainedCopyException.Reason.LIMIT);
         assertThat(store.read(initial.owner(), initial.copyId()).acknowledged().id())
@@ -308,7 +311,10 @@ class RetainedCopyStoreTests {
         var initial = initial();
         store.create(initial);
         var checkpoint = new RetainedCopyRecord.Checkpoint(
-                UUID.randomUUID(), "d".repeat(64), 10, initial.acknowledged().state(), receipt("x".repeat(3000)));
+                UUID.randomUUID(),
+                "d".repeat(64),
+                10,
+                withImport(initial.acknowledged().state(), "x".repeat(3000)));
         var next = changed(initial, 1, 1, initial.transportHash(), checkpoint, null);
         Path sample = directory.resolve("sample.record");
         new RetainedRecordFiles(4096).write(sample, next, 4096);
@@ -335,7 +341,7 @@ class RetainedCopyStoreTests {
                 UUID.randomUUID(),
                 RetainedCopyRecord.Outcome.INTERRUPTED,
                 new RetainedCopyRecord.Checkpoint(
-                        UUID.randomUUID(), "e".repeat(64), 30, state.snapshot(), receipt("pending move")));
+                        UUID.randomUUID(), "e".repeat(64), 30, withImport(state.snapshot(), "pending move")));
         var record = changed(initial, 0, 1, initial.transportHash(), initial.acknowledged(), command);
         new RetainedCopyStore(root, limits, CLOCK).create(record);
 
@@ -413,14 +419,15 @@ class RetainedCopyStoreTests {
         }
     }
 
+    private static RetainedSaveState withImport(RetainedSaveState snapshot, String message) {
+        SelectedFileSaves.State state = SelectedFileSaves.State.restore(snapshot);
+        state.lastImport = receipt(message);
+        return state.snapshot();
+    }
+
     private static RetainedCopyRecord initial() {
         var state = new SelectedFileSaves.State(BASE);
-        var checkpoint = new RetainedCopyRecord.Checkpoint(
-                UUID.randomUUID(),
-                "d".repeat(64),
-                1,
-                state.snapshot(),
-                BridgeReplies.RestoredReceipt.capture(new BridgeReplies.Absent()));
+        var checkpoint = new RetainedCopyRecord.Checkpoint(UUID.randomUUID(), "d".repeat(64), 1, state.snapshot());
         return new RetainedCopyRecord(
                 1,
                 new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID()),

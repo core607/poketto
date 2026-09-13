@@ -731,7 +731,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         ? new BridgeReplies.Absent()
                         : SessionMoves.movePending(session.saveState.move),
                 session.saveState.lastSave,
-                session.lastImport));
+                session.saveState.lastImport));
     }
 
     private BridgeReplies.Reply exportCommand(Session session, String executionId, JsonNode arguments) {
@@ -1283,6 +1283,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return page.decoded();
             })) {
                 asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
+                session.saveState.acknowledgeImport(importReceipt(path, asset, false));
                 if (!input.verified()
                         || asset.size() != size
                         || !asset.reference().revision().equals(digest)
@@ -1316,6 +1317,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!availableMediaPath(session, local, selected.path(), asset.mediaType())) {
             return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
         }
+        session.saveState.acknowledgeImport(importReceipt(selected.path(), asset, false));
         return indexMedia(session, executionId, selected.path(), asset, local, selected.replace());
     }
 
@@ -1367,12 +1369,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         Optional<String> source = local.source();
         RepositoryMediaIndex index = local.index();
         var entries = new LinkedHashMap<>(index.files());
-        session.lastImport = importReceipt(path, asset, false);
         var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
         var previous = index.files().get(path);
         if (previous != null && !previous.equals(entry) && !replace) {
-            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.lastImport);
+            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.saveState.lastImport);
         }
         entries.put(path, entry);
         byte[] changed = entry.equals(previous)
@@ -1390,16 +1391,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     false,
                     false,
                     output -> output.write(changed))) {
-                return BridgeReplies.failedWith("INDEX_CHANGED", session.lastImport);
+                return BridgeReplies.failedWith("INDEX_CHANGED", session.saveState.lastImport);
             }
         } catch (MaterializationCapacity capacity) {
             return BridgeReplies.failedWith(
                     "MATERIALIZE_CAPACITY",
-                    session.lastImport,
+                    session.saveState.lastImport,
                     "Original stored; local index was not updated. Free session space and retry the same import or link.");
         }
-        session.lastImport = importReceipt(path, asset, true);
-        return BridgeReplies.succeeded(session.lastImport);
+        session.saveState.acknowledgeImport(importReceipt(path, asset, true));
+        return BridgeReplies.succeeded(session.saveState.lastImport);
     }
 
     private static BridgeReplies.ImportReceipt importReceipt(String path, ManagedAsset asset, boolean indexed) {
@@ -1897,7 +1898,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
-        private BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

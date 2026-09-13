@@ -936,6 +936,7 @@ public final class ExecutorNativeProbe {
             assertThat(stored.path("code").asString()).isEqualTo("MATERIALIZE_CAPACITY");
             assertThat(stored.path("result").path("originalStored").asBoolean()).isTrue();
             assertThat(stored.path("result").path("indexUpdated").asBoolean()).isFalse();
+            assertImportStatus(executor, stored.path("result"));
             var recovered = execute(
                     executor,
                     "media-import",
@@ -946,6 +947,7 @@ public final class ExecutorNativeProbe {
             assertThat(recoveredReceipt.path("assetId"))
                     .isEqualTo(stored.path("result").path("assetId"));
             assertThat(recoveredReceipt.path("indexUpdated").asBoolean()).isTrue();
+            assertImportStatus(executor, recoveredReceipt);
             assertThat(reader.getFile(principal, workspace, Optional.empty(), ".poketto/assets.json")
                             .commit())
                     .isEqualTo(saved.commit());
@@ -953,6 +955,14 @@ public final class ExecutorNativeProbe {
             emptyMediaImport(executor);
             largeMediaImport(executor);
         }
+    }
+
+    private void assertImportStatus(IsolatedRepositoryExecutor executor, JsonNode receipt) throws Exception {
+        RepositoryExecutor.ExecutionResult status =
+                execute(executor, "media-import", "poketto status", new Cancellation());
+        assertThat(status.exitCode()).isZero();
+        assertThat(JSON.readTree(status.stdout()).path("result").path("lastImport"))
+                .isEqualTo(receipt);
     }
 
     private void emptyMediaImport(IsolatedRepositoryExecutor executor) throws Exception {

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -101,6 +102,105 @@ class RetainedSaveStateTests {
     }
 
     @Test
+    void importReceiptSurvivesRestorationAlongsideAnUncertainSave() {
+        SelectedFileSaves.State state = stateWithIndependentBaselines();
+        state.pending = patch(ADVANCED);
+        state.uncertain = true;
+        state.lastSave = BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+        BridgeReplies.ImportReceipt receipt = imported(false);
+        state.acknowledgeImport(receipt);
+
+        SelectedFileSaves.State restored = SelectedFileSaves.State.restore(roundTrip(state.snapshot()));
+
+        assertThat(JSON.writeValueAsString(restored.lastImport)).isEqualTo(JSON.writeValueAsString(receipt));
+        assertThat(restored.pending).isEqualTo(state.pending);
+        assertThat(restored.uncertain).isTrue();
+        assertThat(restored.baseline("changed.md")).isEqualTo(ADVANCED);
+        assertThat(restored.baseline("untouched.md")).isEqualTo(ORIGINAL);
+        assertThat(JSON.<JsonNode>valueToTree(restored.lastSave)).isEqualTo(JSON.valueToTree(state.lastSave));
+    }
+
+    @Test
+    void importAcknowledgementPersistsBothStoredAndIndexedReceipts() {
+        var retained = new ArrayList<RetainedSaveState>();
+        var state = new SelectedFileSaves.State(ORIGINAL, retained::add);
+        BridgeReplies.ImportReceipt receipt = imported(false);
+        state.acknowledgeImport(receipt);
+        state.acknowledgeImport(new BridgeReplies.ImportReceipt(
+                receipt.path(),
+                receipt.assetId(),
+                receipt.sha256(),
+                receipt.mediaType(),
+                receipt.bytes(),
+                true,
+                true,
+                false));
+
+        assertThat(retained).hasSize(2);
+        assertThat(JSON.<JsonNode>valueToTree(retained.getFirst().lastImport())
+                        .path("indexUpdated")
+                        .asBoolean())
+                .isFalse();
+        assertThat(JSON.<JsonNode>valueToTree(retained.getLast().lastImport())
+                        .path("indexUpdated")
+                        .asBoolean())
+                .isTrue();
+        assertThat(JSON.<JsonNode>valueToTree(state.lastImport))
+                .isEqualTo(JSON.valueToTree(retained.getLast().lastImport()));
+    }
+
+    @Test
+    void failedIndexCheckpointPreservesTheDurableUploadReceipt() {
+        BridgeReplies.ImportReceipt receipt = imported(false);
+        var state = new SelectedFileSaves.State(ORIGINAL, proposed -> {
+            if (JSON.<JsonNode>valueToTree(proposed.lastImport())
+                    .path("indexUpdated")
+                    .asBoolean()) {
+                throw new IllegalStateException("checkpoint storage unavailable");
+            }
+        });
+        state.acknowledgeImport(receipt);
+        SelectedFileSaves.State restored = SelectedFileSaves.State.restore(roundTrip(state.snapshot()));
+
+        assertThatThrownBy(() -> state.acknowledgeImport(new BridgeReplies.ImportReceipt(
+                        receipt.path(),
+                        receipt.assetId(),
+                        receipt.sha256(),
+                        receipt.mediaType(),
+                        receipt.bytes(),
+                        true,
+                        true,
+                        false)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("checkpoint storage unavailable");
+
+        assertThat(JSON.<JsonNode>valueToTree(state.lastImport)).isEqualTo(JSON.valueToTree(receipt));
+        assertThat(JSON.writeValueAsString(restored.lastImport)).isEqualTo(JSON.writeValueAsString(receipt));
+        assertThat(state.baseCommit).isEqualTo(ORIGINAL);
+    }
+
+    @Test
+    void failedUploadCheckpointDoesNotReplaceThePreviousReceipt() {
+        var original = new SelectedFileSaves.State(ORIGINAL);
+        BridgeReplies.ImportReceipt previous = imported(true);
+        original.acknowledgeImport(previous);
+        SelectedFileSaves.State state = SelectedFileSaves.State.restore(roundTrip(original.snapshot()), proposed -> {
+            throw new IllegalStateException("checkpoint storage unavailable");
+        });
+
+        assertThatThrownBy(() -> state.acknowledgeImport(imported(false)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("checkpoint storage unavailable");
+
+        assertThat(JSON.writeValueAsString(state.lastImport)).isEqualTo(JSON.writeValueAsString(previous));
+    }
+
+    private static BridgeReplies.ImportReceipt imported(boolean indexed) {
+        return new BridgeReplies.ImportReceipt(
+                "private/猫.png", UUID.randomUUID().toString(), "a".repeat(64), "image/png", 42, true, indexed, false);
+    }
+
+    @Test
     void rejectsInconsistentAuthorityBeforeRestoration() {
         var state = stateWithIndependentBaselines();
         state.pending = patch(ORIGINAL);
@@ -123,7 +223,15 @@ class RetainedSaveStateTests {
     void rejectsUnsafeBaselinePathsAndOversizedReceipts() {
         var receipt = BridgeReplies.RestoredReceipt.capture(new BridgeReplies.Absent());
         assertThatThrownBy(() -> new RetainedSaveState(
-                        ORIGINAL, ADVANCED, Map.of("../escape.md", ORIGINAL), false, null, null, null, receipt))
+                        ORIGINAL,
+                        ADVANCED,
+                        Map.of("../escape.md", ORIGINAL),
+                        false,
+                        null,
+                        null,
+                        null,
+                        receipt,
+                        receipt))
                 .isInstanceOf(IllegalArgumentException.class);
         var oversized = JSON.createObjectNode().put("message", "x".repeat(65536));
         assertThatThrownBy(() -> new BridgeReplies.RestoredReceipt(oversized))

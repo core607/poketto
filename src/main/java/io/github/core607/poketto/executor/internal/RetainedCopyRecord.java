@@ -56,14 +56,12 @@ record RetainedCopyRecord(
         }
     }
 
-    record Checkpoint(
-            UUID id, String sha256, long bytes, RetainedSaveState state, BridgeReplies.RestoredReceipt lastImport) {
+    record Checkpoint(UUID id, String sha256, long bytes, RetainedSaveState state) {
         Checkpoint {
             Objects.requireNonNull(id, "worker checkpoint id must be present");
             sha256 = ProtocolValues.hex(sha256, 64, "worker checkpoint digest");
             ProtocolValues.inRange(bytes, 1, 1024L * 1024 * 1024, "worker checkpoint bytes");
             Objects.requireNonNull(state, "checkpoint save state must be present");
-            Objects.requireNonNull(lastImport, "checkpoint import receipt must be present");
         }
     }
 

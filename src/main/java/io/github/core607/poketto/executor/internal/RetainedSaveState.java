@@ -23,7 +23,8 @@ record RetainedSaveState(
         RepositoryPatch pending,
         RepositoryWriteAttempt attempt,
         Move move,
-        BridgeReplies.RestoredReceipt lastSave) {
+        BridgeReplies.RestoredReceipt lastSave,
+        BridgeReplies.RestoredReceipt lastImport) {
     RetainedSaveState {
         originalCommit = commit(originalCommit);
         baseCommit = commit(baseCommit);
@@ -41,6 +42,7 @@ record RetainedSaveState(
             require(move.request().baseCommit().equals(baseCommit), "pending move", "must retain its base commit");
         }
         Objects.requireNonNull(lastSave, "last save receipt must be present");
+        Objects.requireNonNull(lastImport, "last import receipt must be present");
     }
 
     private static void validatePending(RepositoryPatch pending, String baseCommit) {
