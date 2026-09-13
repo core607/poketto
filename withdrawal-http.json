@@ -1,0 +1,18 @@
+[
+  {
+    "Path": "/api/public/spaces/reading-room",
+    "Status": 404
+  },
+  {
+    "Path": "/api/public/spaces/reading-room/documents",
+    "Status": 404
+  },
+  {
+    "Path": "/api/public/assets/<previously-issued-public-token>",
+    "Status": 503
+  },
+  {
+    "Path": "/api/public/spaces/home/documents",
+    "Status": 200
+  }
+]
