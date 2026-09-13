@@ -30,11 +30,7 @@ export function ArticleList({
               <h2>
                 <a href={articleHref(item.route)}>{item.title}</a>
               </h2>
-              <p>
-                {item.snippet
-                  .replace(/^#{1,6}\s+/gm, "")
-                  .replace(/!\[[^\]]*\]\([^)]*\)/g, "[图片]")}
-              </p>
+              <p>{item.snippet}</p>
               <a className="read-link" href={articleHref(item.route)}>
                 继续阅读 <span aria-hidden>↗</span>
               </a>
