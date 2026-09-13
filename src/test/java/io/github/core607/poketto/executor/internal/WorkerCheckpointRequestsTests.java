@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-class WorkerCheckpointCaptureTests {
+class WorkerCheckpointRequestsTests {
     private final JsonMapper json = JsonMapper.builder().build();
 
     @Test
@@ -19,7 +19,7 @@ class WorkerCheckpointCaptureTests {
         var remaining = new ArrayList<Duration>();
         var authorizations = new AtomicInteger();
         JsonNode ready = json.readTree("{\"ok\":true}");
-        JsonNode result = WorkerCheckpointCapture.capture(
+        JsonNode result = WorkerCheckpointRequests.retryBusy(
                 timeout -> {
                     remaining.add(timeout);
                     return remaining.size() == 1 ? failure("BUSY") : ready;
@@ -36,7 +36,7 @@ class WorkerCheckpointCaptureTests {
         for (String reason : List.of("CAPACITY", "CORRUPT", "UNCERTAIN", "ALREADY_EXISTS", "UNAVAILABLE")) {
             var calls = new AtomicInteger();
             JsonNode rejected = failure(reason);
-            assertThat(WorkerCheckpointCapture.capture(
+            assertThat(WorkerCheckpointRequests.retryBusy(
                             timeout -> {
                                 calls.incrementAndGet();
                                 return rejected;
@@ -51,7 +51,7 @@ class WorkerCheckpointCaptureTests {
     void lostResponsesDoNotReplayACheckpointWhosePublicationIsUnknown() {
         var calls = new AtomicInteger();
         var lost = new WorkerUnavailableException();
-        assertThatThrownBy(() -> WorkerCheckpointCapture.capture(
+        assertThatThrownBy(() -> WorkerCheckpointRequests.retryBusy(
                         timeout -> {
                             calls.incrementAndGet();
                             throw lost;
@@ -65,7 +65,7 @@ class WorkerCheckpointCaptureTests {
     void revocationDuringContentionPreventsTheNextRequest() {
         var calls = new AtomicInteger();
         var checks = new AtomicInteger();
-        assertThatThrownBy(() -> WorkerCheckpointCapture.capture(
+        assertThatThrownBy(() -> WorkerCheckpointRequests.retryBusy(
                         timeout -> {
                             calls.incrementAndGet();
                             return failure("BUSY");
@@ -84,7 +84,7 @@ class WorkerCheckpointCaptureTests {
         var calls = new AtomicInteger();
         long started = System.nanoTime();
         JsonNode busy = failure("BUSY");
-        assertThat(WorkerCheckpointCapture.capture(
+        assertThat(WorkerCheckpointRequests.retryBusy(
                         timeout -> {
                             calls.incrementAndGet();
                             return busy;

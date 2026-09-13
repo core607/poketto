@@ -2,7 +2,7 @@
   "date": "2026-09-14",
   "result": "PASS",
   "sourceHashesVerified": true,
-  "scope": "The real adapter retries two explicit pre-capture BUSY replies injected at the WorkerClient boundary, while subsequent operations use real SRT. The command and selected remote save execute exactly once; unsaved post-save work survives. A real command timeout reports the actual retained copy and generation through ExecutionUnconfirmedException; a new adapter recovers the acknowledged bytes and original commit with the interrupted command identity. All 45 main native scenarios, independent expiry collection, Java process-loss lease expiry and fixture cleanup pass. Native authorization is synthetic. MCP handler serialization, protocol, retry-boundary, catalog, module and style checks are separate passing evidence; final HTTPS acceptance remains pending.",
+  "scope": "The real adapter retries only explicit CHECKPOINT_UNAVAILABLE/BUSY replies injected at the WorkerClient boundary before capture, restore admission or checkpoint removal, with capture's 30-second budget, restore's initialization budget and five-second removal cleanup budget. Capture and superseded removal keep their immutable references; restore keeps its lease and checkpoint reference; retries reauthorize and use fresh wire request IDs, while lost or ambiguous replies are never replayed. The command and selected remote save execute exactly once; unsaved post-save work survives. A real command timeout reports the actual retained copy and generation through ExecutionUnconfirmedException; a new adapter recovers the acknowledged bytes and original commit with the interrupted command identity. The unsupported FIFO checkpoint tree returns an explicit unconfirmed failure and the next session restores the preceding acknowledged checkpoint. Discard after private-read withdrawal still performs execution-authorized cleanup. All 45 main native scenarios, independent expiry collection, Java process-loss lease expiry and fixture cleanup pass. Native authorization is synthetic. MCP handler serialization, protocol, retry-boundary, catalog, module and style checks are separate passing evidence; final HTTPS acceptance remains pending.",
   "events": [
     {
       "observation": {
@@ -233,7 +233,7 @@
       "test": "same-transport-explicit-restart-at-capacity-4"
     },
     {
-      "adapterClassSha256": "e434a31604f8571ececad3ef3f445595c19da1afc7be5b8c8e32b7331a38a12e",
+      "adapterClassSha256": "83ad77489485559f0ffdd2e991ae32e95e307d428dfb39d95e205b0e4d2f08f3",
       "tests": 45,
       "summary": "PASS",
       "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
@@ -252,7 +252,7 @@
     },
     {
       "nativeCombined": "PASS",
-      "runtimeManifestSha256": "3aad0d6a81ec4fa57f651dcaeb51b55e9f0267aff3e8886b24ad809e2ffb528e",
+      "runtimeManifestSha256": "717ab0a62def1d027baf7eee953269faa5930278b40882be7fdcf59a9a96535f",
       "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
       "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
       "workerSha256": "37882540fd975c85734d5594128648c552a2d762c40dd5638cf79988c6dddd34",
@@ -286,7 +286,7 @@
     "cleanup": "PASS"
   },
   "componentSourceSha256Lf": {
-    "src/main/java/io/github/core607/poketto/executor/internal/WorkerCheckpointCapture.java": "98389b93b9ab549582319ab41154d25fde74ff6ad142cfdb7dff9bbe9ef0190b",
+    "src/main/java/io/github/core607/poketto/executor/internal/WorkerCheckpointRequests.java": "430bdd4b1fe4f4f04e1bceab64332890dbdc42e2b1663b6a8214dc66b0485a4a",
     "src/main/java/io/github/core607/poketto/mcp/ExecutionUnconfirmedException.java": "bcaabf0355bae8aa0028ba4543c3981cac0da1a09199a1c404ee01aecd4058fa",
     "src/main/java/io/github/core607/poketto/mcp/internal/McpCopyAdmission.java": "8a0d9d9f67868904e6d53c612f7060f927112e82e97bf5852a8f8611fa72f08d",
     "src/main/java/io/github/core607/poketto/mcp/internal/RepositoryMcpTools.java": "2111511526cf1804cc6a94c51d1d737645dcac0405660ec2eca9ddf8cb667870"

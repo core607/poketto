@@ -374,14 +374,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         for (RetainedCopyRecord.Checkpoint point : points) {
             try {
-                authorize(principal, workspace);
+                var reference =
+                        new WorkerRequests.CheckpointReference(point.id().toString(), point.sha256(), point.bytes());
                 WorkerResponses.read(
-                        worker.request(
-                                worker.retainedHello(),
-                                control.identity(),
-                                "CHECKPOINT_REMOVE",
-                                new WorkerRequests.CheckpointReference(
-                                        point.id().toString(), point.sha256(), point.bytes()),
+                        WorkerCheckpointRequests.retryBusy(
+                                timeout -> worker.request(
+                                        worker.retainedHello(),
+                                        control.identity(),
+                                        "CHECKPOINT_REMOVE",
+                                        reference,
+                                        timeout),
+                                () -> authorize(principal, workspace),
                                 Duration.ofSeconds(5)),
                         WorkerResponses.CheckpointRemoved.class);
             } catch (RuntimeException failure) {
@@ -463,16 +466,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         long deadline = System.nanoTime() + openTimeout.toNanos();
         JsonNode reply;
         try {
-            reply = requestLive(
-                    session,
-                    "RESTORE",
-                    new WorkerRequests.Restore(
-                            point.id().toString(),
-                            point.sha256(),
-                            point.bytes(),
-                            session.commit,
-                            session.fullRead ? "full" : "public",
-                            previousLease.toString()),
+            var restore = new WorkerRequests.Restore(
+                    point.id().toString(),
+                    point.sha256(),
+                    point.bytes(),
+                    session.commit,
+                    session.fullRead ? "full" : "public",
+                    previousLease.toString());
+            reply = WorkerCheckpointRequests.retryBusy(
+                    timeout -> requestLive(session, "RESTORE", restore, timeout),
+                    () -> authorize(session),
                     openTimeout);
         } finally {
             // A lost RESTORE reply must not disable subsequent CLOSE reconciliation.
@@ -681,13 +684,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
             @Override
             public void remove(RetainedCopyRecord.Checkpoint checkpoint) {
-                authorize(session);
+                var reference = new WorkerRequests.CheckpointReference(
+                        checkpoint.id().toString(), checkpoint.sha256(), checkpoint.bytes());
                 WorkerResponses.read(
-                        requestLive(
-                                session,
-                                "CHECKPOINT_REMOVE",
-                                new WorkerRequests.CheckpointReference(
-                                        checkpoint.id().toString(), checkpoint.sha256(), checkpoint.bytes()),
+                        WorkerCheckpointRequests.retryBusy(
+                                timeout -> requestLive(session, "CHECKPOINT_REMOVE", reference, timeout),
+                                () -> authorize(session),
                                 Duration.ofSeconds(5)),
                         WorkerResponses.CheckpointRemoved.class);
             }
@@ -705,7 +707,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         scope,
                         executionId.orElseThrow().toString())
                 : new WorkerRequests.Checkpoint(id.toString(), expiresAt, scope);
-        JsonNode reply = WorkerCheckpointCapture.capture(
+        JsonNode reply = WorkerCheckpointRequests.retryBusy(
                 timeout -> requestLive(
                         session, executionId.isPresent() ? "CHECKPOINT_ACTIVE" : "CHECKPOINT", data, timeout),
                 () -> authorize(session));

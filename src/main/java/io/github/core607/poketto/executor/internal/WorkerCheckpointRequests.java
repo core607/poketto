@@ -5,17 +5,17 @@ import java.time.Duration;
 import java.util.function.Function;
 import tools.jackson.databind.JsonNode;
 
-/** Retries only a worker's explicit pre-capture lock refusal within one unchanged request budget. */
-final class WorkerCheckpointCapture {
-    private WorkerCheckpointCapture() {}
+/** Retries explicit pre-operation checkpoint-lock refusals for capture, restore, and removal. */
+final class WorkerCheckpointRequests {
+    private WorkerCheckpointRequests() {}
 
-    static JsonNode capture(Function<Duration, JsonNode> request, Runnable authorize) {
-        return capture(request, authorize, Duration.ofSeconds(30));
+    static JsonNode retryBusy(Function<Duration, JsonNode> request, Runnable authorize) {
+        return retryBusy(request, authorize, Duration.ofSeconds(30));
     }
 
-    static JsonNode capture(Function<Duration, JsonNode> request, Runnable authorize, Duration budget) {
+    static JsonNode retryBusy(Function<Duration, JsonNode> request, Runnable authorize, Duration budget) {
         if (budget.isNegative() || budget.isZero()) {
-            throw new IllegalArgumentException("Checkpoint capture requires a positive time budget");
+            throw new IllegalArgumentException("Checkpoint operations require a positive time budget");
         }
         long deadline = System.nanoTime() + budget.toNanos();
         JsonNode reply;
