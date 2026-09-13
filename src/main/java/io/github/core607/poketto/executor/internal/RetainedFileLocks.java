@@ -82,6 +82,13 @@ final class RetainedFileLocks {
             }
         }
 
+        void requirePath(Path expected) {
+            if (!path.equals(expected)) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
+            }
+            requireValid();
+        }
+
         @Override
         public synchronized void close() throws IOException {
             if (closed) {

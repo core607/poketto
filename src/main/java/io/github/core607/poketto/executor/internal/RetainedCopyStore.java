@@ -8,28 +8,20 @@ import static io.github.core607.poketto.executor.internal.RetainedCopyException.
 import static io.github.core607.poketto.executor.internal.RetainedCopyException.Reason.STALE;
 import static io.github.core607.poketto.executor.internal.RetainedCopyException.Reason.UNAVAILABLE;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-import static java.nio.file.StandardOpenOption.CREATE;
-import static java.nio.file.StandardOpenOption.READ;
-import static java.nio.file.StandardOpenOption.WRITE;
 
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFileAttributes;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
 
@@ -39,7 +31,7 @@ final class RetainedCopyStore {
     private final Limits limits;
     private final Clock clock;
     private final RetainedRecordFiles records;
-    private final int uid;
+    private final RetainedDirectory directory;
 
     RetainedCopyStore(Path root, Limits limits, Clock clock) {
         require(root.isAbsolute(), "retention root", "must be absolute");
@@ -48,16 +40,7 @@ final class RetainedCopyStore {
         this.clock = Objects.requireNonNull(clock, "retention clock must be present");
         this.records = new RetainedRecordFiles(limits.recordBytes());
         try {
-            uid = (Integer) Files.getAttribute(Path.of("/proc/self"), "unix:uid");
-            checkAncestors(this.root.getParent());
-            try {
-                Files.createDirectory(
-                        this.root, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-                syncDirectory(this.root.getParent());
-            } catch (FileAlreadyExistsException existing) {
-                // The existing private root is verified before its lock or records are opened.
-            }
-            checkRoot();
+            directory = new RetainedDirectory(this.root);
         } catch (IOException failure) {
             throw new RetainedCopyException(UNAVAILABLE, failure);
         }
@@ -79,6 +62,91 @@ final class RetainedCopyStore {
         return expiresAt <= clock.millis();
     }
 
+    void requireSeparateRoot(Path candidate) {
+        require(
+                !candidate.startsWith(root) && !root.startsWith(candidate),
+                "baseline directory",
+                "must be separate from the metadata directory");
+    }
+
+    void requireBaselineWriter(RetainedFileLocks.Held writer, RetainedBaseline.Identity identity) {
+        writer.requirePath(root.resolve(
+                ".writer-" + path(identity.owner(), identity.copyId()).getFileName()));
+    }
+
+    void requireBaseline(RetainedFileLocks.Held writer, RetainedBaseline.Identity identity, boolean creating) {
+        requireBaselineWriter(writer, identity);
+        locked(() -> {
+            if (expired(identity.expiresAt())) {
+                throw new RetainedCopyException(EXPIRED);
+            }
+            require(
+                    identity.expiresAt() - clock.millis() <= limits.retention().toMillis(),
+                    "baseline expiry",
+                    "exceeds the configured lifetime");
+            RetainedCopyRecord record = optionalRecord(identity);
+            if (record == null) {
+                if (!creating) {
+                    throw new RetainedCopyException(MISSING);
+                }
+            } else if (!baselineMatches(record, identity)) {
+                throw new RetainedCopyException(STALE);
+            }
+            return null;
+        });
+    }
+
+    /** Maintenance may acquire an orphan writer even when ordinary writer admission is at capacity. */
+    boolean removeUnusedBaseline(RetainedBaseline.Identity identity, BaselineRemoval remove) {
+        return locked(() -> {
+            Path writer = root.resolve(
+                    ".writer-" + path(identity.owner(), identity.copyId()).getFileName());
+            try (var held = RetainedFileLocks.acquire(writer, () -> directory.openLock(writer))) {
+                held.requireValid();
+                RetainedCopyRecord record = optionalRecord(identity);
+                if (record != null && !expired(record.expiresAt())) {
+                    if (!baselineMatches(record, identity)) {
+                        throw new RetainedCopyException(STALE);
+                    }
+                    return false;
+                }
+                remove.remove();
+                if (record == null) {
+                    Files.delete(writer);
+                    RetainedDirectory.sync(root);
+                }
+                return true;
+            } catch (RetainedCopyException busy) {
+                if (busy.reason() != BUSY) {
+                    throw busy;
+                }
+                return false;
+            }
+        });
+    }
+
+    private RetainedCopyRecord optionalRecord(RetainedBaseline.Identity identity) throws IOException {
+        try {
+            return load(identity.owner(), identity.copyId());
+        } catch (RetainedCopyException missing) {
+            if (missing.reason() != MISSING) {
+                throw missing;
+            }
+            return null;
+        }
+    }
+
+    private static boolean baselineMatches(RetainedCopyRecord record, RetainedBaseline.Identity identity) {
+        return record.fullRead()
+                && record.expiresAt() == identity.expiresAt()
+                && record.acknowledged().state().originalCommit().equals(identity.commit());
+    }
+
+    @FunctionalInterface
+    interface BaselineRemoval {
+        void remove() throws IOException;
+    }
+
     /** Expired records have no recovery grant; a busy writer still prevents their removal. */
     int collectExpired() {
         return locked(() -> {
@@ -89,7 +157,7 @@ final class RetainedCopyStore {
                     if (file.getFileName().toString().startsWith(".writer-")) {
                         continue;
                     }
-                    checkFile(file);
+                    directory.checkFile(file);
                     RetainedRecordFiles.Expiry expiry = records.expiry(file);
                     if (!file.equals(path(expiry.owner(), expiry.copyId()))) {
                         throw new IOException("expired record identity does not match its address");
@@ -106,11 +174,11 @@ final class RetainedCopyStore {
     private boolean removeExpired(Path file) throws IOException {
         Path writer = root.resolve(".writer-" + file.getFileName());
         // .lock excludes new writer acquisition and metadata replacement until both names are gone.
-        try (var held = RetainedFileLocks.acquire(writer, () -> openLock(writer))) {
+        try (var held = RetainedFileLocks.acquire(writer, () -> directory.openLock(writer))) {
             held.requireValid();
             Files.delete(file);
             Files.delete(writer);
-            syncDirectory(root);
+            RetainedDirectory.sync(root);
             return true;
         } catch (RetainedCopyException busy) {
             if (busy.reason() != BUSY) {
@@ -128,7 +196,7 @@ final class RetainedCopyStore {
             if (!Files.exists(path, NOFOLLOW_LINKS) && usage.writers() >= limits.copies()) {
                 throw new RetainedCopyException(LIMIT);
             }
-            return RetainedFileLocks.acquire(path, () -> openLock(path));
+            return RetainedFileLocks.acquire(path, () -> directory.openLock(path));
         });
     }
 
@@ -169,7 +237,7 @@ final class RetainedCopyStore {
         locked(() -> {
             checkVersion(load(owner, copyId), revision, generation);
             Files.delete(path(owner, copyId));
-            syncDirectory(root);
+            RetainedDirectory.sync(root);
             return null;
         });
     }
@@ -225,7 +293,7 @@ final class RetainedCopyStore {
     private RetainedCopyRecord load(RetainedCopyRecord.Owner owner, UUID copyId) throws IOException {
         Path target = path(owner, copyId);
         try {
-            checkFile(target);
+            directory.checkFile(target);
         } catch (NoSuchFileException absent) {
             throw new RetainedCopyException(MISSING);
         }
@@ -245,7 +313,7 @@ final class RetainedCopyStore {
             records.write(temporary, record, available);
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             published = true;
-            syncDirectory(root);
+            RetainedDirectory.sync(root);
         } catch (IOException failure) {
             if (published) {
                 throw new RetainedCopyException(RetainedCopyException.Reason.UNCERTAIN, failure);
@@ -268,7 +336,7 @@ final class RetainedCopyStore {
                     throw new RetainedCopyException(LIMIT);
                 }
                 String name = file.getFileName().toString();
-                checkFile(file);
+                directory.checkFile(file);
                 if (name.equals(".lock")) {
                     continue;
                 }
@@ -297,7 +365,7 @@ final class RetainedCopyStore {
             }
         }
         if (cleaned) {
-            syncDirectory(root);
+            RetainedDirectory.sync(root);
         }
         return new Usage(copies, writers, bytes);
     }
@@ -308,7 +376,7 @@ final class RetainedCopyStore {
         }
         // Every writer acquisition holds .lock before opening its file. Under that same lock,
         // an unowned orphan can be deleted without leaving a waiter on an obsolete inode.
-        try (var lock = RetainedFileLocks.acquire(file, () -> openLock(file))) {
+        try (var lock = RetainedFileLocks.acquire(file, () -> directory.openLock(file))) {
             lock.requireValid();
             Files.delete(file);
             return false;
@@ -322,9 +390,9 @@ final class RetainedCopyStore {
 
     private synchronized <T> T locked(Action<T> action) {
         try {
-            checkRoot();
+            directory.checkRoot();
             Path path = root.resolve(".lock");
-            try (var lock = RetainedFileLocks.acquire(path, () -> openLock(path))) {
+            try (var lock = RetainedFileLocks.acquire(path, () -> directory.openLock(path))) {
                 lock.requireValid();
                 return action.run();
             }
@@ -341,79 +409,12 @@ final class RetainedCopyStore {
         }
     }
 
-    private FileChannel openLock(Path path) throws IOException {
-        FileChannel channel = FileChannel.open(
-                path,
-                Set.of(CREATE, WRITE, NOFOLLOW_LINKS),
-                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
-        try {
-            checkFile(path);
-            return channel;
-        } catch (IOException failure) {
-            try {
-                channel.close();
-            } catch (IOException closeFailure) {
-                failure.addSuppressed(closeFailure);
-            }
-            throw failure;
-        }
-    }
-
     private static void validateFileId(String value) throws IOException {
         try {
             ProtocolValues.uuid(value, "retained file name");
         } catch (IllegalArgumentException invalid) {
             throw new IOException("retention entry name is invalid", invalid);
         }
-    }
-
-    private void checkRoot() throws IOException {
-        checkAncestors(root);
-        var attributes = Files.readAttributes(root, PosixFileAttributes.class, NOFOLLOW_LINKS);
-        if (!ownedWithMode(root, attributes, "rwx------")) {
-            throw new IOException("retention root must be private and owned by the application");
-        }
-    }
-
-    private void checkAncestors(Path directory) throws IOException {
-        Path cursor = directory.getRoot();
-        for (Path part : directory) {
-            cursor = cursor.resolve(part);
-            var attributes = Files.readAttributes(cursor, PosixFileAttributes.class, NOFOLLOW_LINKS);
-            int mode = (Integer) Files.getAttribute(cursor, "unix:mode", NOFOLLOW_LINKS);
-            int owner = (Integer) Files.getAttribute(cursor, "unix:uid", NOFOLLOW_LINKS);
-            if (!trustedAncestor(cursor, attributes, mode, owner)) {
-                throw new IOException("retention path has an untrusted directory component");
-            }
-        }
-    }
-
-    private void checkFile(Path file) throws IOException {
-        var attributes = Files.readAttributes(file, PosixFileAttributes.class, NOFOLLOW_LINKS);
-        if (!privateUnaliasedFile(file, attributes)) {
-            throw new IOException("retention entry must be a private unaliased application-owned file");
-        }
-    }
-
-    private boolean trustedAncestor(Path path, PosixFileAttributes attributes, int mode, int owner) throws IOException {
-        boolean writable = (mode & 0022) != 0;
-        boolean protectedParent = (mode & 01000) != 0 && (owner == 0 || owner == uid);
-        return attributes.isDirectory()
-                && path.toRealPath().equals(path)
-                && (!writable || protectedParent)
-                && (owner == 0 || owner == uid);
-    }
-
-    private boolean ownedWithMode(Path path, PosixFileAttributes attributes, String mode) throws IOException {
-        return attributes.permissions().equals(PosixFilePermissions.fromString(mode))
-                && Files.getAttribute(path, "unix:uid", NOFOLLOW_LINKS).equals(uid);
-    }
-
-    private boolean privateUnaliasedFile(Path file, PosixFileAttributes attributes) throws IOException {
-        return attributes.isRegularFile()
-                && !attributes.isSymbolicLink()
-                && ownedWithMode(file, attributes, "rw-------")
-                && Files.getAttribute(file, "unix:nlink", NOFOLLOW_LINKS).equals(1);
     }
 
     private Path path(RetainedCopyRecord.Owner owner, UUID copyId) {
@@ -423,12 +424,6 @@ final class RetainedCopyStore {
             return root.resolve(HexFormat.of().formatHex(hash) + "_" + copyId + ".record");
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
-        }
-    }
-
-    private static void syncDirectory(Path directory) throws IOException {
-        try (FileChannel channel = FileChannel.open(directory, READ, NOFOLLOW_LINKS)) {
-            channel.force(true);
         }
     }
 

@@ -19,6 +19,31 @@ class ExecutorRetentionConfiguration {
     }
 
     @Bean
+    RetainedCopyMaintenance retainedBaselineMaintenance(RetainedBaselineStore store) {
+        return new RetainedCopyMaintenance(store, Duration.ofMinutes(1));
+    }
+
+    @Bean
+    RetainedBaselineStore retainedBaselineStore(
+            RetainedCopyStore records,
+            @Value("${poketto.executor.retention.baseline-root}") Path root,
+            @Value("${poketto.executor.retention.max-copies:32}") int copies,
+            @Value("${poketto.executor.retention.max-baseline-bytes:268435456}") long archiveBytes,
+            @Value("${poketto.executor.retention.max-baseline-expanded-bytes:1073741824}") long expandedBytes,
+            @Value("${poketto.executor.retention.max-baseline-entries:100000}") int entries,
+            @Value("${poketto.executor.retention.max-baseline-total-bytes:2147483648}") long totalBytes,
+            @Value("${poketto.executor.retention.disk-reserve-bytes:1073741824}") long reserve) {
+        return new RetainedBaselineStore(
+                root,
+                records,
+                new RetainedBaselineStore.Limits(
+                        copies,
+                        new RetainedBaseline.Limits(archiveBytes, expandedBytes, entries),
+                        totalBytes,
+                        reserve));
+    }
+
+    @Bean
     RetainedCopyStore retainedCopyStore(
             @Value("${poketto.executor.retention.root}") Path root,
             @Value("${poketto.executor.retention.max-copies:32}") int copies,
