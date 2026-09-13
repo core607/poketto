@@ -1173,7 +1173,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (approved == null) {
                 return BridgeReplies.failed("MEDIA_UNAVAILABLE");
             }
-            download = media.publicDownload(
+            download = media.memberProjectionDownload(
+                    session.principal,
                     session.key.workspace(),
                     approved.route(),
                     session.publicExport.sourcePaths().get(path));
