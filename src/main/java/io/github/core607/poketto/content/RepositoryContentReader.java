@@ -19,4 +19,14 @@ public interface RepositoryContentReader {
 
     /** Reads committed text; indexed media reports MANAGED_MEDIA rather than absence or placeholder bytes. */
     RepositoryFile getFile(WorkspaceId workspaceId, Optional<String> commit, String path);
+
+    /** Current publication-eligible source, independent of the workspace website switch; never historical content. */
+    RepositoryTree readPublicTree(WorkspaceId workspaceId, Optional<String> commit);
+
+    /** Filters private paths before pagination; a continuation must still name current remote main. */
+    RepositoryDirectoryPage listPublicDirectory(
+            WorkspaceId workspaceId, Optional<String> commit, String path, int offset, int limit);
+
+    /** Reads eligible current source only, including expected absence for an eligible new path. */
+    RepositoryFile getPublicFile(WorkspaceId workspaceId, Optional<String> commit, String path);
 }

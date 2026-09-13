@@ -1,15 +1,20 @@
 package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.RegistrationService;
+import io.github.core607.poketto.content.RepositoryMoveRequest;
+import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
@@ -105,6 +110,9 @@ class WorkspaceEntrancesIntegrationIT {
     @Autowired
     JdbcTemplate jdbc;
 
+    @Autowired
+    RepositoryMoveService moves;
+
     @Test
     void independentTabRoutesWriteDifferentGitAuthoritiesAndForeignMembershipCannotReadEitherEntrance()
             throws Exception {
@@ -119,7 +127,8 @@ class WorkspaceEntrancesIntegrationIT {
         });
         AuthPrincipal guest =
                 registration.register(registration.issue(owner).token(), "second-reader", "fixture-password-5678");
-        auth.acceptInvitation(guest, auth.createInvitation(owner, second).token());
+        auth.acceptInvitation(
+                guest, auth.createInvitation(owner, second, Set.of()).token());
         var ownerSession = login("space-owner", "fixture-password-1234");
         var guestSession = login("second-reader", "fixture-password-5678");
         mvc.perform(get("/api/auth/workspaces").session(guestSession))
@@ -191,6 +200,253 @@ class WorkspaceEntrancesIntegrationIT {
         assertThat(jdbc.queryForObject(
                         "select public_delivery from workspaces where workspace_id=?", Boolean.class, second.value()))
                 .isFalse();
+
+        String previous = json.readTree(
+                        mvc.perform(get(route(second, "repository/tree")).session(ownerSession))
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString())
+                .path("commit")
+                .asString();
+        var content = Map.of(
+                ".poketto/publishing.yaml", "enabled: true\nmode: public-root\nexclude:\n  - public/excluded/**\n",
+                "public/a.md", "# Allowed A\nVisible source\n",
+                "public/b.md", "# Allowed B\nVisible source [A](a.md)\n",
+                "public/excluded/secret.md", "# ExcludedSecret\n",
+                "public/.hidden/secret.md", "# HiddenSecret\n",
+                "public/AGENTS.md", "# GuideSecret\n");
+        var seeded = mvc.perform(csrf(ownerSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit",
+                                previous,
+                                "changes",
+                                content.entrySet().stream()
+                                        .map(entry -> Map.of(
+                                                "path",
+                                                entry.getKey(),
+                                                "expectedAbsence",
+                                                true,
+                                                "content",
+                                                entry.getValue()))
+                                        .toList()))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String current = json.readTree(seeded.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        mvc.perform(get(route(second, "assets/repository"))
+                        .session(guestSession)
+                        .param("commit", current))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get(route(second, "repository/tree")).session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].path").value("public/a.md"));
+        mvc.perform(get(route(second, "repository/directory")).session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(1))
+                .andExpect(jsonPath("$.entries[0].path").value("public"));
+        mvc.perform(get(route(second, "repository/directory"))
+                        .param("path", "public")
+                        .param("limit", "1")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[0].path").value("public/a.md"))
+                .andExpect(jsonPath("$.nextOffset").value(1));
+        mvc.perform(get(route(second, "repository/directory"))
+                        .param("path", "public")
+                        .param("limit", "1")
+                        .param("offset", "1")
+                        .param("commit", current)
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries[0].path").value("public/b.md"));
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "public/a.md")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value(content.get("public/a.md")))
+                .andExpect(jsonPath("$.publicScope").value(true));
+        for (String path : new String[] {
+            "private/shared.md",
+            "public/excluded/secret.md",
+            "public/.hidden/secret.md",
+            "public/AGENTS.md",
+            ".poketto/publishing.yaml"
+        }) {
+            mvc.perform(get(route(second, "repository/file"))
+                            .param("path", path)
+                            .session(guestSession))
+                    .andExpect(status().isForbidden());
+        }
+        mvc.perform(get(route(second, "repository/search"))
+                        .param("query", "Secret")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get(route(second, "repository/search"))
+                        .param("query", "Visible")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get(route(second, "repository/tree"))
+                        .param("commit", previous)
+                        .session(guestSession))
+                .andExpect(status().isForbidden());
+        var publicFile = json.readTree(mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "public/a.md")
+                        .session(guestSession))
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        var publicEdit = Map.of(
+                "baseCommit",
+                current,
+                "changes",
+                List.of(Map.of(
+                        "path",
+                        "public/a.md",
+                        "expectedAbsence",
+                        false,
+                        "expectedRevision",
+                        publicFile.path("revision").asString(),
+                        "content",
+                        "# Updated public source\n")));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(publicEdit)))
+                .andExpect(status().isForbidden());
+        auth.changeMembership(
+                owner, second, guest.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.PUBLISH));
+        var publishedEdit = mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(publicEdit)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String updated = json.readTree(publishedEdit.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        for (String deniedPath :
+                new String[] {"private/new.md", "public/excluded/new.md", ".poketto/publishing.yaml"}) {
+            var deniedEdit = Map.of(
+                    "baseCommit",
+                    updated,
+                    "changes",
+                    List.of(Map.of(
+                            "path",
+                            deniedPath,
+                            "expectedAbsence",
+                            true,
+                            "content",
+                            deniedPath.endsWith(".yaml")
+                                    ? "enabled: false\nmode: public-root\n"
+                                    : "# Must remain absent\n")));
+            mvc.perform(csrf(guestSession, post(route(second, "repository/patch")))
+                            .contentType("application/json")
+                            .content(json.writeValueAsString(deniedEdit)))
+                    .andExpect(status().isForbidden());
+        }
+        try (var git = Git.open(remotes.get(second).toFile());
+                var walk = new RevWalk(git.getRepository());
+                var fileTree = TreeWalk.forPath(
+                        git.getRepository(),
+                        "public/a.md",
+                        walk.parseCommit(git.getRepository().resolve("refs/heads/main"))
+                                .getTree())) {
+            assertThat(git.getRepository().resolve("refs/heads/main").name()).isEqualTo(updated);
+            assertThat(new String(
+                            git.getRepository()
+                                    .open(fileTree.getObjectId(0), Constants.OBJ_BLOB)
+                                    .getBytes(),
+                            StandardCharsets.UTF_8))
+                    .isEqualTo("# Updated public source\n");
+        }
+        var plan = moves.plan(guest, second, new RepositoryMoveRequest(updated, "public/a.md", "public/moved.md"));
+        assertThat(plan.originals().keySet()).allMatch(path -> path.startsWith("public/"));
+        var moved = mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit", updated, "source", "public/a.md", "destination", "public/moved.md"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String movedCommit = json.readTree(moved.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "public/b.md")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("# Allowed B\nVisible source [A](moved.md)\n"));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit", movedCommit, "source", "public/b.md", "destination", "private/b.md"))))
+                .andExpect(status().isForbidden());
+        var backlink = mvc.perform(csrf(ownerSession, post(route(second, "repository/patch")))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(Map.of(
+                                "baseCommit",
+                                movedCommit,
+                                "changes",
+                                List.of(Map.of(
+                                        "path",
+                                        "private/backlink.md",
+                                        "expectedAbsence",
+                                        true,
+                                        "content",
+                                        "# Private backlink\n[Public](../public/moved.md)\n"))))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String linkedCommit = json.readTree(backlink.getResponse().getContentAsString())
+                .path("commit")
+                .asString();
+        var linkedMove = new RepositoryMoveRequest(linkedCommit, "public/moved.md", "public/final.md");
+        assertThatThrownBy(() -> moves.plan(guest, second, linkedMove)).isInstanceOf(AuthException.class);
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                MembershipRole.MEMBER,
+                true,
+                Set.of(Capability.READ_PRIVATE, Capability.PUBLISH));
+        var moveBody = json.writeValueAsString(
+                Map.of("baseCommit", linkedCommit, "source", "public/moved.md", "destination", "public/final.md"));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(moveBody))
+                .andExpect(status().isForbidden());
+        try (var git = Git.open(remotes.get(second).toFile())) {
+            assertThat(git.getRepository().resolve("refs/heads/main").name()).isEqualTo(linkedCommit);
+        }
+        auth.changeMembership(
+                owner,
+                second,
+                guest.accountId(),
+                MembershipRole.MEMBER,
+                true,
+                Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE, Capability.PUBLISH));
+        mvc.perform(csrf(guestSession, post(route(second, "repository/move")))
+                        .contentType("application/json")
+                        .content(moveBody))
+                .andExpect(status().isOk());
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "private/backlink.md")
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("# Private backlink\n[Public](../public/final.md)\n"));
+        auth.changeMembership(
+                owner, second, guest.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
+        mvc.perform(get(route(second, "repository/file"))
+                        .param("path", "private/shared.md")
+                        .param("commit", previous)
+                        .session(guestSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("# Second workspace\n"))
+                .andExpect(jsonPath("$.publicScope").value(false));
+        auth.changeMembership(owner, second, guest.accountId(), MembershipRole.MEMBER, false, Set.of());
+        mvc.perform(get(route(second, "repository/tree")).session(guestSession)).andExpect(status().isForbidden());
     }
 
     private String patch(String source) throws Exception {

@@ -10,6 +10,7 @@ import { Editor } from "./editor";
 import { Members } from "./members";
 import { Keys } from "./keys";
 import { Connections } from "./connections";
+import { RepositoryConnection } from "./repository-connection";
 
 export type SpaceSummary = {
   workspaceId: string;
@@ -23,6 +24,7 @@ const tabs = {
   members: "成员与邀请",
   keys: "访问密钥",
   connections: "已连接应用",
+  repository: "仓库连接",
 };
 type Tab = keyof typeof tabs;
 
@@ -135,7 +137,8 @@ export function WorkspaceDashboard({
   }, [dirty]);
   const activeTab = !identity
     ? "account"
-    : identity.role !== "OWNER" && !["content", "account"].includes(tab)
+    : identity.role !== "OWNER" &&
+        !["content", "account", "connections"].includes(tab)
       ? "content"
       : tab;
   const content = (
@@ -145,7 +148,10 @@ export function WorkspaceDashboard({
           .filter(
             ([key]) =>
               key === "account" ||
-              (identity && (key === "content" || identity.role === "OWNER")),
+              (identity &&
+                (key === "content" ||
+                  key === "connections" ||
+                  identity.role === "OWNER")),
           )
           .map(([key, label]) => (
             <button
@@ -168,6 +174,12 @@ export function WorkspaceDashboard({
       {activeTab === "members" && <Members />}
       {activeTab === "keys" && identity && <Keys identity={identity} />}
       {activeTab === "connections" && <Connections />}
+      {activeTab === "repository" && identity?.role === "OWNER" && (
+        <RepositoryConnection
+          key={identity.workspaceId}
+          workspaceId={identity.workspaceId}
+        />
+      )}
       {activeTab === "account" && (
         <AccountPanel
           profile={account}

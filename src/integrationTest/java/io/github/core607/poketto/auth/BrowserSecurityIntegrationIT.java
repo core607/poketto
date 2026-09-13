@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -144,8 +145,9 @@ class BrowserSecurityIntegrationIT {
         String password = secret();
         Csrf guest = csrf(null);
         var registrationBody = Map.of("token", token, "login", "no-space-person", "password", password);
-        String workspaceToken =
-                auth.createInvitation(owner, workspaces.defaultWorkspace().id()).token();
+        String workspaceToken = auth.createInvitation(
+                        owner, workspaces.defaultWorkspace().id(), Set.of())
+                .token();
         mvc.perform(request(
                         post("/api/auth/register"),
                         guest,
@@ -267,7 +269,7 @@ class BrowserSecurityIntegrationIT {
                         put(scoped("/api/admin/members/")
                                 + member.get("accountId").stringValue()),
                         ownerSession,
-                        Map.of("role", "MEMBER", "active", false)))
+                        Map.of("role", "MEMBER", "active", false, "permissions", List.of())))
                 .andExpect(status().isNoContent());
         mvc.perform(get(scoped("/api/auth/me")).session(memberSession.session()))
                 .andExpect(status().isForbidden());
@@ -275,7 +277,7 @@ class BrowserSecurityIntegrationIT {
         mvc.perform(request(
                         put(scoped("/api/admin/members/") + owner.accountId()),
                         ownerSession,
-                        Map.of("role", "OWNER", "active", false)))
+                        Map.of("role", "OWNER", "active", false, "permissions", List.of())))
                 .andExpect(status().isConflict());
         mvc.perform(get(scoped("/api/admin/invitations")).session(ownerSession.session()))
                 .andExpect(status().isOk())

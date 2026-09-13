@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -96,7 +97,7 @@ class RegistrationIntegrationIT {
     void credentialKindsCannotBeSubstitutedAndOnlyDigestsAreStored() {
         var registrationCode = registration.issue(owner);
         var workspace = new WorkspaceId(jdbc.queryForObject("select workspace_id from workspaces", UUID.class));
-        var workspaceCode = auth.createInvitation(owner, workspace);
+        var workspaceCode = auth.createInvitation(owner, workspace, Set.of());
         assertThatThrownBy(() -> registration.register(workspaceCode.token(), "person", secret()))
                 .isInstanceOf(AuthException.class);
         assertThatThrownBy(() -> auth.acceptInvitation(owner, registrationCode.token()))

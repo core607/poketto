@@ -15,6 +15,7 @@ export function FolderPicker({
   returnFocus,
   fallbackFocus,
   canPublish = false,
+  canWritePrivate = false,
   onClose,
   onMove,
 }: {
@@ -23,6 +24,7 @@ export function FolderPicker({
   returnFocus: HTMLElement | null;
   fallbackFocus: HTMLElement | null;
   canPublish?: boolean;
+  canWritePrivate?: boolean;
   onClose: () => void;
   onMove: (destination: string) => Promise<boolean>;
 }) {
@@ -113,12 +115,15 @@ export function FolderPicker({
       <div className="folder-navigation" role="group" aria-label="存放范围">
         <button
           type="button"
-          disabled={moving || loading}
+          disabled={moving || loading || !canWritePrivate}
           aria-pressed={contentRoot(folder) === "private"}
           className={
             contentRoot(folder) === "private" ? undefined : "button-secondary"
           }
           onClick={() => setFolder(inContentRoot(folder, "private"))}
+          title={
+            canWritePrivate ? "保留分类路径，移到 private" : "需要私有写入权限"
+          }
         >
           私有目录
         </button>

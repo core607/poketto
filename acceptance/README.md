@@ -33,6 +33,8 @@ Open `http://127.0.0.1:38180`; log in as `owner` with that disposable password. 
 
 Set `POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES=true` to add a second space with a separate synthetic Git authority owned by the same account. Use its workspace selector and open each space in a separate tab to verify route-bound edits. This fixture seeds repositories directly; it does not validate GitHub/CNB provisioning credentials.
 
+For managed-credential browser flows, set `POKETTO_ACCEPTANCE_MANAGED_CONNECTIONS=true` and supply a fresh Base64-encoded 32-byte `POKETTO_ACCEPTANCE_CREDENTIAL_KEY`. The integration-only provider fixture accepts `https://github.com/example/acceptance`, username `fixture`, and synthetic tokens `fixture-token-initial` or `fixture-token-replacement`; other credentials fail validation. Creation, authorization, encryption, relational binding and rotation compare-and-set use the real services. Provider metadata and Git credential validation are mocked, and content uses the local synthetic repository. This mode must not be cited as real GitHub/CNB interoperability evidence. It is absent from the production application image.
+
 The application refuses to seed a nonempty fixture root. Each fresh run requires disposing of this stack's sample volumes first:
 
 ```sh

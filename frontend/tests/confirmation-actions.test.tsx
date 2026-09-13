@@ -41,6 +41,7 @@ async function fixture(t: TestContext) {
     loginName: "fixture-member",
     role: "MEMBER",
     active: true,
+    permissions: ["READ_PRIVATE", "WRITE_PRIVATE"],
   };
   const key = {
     id: "fixture-key",
@@ -202,7 +203,11 @@ for (const kind of ["members", "keys"] as const) {
         ? {
             path: "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/members/member",
             method: "PUT",
-            body: { role: "MEMBER", active: false },
+            body: {
+              role: "MEMBER",
+              active: false,
+              permissions: ["READ_PRIVATE", "WRITE_PRIVATE"],
+            },
           }
         : {
             path: "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/keys/fixture-key",

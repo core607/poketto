@@ -7,6 +7,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -160,6 +161,60 @@ class WorkerSocketTests {
                             .allSatisfy(tag -> assertThat(tag.getKey()).isEqualTo("reason")));
         } finally {
             meters.close();
+        }
+    }
+
+    @Test
+    void publisherRecoveryDelegatesWithoutRequiringPrivateWrite() throws Exception {
+        var actor = principal();
+        var auth = mock(AuthService.class);
+        var grants = Set.of(Capability.READ_PRIVATE, Capability.PUBLISH, Capability.EXECUTE_REPOSITORY);
+        doAnswer(call -> {
+                    Capability[] required = (Capability[]) call.getRawArguments()[2];
+                    if (!grants.containsAll(List.of(required))) {
+                        throw new AuthException(AuthException.Code.DENIED);
+                    }
+                    return new WorkspaceAccess(WORKSPACE, actor, MembershipRole.MEMBER, grants);
+                })
+                .when(auth)
+                .authorize(eq(actor), eq(WORKSPACE), any(Capability[].class));
+        var saves = mock(SelectedFileSaves.class);
+        doReturn(BridgeReplies.succeeded(new BridgeReplies.Recovery(false)))
+                .when(saves)
+                .recover(eq(actor), eq(WORKSPACE), any());
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        saves,
+                        auth,
+                        exports(),
+                        peer.client(),
+                        8,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.bridgeCommand =
+                    Map.of("requestId", UUID.randomUUID().toString(), "operation", "recover", "arguments", Map.of());
+            assertThat(executor.execute(
+                                    actor,
+                                    WORKSPACE,
+                                    "publisher-recover",
+                                    "new",
+                                    Optional.empty(),
+                                    "poketto recover",
+                                    Duration.ofSeconds(3),
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThat(peer.operations("BRIDGE_COMPLETE")).hasSize(1);
+            assertThat(peer.operations("BRIDGE_COMPLETE")
+                            .getFirst()
+                            .path("data")
+                            .path("response")
+                            .path("ok")
+                            .asBoolean())
+                    .isTrue();
+            verify(saves).recover(eq(actor), eq(WORKSPACE), any());
         }
     }
 
@@ -1520,6 +1575,10 @@ class WorkerSocketTests {
         private final CountDownLatch execReplyRelease = new CountDownLatch(1);
         private volatile boolean holdExecReply;
         private final CountDownLatch bridgeEntered = new CountDownLatch(1);
+        private final CountDownLatch bridgeCompleted = new CountDownLatch(1);
+        private final AtomicBoolean bridgeDelivered = new AtomicBoolean();
+        private volatile Map<String, ?> bridgeCommand;
+        private volatile String executionId;
         private volatile boolean blockOpen;
         private volatile boolean closeNeedsPolling;
         private volatile boolean closeForever;
@@ -1706,15 +1765,23 @@ class WorkerSocketTests {
                     bridgeEntered.countDown();
                     Thread.sleep(50);
                     response.put("bridgeRequest", null);
+                    if (bridgeCommand != null && executionId != null && bridgeDelivered.compareAndSet(false, true)) {
+                        response.put("executionId", executionId);
+                        response.put("bridgeRequest", bridgeCommand);
+                    }
                     if (states.getOrDefault(lease, "").equals("CLOSED")) {
                         response.put("ok", false);
                         response.put("code", "BRIDGE_UNAVAILABLE");
                     }
                 }
                 case "EXEC" -> {
+                    executionId = request.path("data").path("executionId").asString("");
                     execEntered.countDown();
                     if (holdExecReply && !execReplyRelease.await(5, TimeUnit.SECONDS)) {
                         throw new IllegalStateException("Test did not release the execution reply");
+                    }
+                    if (bridgeCommand != null) {
+                        assertThat(bridgeCompleted.await(5, TimeUnit.SECONDS)).isTrue();
                     }
                     if (dropExec) {
                         return null;
@@ -1746,6 +1813,7 @@ class WorkerSocketTests {
                                     "artifactErrors",
                                     Map.of()));
                 }
+                case "BRIDGE_COMPLETE" -> bridgeCompleted.countDown();
                 case "CLOSE" -> {
                     if (dropClose) {
                         return null;

@@ -30,6 +30,9 @@ All routes are under `/api/auth/workspaces`, require browser account authenticat
 - `POST /creations` accepts `requestId`, `displayName`, `slug`, `repository`, `username`, and `token`. It returns `workspaceId`, `stage` (`VALIDATING`, `FAILED`, or `READY`), a fixed `failureCode` when applicable, and `retryAfterSeconds` for an active validation lease. A retry can omit both credential fields to reuse its encrypted server-side copy; a new credential pair replaces that copy. Browser storage need not retain provider tokens to recover an interrupted creation.
 - `GET /creations/{requestId}` reads only the authenticated account's attempt.
 - `PUT /{workspaceId}/repository-credentials` rotates `username` and `token` for the same established managed binding. It cannot rotate the separately operator-configured default binding or select a different remote.
+- `GET /{workspaceId}/repository-connection` returns owner-only binding metadata: the canonical repository address, credential update time, and whether rotation is available. It does not decrypt or return credentials. Operator-configured bindings have no managed binding in this response.
+
+The browser's Repository connection tab is restricted to the selected space's owner. It displays the established address and submits replacement credentials to the scoped rotation endpoint. Token fields clear on submission and are never persisted in browser storage. Success appears only after the rotation response; a lost response remains uncertain. Operators update deployment-managed bindings through deployment configuration. Replacing a stored token does not revoke the old token at its provider.
 
 ## Alternatives and consequences
 

@@ -206,8 +206,8 @@ class SpaceCreationIntegrationIT {
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
             var rotating = pool.submit(() -> service.rotateCredentials(actor, workspace, "cnb", "replacement"));
             assertThat(remote.rotationEntered.await(5, TimeUnit.SECONDS)).isTrue();
-            var demoting = pool.submit(
-                    () -> auth.changeMembership(coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true));
+            var demoting = pool.submit(() -> auth.changeMembership(
+                    coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true, Set.of()));
             demoting.get(3, TimeUnit.SECONDS);
             remote.rotationRelease.countDown();
             assertThatThrownBy(() -> rotating.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(AuthException.class);
@@ -231,6 +231,10 @@ class SpaceCreationIntegrationIT {
 
     /** The network boundary is deterministic; catalog, account checks and transaction rollback use real PostgreSQL. */
     private final class RepositoryFixture implements RepositoryConnections {
+        public java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+            return java.util.Optional.empty();
+        }
+
         boolean fail;
         String identity = "github:123";
         AtomicInteger verifications = new AtomicInteger();

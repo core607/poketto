@@ -83,7 +83,9 @@ test("editor inserts and previews new images relative to a new draft destination
     if (
       url.pathname ===
       "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/file"
-    )
+    ) {
+      if (url.searchParams.get("path") === "private/denied.md")
+        return new Response(null, { status: 403 });
       return Response.json({
         path: "notes/a.md",
         source: null,
@@ -92,6 +94,7 @@ test("editor inserts and previews new images relative to a new draft destination
         expectedAbsence: true,
         diagnostics: [],
       });
+    }
     if (
       url.pathname ===
       "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/directory"
@@ -181,6 +184,16 @@ test("editor inserts and previews new images relative to a new draft destination
     "Reopening unchanged bytes must replace the cleared preview",
   );
   assert.doesNotMatch(container.textContent!, /正在更新预览/);
+  openPath.value = "private/denied.md";
+  await act(async () => {
+    openForm.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+  });
+  assert.match(container.textContent!, /当前身份无权执行此操作/);
+  assert.match(container.textContent!, /部分同目录图片未展示/);
+  assert.doesNotMatch(container.textContent!, /正在更新预览/);
+  assert.equal(previews.length, firstPreviewCount + 1);
   await act(async () => {
     const draft = container.querySelector("textarea");
     assert.ok(draft);

@@ -13,10 +13,14 @@ type Preview = { images?: Record<string, string> };
 export function AssetPicker({
   path,
   commit,
+  canUpload,
+  canReadPrivate = true,
   onInsert,
 }: {
   path: string;
   commit: string | null;
+  canUpload: boolean;
+  canReadPrivate?: boolean;
   onInsert: (markdown: string) => void;
 }) {
   const api = useWorkspaceApi();
@@ -32,7 +36,7 @@ export function AssetPicker({
   const [notice, setNotice] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
-  const [kind, setKind] = useState("managed");
+  const [kind, setKind] = useState(canReadPrivate ? "managed" : "repository");
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -90,7 +94,7 @@ export function AssetPicker({
     }
   }
   async function send() {
-    if (!upload) return;
+    if (!upload || !canUpload) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -116,41 +120,45 @@ export function AssetPicker({
   return (
     <section className="asset-picker">
       <div className="button-row">
-        <button
-          type="button"
-          className="button-secondary"
-          disabled={busy}
-          onClick={() => void list("managed")}
-        >
-          选择已上传图片
-        </button>
+        {canReadPrivate && (
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={busy}
+            onClick={() => void list("managed")}
+          >
+            选择已上传图片
+          </button>
+        )}
         <button
           type="button"
           className="button-secondary"
           disabled={busy}
           onClick={() => void list("repository")}
         >
-          选择仓库图片
+          {canReadPrivate ? "选择仓库图片" : "选择公开图片"}
         </button>
-        <label className="upload-label">
-          上传图片
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            disabled={busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              if (file.size > 16 * 1024 * 1024) {
-                setError("图片不能超过 16 MiB。");
-                return;
-              }
-              setUpload({ file, operation: crypto.randomUUID() });
-              setError("");
-            }}
-          />
-        </label>
-        {upload && (
+        {canUpload && (
+          <label className="upload-label">
+            上传图片
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              disabled={busy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (file.size > 16 * 1024 * 1024) {
+                  setError("图片不能超过 16 MiB。");
+                  return;
+                }
+                setUpload({ file, operation: crypto.randomUUID() });
+                setError("");
+              }}
+            />
+          </label>
+        )}
+        {canUpload && upload && (
           <button disabled={busy} onClick={send}>
             {busy ? "上传中…" : `上传 ${upload.file.name}`}
           </button>

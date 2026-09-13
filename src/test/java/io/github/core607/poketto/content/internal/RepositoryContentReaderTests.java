@@ -26,6 +26,35 @@ class RepositoryContentReaderTests {
     private final WorkspaceId workspace = WorkspaceId.random();
 
     @Test
+    void fileScopeUsesTheSelectedPolicyForExistingAndMissingPaths() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var commit = fixture.commitRemote(
+                workspace,
+                Map.of(
+                        ".poketto/publishing.yaml",
+                                bytes("enabled: true\nmode: public-root\nexclude:\n  - public/excluded/**\n"),
+                        "public/note.md", bytes("# Public\n"),
+                        "public/excluded/note.md", bytes("# Private\n"),
+                        "private/note.md", bytes("# Private\n")));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        for (String path : new String[] {"public/note.md", "public/new.md"}) {
+            assertThat(reader.getFile(workspace, Optional.of(commit.name()), path)
+                            .publicScope())
+                    .isTrue();
+        }
+        for (String path : new String[] {
+            "public/excluded/note.md", "public/excluded/new.md", "private/note.md", "public/.hidden.md"
+        }) {
+            assertThat(reader.getFile(workspace, Optional.of(commit.name()), path)
+                            .publicScope())
+                    .isFalse();
+        }
+        assertThat(reader.readTree(workspace, Optional.empty()).documents())
+                .allSatisfy(document -> assertThat(document.file().publicScope())
+                        .isEqualTo(document.file().path().equals("public/note.md")));
+    }
+
+    @Test
     void logicalRoutesPreserveOrdinaryGitNamesWithoutUriDecoding() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         Map<String, byte[]> files = new LinkedHashMap<>();

@@ -18,6 +18,9 @@ import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.assets.ResolvedMedia;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -28,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -87,6 +91,12 @@ class IndexedMediaDeliveryTests {
         snapshots.refresh(workspace);
         var blobs = new JGitRepositoryBlobReader(fixture.authority());
         var auth = mock(AuthService.class);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         var actor = mock(AuthPrincipal.class);
         when(actor.kind()).thenReturn(AuthPrincipal.Kind.ACCOUNT);
         when(actor.subjectId()).thenReturn(UUID.randomUUID());

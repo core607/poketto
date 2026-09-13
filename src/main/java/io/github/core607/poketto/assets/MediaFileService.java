@@ -121,6 +121,9 @@ public final class MediaFileService {
 
     public Download privateDownload(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, String path) {
+        if (!auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE)) {
+            return memberPublicDownload(actor, workspace, requested, path);
+        }
         Runnable check = () -> auth.authorize(actor, workspace, Capability.READ_PRIVATE);
         check.run();
         try (var admission = admit(workspace, false)) {
@@ -131,6 +134,38 @@ public final class MediaFileService {
             return new Download(workspace, path, asset, check, false);
         } catch (RuntimeException failure) {
             throw checkedFailure(check, failure);
+        }
+    }
+
+    private Download memberPublicDownload(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, String path) {
+        Runnable identity = () -> auth.authorize(actor, workspace);
+        identity.run();
+        try (var admission = admit(workspace, false)) {
+            // This verifies repository policy, independently of the workspace's anonymous website switch.
+            var snapshot = snapshots.refresh(workspace);
+            String commit = snapshot.commit().orElseThrow(MediaFileService::missing);
+            if (requested.isPresent() && !requested.get().equals(commit)) {
+                throw missing();
+            }
+            var catalog = repository.media(workspace, commit);
+            if (!catalog.publicPaths().contains(path)) {
+                throw missing();
+            }
+            ManagedAsset asset = resolve(workspace, catalog.index().files().get(path));
+            Runnable check = () -> {
+                identity.run();
+                snapshots.withCurrent(workspace, current -> {
+                    if (!current.commit().equals(Optional.of(commit))) {
+                        throw missing();
+                    }
+                    return null;
+                });
+            };
+            check.run();
+            return new Download(workspace, path, asset, check, false);
+        } catch (RuntimeException failure) {
+            throw checkedFailure(identity, failure);
         }
     }
 

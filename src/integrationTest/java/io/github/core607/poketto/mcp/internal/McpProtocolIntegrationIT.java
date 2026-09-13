@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ImageRequestScope;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -175,6 +177,7 @@ class McpProtocolIntegrationIT {
         assertThat(post(null, null, initialize()).statusCode()).isEqualTo(401);
         String first = initialize(key.token());
         String second = initialize(key.token());
+        assertMemberScopeRevocation(owner, workspace);
         var separateOwner = registration.register(
                 registration.issue(owner).token(),
                 "separate-mcp-owner",
@@ -262,6 +265,47 @@ class McpProtocolIntegrationIT {
                         .map(McpSessionClosed::reason)
                         .toList())
                 .contains(McpSessionClosed.Reason.AUTH_REVOKED);
+    }
+
+    private void assertMemberScopeRevocation(AuthPrincipal owner, WorkspaceId workspace) throws Exception {
+        var member = registration.register(
+                registration.issue(owner).token(),
+                "scoped-mcp-member",
+                UUID.randomUUID().toString());
+        auth.acceptInvitation(
+                member,
+                auth.createInvitation(owner, workspace, Set.of(Capability.READ_PRIVATE))
+                        .token());
+        var privateKey = auth.createApiKey(owner, workspace, member.accountId(), Set.of(Capability.READ_PRIVATE));
+        var publicKey = auth.createApiKey(owner, workspace, member.accountId(), Set.of(Capability.EXECUTE_REPOSITORY));
+        String privateSession = initialize(privateKey.token());
+        String publicSession = initialize(publicKey.token());
+        var source = Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png"));
+        assertThat(call(privateKey.token(), privateSession, "get_asset", source)
+                        .path("isError")
+                        .asBoolean())
+                .isFalse();
+        assertThat(error(call(publicKey.token(), publicSession, "get_asset", source)))
+                .isEqualTo("DENIED");
+        auth.changeMembership(owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of());
+        assertThat(post(privateKey.token(), privateSession, rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(401);
+        assertThat(post(publicKey.token(), publicSession, rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(200);
+        assertThat(events.stream(McpSessionClosed.class)
+                        .filter(event -> event.keyId().equals(privateKey.id()))
+                        .map(McpSessionClosed::reason)
+                        .toList())
+                .contains(McpSessionClosed.Reason.AUTH_REVOKED);
+        auth.changeMembership(
+                owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
+        assertThat(error(call(publicKey.token(), publicSession, "get_asset", source)))
+                .isEqualTo("DENIED");
+        assertThat(post(privateKey.token(), privateSession, rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(401);
     }
 
     private void assertRemovedFileTools(String token, String session) throws Exception {

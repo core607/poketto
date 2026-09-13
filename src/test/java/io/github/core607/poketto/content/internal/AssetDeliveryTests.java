@@ -30,6 +30,8 @@ import io.github.core607.poketto.assets.ResolvedMedia;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PublicArticle;
@@ -46,6 +48,7 @@ import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -58,6 +61,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,11 +109,52 @@ class AssetDeliveryTests {
     void canonicalStorageRoot() throws Exception {
         // Windows may supply an 8.3 TEMP alias; the storage policy requires canonical ancestors.
         directory = directory.toRealPath();
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
     }
 
     @Test
     void logicalRoutesResolveEncodedMarkdownLinksAndImagesWithoutReinterpretingNames() throws Exception {
         assertLogicalMedia("目录 空格%#");
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void memberDraftCannotAuthorizeUnpublishedManagedOriginals() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        var originals = ManagedBlobStore.local(directory.resolve("originals"));
+        byte[] visible = png(7), hidden = png(8);
+        var publicImage = originals.upload(workspace, "public-reference", new ByteArrayInputStream(visible));
+        var privateImage = originals.upload(workspace, "private-reference", new ByteArrayInputStream(hidden));
+        String publicRef = publicImage.reference().toString(),
+                privateRef = privateImage.reference().toString();
+        String source = "# Public\n![shown](" + publicRef + ")\n";
+        fixture.commitRemote(workspace, files("public/page.md", source));
+        var snapshots = snapshots(fixture, Duration.ofMinutes(5));
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO);
+        var service = service(fixture, snapshots, memory, originals);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.MEMBER,
+                        Set.of(Capability.EXECUTE_REPOSITORY)));
+        var preview = service.preview(
+                actor, workspace, "public/page.md", source + "![hidden](" + privateRef + ")", Optional.empty());
+        assertThat(preview.images()).containsOnlyKeys(publicRef);
+        var scope = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
+        try (var producer = scope.producer()) {
+            assertThat(service.readPrivateImage(
+                                    actor, workspace, token(preview.images().get(publicRef)))
+                            .bytes())
+                    .isEqualTo(visible);
+        } finally {
+            scope.responseComplete();
+        }
     }
 
     @Test
@@ -1102,6 +1147,83 @@ class AssetDeliveryTests {
     }
 
     @Test
+    @EnabledOnOs(OS.LINUX)
+    void damagedMediaIndexKeepsIndependentlyAuthorizedGitImagesAvailableToMembers() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        var files = files("public/page.md", "# Images\n");
+        files.put("public/visible.png", png(1));
+        files.put("private/hidden.png", png(2));
+        files.put("public/notes/excluded.png", png(3));
+        files.put(RepositoryMediaIndex.PATH, text("{broken index"));
+        String commit = fixture.commitRemote(workspace, files).name();
+        var service = service(fixture, snapshots(fixture, Duration.ofMinutes(5)));
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.MEMBER,
+                        Set.of(Capability.EXECUTE_REPOSITORY)));
+
+        var inventory = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 30);
+
+        assertThat(inventory.commit()).isEqualTo(commit);
+        assertThat(inventory.items()).extracting(item -> item.path()).containsExactly("public/visible.png");
+        assertThat(inventory.total()).isEqualTo(1);
+        assertThat(inventory.diagnostics()).isEmpty();
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void memberInventoryFiltersGitAndManagedImagesBeforePaginationAndRejectsHistory() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, clock);
+        var originals = ManagedBlobStore.local(directory.resolve("inventory-originals"));
+        var visible = originals.upload(workspace, "visible-inventory-image", new ByteArrayInputStream(png(6)));
+        var hidden = originals.upload(workspace, "hidden-inventory-image", new ByteArrayInputStream(png(9)));
+        var index = new RepositoryMediaIndex(Map.of(
+                "public/b.png",
+                        new RepositoryMediaIndex.Media(
+                                visible.reference().assetId(),
+                                visible.reference().revision(),
+                                visible.mediaType(),
+                                visible.size()),
+                "private/hidden.png",
+                        new RepositoryMediaIndex.Media(
+                                hidden.reference().assetId(),
+                                hidden.reference().revision(),
+                                hidden.mediaType(),
+                                hidden.size())));
+        var files = files("public/page.md", "# Images\n");
+        files.put("public/a.png", png(1));
+        files.put("public/z.png", png(2));
+        files.put("private/broken.jpg", text("private invalid bytes"));
+        files.put("public/notes/excluded.png", text("excluded invalid bytes"));
+        files.put(RepositoryMediaIndex.PATH, index.encode());
+        String commit = fixture.commitRemote(workspace, files).name();
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO);
+        var service = service(fixture, snapshots(fixture, Duration.ofMinutes(5)), memory, originals);
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call ->
+                        new WorkspaceAccess(workspace, actor, MembershipRole.MEMBER, Set.of(Capability.PUBLISH)));
+        var first = service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 1);
+        assertThat(first.total()).isEqualTo(3);
+        assertThat(first.items()).extracting(item -> item.path()).containsExactly("public/a.png");
+        assertThat(first.diagnostics()).isEmpty();
+        var second = service.repositoryImages(actor, workspace, Optional.of(commit), "", 1, 1);
+        assertThat(second.items()).extracting(item -> item.path()).containsExactly("public/b.png");
+        assertThat(service.repositoryImages(actor, workspace, Optional.empty(), "private/", 0, 30)
+                        .total())
+                .isZero();
+        files.put("public/page.md", text("# Changed\n"));
+        fixture.commitRemote(workspace, files);
+        assertThatThrownBy(() -> service.repositoryImages(actor, workspace, Optional.of(commit), "", 0, 1))
+                .isInstanceOf(AssetStorageException.class);
+        authorized.set(false);
+        assertThatThrownBy(() -> service.repositoryImages(actor, workspace, Optional.empty(), "", 0, 1))
+                .isInstanceOf(SecurityException.class);
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
     void currentCallbackSerializesImageMintingWithSnapshotInstallation() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, clock);
         fixture.commitRemote(workspace, files("public/article.md", "# Public"));
@@ -1148,6 +1270,14 @@ class AssetDeliveryTests {
 
     private AssetService service(
             RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, ImageMemoryAdmission memory) {
+        return service(fixture, snapshots, memory, mock(ManagedBlobStore.class));
+    }
+
+    private AssetService service(
+            RemoteRepositoryFixture fixture,
+            JGitPublicContentSnapshots snapshots,
+            ImageMemoryAdmission memory,
+            ManagedBlobStore originals) {
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(invocation -> {
             if (!authorized.get()) {
                 throw new SecurityException("authorization revoked");
@@ -1160,7 +1290,7 @@ class AssetDeliveryTests {
                 new JGitRepositoryBlobReader(fixture.authority()),
                 new RepositoryMarkdownConfiguration().repositoryMarkdownInspector(),
                 snapshots,
-                () -> mock(ManagedBlobStore.class),
+                () -> originals,
                 directory.resolve("image-cache"),
                 16L * 1024 * 1024,
                 128,

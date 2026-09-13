@@ -35,6 +35,7 @@ export type TagPage = Snapshot & {
   limit: number;
 };
 export type RepositoryFile = {
+  publicScope: boolean;
   commit: string | null;
   path: string;
   source: string | null;

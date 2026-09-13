@@ -48,8 +48,14 @@ test("a signed-in owner must explicitly choose private permissions and consent n
             role: "OWNER",
             capabilities: [],
           },
+          {
+            workspaceId: "22222222-2222-4222-8222-222222222222",
+            displayName: "Public member space",
+            role: "MEMBER",
+            capabilities: ["EXECUTE_REPOSITORY"],
+          },
         ],
-        total: 1,
+        total: 2,
       });
     if (path === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
@@ -106,4 +112,25 @@ test("a signed-in owner must explicitly choose private permissions and consent n
   ]);
   assert.ok(container.querySelector('[role="alert"]'));
   assert.equal(writes.length, 1);
+  const spacePicker = container.querySelector("select")!;
+  await act(async () => {
+    spacePicker.value = "22222222-2222-4222-8222-222222222222";
+    spacePicker.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.deepEqual(
+    inputs.map((input) => input.checked),
+    [true, false, false, false, true],
+  );
+  assert.deepEqual(
+    inputs.map((input) => input.disabled),
+    [false, true, true, true, false],
+  );
+  assert.equal(spacePicker.selectedOptions[0].disabled, false);
+  await act(async () => approve.click());
+  assert.deepEqual(writes[1], {
+    request: "fixture",
+    workspaceId: "22222222-2222-4222-8222-222222222222",
+    scopes: ["repository:execute", "offline_access"],
+    allow: true,
+  });
 });

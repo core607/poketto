@@ -49,7 +49,7 @@ final class SelectedFileSaves {
 
     BridgeReplies.Reply save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
-        auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
+        auth.authorize(actor, workspace);
         if (state.move != null) {
             return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
         }
@@ -97,7 +97,7 @@ final class SelectedFileSaves {
     }
 
     BridgeReplies.Reply recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.WRITE_PRIVATE);
+        auth.authorize(actor, workspace);
         if (!state.uncertain) {
             return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
         }
