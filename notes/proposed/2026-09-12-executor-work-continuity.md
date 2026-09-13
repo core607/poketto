@@ -34,6 +34,8 @@ Retain the original pinned commit and its required Git objects, worktree content
 
 Persist command intent before execution and distinguish acknowledged completion from an interrupted or unconfirmed result. On recovery, an incomplete command reports possible partial local changes and any uncertain host write. Never infer failure solely from a missing response or claim a command did not execute. Host write reconciliation remains authoritative even when a process dies between a remote commit and its local acknowledgement.
 
+The repository writer must invoke a synchronous host checkpoint after preparing and authorizing the exact candidate commit, before closing publication or advancing remote Git. The caller first retains the patch or move and its baseline; the checkpoint adds the candidate commit bytes to that intent. A checkpoint failure prevents the push. Retrying an uncommitted retained attempt uses the same barrier; reconciliation of an already committed attempt and unchanged content require no new checkpoint or push. An untracked browser write does not acquire a retained-work guarantee through this interface alone.
+
 Retained work has explicit byte and retention bounds, owner-visible expiry, and an explicit discard operation. Admission reserves storage before accepting work; quota exhaustion must preserve the last acknowledged recovery point. Unavailable or corrupt retained state fails visibly. Retention expiry and authorized deletion are stated exceptions to recovery, not silent replacement. Temporary process files remain disposable; artifact handles keep their independently documented lifetime.
 
 ## Resource and admission changes
