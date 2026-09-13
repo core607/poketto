@@ -10,12 +10,10 @@ on:
 permissions:
   contents: read
 
-# One verification per ref at a time. A pull-request run may be superseded, including by the run a
-# title or body edit starts: that run verifies the same commit, so replacing an unfinished one costs
-# nothing and avoids two full verifications competing over the same commit. A main run carries
-# publication and deployment, which must finish once started.
+# PR metadata edits supersede verification for that PR. A merged PR's ref can be main, so use
+# separate PR and branch namespaces to keep those edits from cancelling production delivery.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
