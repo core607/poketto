@@ -366,3 +366,33 @@ test("empty incomplete galleries expose a notice without unsafe image fallbacks"
     }
   }
 });
+test("reading omits only the duplicate opening title while retaining fragment targets", () => {
+  const html = renderToStaticMarkup(
+    <Markdown
+      source={"\n# A *small* note\n\nBody\n\n# A small note"}
+      pageTitle="A small note"
+    />,
+  );
+  assert.match(
+    html,
+    /<span id="poketto-heading-a-small-note" aria-hidden="true"><\/span>/,
+  );
+  assert.match(
+    html,
+    /<h1 id="poketto-heading-a-small-note-1">A small note<\/h1>/,
+  );
+  for (const source of ["# Different", "Preface\n\n# A small note"]) {
+    assert.match(
+      renderToStaticMarkup(
+        <Markdown source={source} pageTitle="A small note" />,
+      ),
+      /<h1 /,
+    );
+  }
+  assert.match(
+    renderToStaticMarkup(
+      <Markdown source="# A small note" pageTitle="A small note" preview />,
+    ),
+    /<h1 /,
+  );
+});

@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.commonmark.node.Image;
@@ -32,7 +33,7 @@ public final class MarkdownDestinations {
         int count = 0;
         while (node != null) {
             if (++count > 20_000) {
-                throw new IllegalArgumentException("Markdown node count exceeds its bound");
+                throw new MarkdownResolutionLimitException("Markdown node count exceeds its bound");
             }
             if (node instanceof Image image) {
                 images.add(image.getDestination());
@@ -41,7 +42,7 @@ public final class MarkdownDestinations {
                 links.add(link.getDestination());
             }
             if (links.size() + images.size() > 256) {
-                throw new IllegalArgumentException("Markdown reference count exceeds its bound");
+                throw new MarkdownResolutionLimitException("Markdown reference count exceeds its bound");
             }
             node = MarkdownNodes.next(node);
         }
@@ -117,6 +118,24 @@ public final class MarkdownDestinations {
         } catch (CharacterCodingException | IllegalArgumentException exception) {
             return Optional.empty();
         }
+    }
+
+    /** Resolves only known article routes; the authored fragment is intentionally excluded. */
+    public static Optional<String> route(
+            String document, String authored, Map<String, String> routes, Set<String> publicRoutes) {
+        return path(document, authored).flatMap(target -> {
+            String selected = routes.get(target);
+            if (selected == null) {
+                selected = routes.get(target.isEmpty() ? "index.md" : target + "/index.md");
+            }
+            if (selected == null) {
+                selected = routes.get(target + ".md");
+            }
+            if (selected == null && publicRoutes.contains("/" + target)) {
+                selected = "/" + target;
+            }
+            return Optional.ofNullable(selected);
+        });
     }
 
     public record Destinations(Set<String> links, Set<String> images) {

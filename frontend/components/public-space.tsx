@@ -116,6 +116,12 @@ export async function PublicSpacePage({
             links={root.links}
             downloads={root.downloads}
             space={slug}
+            collection={
+              root.navigation && {
+                route: root.route,
+                entries: root.navigation.entries,
+              }
+            }
           />
           <Gallery items={root.gallery} status={root.galleryStatus} />
         </section>

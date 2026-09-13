@@ -1496,3 +1496,22 @@ td select {
 .button-danger:hover {
   background: #842724;
 }
+.collection-directory,
+.collection-reading {
+  margin-block: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.collection-directory summary {
+  cursor: pointer;
+}
+.collection-directory ol,
+.collection-reading ul {
+  padding-left: 1.5rem;
+}
+.collection-directory li,
+.collection-reading li {
+  margin-block: 0.5rem;
+}

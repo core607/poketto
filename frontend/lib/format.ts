@@ -29,6 +29,13 @@ export function xml(value: string) {
       })[character]!,
   );
 }
+export function collectionArticleHref(
+  route: string,
+  space: string,
+  collection: string,
+) {
+  return articleHref(route, space) + "?" + new URLSearchParams({ collection });
+}
 export function safeLink(value: string): string | undefined {
   if (!value || /[\u0000-\u0020\u007f\\]/.test(value) || value.startsWith("//"))
     return undefined;

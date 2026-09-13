@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { articleHref, safeImage, safeLink } from "../lib/format";
+import { readingHeading } from "../lib/reading-heading";
 
 const HEADING_PREFIX = "poketto-heading-";
 
@@ -13,6 +14,8 @@ export function Markdown({
   downloads = {},
   preview = false,
   space,
+  collection,
+  pageTitle,
 }: {
   source: string;
   images?: Record<string, string>;
@@ -20,6 +23,8 @@ export function Markdown({
   downloads?: Record<string, string>;
   preview?: boolean;
   space?: string;
+  collection?: { route: string; entries: { route: string }[] };
+  pageTitle?: string;
 }) {
   const resolvedImages = new Map(
     Object.entries(images).map(([authored, target]) => [
@@ -30,7 +35,7 @@ export function Markdown({
   const resolvedLinks = new Map(
     Object.entries(links).map(([authored, target]) => [
       normalizeUri(authored),
-      resolvedLink(authored, target, preview, space),
+      resolvedLink(authored, target, preview, space, collection),
     ]),
   );
   const resolvedDownloads = new Map(
@@ -44,7 +49,10 @@ export function Markdown({
       <ReactMarkdown
         skipHtml
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSlug, { prefix: HEADING_PREFIX }]]}
+        rehypePlugins={[
+          [rehypeSlug, { prefix: HEADING_PREFIX }],
+          [readingHeading, { title: preview ? undefined : pageTitle }],
+        ]}
         urlTransform={(value) => value}
         components={{
           a({ href = "", children, node }) {
@@ -119,6 +127,7 @@ function resolvedLink(
   target: string,
   preview: boolean,
   space?: string,
+  collection?: { route: string; entries: { route: string }[] },
 ) {
   if (target.startsWith("#")) return safeLink(headingFragment(target));
   if (preview && target.startsWith("/admin?")) {
@@ -140,6 +149,9 @@ function resolvedLink(
       : target;
   return safeLink(
     articleHref(route, space) +
+      (collection?.entries.some((entry) => entry.route === route)
+        ? "?" + new URLSearchParams({ collection: collection.route })
+        : "") +
       (route !== target ? headingFragment(fragment) : ""),
   );
 }
