@@ -206,8 +206,8 @@ class SpaceCreationIntegrationIT {
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
             var rotating = pool.submit(() -> service.rotateCredentials(actor, workspace, "cnb", "replacement"));
             assertThat(remote.rotationEntered.await(5, TimeUnit.SECONDS)).isTrue();
-            var demoting = pool.submit(
-                    () -> auth.changeMembership(coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true));
+            var demoting = pool.submit(() -> auth.changeMembership(
+                    coOwner, workspace, actor.accountId(), MembershipRole.MEMBER, true, Set.of()));
             demoting.get(3, TimeUnit.SECONDS);
             remote.rotationRelease.countDown();
             assertThatThrownBy(() -> rotating.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(AuthException.class);

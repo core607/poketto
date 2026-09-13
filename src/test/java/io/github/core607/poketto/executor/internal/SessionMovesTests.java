@@ -10,12 +10,16 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +41,12 @@ class SessionMovesTests {
     private final AuthPrincipal actor = mock(AuthPrincipal.class);
 
     private PublicExecutionNativeFixture fixture(boolean loseReply) throws Exception {
+        when(auth.authorize(any(), any()))
+                .thenAnswer(call -> new WorkspaceAccess(
+                        call.getArgument(1),
+                        call.getArgument(0),
+                        MembershipRole.OWNER,
+                        EnumSet.allOf(Capability.class)));
         when(actor.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
         when(actor.subjectId()).thenReturn(UUID.randomUUID());
         doAnswer(call -> ((Supplier<?>) call.getArgument(3)).get())

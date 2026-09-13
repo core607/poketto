@@ -28,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -37,6 +38,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -139,6 +141,32 @@ public final class AssetService {
         return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> image);
     }
 
+    private record Candidate(String path, long size, Target target) {}
+
+    private List<Candidate> imageCandidates(
+            WorkspaceId workspace, String commit, String prefix, boolean privateAccess) {
+        List<Candidate> candidates = new ArrayList<>();
+        for (RepositoryBlob blob : blobs.images(workspace, commit, prefix)) {
+            if (privateAccess || blob.publicPath()) {
+                candidates.add(new Candidate(blob.path(), blob.size(), new Git(blob)));
+            }
+        }
+        if (!privateAccess) {
+            var catalog = availableMedia(workspace, commit);
+            for (String path : catalog == null ? Set.<String>of() : catalog.publicPaths()) {
+                var media = catalog.index().files().get(path);
+                if (path.startsWith(prefix) && media.mediaType().startsWith("image/")) {
+                    candidates.add(new Candidate(path, media.size(), new Indexed(commit, path, media, true)));
+                }
+            }
+        }
+        if (candidates.size() > 1000) {
+            throw new ContentRepositoryException("repository image inventory entry bound exceeded");
+        }
+        candidates.sort(Comparator.comparing(Candidate::path));
+        return candidates;
+    }
+
     public RepositoryImagePage repositoryImages(
             AuthPrincipal actor,
             WorkspaceId workspace,
@@ -149,37 +177,46 @@ public final class AssetService {
         if (offset < 0 || offset > 1000 || limit < 1 || limit > 100) {
             throw new IllegalArgumentException("repository image page exceeds its bounds");
         }
-        RepositoryImagePage page = preparePrivate(actor, workspace, () -> {
-            Optional<String> commit = blobs.selectCommit(workspace, requested);
+        boolean privateAccess = auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE);
+        Supplier<RepositoryImagePage> prepare = () -> {
+            Optional<String> commit = blobs.selectCommit(workspace, privateAccess ? requested : Optional.empty());
+            if (!privateAccess && requested.isPresent() && !requested.equals(commit)) {
+                throw notFound();
+            }
             if (commit.isEmpty()) {
                 return new RepositoryImagePage(null, List.of(), 0, offset, limit, List.of());
             }
+            List<Candidate> candidates = imageCandidates(workspace, commit.orElseThrow(), prefix, privateAccess);
             List<RepositoryImagePage.Item> images = new ArrayList<>();
             List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
             long totalBytes = 0;
-            for (RepositoryBlob blob : blobs.images(workspace, commit.orElseThrow(), prefix)) {
-                totalBytes += blob.size();
+            for (Candidate candidate : candidates) {
+                totalBytes += candidate.size();
                 if (totalBytes > INVENTORY_IMAGE_BYTES) {
                     throw new ContentRepositoryException("repository image inventory byte bound exceeded");
                 }
                 var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES);
                 if (reservation.isEmpty()) {
                     diagnostics.add(new RepositoryDiagnostic(
-                            blob.path(),
+                            candidate.path(),
                             "IMAGE_CAPACITY_UNAVAILABLE",
                             "image validation capacity is temporarily unavailable"));
                     continue;
                 }
                 var scope = reservation.orElseThrow();
                 try (var producer = scope.producer()) {
-                    AssetBytes image = bytes(workspace, new Git(blob));
-                    images.add(new RepositoryImagePage.Item(blob.path(), image.mediaType(), blob.size()));
+                    AssetBytes image = bytes(workspace, candidate.target());
+                    images.add(new RepositoryImagePage.Item(candidate.path(), image.mediaType(), candidate.size()));
                 } catch (AssetStorageException | ContentRepositoryException invalid) {
                     diagnostics.add(new RepositoryDiagnostic(
-                            blob.path(), "INVALID_IMAGE", "image signature, dimensions or bytes are unavailable"));
+                            candidate.path(), "INVALID_IMAGE", "image signature, dimensions or bytes are unavailable"));
                 } finally {
                     scope.responseComplete();
                 }
+            }
+            if (!privateAccess
+                    && !blobs.selectCommit(workspace, Optional.empty()).equals(commit)) {
+                throw notFound();
             }
             return new RepositoryImagePage(
                     commit.orElseThrow(),
@@ -188,12 +225,17 @@ public final class AssetService {
                     offset,
                     limit,
                     diagnostics);
-        });
-        return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> page);
+        };
+        RepositoryImagePage page = privateAccess ? preparePrivate(actor, workspace, prepare) : prepare.get();
+        return auth.withAuthorization(
+                actor, workspace, privateAccess ? Set.of(Capability.READ_PRIVATE) : Set.of(), () -> page);
     }
 
     public ResolvedMedia preview(
             AuthPrincipal actor, WorkspaceId workspace, String path, String source, Optional<String> requested) {
+        if (!auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE)) {
+            return memberPublicPreview(actor, workspace, path, source, requested);
+        }
         PreparedMedia prepared = preparePrivate(actor, workspace, () -> {
             var draft = markdown.inspect(path, source);
             Optional<String> commit = blobs.selectCommit(workspace, requested);
@@ -206,14 +248,58 @@ public final class AssetService {
                                     + URLEncoder.encode(document.file().path(), StandardCharsets.UTF_8));
                 }
             }
-            return prepareMedia(workspace, path, draft.body(), commit.orElse(null), draft.folderPage(), routes, false);
+            return prepareMedia(
+                    workspace,
+                    path,
+                    draft.body(),
+                    commit.orElse(null),
+                    draft.folderPage(),
+                    routes,
+                    false,
+                    false,
+                    value -> true);
         });
         return auth.withAuthorization(
                 actor,
                 workspace,
                 Set.of(Capability.READ_PRIVATE),
                 () -> finishMedia(
-                        workspace, path, actorKey(actor), clock.instant().plus(GRANT_LIFETIME), prepared));
+                        workspace, path, actorKey(actor), clock.instant().plus(GRANT_LIFETIME), prepared, false));
+    }
+
+    private ResolvedMedia memberPublicPreview(
+            AuthPrincipal actor, WorkspaceId workspace, String path, String source, Optional<String> requested) {
+        var file = content.getPublicFile(workspace, requested, path);
+        var tree = content.readPublicTree(workspace, file.commit());
+        Set<String> managedSources = new HashSet<>();
+        Map<String, String> routes = new HashMap<>();
+        for (var document : tree.documents()) {
+            routes.put(
+                    document.file().path(),
+                    "/admin?workspace=" + workspace + "&path="
+                            + URLEncoder.encode(document.file().path(), StandardCharsets.UTF_8));
+            MarkdownDestinations.parse(document.body()).images().stream()
+                    .filter(value -> value.startsWith("managed:"))
+                    .forEach(managedSources::add);
+        }
+        var draft = markdown.inspect(path, source);
+        var prepared = prepareMedia(
+                workspace,
+                path,
+                draft.body(),
+                file.commit().orElse(null),
+                draft.folderPage(),
+                routes,
+                true,
+                false,
+                managedSources::contains);
+        content.getPublicFile(workspace, file.commit(), path);
+        return auth.withAuthorization(
+                actor,
+                workspace,
+                Set.of(),
+                () -> finishMedia(
+                        workspace, path, actorKey(actor), clock.instant().plus(GRANT_LIFETIME), prepared, true));
     }
 
     /**
@@ -239,7 +325,9 @@ public final class AssetService {
                     snapshot.commit().orElse(null),
                     value.folderPage(),
                     routes,
-                    true);
+                    true,
+                    true,
+                    reference -> true);
             PageAttempt completed = snapshots.withCurrent(workspace, current -> {
                 var currentArticle = article(current, route);
                 if (currentArticle.isEmpty()) {
@@ -251,7 +339,8 @@ public final class AssetService {
                 if (!currentArticle.orElseThrow().equals(value)) {
                     throw new ContentRepositoryException("public article differs within the selected commit");
                 }
-                ResolvedMedia media = finishMedia(workspace, value.repositoryPath(), "", current.expiresAt(), prepared);
+                ResolvedMedia media =
+                        finishMedia(workspace, value.repositoryPath(), "", current.expiresAt(), prepared, true);
                 Instant now = clock.instant();
                 if (now.isBefore(current.verifiedAt()) || !now.isBefore(current.expiresAt())) {
                     throw new ContentRepositoryException("public snapshot expired during image resolution");
@@ -292,6 +381,18 @@ public final class AssetService {
 
     /** An opaque private URL never substitutes for the current identity or current workspace authority. */
     public AssetBytes readPrivateImage(AuthPrincipal actor, WorkspaceId workspace, String token) {
+        auth.withAuthorization(actor, workspace, Set.of(), () -> null);
+        Grant selected = grant(workspace, token, actorKey(actor));
+        if (selected.key().publicScope()) {
+            auth.withAuthorization(actor, workspace, Set.of(), () -> null);
+            requireCurrentMemberPage(selected);
+            AssetBytes image = bytes(workspace, selected.key().target());
+            requireCurrentMemberPage(selected);
+            return auth.withAuthorization(actor, workspace, Set.of(), () -> {
+                grant(workspace, token, actorKey(actor));
+                return image;
+            });
+        }
         AssetBytes image = preparePrivate(actor, workspace, () -> {
             Grant grant = grant(workspace, token, actorKey(actor));
             return bytes(workspace, grant.key().target());
@@ -300,6 +401,13 @@ public final class AssetService {
             grant(workspace, token, actorKey(actor));
             return image;
         });
+    }
+
+    private void requireCurrentMemberPage(Grant grant) {
+        content.getPublicFile(
+                grant.key().workspace(),
+                Optional.ofNullable(grant.key().commit()),
+                grant.key().page());
     }
 
     private <T> T preparePrivate(AuthPrincipal actor, WorkspaceId workspace, Supplier<T> prepare) {
@@ -326,7 +434,9 @@ public final class AssetService {
             String commit,
             boolean folder,
             Map<String, String> routes,
-            boolean publicOnly) {
+            boolean publicOnly,
+            boolean anonymous,
+            Predicate<String> managedAllowed) {
         var destinations = MarkdownDestinations.parse(body);
         RepositoryMediaSnapshot media = null;
         if (commit != null
@@ -364,7 +474,7 @@ public final class AssetService {
                         && (!publicOnly || catalog.publicPaths().contains(target))) {
                     downloads.put(
                             authored,
-                            downloadUrl(workspace, publicOnly, commit, routes.get(path), target) + fragment(authored));
+                            downloadUrl(workspace, anonymous, commit, routes.get(path), target) + fragment(authored));
                 }
                 if (selected != null) {
                     links.put(authored, selected + fragment(authored));
@@ -380,6 +490,9 @@ public final class AssetService {
         long[] bytes = {0};
         for (String authored : destinations.images()) {
             try {
+                if (authored.startsWith("managed:") && !managedAllowed.test(authored)) {
+                    continue;
+                }
                 Optional<Target> selected = target(workspace, commit, path, authored, catalog);
                 if (selected.isEmpty()) {
                     continue;
@@ -499,11 +612,17 @@ public final class AssetService {
     }
 
     private ResolvedMedia finishMedia(
-            WorkspaceId workspace, String page, String actor, Instant expires, PreparedMedia prepared) {
+            WorkspaceId workspace,
+            String page,
+            String actor,
+            Instant expires,
+            PreparedMedia prepared,
+            boolean publicScope) {
         Map<Target, String> resolved = new HashMap<>();
         Map<String, String> images = new LinkedHashMap<>();
         for (var image : prepared.images().entrySet()) {
-            String url = imageUrl(workspace, page, prepared.commit(), actor, expires, image.getValue(), resolved);
+            String url = imageUrl(
+                    workspace, page, prepared.commit(), actor, expires, image.getValue(), resolved, publicScope);
             if (url != null) {
                 images.put(image.getKey(), url);
             }
@@ -511,7 +630,8 @@ public final class AssetService {
         List<ResolvedMedia.GalleryImage> gallery = new ArrayList<>();
         var status = prepared.galleryStatus();
         for (var image : prepared.gallery()) {
-            String url = imageUrl(workspace, page, prepared.commit(), actor, expires, image.target(), resolved);
+            String url =
+                    imageUrl(workspace, page, prepared.commit(), actor, expires, image.target(), resolved, publicScope);
             if (url != null) {
                 gallery.add(new ResolvedMedia.GalleryImage(url, image.alt()));
             } else if (status == ResolvedMedia.GalleryStatus.COMPLETE) {
@@ -529,13 +649,14 @@ public final class AssetService {
             String actor,
             Instant expires,
             Target target,
-            Map<Target, String> resolved) {
+            Map<Target, String> resolved,
+            boolean publicScope) {
         if (resolved.containsKey(target)) {
             return resolved.get(target);
         }
         String url = null;
         try {
-            Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor), expires);
+            Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor, publicScope), expires);
             if (token.isPresent()) {
                 url = (actor.isEmpty()
                                 ? "/api/public/assets/"
@@ -773,7 +894,8 @@ public final class AssetService {
 
     private record PageAttempt(boolean retry, Optional<ResolvedPublicDocument> page) {}
 
-    private record GrantKey(WorkspaceId workspace, String commit, String page, Target target, String actor) {}
+    private record GrantKey(
+            WorkspaceId workspace, String commit, String page, Target target, String actor, boolean publicScope) {}
 
     private record Grant(GrantKey key, Instant issued, Instant expires) {}
 

@@ -30,7 +30,11 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 管理页会列出当前账号的空间。选择空间后再编辑，URL 中的 `workspace` 参数让不同标签页保持独立。“账号与空间”支持连接已有的 GitHub/CNB 私有仓库、查询或重试中断的创建申请，以及接受空间邀请码。启用仓库连接前，将 `POKETTO_REPOSITORY_CREDENTIAL_KEY` 配置为 Base64 编码的 32 字节密钥。新空间默认关闭公开网站。仓库令牌需要读取元数据和 Git 写入权限，不会保存在浏览器草稿中。
 
-私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个拥有的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
+私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个已加入的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
+
+所有者在成员管理或空间邀请中分别设置私密读取、私密修改和公开内容修改/发布权限。邀请默认仅允许查看公开范围；私密修改必须同时允许私密读取。即使位于 `public/` 下，被发布策略排除的文件仍属私密内容。空间的匿名网站关闭时，成员仍可读取其当前公开范围。收回权限会撤销权限超限的连接；增加权限不会扩大已有连接的授权。详见[成员内容权限](../notes/implemented/2026-09-12-member-content-permissions.md)；安装该表结构后，已有普通成员也会失去隐含的私密访问权限。
+
+连接 MCP 时，在客户端填写 `https://your-domain.example/mcp`，选择 OAuth，客户端 ID 和密钥留空以使用动态注册。登录 Poketto 后选择已加入的空间，核对应用返回地址，再明确批准权限。只能委托自己持有的权限；私密读取、私密修改和公开发布默认均不勾选。成员可查看和断开自己的连接，所有者可管理空间内全部连接。通过隔离命令保存需要完整源码读取权限，以及受影响内容对应的写权限；私密读取加公开发布可以保存公开文件，无需私密修改。没有私密读取权限时，执行环境中的公开投影仍为只读，即使授予公开发布也不能提交；裁剪后的投影缺少作者元数据，不能安全覆盖原文。
 
 空间主人可在“仓库连接”标签页更新托管仓库的凭据。填写 Git 用户名和新令牌，服务端验证访问权限后才替换原凭据，不能借此更改仓库地址。表单提交后会清空令牌，也不会将它保存在浏览器草稿中。确认更新成功后，再到 Git 托管平台撤销旧令牌。由部署配置管理的仓库需由站点管理员修改配置。
 
@@ -54,6 +58,8 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。撤回内容后停止签发新授权，私有预览则重新验证当前身份。限制、存储保证与失败行为见[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)。
 
 `POST /api/admin/workspaces/{workspaceId}/media` 接收最多 128 MiB 的原始 octet-stream 字节，要求 `Idempotency-Key`，可选 `X-Media-Type`。字节去重严格限定在同一工作空间内，不同上传保留独立身份。可用 `poketto.assets.max-file-bytes` 调低上传限制；既有原件仍可读取。[逻辑媒体索引](../notes/implemented/2026-09-09-logical-media-index.md)把媒体路径合并进 Git 目录列表，并可与文本一同原子保存。[索引媒体交付](../notes/implemented/2026-09-09-indexed-media-delivery.md)支持相对图片链接，并通过认证后的 `/api/admin/workspaces/{workspaceId}/media` 和绑定公开快照的 `/api/public/media` 下载原件附件。上传不会写入索引或发布内容。
+
+只有发布权限、没有私密读取权限的成员，可以通过“选择公开图片”插入图片。列表包含当前发布规则允许的 Git 图片和索引图片，插入相对路径，不显示私密或已撤下的内容。上传新的原始文件仍需私密写入权限。
 
 ## 导出 HTTP 接口
 
