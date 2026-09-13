@@ -7,6 +7,7 @@ import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.micrometer.core.instrument.binder.MeterBinder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -31,6 +32,11 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnProperty(name = "poketto.executor.enabled", havingValue = "true")
 class ExecutorConfiguration {
     private static final Logger log = LoggerFactory.getLogger(ExecutorConfiguration.class);
+
+    @Bean
+    MeterBinder executorMetrics(IsolatedRepositoryExecutor executor) {
+        return executor::bindMetrics;
+    }
 
     @Bean
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
