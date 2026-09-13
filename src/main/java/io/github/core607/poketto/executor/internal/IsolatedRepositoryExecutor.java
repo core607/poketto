@@ -281,6 +281,95 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    @Override
+    public DiscardResult discard(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            DiscardRequest request,
+            ExecutionCancellation cancellation) {
+        authorize(principal, workspace);
+        if (retention == null || closed) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, false);
+        }
+        var owner = new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value());
+        RetainedDiscard held = null;
+        Session control = null;
+        try {
+            held = new RetainedDiscard(retention, owner, UUID.fromString(request.id()), request.generation());
+            RetainedCopyRecord record = held.record();
+            requireDiscardAuthorization(principal, workspace, cancellation);
+            if (record == null) {
+                return new DiscardResult(request.id(), DiscardStatus.ABSENT);
+            }
+            WorkerClient.Hello hello = worker.retainedHello();
+            control = containmentControl(principal, record, hello);
+            containRetained(record, control, hello);
+            requireDiscardAuthorization(principal, workspace, cancellation);
+            held.removeAfterContainment(control.contained);
+            removeDiscardedCheckpoints(principal, workspace, record, control);
+            return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
+        } catch (RuntimeException failure) {
+            log.warn("Retained discard completion was not confirmed", failure);
+            throw admissionFailure(failure, held == null ? null : held.record());
+        } finally {
+            if (held != null) {
+                if (control == null) {
+                    held.close();
+                } else {
+                    control.contained.thenRun(held::close);
+                }
+            }
+        }
+    }
+
+    private void requireDiscardAuthorization(
+            AuthPrincipal principal, WorkspaceId workspace, ExecutionCancellation cancellation) {
+        authorize(principal, workspace);
+        if (cancellation.isCancelled()) {
+            throw new WorkerUnavailableException();
+        }
+    }
+
+    private void containRetained(RetainedCopyRecord record, Session control, WorkerClient.Hello hello) {
+        if (record.writer().workerBootId().equals(hello.workerBootId())) {
+            stopAndAwait(control, "session_closed");
+        } else {
+            control.stopping.set(true);
+            releaseCapacity(control);
+            control.stopped.complete(null);
+        }
+        retireContainedCopy(record);
+    }
+
+    private void removeDiscardedCheckpoints(
+            AuthPrincipal principal, WorkspaceId workspace, RetainedCopyRecord record, Session control) {
+        var points = new ArrayList<RetainedCopyRecord.Checkpoint>();
+        points.add(record.acknowledged());
+        if (record.command() != null
+                && !record.command()
+                        .checkpoint()
+                        .id()
+                        .equals(record.acknowledged().id())) {
+            points.add(record.command().checkpoint());
+        }
+        for (RetainedCopyRecord.Checkpoint point : points) {
+            try {
+                authorize(principal, workspace);
+                WorkerResponses.read(
+                        worker.request(
+                                worker.retainedHello(),
+                                control.identity(),
+                                "CHECKPOINT_REMOVE",
+                                new WorkerRequests.CheckpointReference(
+                                        point.id().toString(), point.sha256(), point.bytes()),
+                                Duration.ofSeconds(5)),
+                        WorkerResponses.CheckpointRemoved.class);
+            } catch (RuntimeException failure) {
+                log.warn("Discarded checkpoint awaits periodic collection", failure);
+            }
+        }
+    }
+
     private Resumed resumeCopy(
             AuthPrincipal principal,
             WorkspaceId workspace,

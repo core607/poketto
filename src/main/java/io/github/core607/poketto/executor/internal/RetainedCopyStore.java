@@ -54,6 +54,12 @@ final class RetainedCopyStore {
         });
     }
 
+    /** Only deletion may inspect expired metadata; holding the exact writer excludes recovery and collection. */
+    RetainedCopyRecord readForDiscard(RetainedFileLocks.Held writer, RetainedCopyRecord.Owner owner, UUID copyId) {
+        writer.requirePath(root.resolve(".writer-" + path(owner, copyId).getFileName()));
+        return locked(() -> load(owner, copyId));
+    }
+
     long newExpiry() {
         return Math.addExact(clock.millis(), limits.retention().toMillis());
     }

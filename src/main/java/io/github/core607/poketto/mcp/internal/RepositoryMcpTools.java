@@ -123,6 +123,32 @@ final class RepositoryMcpTools {
         }
         if (executors.getIfAvailable() != null) {
             tools.add(tool(
+                    "repo_discard",
+                    "Permanently discard the exact retained working copy and its unsaved work. Supply its copyId as expectedCopyId and latest retention.generation as expectedGeneration. Busy or stale copies are refused. No command is executed and remote Git commits are not undone. DISCARDED or ABSENT confirms this owner has no recoverable copy at that ID; physical cleanup may finish later. After an unconfirmed response, retry only the same ID and generation. Requires current execution permission; no recovery or content-read permission is granted.",
+                    object(
+                            Map.of(
+                                    "expectedCopyId",
+                                            Map.of(
+                                                    "type",
+                                                    "string",
+                                                    "maxLength",
+                                                    36,
+                                                    "pattern",
+                                                    "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+                                    "expectedGeneration",
+                                            Map.of(
+                                                    "type",
+                                                    "integer",
+                                                    "minimum",
+                                                    1,
+                                                    "maximum",
+                                                    RepositoryExecutor.MAX_GENERATION)),
+                            List.of("expectedCopyId", "expectedGeneration")),
+                    false,
+                    true,
+                    true,
+                    this::discard));
+            tools.add(tool(
                     "get_artifact",
                     "Read an unexpired artifact created by this MCP execution session. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
                     object(
@@ -216,7 +242,9 @@ final class RepositoryMcpTools {
             } catch (SessionReplacedException exception) {
                 return McpCopyAdmission.copyReplaced(json, exception);
             } catch (ExecutionAdmissionException exception) {
-                return McpCopyAdmission.admissionRefused(json, exception);
+                return name.equals("repo_discard")
+                        ? McpCopyAdmission.discardRefused(json, exception)
+                        : McpCopyAdmission.admissionRefused(json, exception);
             } catch (RepositoryConflictException exception) {
                 return error("CONFLICT", "Read current files and base commit before retrying.");
             } catch (RepositoryWriteAmbiguousException exception) {
@@ -451,6 +479,20 @@ final class RepositoryMcpTools {
         result.put("offset", chunk.offset());
         result.put("nextOffset", next < chunk.size() ? next : null);
         return result;
+    }
+
+    private McpSchema.CallToolResult discard(McpSyncServerExchange exchange, Map<String, Object> input) {
+        fields(input, Set.of("expectedCopyId", "expectedGeneration"));
+        RepositoryExecutor.CopyRequest copy = McpCopyAdmission.copyRequest(input);
+        if (copy.generation() == null) {
+            throw new IllegalArgumentException("Discard requires the expected generation");
+        }
+        var request = new RepositoryExecutor.DiscardRequest(copy.id(), copy.generation());
+        var identity = sessions.resolve(exchange);
+        auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
+        return textResult(executors
+                .getObject()
+                .discard(identity.principal(), identity.workspace(), request, cancellation(exchange)));
     }
 
     private McpSchema.CallToolResult execute(McpSyncServerExchange exchange, Map<String, Object> input) {

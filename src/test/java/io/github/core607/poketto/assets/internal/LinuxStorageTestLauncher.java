@@ -34,6 +34,7 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.executor.internal.SelectedFileSavesTests",
             "io.github.core607.poketto.executor.internal.RetainedSelectedFileSavesTests",
             "io.github.core607.poketto.executor.internal.RetainedCopyStoreTests",
+            "io.github.core607.poketto.executor.internal.RetainedDiscardTests",
             "io.github.core607.poketto.executor.internal.RetainedBaselineFilesTests",
             "io.github.core607.poketto.executor.internal.RetainedBaselineStoreTests",
             "io.github.core607.poketto.executor.internal.RetainedOriginalLookupTests",

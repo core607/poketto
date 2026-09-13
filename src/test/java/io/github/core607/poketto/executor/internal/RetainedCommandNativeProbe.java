@@ -108,6 +108,8 @@ final class RetainedCommandNativeProbe {
             restoreMovedText(fixture);
             new RetainedNonTextNativeProbe(auth, actor, workspace, CANCELLATION)
                     .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
+            new RetainedDiscardNativeProbe(auth, actor, workspace, CANCELLATION)
+                    .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
             new RetainedLifecycleNativeProbe(auth, actor, workspace, CANCELLATION)
                     .run(root, fixture, (records, reader) -> adapter(fixture, records, reader), control, privateRead);
         }
@@ -355,7 +357,7 @@ final class RetainedCommandNativeProbe {
         return interrupted;
     }
 
-    private static WorkerClient lostCloseAcknowledgement(WorkerClient worker, AtomicBoolean acknowledgeClose) {
+    static WorkerClient lostCloseAcknowledgement(WorkerClient worker, AtomicBoolean acknowledgeClose) {
         WorkerClient intercepted = spy(worker);
         doAnswer(call -> {
                     JsonNode reply = worker.request(
@@ -374,7 +376,7 @@ final class RetainedCommandNativeProbe {
         return intercepted;
     }
 
-    private static void assertWriterBusy(RetainedCopyStore store, RetainedCopyRecord record) {
+    static void assertWriterBusy(RetainedCopyStore store, RetainedCopyRecord record) {
         assertThatThrownBy(() -> {
                     try (var incorrectlyReleased = store.writer(record.owner(), record.copyId())) {
                         throw new AssertionError("An unconfirmed close released the retained writer lock");
@@ -384,7 +386,7 @@ final class RetainedCommandNativeProbe {
                 .hasMessageContaining("BUSY");
     }
 
-    private static void awaitWriterRelease(RetainedCopyStore store, RetainedCopyRecord record)
+    static void awaitWriterRelease(RetainedCopyStore store, RetainedCopyRecord record)
             throws IOException, InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         while (true) {

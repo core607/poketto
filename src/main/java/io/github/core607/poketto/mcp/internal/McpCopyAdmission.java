@@ -71,6 +71,21 @@ final class McpCopyAdmission {
                 .build();
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record DiscardRefusal(String code, String reason, Long currentGeneration, String message) {}
+
+    static McpSchema.CallToolResult discardRefused(ObjectMapper json, ExecutionAdmissionException exception) {
+        var body = new DiscardRefusal(
+                "DISCARD_UNCONFIRMED",
+                exception.reason().name(),
+                exception.currentGeneration(),
+                "Discard completion was not confirmed. Retry only the same copy ID and expected generation after checking the reason. Remote Git commits are not undone. This response does not confirm that retained state still exists.");
+        return McpSchema.CallToolResult.builder()
+                .addTextContent(json.writeValueAsString(body))
+                .isError(true)
+                .build();
+    }
+
     static RepositoryExecutor.CopyRequest copyRequest(Map<String, Object> input) {
         Long generation = null;
         if (input.containsKey("expectedGeneration")) {

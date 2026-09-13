@@ -17,10 +17,12 @@ content. The `poketto` CLI mediates selected saves, media, moves, synchronizatio
 and recovery through existing authorization and atomic remote writes. Shell edits
 and local Git commits do not acknowledge a remote save.
 
-The MCP catalog contains `repo_exec`, `get_artifact`, `get_asset` and `put_asset`
+The MCP catalog contains `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset`
 when the isolated executor and asset services are available. `get_artifact`
 returns session-scoped results; the two asset tools retain the bounded external
-image transfer channel. `list_directory`, `get_file` and `repo_patch` are removed,
+image transfer channel. `repo_discard` is a lifecycle operation for explicit owner
+deletion when retained execution is enabled; the [continuity contract](../proposed/2026-09-12-executor-work-continuity.md)
+defines its generation, containment and cleanup rules. `list_directory`, `get_file` and `repo_patch` are removed,
 including their request mappings and service dependencies. Unknown tool names are
 rejected by the protocol; no alias or compatibility fallback invokes them.
 

@@ -88,6 +88,14 @@ record RetainedLifecycleNativeProbe(
                             execute(executor, "restart-private-denied", resume(before), "touch private/forbidden"))
                     .isSameAs(denied);
             assertThat(records.read(before.owner(), before.copyId())).isEqualTo(before);
+            assertThat(executor.discard(
+                                    actor,
+                                    workspace,
+                                    new RepositoryExecutor.DiscardRequest(
+                                            before.copyId().toString(), before.generation()),
+                                    cancellation)
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
         } finally {
             doAnswer(call -> auth.authorize(actor, workspace))
                     .when(auth)
@@ -125,6 +133,14 @@ record RetainedLifecycleNativeProbe(
             assertThatThrownBy(() -> execute(executor, "restart-public-withdrawn", resume(frozen), "touch forbidden"))
                     .isInstanceOf(ContentRepositoryException.class);
             assertThat(records.read(frozen.owner(), frozen.copyId())).isEqualTo(frozen);
+            assertThat(executor.discard(
+                                    actor,
+                                    workspace,
+                                    new RepositoryExecutor.DiscardRequest(
+                                            frozen.copyId().toString(), frozen.generation()),
+                                    cancellation)
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
         }
     }
 
