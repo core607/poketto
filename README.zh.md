@@ -4,7 +4,7 @@
 
 用文件和 Git 历史保存笔记、剪藏、阅读清单与项目资料。在浏览器里整理，也可以让 AI 通过 MCP 搜索、编辑和归档，再把选定的内容发布成博客。
 
-[English](README.md) · [开发与使用](docs/usage.zh.md) · [架构](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)
+[English](README.md) · [开发与使用](docs/usage.zh.md) · [架构](notes/implemented/2026-08-25-requirements-and-architecture.zh.md) · [线上实例](https://poketto.top)
 
 ## File as truth
 
