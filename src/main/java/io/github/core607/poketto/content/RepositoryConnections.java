@@ -1,10 +1,17 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.time.Instant;
+import java.util.Optional;
 
 /** Network validation runs without a transaction; binding mutations require the caller's authorized transaction. */
 public interface RepositoryConnections {
     boolean available();
+
+    /** Owner-facing binding metadata only; never decrypts or returns provider credentials. */
+    Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace);
+
+    record ConnectionInfo(String repository, Instant updatedAt) {}
 
     byte[] seal(WorkspaceId workspace, RepositoryCoordinates coordinates, String username, String token);
 

@@ -14,6 +14,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
@@ -54,6 +55,17 @@ public final class SpaceCreationService {
         accounts.account(actor);
         return repositories.available();
     }
+
+    public ConnectionInfo connectionInfo(AuthPrincipal actor, WorkspaceId workspace) {
+        accounts.account(actor);
+        return auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
+            Optional<RepositoryConnections.ConnectionInfo> binding = repositories.connectionInfo(workspace);
+            return new ConnectionInfo(binding.isPresent(), repositories.available(), binding.orElse(null));
+        });
+    }
+
+    public record ConnectionInfo(
+            boolean managed, boolean rotationAvailable, RepositoryConnections.ConnectionInfo binding) {}
 
     public void rotateCredentials(AuthPrincipal actor, WorkspaceId workspace, String username, String token) {
         accounts.account(actor);
