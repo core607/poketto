@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { articleHref, safeImage, safeLink } from "../lib/format";
+import { readingHeading } from "../lib/reading-heading";
 
 const HEADING_PREFIX = "poketto-heading-";
 
@@ -14,6 +15,7 @@ export function Markdown({
   preview = false,
   space,
   collection,
+  pageTitle,
 }: {
   source: string;
   images?: Record<string, string>;
@@ -22,6 +24,7 @@ export function Markdown({
   preview?: boolean;
   space?: string;
   collection?: { route: string; entries: { route: string }[] };
+  pageTitle?: string;
 }) {
   const resolvedImages = new Map(
     Object.entries(images).map(([authored, target]) => [
@@ -46,7 +49,10 @@ export function Markdown({
       <ReactMarkdown
         skipHtml
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSlug, { prefix: HEADING_PREFIX }]]}
+        rehypePlugins={[
+          [rehypeSlug, { prefix: HEADING_PREFIX }],
+          [readingHeading, { title: preview ? undefined : pageTitle }],
+        ]}
         urlTransform={(value) => value}
         components={{
           a({ href = "", children, node }) {

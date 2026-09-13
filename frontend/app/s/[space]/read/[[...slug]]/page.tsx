@@ -81,6 +81,7 @@ export default async function Article({
       <Markdown
         space={space}
         source={value.body}
+        pageTitle={value.title}
         images={value.images}
         links={value.links}
         downloads={value.downloads}
