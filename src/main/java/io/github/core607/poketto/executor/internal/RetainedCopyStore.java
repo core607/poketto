@@ -14,7 +14,6 @@ import static java.nio.file.StandardOpenOption.WRITE;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
@@ -69,6 +68,18 @@ final class RetainedCopyStore {
             var record = load(owner, copyId);
             requireLive(record);
             return record;
+        });
+    }
+
+    /** Hold across the entire command and its host writes; reload the generation after acquisition. */
+    RetainedFileLocks.Held writer(RetainedCopyRecord.Owner owner, UUID copyId) {
+        return locked(() -> {
+            Path path = root.resolve(".writer-" + path(owner, copyId).getFileName());
+            Usage usage = usage();
+            if (!Files.exists(path, NOFOLLOW_LINKS) && usage.writers() >= limits.copies()) {
+                throw new RetainedCopyException(LIMIT);
+            }
+            return RetainedFileLocks.acquire(path, () -> openLock(path));
         });
     }
 
@@ -129,6 +140,10 @@ final class RetainedCopyStore {
         require(
                 next.transportHash().equals(current.transportHash()) || next.generation() > current.generation(),
                 "ownership transfer",
+                "must advance the writer generation");
+        require(
+                next.writer().equals(current.writer()) || next.generation() > current.generation(),
+                "worker lease transfer",
                 "must advance the writer generation");
         require(next.fullRead() == current.fullRead(), "retained scope", "must not change during recovery");
         require(
@@ -191,11 +206,12 @@ final class RetainedCopyStore {
     private Usage usage() throws IOException {
         long bytes = 0;
         int copies = 0;
+        int writers = 0;
         int entries = 0;
         boolean cleaned = false;
         try (var files = Files.newDirectoryStream(root)) {
             for (Path file : files) {
-                if (++entries > limits.copies() * 2 + 16) {
+                if (++entries > limits.copies() * 3 + 16) {
                     throw new RetainedCopyException(LIMIT);
                 }
                 String name = file.getFileName().toString();
@@ -203,7 +219,14 @@ final class RetainedCopyStore {
                 if (name.equals(".lock")) {
                     continue;
                 }
-                if (name.startsWith(".pending-")) {
+                if (name.matches("\\.writer-[0-9a-f]{64}_[0-9a-f-]{36}\\.record")) {
+                    validateFileId(name.substring(73, 109));
+                    if (retainWriterFile(file)) {
+                        writers++;
+                    } else {
+                        cleaned = true;
+                    }
+                } else if (name.startsWith(".pending-")) {
                     validateFileId(name.substring(9));
                     Files.delete(file);
                     cleaned = true;
@@ -223,24 +246,34 @@ final class RetainedCopyStore {
         if (cleaned) {
             syncDirectory(root);
         }
-        return new Usage(copies, bytes);
+        return new Usage(copies, writers, bytes);
+    }
+
+    private boolean retainWriterFile(Path file) throws IOException {
+        if (Files.exists(root.resolve(file.getFileName().toString().substring(8)), NOFOLLOW_LINKS)) {
+            return true;
+        }
+        // Every writer acquisition holds .lock before opening its file. Under that same lock,
+        // an unowned orphan can be deleted without leaving a waiter on an obsolete inode.
+        try (var lock = RetainedFileLocks.acquire(file, () -> openLock(file))) {
+            lock.requireValid();
+            Files.delete(file);
+            return false;
+        } catch (RetainedCopyException contention) {
+            if (contention.reason() != BUSY) {
+                throw contention;
+            }
+            return true;
+        }
     }
 
     private synchronized <T> T locked(Action<T> action) {
         try {
             checkRoot();
             Path path = root.resolve(".lock");
-            try (FileChannel channel = FileChannel.open(
-                    path,
-                    Set.of(CREATE, WRITE, NOFOLLOW_LINKS),
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {
-                checkFile(path);
-                try (FileLock lock = channel.tryLock()) {
-                    if (lock == null) {
-                        throw new RetainedCopyException(BUSY);
-                    }
-                    return action.run();
-                }
+            try (var lock = RetainedFileLocks.acquire(path, () -> openLock(path))) {
+                lock.requireValid();
+                return action.run();
             }
         } catch (OverlappingFileLockException busy) {
             throw new RetainedCopyException(BUSY, busy);
@@ -252,6 +285,24 @@ final class RetainedCopyStore {
                 }
             }
             throw new RetainedCopyException(UNAVAILABLE, failure);
+        }
+    }
+
+    private FileChannel openLock(Path path) throws IOException {
+        FileChannel channel = FileChannel.open(
+                path,
+                Set.of(CREATE, WRITE, NOFOLLOW_LINKS),
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        try {
+            checkFile(path);
+            return channel;
+        } catch (IOException failure) {
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
         }
     }
 
@@ -342,7 +393,7 @@ final class RetainedCopyStore {
         }
     }
 
-    private record Usage(int copies, long bytes) {}
+    private record Usage(int copies, int writers, long bytes) {}
 
     @FunctionalInterface
     private interface Action<T> {

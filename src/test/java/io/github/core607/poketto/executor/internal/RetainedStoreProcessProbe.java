@@ -18,6 +18,13 @@ public final class RetainedStoreProcessProbe {
 
     public static void main(String[] args) throws Exception {
         Path root = Path.of(args[1]);
+        if (args[0].equals("try-lock")) {
+            try (FileChannel channel = FileChannel.open(root.resolve(args[2]), WRITE, NOFOLLOW_LINKS);
+                    var lock = channel.tryLock()) {
+                System.out.println(lock == null ? "BUSY" : "ACQUIRED");
+            }
+            return;
+        }
         if (args[0].equals("lock")) {
             try (FileChannel channel = FileChannel.open(root.resolve(".lock"), WRITE, NOFOLLOW_LINKS);
                     var lock = channel.lock()) {
@@ -33,6 +40,20 @@ public final class RetainedStoreProcessProbe {
         var store = new RetainedCopyStore(
                 root, new RetainedCopyStore.Limits(8, 4096, 32768, 0, Duration.ofHours(1)), clock);
         var owner = new RetainedCopyRecord.Owner(UUID.fromString(args[2]), UUID.fromString(args[3]));
+        if (args[0].equals("try-writer") || args[0].equals("hold-writer")) {
+            try (var lock = store.writer(owner, UUID.fromString(args[4]))) {
+                lock.requireValid();
+                if (args[0].equals("hold-writer")) {
+                    Files.writeString(Path.of(args[5]), "LOCKED");
+                    System.in.read();
+                } else {
+                    System.out.println("ACQUIRED");
+                }
+            } catch (RetainedCopyException contention) {
+                System.out.println(contention.reason());
+            }
+            return;
+        }
         var record = store.read(owner, UUID.fromString(args[4]));
         System.out.println(record.revision() + ":" + record.generation() + ":"
                 + record.acknowledged().state().originalCommit());

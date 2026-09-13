@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.RepositoryMoveRequest;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -34,6 +36,146 @@ class RetainedCopyStoreTests {
 
     @TempDir
     Path directory;
+
+    @Test
+    void failedSameJvmContenderDoesNotReleaseTheOriginalProcessLock() throws Exception {
+        Path root = directory.resolve("retained");
+        var store = new RetainedCopyStore(root, LIMITS, CLOCK);
+        var initial = initial();
+        store.create(initial);
+        Path path = root.resolve(".lock");
+        try (var lock = RetainedFileLocks.acquire(path, () -> FileChannel.open(path, StandardOpenOption.WRITE))) {
+            lock.requireValid();
+            assertChild("BUSY", "try-lock", root.toString(), ".lock");
+            assertFailure(() -> store.read(initial.owner(), initial.copyId()), RetainedCopyException.Reason.BUSY);
+            assertChild("BUSY", "try-lock", root.toString(), ".lock");
+        }
+        assertChild("ACQUIRED", "try-lock", root.toString(), ".lock");
+    }
+
+    @Test
+    void copyWriterExcludesOtherProcessesAndLeavesDifferentCopiesIndependent() throws Exception {
+        Path root = directory.resolve("retained");
+        var store = new RetainedCopyStore(root, LIMITS, CLOCK);
+        var second = new RetainedCopyStore(root, LIMITS, CLOCK);
+        var initial = initial();
+        store.create(initial);
+        try (var first = store.writer(initial.owner(), initial.copyId());
+                var other = second.writer(initial.owner(), UUID.randomUUID())) {
+            first.requireValid();
+            other.requireValid();
+            assertFailure(() -> second.writer(initial.owner(), initial.copyId()), RetainedCopyException.Reason.BUSY);
+            assertWriterChild("BUSY", root, initial);
+            assertThat(second.read(initial.owner(), initial.copyId()).generation())
+                    .isEqualTo(1);
+        }
+        assertWriterChild("ACQUIRED", root, initial);
+    }
+
+    @Test
+    void writerFilesStayBoundedAndAnActiveOrphanCannotBeReplaced() throws Exception {
+        Path root = directory.resolve("retained");
+        var limits = new RetainedCopyStore.Limits(1, 4096, 32768, 0, Duration.ofHours(1));
+        var store = new RetainedCopyStore(root, limits, CLOCK);
+        var initial = initial();
+        try (var first = store.writer(initial.owner(), initial.copyId())) {
+            first.requireValid();
+            assertFailure(() -> store.writer(initial.owner(), UUID.randomUUID()), RetainedCopyException.Reason.LIMIT);
+            assertWriterChild("BUSY", root, initial);
+        }
+        for (int index = 0; index < 12; index++) {
+            try (var next = store.writer(initial.owner(), UUID.randomUUID())) {
+                next.requireValid();
+            }
+        }
+        try (var files = Files.list(root)) {
+            assertThat(files.filter(path -> path.getFileName().toString().startsWith(".writer-"))
+                            .count())
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void discardingMetadataDoesNotRemoveAStillHeldWriterInode() throws Exception {
+        Path root = directory.resolve("retained");
+        var store = new RetainedCopyStore(root, LIMITS, CLOCK);
+        var initial = initial();
+        store.create(initial);
+        try (var writer = store.writer(initial.owner(), initial.copyId())) {
+            writer.requireValid();
+            store.discard(initial.owner(), initial.copyId(), 0, 1);
+            assertWriterChild("BUSY", root, initial);
+        }
+        assertWriterChild("ACQUIRED", root, initial);
+    }
+
+    @Test
+    void latestWorkerLeaseSurvivesReopenAndCannotChangeWithoutNewGeneration() {
+        Path root = directory.resolve("retained");
+        var store = new RetainedCopyStore(root, LIMITS, CLOCK);
+        var initial = initial();
+        var writer = new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID());
+        store.create(initial);
+        for (int generation = 1; generation <= 2; generation++) {
+            var next = new RetainedCopyRecord(
+                    1,
+                    initial.owner(),
+                    initial.copyId(),
+                    1,
+                    generation,
+                    initial.transportHash(),
+                    initial.fullRead(),
+                    initial.expiresAt(),
+                    writer,
+                    initial.acknowledged(),
+                    null);
+            if (generation == 1) {
+                assertThatThrownBy(() -> store.replace(0, 1, next))
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessageContaining("worker lease transfer");
+                assertThat(store.read(initial.owner(), initial.copyId()).writer())
+                        .isEqualTo(initial.writer());
+            } else {
+                store.replace(0, 1, next);
+            }
+        }
+        var reopened = new RetainedCopyStore(root, LIMITS, CLOCK).read(initial.owner(), initial.copyId());
+        assertThat(reopened.writer()).isEqualTo(writer);
+        assertThat(reopened.generation()).isEqualTo(2);
+    }
+
+    @Test
+    void killedApplicationProcessReleasesOnlyItsWriterLock() throws Exception {
+        Path root = directory.resolve("retained");
+        var store = new RetainedCopyStore(root, LIMITS, CLOCK);
+        var initial = initial();
+        store.create(initial);
+        Path signal = directory.resolve("writer-locked");
+        Process holder = child(
+                "hold-writer",
+                root.toString(),
+                initial.owner().subjectId().toString(),
+                initial.owner().workspaceId().toString(),
+                initial.copyId().toString(),
+                signal.toString());
+        try (var other = store.writer(initial.owner(), UUID.randomUUID())) {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+            while (!Files.exists(signal) && holder.isAlive() && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(signal).hasContent("LOCKED");
+            assertFailure(() -> store.writer(initial.owner(), initial.copyId()), RetainedCopyException.Reason.BUSY);
+            holder.destroyForcibly();
+            assertThat(holder.waitFor(15, TimeUnit.SECONDS)).isTrue();
+            try (var recovered = store.writer(initial.owner(), initial.copyId())) {
+                recovered.requireValid();
+                other.requireValid();
+            }
+        } finally {
+            holder.destroyForcibly();
+            holder.waitFor(15, TimeUnit.SECONDS);
+        }
+    }
 
     @Test
     void reopensExactCheckpointAndUnconfirmedCommandWithoutMutableAliases() throws Exception {
@@ -278,6 +420,7 @@ class RetainedCopyStoreTests {
                 "a".repeat(64),
                 true,
                 CLOCK.millis() + 60000,
+                new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID()),
                 checkpoint,
                 null);
     }
@@ -298,6 +441,7 @@ class RetainedCopyStoreTests {
                 transport,
                 prior.fullRead(),
                 prior.expiresAt(),
+                prior.writer(),
                 checkpoint,
                 command);
     }
@@ -332,6 +476,27 @@ class RetainedCopyStoreTests {
         return new ProcessBuilder(command)
                 .redirectError(ProcessBuilder.Redirect.INHERIT)
                 .start();
+    }
+
+    private static void assertWriterChild(String expected, Path root, RetainedCopyRecord record) throws Exception {
+        assertChild(
+                expected,
+                "try-writer",
+                root.toString(),
+                record.owner().subjectId().toString(),
+                record.owner().workspaceId().toString(),
+                record.copyId().toString());
+    }
+
+    private static void assertChild(String expected, String... args) throws Exception {
+        Process process = child(args);
+        try {
+            assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
+            assertThat(process.exitValue()).isZero();
+            assertThat(process.inputReader().readLine()).isEqualTo(expected);
+        } finally {
+            process.destroyForcibly();
+        }
     }
 
     private static void assertFailure(Runnable operation, RetainedCopyException.Reason reason) {

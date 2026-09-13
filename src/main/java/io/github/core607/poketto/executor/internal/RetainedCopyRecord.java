@@ -15,6 +15,7 @@ record RetainedCopyRecord(
         String transportHash,
         boolean fullRead,
         long expiresAt,
+        Writer writer,
         Checkpoint acknowledged,
         Command command) {
     static final long MAX_VERSION = 9_007_199_254_740_991L;
@@ -27,6 +28,7 @@ record RetainedCopyRecord(
         ProtocolValues.inRange(generation, 1, MAX_VERSION, "writer generation");
         transportHash = ProtocolValues.hex(transportHash, 64, "transport hash");
         require(expiresAt > 0, "retention expiry", "must be positive");
+        Objects.requireNonNull(writer, "retained writer lease must be present");
         Objects.requireNonNull(acknowledged, "acknowledged checkpoint must be present");
         if (command != null) {
             require(
@@ -40,6 +42,14 @@ record RetainedCopyRecord(
         Owner {
             Objects.requireNonNull(subjectId, "retained subject must be present");
             Objects.requireNonNull(workspaceId, "retained workspace must be present");
+        }
+    }
+
+    /** The latest admitted lease may be newer than the last completed worker checkpoint. */
+    record Writer(UUID workerBootId, UUID leaseId) {
+        Writer {
+            Objects.requireNonNull(workerBootId, "writer worker boot must be present");
+            Objects.requireNonNull(leaseId, "writer lease must be present");
         }
     }
 
