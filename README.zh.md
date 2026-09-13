@@ -65,6 +65,8 @@ Poketto 正在开发中。已实现：仓库创作、本地媒体、浏览器移
 
 内容采用默认私密的 `public/`、`private/` 双根目录。浏览器和 CodeAct CLI 支持切换公开范围的移动，以及包含实际原件和相对链接的 ZIP 导出。MCP 文件操作统一通过隔离工作区和宿主 CLI 完成。[内容契约](notes/implemented/2026-09-09-codeact-content-and-media.md)定义仓库格式；已有仓库升级前需要协调转换内容与应用版本。当前接口及限制见[使用文档](docs/usage.zh.md)。
 
+[多用户交付方案](notes/proposed/2026-09-11-multiuser-workspaces-and-discovery.md)是账号、空间和公开发现的既定目标。其余待做的是卡片上的作者与空间署名、相册缩略图与灯箱、目录落地页回退到 README、带高亮与返回结果的全站搜索、当前目录内的新建笔记与文件夹及文件名搜索，以及可恢复的管理页面 URL。
+
 主要部署形态是自托管 Linux 服务器。开放注册、在托管平台上代建仓库、备份、访客问答和[可选 serverless 方案](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md)不在当前交付范围内。
 
 ## 开发与自托管

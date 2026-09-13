@@ -67,6 +67,8 @@ Poketto is under active development. Implemented: repository authoring, local me
 
 Content uses default-private `public/` and `private/` roots. The browser and CodeAct CLI support scope-aware moves and ZIP exports with actual originals and relative links. MCP file work uses the isolated workspace and host CLI. The [content contract](notes/implemented/2026-09-09-codeact-content-and-media.md) defines the format; existing repositories need a coordinated content/application conversion before upgrading. Current interfaces and limits are in the [usage reference](docs/usage.md).
 
+The [multi-user delivery](notes/proposed/2026-09-11-multiuser-workspaces-and-discovery.md) is the accepted target for accounts, spaces and public discovery. Its remaining work is author and space attribution on cards, album thumbnails and a lightbox, README fallback for folder landings, site-wide search with highlighted matches and return to results, in-directory new note and folder actions with filename search, and restorable management URLs.
+
 The primary deployment is a self-hosted Linux server. Open self-registration, provider-side repository creation, backups, visitor Q&A and the [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) are outside the current delivery scope.
 
 ## Develop and self-host
