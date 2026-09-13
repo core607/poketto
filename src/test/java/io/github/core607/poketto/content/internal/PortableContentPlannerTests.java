@@ -170,6 +170,64 @@ class PortableContentPlannerTests {
     }
 
     @Test
+    void publicPackageRewritesSelectedReadmeAndIndexFolderLinksWithoutPrivateSource() throws Exception {
+        var fixture = new RemoteRepositoryFixture(root.resolve("git"));
+        fixture.commitRemote(
+                workspace,
+                Map.of(
+                        RepositoryPublishingPolicy.PATH,
+                        text("enabled: true\nmode: public-root\n"),
+                        "public/home.md",
+                        text("# Home\n\n[README guide](guide/)\n[Index guide](indexed/)\n"),
+                        "public/guide/README.md",
+                        text("# README guide\n\nREADMEONLYTARGET\n"),
+                        "public/indexed/index.md",
+                        text("# Index guide\n\nINDEXTARGET\n"),
+                        "public/indexed/README.md",
+                        text("# Shadow README\n\nSHADOWREADME\n"),
+                        "private/hidden.md",
+                        text("HIDDENSOURCE\n")));
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var service = planner(fixture, snapshots, mock(ManagedBlobStore.class));
+        var plan = service.prepare(
+                actor, workspace, List.of("public/home.md", "public/guide/README.md", "public/indexed/index.md"), true);
+        var contents = archive(plan);
+        assertThat(contents).hasSize(3);
+        assertThat(contents.keySet())
+                .allMatch(path -> path.startsWith("content/article-") && path.endsWith(".md"))
+                .noneMatch(path -> path.contains("private") || path.endsWith("README.md"));
+        assertThat(contents.values())
+                .noneMatch(bytes -> new String(bytes, StandardCharsets.UTF_8).contains("HIDDENSOURCE"))
+                .noneMatch(bytes -> new String(bytes, StandardCharsets.UTF_8).contains("SHADOWREADME"));
+
+        var home = contents.entrySet().stream()
+                .filter(entry -> new String(entry.getValue(), StandardCharsets.UTF_8).contains("title: \"Home\""))
+                .findFirst()
+                .orElseThrow();
+        String homeText = new String(home.getValue(), StandardCharsets.UTF_8);
+        String readmeTarget = contents.entrySet().stream()
+                .filter(entry -> new String(entry.getValue(), StandardCharsets.UTF_8).contains("READMEONLYTARGET"))
+                .map(entry -> entry.getKey().substring(entry.getKey().lastIndexOf('/') + 1))
+                .findFirst()
+                .orElseThrow();
+        String indexTarget = contents.entrySet().stream()
+                .filter(entry -> new String(entry.getValue(), StandardCharsets.UTF_8).contains("INDEXTARGET"))
+                .map(entry -> entry.getKey().substring(entry.getKey().lastIndexOf('/') + 1))
+                .findFirst()
+                .orElseThrow();
+        assertThat(homeText).contains(readmeTarget, indexTarget);
+
+        var indexedContents = archive(service.prepare(actor, workspace, List.of("public/indexed"), true));
+        assertThat(indexedContents).hasSize(1);
+        assertThat(indexedContents.keySet())
+                .allMatch(path -> path.startsWith("content/article-") && path.endsWith(".md"))
+                .noneMatch(path -> path.contains("private") || path.endsWith("README.md"));
+        String indexedText = new String(indexedContents.values().iterator().next(), StandardCharsets.UTF_8);
+        assertThat(indexedText).contains("INDEXTARGET").doesNotContain("SHADOWREADME", "HIDDENSOURCE");
+    }
+
+    @Test
     @EnabledOnOs(OS.LINUX)
     void legacyPublicImagesUsePreviewValidationAndWithdrawWithTheirArticleReference() throws Exception {
         var fixture = new RemoteRepositoryFixture(root.resolve("git"));

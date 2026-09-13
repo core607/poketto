@@ -140,7 +140,8 @@ final class PortableContentPlanner {
             for (var diagnostic : tree.diagnostics()) {
                 if (inside(diagnostic.path(), selection)
                         && !internal(diagnostic.path())
-                        && !diagnostic.code().equals("INFERRED_METADATA")) {
+                        && !Set.of("INFERRED_METADATA", "SHADOWED_FOLDER_LANDING")
+                                .contains(diagnostic.code())) {
                     throw unavailable();
                 }
             }
@@ -312,7 +313,7 @@ final class PortableContentPlanner {
             if (internal(path)) {
                 throw unavailable();
             }
-            String target = documents.get(path);
+            String target = selectedDocument(path);
             if (target == null && raw.startsWith("/")) {
                 target = routes.get(raw);
             }
@@ -349,6 +350,20 @@ final class PortableContentPlanner {
                 bound();
             }
             return RelativeLinks.from(archive, originalPaths.get(key)) + fragment;
+        }
+
+        String selectedDocument(String path) {
+            String target = documents.get(path);
+            if (target == null) {
+                target = documents.get(path.isEmpty() ? "index.md" : path + "/index.md");
+            }
+            if (target == null) {
+                target = documents.get(path.isEmpty() ? "README.md" : path + "/README.md");
+            }
+            if (target == null) {
+                target = documents.get(path + ".md");
+            }
+            return target;
         }
 
         String nextMedia(long size, String extension) {
