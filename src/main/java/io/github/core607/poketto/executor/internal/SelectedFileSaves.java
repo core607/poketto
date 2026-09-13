@@ -156,6 +156,30 @@ final class SelectedFileSaves {
             this.baseCommit = baseCommit;
         }
 
+        RetainedSaveState snapshot() {
+            return new RetainedSaveState(
+                    originalCommit,
+                    baseCommit,
+                    baselines,
+                    uncertain,
+                    pending,
+                    attempt.orElse(null),
+                    RetainedSaveState.Move.capture(move),
+                    BridgeReplies.RestoredReceipt.capture(lastSave));
+        }
+
+        static State restore(RetainedSaveState snapshot) {
+            var state = new State(snapshot.originalCommit());
+            state.baseCommit = snapshot.baseCommit();
+            state.baselines.putAll(snapshot.baselines());
+            state.uncertain = snapshot.uncertain();
+            state.pending = snapshot.pending();
+            state.attempt = Optional.ofNullable(snapshot.attempt());
+            state.move = snapshot.move() == null ? null : snapshot.move().restore();
+            state.lastSave = snapshot.lastSave();
+            return state;
+        }
+
         String baseline(String path) {
             return baselines.getOrDefault(path, originalCommit);
         }

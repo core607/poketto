@@ -2,8 +2,13 @@ package io.github.core607.poketto.executor.internal;
 
 import static io.github.core607.poketto.executor.internal.ProtocolValues.require;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonValue;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What a {@code poketto} command receives. The CLI checks only that {@code ok} is a boolean and
@@ -22,7 +27,31 @@ final class BridgeReplies {
      * A value a session retains and reports later, including the absence of one. The status
      * reply embeds these directly, so each must serialize as the object the agent expects.
      */
-    sealed interface Recorded permits Absent, Reply, ImportReceipt {}
+    sealed interface Recorded permits Absent, Reply, ImportReceipt, RestoredReceipt {}
+
+    /** Presentation-only retained JSON; save preconditions never come from this receipt. */
+    record RestoredReceipt(@JsonValue JsonNode value) implements Recorded {
+        private static final JsonMapper JSON = JsonMapper.builder().build();
+
+        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+        RestoredReceipt {
+            require(value != null && value.isObject(), "receipt", "must be an object");
+            require(
+                    value.toString().getBytes(StandardCharsets.UTF_8).length <= 65536,
+                    "receipt",
+                    "must not exceed 64 KiB");
+            value = value.deepCopy();
+        }
+
+        static RestoredReceipt capture(Recorded value) {
+            return new RestoredReceipt(JSON.valueToTree(value));
+        }
+
+        @Override
+        public JsonNode value() {
+            return value.deepCopy();
+        }
+    }
 
     /** No reply yet. A session reports its last save and last import as {@code {}} until one exists. */
     record Absent() implements Recorded {}
