@@ -27,6 +27,7 @@ import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
@@ -77,6 +78,104 @@ class WorkerSocketTests {
     private final RememberingExecutorClient client = new RememberingExecutorClient();
     private static final String COMMIT = "a".repeat(40);
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
+
+    @Test
+    void failedNewRetentionAdmissionReleasesItsSlotButStaleGenerationPreservesAnExistingCopy() throws Exception {
+        RetainedCopyStore store = metadataStore();
+        when(store.writer(any(), any()))
+                .thenThrow(new RetainedCopyException(RetainedCopyException.Reason.LIMIT))
+                .thenReturn(mock(RetainedFileLocks.Held.class));
+        var actor = principal();
+        var meters = new SimpleMeterRegistry();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        store,
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.checkpointProtocol = 1;
+            executor.bindMetrics(meters);
+            var fresh = new RepositoryExecutor.CopyRequest("new", null, false);
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            "retained-retry",
+                            fresh,
+                            Optional.empty(),
+                            "rejected",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            failure -> assertThat(failure.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.CAPACITY));
+            assertThat(peer.operations("OPEN")).isEmpty();
+            assertThat(peer.operations("EXEC")).isEmpty();
+            assertThat(meters.get("poketto.executor.sessions.active").gauge().value())
+                    .isZero();
+            var result = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "retained-retry",
+                    fresh,
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(result.retention().generation()).isEqualTo(1);
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            "retained-retry",
+                            new RepositoryExecutor.CopyRequest(result.copyId(), 2L, false),
+                            Optional.empty(),
+                            "stale",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            failure -> assertThat(failure.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.GENERATION_MISMATCH));
+            var continued = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "retained-retry",
+                    new RepositoryExecutor.CopyRequest(result.copyId(), 1L, false),
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(continued.copyId()).isEqualTo(result.copyId());
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(peer.operations("EXEC")).hasSize(2);
+        }
+    }
+
+    private static RetainedCopyStore metadataStore() {
+        RetainedCopyStore store = mock(RetainedCopyStore.class);
+        var record = new AtomicReference<RetainedCopyRecord>();
+        when(store.newExpiry()).thenReturn(System.currentTimeMillis() + 60000);
+        when(store.read(any(), any())).thenAnswer(call -> record.get());
+        doAnswer(call -> {
+                    record.set(call.getArgument(0));
+                    return null;
+                })
+                .when(store)
+                .create(any());
+        doAnswer(call -> {
+                    record.set(call.getArgument(2));
+                    return null;
+                })
+                .when(store)
+                .replace(any(Long.class), any(Long.class), any());
+        return store;
+    }
 
     @Test
     void idleReconnectAtTheSameCommitRequiresExplicitAdmissionAndNeverRunsTheRejectedCommand() throws Exception {
@@ -1604,6 +1703,7 @@ class WorkerSocketTests {
         private volatile int artifactProtocol = 1;
         private volatile int moveProtocol = 1;
         private volatile int exportProtocol = 1;
+        private volatile int checkpointProtocol;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
@@ -1672,7 +1772,7 @@ class WorkerSocketTests {
                         output.flush();
                         return;
                     }
-                    response = Map.of(
+                    var hello = new LinkedHashMap<String, Object>(Map.of(
                             "ok",
                             true,
                             "version",
@@ -1692,7 +1792,9 @@ class WorkerSocketTests {
                             "leaseSeconds",
                             10,
                             "renewAfterSeconds",
-                            1);
+                            1));
+                    hello.put("checkpointProtocol", checkpointProtocol);
+                    response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()
                             .decode(envelope.path("payload").stringValue());
@@ -1826,6 +1928,19 @@ class WorkerSocketTests {
                                     "artifactErrors",
                                     Map.of()));
                 }
+                case "CHECKPOINT" ->
+                    response.put(
+                            "checkpoint",
+                            Map.of(
+                                    "checkpointId",
+                                    request.path("data").path("checkpointId").stringValue(),
+                                    "sha256",
+                                    "b".repeat(64),
+                                    "bytes",
+                                    4096,
+                                    "expiresAt",
+                                    request.path("data").path("expiresAt").longValue()));
+                case "CHECKPOINT_REMOVE" -> response.put("removed", true);
                 case "BRIDGE_COMPLETE" -> bridgeCompleted.countDown();
                 case "CLOSE" -> {
                     if (dropClose) {

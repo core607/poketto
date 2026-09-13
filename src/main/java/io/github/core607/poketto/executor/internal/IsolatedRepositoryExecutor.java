@@ -259,7 +259,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (session != null
                     && ownsCommand
                     && !(exception instanceof IllegalArgumentException)
-                    && !(exception instanceof ExecutionAdmissionException)) {
+                    && (createdCopy || !(exception instanceof ExecutionAdmissionException))) {
                 try {
                     stopAndAwait(session, "cancelled");
                 } catch (RuntimeException closeFailure) {
