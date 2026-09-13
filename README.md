@@ -4,7 +4,7 @@ A personal knowledge workspace for you and your AI agents.
 
 Keep notes, clippings, reading lists and project knowledge in files with Git history. Work on them in a browser or let an AI agent search, edit and organize them through MCP. Publish the content you choose as a blog.
 
-[中文说明](README.zh.md) · [Development and operations](docs/usage.md) · [Architecture](notes/implemented/2026-08-25-requirements-and-architecture.md)
+[中文说明](README.zh.md) · [Development and operations](docs/usage.md) · [Architecture](notes/implemented/2026-08-25-requirements-and-architecture.md) · [Live instance](https://poketto.top)
 
 ## File as truth
 
