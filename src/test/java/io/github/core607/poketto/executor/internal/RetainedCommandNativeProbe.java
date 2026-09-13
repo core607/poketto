@@ -29,6 +29,8 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -61,6 +63,7 @@ final class RetainedCommandNativeProbe {
     private final WorkspaceId workspace;
     private final ObjectMapper json;
     private final RememberingExecutorClient client = new RememberingExecutorClient();
+    private final Map<RetainedCopyStore, RetainedWorkStores> stores = new IdentityHashMap<>();
 
     RetainedCommandNativeProbe(
             Path root,
@@ -90,6 +93,7 @@ final class RetainedCommandNativeProbe {
         try (var fixture = new PublicExecutionNativeFixture(root.resolve("repository"), exports, auth, workspace)) {
             try (var executor = adapter(fixture, store)) {
                 RetainedCopyRecord record = commands(executor, store);
+                assertOriginal(store, record);
                 Field workerField = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
                 workerField.setAccessible(true);
                 WorkerClient worker = (WorkerClient) workerField.get(executor);
@@ -106,11 +110,28 @@ final class RetainedCommandNativeProbe {
         return adapter(fixture, store, fixture.reader(auth));
     }
 
+    private RetainedWorkStores stores(RetainedCopyStore store) {
+        return stores.computeIfAbsent(
+                store,
+                records -> RetainedBaselineTestData.stores(records, root.resolve("originals-" + UUID.randomUUID())));
+    }
+
+    private void assertOriginal(RetainedCopyStore store, RetainedCopyRecord record) throws Exception {
+        var originals = stores(store).originals();
+        try (var writer = store.writer(record.owner(), record.copyId());
+                var reader = originals.open(writer, record.originalBaseline())) {
+            assertThat(reader.find("private/secret.md").orElseThrow().source()).contains("current-secret-needle");
+            assertThat(reader.find("private/draft.bin")).isEmpty();
+            assertThat(record.originalBaseline().identity().commit())
+                    .isEqualTo(record.acknowledged().state().originalCommit());
+        }
+    }
+
     private IsolatedRepositoryExecutor adapter(
             PublicExecutionNativeFixture fixture, RetainedCopyStore store, AuthorizedRepositoryReader reader) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.of(store),
+                        Optional.of(stores(store)),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -416,6 +437,7 @@ final class RetainedCommandNativeProbe {
             assertThat(result.retention().lastInterruptedCommand())
                     .isEqualTo(record.command().id());
             RetainedCopyRecord after = store.read(record.owner(), record.copyId());
+            assertThat(after.originalBaseline()).isEqualTo(record.originalBaseline());
             assertThat(after.acknowledged().state().baseCommit())
                     .isEqualTo(record.acknowledged().state().baseCommit());
             assertThat(after.acknowledged().state().fileBaselines())

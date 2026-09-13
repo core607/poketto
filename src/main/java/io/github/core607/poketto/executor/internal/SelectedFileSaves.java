@@ -5,6 +5,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryMoveService;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /** Uses only authoritative revisions; sandbox Git refs and indexes never supply write preconditions. */
 final class SelectedFileSaves {
@@ -46,6 +48,15 @@ final class SelectedFileSaves {
 
     SessionMoves moves() {
         return moves;
+    }
+
+    void visitOriginal(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            String commit,
+            RepositoryBaselineLimits limits,
+            Consumer<RepositoryFile> sink) {
+        reader.visitBaseline(actor, workspace, commit, limits, sink);
     }
 
     BridgeReplies.Reply save(

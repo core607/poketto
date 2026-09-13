@@ -57,6 +57,7 @@ class RetainedPublicProjectionTests {
                 new RetainedCopyRecord.Checkpoint(
                         UUID.randomUUID(), "b".repeat(64), 100, new SelectedFileSaves.State(BASE).snapshot()),
                 null,
+                null,
                 null);
     }
 

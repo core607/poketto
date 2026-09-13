@@ -72,6 +72,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final SelectedFileSaves saves;
     private final MediaFileService media;
     private final RetainedCopyStore retention;
+    private final RetainedBaselineStore originals;
     private final int maxSessions;
     private final Duration openTimeout;
     private final Duration closeTimeout;
@@ -105,7 +106,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
-            RetainedCopyStore retention,
+            RetainedWorkStores retention,
             PortableContentExports packages,
             MediaFileService media,
             SelectedFileSaves saves,
@@ -115,7 +116,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
-        this.retention = retention;
+        this.retention = retention == null ? null : retention.records();
+        this.originals = retention == null ? null : retention.originals();
         this.packages = packages;
         this.media = media;
         this.saves = saves;
@@ -611,7 +613,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 session.publicExport,
                 new RetainedCopyRecord.Writer(
                         session.hello.workerBootId(), worker.applicationBootId(), session.leaseId),
-                session.saveState.snapshot());
+                session.saveState.snapshot(),
+                originals,
+                sink -> saves.visitOriginal(
+                        session.principal, session.key.workspace(), session.commit, originals.traversalLimits(), sink));
         session.retainedRecord = retained.record();
         session.saveState = SelectedFileSaves.State.restore(session.saveState.snapshot(), retained::retain);
         retained.begin(executionId);

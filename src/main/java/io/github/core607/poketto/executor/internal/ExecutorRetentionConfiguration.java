@@ -14,6 +14,11 @@ import org.springframework.context.annotation.Configuration;
         havingValue = "true")
 class ExecutorRetentionConfiguration {
     @Bean
+    RetainedWorkStores retainedWorkStores(RetainedCopyStore records, RetainedBaselineStore originals) {
+        return new RetainedWorkStores(records, originals);
+    }
+
+    @Bean
     RetainedCopyMaintenance retainedCopyMaintenance(RetainedCopyStore store) {
         return new RetainedCopyMaintenance(store, Duration.ofMinutes(1));
     }

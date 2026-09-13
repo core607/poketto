@@ -136,6 +136,18 @@ final class RetainedCopyStore {
         }
     }
 
+    void requireBaselineReference(RetainedFileLocks.Held writer, RetainedBaseline.Reference reference) {
+        requireBaseline(writer, reference.identity(), false);
+        locked(() -> {
+            RetainedCopyRecord record =
+                    load(reference.identity().owner(), reference.identity().copyId());
+            if (!reference.equals(record.originalBaseline())) {
+                throw new RetainedCopyException(STALE);
+            }
+            return null;
+        });
+    }
+
     private static boolean baselineMatches(RetainedCopyRecord record, RetainedBaseline.Identity identity) {
         return record.fullRead()
                 && record.expiresAt() == identity.expiresAt()
@@ -263,6 +275,10 @@ final class RetainedCopyStore {
                 "worker lease transfer",
                 "must advance the writer generation");
         require(next.fullRead() == current.fullRead(), "retained scope", "must not change during recovery");
+        require(
+                Objects.equals(next.originalBaseline(), current.originalBaseline()),
+                "original baseline reference",
+                "must not change during recovery");
         require(
                 Objects.equals(next.publicExport(), current.publicExport()),
                 "public projection",

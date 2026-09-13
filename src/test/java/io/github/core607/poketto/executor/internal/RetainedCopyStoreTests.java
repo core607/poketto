@@ -131,7 +131,8 @@ class RetainedCopyStoreTests {
                     writer,
                     initial.acknowledged(),
                     null,
-                    null);
+                    null,
+                    initial.originalBaseline());
             if (generation == 1) {
                 assertThatThrownBy(() -> store.replace(0, 1, next))
                         .isInstanceOf(IllegalArgumentException.class)
@@ -323,7 +324,7 @@ class RetainedCopyStoreTests {
                 UUID.randomUUID(),
                 "d".repeat(64),
                 10,
-                withImport(initial.acknowledged().state(), "x".repeat(3000)));
+                withImport(initial.acknowledged().state(), "x".repeat(2500)));
         var next = changed(initial, 1, 1, initial.transportHash(), checkpoint, null);
         Path sample = directory.resolve("sample.record");
         new RetainedRecordFiles(4096).write(sample, next, 4096);
@@ -451,10 +452,12 @@ class RetainedCopyStoreTests {
     private static RetainedCopyRecord initial() {
         var state = new SelectedFileSaves.State(BASE);
         var checkpoint = new RetainedCopyRecord.Checkpoint(UUID.randomUUID(), "d".repeat(64), 1, state.snapshot());
+        var owner = new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID());
+        UUID copy = UUID.randomUUID();
         return new RetainedCopyRecord(
                 1,
-                new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID()),
-                UUID.randomUUID(),
+                owner,
+                copy,
                 0,
                 1,
                 "a".repeat(64),
@@ -464,7 +467,8 @@ class RetainedCopyStoreTests {
                 new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
                 checkpoint,
                 null,
-                null);
+                null,
+                RetainedBaselineTestData.reference(owner, copy, BASE, CLOCK.millis() + 60000));
     }
 
     private static RetainedCopyRecord changed(
@@ -487,7 +491,8 @@ class RetainedCopyStoreTests {
                 prior.writer(),
                 checkpoint,
                 command,
-                null);
+                null,
+                prior.originalBaseline());
     }
 
     private static BridgeReplies.RestoredReceipt receipt(String message) {

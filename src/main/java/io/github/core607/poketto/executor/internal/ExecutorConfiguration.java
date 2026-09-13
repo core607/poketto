@@ -41,7 +41,7 @@ class ExecutorConfiguration {
 
     @Bean
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
-            Optional<RetainedCopyStore> retention,
+            Optional<RetainedWorkStores> retention,
             AuthService auth,
             RepositorySnapshotExports exports,
             PortableContentExports packages,

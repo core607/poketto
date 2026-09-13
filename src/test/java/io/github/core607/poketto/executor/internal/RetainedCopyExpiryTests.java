@@ -138,10 +138,12 @@ class RetainedCopyExpiryTests {
 
     private static RetainedCopyRecord record(long lifetime) {
         var state = new SelectedFileSaves.State("1".repeat(40));
+        var owner = new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID());
+        UUID copy = UUID.randomUUID();
         return new RetainedCopyRecord(
                 1,
-                new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID()),
-                UUID.randomUUID(),
+                owner,
+                copy,
                 0,
                 1,
                 "a".repeat(64),
@@ -151,7 +153,8 @@ class RetainedCopyExpiryTests {
                 new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
                 new RetainedCopyRecord.Checkpoint(UUID.randomUUID(), "b".repeat(64), 1, state.snapshot()),
                 null,
-                null);
+                null,
+                RetainedBaselineTestData.reference(owner, copy, "1".repeat(40), CLOCK.millis() + lifetime));
     }
 
     private static void assertReason(Runnable operation, RetainedCopyException.Reason reason) {

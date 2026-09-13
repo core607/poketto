@@ -2,12 +2,14 @@ package io.github.core607.poketto.executor.internal;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryFile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
@@ -63,6 +65,17 @@ final class RetainedBaselineStore {
         });
     }
 
+    void requireRecords(RetainedCopyStore expected) {
+        ProtocolValues.require(records == expected, "baseline metadata", "must be the same store instance");
+    }
+
+    RepositoryBaselineLimits traversalLimits() {
+        return new RepositoryBaselineLimits(
+                limits.files().entries(),
+                Math.min(limits.files().expandedBytes(), 1024L * 1024 * 1024),
+                Duration.ofMinutes(2));
+    }
+
     private RetainedBaseline.Reference publish(
             RetainedFileLocks.Held writer,
             RetainedBaseline.Identity identity,
@@ -92,7 +105,7 @@ final class RetainedBaselineStore {
 
     /** The writer must remain held for every read; the caller separately enforces current user authorization. */
     Reader open(RetainedFileLocks.Held writer, RetainedBaseline.Reference reference) {
-        records.requireBaseline(writer, reference.identity(), false);
+        records.requireBaselineReference(writer, reference);
         try {
             directory.checkRoot();
             Path file = path(reference.identity());
@@ -100,7 +113,7 @@ final class RetainedBaselineStore {
             var reader = RetainedBaselineFiles.open(file, reference, limits.files());
             boolean transferred = false;
             try {
-                records.requireBaseline(writer, reference.identity(), false);
+                records.requireBaselineReference(writer, reference);
                 var result = new Reader(writer, reference.identity(), reader);
                 transferred = true;
                 return result;

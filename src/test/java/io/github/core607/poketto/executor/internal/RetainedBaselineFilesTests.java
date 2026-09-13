@@ -237,8 +237,17 @@ class RetainedBaselineFilesTests {
             var offset = ByteBuffer.allocate(Long.BYTES);
             channel.position(header.indexOffset() + 32);
             RetainedBaselineIo.readFully(channel, offset);
+            long first = offset.flip().getLong();
+            offset.clear();
             channel.position(header.indexOffset() + RetainedBaselineHeader.INDEX_BYTES + 32);
-            RetainedBaselineIo.writeFully(channel, offset.flip());
+            RetainedBaselineIo.readFully(channel, offset);
+            long earlier = Math.min(first, offset.flip().getLong());
+            channel.position(header.indexOffset() + 32);
+            RetainedBaselineIo.writeFully(
+                    channel, ByteBuffer.allocate(8).putLong(earlier).flip());
+            channel.position(header.indexOffset() + RetainedBaselineHeader.INDEX_BYTES + 32);
+            RetainedBaselineIo.writeFully(
+                    channel, ByteBuffer.allocate(8).putLong(earlier).flip());
             changed = new RetainedBaseline.Reference(
                     identity,
                     RetainedBaselineIo.digest(channel, reference.bytes()),

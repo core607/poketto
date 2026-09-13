@@ -89,7 +89,7 @@ class WorkerSocketTests {
         var meters = new SimpleMeterRegistry();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        store,
+                        retainedStores(store),
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -166,7 +166,7 @@ class WorkerSocketTests {
         var meters = new SimpleMeterRegistry();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
-                        store,
+                        retainedStores(store),
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -230,6 +230,16 @@ class WorkerSocketTests {
                 .when(store)
                 .replace(any(Long.class), any(Long.class), any());
         return store;
+    }
+
+    private static RetainedWorkStores retainedStores(RetainedCopyStore records) {
+        var originals = mock(RetainedBaselineStore.class);
+        when(originals.capture(any(), any(), any())).thenAnswer(call -> {
+            RetainedBaseline.Identity identity = call.getArgument(1);
+            return RetainedBaselineTestData.reference(
+                    identity.owner(), identity.copyId(), identity.commit(), identity.expiresAt());
+        });
+        return new RetainedWorkStores(records, originals);
     }
 
     @Test

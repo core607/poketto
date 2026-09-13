@@ -20,7 +20,8 @@ record RetainedCopyRecord(
         Writer writer,
         Checkpoint acknowledged,
         Command command,
-        UUID lastInterruptedCommand) {
+        UUID lastInterruptedCommand,
+        RetainedBaseline.Reference originalBaseline) {
     static final long MAX_VERSION = 9_007_199_254_740_991L;
 
     RetainedCopyRecord {
@@ -35,6 +36,8 @@ record RetainedCopyRecord(
         Objects.requireNonNull(acknowledged, "acknowledged checkpoint must be present");
         RetainedPublicProjection.validate(
                 owner, fullRead, publicExport, acknowledged.state().originalCommit());
+        RetainedBaseline.validateBinding(
+                owner, copyId, fullRead, expiresAt, acknowledged.state().originalCommit(), originalBaseline);
         if (command != null) {
             require(
                     command.checkpoint()

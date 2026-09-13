@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
@@ -7,6 +8,7 @@ import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,11 +96,17 @@ final class RetainedCommand implements AutoCloseable {
             boolean fullRead,
             RepositorySnapshotExports.PublicExport publicExport,
             RetainedCopyRecord.Writer lease,
-            RetainedSaveState state) {
+            RetainedSaveState state,
+            RetainedBaselineStore originals,
+            Consumer<Consumer<RepositoryFile>> source) {
         if (record != null) {
             return;
         }
         long expiresAt = store.newExpiry();
+        RetainedBaseline.Reference original = fullRead
+                ? originals.capture(
+                        writer, new RetainedBaseline.Identity(owner, copyId, state.originalCommit(), expiresAt), source)
+                : null;
         RetainedCopyRecord.Checkpoint checkpoint = capture(state, expiresAt, Optional.empty());
         var initial = new RetainedCopyRecord(
                 1,
@@ -113,7 +121,8 @@ final class RetainedCommand implements AutoCloseable {
                 lease,
                 checkpoint,
                 null,
-                null);
+                null,
+                original);
         publish(initial);
     }
 
@@ -195,7 +204,8 @@ final class RetainedCommand implements AutoCloseable {
                 record.writer(),
                 acknowledged,
                 command,
-                record.lastInterruptedCommand());
+                record.lastInterruptedCommand(),
+                record.originalBaseline());
         publish(next);
     }
 
@@ -261,7 +271,8 @@ final class RetainedCommand implements AutoCloseable {
                 nextWriter,
                 record.acknowledged(),
                 interrupted,
-                previous == null ? record.lastInterruptedCommand() : previous.id());
+                previous == null ? record.lastInterruptedCommand() : previous.id(),
+                record.originalBaseline());
         publish(next);
         resumedPoint = point;
         resumed = true;

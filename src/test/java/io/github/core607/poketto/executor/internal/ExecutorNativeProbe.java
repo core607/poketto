@@ -169,7 +169,8 @@ public final class ExecutorNativeProbe {
             Optional<RetainedCopyStore> retention) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        retention,
+                        retention.map(store -> RetainedBaselineTestData.stores(
+                                store, path("publicFixture").resolve("public-originals"))),
                         auth,
                         selectedExports,
                         mock(PortableContentExports.class),
@@ -1908,6 +1909,7 @@ public final class ExecutorNativeProbe {
             RetainedCopyRecord record = retention.read(
                     new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value()),
                     UUID.fromString(result.copyId()));
+            assertThat(record.originalBaseline()).isNull();
             assertThat(record.fullRead()).isFalse();
             assertThat(record.publicExport().authorityCommit()).isEqualTo(fixture.sourceCommit());
             assertThat(record.publicExport().sourcePaths()).containsEntry("article/index.md", "public/article.md");

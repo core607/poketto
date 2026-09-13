@@ -3,7 +3,12 @@ package io.github.core607.poketto.executor.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.auth.AuthException;
+import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -32,6 +37,77 @@ class RetainedCommandTests {
 
     @TempDir
     Path directory;
+
+    @Test
+    void capturesAnOriginalBeforeCheckpointAndKeepsItsReferenceAcrossGenerationTransfer() throws Exception {
+        var store = store();
+        var originals = RetainedBaselineTestData.stores(store, directory.resolve("originals"))
+                .originals();
+        var port = new Checkpoints(store);
+        var state = new SelectedFileSaves.State(BASE);
+        var file = new RepositoryFile(
+                new WorkspaceId(owner.workspaceId()),
+                Optional.of(BASE),
+                "原文.md",
+                false,
+                Optional.of("原始内容"),
+                Optional.of(DocumentRevision.sha256("原始内容".getBytes(StandardCharsets.UTF_8))),
+                List.of(),
+                false);
+        RetainedBaseline.Reference reference;
+        try (var command = new RetainedCommand(store, owner, copy, null, port)) {
+            command.initialize("a".repeat(64), true, null, lease, state.snapshot(), originals, sink -> {
+                assertThat(port.running).isEmpty();
+                sink.accept(file);
+            });
+            reference = command.record().originalBaseline();
+            assertThat(reference.identity().expiresAt())
+                    .isEqualTo(command.record().expiresAt());
+            command.begin(UUID.randomUUID());
+            command.complete(state.snapshot());
+            assertThat(command.record().originalBaseline()).isEqualTo(reference);
+        }
+        try (var writer = store.writer(owner, copy);
+                var reader = originals.open(writer, reference)) {
+            assertThat(reader.find("原文.md")).contains(file);
+        }
+        try (var resumed = RetainedCommand.resume(store, owner, copy, 1, port)) {
+            resumed.transferAfterContainment("f".repeat(64), lease);
+            resumed.initialize("f".repeat(64), true, null, lease, state.snapshot(), originals, sink -> {
+                throw new AssertionError("recovery must not recapture current remote content");
+            });
+            assertThat(resumed.record().originalBaseline()).isEqualTo(reference);
+        }
+    }
+
+    @Test
+    void failedOriginalAndInitialCheckpointNeverPublishMetadataAndOrphansAreReclaimed() {
+        var store = store();
+        var originals = RetainedBaselineTestData.stores(store, directory.resolve("originals"))
+                .originals();
+        var port = new Checkpoints(store);
+        var state = new SelectedFileSaves.State(BASE).snapshot();
+        var denial = new AuthException(AuthException.Code.DENIED);
+        try (var command = new RetainedCommand(store, owner, copy, null, port)) {
+            assertThatThrownBy(() -> command.initialize("a".repeat(64), true, null, lease, state, originals, sink -> {
+                        throw denial;
+                    }))
+                    .isSameAs(denial);
+            assertThat(port.running).isEmpty();
+            assertThat(command.record()).isNull();
+            port.failReady = true;
+            assertThatThrownBy(
+                            () -> command.initialize("a".repeat(64), true, null, lease, state, originals, sink -> {}))
+                    .isInstanceOf(RetainedCopyException.class);
+            assertThat(command.record()).isNull();
+            assertThat(originals.collectUnused()).isZero();
+        }
+        assertThatThrownBy(() -> store.read(owner, copy))
+                .isInstanceOfSatisfying(
+                        RetainedCopyException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(RetainedCopyException.Reason.MISSING));
+        assertThat(originals.collectUnused()).isEqualTo(1);
+    }
 
     @Test
     void retainsIntentAndIntermediateStateBeforeReplacingTheAcknowledgedPoint() throws Exception {
@@ -248,7 +324,15 @@ class RetainedCommandTests {
 
     private SelectedFileSaves.State initialize(RetainedCommand command) {
         var state = new SelectedFileSaves.State(BASE);
-        command.initialize("a".repeat(64), true, null, lease, state.snapshot());
+        command.initialize(
+                "a".repeat(64),
+                true,
+                null,
+                lease,
+                state.snapshot(),
+                RetainedBaselineTestData.stores(store(), directory.resolve("originals"))
+                        .originals(),
+                sink -> {});
         return SelectedFileSaves.State.restore(state.snapshot(), command::retain);
     }
 

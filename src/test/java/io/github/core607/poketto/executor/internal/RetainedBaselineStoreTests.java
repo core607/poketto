@@ -56,7 +56,7 @@ class RetainedBaselineStoreTests {
                 sink.accept(file(identity, "原始正文😸"));
             });
             assertThat(stores.baselines().collectUnused()).isZero();
-            stores.records().create(record(identity));
+            stores.records().create(record(reference));
         }
         var reopened = stores(CLOCK, METADATA, BASELINES);
         try (var writer = reopened.records().writer(identity.owner(), identity.copyId());
@@ -83,7 +83,7 @@ class RetainedBaselineStoreTests {
             assertReason(
                     () -> stores.baselines().capture(writer, wrong, sink -> {}), RetainedCopyException.Reason.STALE);
             var reference = stores.baselines().capture(writer, identity, sink -> sink.accept(file(identity, "source")));
-            stores.records().create(record(identity));
+            stores.records().create(record(reference));
             try (var reader = stores.baselines().open(writer, reference)) {
                 writer.close();
                 assertReason(() -> reader.find("missing.md"), RetainedCopyException.Reason.UNAVAILABLE);
@@ -333,7 +333,7 @@ class RetainedBaselineStoreTests {
         try (var writer = stores.records().writer(identity.owner(), identity.copyId())) {
             var reference = stores.baselines().capture(writer, identity, sink -> sink.accept(file(identity, source)));
             if (publishRecord) {
-                stores.records().create(record(identity));
+                stores.records().create(record(reference));
             }
             return reference;
         }
@@ -360,6 +360,12 @@ class RetainedBaselineStoreTests {
     }
 
     private static RetainedCopyRecord record(RetainedBaseline.Identity identity) {
+        return record(RetainedBaselineTestData.reference(
+                identity.owner(), identity.copyId(), identity.commit(), identity.expiresAt()));
+    }
+
+    private static RetainedCopyRecord record(RetainedBaseline.Reference reference) {
+        var identity = reference.identity();
         return new RetainedCopyRecord(
                 1,
                 identity.owner(),
@@ -374,7 +380,8 @@ class RetainedBaselineStoreTests {
                 new RetainedCopyRecord.Checkpoint(
                         new UUID(0, 4), "c".repeat(64), 1, new SelectedFileSaves.State(identity.commit()).snapshot()),
                 null,
-                null);
+                null,
+                reference);
     }
 
     private Path archive() throws Exception {
