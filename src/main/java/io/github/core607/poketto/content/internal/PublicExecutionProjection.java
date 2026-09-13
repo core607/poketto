@@ -180,6 +180,7 @@ final class PublicExecutionProjection {
             String body = sanitize(article, path, articlePaths, mediaPaths);
             String text = "---\ntitle: " + JSON.writeValueAsString(article.title()) + "\ntags: "
                     + JSON.writeValueAsString(article.tags()) + "\nroute: " + JSON.writeValueAsString(article.route())
+                    + "\npublic_author: " + JSON.writeValueAsString(article.publicAuthor())
                     + (article.createdAt() == null
                             ? ""
                             : "\ndate: "

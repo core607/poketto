@@ -189,7 +189,8 @@ final class PortableContentPlanner {
             if (publicOnly) {
                 var article = publicArticles.get(path);
                 text = "---\ntitle: " + JSON.writeValueAsString(article.title()) + "\ntags: "
-                        + JSON.writeValueAsString(article.tags()) + "\n---\n\n"
+                        + JSON.writeValueAsString(article.tags()) + "\npublic_author: "
+                        + JSON.writeValueAsString(article.publicAuthor()) + "\n---\n\n"
                         + publicBody(article.body(), authored -> builder.destination(path, archive, authored));
             } else {
                 String source = entry.getValue().file().source().orElseThrow(PortableContentPlanner::unavailable);

@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentLimits;
+import io.github.core607.poketto.workspace.PublicAuthorNames;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -125,7 +126,15 @@ final class RepositoryMarkdownParser {
             createdAt = date(metadata, "date");
         }
         return new Metadata(
-                title, body, List.copyOf(tags), createdAt, date(metadata, "updated_at"), route, !hasMetadata);
+                title,
+                body,
+                List.copyOf(tags),
+                createdAt,
+                date(metadata, "updated_at"),
+                route,
+                !hasMetadata,
+                PublicAuthorNames.normalize(
+                        optionalText(metadata, "public_author").orElse("")));
     }
 
     private static Optional<String> firstHeading(String body) {
@@ -196,5 +205,6 @@ final class RepositoryMarkdownParser {
             Optional<Instant> createdAt,
             Optional<Instant> updatedAt,
             String route,
-            boolean inferredMetadata) {}
+            boolean inferredMetadata,
+            String publicAuthor) {}
 }

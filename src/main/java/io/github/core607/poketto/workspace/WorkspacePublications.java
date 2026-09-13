@@ -14,7 +14,15 @@ public interface WorkspacePublications {
     /** Requires the caller's owner-authorization transaction. */
     Publication setEnabled(WorkspaceId workspace, boolean enabled);
 
+    /** Requires the caller's owner-authorization transaction. */
+    Publication setAuthorName(WorkspaceId workspace, String name);
+
     void requireEnabled(WorkspaceId workspace);
 
-    record Publication(WorkspaceId workspaceId, String slug, String displayName, boolean enabled) {}
+    record Publication(
+            WorkspaceId workspaceId, String slug, String displayName, boolean enabled, String publicAuthorName) {
+        public String authorName() {
+            return PublicAuthorNames.select(publicAuthorName, displayName);
+        }
+    }
 }

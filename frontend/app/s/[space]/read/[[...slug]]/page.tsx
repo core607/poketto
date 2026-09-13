@@ -57,6 +57,7 @@ export default async function Article({
       </a>
       <header className="reading-header">
         <div className="article-meta">
+          <span className="author-name">{value.authorName}</span>
           <time dateTime={value.createdAt}>{date(value.createdAt)}</time>
           {value.folderPage && <span>文件夹笔记</span>}
         </div>

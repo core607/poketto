@@ -79,7 +79,7 @@ public final class AcceptanceApplication {
             write(
                     directory,
                     "public/随记/雨后.md",
-                    "---\ntitle: 雨停之后，留一页给散步\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
+                    "---\ntitle: 雨停之后，留一页给散步\npublic_author: 雨后散步者\nauthor: PRIVATE_AUTHOR_ACCEPTANCE_SENTINEL\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
             write(
                     directory,
                     "public/手册/index.md",

@@ -21,6 +21,7 @@ export function ArticleList({
           page.items.map((item) => (
             <article key={item.route} className="article-card">
               <div className="article-meta">
+                <span className="author-name">{item.authorName}</span>
                 <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
                 <span>／</span>
                 {item.tags.slice(0, 3).map((tag) => (

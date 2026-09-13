@@ -13,7 +13,8 @@ public record RepositoryDocument(
         Instant updatedAt,
         String route,
         boolean folderPage,
-        boolean privatePath) {
+        boolean privatePath,
+        String publicAuthor) {
     public RepositoryDocument {
         tags = List.copyOf(tags);
     }

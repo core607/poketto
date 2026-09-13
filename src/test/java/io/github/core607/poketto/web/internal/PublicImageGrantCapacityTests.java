@@ -29,6 +29,7 @@ import io.github.core607.poketto.content.SiblingImages;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -49,6 +50,14 @@ class PublicImageGrantCapacityTests {
     @TempDir
     Path directory;
 
+    private static WorkspacePublications publications(Workspace workspace) {
+        var publications = mock(WorkspacePublications.class);
+        when(publications.settings(workspace.id()))
+                .thenReturn(new WorkspacePublications.Publication(
+                        workspace.id(), "home", workspace.displayName(), true, ""));
+        return publications;
+    }
+
     @Test
     void emptyPartialAndFailedGalleryScanRemainReadableWithoutLeakingFailureDetails() throws Exception {
         var workspace = new Workspace(WorkspaceId.random(), "Public fixture");
@@ -60,7 +69,8 @@ class PublicImageGrantCapacityTests {
                 Optional.of("b".repeat(40)),
                 at,
                 at.plusSeconds(3600),
-                List.of(new PublicArticle("index.md", "/", "Readable", "# Readable body", List.of(), at, at, true)));
+                List.of(new PublicArticle(
+                        "index.md", "/", "Readable", "# Readable body", List.of(), at, at, true, "")));
         var snapshots = mock(PublicContentSnapshots.class);
         when(snapshots.withCurrent(any(), any()))
                 .thenAnswer(call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(snapshot));
@@ -83,8 +93,8 @@ class PublicImageGrantCapacityTests {
                 128,
                 Clock.fixed(at, ZoneOffset.UTC),
                 new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
-        var mvc = MockMvcBuilders.standaloneSetup(
-                        new PublicDocumentController(new PublicDocuments(snapshots, catalog, service)))
+        var mvc = MockMvcBuilders.standaloneSetup(new PublicDocumentController(
+                        new PublicDocuments(snapshots, catalog, service, publications(workspace))))
                 .setControllerAdvice(new ProblemResponses())
                 .build();
         for (String state : List.of("PARTIAL", "UNAVAILABLE")) {
@@ -118,7 +128,7 @@ class PublicImageGrantCapacityTests {
         List<PublicArticle> articles = new ArrayList<>();
         for (int i = 0; i < 129; i++) {
             articles.add(new PublicArticle(
-                    "article-" + i + ".md", "/article-" + i, "Still readable", body, List.of(), at, at, false));
+                    "article-" + i + ".md", "/article-" + i, "Still readable", body, List.of(), at, at, false, ""));
         }
         var snapshot = new PublicContentSnapshot(
                 workspace.id(), Optional.of("b".repeat(40)), at, at.plusSeconds(3600), articles);
@@ -141,8 +151,8 @@ class PublicImageGrantCapacityTests {
                 128,
                 Clock.fixed(at, ZoneOffset.UTC),
                 memory);
-        var mvc = MockMvcBuilders.standaloneSetup(
-                        new PublicDocumentController(new PublicDocuments(snapshots, catalog, service)))
+        var mvc = MockMvcBuilders.standaloneSetup(new PublicDocumentController(
+                        new PublicDocuments(snapshots, catalog, service, publications(workspace))))
                 .setControllerAdvice(new ProblemResponses())
                 .addFilters(new ImageMemoryFilter(memory))
                 .build();

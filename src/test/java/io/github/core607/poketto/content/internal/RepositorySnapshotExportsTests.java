@@ -144,10 +144,11 @@ class RepositorySnapshotExportsTests {
                                         Map.of("public/report.pdf", publicMedia, "private/secret.png", hiddenMedia))
                                 .encode(),
                         "public/hello.md",
-                        text("---\ntitle: Hello\nprivate_field: hidden frontmatter needle\n---\n"
-                                + "Public body\n\n<!-- hidden comment needle -->\n\n"
-                                + "[Report](report.pdf) [Other](other.md#heading) [Secret](../private/secret.md)\n\n"
-                                + "![hidden](../private/secret.png)\n"),
+                        text(
+                                "---\ntitle: Hello\npublic_author: Public signature\nprivate_field: hidden frontmatter needle\n---\n"
+                                        + "Public body\n\n<!-- hidden comment needle -->\n\n"
+                                        + "[Report](report.pdf) [Other](other.md#heading) [Secret](../private/secret.md)\n\n"
+                                        + "![hidden](../private/secret.png)\n"),
                         "public/other.md",
                         text("# Other\nPublic second article"),
                         "AGENTS.md",
@@ -180,7 +181,11 @@ class RepositorySnapshotExportsTests {
             assertThat(copy.resolve(RepositoryPublishingPolicy.PATH)).doesNotExist();
             String article = Files.readString(copy.resolve("hello/index.md"));
             assertThat(article)
-                    .contains("Public body", "../_media/1-report.pdf", "../other/index.md#heading")
+                    .contains(
+                            "Public body",
+                            "../_media/1-report.pdf",
+                            "../other/index.md#heading",
+                            "public_author: \"Public signature\"")
                     .doesNotContain("private/", "hidden comment needle", "hidden frontmatter needle");
             assertThat(Files.readString(copy.resolve("AGENTS.md")))
                     .doesNotContain("private operator instructions needle");

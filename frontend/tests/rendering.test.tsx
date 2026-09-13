@@ -167,6 +167,7 @@ test("article stream contains readable titles and links in initial server HTML",
           {
             route: "/note",
             title: "一篇记录",
+            authorName: "署名 <script>作者</script>",
             tags: ["知识"],
             createdAt: "2026-09-01T00:00:00Z",
             updatedAt: "2026-09-01T00:00:00Z",
@@ -178,6 +179,7 @@ test("article stream contains readable titles and links in initial server HTML",
     />,
   );
   assert.match(html, /一篇记录/);
+  assert.match(html, /署名 &lt;script&gt;作者&lt;\/script&gt;/);
   assert.match(html, /不需要 JavaScript/);
   assert.match(html, /# literal !\[code\]\(literal\)/);
   assert.match(html, /&lt;script&gt;text&lt;\/script&gt;/);
