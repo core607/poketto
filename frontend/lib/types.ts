@@ -45,7 +45,7 @@ export type Article = Snapshot &
     images?: Record<string, string>;
     links?: Record<string, string>;
     downloads?: Record<string, string>;
-    gallery?: { src: string; alt: string }[];
+    gallery?: { src: string; original: string; alt: string }[];
     galleryStatus: GalleryStatus;
     navigation: CollectionNavigation;
   };

@@ -8,13 +8,16 @@ export function Gallery({
   preview = false,
   status = "COMPLETE",
 }: {
-  items?: { src: string; alt: string }[];
+  items?: { src: string; original: string; alt: string }[];
   preview?: boolean;
   status?: GalleryStatus;
 }) {
-  const safe = items.filter((item) => safeImage(item.src, preview));
+  const safe = items.filter(
+    (item) => safeImage(item.src, preview) && safeImage(item.original, preview),
+  );
   const [selected, setSelected] = useState<number | null>(null);
   const [failedSource, setFailedSource] = useState<string | null>(null);
+  const [failedPreviews, setFailedPreviews] = useState<string[]>([]);
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
   const active = selected === null ? undefined : safe[selected];
@@ -54,12 +57,21 @@ export function Gallery({
               setSelected(index);
             }}
           >
-            <img
-              src={item.src}
-              alt={item.alt}
-              loading="lazy"
-              decoding="async"
-            />
+            {failedPreviews.includes(item.src) ? (
+              <span className="image-unavailable">
+                预览暂时不可用 · 点击查看原图
+              </span>
+            ) : (
+              <img
+                src={item.src}
+                alt={item.alt}
+                loading="lazy"
+                decoding="async"
+                onError={() =>
+                  setFailedPreviews((failed) => [...failed, item.src])
+                }
+              />
+            )}
           </button>
           {item.alt && <figcaption>{item.alt}</figcaption>}
         </figure>
@@ -106,13 +118,13 @@ export function Gallery({
             </button>
           </header>
           {active &&
-            (failedSource === active.src ? (
+            (failedSource === active.original ? (
               <p role="alert">图片暂时无法读取，请重新打开页面。</p>
             ) : (
               <img
-                src={active.src}
+                src={active.original}
                 alt={active.alt}
-                onError={() => setFailedSource(active.src)}
+                onError={() => setFailedSource(active.original)}
               />
             ))}
           <p>{active?.alt}</p>

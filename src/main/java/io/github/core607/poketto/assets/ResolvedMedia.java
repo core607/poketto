@@ -27,5 +27,5 @@ public record ResolvedMedia(
         UNAVAILABLE
     }
 
-    public record GalleryImage(String src, String alt) {}
+    public record GalleryImage(String src, String original, String alt) {}
 }

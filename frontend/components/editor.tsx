@@ -24,7 +24,7 @@ type Preview = {
   images?: Record<string, string>;
   links?: Record<string, string>;
   downloads?: Record<string, string>;
-  gallery?: { src: string; alt: string }[];
+  gallery?: { src: string; original: string; alt: string }[];
   galleryStatus: GalleryStatus;
 };
 export function Editor({

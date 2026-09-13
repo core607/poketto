@@ -1,0 +1,1 @@
+`lossless-vp8l.webp` is a self-generated 96x64 RGB gradient encoded with `cwebp -lossless` for codec regression coverage. The source uses `r=(x*255)/95`, `g=(y*255)/63`, and `b=((x+y)*255)/158` for each pixel, then `cwebp -lossless source.png lossless-vp8l.webp`. It contains no external image data and has no upstream attribution requirement.

@@ -68,6 +68,8 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.modulith:spring-modulith-core:$springModulithVersion")
     runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("com.twelvemonkeys.imageio:imageio-jpeg:3.15.0")
+    runtimeOnly("com.twelvemonkeys.imageio:imageio-webp:3.15.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
