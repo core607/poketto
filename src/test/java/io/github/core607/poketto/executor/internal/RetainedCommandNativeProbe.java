@@ -110,6 +110,8 @@ final class RetainedCommandNativeProbe {
                     .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
             new RetainedDiscardNativeProbe(auth, actor, workspace, CANCELLATION)
                     .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
+            new RetainedContentionNativeProbe(auth, actor, workspace, CANCELLATION)
+                    .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
             new RetainedLifecycleNativeProbe(auth, actor, workspace, CANCELLATION)
                     .run(root, fixture, (records, reader) -> adapter(fixture, records, reader), control, privateRead);
         }

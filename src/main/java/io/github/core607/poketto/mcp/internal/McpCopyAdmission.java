@@ -2,13 +2,14 @@ package io.github.core607.poketto.mcp.internal;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Map;
 import tools.jackson.databind.ObjectMapper;
 
-/** MCP copy identity inputs and pre-execution refusals. */
+/** MCP copy identity inputs and retained-execution outcomes. */
 final class McpCopyAdmission {
     private McpCopyAdmission() {}
 
@@ -65,6 +66,30 @@ final class McpCopyAdmission {
                 exception.currentGeneration(),
                 exception.recoveryAvailable(),
                 "This command did not execute. Recovery requires the intended copy ID, its current generation and resume=true. Earlier interrupted commands may have partially completed; inspect recovered state before retrying writes.");
+        return McpSchema.CallToolResult.builder()
+                .addTextContent(json.writeValueAsString(body))
+                .isError(true)
+                .build();
+    }
+
+    private record UnconfirmedExecution(
+            String code,
+            String copyId,
+            long currentGeneration,
+            long expiresAt,
+            boolean mayHaveExecuted,
+            boolean recoveryAvailable,
+            String message) {}
+
+    static McpSchema.CallToolResult executionUnconfirmed(ObjectMapper json, ExecutionUnconfirmedException exception) {
+        var body = new UnconfirmedExecution(
+                "EXECUTION_UNCONFIRMED",
+                exception.copyId(),
+                exception.retention().generation(),
+                exception.retention().expiresAt(),
+                true,
+                exception.recoveryAvailable(),
+                "This command may have partially completed, including remote writes. Do not replay it. Before expiry, recover this exact copy and generation with resume=true and a read-only inspection command; inspect retained interruption and pending-save state before continuing.");
         return McpSchema.CallToolResult.builder()
                 .addTextContent(json.writeValueAsString(body))
                 .isError(true)

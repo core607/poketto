@@ -102,6 +102,8 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。确认旧命令已退出、租约已释放后，可以在同一 MCP 会话里显式传 `"new"` 开始不同的副本。管理员开启保留执行模式后（默认关闭），结果还会包含 `retention.generation` 和固定到期时间；后续调用须将该代次作为 `expectedGeneration` 传回。重连后，携带同一 ID 和代次，显式设置 `resume: true`，并使用只读命令检查恢复状态。`EXECUTION_REFUSED` 只表示本次请求未执行，先前中断的工作仍可能部分完成。重试写入前应核对拒绝原因、当前代次、`retention.lastInterruptedCommand` 和 `poketto status`。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则与尚未完成的验收范围。
 
+`EXECUTION_UNCONFIRMED` 表示已尝试执行保留命令，但未能确认完成。响应包含实际 `copyId`、`currentGeneration`、固定 `expiresAt`、`mayHaveExecuted: true` 和恢复资格。本地修改与远端写入都可能部分完成。保留这些身份信息，先显式恢复并检查状态，再决定是否重试写入；此结果绝不表示命令没有执行。
+
 要永久丢弃保留的本地工作，调用 `repo_discard`，传入准确的 `expectedCopyId` 和最新的 `expectedGeneration`。此操作要求当前执行权限，重连、保留期结束或内容读取权限收回后也可以使用。忙碌副本和旧代次会被拒绝；确认旧租约已停止后才删除恢复元数据。`DISCARDED` 或 `ABSENT` 确认该身份在指定 ID 下已无可恢复副本，物理文件清理可能稍后完成。未确认的响应允许用同一 ID 和代次重试，但不能据此认定工作仍然存在。丢弃不会撤销远端 Git 提交。此操作要求已开启保留执行模式。
 
 通过 `repo_exec` 查看目录、搜索、读取和编辑文件，再使用 `poketto` CLI 持久化修改。按需逐层读取内容仓库自己的 `AGENTS.md`。独立的 `list_directory`、`get_file` 和 `repo_patch` 不再受支持，关闭 worker 时也不会恢复它们。[CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)定义这一边界；共享目录读取服务仍用于浏览器导航。

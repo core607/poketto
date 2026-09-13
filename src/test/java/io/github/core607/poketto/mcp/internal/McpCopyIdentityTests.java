@@ -13,6 +13,7 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -262,5 +263,25 @@ class McpCopyIdentityTests {
 
     private JsonNode body(McpSchema.CallToolResult result) {
         return json.readTree(((McpSchema.TextContent) result.content().getFirst()).text());
+    }
+
+    @Test
+    void anAttemptedRetainedCommandReturnsRecoveryIdentityWithoutClaimingNonExecution() {
+        String copyId = UUID.randomUUID().toString();
+        var retention = new RepositoryExecutor.CopyRetention(7, 900000, true, null);
+        when(executor.execute(any(), any(), anyString(), any(), any(), anyString(), any(), any()))
+                .thenThrow(new ExecutionUnconfirmedException(
+                        copyId, retention, true, new IllegalStateException("private worker failure details")));
+        var result = call(Map.of("expectedCopyId", "new", "command", "poketto save note.md"));
+        var response = body(result);
+        assertThat(result.isError()).isTrue();
+        assertThat(response.path("code").stringValue()).isEqualTo("EXECUTION_UNCONFIRMED");
+        assertThat(response.path("copyId").stringValue()).isEqualTo(copyId);
+        assertThat(response.path("currentGeneration").longValue()).isEqualTo(7);
+        assertThat(response.path("expiresAt").longValue()).isEqualTo(900000);
+        assertThat(response.path("mayHaveExecuted").booleanValue()).isTrue();
+        assertThat(response.path("recoveryAvailable").booleanValue()).isTrue();
+        assertThat(response.has("executed")).isFalse();
+        assertThat(response.toString()).doesNotContain("private worker failure details");
     }
 }

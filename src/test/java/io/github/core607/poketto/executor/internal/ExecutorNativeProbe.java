@@ -219,6 +219,8 @@ public final class ExecutorNativeProbe {
         passed("retained-worker-restart-restores-acknowledged-work-and-denies-revoked-private-recovery");
         passed("retained-public-recovery-keeps-scope-and-rejects-withdrawal-after-worker-restart");
         passed("retained-discard-fences-writers-preserves-remote-writes-and-allows-withdrawn-owner-cleanup");
+        passed("retained-checkpoint-busy-waits-without-replaying-the-command-or-remote-write");
+        passed("retained-command-timeout-exposes-recovery-identity-and-preserves-acknowledged-work");
     }
 
     private void run() throws Exception {

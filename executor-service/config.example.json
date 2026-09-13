@@ -28,7 +28,7 @@
   "maxTimeoutMillis": 60000,
   "initTimeoutMillis": 60000,
   "checkpointRoot": "/var/lib/poketto-executor/checkpoints",
-  "maxCheckpoints": 32,
+  "maxCheckpoints": 128,
   "maxCheckpointEntries": 32768,
   "maxCheckpointBytes": 1073741824,
   "maxRetainedBytes": 8589934592,

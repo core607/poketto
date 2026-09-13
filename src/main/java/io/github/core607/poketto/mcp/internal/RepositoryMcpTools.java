@@ -15,6 +15,7 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -168,7 +169,7 @@ final class RepositoryMcpTools {
                     this::getArtifact));
             tools.add(tool(
                     "repo_exec",
-                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new only to intentionally start fresh; otherwise retain copyId across calls. When results contain retention, pass retention.generation as expectedGeneration. Set resume=true to recover that exact copy and execute in one request after reconnecting. Use a read-only inspection command for recovery: retention.lastInterruptedCommand identifies earlier work that may have partially completed. SESSION_REPLACED or EXECUTION_REFUSED means this command did not execute; do not replay uncertain writes. Every command starts at the repository root; /tmp resets per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get the current public projection. Omitted commit retains the pinned copy. Edits stay local until poketto save. CLI operations can store media and commit authorized selections. Use poketto artifact create FILE --type MIME with get_artifact; long-output handles expire and may be truncated.",
+                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new only to intentionally start fresh; otherwise retain copyId across calls. When results contain retention, pass retention.generation as expectedGeneration. Set resume=true to recover that exact copy and execute in one request after reconnecting. Use a read-only inspection command for recovery: retention.lastInterruptedCommand identifies earlier work that may have partially completed. SESSION_REPLACED or EXECUTION_REFUSED means this command did not execute. EXECUTION_UNCONFIRMED means a command was attempted; retain its copyId/currentGeneration and inspect through recovery before deciding whether to write again. Do not replay uncertain writes. Every command starts at the repository root; /tmp resets per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get the current public projection. Omitted commit retains the pinned copy. Edits stay local until poketto save. CLI operations can store media and commit authorized selections. Use poketto artifact create FILE --type MIME with get_artifact; long-output handles expire and may be truncated.",
                     object(
                             Map.of(
                                     "expectedCopyId",
@@ -241,6 +242,8 @@ final class RepositoryMcpTools {
                 return error("DENIED", "Current workspace capability is required.");
             } catch (SessionReplacedException exception) {
                 return McpCopyAdmission.copyReplaced(json, exception);
+            } catch (ExecutionUnconfirmedException exception) {
+                return McpCopyAdmission.executionUnconfirmed(json, exception);
             } catch (ExecutionAdmissionException exception) {
                 return name.equals("repo_discard")
                         ? McpCopyAdmission.discardRefused(json, exception)

@@ -18,6 +18,7 @@ import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
@@ -171,6 +172,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         RetainedCommand retained = null;
         boolean ownsCommand = false;
         boolean createdCopy = false;
+        boolean executionAttempted = false;
         try {
             if (expectedCopy.resume()) {
                 Resumed resumed = resumeCopy(principal, workspace, key, expectedCopy, requestedCommit, cancellation);
@@ -232,6 +234,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 authorize(session);
                 UUID executionId = UUID.randomUUID();
                 prepareRetained(session, retained, executionId);
+                executionAttempted = true;
                 JsonNode response = executeWithBridge(session, executionId.toString(), command, timeout);
                 requireOk(response, session);
                 authorize(session);
@@ -260,7 +263,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } catch (RuntimeException exception) {
             if (session != null
                     && ownsCommand
-                    && !(exception instanceof IllegalArgumentException)
+                    && (executionAttempted || !(exception instanceof IllegalArgumentException))
                     && (createdCopy || !(exception instanceof ExecutionAdmissionException))) {
                 try {
                     stopAndAwait(session, "cancelled");
@@ -268,7 +271,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     log.warn("Worker termination not acknowledged; lease renewal has stopped", closeFailure);
                 }
             }
-            throw exception;
+            throw executionFailure(session, retained, executionAttempted, exception);
         } finally {
             try {
                 releaseRetained(session, retained);
@@ -279,6 +282,23 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 executions.release();
             }
         }
+    }
+
+    private RuntimeException executionFailure(
+            Session session, RetainedCommand retained, boolean attempted, RuntimeException failure) {
+        if (!attempted || retained == null) {
+            return failure;
+        }
+        if (failure instanceof AuthException || failure instanceof SecurityException) {
+            return failure;
+        }
+        log.warn("Retained command completion was not confirmed", failure);
+        authorize(session);
+        return new ExecutionUnconfirmedException(
+                session.copyId.toString(),
+                retained.view(),
+                !retention.expired(retained.record().expiresAt()),
+                failure);
     }
 
     @Override
@@ -685,8 +705,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         scope,
                         executionId.orElseThrow().toString())
                 : new WorkerRequests.Checkpoint(id.toString(), expiresAt, scope);
-        JsonNode reply = requestLive(
-                session, executionId.isPresent() ? "CHECKPOINT_ACTIVE" : "CHECKPOINT", data, Duration.ofSeconds(30));
+        JsonNode reply = WorkerCheckpointCapture.capture(
+                timeout -> requestLive(
+                        session, executionId.isPresent() ? "CHECKPOINT_ACTIVE" : "CHECKPOINT", data, timeout),
+                () -> authorize(session));
         requireOk(reply, session);
         authorize(session);
         return WorkerResponses.read(reply, WorkerResponses.CheckpointReply.class);
