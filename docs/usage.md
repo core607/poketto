@@ -34,6 +34,8 @@ Private HTTP routes use `/api/admin/workspaces/{workspaceId}`. Read memberships 
 
 Owners set private reading, private writing and public editing/publishing in member management or on a workspace invitation. Invitations default to public-scope reading only; private writing also requires private reading. Publication-policy exclusions remain private even below `public/`. Members can read their space's current public scope while its anonymous website is disabled. Reducing grants revokes over-scoped connections; increasing grants does not enlarge existing connections. See [member content permissions](../notes/implemented/2026-09-12-member-content-permissions.md), including the loss of implicit private access for existing ordinary members when this schema is installed.
 
+Space owners can update managed repository credentials from the Repository connection tab. Supply a Git username and replacement token; the server validates access before replacing the existing credentials. This cannot change the repository address. The form clears submitted tokens and never stores them in browser drafts. After a confirmed update, revoke the old token at the Git provider. Deployment-managed repositories require an operator configuration update.
+
 Initialize an empty content repository from [content-template](../content-template/AGENTS.md).
 It contains independent `private/` and `public/` trees and keeps publication disabled.
 Create new content under `private/`. To publish selected content, move it and its

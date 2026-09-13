@@ -231,6 +231,10 @@ class SpaceCreationIntegrationIT {
 
     /** The network boundary is deterministic; catalog, account checks and transaction rollback use real PostgreSQL. */
     private final class RepositoryFixture implements RepositoryConnections {
+        public java.util.Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+            return java.util.Optional.empty();
+        }
+
         boolean fail;
         String identity = "github:123";
         AtomicInteger verifications = new AtomicInteger();

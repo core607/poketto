@@ -13,6 +13,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
@@ -42,6 +43,17 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
 
     public boolean available() {
         return cipher.available();
+    }
+
+    public Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
+        return jdbc
+                .query(
+                        "select canonical_uri,updated_at from content_repository_bindings where workspace_id=?",
+                        (row, number) -> new ConnectionInfo(
+                                row.getString(1), row.getTimestamp(2).toInstant()),
+                        workspace.value())
+                .stream()
+                .findFirst();
     }
 
     public byte[] seal(WorkspaceId workspace, RepositoryCoordinates coordinates, String username, String token) {

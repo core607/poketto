@@ -23,6 +23,17 @@ public class AcceptanceRepositories {
 
     @Bean
     @Primary
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "poketto.acceptance.managed-connections",
+            havingValue = "true")
+    io.github.core607.poketto.content.RepositoryConnections acceptanceManagedConnections(
+            org.springframework.jdbc.core.JdbcTemplate jdbc,
+            @Value("${poketto.repository.credential-key}") String key) {
+        return new AcceptanceManagedConnections(jdbc, key);
+    }
+
+    @Bean
+    @Primary
     RepositoryBindingSource acceptanceRepositorySource(@Value("${poketto.test.repository-path}") String defaultRemote) {
         return workspace -> {
             try {

@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public detail: string,
+    public code?: string,
   ) {
     super(detail);
   }
@@ -59,8 +60,12 @@ export async function api<T>(
     );
   }
   if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    const code =
+      typeof problem?.code === "string" && problem.code.length <= 80
+        ? problem.code
+        : undefined;
     if (response.status === 400) {
-      const problem = await response.json().catch(() => null);
       if (problem?.code === "INVALID_INVITATION")
         throw new ApiError(
           400,
@@ -86,6 +91,7 @@ export async function api<T>(
     throw new ApiError(
       response.status,
       messages[response.status] ?? "操作未能完成，请稍后重试。",
+      code,
     );
   }
   return response.status === 204
