@@ -170,7 +170,8 @@ test("article stream contains readable titles and links in initial server HTML",
             tags: ["知识"],
             createdAt: "2026-09-01T00:00:00Z",
             updatedAt: "2026-09-01T00:00:00Z",
-            snippet: "不需要 JavaScript 也能读到的文字。",
+            snippet:
+              "不需要 JavaScript 也能读到的文字。\n# literal ![code](literal) <script>text</script>",
           },
         ],
       }}
@@ -178,6 +179,8 @@ test("article stream contains readable titles and links in initial server HTML",
   );
   assert.match(html, /一篇记录/);
   assert.match(html, /不需要 JavaScript/);
+  assert.match(html, /# literal !\[code\]\(literal\)/);
+  assert.match(html, /&lt;script&gt;text&lt;\/script&gt;/);
   assert.match(html, /href="\/read\/note"/);
   assert.doesNotMatch(html, /<script/);
 });
