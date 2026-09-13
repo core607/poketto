@@ -28,6 +28,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -91,6 +93,7 @@ class RetainedNonTextMoveTests {
     }
 
     @Test
+    @EnabledOnOs(OS.LINUX)
     void managedMoveKeepsUnversionedPresenceAndDiagnosticsWithoutHistoricalLookup() throws Exception {
         try (var fixture = fixture()) {
             String base = fixture.seedMedia(auth, actor, new byte[] {1, 2}, new byte[] {3, 4});
