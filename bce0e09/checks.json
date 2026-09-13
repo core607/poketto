@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "bce0e09f7e6c81b2be28a279f3036ec750d7b5fe",
+  "result": "PASS",
+  "startCommand": "docker compose -p poketto-credential-main-ui --env-file .gradle/credential-main-ui/acceptance.env -f acceptance/compose.yaml up --build -d",
+  "realDependencies": "Spring authentication, current member permission implementation, PostgreSQL, credential encryption and CAS, Next.js and Caddy.",
+  "mockedBoundary": "Integration-only Git provider metadata and credential verification; fixed synthetic tokens never sent to GitHub/CNB.",
+  "checks": {
+    "invalidBindingUnchanged": true,
+    "successfulBindingChanged": true,
+    "sameRepository": true,
+    "privateDefaultPreserved": true,
+    "formsCleared": true
+  },
+  "viewport": {
+    "height": 720,
+    "width": 1280
+  },
+  "screenshots": {
+    "rejected.png": "7f2d1b4de7e023e63cec55ab47165e63f8eb80e9e9e29969d5ef507de93b6f39",
+    "updated.png": "ce3f6d1d5aba29fadef5112cd8d376fd1ff1c887a8a35db0fa2bb03ec1ff8063"
+  },
+  "limitations": [
+    "Stable states only, not measured timing.",
+    "Local HTTP and synthetic provider responses do not establish real GitHub/CNB credentials or production HTTPS acceptance."
+  ]
+}
