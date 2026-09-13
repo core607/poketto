@@ -1,0 +1,228 @@
+{
+  "sourceCommit": "a909f703d6f56e98a6d4640145a396f782eb0504",
+  "date": "2026-09-13",
+  "result": "PASS",
+  "sourceHashesVerified": true,
+  "scope": "Media linking, selection diagnostics, artifact paging and a 5 MiB binary import/fetch through the production adapter, worker and SRT on native Linux.",
+  "events": [
+    {
+      "test": "root-owned-socket-rejects-non-root-peer",
+      "result": "PASS",
+      "observation": {
+        "accepted": true,
+        "requestBytes": 0
+      }
+    },
+    {
+      "test": "public-scope-real-projection-has-no-private-files-metadata-or-original-history",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "permission-increase-does-not-expand-existing-public-worker-files",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "public-artifact-delivery-rechecks-publication-before-returning-bytes",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "withdrawn-public-projection-denies-further-worker-output",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "selected-cli-saves-freeze-chunk-and-commit-real-git-with-host-baseline-and-retained-conflicts",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "single-file-cli-sync-merges-conflicts-and-keeps-unselected-baselines-and-local-deletions",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "uncertain-cli-save-recovers-original-commit-without-replaying-new-local-edits",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "media-list-sees-unsaved-imports-pages-current-index-and-retains-historical-catalogs",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "empty-media-import-is-rejected-without-losing-unsaved-session-files",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "binary-media-import-and-fetch-round-trip-exceeds-text-capture-budget",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "media-link-retains-unsaved-index-validates-workspace-preserves-originals-and-reports-selection-reasons",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "cli-move-repairs-references-preserves-unsaved-index-and-retains-optional-media",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "dirty-move-preflight-preserves-local-edits-and-remote-authority",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "lost-worker-move-reply-retains-session-and-recovers-without-overwriting-new-edits",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "skip-confirmed-local-move-keeps-files-and-baselines-and-allows-explicit-sync",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "uncertain-cli-move-recovers-the-original-commit-and-installs-once",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "signed-open-through-production-socket-and-signature-checks",
+      "milliseconds": 2788.003626,
+      "result": "PASS"
+    },
+    {
+      "test": "synchronous-cli-status-retains-unix-socket-denial-and-read-only-replies",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "artifact-capture-is-immutable-protected-and-bound-to-workspace-key-and-client",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "long-output-retains-complete-bytes-behind-bounded-preview",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "output-limit-kills-command-retains-bounded-artifact-and-unselected-work",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "twenty-adapter-session-reuses",
+      "result": "PASS",
+      "meanMilliseconds": 1198.7067632
+    },
+    {
+      "test": "same-key-clients-cannot-read-or-write-another-lease-bridge",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "same-key-clients-have-separate-pinned-workdirs",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "command-mutations-preserve-authority-bundle-and-source",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "callback-cancellation-kills-detached-descendants",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "test": "revocation-closes-active-process-tree",
+      "result": "PASS",
+      "reason": "CANCELLED"
+    },
+    {
+      "test": "worker-restart-recovers-full-single-session-capacity-and-rejects-old-client",
+      "source": "synthetic-only",
+      "result": "PASS"
+    },
+    {
+      "nativeProbeClassSha256": "ca68cc35edf9741e0afdf377888d87b19691d1675ec5963389444a257b070ccf",
+      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
+      "summary": "PASS",
+      "tests": 35,
+      "adapterClassSha256": "0b11169e479b812144d90e9f99adcf97b3bb010e4780b45a00ff65ae6e117110"
+    },
+    {
+      "abandon": "READY"
+    },
+    {
+      "test": "java-process-loss-expires-real-worker-lease",
+      "result": "PASS"
+    },
+    {
+      "nativeCombined": "PASS",
+      "runtimeManifestSha256": "6e7a29666a60e29c72e94e2a2a21dfc93b97d2880583c1cdb25a02273ba80c49",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
+      "workerSha256": "5366a9b990ec5d6a5869687e25fa4259291c02f1b659ca6d889fb8c7c5195c6b",
+      "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+      "bridgeSha256": "c71cb79d284101a74cd08ab1606224b0bbcaa5910786fe9dd17e1c7e20260049",
+      "cliSha256": "efaafaa39edeb4fd63407eb6083904875d9c58a66f2dcdf4c3167c0a0c59ac0e",
+      "sessionFilesSha256": "d07a40746f18b41d97d2085fea52eec6a6eeafcd2328e22e20de895c98005e93",
+      "materializeSha256": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+      "binaryCaptureSha256": "6a11b936bc8a29da06788d33a9e7df7d0298b226b32c3229af62ea03cbec2d53",
+      "artifactsSha256": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd",
+      "nativeScriptSha256": "4e2ba5b582dfe7cb5e36ab81b01f8979799a349602b68e51fccb810be43fbfc4",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "source": "synthetic-only",
+      "scenario": "all"
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ],
+  "limitations": [
+    "Synthetic repositories and authentication; not external chat-client or production HTTPS acceptance.",
+    "Idle closure is injected as the trusted lifecycle event.",
+    "New admission discards no active copy and does not recover unsaved work.",
+    "Durable work recovery and production resource sizing remain unverified."
+  ]
+}

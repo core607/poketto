@@ -75,13 +75,8 @@ public final class ExecutorNativeProbe {
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());
         when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
-                .thenAnswer(call -> new WorkspaceAccess(
-                        call.getArgument(1),
-                        call.getArgument(0),
-                        MembershipRole.OWNER,
-                        privateRead.get()
-                                ? Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY)
-                                : Set.of(Capability.EXECUTE_REPOSITORY)));
+                .thenAnswer(call -> fixtureAccess(call.getArgument(0), call.getArgument(1)));
+        when(auth.authorize(any(), any())).thenAnswer(call -> fixtureAccess(call.getArgument(0), call.getArgument(1)));
         config = JSON.readTree(Files.readString(configuration));
         Path master = path("bundle");
         String commit = config.path("commit").stringValue();
@@ -121,6 +116,16 @@ public final class ExecutorNativeProbe {
                 }
             }
         };
+    }
+
+    private WorkspaceAccess fixtureAccess(AuthPrincipal actor, WorkspaceId selected) {
+        return new WorkspaceAccess(
+                selected,
+                actor,
+                MembershipRole.OWNER,
+                privateRead.get()
+                        ? Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY)
+                        : Set.of(Capability.EXECUTE_REPOSITORY));
     }
 
     public static void main(String[] args) throws Exception {
@@ -193,6 +198,7 @@ public final class ExecutorNativeProbe {
         uncertainSaveRecovery();
         mediaFetch();
         mediaImport();
+        mediaLink();
         moves();
         lostLocalMoveReply();
         uncertainMoveRecovery();
@@ -742,6 +748,206 @@ public final class ExecutorNativeProbe {
                             .commit())
                     .isEqualTo(saved.commit());
             passed("media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically");
+            emptyMediaImport(executor);
+            largeMediaImport(executor);
+        }
+    }
+
+    private void emptyMediaImport(IsolatedRepositoryExecutor executor) throws Exception {
+        var rejected = execute(
+                executor,
+                "media-import",
+                "printf retained-draft > private/import-draft; : > private/empty.bin; "
+                        + "poketto media import private/empty.bin --as private/empty.dat --type application/octet-stream --key native_import_empty_01",
+                new Cancellation());
+        assertThat(rejected.exitCode()).isNotZero();
+        assertThat(rejected.stdout()).contains("INVALID_MEDIA_REQUEST");
+        var continued = execute(
+                executor,
+                "media-import",
+                "test -f private/empty.bin && test ! -s private/empty.bin && cat private/import-draft",
+                new Cancellation());
+        assertThat(continued.exitCode()).isZero();
+        assertThat(continued.stdout()).isEqualTo("retained-draft");
+        passed("empty-media-import-is-rejected-without-losing-unsaved-session-files");
+    }
+
+    private void largeMediaImport(IsolatedRepositoryExecutor executor) throws Exception {
+        var imported = execute(
+                executor,
+                "media-import",
+                "set -eu; python3 -c \"from pathlib import Path; Path('private/large.bin').write_bytes(bytes(range(256))*20480)\"; "
+                        + "poketto media import private/large.bin --as private/large.dat --type application/octet-stream --key native_import_large_01; "
+                        + "poketto media fetch private/large.dat; "
+                        + "python3 -c \"from pathlib import Path; a=Path('private/large.bin').read_bytes(); b=Path('private/large.dat').read_bytes(); assert len(b)==5242880 and a==b\"",
+                new Cancellation());
+        assertThat(imported.exitCode())
+                .as("%s %s", imported.stdout(), imported.stderr())
+                .isZero();
+        assertThat(imported.stdout()).contains("5242880", "\"indexUpdated\": true");
+        passed("binary-media-import-and-fetch-round-trip-exceeds-text-capture-budget");
+    }
+
+    private void mediaLink() throws Exception {
+        var fixture = new io.github.core607.poketto.content.internal.PublicExecutionNativeFixture(
+                path("publicFixture").resolve("link"), path("exports"), auth, workspace);
+        String initial = fixture.seedMedia(auth, principal, new byte[] {1, 2}, new byte[] {3, 4});
+        var reader = fixture.reader(auth);
+        var originals = fixture.media(auth);
+        var asset = originals.upload(
+                principal,
+                workspace,
+                "native_link_original_01",
+                "application/pdf",
+                new java.io.ByteArrayInputStream(new byte[] {5, 6, 7}));
+        var other = originals.upload(
+                principal,
+                workspace,
+                "native_link_original_02",
+                "application/pdf",
+                new java.io.ByteArrayInputStream(new byte[] {8, 9}));
+        var foreign = originals.upload(
+                principal,
+                WorkspaceId.random(),
+                "native_link_foreign_01",
+                "application/pdf",
+                new java.io.ByteArrayInputStream(new byte[] {10}));
+        String reference = " --asset " + asset.reference().assetId() + " --revision "
+                + asset.reference().revision();
+        String replacement = " --asset " + other.reference().assetId() + " --revision "
+                + other.reference().revision();
+        try (var executor = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        auth,
+                        fixture.exports(),
+                        mock(io.github.core607.poketto.content.PortableContentExports.class),
+                        originals,
+                        reader,
+                        fixture.patches(auth),
+                        fixture.moves(auth),
+                        JSON,
+                        path("socket"),
+                        path("privateKey"),
+                        8,
+                        45,
+                        8)) {
+            var linked = execute(
+                    executor, "media-link", "poketto media link private/linked.pdf" + reference, new Cancellation());
+            assertThat(linked.exitCode())
+                    .as("%s %s", linked.stdout(), linked.stderr())
+                    .isZero();
+            assertThat(JSON.readTree(linked.stdout())
+                            .path("result")
+                            .path("bytes")
+                            .longValue())
+                    .isEqualTo(3);
+            assertThat(linked.stdout()).contains("application/pdf", "\"saved\": false", "\"indexUpdated\": true");
+            var remote = reader.getFile(principal, workspace, Optional.empty(), RepositoryMediaIndex.PATH);
+            assertThat(remote.commit()).contains(initial);
+            assertThat(remote.source().orElseThrow()).doesNotContain("private/linked.pdf");
+            var repeated = execute(
+                    executor,
+                    "media-link",
+                    "set -eu; python3 -c \"from pathlib import Path; p=Path('.poketto/assets.json'); p.write_bytes(b' \\n'+p.read_bytes()+b'\\n')\"; "
+                            + "before=$(sha256sum .poketto/assets.json); poketto media link private/linked.pdf"
+                            + reference
+                            + "; test \"$before\" = \"$(sha256sum .poketto/assets.json)\"; test ! -e private/linked.pdf",
+                    new Cancellation());
+            assertThat(repeated.exitCode())
+                    .as("%s %s", repeated.stdout(), repeated.stderr())
+                    .isZero();
+            assertThat(execute(
+                                    executor,
+                                    "media-link",
+                                    "poketto media link private/linked.pdf" + replacement,
+                                    new Cancellation())
+                            .stdout())
+                    .contains("MEDIA_PATH_EXISTS");
+            assertThat(execute(
+                                    executor,
+                                    "media-link",
+                                    "poketto media link private/linked.pdf" + replacement + " --replace",
+                                    new Cancellation())
+                            .exitCode())
+                    .isZero();
+            assertThat(execute(
+                                    executor,
+                                    "media-link",
+                                    "poketto media link private/foreign.pdf --asset "
+                                            + foreign.reference().assetId() + " --revision "
+                                            + foreign.reference().revision(),
+                                    new Cancellation())
+                            .stdout())
+                    .contains("MEDIA_UNAVAILABLE", "NOT_FOUND");
+            assertThat(execute(
+                                    executor,
+                                    "media-link",
+                                    "poketto media link .poketto/assets.json" + reference,
+                                    new Cancellation())
+                            .stdout())
+                    .contains("INVALID_MEDIA_REQUEST");
+            var saved = execute(executor, "media-link", "poketto save .poketto/assets.json", new Cancellation());
+            assertThat(saved.exitCode())
+                    .as("%s %s", saved.stdout(), saved.stderr())
+                    .isZero();
+            var index = RepositoryMediaIndex.parse(
+                    reader.getFile(principal, workspace, Optional.empty(), RepositoryMediaIndex.PATH)
+                            .source()
+                            .orElseThrow()
+                            .getBytes(StandardCharsets.UTF_8));
+            assertThat(index.files().get("private/linked.pdf").assetId())
+                    .isEqualTo(other.reference().assetId());
+            assertThat(index.files()).doesNotContainKey("private/foreign.pdf");
+            var absentBinary = execute(
+                    executor,
+                    "media-link",
+                    "poketto media import private/not-created.bin --as private/absent.pdf --key native_absent_binary_01",
+                    new Cancellation());
+            assertThat(JSON.readTree(absentBinary.stdout()).path("reason").stringValue())
+                    .isEqualTo("NOT_FOUND");
+            var oversizedBinary = execute(
+                    executor,
+                    "media-link",
+                    "python3 -c \"from pathlib import Path; f=Path('private/oversized.bin').open('wb'); f.truncate(128*1024*1024+1); f.close()\"; "
+                            + "poketto media import private/oversized.bin --as private/oversized.pdf --key native_oversized_binary_01",
+                    new Cancellation());
+            assertThat(JSON.readTree(oversizedBinary.stdout()).path("reason").stringValue())
+                    .isEqualTo("BINARY_LIMIT");
+            var missing = execute(executor, "media-link", "poketto save private/not-created.md", new Cancellation());
+            assertThat(missing.exitCode()).isEqualTo(1);
+            assertThat(JSON.readTree(missing.stdout()).path("code").stringValue())
+                    .isEqualTo("INVALID_SELECTION");
+            assertThat(JSON.readTree(missing.stdout()).path("reason").stringValue())
+                    .isEqualTo("NOT_FOUND");
+            var binary = execute(
+                    executor,
+                    "media-link",
+                    "python3 -c \"from pathlib import Path; Path('private/binary').write_bytes(b'\\xff')\"; poketto save private/binary",
+                    new Cancellation());
+            assertThat(JSON.readTree(binary.stdout()).path("reason").stringValue())
+                    .isEqualTo("NOT_UTF8");
+            assertThat(execute(
+                                    executor,
+                                    "media-link",
+                                    "rm .poketto/assets.json; poketto media link private/missing.pdf" + reference,
+                                    new Cancellation())
+                            .stdout())
+                    .contains("INDEX_MISSING");
+            close(executor, "media-link");
+            privateRead.set(false);
+            try {
+                assertThat(execute(
+                                        executor,
+                                        "public-media-link",
+                                        "poketto media link private/linked.pdf" + reference,
+                                        new Cancellation())
+                                .stdout())
+                        .contains("READ_ONLY_SCOPE");
+            } finally {
+                privateRead.set(true);
+            }
+            passed(
+                    "media-link-retains-unsaved-index-validates-workspace-preserves-originals-and-reports-selection-reasons");
         }
     }
 

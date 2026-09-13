@@ -15,7 +15,9 @@ MAX_CHUNK_BYTES = 65536
 
 
 class CaptureRejected(Exception):
-    pass
+    def __init__(self, message, reason='CAPTURE_UNAVAILABLE'):
+        super().__init__(message)
+        self.reason = reason
 
 
 class CaptureSnapshot:
@@ -47,26 +49,26 @@ class CaptureSnapshot:
 
 def selected_paths(writes, deletes):
     if not isinstance(writes, list) or not isinstance(deletes, list):
-        raise CaptureRejected('Selections must be path lists')
+        raise CaptureRejected('Selections must be path lists', 'INVALID_ARGUMENTS')
     if not 1 <= len(writes) + len(deletes) <= MAX_SELECTED:
-        raise CaptureRejected('Select between 1 and 64 files')
+        raise CaptureRejected('Select between 1 and 64 files', 'SELECTION_LIMIT')
     seen = set()
     for path in writes + deletes:
         if not isinstance(path, str):
-            raise CaptureRejected('Invalid selected path')
+            raise CaptureRejected('Invalid selected path', 'INVALID_PATH')
         try:
             encoded = path.encode('utf-8', errors='strict')
         except UnicodeError as error:
-            raise CaptureRejected('Invalid selected path') from error
+            raise CaptureRejected('Invalid selected path', 'INVALID_PATH') from error
         if not 0 < len(encoded) <= MAX_PATH_BYTES or '\\' in path or any(ord(c) < 32 or ord(c) == 127 for c in path):
-            raise CaptureRejected('Invalid selected path')
+            raise CaptureRejected('Invalid selected path', 'INVALID_PATH')
         parts = path.split('/')
         if any(part in ('', '.', '..') for part in parts):
-            raise CaptureRejected('Invalid selected path')
+            raise CaptureRejected('Invalid selected path', 'INVALID_PATH')
         normalized = unicodedata.normalize('NFC', path)
         key = unicodedata.normalize('NFC', normalized.upper().lower())
         if '.git' in key.split('/') or key in seen:
-            raise CaptureRejected('Reserved or colliding selected path')
+            raise CaptureRejected('Reserved or colliding selected path', 'PATH_COLLISION')
         seen.add(key)
     return tuple(writes), tuple(deletes)
 
@@ -89,11 +91,13 @@ def capture_text(session_root, writes, deletes):
     writes, deletes = selected_paths(writes, deletes)
     captured = {}
     remaining = MAX_TEXT_BYTES
+    repository_open = False
     try:
         with ExitStack() as roots:
             root = _directory(roots, None, session_root)
             work = _directory(roots, root, 'work')
             repository = _directory(roots, work, 'repository')
+            repository_open = True
             for path in writes:
                 with ExitStack() as handles:
                     parent = repository
@@ -104,9 +108,9 @@ def capture_text(session_root, writes, deletes):
                     handles.callback(os.close, fd)
                     before = os.fstat(fd)
                     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-                        raise CaptureRejected('Selected writes must be ordinary files')
+                        raise CaptureRejected('Selected writes must be ordinary files', 'NOT_REGULAR_FILE')
                     if before.st_size > remaining:
-                        raise CaptureRejected('Selected text exceeds 4 MiB')
+                        raise CaptureRejected('Selected text exceeds 4 MiB', 'TEXT_LIMIT')
                     content = bytearray()
                     while True:
                         block = os.read(fd, min(65536, remaining - len(content) + 1))
@@ -114,19 +118,20 @@ def capture_text(session_root, writes, deletes):
                             break
                         content.extend(block)
                         if len(content) > remaining:
-                            raise CaptureRejected('Selected text exceeds 4 MiB')
+                            raise CaptureRejected('Selected text exceeds 4 MiB', 'TEXT_LIMIT')
                     after = os.fstat(fd)
                     current = os.stat(parts[-1], dir_fd=parent, follow_symlinks=False)
                     identity = lambda info: (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
                     if identity(before) != identity(after) or identity(after) != identity(current):
-                        raise CaptureRejected('Selected file changed during capture')
+                        raise CaptureRejected('Selected file changed during capture', 'FILE_CHANGED')
                     try:
                         captured[path] = content.decode('utf-8', errors='strict')
                     except UnicodeError as error:
-                        raise CaptureRejected('Selected writes must be UTF-8 text') from error
+                        raise CaptureRejected('Selected writes must be UTF-8 text', 'NOT_UTF8') from error
                     remaining -= len(content)
     except OSError as error:
-        raise CaptureRejected('Selected file is unavailable or unsafe') from error
+        reason = 'NOT_FOUND' if repository_open and isinstance(error, FileNotFoundError) else 'CAPTURE_UNAVAILABLE'
+        raise CaptureRejected('Selected file is unavailable or unsafe', reason) from error
     return {'writes': captured, 'deletes': deletes}
 
 

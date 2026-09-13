@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -112,6 +113,19 @@ class MediaFileServiceTests {
                         invocation -> ((Function<PublicContentSnapshot, ?>) invocation.getArgument(1)).apply(snapshot));
         when(snapshots.refresh(workspace)).thenAnswer(call -> snapshot);
         service = new MediaFileService(auth, repository, snapshots, () -> store);
+    }
+
+    @Test
+    void originalMetadataIsWorkspaceBoundAndRechecksReadPermissionBeforeReturning() {
+        assertThat(service.describeOriginal(actor, workspace, asset.reference()))
+                .isEqualTo(asset);
+        assertMissing(() -> service.describeOriginal(actor, WorkspaceId.random(), asset.reference()));
+        reset(auth);
+        when(auth.authorize(actor, workspace, Capability.READ_PRIVATE))
+                .thenReturn(null)
+                .thenThrow(new IllegalStateException("revoked"));
+        assertThatThrownBy(() -> service.describeOriginal(actor, workspace, asset.reference()))
+                .hasMessage("revoked");
     }
 
     @Test

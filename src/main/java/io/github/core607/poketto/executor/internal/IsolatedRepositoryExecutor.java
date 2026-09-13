@@ -13,6 +13,7 @@ import io.github.core607.poketto.content.ContentExportException;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PortableContentExports;
+import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
@@ -609,7 +610,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
             return artifactCommand(session, executionId, operation, arguments);
         }
-        if (operation.equals("media_fetch") || operation.equals("media_import") || operation.equals("media_list")) {
+        if (operation.equals("media_fetch")
+                || operation.equals("media_import")
+                || operation.equals("media_link")
+                || operation.equals("media_list")) {
             return mediaCommand(session, executionId, operation, arguments);
         }
         if (operation.equals("save")
@@ -687,11 +691,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         try {
             return switch (operation) {
                 case "media_list" -> listMedia(session, executionId, arguments);
+                case "media_link" -> linkMedia(session, executionId, arguments);
                 case "media_fetch" -> fetchMedia(session, executionId, arguments);
                 default -> importMedia(session, executionId, arguments);
             };
         } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failed("INVALID_MEDIA_REQUEST");
+            return BridgeReplies.failedBecause("INVALID_MEDIA_REQUEST", InvalidSelectionException.reason(invalid));
         } catch (AuthException denied) {
             return BridgeReplies.failed("ACCESS_DENIED");
         } catch (AssetStorageException unavailable) {
@@ -732,7 +737,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 default -> saveCommand(session, executionId, arguments);
             };
         } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failed("INVALID_SELECTION");
+            return BridgeReplies.failedBecause("INVALID_SELECTION", InvalidSelectionException.reason(invalid));
         } catch (AuthException denied) {
             return BridgeReplies.failed("ACCESS_DENIED");
         } catch (ContentRepositoryException unavailable) {
@@ -785,7 +790,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the selected file");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
         List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
@@ -921,7 +926,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private Map<String, String> readCapture(
             Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the selected files");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
         var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
@@ -1112,7 +1117,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         JsonNode manifest = requestLive(
                 session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the media index");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
         List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
@@ -1134,35 +1139,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         String file = selected.file(), path = selected.path();
         String mediaType = selected.mediaType(), key = selected.key();
         boolean replace = selected.replace();
-        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
-        if (source.isEmpty()
-                && !saves.baselineFile(
-                                session.principal,
-                                session.key.workspace(),
-                                session.saveState,
-                                RepositoryMediaIndex.PATH)
-                        .expectedAbsence()) {
-            return BridgeReplies.failed(
-                    "INDEX_MISSING", "Restore or intentionally recreate the local media index before importing.");
+        LocalMediaIndex local = localMediaIndex(session, executionId);
+        if (local == null) {
+            return missingMediaIndex();
         }
-        var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                .orElseGet(RepositoryMediaIndex::empty);
-        var entries = new LinkedHashMap<>(index.files());
-        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
-        new RepositoryMediaIndex(entries); // Validate the complete logical namespace before uploading.
-        var existingGit = saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
-        if (!existingGit.expectedAbsence()
-                && existingGit.diagnostics().stream()
-                        .noneMatch(value -> value.code().equals("MANAGED_MEDIA"))) {
+        RepositoryMediaIndex index = local.index();
+        if (!availableMediaPath(session, local, path, mediaType)) {
             return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
         }
         JsonNode manifest = requestLive(
                 session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to capture the imported file");
+            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
         }
         requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
+        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
         String captureId = captured.captureId();
         var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
         ManagedAsset asset;
@@ -1213,6 +1204,74 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         cleanupFailure);
             }
         }
+        return indexMedia(session, executionId, path, asset, local, replace);
+    }
+
+    private BridgeReplies.Reply linkMedia(Session session, String executionId, JsonNode arguments) {
+        if (!session.fullRead) {
+            return BridgeReplies.failed("READ_ONLY_SCOPE");
+        }
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        BridgeArguments.MediaLink selected = BridgeArguments.mediaLink(arguments);
+        LocalMediaIndex local = localMediaIndex(session, executionId);
+        if (local == null) {
+            return missingMediaIndex();
+        }
+        ManagedAsset asset = media.describeOriginal(session.principal, session.key.workspace(), selected.reference());
+        if (!availableMediaPath(session, local, selected.path(), asset.mediaType())) {
+            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
+        }
+        return indexMedia(session, executionId, selected.path(), asset, local, selected.replace());
+    }
+
+    private record LocalMediaIndex(Optional<String> source, RepositoryMediaIndex index) {}
+
+    private LocalMediaIndex localMediaIndex(Session session, String executionId) {
+        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
+        if (source.isEmpty()
+                && !saves.baselineFile(
+                                session.principal,
+                                session.key.workspace(),
+                                session.saveState,
+                                RepositoryMediaIndex.PATH)
+                        .expectedAbsence()) {
+            return null;
+        }
+        return new LocalMediaIndex(
+                source,
+                source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+                        .orElseGet(RepositoryMediaIndex::empty));
+    }
+
+    private static BridgeReplies.Reply missingMediaIndex() {
+        return BridgeReplies.failed(
+                "INDEX_MISSING",
+                "Restore or intentionally recreate the local media index before importing or linking.");
+    }
+
+    private boolean availableMediaPath(Session session, LocalMediaIndex local, String path, String mediaType) {
+        var entries = new LinkedHashMap<>(local.index().files());
+        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
+        new RepositoryMediaIndex(
+                entries); // Validate the entire logical namespace before changing originals or the index.
+        RepositoryFile existingGit =
+                saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
+        return existingGit.expectedAbsence()
+                || existingGit.diagnostics().stream()
+                        .anyMatch(value -> value.code().equals("MANAGED_MEDIA"));
+    }
+
+    private BridgeReplies.Reply indexMedia(
+            Session session,
+            String executionId,
+            String path,
+            ManagedAsset asset,
+            LocalMediaIndex local,
+            boolean replace) {
+        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
+        Optional<String> source = local.source();
+        RepositoryMediaIndex index = local.index();
+        var entries = new LinkedHashMap<>(index.files());
         session.lastImport = importReceipt(path, asset, false);
         var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
@@ -1242,7 +1301,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return BridgeReplies.failedWith(
                     "MATERIALIZE_CAPACITY",
                     session.lastImport,
-                    "Original stored; local index was not updated. Free session space and retry the same bytes, type and key.");
+                    "Original stored; local index was not updated. Free session space and retry the same import or link.");
         }
         session.lastImport = importReceipt(path, asset, true);
         return BridgeReplies.succeeded(session.lastImport);
