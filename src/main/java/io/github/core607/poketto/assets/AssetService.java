@@ -6,6 +6,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.MarkdownDestinations;
+import io.github.core607.poketto.content.MarkdownResolutionLimitException;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -442,7 +443,13 @@ public final class AssetService {
             boolean publicOnly,
             boolean anonymous,
             Predicate<String> managedAllowed) {
-        var destinations = MarkdownDestinations.parse(body);
+        MarkdownDestinations.Destinations destinations;
+        try {
+            destinations = MarkdownDestinations.parse(body);
+        } catch (MarkdownResolutionLimitException limit) {
+            return new PreparedMedia(
+                    body, commit, Map.of(), Map.of(), Map.of(), List.of(), ResolvedMedia.GalleryStatus.UNAVAILABLE);
+        }
         RepositoryMediaSnapshot media = null;
         if (commit != null
                 && (folder
