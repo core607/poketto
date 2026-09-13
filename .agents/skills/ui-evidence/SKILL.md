@@ -19,7 +19,7 @@ A PR that changes user-visible interface must attach evidence produced by a **re
 - Use a screenshot for a stable visual state or layout comparison.
 - Use a short recording when interaction, timing, focus, transition, error recovery, or multiple states are the claim.
 - Capture only states needed to tell one story. Keep viewport, data, and environment consistent across the artifact.
-- One isolated run produces one evidence artifact. Do not splice separate runs, use stale images, assemble collages, or stage fake product data merely to make the result look complete.
+- One isolated run may produce multiple screenshots or recordings when needed to demonstrate the claim. Keep each artifact traceable to its run and code state; label separate runs and viewport differences. Do not splice runs into a false continuous flow, reuse stale images, assemble collages, or stage fake product data merely to make the result look complete.
 
 Wait for a concrete UI condition before capture: a unique label, enabled action, completed response, stable URL, or exact visible result. A fixed delay alone does not prove the state was reached.
 

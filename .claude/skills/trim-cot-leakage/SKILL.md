@@ -1,6 +1,6 @@
 ---
 name: trim-cot-leakage
-description: Use when auditing or fixing prose that only someone present in the authoring session could understand. Symptoms include "(decision 3)", "removed in this round", "rejected in review", "the previous version used to". Common in the output of every model family.
+description: Use when auditing or fixing repository prose that depends on private conversation context or narrates its authoring session.
 ---
 
 Generated from [.agents/skills/trim-cot-leakage/SKILL.md](../../../.agents/skills/trim-cot-leakage/SKILL.md) by `./gradlew syncClaudeSkills`; do not edit. Read that file and follow it exactly.
