@@ -81,6 +81,14 @@ focused diagnosis. The default `--scenario all` includes them with the complete
 adapter lifecycle checks and process-loss expiry. A focused result does not prove
 the omitted scenarios. Each mode uses a fresh native fixture and checks cleanup.
 
+`--scenario retained-process` runs independent producer and recovery JVMs. The
+controller verifies the producer service's Java process and sends SIGKILL after
+an acknowledged command or during a command with a checkpointed host save. A new
+JVM reopens the same synthetic Git authority without reseeding, explicitly resumes
+the same copy, inspects its retained state and saves the restored draft. The worker
+boot stays unchanged. This focused mode checks lease closure and fixture cleanup;
+it does not rerun the complete adapter batch.
+
 The complete Java batch has a 360-second supervisor and harness deadline to cover its repeated cold opens and intentional worker restarts. Focused batches retain a 240-second deadline. These are whole-test budgets; each command and lease keeps its independently checked timeout, and cleanup still verifies that no execution processes remain.
 
 ```sh
@@ -203,3 +211,5 @@ The [non-text baseline run](evidence/2026-09-13-retained-nontext-baselines.json)
 The [worker lifecycle run](evidence/2026-09-13-retained-worker-lifecycle.json) kills and restarts the actual native supervisor before explicit recovery. Private text and binary drafts survive at the original commit, with the same original archive reference. A denied private-read check prevents recovery from changing metadata. A public copy retains its draft and projection proof after another worker restart; increased permission does not expose private files or private authority history, and publication withdrawal rejects recovery without changing metadata. All 42 native scenarios, independent checkpoint collection, process-loss expiry and cleanup pass. Authorization uses a synthetic fixture; real-account and actual-client recovery acceptance remain pending.
 
 The [explicit discard run](evidence/2026-09-13-retained-discard.json) refuses stale generations and busy writers, then loses real CLOSE replies and verifies that metadata and the writer remain intact until containment is confirmed. Retrying discards the copy; another retry returns `ABSENT`, recovery is refused, and a fresh copy includes remote saves without the discarded draft. Owners can also discard after private-read denial or publication withdrawal. All 43 native scenarios, independent checkpoint collection, process-loss expiry and cleanup pass. Separately, 306 Linux storage cases and MCP input, catalog, socket, module, style and HTTP protocol checks pass. Authentication remains synthetic; additional crash-window and actual-client acceptance are pending.
+
+The [JVM process-loss run](evidence/2026-09-13-retained-jvm-process-loss.json) verifies external SIGKILL at both focused-mode boundaries. New JVMs recover original commits, draft text and binary bytes, original archives, per-file baselines and save receipts; the interrupted command remains identified. Saving the restored draft succeeds and authoritative Git readback confirms its content. Both cases, worker lease closure and fixture cleanup pass. Authentication remains synthetic. The run does not cover the remaining persistence/push/response crash windows or actual-client acceptance.

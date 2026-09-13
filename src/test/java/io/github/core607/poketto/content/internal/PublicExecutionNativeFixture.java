@@ -57,6 +57,18 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public PublicExecutionNativeFixture(
             Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply) throws Exception {
+        this(root, staging, auth, workspace, loseFirstReply, false);
+    }
+
+    /** Reopens an existing synthetic authority after process loss without creating another commit. */
+    public static PublicExecutionNativeFixture reopen(Path root, Path staging, AuthService auth, WorkspaceId workspace)
+            throws Exception {
+        return new PublicExecutionNativeFixture(root, staging, auth, workspace, false, true);
+    }
+
+    private PublicExecutionNativeFixture(
+            Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply, boolean existing)
+            throws Exception {
         this.workspace = workspace;
         this.fixtureRoot = root;
         var delegate = new JGitRemoteGitTransport();
@@ -80,8 +92,28 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                 return result;
             }
         });
+        sourceCommit = existing ? existingHead() : seedRepository();
+        snapshots = new JGitPublicContentSnapshots(repository.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        exports = new JGitRepositorySnapshotExports(
+                repository.authority(), auth, staging, 1024 * 1024, Duration.ofSeconds(10), snapshots);
+    }
+
+    private String existingHead() throws Exception {
+        Path remote = fixtureRoot.resolve("remotes").resolve(workspace + ".git");
+        if (!Files.isDirectory(remote)) {
+            throw new IllegalStateException("Existing native authority is missing");
+        }
+        ObjectId head = repository.remoteHead(workspace);
+        if (ObjectId.zeroId().equals(head)) {
+            throw new IllegalStateException("Existing native authority has no main commit");
+        }
+        return head.name();
+    }
+
+    private String seedRepository() throws Exception {
         repository.commitRemote(workspace, Map.of("private/secret.md", text("historic-secret-needle")));
-        sourceCommit = repository
+        return repository
                 .commitRemote(
                         workspace,
                         Map.of(
@@ -95,10 +127,6 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                                 "AGENTS.md",
                                 text("operator-secret-needle")))
                 .name();
-        snapshots = new JGitPublicContentSnapshots(repository.authority(), Clock.systemUTC(), Duration.ofHours(1));
-        snapshots.refresh(workspace);
-        exports = new JGitRepositorySnapshotExports(
-                repository.authority(), auth, staging, 1024 * 1024, Duration.ofSeconds(10), snapshots);
     }
 
     public RepositorySnapshotExports exports() {

@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-13",
+  "result": "PASS",
+  "sourceHashesVerified": true,
+  "scope": "Focused native retained-process mode. The root controller verifies and externally SIGKILLs producer JVMs after a normally returned command and during an uncompleted command whose host save is durably checkpointed. Independent JVMs reopen the same Git authority without reseeding and explicitly restore the same copies with a changed application boot but unchanged worker boot. Original commits, draft text and binary bytes, original archive references, per-file baselines and save receipts survive; interrupted-command identity remains visible. Restored drafts can then be saved through real SRT and verified against remote Git. Both process-loss cases, lease closure and fixture cleanup pass. Authentication is synthetic. Other native scenarios were not rerun by this focused mode; real-account/client acceptance and additional persistence/push/response crash windows remain pending.",
+  "events": [
+    {
+      "retainedLossReady": "acknowledged"
+    },
+    {
+      "test": "retained-producer-externally-killed-acknowledged",
+      "result": "PASS"
+    },
+    {
+      "test": "retained-jvm-loss-acknowledged",
+      "result": "PASS",
+      "source": "synthetic-only",
+      "processProbeClassSha256": "b3910520cc8a59ff0595c414f5deec19aa869eab5153cdaf52ddb61c7590979e",
+      "adapterClassSha256": "68b8736a12b71f1bd6d055dddd900c313389718bb3d8b4eb77b80d0a5c4121d4"
+    },
+    {
+      "retainedLossReady": "interrupted"
+    },
+    {
+      "test": "retained-producer-externally-killed-interrupted",
+      "result": "PASS"
+    },
+    {
+      "test": "retained-jvm-loss-interrupted",
+      "result": "PASS",
+      "source": "synthetic-only",
+      "processProbeClassSha256": "b3910520cc8a59ff0595c414f5deec19aa869eab5153cdaf52ddb61c7590979e",
+      "adapterClassSha256": "68b8736a12b71f1bd6d055dddd900c313389718bb3d8b4eb77b80d0a5c4121d4"
+    },
+    {
+      "test": "retained-process-recovery-closes-worker-leases",
+      "result": "PASS"
+    },
+    {
+      "nativeCombined": "PASS",
+      "runtimeManifestSha256": "e4c2b900a6f80768c1f8d94bd6b35037e89d37ff4920cc23e21e1bff08604b41",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
+      "workerSha256": "37882540fd975c85734d5594128648c552a2d762c40dd5638cf79988c6dddd34",
+      "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+      "bridgeSha256": "c71cb79d284101a74cd08ab1606224b0bbcaa5910786fe9dd17e1c7e20260049",
+      "cliSha256": "89e7ddd33f7ce20a251216122163ffbc96a7f26fe2d6b09bf7e2579570700468",
+      "sessionFilesSha256": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+      "materializeSha256": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+      "binaryCaptureSha256": "6a11b936bc8a29da06788d33a9e7df7d0298b226b32c3229af62ea03cbec2d53",
+      "artifactsSha256": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd",
+      "checkpointsSha256": "53bb378eb042325bae301742dc10910b04c2497149e5257e67530206953fe11e",
+      "checkpointTreeSha256": "106ccf35c23c183f791a968b94ce158801a24c9de6bc2eff67a89457d6542d95",
+      "nativeScriptSha256": "3d05f51e1d9d003dc6efc0be60fc2670d0c0eedd42198a9a59ef271d34bfb37d",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "source": "synthetic-only",
+      "scenario": "retained-process"
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ]
+}

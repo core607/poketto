@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'retained-process'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -153,14 +153,17 @@ with socket.socket(socket.AF_UNIX) as connection:
         # The complete batch includes repeated cold opens and deliberately interrupted restarts.
         timeout_seconds = 360 if mode == 'main' else 240
         agent, = list((runtime / 'jars').glob('byte-buddy-agent-*.jar'))
+        retained_process = mode.startswith(('retained-produce-', 'retained-resume-'))
+        entrypoint = 'RetainedProcessNativeProbe' if retained_process else 'ExecutorNativeProbe'
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', app_unit,
                    '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64',
                    '-p', 'RuntimeMaxSec=' + str(timeout_seconds),
                    str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(root / 'home'),
                    '-javaagent:' + str(agent), '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
-                   'io.github.core607.poketto.executor.internal.ExecutorNativeProbe', str(root / 'java.json'), mode]
+                   'io.github.core607.poketto.executor.internal.' + entrypoint, str(root / 'java.json'), mode]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         output = []
+        killed_pid = None
         def relay():
             for line in process.stdout:
                 output.append(line)
@@ -175,6 +178,14 @@ with socket.socket(socket.AF_UNIX) as connection:
             if request_file.exists():
                 request = json.loads(request_file.read_text())
                 assert str(uuid.UUID(request['id'])) == request['id']
+                if request['operation'] == 'kill-application':
+                    assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted')
+                    assert killed_pid is None
+                    killed_pid = int(run(['systemctl', 'show', '--value', '-p', 'MainPID', app_unit]))
+                    assert killed_pid > 1 and Path(f'/proc/{killed_pid}/exe').resolve(strict=True) == java
+                    run(['systemctl', 'kill', '--kill-who=all', '--signal=KILL', app_unit])
+                    request_file.unlink()
+                    continue
                 control(request)
                 request_file.unlink()
                 response = root / 'control/response.tmp'
@@ -184,14 +195,25 @@ with socket.socket(socket.AF_UNIX) as connection:
                 response.replace(root / 'control/response.json')
             time.sleep(.02)
         reader.join(timeout=5)
-        assert process.returncode == 0, 'Java native fixture failed'
         parsed = [json.loads(line) for line in output if line.startswith('{')]
+        if mode.startswith('retained-produce-'):
+            scenario = mode.removeprefix('retained-produce-')
+            assert killed_pid is not None and process.returncode != 0, 'Producer was not externally killed'
+            assert not Path(f'/proc/{killed_pid}').exists(), 'Producer JVM still exists'
+            assert any(item.get('retainedLossReady') == scenario for item in parsed)
+            passed('retained-producer-externally-killed-' + scenario)
+            return
+        assert killed_pid is None and process.returncode == 0, 'Java native fixture failed'
         if mode == 'main':
             assert any(item.get('summary') == 'PASS' for item in parsed)
         elif mode == 'exports':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority',
                 'public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files'}
+        elif mode.startswith('retained-resume-'):
+            scenario = mode.removeprefix('retained-resume-')
+            assert any(item.get('test') == 'retained-jvm-loss-' + scenario and item.get('result') == 'PASS'
+                       for item in parsed)
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -260,7 +282,12 @@ with socket.socket(socket.AF_UNIX) as connection:
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
-        execute_java('main' if args.scenario == 'all' else 'exports')
+        if args.scenario == 'retained-process':
+            for case in ('acknowledged', 'interrupted'):
+                execute_java('retained-produce-' + case)
+                execute_java('retained-resume-' + case)
+        else:
+            execute_java('main' if args.scenario == 'all' else 'exports')
         if args.scenario == 'all':
             expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
             assert str(uuid.UUID(expired)) == expired
@@ -268,7 +295,8 @@ with socket.socket(socket.AF_UNIX) as connection:
             passed('expired-checkpoint-reclaimed-by-worker-without-client-removal')
             execute_java('abandon')
         no_processes(wait=22)
-        passed('java-process-loss-expires-real-worker-lease')
+        passed('retained-process-recovery-closes-worker-leases' if args.scenario == 'retained-process'
+               else 'java-process-loss-expires-real-worker-lease')
         control({'operation': 'assert-source-unchanged'})
         print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
