@@ -157,8 +157,63 @@ class WorkerSocketTests {
         }
     }
 
+    @Test
+    void retainedExpiryClosesTheLeaseWithoutWaitingForMcpIdleAndAllowsExplicitNew() throws Exception {
+        RetainedCopyStore store = metadataStore();
+        var expired = new AtomicBoolean();
+        when(store.expired(any(Long.class))).thenAnswer(call -> expired.get());
+        var actor = principal();
+        var meters = new SimpleMeterRegistry();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        store,
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.checkpointProtocol = 1;
+            executor.bindMetrics(meters);
+            var fresh = new RepositoryExecutor.CopyRequest("new", null, false);
+            var first = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "expiry",
+                    fresh,
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            expired.set(true);
+            long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+            while (meters.get("poketto.executor.sessions.active").gauge().value() != 0) {
+                assertThat(System.nanoTime()).isLessThan(deadline);
+                Thread.sleep(20);
+            }
+            assertThat(peer.operations("CLOSE")).isNotEmpty();
+            expired.set(false);
+            var replacement = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "expiry",
+                    fresh,
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(replacement.copyId()).isNotEqualTo(first.copyId());
+            assertThat(peer.operations("OPEN")).hasSize(2);
+            assertThat(peer.operations("EXEC")).hasSize(2);
+        }
+    }
+
     private static RetainedCopyStore metadataStore() {
         RetainedCopyStore store = mock(RetainedCopyStore.class);
+        when(store.writer(any(), any())).thenReturn(mock(RetainedFileLocks.Held.class));
         var record = new AtomicReference<RetainedCopyRecord>();
         when(store.newExpiry()).thenReturn(System.currentTimeMillis() + 60000);
         when(store.read(any(), any())).thenAnswer(call -> record.get());

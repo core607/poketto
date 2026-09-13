@@ -5,6 +5,7 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,7 +19,9 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.DeserializationFeature;
@@ -66,6 +69,24 @@ final class RetainedRecordFiles {
     }
 
     RetainedCopyRecord read(Path path) throws IOException {
+        return read(path, RetainedCopyRecord.class);
+    }
+
+    Expiry expiry(Path path) throws IOException {
+        return read(path, Expiry.class);
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Expiry(int format, RetainedCopyRecord.Owner owner, UUID copyId, long expiresAt) {
+        Expiry {
+            ProtocolValues.require(format == 1, "retained format", "must be version 1");
+            Objects.requireNonNull(owner, "expiry owner must be present");
+            Objects.requireNonNull(copyId, "expiry copy ID must be present");
+            ProtocolValues.require(expiresAt > 0, "retention expiry", "must be positive");
+        }
+    }
+
+    private <T> T read(Path path, Class<T> type) throws IOException {
         try (FileChannel file = FileChannel.open(path, READ, NOFOLLOW_LINKS)) {
             long size = file.size();
             if (size < OVERHEAD || size > maximum) {
@@ -81,7 +102,7 @@ final class RetainedRecordFiles {
             }
             verifyDigest(file, length);
             file.position(16);
-            return json.readValue(new LimitedInput(Channels.newInputStream(file), length), RetainedCopyRecord.class);
+            return json.readValue(new LimitedInput(Channels.newInputStream(file), length), type);
         }
     }
 

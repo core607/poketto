@@ -17,6 +17,7 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
@@ -84,22 +85,7 @@ final class RetainedCommandNativeProbe {
                 new RetainedCopyStore.Limits(8, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofMinutes(10)),
                 Clock.systemUTC());
         try (var fixture = new PublicExecutionNativeFixture(root.resolve("repository"), exports, auth, workspace)) {
-            try (var executor = new ExecutorConfiguration()
-                    .isolatedRepositoryExecutor(
-                            Optional.of(store),
-                            auth,
-                            fixture.exports(),
-                            mock(PortableContentExports.class),
-                            fixture.media(auth),
-                            fixture.reader(auth),
-                            fixture.patches(auth),
-                            fixture.moves(auth),
-                            json,
-                            socket,
-                            key,
-                            4,
-                            45,
-                            8)) {
+            try (var executor = adapter(fixture, store)) {
                 RetainedCopyRecord record = commands(executor, store);
                 Field workerField = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
                 workerField.setAccessible(true);
@@ -108,6 +94,75 @@ final class RetainedCommandNativeProbe {
                 executor.close();
                 restoreAdapter(fixture, store, record);
             }
+            expireAndReclaim(fixture);
+        }
+    }
+
+    private IsolatedRepositoryExecutor adapter(PublicExecutionNativeFixture fixture, RetainedCopyStore store) {
+        return new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        Optional.of(store),
+                        auth,
+                        fixture.exports(),
+                        mock(PortableContentExports.class),
+                        fixture.media(auth),
+                        fixture.reader(auth),
+                        fixture.patches(auth),
+                        fixture.moves(auth),
+                        json,
+                        socket,
+                        key,
+                        4,
+                        45,
+                        8);
+    }
+
+    private void expireAndReclaim(PublicExecutionNativeFixture fixture) throws Exception {
+        var store = new RetainedCopyStore(
+                root.resolve("expiring-records"),
+                new RetainedCopyStore.Limits(2, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofSeconds(8)),
+                Clock.systemUTC());
+        var meters = new SimpleMeterRegistry();
+        try (var executor = adapter(fixture, store);
+                var maintenance = new RetainedCopyMaintenance(store, Duration.ofMillis(200))) {
+            executor.bindMetrics(meters);
+            var fresh = new RepositoryExecutor.CopyRequest("new", null, false);
+            RepositoryExecutor.ExecutionResult result = recoveredCommand(
+                    executor, "expiry-native", fresh, "printf retained-until-expiry > private/expiring");
+            var owner = new RetainedCopyRecord.Owner(actor.subjectId(), workspace.value());
+            RetainedCopyRecord record = store.read(owner, UUID.fromString(result.copyId()));
+            Files.writeString(
+                    root.resolve("expired-checkpoint"),
+                    record.acknowledged().id().toString());
+            assertThat(System.currentTimeMillis()).isLessThan(result.retention().expiresAt());
+            awaitExpired(store, record, meters);
+            RepositoryExecutor.ExecutionResult replacement =
+                    recoveredCommand(executor, "expiry-native", fresh, "test ! -e private/expiring");
+            assertThat(replacement.copyId()).isNotEqualTo(result.copyId());
+        }
+    }
+
+    private static void awaitExpired(RetainedCopyStore store, RetainedCopyRecord record, SimpleMeterRegistry meters)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (true) {
+            boolean missing = false;
+            try {
+                store.read(record.owner(), record.copyId());
+            } catch (RetainedCopyException failure) {
+                assertThat(failure.reason())
+                        .isIn(
+                                RetainedCopyException.Reason.EXPIRED,
+                                RetainedCopyException.Reason.MISSING,
+                                RetainedCopyException.Reason.BUSY);
+                missing = failure.reason() == RetainedCopyException.Reason.MISSING;
+            }
+            if (missing
+                    && meters.get("poketto.executor.sessions.active").gauge().value() == 0) {
+                return;
+            }
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(50);
         }
     }
 
@@ -267,22 +322,7 @@ final class RetainedCommandNativeProbe {
 
     private void restoreAdapter(
             PublicExecutionNativeFixture fixture, RetainedCopyStore store, RetainedCopyRecord record) {
-        try (var restored = new ExecutorConfiguration()
-                .isolatedRepositoryExecutor(
-                        Optional.of(store),
-                        auth,
-                        fixture.exports(),
-                        mock(PortableContentExports.class),
-                        fixture.media(auth),
-                        fixture.reader(auth),
-                        fixture.patches(auth),
-                        fixture.moves(auth),
-                        json,
-                        socket,
-                        key,
-                        4,
-                        45,
-                        8)) {
+        try (var restored = adapter(fixture, store)) {
             var expected = new RepositoryExecutor.CopyRequest(record.copyId().toString(), record.generation(), true);
             RepositoryExecutor.ExecutionResult result = recoveredCommand(
                     restored,

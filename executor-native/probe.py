@@ -262,6 +262,10 @@ with socket.socket(socket.AF_UNIX) as connection:
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         execute_java('main' if args.scenario == 'all' else 'exports')
         if args.scenario == 'all':
+            expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
+            assert str(uuid.UUID(expired)) == expired
+            assert not list(Path(worker_config['checkpointRoot']).glob('*_' + expired + '.checkpoint'))
+            passed('expired-checkpoint-reclaimed-by-worker-without-client-removal')
             execute_java('abandon')
         no_processes(wait=22)
         passed('java-process-loss-expires-real-worker-lease')

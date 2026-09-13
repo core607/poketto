@@ -14,6 +14,11 @@ import org.springframework.context.annotation.Configuration;
         havingValue = "true")
 class ExecutorRetentionConfiguration {
     @Bean
+    RetainedCopyMaintenance retainedCopyMaintenance(RetainedCopyStore store) {
+        return new RetainedCopyMaintenance(store, Duration.ofMinutes(1));
+    }
+
+    @Bean
     RetainedCopyStore retainedCopyStore(
             @Value("${poketto.executor.retention.root}") Path root,
             @Value("${poketto.executor.retention.max-copies:32}") int copies,

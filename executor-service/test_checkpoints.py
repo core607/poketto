@@ -9,6 +9,7 @@ import uuid
 
 from checkpoint_tree import CheckpointError, ENTRY, read_tree
 from checkpoints import CheckpointStore
+from worker import SystemdBackend
 
 
 class CheckpointTests(unittest.TestCase):
@@ -196,3 +197,73 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual('UNAVAILABLE', raised.exception.reason)
         self.restore(reference)
         self.assertEqual(1, len(list(self.store.root.glob('*.checkpoint'))))
+
+    def test_expiry_reclaims_full_capacity_and_dead_pending_files_without_removing_live_work(self):
+        self.limits['maxCheckpoints'] = 2
+        expired = self.capture()
+        self.now += 1
+        live = self.capture()
+        with self.assertRaises(CheckpointError) as full:
+            self.capture()
+        self.assertEqual('CAPACITY', full.exception.reason)
+        orphan = self.store.root / ('.pending-' + str(uuid.uuid4()))
+        orphan.write_bytes(b'unpublished capture')
+        orphan.chmod(0o600)
+        self.now += 299
+        self.assertEqual(2, self.store.collect_expired())
+        self.assertFalse(orphan.exists())
+        with self.assertRaises(CheckpointError) as missing:
+            self.restore(expired)
+        self.assertEqual('MISSING', missing.exception.reason)
+        restored = self.restore(live)
+        self.assertEqual('中文 retained text', (restored / 'work/repository/note.md').read_text())
+        self.restore(self.capture())
+
+    def test_collection_does_not_race_a_held_capture_or_restore_lock(self):
+        self.capture()
+        self.now += 300
+        with self.store.locked(), self.assertRaises(CheckpointError) as busy:
+            self.store.collect_expired()
+        self.assertEqual('BUSY', busy.exception.reason)
+        self.assertEqual(1, len(list(self.store.root.glob('*.checkpoint'))))
+        self.assertEqual(1, self.store.collect_expired())
+
+    def test_collection_refuses_invalid_headers_and_aliases_without_deleting_the_target(self):
+        reference = self.capture()
+        file = self.store.root / self.store.filename(self.owner, reference['checkpointId'])
+        original = file.read_bytes()
+        file.write_bytes(b'corrupt!' + original[8:])
+        self.now += 300
+        with self.assertRaises(CheckpointError) as corrupt:
+            self.store.collect_expired()
+        self.assertEqual('CORRUPT', corrupt.exception.reason)
+        self.assertTrue(file.exists())
+        file.write_bytes(original)
+        outside = self.root / 'outside'
+        os.link(file, outside)
+        with self.assertRaises(CheckpointError) as linked:
+            self.store.collect_expired()
+        self.assertEqual('UNAVAILABLE', linked.exception.reason)
+        self.assertEqual(original, outside.read_bytes())
+        file.unlink()
+        file.symlink_to(outside)
+        with self.assertRaises(CheckpointError) as linked:
+            self.store.collect_expired()
+        self.assertEqual('UNAVAILABLE', linked.exception.reason)
+        self.assertEqual(original, outside.read_bytes())
+
+    def test_backend_periodic_collection_defers_busy_store_and_retries_without_client_requests(self):
+        self.capture()
+        self.now += 300
+        backend = SystemdBackend.__new__(SystemdBackend)
+        backend.checkpoints = self.store
+        backend.next_checkpoint_collection = 0
+        with patch('worker.time.monotonic', return_value=10), self.store.locked():
+            backend.collect_checkpoints()
+        self.assertEqual(1, len(list(self.store.root.glob('*.checkpoint'))))
+        with patch('worker.time.monotonic', return_value=69):
+            backend.collect_checkpoints()
+        self.assertEqual(1, len(list(self.store.root.glob('*.checkpoint'))))
+        with patch('worker.time.monotonic', return_value=70):
+            backend.collect_checkpoints()
+        self.assertEqual([], list(self.store.root.glob('*.checkpoint')))

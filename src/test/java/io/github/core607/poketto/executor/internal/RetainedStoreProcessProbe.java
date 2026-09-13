@@ -3,9 +3,11 @@ package io.github.core607.poketto.executor.internal;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.WRITE;
 
+import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,7 +33,7 @@ public final class RetainedStoreProcessProbe {
                 if (!lock.isValid()) {
                     throw new IllegalStateException("child did not acquire the retention lock");
                 }
-                Files.writeString(Path.of(args[2]), "LOCKED");
+                signal(Path.of(args[2]));
                 System.in.read();
             }
             return;
@@ -44,7 +46,7 @@ public final class RetainedStoreProcessProbe {
             try (var lock = store.writer(owner, UUID.fromString(args[4]))) {
                 lock.requireValid();
                 if (args[0].equals("hold-writer")) {
-                    Files.writeString(Path.of(args[5]), "LOCKED");
+                    signal(Path.of(args[5]));
                     System.in.read();
                 } else {
                     System.out.println("ACQUIRED");
@@ -57,5 +59,15 @@ public final class RetainedStoreProcessProbe {
         var record = store.read(owner, UUID.fromString(args[4]));
         System.out.println(record.revision() + ":" + record.generation() + ":"
                 + record.acknowledged().state().originalCommit());
+    }
+
+    private static void signal(Path target) throws IOException {
+        Path temporary = Files.createTempFile(target.getParent(), ".retained-ready-", ".tmp");
+        try {
+            Files.writeString(temporary, "LOCKED");
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
     }
 }

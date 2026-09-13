@@ -612,6 +612,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 new RetainedCopyRecord.Writer(
                         session.hello.workerBootId(), worker.applicationBootId(), session.leaseId),
                 session.saveState.snapshot());
+        session.retainedRecord = retained.record();
         session.saveState = SelectedFileSaves.State.restore(session.saveState.snapshot(), retained::retain);
         retained.begin(executionId);
     }
@@ -910,6 +911,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         for (Session session : current) {
             if (session.stopping.get()) {
                 reconcileClose(session);
+                continue;
+            }
+            RetainedCopyRecord record = session.retainedRecord;
+            if (retention != null && record != null && retention.expired(record.expiresAt())) {
+                stop(session, "session_closed");
                 continue;
             }
             if (!session.openAttempted
@@ -2297,7 +2303,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
-        private RetainedCopyRecord retainedRecord;
+        private volatile RetainedCopyRecord retainedRecord;
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;

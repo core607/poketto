@@ -75,6 +75,51 @@ final class RetainedCopyStore {
         return Math.addExact(clock.millis(), limits.retention().toMillis());
     }
 
+    boolean expired(long expiresAt) {
+        return expiresAt <= clock.millis();
+    }
+
+    /** Expired records have no recovery grant; a busy writer still prevents their removal. */
+    int collectExpired() {
+        return locked(() -> {
+            usage();
+            int removed = 0;
+            try (var files = Files.newDirectoryStream(root, "*.record")) {
+                for (Path file : files) {
+                    if (file.getFileName().toString().startsWith(".writer-")) {
+                        continue;
+                    }
+                    checkFile(file);
+                    RetainedRecordFiles.Expiry expiry = records.expiry(file);
+                    if (!file.equals(path(expiry.owner(), expiry.copyId()))) {
+                        throw new IOException("expired record identity does not match its address");
+                    }
+                    if (expired(expiry.expiresAt()) && removeExpired(file)) {
+                        removed++;
+                    }
+                }
+            }
+            return removed;
+        });
+    }
+
+    private boolean removeExpired(Path file) throws IOException {
+        Path writer = root.resolve(".writer-" + file.getFileName());
+        // .lock excludes new writer acquisition and metadata replacement until both names are gone.
+        try (var held = RetainedFileLocks.acquire(writer, () -> openLock(writer))) {
+            held.requireValid();
+            Files.delete(file);
+            Files.delete(writer);
+            syncDirectory(root);
+            return true;
+        } catch (RetainedCopyException busy) {
+            if (busy.reason() != BUSY) {
+                throw busy;
+            }
+            return false;
+        }
+    }
+
     /** Hold across the entire command and its host writes; reload the generation after acquisition. */
     RetainedFileLocks.Held writer(RetainedCopyRecord.Owner owner, UUID copyId) {
         return locked(() -> {
@@ -164,7 +209,7 @@ final class RetainedCopyStore {
     }
 
     private void requireLive(RetainedCopyRecord record) {
-        if (record.expiresAt() <= clock.millis()) {
+        if (expired(record.expiresAt())) {
             throw new RetainedCopyException(EXPIRED);
         }
     }

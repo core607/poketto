@@ -174,6 +174,54 @@ class CheckpointStore:
                     except FileNotFoundError:
                         pass
 
+    def collect_expired(self):
+        removed = scanned = 0
+        with self.locked() as root_fd:
+            try:
+                with os.scandir(root_fd) as entries:
+                    for entry in entries:
+                        scanned += 1
+                        if scanned > self.limits['maxCheckpoints'] * 2 + 16:
+                            raise CheckpointError('CAPACITY')
+                        if entry.name == '.lock':
+                            continue
+                        self.private_file(entry.stat(follow_symlinks=False))
+                        if entry.name.startswith('.pending-') and canonical_id(entry.name[9:]):
+                            os.unlink(entry.name, dir_fd=root_fd)
+                            removed += 1
+                            continue
+                        if not NAME.fullmatch(entry.name):
+                            raise CheckpointError('UNAVAILABLE')
+                        fd = os.open(entry.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+                        with os.fdopen(fd, 'rb') as file:
+                            self.private_file(os.fstat(file.fileno()))
+                            metadata = self.read_metadata(file)
+                        owner = tuple(metadata[key] for key in ('principalId', 'accountId', 'workspaceId'))
+                        if entry.name != self.filename(owner, metadata['checkpointId']):
+                            raise CheckpointError('CORRUPT')
+                        if metadata['expiresAt'] <= self.clock() * 1000:
+                            os.unlink(entry.name, dir_fd=root_fd)
+                            removed += 1
+            finally:
+                if removed:
+                    os.fsync(root_fd)
+        return removed
+
+    @staticmethod
+    def read_metadata(file):
+        if exact(file, len(MAGIC)) != MAGIC:
+            raise CheckpointError('CORRUPT')
+        length, = struct.unpack('>I', exact(file, 4))
+        if not 1 <= length <= 2048:
+            raise CheckpointError('CORRUPT')
+        try:
+            metadata = json.loads(exact(file, length))
+        except (ValueError, UnicodeError) as error:
+            raise CheckpointError('CORRUPT') from error
+        if not metadata_valid(metadata):
+            raise CheckpointError('CORRUPT')
+        return metadata
+
     @contextmanager
     def verified(self, root_fd, owner, reference):
         name = self.filename(owner, reference['checkpointId'])
@@ -195,17 +243,7 @@ class CheckpointStore:
             if digest.hexdigest() != reference['sha256']:
                 raise CheckpointError('CORRUPT')
             file.seek(0)
-            if exact(file, len(MAGIC)) != MAGIC:
-                raise CheckpointError('CORRUPT')
-            length, = struct.unpack('>I', exact(file, 4))
-            if not 1 <= length <= 2048:
-                raise CheckpointError('CORRUPT')
-            try:
-                metadata = json.loads(exact(file, length))
-            except (ValueError, UnicodeError) as error:
-                raise CheckpointError('CORRUPT') from error
-            if not metadata_valid(metadata):
-                raise CheckpointError('CORRUPT')
+            metadata = self.read_metadata(file)
             if (tuple(metadata[key] for key in ('principalId', 'accountId', 'workspaceId')) != tuple(owner) or
                     metadata['checkpointId'] != reference['checkpointId']):
                 raise CheckpointError('MISSING')

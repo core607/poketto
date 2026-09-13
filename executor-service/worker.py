@@ -6,6 +6,7 @@ import base64
 import fcntl
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import pwd
@@ -763,6 +764,7 @@ class SystemdBackend:
         self.c = config
         self.pool = None
         self.checkpoints = CheckpointStore(config['checkpointRoot'], config) if config.get('checkpointRoot') else None
+        self.next_checkpoint_collection = 0
         self.root = Path(config['runtimeRoot'])
         self.sessions = self.root / 'sessions'
         self.records = self.root / 'records'
@@ -861,6 +863,18 @@ class SystemdBackend:
         # It is not granted to execute-mode sandboxes.
         if self.checkpoints is None:
             (target / 'snapshot.bundle').unlink()
+
+    def collect_checkpoints(self):
+        if self.checkpoints is None or time.monotonic() < self.next_checkpoint_collection:
+            return
+        self.next_checkpoint_collection = time.monotonic() + 60
+        try:
+            self.checkpoints.collect_expired()
+        except CheckpointError as error:
+            if error.reason != 'BUSY':
+                logging.getLogger(__name__).warning('Checkpoint collection refused: %s', error.reason)
+        except OSError:
+            logging.getLogger(__name__).warning('Checkpoint collection failed', exc_info=True)
 
     def checkpoint(self, s, data):
         if s.unit:
@@ -1239,6 +1253,7 @@ def main():
         try:
             while True:
                 service.sweep()
+                backend.collect_checkpoints()
                 time.sleep(0.2)
         finally:
             service.shutdown()
