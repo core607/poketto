@@ -33,7 +33,7 @@ public final class MarkdownDestinations {
         int count = 0;
         while (node != null) {
             if (++count > 20_000) {
-                throw new IllegalArgumentException("Markdown node count exceeds its bound");
+                throw new MarkdownResolutionLimitException("Markdown node count exceeds its bound");
             }
             if (node instanceof Image image) {
                 images.add(image.getDestination());
@@ -42,7 +42,7 @@ public final class MarkdownDestinations {
                 links.add(link.getDestination());
             }
             if (links.size() + images.size() > 256) {
-                throw new IllegalArgumentException("Markdown reference count exceeds its bound");
+                throw new MarkdownResolutionLimitException("Markdown reference count exceeds its bound");
             }
             node = MarkdownNodes.next(node);
         }

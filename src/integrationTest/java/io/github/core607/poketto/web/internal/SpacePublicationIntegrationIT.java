@@ -3,6 +3,7 @@ package io.github.core607.poketto.web.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -277,6 +278,8 @@ class SpacePublicationIntegrationIT {
     private void verifyCollectionReading(AuthPrincipal owner, WorkspaceId workspace) throws Exception {
         Path root = directory.resolve("second.git-seed");
         try (Git git = Git.open(root.toFile())) {
+            Files.createDirectories(root.resolve("public/broken"));
+            Files.writeString(root.resolve("public/broken/index.md"), boundedMarkdown());
             Files.createDirectories(root.resolve("public/guide"));
             Files.writeString(root.resolve("public/end.md"), "# Final article");
             Files.writeString(
@@ -297,6 +300,16 @@ class SpacePublicationIntegrationIT {
         service.setEnabled(owner, workspace, true);
         String endpoint = "/api/public/spaces/second-site/document";
         verifyFolderLandings(endpoint, workspace);
+        mvc.perform(get(endpoint).param("route", "/broken"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body", containsString("BOUNDARY_SENTINEL")))
+                .andExpect(jsonPath("$.body", containsString("![Approved image](../picture.png)")))
+                .andExpect(jsonPath("$.navigation.available").value(false))
+                .andExpect(jsonPath("$.links").isEmpty())
+                .andExpect(jsonPath("$.downloads").isEmpty())
+                .andExpect(jsonPath("$.images").isEmpty())
+                .andExpect(jsonPath("$.gallery").isEmpty())
+                .andExpect(jsonPath("$.galleryStatus").value("UNAVAILABLE"));
         mvc.perform(get(endpoint).param("route", "/guide"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.navigation.available").value(true))
@@ -350,6 +363,21 @@ class SpacePublicationIntegrationIT {
         assertThat(content.getFile(workspace, Optional.empty(), "public/guide/README.md")
                         .source())
                 .contains("# Shadowed landing source");
+    }
+
+    private static String boundedMarkdown() {
+        StringBuilder body = new StringBuilder("# BOUNDARY_SENTINEL\n\n")
+                .append("[Approved article](../note.md)\n\n")
+                .append("[Approved download](../source.pdf)\n\n")
+                .append("![Approved image](../picture.png)\n\n");
+        for (int index = 0; index < 256; index++) {
+            body.append("[Overflow ")
+                    .append(index)
+                    .append("](<missing-")
+                    .append(index)
+                    .append(".md>)\n");
+        }
+        return body.toString();
     }
 
     private String verifyDiscovery() throws Exception {
