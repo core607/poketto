@@ -152,6 +152,7 @@ class SpacePublicationIntegrationIT {
         snapshots.refresh(workspace);
         mvc.perform(get(publication(workspace)).session(ownerSession))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workspaceId").value(workspace.toString()))
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.slug").value("home"));
         String image = publicImage();
@@ -276,6 +277,7 @@ class SpacePublicationIntegrationIT {
                         .contentType("application/json")
                         .content("{\"enabled\":" + enabled + "}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workspaceId").value(workspace.toString()))
                 .andExpect(jsonPath("$.enabled").value(enabled));
     }
 

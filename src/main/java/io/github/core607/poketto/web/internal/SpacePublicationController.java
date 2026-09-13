@@ -26,22 +26,26 @@ class SpacePublicationController {
     }
 
     @GetMapping
-    ResponseEntity<WorkspacePublications.Publication> settings(
+    ResponseEntity<PublicationResponse> settings(
             @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
         return response(publications.settings(actor, WorkspaceId.parse(workspaceId)));
     }
 
     @PutMapping
-    ResponseEntity<WorkspacePublications.Publication> update(
+    ResponseEntity<PublicationResponse> update(
             @AuthenticationPrincipal AuthPrincipal actor,
             @PathVariable String workspaceId,
             @RequestBody UpdatePublication request) {
         return response(publications.setEnabled(actor, WorkspaceId.parse(workspaceId), request.enabled()));
     }
 
-    private static ResponseEntity<WorkspacePublications.Publication> response(WorkspacePublications.Publication body) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
+    private static ResponseEntity<PublicationResponse> response(WorkspacePublications.Publication body) {
+        var response =
+                new PublicationResponse(body.workspaceId().toString(), body.slug(), body.displayName(), body.enabled());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
     }
+
+    record PublicationResponse(String workspaceId, String slug, String displayName, boolean enabled) {}
 
     record UpdatePublication(Boolean enabled) {
         UpdatePublication {
