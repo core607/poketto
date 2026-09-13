@@ -53,9 +53,10 @@ class RetainedPublicProjectionTests {
                 fullRead,
                 projection,
                 1_800_000_000_000L,
-                new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID()),
+                new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
                 new RetainedCopyRecord.Checkpoint(
                         UUID.randomUUID(), "b".repeat(64), 100, new SelectedFileSaves.State(BASE).snapshot()),
+                null,
                 null);
     }
 

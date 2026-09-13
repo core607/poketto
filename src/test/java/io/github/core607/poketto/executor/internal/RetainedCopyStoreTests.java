@@ -114,7 +114,7 @@ class RetainedCopyStoreTests {
         Path root = directory.resolve("retained");
         var store = new RetainedCopyStore(root, LIMITS, CLOCK);
         var initial = initial();
-        var writer = new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID());
+        var writer = new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         store.create(initial);
         for (int generation = 1; generation <= 2; generation++) {
             var next = new RetainedCopyRecord(
@@ -129,6 +129,7 @@ class RetainedCopyStoreTests {
                     initial.expiresAt(),
                     writer,
                     initial.acknowledged(),
+                    null,
                     null);
             if (generation == 1) {
                 assertThatThrownBy(() -> store.replace(0, 1, next))
@@ -439,8 +440,9 @@ class RetainedCopyStoreTests {
                 true,
                 null,
                 CLOCK.millis() + 60000,
-                new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID()),
+                new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
                 checkpoint,
+                null,
                 null);
     }
 
@@ -463,7 +465,8 @@ class RetainedCopyStoreTests {
                 prior.expiresAt(),
                 prior.writer(),
                 checkpoint,
-                command);
+                command,
+                null);
     }
 
     private static BridgeReplies.RestoredReceipt receipt(String message) {

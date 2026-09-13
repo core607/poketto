@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -20,6 +21,7 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -77,7 +79,7 @@ class McpCopyIdentityTests {
                         eq(principal),
                         eq(workspace),
                         eq("transport"),
-                        eq("new"),
+                        eq(new RepositoryExecutor.CopyRequest("new", null, false)),
                         eq(Optional.empty()),
                         eq("pwd"),
                         eq(Duration.ofSeconds(30)),
@@ -93,7 +95,8 @@ class McpCopyIdentityTests {
                         false,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
-                        Map.of()));
+                        Map.of(),
+                        null));
         var initial = call(Map.of("expectedCopyId", "new", "command", "pwd"));
         assertThat(initial.isError()).isFalse();
         assertThat(body(initial).path("copyId").stringValue()).isEqualTo(id);
@@ -101,7 +104,7 @@ class McpCopyIdentityTests {
                         eq(principal),
                         eq(workspace),
                         eq("transport"),
-                        eq(id),
+                        eq(new RepositoryExecutor.CopyRequest(id, null, false)),
                         eq(Optional.empty()),
                         eq("false"),
                         eq(Duration.ofSeconds(30)),
@@ -117,7 +120,8 @@ class McpCopyIdentityTests {
                         false,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
-                        Map.of()));
+                        Map.of(),
+                        null));
         var result = call(Map.of("expectedCopyId", id, "command", "false"));
         assertThat(result.isError()).isFalse();
         assertThat(body(result).path("copyId").stringValue()).isEqualTo(id);
@@ -127,7 +131,7 @@ class McpCopyIdentityTests {
                         eq(principal),
                         eq(workspace),
                         eq("transport"),
-                        eq(id),
+                        eq(new RepositoryExecutor.CopyRequest(id, null, false)),
                         eq(Optional.empty()),
                         eq("false"),
                         eq(Duration.ofSeconds(30)),
@@ -137,7 +141,15 @@ class McpCopyIdentityTests {
     @Test
     void mismatchIsExplicitButAnUnknownWorkerOutcomeNeverClaimsThatTheCommandDidNotRun() {
         String old = UUID.randomUUID().toString(), current = UUID.randomUUID().toString();
-        when(executor.execute(any(), any(), anyString(), eq(old), any(), anyString(), any(), any()))
+        when(executor.execute(
+                        any(),
+                        any(),
+                        anyString(),
+                        eq(new RepositoryExecutor.CopyRequest(old, null, false)),
+                        any(),
+                        anyString(),
+                        any(),
+                        any()))
                 .thenThrow(new SessionReplacedException(
                         SessionReplacedException.Reason.DIFFERENT_COPY, Optional.of(current), false))
                 .thenThrow(new SessionReplacedException(
@@ -168,6 +180,80 @@ class McpCopyIdentityTests {
         assertThat(unknown.path("code").stringValue()).isEqualTo("UNAVAILABLE");
         assertThat(unknown.has("executed")).isFalse();
         assertThat(unknown.toString()).doesNotContain("private worker detail");
+    }
+
+    @Test
+    void explicitResumePassesOneRequestAndRefusalDoesNotClaimEarlierCommandsWereRolledBack() {
+        String copy = UUID.randomUUID().toString();
+        when(executor.execute(
+                        any(),
+                        any(),
+                        anyString(),
+                        eq(new RepositoryExecutor.CopyRequest(copy, 3L, true)),
+                        any(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenThrow(new ExecutionAdmissionException(
+                        ExecutionAdmissionException.Reason.GENERATION_MISMATCH, 4L, true));
+        JsonNode refused = body(call(
+                Map.of("expectedCopyId", copy, "expectedGeneration", 3, "resume", true, "command", "poketto status")));
+        assertThat(refused.path("code").stringValue()).isEqualTo("EXECUTION_REFUSED");
+        assertThat(refused.path("reason").stringValue()).isEqualTo("GENERATION_MISMATCH");
+        assertThat(refused.path("executed").booleanValue()).isFalse();
+        assertThat(refused.path("currentGeneration").longValue()).isEqualTo(4);
+        assertThat(refused.path("recoveryAvailable").booleanValue()).isTrue();
+        assertThat(refused.path("message").stringValue()).contains("may have partially completed");
+    }
+
+    @Test
+    void invalidRecoveryFieldsNeverReachTheExecutor() {
+        String copy = UUID.randomUUID().toString();
+        for (var extra : List.of(
+                Map.<String, Object>of("expectedCopyId", "new", "resume", true, "expectedGeneration", 1),
+                Map.<String, Object>of("expectedCopyId", copy, "resume", true),
+                Map.<String, Object>of("expectedCopyId", copy, "expectedGeneration", 0),
+                Map.<String, Object>of("expectedCopyId", copy, "expectedGeneration", 1.5),
+                Map.<String, Object>of(
+                        "expectedCopyId", copy, "expectedGeneration", RepositoryExecutor.MAX_GENERATION + 1),
+                Map.<String, Object>of("expectedCopyId", copy, "resume", "true"))) {
+            var arguments = new HashMap<>(extra);
+            arguments.put("command", "pwd");
+            assertThat(body(call(arguments)).path("code").stringValue()).isEqualTo("INVALID_INPUT");
+        }
+        verifyNoInteractions(executor);
+    }
+
+    @Test
+    void recoveredNonzeroResultExposesGenerationExpiryAndPriorInterruption() {
+        String copy = UUID.randomUUID().toString();
+        UUID interrupted = UUID.randomUUID();
+        var expected = new RepositoryExecutor.CopyRequest(copy, 3L, true);
+        when(executor.execute(any(), any(), anyString(), eq(expected), any(), anyString(), any(), any()))
+                .thenReturn(new RepositoryExecutor.ExecutionResult(
+                        copy,
+                        "a".repeat(40),
+                        7,
+                        "restored",
+                        "",
+                        false,
+                        false,
+                        false,
+                        RepositoryExecutor.TerminationReason.NORMAL,
+                        Map.of(),
+                        Map.of(),
+                        new RepositoryExecutor.CopyRetention(4, 1800000000000L, true, interrupted)));
+        McpSchema.CallToolResult result = call(
+                Map.of("expectedCopyId", copy, "expectedGeneration", 3, "resume", true, "command", "poketto status"));
+        assertThat(result.isError()).isFalse();
+        JsonNode body = body(result);
+        assertThat(body.path("copyId").stringValue()).isEqualTo(copy);
+        assertThat(body.path("exitCode").intValue()).isEqualTo(7);
+        assertThat(body.path("retention").path("generation").longValue()).isEqualTo(4);
+        assertThat(body.path("retention").path("expiresAt").longValue()).isEqualTo(1800000000000L);
+        assertThat(body.path("retention").path("resumed").booleanValue()).isTrue();
+        assertThat(body.path("retention").path("lastInterruptedCommand").stringValue())
+                .isEqualTo(interrupted.toString());
     }
 
     private McpSchema.CallToolResult call(Map<String, Object> arguments) {

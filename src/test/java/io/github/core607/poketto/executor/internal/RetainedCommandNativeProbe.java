@@ -12,15 +12,19 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
+import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -31,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Real adapter command checkpoints; direct worker restoration verifies the retained bytes separately. */
+/** Real adapter command checkpoints and explicit recovery across adapter and transport replacement. */
 final class RetainedCommandNativeProbe {
     private static final ExecutionCancellation CANCELLATION = new ExecutionCancellation() {
         @Override
@@ -102,7 +106,7 @@ final class RetainedCommandNativeProbe {
                 WorkerClient worker = (WorkerClient) workerField.get(executor);
                 record = cancelAfterCheckpoint(executor, store, worker, record);
                 executor.close();
-                restoreBytes(worker, record);
+                restoreAdapter(fixture, store, record);
             }
         }
     }
@@ -225,7 +229,8 @@ final class RetainedCommandNativeProbe {
                 .hasMessageContaining("BUSY");
     }
 
-    private static void awaitWriterRelease(RetainedCopyStore store, RetainedCopyRecord record) throws Exception {
+    private static void awaitWriterRelease(RetainedCopyStore store, RetainedCopyRecord record)
+            throws IOException, InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         while (true) {
             try (var released = store.writer(record.owner(), record.copyId())) {
@@ -260,66 +265,197 @@ final class RetainedCommandNativeProbe {
         }
     }
 
-    private void restoreBytes(WorkerClient worker, RetainedCopyRecord record) throws Exception {
-        WorkerClient.Hello hello = worker.retainedHello();
-        var identity = new WorkerClient.Identity(
-                actor.subjectId(), actor.accountId(), workspace.value(), "f".repeat(64), UUID.randomUUID());
-        RetainedCopyRecord.Checkpoint point = record.acknowledged();
-        String commit = point.state().originalCommit();
-        try {
-            JsonNode restored = worker.request(
-                    hello,
-                    identity,
-                    "RESTORE",
-                    new WorkerRequests.Restore(
-                            point.id().toString(),
-                            point.sha256(),
-                            point.bytes(),
-                            commit,
-                            "full",
-                            record.writer().leaseId().toString()),
-                    Duration.ofSeconds(15));
-            awaitReady(worker, hello, identity, restored);
-            JsonNode result = worker.request(
-                    hello,
-                    identity,
-                    "EXEC",
-                    new WorkerRequests.Exec(
-                            UUID.randomUUID().toString(),
-                            commit,
-                            "set -eu; test \"$(git rev-parse HEAD)\" = " + commit + "; "
-                                    + "test \"$(cat public/article.md)\" = 'acknowledged text'; "
-                                    + "test \"$(cat private/draft.bin)\" = 'unsaved binary'; "
-                                    + "test ! -e private/unconfirmed.bin; "
-                                    + "python3 -c \"import json; d=json.load(open('.poketto/assets.json')); "
-                                    + "assert 'private/draft.dat' in d['files']\"",
-                            10000),
-                    Duration.ofSeconds(15));
-            assertThat(result.path("ok").asBoolean()).as(result.toString()).isTrue();
-            assertThat(result.path("result").path("exitCode").asInt())
-                    .as(result.toString())
+    private void restoreAdapter(
+            PublicExecutionNativeFixture fixture, RetainedCopyStore store, RetainedCopyRecord record) {
+        try (var restored = new ExecutorConfiguration()
+                .isolatedRepositoryExecutor(
+                        Optional.of(store),
+                        auth,
+                        fixture.exports(),
+                        mock(PortableContentExports.class),
+                        fixture.media(auth),
+                        fixture.reader(auth),
+                        fixture.patches(auth),
+                        fixture.moves(auth),
+                        json,
+                        socket,
+                        key,
+                        4,
+                        45,
+                        8)) {
+            var expected = new RepositoryExecutor.CopyRequest(record.copyId().toString(), record.generation(), true);
+            RepositoryExecutor.ExecutionResult result = recoveredCommand(
+                    restored,
+                    "resumed-chat",
+                    expected,
+                    "set -eu; test \"$(git rev-parse HEAD)\" = "
+                            + record.acknowledged().state().originalCommit() + "; "
+                            + "test \"$(cat public/article.md)\" = 'acknowledged text'; "
+                            + "test \"$(cat private/draft.bin)\" = 'unsaved binary'; "
+                            + "test ! -e private/unconfirmed.bin; "
+                            + "python3 -c \"import json; assert 'private/draft.dat' in json.load(open('.poketto/assets.json'))['files']\"; "
+                            + "poketto status");
+            assertThat(result.exitCode())
+                    .as("%s %s", result.stdout(), result.stderr())
                     .isZero();
-        } finally {
-            JsonNode closed = worker.request(
-                    hello, identity, "CLOSE", new WorkerRequests.Close("client_shutdown"), Duration.ofSeconds(10));
-            assertThat(closed.path("state").asString()).isEqualTo("CLOSED");
+            assertThat(result.copyId()).isEqualTo(record.copyId().toString());
+            assertThat(result.retention().generation()).isEqualTo(2);
+            assertThat(result.retention().resumed()).isTrue();
+            assertThat(result.retention().lastInterruptedCommand())
+                    .isEqualTo(record.command().id());
+            RetainedCopyRecord after = store.read(record.owner(), record.copyId());
+            assertThat(after.acknowledged().state().baseCommit())
+                    .isEqualTo(record.acknowledged().state().baseCommit());
+            assertThat(json.writeValueAsString(after.acknowledged().state().lastImport()))
+                    .isEqualTo(json.writeValueAsString(
+                            record.acknowledged().state().lastImport()));
+            assertThatThrownBy(() -> recoveredCommand(restored, "stale-chat", expected, "touch private/replayed"))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            failure -> assertThat(failure.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.GENERATION_MISMATCH));
+            RepositoryExecutor.ExecutionResult next = recoveredCommand(
+                    restored,
+                    "next-chat",
+                    new RepositoryExecutor.CopyRequest(result.copyId(), 2L, true),
+                    "set -eu; test ! -e private/replayed; test -f private/draft.bin");
+            assertThat(next.exitCode())
+                    .as("%s %s", next.stdout(), next.stderr())
+                    .isZero();
+            assertThat(next.retention().generation()).isEqualTo(3);
+            assertThat(next.retention().lastInterruptedCommand())
+                    .isEqualTo(record.command().id());
+            parallelChats(restored, store, next);
         }
     }
 
-    private static void awaitReady(
-            WorkerClient worker, WorkerClient.Hello hello, WorkerClient.Identity identity, JsonNode initial)
-            throws Exception {
-        JsonNode reply = initial;
-        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
-        while (true) {
-            assertThat(reply.path("ok").asBoolean()).as(reply.toString()).isTrue();
-            if (reply.path("state").asString().equals("READY")) {
-                return;
+    private void parallelChats(
+            IsolatedRepositoryExecutor executor, RetainedCopyStore store, RepositoryExecutor.ExecutionResult original) {
+        RepositoryExecutor.ExecutionResult other = recoveredCommand(
+                executor,
+                "other-chat",
+                new RepositoryExecutor.CopyRequest("new", null, false),
+                "printf other > private/other-chat");
+        assertThat(other.exitCode()).isZero();
+        other = restoreReplyLoss(executor, store, other);
+        assertThat(other.copyId()).isNotEqualTo(original.copyId());
+        var resume = new RepositoryExecutor.CopyRequest(
+                original.copyId(), original.retention().generation(), true);
+        assertThatThrownBy(() -> recoveredCommand(executor, "other-chat", resume, "touch private/wrong-chat"))
+                .isInstanceOf(SessionReplacedException.class);
+        RepositoryExecutor.ExecutionResult preserved = recoveredCommand(
+                executor,
+                "other-chat",
+                new RepositoryExecutor.CopyRequest(
+                        other.copyId(), other.retention().generation(), false),
+                "set -eu; test ! -e private/wrong-chat; test ! -e private/draft.bin; test -f private/other-chat");
+        assertThat(preserved.exitCode())
+                .as("%s %s", preserved.stdout(), preserved.stderr())
+                .isZero();
+        var first = CompletableFuture.supplyAsync(() -> racingRecovery(executor, "race-left", resume));
+        var second = CompletableFuture.supplyAsync(() -> racingRecovery(executor, "race-right", resume));
+        Object left = first.join();
+        Object right = second.join();
+        assertThat(left instanceof RepositoryExecutor.ExecutionResult
+                        ^ right instanceof RepositoryExecutor.ExecutionResult)
+                .isTrue();
+        Object loser = left instanceof RepositoryExecutor.ExecutionResult ? right : left;
+        assertThat(loser).isInstanceOf(ExecutionAdmissionException.class);
+        assertThat(((ExecutionAdmissionException) loser).reason())
+                .isIn(ExecutionAdmissionException.Reason.BUSY, ExecutionAdmissionException.Reason.GENERATION_MISMATCH);
+        RepositoryExecutor.ExecutionResult recovered = recoveredCommand(
+                executor,
+                "after-race",
+                new RepositoryExecutor.CopyRequest(
+                        original.copyId(), original.retention().generation() + 1, true),
+                "set -eu; test ! -e private/other-chat; test -f private/draft.bin; test \"$(cat private/race)\" = once");
+        assertThat(recovered.exitCode())
+                .as("%s %s", recovered.stdout(), recovered.stderr())
+                .isZero();
+    }
+
+    private RepositoryExecutor.ExecutionResult restoreReplyLoss(
+            IsolatedRepositoryExecutor executor, RetainedCopyStore store, RepositoryExecutor.ExecutionResult original) {
+        var owner = new RetainedCopyRecord.Owner(actor.subjectId(), workspace.value());
+        RetainedCopyRecord record = store.read(owner, UUID.fromString(original.copyId()));
+        var acknowledgeClose = new AtomicBoolean();
+        try {
+            Field field = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
+            field.setAccessible(true);
+            WorkerClient worker = (WorkerClient) field.get(executor);
+            field.set(executor, lostRestoreReplies(worker, acknowledgeClose));
+            try {
+                assertThatThrownBy(() -> recoveredCommand(
+                                executor,
+                                "lost-restore",
+                                new RepositoryExecutor.CopyRequest(
+                                        original.copyId(), original.retention().generation(), true),
+                                "touch private/not-started"))
+                        .isInstanceOfSatisfying(
+                                ExecutionAdmissionException.class,
+                                failure -> assertThat(failure.reason())
+                                        .isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE));
+                assertWriterBusy(store, record);
+                acknowledgeClose.set(true);
+                awaitWriterRelease(store, record);
+            } finally {
+                acknowledgeClose.set(true);
+                field.set(executor, worker);
             }
-            assertThat(System.nanoTime()).isLessThan(deadline);
-            Thread.sleep(50);
-            reply = worker.request(hello, identity, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
+        } catch (ReflectiveOperationException | IOException | InterruptedException failure) {
+            throw new AssertionError("Lost restoration reply did not reconcile", failure);
         }
+        RetainedCopyRecord transferred = store.read(owner, record.copyId());
+        return recoveredCommand(
+                executor,
+                "other-chat",
+                new RepositoryExecutor.CopyRequest(original.copyId(), transferred.generation(), true),
+                "set -eu; test ! -e private/not-started; test -f private/other-chat");
+    }
+
+    private WorkerClient lostRestoreReplies(WorkerClient worker, AtomicBoolean acknowledgeClose) {
+        WorkerClient intercepted = spy(worker);
+        var restoring = new AtomicBoolean();
+        doAnswer(call -> {
+                    WorkerClient.PreparedRequest request = call.getArgument(0);
+                    JsonNode payload = json.readTree(
+                            Base64.getUrlDecoder().decode(request.envelope().payload()));
+                    JsonNode reply = worker.send(request, call.getArgument(1));
+                    String operation = payload.path("operation").stringValue();
+                    if (operation.equals("RESTORE")) {
+                        restoring.set(true);
+                        throw new WorkerUnavailableException();
+                    }
+                    if (operation.equals("CLOSE") && restoring.get() && !acknowledgeClose.get()) {
+                        throw new WorkerUnavailableException();
+                    }
+                    return reply;
+                })
+                .when(intercepted)
+                .send(any(), any());
+        return intercepted;
+    }
+
+    private Object racingRecovery(
+            IsolatedRepositoryExecutor executor, String session, RepositoryExecutor.CopyRequest copy) {
+        try {
+            return recoveredCommand(executor, session, copy, "set -eu; printf once >> private/race; sleep 1");
+        } catch (ExecutionAdmissionException refused) {
+            return refused;
+        }
+    }
+
+    private RepositoryExecutor.ExecutionResult recoveredCommand(
+            IsolatedRepositoryExecutor executor,
+            String session,
+            RepositoryExecutor.CopyRequest expected,
+            String command) {
+        RepositoryExecutor.ExecutionResult result = executor.execute(
+                actor, workspace, session, expected, Optional.empty(), command, Duration.ofSeconds(30), CANCELLATION);
+        assertThat(result.exitCode())
+                .as("%s %s", result.stdout(), result.stderr())
+                .isZero();
+        return result;
     }
 
     private static final class Cancellation implements ExecutionCancellation {

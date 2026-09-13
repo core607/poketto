@@ -1,6 +1,7 @@
 package io.github.core607.poketto.mcp;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
@@ -11,6 +12,30 @@ import java.util.UUID;
 /** Execution boundary supplied only by a verified isolated worker; no ordinary subprocess fallback. */
 public interface RepositoryExecutor {
     String NEW_COPY = "new";
+    long MAX_GENERATION = 9_007_199_254_740_991L;
+
+    record CopyRequest(String id, Long generation, boolean resume) {
+        public CopyRequest {
+            id = requireCopyId(id);
+            if (generation != null && (generation < 1 || generation > MAX_GENERATION)) {
+                throw new IllegalArgumentException("Expected generation must be a positive safe integer");
+            }
+            if (NEW_COPY.equals(id) && (generation != null || resume)) {
+                throw new IllegalArgumentException("New copies cannot carry a generation or request recovery");
+            }
+            if (resume && generation == null) {
+                throw new IllegalArgumentException("Explicit recovery requires the expected generation");
+            }
+        }
+    }
+
+    record CopyRetention(long generation, long expiresAt, boolean resumed, UUID lastInterruptedCommand) {
+        public CopyRetention {
+            if (generation < 1 || generation > MAX_GENERATION || expiresAt < 1) {
+                throw new IllegalArgumentException("Retained copy requires a bounded generation and expiry");
+            }
+        }
+    }
 
     static String requireCopyId(String value) {
         if (NEW_COPY.equals(value)) {
@@ -24,8 +49,11 @@ public interface RepositoryExecutor {
 
     /**
      * The session id comes from the server SDK, after principal/workspace binding validation.
-     * expectedCopyId is "new" only for explicit initial admission; otherwise it must match the
-     * acknowledged working-copy ID. A mismatch never executes the command or opens another copy.
+     * expectedCopy.id is "new" only for explicit initial admission; otherwise it must match the
+     * acknowledged working-copy ID. Retained copies also require their last observed generation.
+     * Explicit resume transfers that exact copy before running this command in the same request.
+     * A generation mismatch or admission refusal never executes this command; an earlier command
+     * may still have partially completed. Retention metadata reports fixed expiry and interruption.
      * Omitted commits retain this execution session's pinned commit. Implementations own command,
      * output, process-tree, filesystem, network, cancellation, and lease limits.
      * Worker lifecycle synchronization must prevent process creation after cancellation and make
@@ -35,7 +63,7 @@ public interface RepositoryExecutor {
             AuthPrincipal principal,
             WorkspaceId workspace,
             String serverSessionId,
-            String expectedCopyId,
+            CopyRequest expectedCopy,
             Optional<String> commit,
             String command,
             Duration timeout,
@@ -126,7 +154,8 @@ public interface RepositoryExecutor {
             boolean timedOut,
             TerminationReason terminationReason,
             Map<String, ArtifactMetadata> artifacts,
-            Map<String, String> artifactErrors) {
+            Map<String, String> artifactErrors,
+            @JsonInclude(JsonInclude.Include.NON_NULL) CopyRetention retention) {
         public ExecutionResult {
             if (NEW_COPY.equals(requireCopyId(copyId))) {
                 throw new IllegalArgumentException("Result requires a copy ID");

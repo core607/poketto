@@ -19,7 +19,8 @@ record RetainedCopyRecord(
         long expiresAt,
         Writer writer,
         Checkpoint acknowledged,
-        Command command) {
+        Command command,
+        UUID lastInterruptedCommand) {
     static final long MAX_VERSION = 9_007_199_254_740_991L;
 
     RetainedCopyRecord {
@@ -53,9 +54,10 @@ record RetainedCopyRecord(
     }
 
     /** The latest admitted lease may be newer than the last completed worker checkpoint. */
-    record Writer(UUID workerBootId, UUID leaseId) {
+    record Writer(UUID workerBootId, UUID appBootId, UUID leaseId) {
         Writer {
             Objects.requireNonNull(workerBootId, "writer worker boot must be present");
+            Objects.requireNonNull(appBootId, "writer application boot must be present");
             Objects.requireNonNull(leaseId, "writer lease must be present");
         }
     }

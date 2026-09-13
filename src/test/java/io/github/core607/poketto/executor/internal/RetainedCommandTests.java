@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -26,7 +27,8 @@ class RetainedCommandTests {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-13T00:00:00Z"), ZoneOffset.UTC);
     private final RetainedCopyRecord.Owner owner = new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID());
     private final UUID copy = UUID.randomUUID();
-    private final RetainedCopyRecord.Writer lease = new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID());
+    private final RetainedCopyRecord.Writer lease =
+            new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
     @TempDir
     Path directory;
@@ -174,6 +176,74 @@ class RetainedCommandTests {
             assertThat(next).isNotNull();
         }
         assertThat(port.running).hasSize(1);
+    }
+
+    @Test
+    void recoveryTransfersTheInterruptedPointAndKeepsThePreviousAcknowledgementUntilCompletion() {
+        RetainedCopyStore store = store();
+        var port = new Checkpoints(store);
+        RetainedCopyRecord before;
+        try (var command = new RetainedCommand(store, owner, copy, null, port)) {
+            SelectedFileSaves.State state = initialize(command);
+            command.begin(UUID.randomUUID());
+            state.acknowledgeImport(receipt());
+            before = command.record();
+        }
+        var nextLease = new RetainedCopyRecord.Writer(lease.workerBootId(), UUID.randomUUID(), UUID.randomUUID());
+        try (var resumed = RetainedCommand.resume(store, owner, copy, 1, port)) {
+            resumed.transferAfterContainment("c".repeat(64), nextLease);
+            RetainedCopyRecord transferred = store.read(owner, copy);
+            assertThat(transferred.generation()).isEqualTo(2);
+            assertThat(transferred.writer()).isEqualTo(nextLease);
+            assertThat(transferred.acknowledged()).isEqualTo(before.acknowledged());
+            assertThat(JSON.writeValueAsString(resumed.resumedPoint()))
+                    .isEqualTo(JSON.writeValueAsString(before.command().checkpoint()));
+            assertThat(transferred.command().outcome()).isEqualTo(RetainedCopyRecord.Outcome.INTERRUPTED);
+            assertThat(resumed.view().lastInterruptedCommand())
+                    .isEqualTo(before.command().id());
+            assertThat(port.removed).isEmpty();
+            resumed.begin(UUID.randomUUID());
+            assertThat(JSON.writeValueAsString(store.read(owner, copy).command().checkpoint()))
+                    .isEqualTo(JSON.writeValueAsString(before.command().checkpoint()));
+            resumed.complete(resumed.resumedPoint().state());
+            assertThat(store.read(owner, copy).command()).isNull();
+            assertThat(importJson(store.read(owner, copy).acknowledged().state())
+                            .path("originalStored")
+                            .asBoolean())
+                    .isTrue();
+            assertThat(port.removed)
+                    .containsExactly(
+                            before.acknowledged().id(),
+                            before.command().checkpoint().id());
+        }
+        assertThatThrownBy(() -> RetainedCommand.resume(store, owner, copy, 1, port))
+                .isInstanceOfSatisfying(
+                        ExecutionAdmissionException.class,
+                        failure -> assertThat(failure.reason())
+                                .isEqualTo(ExecutionAdmissionException.Reason.GENERATION_MISMATCH));
+        try (var current = RetainedCommand.resume(store, owner, copy, 2, port)) {
+            assertThat(current.record().lastInterruptedCommand())
+                    .isEqualTo(before.command().id());
+        }
+    }
+
+    @Test
+    void invalidTransferKeepsTheOldWriterAndDoesNotExposeAResumedPoint() {
+        RetainedCopyStore store = store();
+        var port = new Checkpoints(store);
+        RetainedCopyRecord before;
+        try (var command = new RetainedCommand(store, owner, copy, null, port)) {
+            initialize(command);
+            before = command.record();
+        }
+        try (var resumed = RetainedCommand.resume(store, owner, copy, 1, port)) {
+            assertThatThrownBy(() -> resumed.transferAfterContainment("invalid", lease))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(store.read(owner, copy)).isEqualTo(before);
+            assertThat(resumed.view().resumed()).isFalse();
+            assertThatThrownBy(resumed::resumedPoint).isInstanceOf(NullPointerException.class);
+            assertThat(port.removed).isEmpty();
+        }
     }
 
     private SelectedFileSaves.State initialize(RetainedCommand command) {
