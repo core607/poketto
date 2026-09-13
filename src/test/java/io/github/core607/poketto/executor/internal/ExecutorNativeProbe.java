@@ -75,13 +75,8 @@ public final class ExecutorNativeProbe {
                 .when(auth)
                 .withAuthorization(any(), any(), anySet(), any());
         when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
-                .thenAnswer(call -> new WorkspaceAccess(
-                        call.getArgument(1),
-                        call.getArgument(0),
-                        MembershipRole.OWNER,
-                        privateRead.get()
-                                ? Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY)
-                                : Set.of(Capability.EXECUTE_REPOSITORY)));
+                .thenAnswer(call -> fixtureAccess(call.getArgument(0), call.getArgument(1)));
+        when(auth.authorize(any(), any())).thenAnswer(call -> fixtureAccess(call.getArgument(0), call.getArgument(1)));
         config = JSON.readTree(Files.readString(configuration));
         Path master = path("bundle");
         String commit = config.path("commit").stringValue();
@@ -121,6 +116,16 @@ public final class ExecutorNativeProbe {
                 }
             }
         };
+    }
+
+    private WorkspaceAccess fixtureAccess(AuthPrincipal actor, WorkspaceId selected) {
+        return new WorkspaceAccess(
+                selected,
+                actor,
+                MembershipRole.OWNER,
+                privateRead.get()
+                        ? Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY)
+                        : Set.of(Capability.EXECUTE_REPOSITORY));
     }
 
     public static void main(String[] args) throws Exception {
