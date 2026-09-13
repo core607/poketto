@@ -9,7 +9,7 @@ owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime
 
-The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1` and `exportProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves and ZIP materialization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
+The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1` and `exportProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves and ZIP materialization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, `checkpoints.py` and `checkpoint_tree.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
 
 Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
 and the toolchain prepared by [the native spike](../executor-spike/README.md)
@@ -29,6 +29,20 @@ production values. `runtimeRoot` must be a dedicated root-owned directory;
 validation and `appGid` for socket mode 0660. The execution account cannot be
 the application account or a member of its socket group. Paths must contain no
 spaces, control characters, or systemd property metacharacters.
+
+## Worker checkpoints
+
+`checkpointRoot` enables `checkpointProtocol: 1`. When absent, HELLO reports zero and checkpoint operations fail with `CHECKPOINT_UNAVAILABLE / NOT_CONFIGURED`. The directory must be on persistent host storage outside `runtimeRoot`, with an existing safe parent; the worker creates it as supervisor-owned mode 0700. Execution and application accounts cannot read its mode-0600 files. `maxCheckpointBytes`, `maxRetainedBytes`, `maxCheckpointEntries`, `maxCheckpoints`, `minimumFreeBytes` and `retentionSeconds` are mandatory when enabled. The example values require deployment sizing; they are not admission reservations or per-copy disk quotas.
+
+A signed `CHECKPOINT` request carries `checkpointId`, `scope` (`full` or `public`) and an epoch-millisecond `expiresAt`. It requires a READY lease and serializes with execution. After the command's process group has been confirmed empty, the worker streams the original supervisor-owned bundle and the entire mutable `work` tree into a new private checkpoint, including untracked binaries and opaque symlinks. It rejects hardlinks, special files, unsafe entry paths, excessive entries and byte limits. The original bundle remains separate from command-controlled `.git`; execute-mode SRT does not receive access to it. `home`, `/tmp`, bridge state and artifacts are outside this checkpoint contract.
+
+Publication requires file fsync, atomic rename and directory fsync. The response contains the immutable checkpoint ID, SHA-256, byte count and expiry. Quota includes existing checkpoints and the new temporary file, with a host free-space reserve. Failed capture leaves previous checkpoints intact. Failure after rename reports `UNCERTAIN`; callers must not acknowledge retained work from that failure. Snapshot hashing and restoration do not hold the global session lock, so other leases can renew.
+
+A signed `RESTORE` request uses a fresh lease ID and carries `checkpointId`, `sha256`, `bytes`, `commit`, `scope` and `previousLeaseId`. The application must retain and supply the latest writer lease, which can differ from the checkpoint's source after an interrupted restored command. The worker verifies owner, account, workspace, scope, original commit, expiry and the complete checksum before extracting into a new private staging directory. It stops both source and supplied writer leases across application boots and refuses admission until their process groups are empty and their working mounts have closed. A checkpoint cannot have two active restored leases in one worker. Old lease execution is refused. `CHECKPOINT_REMOVE` uses the same three-field checkpoint reference and original identity; explicit removal remains possible after expiry. Expired checkpoints cannot restore; automatic expiry collection is not implemented yet.
+
+These operations are worker primitives. The application does not yet invoke them, persist command boundaries or coordinate writer generations. Worker startup still cleans disposable mounts, and MCP reconnects do not yet restore work. [Work continuity](../notes/proposed/2026-09-12-executor-work-continuity.md) remains proposed until application metadata, fencing, uncertain-write recovery and actual-client acceptance are integrated. A worker checkpoint alone is not a user-facing recoverability acknowledgement.
+
+## Process boundary
 
 The root supervisor only verifies requests, copies bounded exports, mounts
 private tmpfs volumes, and controls fixed systemd units. Git initialization and

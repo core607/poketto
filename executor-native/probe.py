@@ -61,7 +61,7 @@ def main():
     config_path = root / 'worker.json'
     worker_config = None
     evidence = []
-    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os

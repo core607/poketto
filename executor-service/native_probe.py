@@ -36,6 +36,7 @@ def b64(value):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--tools', type=Path)
     args = parser.parse_args()
     assert os.geteuid() == 0
     root = args.root.resolve(strict=True)
@@ -59,20 +60,22 @@ def main():
     (root / 'public.pem').write_bytes(key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
     config = {'runtimeRoot': str(runtime), 'exportRoot': str(exports),
         'socketPath': str(runtime / 'control.sock'), 'publicKey': str(root / 'public.pem'),
-        'toolsRoot': str(root / 'tools'), 'launcher': str(root / 'launcher.py'),
+        'toolsRoot': str((args.tools or root / 'tools').resolve(strict=True)), 'launcher': str(root / 'launcher.py'),
         'execUser': user, 'appUid': 0, 'appGid': 0, 'unitPrefix': unit_prefix,
         'supervisorUnit': supervisor + '.service', 'resourceSlice': resource_pool.name, 'leaseSeconds': 15, 'renewAfterSeconds': 5,
         'maxRequests': 4096, 'maxConnections': 32, 'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
         'diskBytes': 33554432, 'diskInodes': 8192, 'memoryBytes': 201326592,
         'temporaryBytes': 8388608, 'temporaryInodes': 1024,
         'tasksMax': 48, 'cpuQuotaPercent': 50, 'maxTimeoutMillis': 30000,
-        'initTimeoutMillis': 15000}
+        'initTimeoutMillis': 15000, 'checkpointRoot': str(root / 'retained'),
+        'maxCheckpoints': 16, 'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 33554432,
+        'maxRetainedBytes': 134217728, 'minimumFreeBytes': 16777216, 'retentionSeconds': 3600}
     (root / 'config.json').write_text(json.dumps(config))
     config_path = str(root / 'config.json')
     def start():
         run(['systemd-run', '--quiet', '--unit', supervisor, '--slice', resource_pool.name,
              '-p', 'User=root', '-p', 'UMask=0077',
-             '-p', 'Environment=PYTHONPATH=' + str(root / 'tools/python'),
+             '-p', 'Environment=PYTHONPATH=' + str(Path(config['toolsRoot']) / 'python'),
              '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {config_path} --cleanup',
              '/usr/bin/python3', str(root / 'worker.py'), '--config', config_path])
         deadline = time.monotonic() + 10
@@ -122,6 +125,18 @@ def main():
                                       'command': command, 'timeoutMillis': timeout})
         assert answer.get('ok') and 'result' in answer, answer
         return answer['result']
+    def checkpoint(identity):
+        answer = send(identity, 'CHECKPOINT', {'checkpointId': str(uuid.uuid4()),
+            'scope': 'full', 'expiresAt': int((time.time() + 900) * 1000)})
+        assert answer.get('ok') and answer['state'] == 'READY', answer
+        return {key: answer['checkpoint'][key] for key in ('checkpointId', 'sha256', 'bytes')}
+    def restore(identity, reference):
+        restored = {**identity, 'leaseId': str(uuid.uuid4()), 'appBootId': str(uuid.uuid4()),
+                    'serverSessionHash': uuid.uuid4().hex * 2}
+        answer = send(restored, 'RESTORE', {**reference, 'scope': 'full', 'commit': commit,
+                      'previousLeaseId': identity['leaseId']})
+        assert answer.get('ok') and answer['state'] == 'READY', answer
+        return restored
     def python(code):
         return '/usr/bin/python3 -c ' + shlex.quote(code)
     evidence = []
@@ -179,13 +194,59 @@ def main():
             assert result['exitCode'] == 0 and 'Synthetic history' in result['stdout'] and '42' in result['stdout'], result
             timings.append((time.monotonic() - started) * 1000)
         passed('twenty-directory-reuses', count=20, meanMillis=round(sum(timings) / 20, 2))
+        result = execute(first, python('from pathlib import Path; import os\n'
+            'Path("draft.bin").write_bytes(bytes(range(256))); Path("unsaved.md").write_text("retained draft"); '
+            'os.symlink("/etc/shadow", "opaque-link"); raise SystemExit(7)'))
+        assert result['exitCode'] == 7 and result['terminationReason'] == 'normal', result
+        first_checkpoint = checkpoint(first)
+        old_first = first
+        first_stop.set()
+        first = restore(first, first_checkpoint)
+        result = execute(first, python('from pathlib import Path; import os\n'
+            'assert Path("draft.bin").read_bytes()==bytes(range(256)); '
+            'assert Path("unsaved.md").read_text()=="retained draft"; '
+            'assert os.readlink("opaque-link")=="/etc/shadow"') + ' && git rev-parse HEAD')
+        assert result['exitCode'] == 0 and commit in result['stdout'], result
+        stale = send(old_first, 'EXEC', {'executionId': str(uuid.uuid4()), 'commit': commit,
+                     'command': 'printf stale > stale-marker', 'timeoutMillis': 1000})
+        assert not stale.get('ok'), stale
+        assert not (runtime / 'sessions' / old_first['leaseId']).exists()
+        interrupted_lease = first
+        future = pool.submit(execute, first, 'printf interrupted > after-checkpoint; sleep 30', 30000)
+        marker = runtime / 'sessions' / first['leaseId'] / 'work/repository/after-checkpoint'
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert marker.exists()
+        transfer = {**first, 'leaseId': str(uuid.uuid4()), 'appBootId': str(uuid.uuid4())}
+        refused = send(transfer, 'RESTORE', {**first_checkpoint, 'scope': 'full', 'commit': commit,
+                       'previousLeaseId': first['leaseId']})
+        assert refused.get('code') == 'SESSION_BUSY', refused
+        assert future.result(timeout=10)['terminationReason'] == 'session_closed'
+        first = restore(first, first_checkpoint)
+        assert execute(first, 'test ! -e after-checkpoint && test -f unsaved.md')['exitCode'] == 0
+        assert not (runtime / 'sessions' / interrupted_lease['leaseId']).exists()
+        passed('checkpoint-fences-interrupted-restored-writer-before-reusing-last-complete-copy')
+        # Keep the recovered lease alive for the remaining real isolation probes.
+        first_stop = threading.Event()
+        heartbeat_stops.append(first_stop)
+        def renew_restored():
+            while not first_stop.wait(2):
+                try:
+                    send(first, 'RENEW')
+                except OSError:
+                    return
+        threading.Thread(target=renew_restored, daemon=True).start()
+        passed('checkpoint-restores-nonzero-command-work-and-fences-source')
         second, second_stop = new_session(first['principalId'])
         execute(first, 'printf isolated > only-first')
         result = execute(second, 'test ! -e only-first')
         assert result['exitCode'] == 0
         passed('same-key-independent-client-directories')
+        retained_file = next((root / 'retained').glob('*_' + first_checkpoint['checkpointId'] + '.checkpoint'))
         denied_paths = [str(host_canary), str(source / 'article.md'),
-            str(runtime / 'control.sock'), str(runtime / 'sessions' / first['leaseId'] / 'work/repository/article.md'), '/etc/shadow']
+            str(runtime / 'control.sock'), str(runtime / 'sessions' / first['leaseId'] / 'work/repository/article.md'),
+            str(runtime / 'sessions' / second['leaseId'] / 'snapshot.bundle'), str(retained_file), '/etc/shadow']
         result = execute(second, python('from pathlib import Path\n' +
             f'for name in {denied_paths!r}:\n try: Path(name).read_bytes()\n except OSError: pass\n else: raise RuntimeError("outside read succeeded")\nprint("denied")'))
         assert result['exitCode'] == 0 and 'denied' in result['stdout'], result
@@ -297,6 +358,8 @@ def main():
         assert result['terminationReason'] == 'lease_expired', result
         passed('abandoned-client-lease-expires')
         identity, stop = new_session()
+        assert execute(identity, 'printf checkpoint-before-interruption > acknowledged-draft')['exitCode'] == 0
+        durable = checkpoint(identity)
         future = pool.submit(execute, identity, descendant, 30000)
         time.sleep(1)
         run(['systemctl', 'kill', '--kill-who=main', '--signal=KILL', supervisor])
@@ -316,11 +379,19 @@ def main():
         boot = start()['workerBootId']
         assert boot != previous_boot
         passed('supervisor-sigkill-cleans-and-invalidates-leases')
+        resumed = restore(identity, durable)
+        result = execute(resumed, 'cat acknowledged-draft; git rev-parse HEAD')
+        assert result['exitCode'] == 0 and 'checkpoint-before-interruption' in result['stdout'] and commit in result['stdout'], result
+        assert send(resumed, 'CLOSE').get('ok')
+        assert send(resumed, 'CHECKPOINT_REMOVE', durable).get('ok')
+        passed('checkpoint-survives-supervisor-sigkill-and-restores-original-commit')
         print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'source': 'synthetic-only',
             'runtimeParent': '/run', 'supervisorUmask': supervisor_umask,
             'resourcePoolSha256': hashlib.sha256((root / 'resource_pool.py').read_bytes()).hexdigest(),
             'nativePoolSha256': hashlib.sha256((root / 'native_pool.py').read_bytes()).hexdigest(),
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
+            'checkpointsSha256': hashlib.sha256((root / 'checkpoints.py').read_bytes()).hexdigest(),
+            'checkpointTreeSha256': hashlib.sha256((root / 'checkpoint_tree.py').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
     finally:
