@@ -84,7 +84,9 @@ the omitted scenarios. Each mode uses a fresh native fixture and checks cleanup.
 `--scenario retained-process` runs independent producer and recovery JVMs. The
 controller verifies the producer service's Java process and sends SIGKILL after
 an acknowledged command, during a command with a checkpointed host save, or after
-the remote Git ref advances but before that reply reaches the host writer. A new
+the remote Git ref advances but before that reply reaches the host writer. It also
+kills immediately before final command metadata publication and after that durable
+publication but before response delivery. A new
 JVM reopens the same synthetic Git authority without reseeding, explicitly resumes
 the same copy, inspects its retained state and saves the restored draft. The
 uncertain-write case explicitly reconciles its exact candidate without another
@@ -218,3 +220,5 @@ The [explicit discard run](evidence/2026-09-13-retained-discard.json) refuses st
 The [JVM process-loss run](evidence/2026-09-13-retained-jvm-process-loss.json) verifies external SIGKILL at both focused-mode boundaries. New JVMs recover original commits, draft text and binary bytes, original archives, per-file baselines and save receipts; the interrupted command remains identified. Saving the restored draft succeeds and authoritative Git readback confirms its content. Both cases, worker lease closure and fixture cleanup pass. Authentication remains synthetic. The run does not cover the remaining persistence/push/response crash windows or actual-client acceptance.
 
 The [post-push process-loss run](evidence/2026-09-13-retained-push-process-loss.json) adds external SIGKILL after the real remote accepts a commit but before the host writer receives its reply. Recovery retains the exact candidate and pending state. `poketto recover` confirms the candidate, clears uncertainty and preserves the saved file with zero additional pushes. All three focused process-loss cases, lease closure and cleanup pass. Authentication remains synthetic; command-acknowledgement publication boundaries and real-account/client acceptance remain pending.
+
+The [publication-boundary run](evidence/2026-09-13-retained-publication-process-loss.json) adds SIGKILL immediately before and after the final command metadata replacement. Before publication, recovery selects the prior acknowledged draft and reports interruption. After durable publication, it restores the completed draft even though the response was never delivered. Both restored versions can be saved and read from authoritative Git. All five focused process-loss cases, lease closure and cleanup pass. Authentication remains synthetic; real-account and actual-client acceptance remain pending. Process termination does not establish storage-device or host power-loss durability.

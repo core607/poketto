@@ -2,9 +2,11 @@ package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -60,7 +62,8 @@ public final class RetainedProcessNativeProbe {
     private RetainedProcessNativeProbe(Path configuration, String mode) throws Exception {
         config = JSON.readTree(Files.readString(configuration));
         scenario = mode.substring(mode.lastIndexOf('-') + 1);
-        if (!Set.of("acknowledged", "interrupted", "uncertain").contains(scenario)) {
+        if (!Set.of("acknowledged", "interrupted", "uncertain", "beforepublish", "afterpublish")
+                .contains(scenario)) {
             throw new IllegalArgumentException("Unknown process-loss scenario");
         }
         root = path("publicFixture").resolve("process-" + scenario);
@@ -75,10 +78,10 @@ public final class RetainedProcessNativeProbe {
         var identity = JSON.readValue(Files.readString(root.resolve("identity.json")), Identity.class);
         workspace = new WorkspaceId(identity.workspace());
         authorize(identity);
-        records = new RetainedCopyStore(
+        records = spy(new RetainedCopyStore(
                 root.resolve("records"),
                 new RetainedCopyStore.Limits(4, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofMinutes(10)),
-                Clock.systemUTC());
+                Clock.systemUTC()));
         stores = RetainedBaselineTestData.stores(records, root.resolve("originals"));
     }
 
@@ -153,8 +156,40 @@ public final class RetainedProcessNativeProbe {
             if (scenario.equals("uncertain")) {
                 uncertainCommand(executor, fixture, before);
             }
+            if (scenario.equals("beforepublish") || scenario.equals("afterpublish")) {
+                publicationCommand(executor, before);
+            }
             readyToKill(before);
         }
+    }
+
+    private void publicationCommand(IsolatedRepositoryExecutor executor, RetainedCopyRecord acknowledged) {
+        doAnswer(call -> {
+                    RetainedCopyRecord next = call.getArgument(2);
+                    if (next.command() != null) {
+                        return call.callRealMethod();
+                    }
+                    RetainedCopyRecord current = records.read(owner(), acknowledged.copyId());
+                    assertThat(current.command()).isNotNull();
+                    assertThat(current.acknowledged()).isEqualTo(acknowledged.acknowledged());
+                    assertThat(next.acknowledged().id())
+                            .isNotEqualTo(current.acknowledged().id());
+                    if (scenario.equals("beforepublish")) {
+                        readyToKill(current);
+                    }
+                    call.callRealMethod();
+                    assertThat(encoded(records.read(owner(), next.copyId()))).isEqualTo(encoded(next));
+                    readyToKill(next);
+                    throw new IllegalStateException("Producer returned past the acknowledgement publication barrier");
+                })
+                .when(records)
+                .replace(anyLong(), anyLong(), any());
+        execute(
+                executor,
+                "producer",
+                new RepositoryExecutor.CopyRequest(acknowledged.copyId().toString(), acknowledged.generation(), false),
+                "printf 'completion before response' > private/draft.md");
+        throw new IllegalStateException("Command response escaped the publication termination barrier");
     }
 
     private void uncertainCommand(
@@ -272,7 +307,7 @@ public final class RetainedProcessNativeProbe {
             assertThat(fixture.reader(auth)
                             .getFile(actor, workspace, Optional.empty(), "private/draft.md")
                             .source())
-                    .contains("acknowledged local draft");
+                    .contains(expectedDraft());
         }
         System.out.println(JSON.writeValueAsString(new Result(
                 "retained-jvm-loss-" + scenario,
@@ -309,18 +344,22 @@ public final class RetainedProcessNativeProbe {
         return after;
     }
 
-    private static String inspection(RetainedCopyRecord before) {
+    private String inspection(RetainedCopyRecord before) {
         String command = "set -eu; test \"$(git rev-parse HEAD)\" = "
                 + before.acknowledged().state().originalCommit()
-                + "; test \"$(cat private/draft.md)\" = 'acknowledged local draft'; "
+                + "; test \"$(cat private/draft.md)\" = '" + expectedDraft() + "'; "
                 + "test \"$(cat private/saved-before.md)\" = 'saved before loss'; "
                 + "python3 -c \"from pathlib import Path; assert Path('private/draft.bin').read_bytes() == bytes([0,255,9])\"; ";
-        if (before.command() != null) {
-            command += before.command().checkpoint().state().uncertain()
-                    ? "test \"$(cat private/uncertain.md)\" = 'candidate before process loss'; "
-                    : "test \"$(cat private/inside.md)\" = 'host acknowledged during command'; ";
+        if (scenario.equals("uncertain")) {
+            command += "test \"$(cat private/uncertain.md)\" = 'candidate before process loss'; ";
+        } else if (scenario.equals("interrupted")) {
+            command += "test \"$(cat private/inside.md)\" = 'host acknowledged during command'; ";
         }
         return command + "poketto status";
+    }
+
+    private String expectedDraft() {
+        return scenario.equals("afterpublish") ? "completion before response" : "acknowledged local draft";
     }
 
     private static void assertRestored(
