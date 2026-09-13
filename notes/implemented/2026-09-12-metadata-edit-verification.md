@@ -25,13 +25,15 @@ The `verify` job always runs, always verifies, and always reports under its fixe
 body edit therefore starts a full verification of a commit that was already verified, and its result
 is the truth about that commit rather than a restatement of an earlier one.
 
-The concurrency group becomes one per ref. Its previous exemption gave a metadata edit its own group
+The concurrency group is one per PR number, with branch runs in a separate namespace. Its previous exemption gave a metadata edit its own group
 so that a run which did no work could not cancel a real verification; now that every run verifies,
 the exemption would instead let two full verifications compete over the same commit, and a flake in
 the surplus one would turn the required check red on a commit whose code did not change. An edit's
 run now supersedes an unfinished one for the same ref, which costs nothing because both verify the
-same commit. A main run still finishes once started, because publication and deployment depend on
-it.
+same commit. A merged PR's `github.ref` can resolve to its base branch, so grouping only by ref lets
+a later description edit cancel a main run. Explicit `pr-` and `branch-` prefixes prevent that
+collision, including with older PR workflows that still use an unprefixed ref. A main run finishes
+once started, because publication and deployment depend on it.
 
 ## Alternatives
 

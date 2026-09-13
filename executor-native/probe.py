@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -189,6 +189,11 @@ with socket.socket(socket.AF_UNIX) as connection:
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority',
                 'public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files'}
+        elif mode == 'media':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits',
+                'member-projection-fetch-survives-website-shutdown-without-source-history',
+                'public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal'}
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -254,11 +259,12 @@ with socket.socket(socket.AF_UNIX) as connection:
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
-        execute_java('main' if args.scenario == 'all' else 'exports')
+        execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
             execute_java('abandon')
         no_processes(wait=22)
-        passed('java-process-loss-expires-real-worker-lease')
+        passed('java-process-loss-expires-real-worker-lease' if args.scenario == 'all'
+               else 'selected-scenario-closes-worker-leases')
         control({'operation': 'assert-source-unchanged'})
         print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'resourcePoolSha256': digest(root / 'resource_pool.py'),

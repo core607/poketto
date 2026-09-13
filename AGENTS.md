@@ -17,9 +17,9 @@ Read the owning code and documents needed for the task. Local wording and mechan
 
 Keep product code inside the owning application module. Within the authorized scope, finish implementation, applicable verification, and fixes for regressions introduced by the change. Continue until the requested outcome is verified or a concrete blocker needs user input; a first implementation alone is not completion.
 
-## Phase clause (delete this section at the first release)
+## Phase clause (delete this section at 1.0)
 
-There are no external users during development: rename and refactor freely; write no compatibility shims. The database schema and the content-repo format may change destructively; rebuild instead of migrating.
+Before 1.0 there is no compatibility promise; a 0.x release names a commit and describes its changes without adding one. Rename and refactor freely; write no compatibility shims. The database schema and the content-repo format may change destructively; rebuild instead of migrating.
 
 ## Commands
 
@@ -80,4 +80,4 @@ Skills own reusable workflows and specialized decision standards. Keep each entr
 
 ## Editing this file
 
-Keep every rule self-contained: one line for the rule, a link for the rationale; condense whenever clarity survives. Update the relevant sections when the phase changes (development starts, command table established, first release).
+Keep every rule self-contained: one line for the rule, a link for the rationale; condense whenever clarity survives. Update the relevant sections when the phase changes (development starts, command table established, 1.0).
