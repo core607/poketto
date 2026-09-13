@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import Home from "../app/page";
+import { PublicSpacePage } from "../components/public-space";
 import Article, {
   generateMetadata,
 } from "../app/s/[space]/read/[[...slug]]/page";
@@ -108,14 +108,16 @@ test("home and article keep text and empty gallery status in their initial HTML"
     response.setHeader("Content-Type", "application/json");
     response.end(
       JSON.stringify(
-        url.pathname === "/api/public/documents"
-          ? { commit: "fixture", items: [], total: 0, offset: 0, limit: 12 }
-          : {
-              ...document(url.searchParams.get("route")!),
-              commit: "fixture",
-              folderPage: true,
-              galleryStatus,
-            },
+        url.pathname === "/api/public/spaces/home"
+          ? { slug: "home", displayName: "Home" }
+          : url.pathname.endsWith("/documents")
+            ? { commit: "fixture", items: [], total: 0, offset: 0, limit: 12 }
+            : {
+                ...document(url.searchParams.get("route")!),
+                commit: "fixture",
+                folderPage: true,
+                galleryStatus,
+              },
       ),
     );
   });
@@ -137,7 +139,7 @@ test("home and article keep text and empty gallery status in their initial HTML"
   ]) {
     galleryStatus = status;
     const values = [
-      await Home({ searchParams: Promise.resolve({}) }),
+      await PublicSpacePage({ slug: "home", view: "home", parameters: {} }),
       await Article({
         params: Promise.resolve({ space: "second-site", slug: ["album"] }),
       }),

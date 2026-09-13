@@ -4,6 +4,24 @@ export type Snapshot = {
   verifiedAt: string;
   expiresAt: string;
 };
+export type DiscoveryPage = {
+  batch: string;
+  expiresAt: string;
+  offset: number;
+  limit: number;
+  nextOffset: number | null;
+  previousOffset: number | null;
+  items: {
+    space: string;
+    spaceName: string;
+    route: string;
+    title: string;
+    snippet: string;
+    tags: string[];
+    createdAt: string;
+    folderPage: boolean;
+  }[];
+};
 export type ArticleSummary = {
   route: string;
   title: string;

@@ -1,4 +1,4 @@
-import type { Article, ArticlePage, TagPage } from "./types";
+import type { Article, ArticlePage, TagPage, DiscoveryPage } from "./types";
 import { cache } from "react";
 
 export class PublicApiError extends Error {
@@ -24,6 +24,11 @@ async function get<T>(path: string): Promise<T> {
 export function articles(parameters: Record<string, string> = {}) {
   return get<ArticlePage>(
     "/api/public/documents?" + new URLSearchParams(parameters),
+  );
+}
+export function discovery(parameters: Record<string, string> = {}) {
+  return get<DiscoveryPage>(
+    "/api/public/discovery?" + new URLSearchParams(parameters),
   );
 }
 export const article = cache(function article(route: string) {
