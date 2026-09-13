@@ -15,6 +15,7 @@ import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
+import io.github.core607.poketto.executor.internal.RetainedLifecycleNativeProbe.Control;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
@@ -84,7 +85,7 @@ final class RetainedCommandNativeProbe {
         this.json = json;
     }
 
-    void run() throws Exception {
+    void run(Control control, AtomicBoolean privateRead) throws Exception {
         Files.createDirectory(root, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
         var store = new RetainedCopyStore(
                 root.resolve("records"),
@@ -107,6 +108,8 @@ final class RetainedCommandNativeProbe {
             restoreMovedText(fixture);
             new RetainedNonTextNativeProbe(auth, actor, workspace, CANCELLATION)
                     .run(root, fixture, (records, reader) -> adapter(fixture, records, reader));
+            new RetainedLifecycleNativeProbe(auth, actor, workspace, CANCELLATION)
+                    .run(root, fixture, (records, reader) -> adapter(fixture, records, reader), control, privateRead);
         }
     }
 

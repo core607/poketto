@@ -214,8 +214,10 @@ public final class ExecutorNativeProbe {
                         principal,
                         workspace,
                         JSON)
-                .run();
+                .run(() -> control("restart-worker"), privateRead);
         passed("retained-command-checkpoints-pair-saves-imports-and-nonzero-work-with-restorable-worker-bytes");
+        passed("retained-worker-restart-restores-acknowledged-work-and-denies-revoked-private-recovery");
+        passed("retained-public-recovery-keeps-scope-and-rejects-withdrawal-after-worker-restart");
     }
 
     private void run() throws Exception {
