@@ -32,7 +32,10 @@ record RetainedCopyRecord(
         Objects.requireNonNull(acknowledged, "acknowledged checkpoint must be present");
         if (command != null) {
             require(
-                    command.state().originalCommit().equals(acknowledged.state().originalCommit()),
+                    command.checkpoint()
+                            .state()
+                            .originalCommit()
+                            .equals(acknowledged.state().originalCommit()),
                     "command state",
                     "must retain the original checkpoint commit");
         }
@@ -65,12 +68,11 @@ record RetainedCopyRecord(
     }
 
     /** A recovered RUNNING record is uncertain until containment and the host write are reconciled. */
-    record Command(UUID id, Outcome outcome, RetainedSaveState state, BridgeReplies.RestoredReceipt lastImport) {
+    record Command(UUID id, Outcome outcome, Checkpoint checkpoint) {
         Command {
             Objects.requireNonNull(id, "retained command id must be present");
             Objects.requireNonNull(outcome, "retained command outcome must be present");
-            Objects.requireNonNull(state, "retained command save state must be present");
-            Objects.requireNonNull(lastImport, "retained command import receipt must be present");
+            Objects.requireNonNull(checkpoint, "retained command must pair worker bytes with its host save state");
         }
     }
 

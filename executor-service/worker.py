@@ -150,7 +150,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_REMOVE',
+        if p['operation'] not in ('OPEN', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_ACTIVE', 'CHECKPOINT_REMOVE',
                                   'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
                                   'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
                                   'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
@@ -208,6 +208,8 @@ class Service:
         op, d = p['operation'], p['data']
         if op in ('CHECKPOINT', 'CHECKPOINT_REMOVE'):
             return self.checkpoint_dispatch(p)
+        if op == 'CHECKPOINT_ACTIVE':
+            return self.active_checkpoint_dispatch(p)
         if op in ('MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT'):
             return self.move_dispatch(p)
         if op in ('ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE'):
@@ -372,6 +374,38 @@ class Service:
         identifier(data['checkpointId'])
         hex_value(data['sha256'], 64)
         integer(data['bytes'], 1, self.config['maxCheckpointBytes'])
+
+    def active_checkpoint_dispatch(self, p):
+        data = p['data']
+        if not self.config.get('checkpointRoot'):
+            raise Rejected('CHECKPOINT_UNAVAILABLE', 'NOT_CONFIGURED')
+        if set(data) != {'checkpointId', 'expiresAt', 'scope', 'executionId'} or data['scope'] not in ('full', 'public'):
+            raise Rejected('INVALID_REQUEST')
+        identifier(data['checkpointId'])
+        identifier(data['executionId'])
+        integer(data['expiresAt'], 1, 9_007_199_254_740_991)
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            if s.state != 'RUNNING' or not s.unit or s.execution_id != data['executionId']:
+                raise Rejected('EXECUTION_MISMATCH')
+            if not s.files_lock.acquire(blocking=False):
+                raise Rejected('SESSION_BUSY')
+        try:
+            result = self.backend.active_checkpoint(s, data)
+            with self.lock:
+                self.authorized(p)
+                if s.cancelled.is_set() or s.deadline <= self.clock():
+                    raise Rejected('LEASE_EXPIRED')
+                if s.execution_id != data['executionId']:
+                    raise Rejected('EXECUTION_MISMATCH')
+                return {**self.response(s), 'checkpoint': result, 'executionId': s.execution_id}
+        finally:
+            s.files_lock.release()
 
     def checkpoint_dispatch(self, p):
         data = p['data']
@@ -831,6 +865,16 @@ class SystemdBackend:
     def checkpoint(self, s, data):
         if s.unit:
             raise Rejected('SESSION_BUSY')
+        return self.retain_checkpoint(s, data)
+
+    def active_checkpoint(self, s, data):
+        try:
+            with self.frozen(s):
+                return self.retain_checkpoint(s, {key: value for key, value in data.items() if key != 'executionId'})
+        except CaptureRejected as error:
+            raise Rejected('CHECKPOINT_UNAVAILABLE', 'UNAVAILABLE') from error
+
+    def retain_checkpoint(self, s, data):
         metadata = {'format': 1, **dict(zip(IDENTITY[:3], s.identity[:3])),
                     'sourceLeaseId': s.id, 'commit': s.commit, **data}
         return self.checkpoint_call(lambda: self.checkpoints.capture(self.mount_path(s), metadata, s.cancelled.is_set))

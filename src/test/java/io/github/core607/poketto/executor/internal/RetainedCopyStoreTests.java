@@ -186,7 +186,10 @@ class RetainedCopyStoreTests {
         var live = SelectedFileSaves.State.restore(initial.acknowledged().state());
         live.acknowledgeMove("2".repeat(40), Set.of("one.md"));
         var pending = new RetainedCopyRecord.Command(
-                UUID.randomUUID(), RetainedCopyRecord.Outcome.RUNNING, live.snapshot(), receipt("unconfirmed command"));
+                UUID.randomUUID(),
+                RetainedCopyRecord.Outcome.RUNNING,
+                new RetainedCopyRecord.Checkpoint(
+                        UUID.randomUUID(), "e".repeat(64), 30, live.snapshot(), receipt("unconfirmed command")));
         var next = changed(initial, 1, 1, initial.transportHash(), initial.acknowledged(), pending);
         first.replace(0, 1, next);
 
@@ -196,8 +199,12 @@ class RetainedCopyStoreTests {
         assertThat(loaded.command().id()).isEqualTo(pending.id());
         assertThat(loaded.command().outcome()).isEqualTo(RetainedCopyRecord.Outcome.RUNNING);
         assertThat(loaded.acknowledged().state().baseCommit()).isEqualTo(BASE);
-        assertThat(loaded.command().state().baseCommit()).isEqualTo("2".repeat(40));
-        assertThat(loaded.command().state().baselines()).containsEntry("one.md", "2".repeat(40));
+        assertThat(loaded.command().checkpoint().state().baseCommit()).isEqualTo("2".repeat(40));
+        assertThat(loaded.command().checkpoint().state().baselines()).containsEntry("one.md", "2".repeat(40));
+        assertThat(loaded.command().checkpoint().id())
+                .isEqualTo(pending.checkpoint().id());
+        assertThat(loaded.command().checkpoint().id())
+                .isNotEqualTo(loaded.acknowledged().id());
         assertThat(Files.getPosixFilePermissions(root)).isEqualTo(PosixFilePermissions.fromString("rwx------"));
         assertThat(Files.getPosixFilePermissions(recordPath(root)))
                 .isEqualTo(PosixFilePermissions.fromString("rw-------"));
@@ -325,13 +332,16 @@ class RetainedCopyStoreTests {
         state.move = new SessionMoves.Pending(
                 new RepositoryMoveRequest(BASE, "old.md", "new.md"), payload, Set.of("old.md", "new.md"));
         var command = new RetainedCopyRecord.Command(
-                UUID.randomUUID(), RetainedCopyRecord.Outcome.INTERRUPTED, state.snapshot(), receipt("pending move"));
+                UUID.randomUUID(),
+                RetainedCopyRecord.Outcome.INTERRUPTED,
+                new RetainedCopyRecord.Checkpoint(
+                        UUID.randomUUID(), "e".repeat(64), 30, state.snapshot(), receipt("pending move")));
         var record = changed(initial, 0, 1, initial.transportHash(), initial.acknowledged(), command);
         new RetainedCopyStore(root, limits, CLOCK).create(record);
 
         var restored = new RetainedCopyStore(root, limits, CLOCK).read(initial.owner(), initial.copyId());
 
-        byte[] restoredPayload = restored.command().state().move().payload();
+        byte[] restoredPayload = restored.command().checkpoint().state().move().payload();
         assertThat(restoredPayload.length).isEqualTo(payload.length);
         assertThat(MessageDigest.getInstance("SHA-256").digest(restoredPayload))
                 .containsExactly(MessageDigest.getInstance("SHA-256").digest(payload));

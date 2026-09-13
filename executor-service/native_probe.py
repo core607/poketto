@@ -120,8 +120,8 @@ def main():
                     'bundleBytes': bundle.stat().st_size, 'commit': commit})
         assert answer.get('ok') and answer['state'] == 'READY', answer
         return identity, stop
-    def execute(identity, command, timeout=10000):
-        answer = send(identity, 'EXEC', {'executionId': str(uuid.uuid4()), 'commit': commit,
+    def execute(identity, command, timeout=10000, execution_id=None):
+        answer = send(identity, 'EXEC', {'executionId': execution_id or str(uuid.uuid4()), 'commit': commit,
                                       'command': command, 'timeoutMillis': timeout})
         assert answer.get('ok') and 'result' in answer, answer
         return answer['result']
@@ -212,12 +212,18 @@ def main():
         assert not stale.get('ok'), stale
         assert not (runtime / 'sessions' / old_first['leaseId']).exists()
         interrupted_lease = first
-        future = pool.submit(execute, first, 'printf interrupted > after-checkpoint; sleep 30', 30000)
+        active_id = str(uuid.uuid4())
+        future = pool.submit(execute, first, 'printf interrupted > after-checkpoint; sleep 30', 30000, active_id)
         marker = runtime / 'sessions' / first['leaseId'] / 'work/repository/after-checkpoint'
         deadline = time.monotonic() + 5
         while not marker.exists() and time.monotonic() < deadline:
             time.sleep(.05)
         assert marker.exists()
+        active_point = send(first, 'CHECKPOINT_ACTIVE', {'checkpointId': str(uuid.uuid4()), 'scope': 'full',
+                            'expiresAt': int((time.time() + 900) * 1000), 'executionId': active_id})
+        assert active_point.get('ok') and active_point['state'] == 'RUNNING', active_point
+        assert active_point['executionId'] == active_id and not future.done(), active_point
+        active_reference = {key: active_point['checkpoint'][key] for key in ('checkpointId', 'sha256', 'bytes')}
         transfer = {**first, 'leaseId': str(uuid.uuid4()), 'appBootId': str(uuid.uuid4())}
         refused = send(transfer, 'RESTORE', {**first_checkpoint, 'scope': 'full', 'commit': commit,
                        'previousLeaseId': first['leaseId']})
@@ -227,6 +233,10 @@ def main():
         assert execute(first, 'test ! -e after-checkpoint && test -f unsaved.md')['exitCode'] == 0
         assert not (runtime / 'sessions' / interrupted_lease['leaseId']).exists()
         passed('checkpoint-fences-interrupted-restored-writer-before-reusing-last-complete-copy')
+        first = restore(first, active_reference)
+        active_work = execute(first, 'cat after-checkpoint')
+        assert active_work['exitCode'] == 0 and active_work['stdout'] == 'interrupted', active_work
+        passed('active-checkpoint-freezes-real-command-and-retains-intermediate-work')
         # Keep the recovered lease alive for the remaining real isolation probes.
         first_stop = threading.Event()
         heartbeat_stops.append(first_stop)

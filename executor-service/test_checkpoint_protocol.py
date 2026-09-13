@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import tempfile
 import threading
@@ -11,6 +12,8 @@ import test_worker as fixtures
 
 class StorageBackend(fixtures.Backend):
     checkpoint = SystemdBackend.checkpoint
+    active_checkpoint = SystemdBackend.active_checkpoint
+    retain_checkpoint = SystemdBackend.retain_checkpoint
     checkpoint_metadata = SystemdBackend.checkpoint_metadata
     checkpoint_call = staticmethod(SystemdBackend.checkpoint_call)
     identity_owner = staticmethod(SystemdBackend.identity_owner)
@@ -20,6 +23,12 @@ class StorageBackend(fixtures.Backend):
         super().__init__()
         self.root = root
         self.checkpoints = CheckpointStore(root / 'retained', config, clock)
+        self.frozen_count = 0
+
+    @contextmanager
+    def frozen(self, session):
+        self.frozen_count += 1
+        yield
 
     def mount_path(self, session):
         return self.root / session.id
@@ -43,6 +52,65 @@ class CheckpointProtocolTests(unittest.TestCase):
     send = fixtures.ProtocolTests.send
     opened = fixtures.ProtocolTests.opened
     execution = fixtures.ProtocolTests.execution
+
+    def test_active_checkpoint_preserves_running_work_without_claiming_command_completion(self):
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.unit, session.execution_id = 'RUNNING', 'owned-unit', fixtures.uid()
+        (self.root / session.id / 'work/repository/inside-command').write_bytes(b'not yet acknowledged')
+        data = {'checkpointId': fixtures.uid(), 'expiresAt': 1300000,
+                'scope': 'full', 'executionId': session.execution_id}
+        with session.operation:
+            rejected = self.send(self.payload('CHECKPOINT_ACTIVE', {**data, 'executionId': fixtures.uid()}))
+            self.assertEqual('EXECUTION_MISMATCH', rejected['code'])
+            answer = self.send(self.payload('CHECKPOINT_ACTIVE', data))
+            self.assertTrue(answer['ok'], answer)
+            self.assertEqual('RUNNING', answer['state'])
+            self.assertEqual(session.execution_id, answer['executionId'])
+            self.assertFalse(session.cancelled.is_set())
+        self.assertEqual(1, self.backend.frozen_count)
+        reference = {key: answer['checkpoint'][key] for key in ('checkpointId', 'sha256', 'bytes')}
+        resumed = self.recovery(reference)
+        self.assertTrue(self.send(resumed)['ok'])
+        self.assertEqual(b'not yet acknowledged',
+                         (self.root / resumed['leaseId'] / 'work/repository/inside-command').read_bytes())
+
+    def test_active_checkpoint_cannot_overlap_materialization_or_run_outside_its_command(self):
+        session = self.service.sessions[self.identity['leaseId']]
+        data = {'checkpointId': fixtures.uid(), 'expiresAt': 1300000,
+                'scope': 'full', 'executionId': fixtures.uid()}
+        self.assertEqual('EXECUTION_MISMATCH', self.send(self.payload('CHECKPOINT_ACTIVE', data))['code'])
+        session.state, session.unit, session.execution_id = 'RUNNING', 'owned-unit', data['executionId']
+        with session.files_lock:
+            self.assertEqual('SESSION_BUSY', self.send(self.payload('CHECKPOINT_ACTIVE', data))['code'])
+        self.assertEqual(0, self.backend.frozen_count)
+
+    def test_revocation_after_active_persistence_prevents_acknowledgement(self):
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.unit, session.execution_id = 'RUNNING', 'owned-unit', fixtures.uid()
+        persisted, release = threading.Event(), threading.Event()
+        original = self.backend.active_checkpoint
+        def pause_after_persistence(lease, data):
+            result = original(lease, data)
+            persisted.set()
+            release.wait(3)
+            return result
+        self.backend.active_checkpoint = pause_after_persistence
+        results = []
+        data = {'checkpointId': fixtures.uid(), 'expiresAt': 1300000,
+                'scope': 'full', 'executionId': session.execution_id}
+        with session.operation:
+            thread = threading.Thread(target=lambda: results.append(self.send(self.payload('CHECKPOINT_ACTIVE', data))))
+            thread.start()
+            self.addCleanup(thread.join, 4)
+            self.addCleanup(release.set)
+            self.assertTrue(persisted.wait(1))
+            revoked = self.send(self.payload('REVOKE', {'keyIds': [self.identity['principalId']], 'accountIds': []}))
+            self.assertTrue(revoked['ok'])
+            release.set()
+            thread.join(2)
+        self.assertEqual('AUTH_REVOKED', results[0]['code'])
+        self.assertNotIn('checkpoint', results[0])
+        self.assertFalse(session.files_lock.locked())
 
     def setUp(self):
         fixtures.ProtocolTests.setUp(self)

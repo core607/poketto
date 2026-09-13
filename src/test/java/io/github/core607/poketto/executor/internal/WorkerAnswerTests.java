@@ -18,6 +18,50 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class WorkerAnswerTests {
     @Test
+    void retainedHandshakeNeverFallsBackWhenCheckpointsAreMissingOrDisabled() {
+        assertThat(WorkerResponses.read(
+                                json("{\"ok\":true,\"checkpointProtocol\":1}"),
+                                WorkerResponses.RetentionHandshake.class)
+                        .checkpointProtocol())
+                .isEqualTo(1);
+        for (String response : new String[] {
+            "{\"ok\":true}",
+            "{\"ok\":true,\"checkpointProtocol\":0}",
+            "{\"ok\":true,\"checkpointProtocol\":2}",
+            "{\"ok\":false,\"checkpointProtocol\":1}"
+        }) {
+            assertThatThrownBy(() -> WorkerResponses.read(json(response), WorkerResponses.RetentionHandshake.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+    }
+
+    @Test
+    void checkpointReplyDistinguishesCompletedAndActiveBoundariesAndRejectsMissingBytes() {
+        String descriptor =
+                "{\"checkpointId\":\"" + UUID + "\",\"sha256\":\"" + DIGEST + "\",\"bytes\":10,\"expiresAt\":1300000}";
+        String completed = "{\"ok\":true,\"leaseId\":\"" + UUID + "\",\"commit\":\"" + "c".repeat(40)
+                + "\",\"state\":\"READY\",\"checkpoint\":" + descriptor + "}";
+        assertThat(WorkerResponses.read(json(completed), WorkerResponses.CheckpointReply.class)
+                        .checkpoint()
+                        .bytes())
+                .isEqualTo(10);
+        String active = completed.replace("\"READY\"", "\"RUNNING\",\"executionId\":\"" + UUID + "\"");
+        assertThat(WorkerResponses.read(json(active), WorkerResponses.CheckpointReply.class)
+                        .executionId())
+                .isEqualTo(UUID);
+        for (String malformed : new String[] {
+            completed.replace("\"READY\"", "\"RUNNING\""),
+            completed.replace("\"bytes\":10,", ""),
+            completed.replace("\"bytes\":10", "\"bytes\":0"),
+            completed.replace("\"expiresAt\":1300000", "\"expiresAt\":null"),
+            completed.replace("\"READY\"", "\"CLOSED\"")
+        }) {
+            assertThatThrownBy(() -> WorkerResponses.read(json(malformed), WorkerResponses.CheckpointReply.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+    }
+
+    @Test
     void binaryCaptureKeepsItsOriginalFileBoundWithoutIncreasingTheTextBudget() {
         String file = "{\"path\":\"private/large.bin\",\"bytes\":%d,\"sha256\":\"" + "a".repeat(64) + "\"}";
         String manifest = "{\"captureId\":\"" + UUID + "\",\"writes\":[%s],\"deletes\":[],\"absent\":[]}";
