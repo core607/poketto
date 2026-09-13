@@ -1242,7 +1242,7 @@ public final class ExecutorNativeProbe {
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
-                        fixture.media(auth),
+                        fixture.media(auth, false),
                         reader,
                         fixture.patches(auth),
                         fixture.moves(auth),
@@ -1306,7 +1306,7 @@ public final class ExecutorNativeProbe {
                     new Cancellation());
             assertThat(uploadDenied.exitCode()).isEqualTo(1);
             assertThat(uploadDenied.stdout()).contains("READ_ONLY_SCOPE");
-            passed("public-media-fetch-uses-only-host-owned-projection-mapping-without-source-history");
+            passed("member-projection-fetch-survives-website-shutdown-without-source-history");
             fixture.withdraw();
             assertThatThrownBy(() -> execute(executor, "media-public", "poketto media list", new Cancellation()))
                     .isInstanceOf(RuntimeException.class);

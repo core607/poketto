@@ -159,9 +159,18 @@ class MediaFileServiceTests {
         isolated.privateDownload(actor, workspace, Optional.of(commit), "public/source.pdf")
                 .writeTo(output);
         assertThat(output.toByteArray()).isEqualTo(bytes);
+        output.reset();
+        isolated.memberProjectionDownload(actor, workspace, "/note", "public/source.pdf")
+                .writeTo(output);
+        assertThat(output.toByteArray()).isEqualTo(bytes);
         verifyNoInteractions(closedWebsite);
         assertThatThrownBy(() -> isolated.publicDownload(workspace, commit, "/note", "public/source.pdf"))
                 .isInstanceOf(ContentRepositoryException.class);
+        var retained = isolated.memberProjectionDownload(actor, workspace, "/note", "public/source.pdf");
+        when(auth.authorize(actor, workspace)).thenThrow(new AuthException(AuthException.Code.DENIED));
+        output.reset();
+        assertThatThrownBy(() -> retained.writeTo(output)).isInstanceOf(AuthException.class);
+        assertThat(output.size()).isZero();
     }
 
     @Test
