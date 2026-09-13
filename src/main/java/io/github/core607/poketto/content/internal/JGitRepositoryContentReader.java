@@ -3,7 +3,7 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
@@ -69,7 +70,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             if (!PublicRepositoryDirectories.publicPolicy(repository, resolved).permitsPath(path)) {
                 throw denied();
             }
-            return readFile(repository, workspace, resolved, path, true);
+            return JGitRepositoryFileReader.read(repository, workspace, resolved, path, true);
         });
     }
 
@@ -340,7 +341,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                         }
                     }
                 }
-                RepositoryFile file = readFile(repository, workspaceId, resolved, path, policy.permitsPath(path));
+                RepositoryFile file = JGitRepositoryFileReader.read(
+                        repository, workspaceId, resolved, path, policy.permitsPath(path));
                 diagnostics.addAll(file.diagnostics());
                 if (file.source().isEmpty()) {
                     continue;
@@ -396,7 +398,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         return resolve(
                 workspaceId,
                 commit,
-                (repository, resolved) -> readFile(
+                (repository, resolved) -> JGitRepositoryFileReader.read(
                         repository,
                         workspaceId,
                         resolved,
@@ -405,82 +407,17 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                                 .permitsPath(path)));
     }
 
-    private RepositoryFile readFile(
-            Repository repository, WorkspaceId workspaceId, Optional<String> commit, String path, boolean publicScope)
-            throws IOException {
-        try {
-            RepositoryPathRules.validate(path);
-        } catch (IllegalArgumentException exception) {
-            return invalid(workspaceId, commit, path, "INVALID_PATH", exception.getMessage(), publicScope);
-        }
-        if (commit.isEmpty()) {
-            return absent(workspaceId, commit, path, publicScope);
-        }
-        try (RevWalk revisions = new RevWalk(repository);
-                TreeWalk entry = TreeWalk.forPath(
-                        repository,
-                        path,
-                        revisions
-                                .parseCommit(ObjectId.fromString(commit.orElseThrow()))
-                                .getTree())) {
-            if (entry == null) {
-                ObjectId tree = revisions
-                        .parseCommit(ObjectId.fromString(commit.orElseThrow()))
-                        .getTree();
-                if (readMediaIndex(repository, tree).files().containsKey(path)) {
-                    return invalid(
-                            workspaceId,
-                            commit,
-                            path,
-                            "MANAGED_MEDIA",
-                            "path is an indexed media file; fetch its original through the media entrance",
-                            publicScope);
-                }
-                return absent(workspaceId, commit, path, publicScope);
-            }
-            FileMode mode = entry.getFileMode(0);
-            if (!RepositoryBlobs.isFile(mode)) {
-                return invalid(
-                        workspaceId, commit, path, "NOT_REGULAR_FILE", "path is not a regular file", publicScope);
-            }
-            ObjectLoader loader = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
-            if (loader.getSize() > ContentLimits.MAX_DOCUMENT_BYTES) {
-                return invalid(
-                        workspaceId, commit, path, "FILE_TOO_LARGE", "file exceeds the text byte limit", publicScope);
-            }
-            byte[] bytes = loader.getBytes(ContentLimits.MAX_DOCUMENT_BYTES);
-            DocumentRevision revision = DocumentRevision.sha256(bytes);
-            try {
-                String source = RepositoryMarkdownParser.decode(bytes);
-                List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
-                if (RepositoryPathRules.markdown(path)) {
-                    try {
-                        parser.parse(path, source);
-                    } catch (IllegalArgumentException exception) {
-                        diagnostics.add(diagnostic(path, "INVALID_MARKDOWN", exception.getMessage()));
-                    }
-                }
-                return new RepositoryFile(
-                        workspaceId,
-                        commit,
-                        path,
-                        false,
-                        Optional.of(source),
-                        Optional.of(revision),
-                        diagnostics,
-                        publicScope);
-            } catch (IllegalArgumentException exception) {
-                return new RepositoryFile(
-                        workspaceId,
-                        commit,
-                        path,
-                        false,
-                        Optional.empty(),
-                        Optional.of(revision),
-                        List.of(diagnostic(path, "INVALID_UTF8", exception.getMessage())),
-                        publicScope);
-            }
-        }
+    @Override
+    public void visitBaseline(
+            WorkspaceId workspace, String commit, RepositoryBaselineLimits limits, Consumer<RepositoryFile> sink) {
+        Objects.requireNonNull(limits, "baseline limits must be present");
+        Objects.requireNonNull(sink, "baseline sink must be present");
+        long deadline = System.nanoTime() + limits.timeout().toNanos();
+        resolve(workspace, Optional.of(commit), (repository, selected) -> {
+            new JGitRepositoryBaselineReader(repository, workspace, selected.orElseThrow(), limits, deadline, sink)
+                    .visit();
+            return null;
+        });
     }
 
     private <T> T resolve(WorkspaceId workspaceId, Optional<String> requested, Reader<T> reader) {
@@ -562,30 +499,6 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
 
     private static RepositoryDiagnostic diagnostic(String path, String code, String message) {
         return new RepositoryDiagnostic(path, code, message);
-    }
-
-    private static RepositoryFile absent(
-            WorkspaceId workspace, Optional<String> commit, String path, boolean publicScope) {
-        return new RepositoryFile(
-                workspace, commit, path, true, Optional.empty(), Optional.empty(), List.of(), publicScope);
-    }
-
-    private static RepositoryFile invalid(
-            WorkspaceId workspace,
-            Optional<String> commit,
-            String path,
-            String code,
-            String message,
-            boolean publicScope) {
-        return new RepositoryFile(
-                workspace,
-                commit,
-                path,
-                false,
-                Optional.empty(),
-                Optional.empty(),
-                List.of(diagnostic(path, code, message)),
-                publicScope);
     }
 
     @FunctionalInterface
