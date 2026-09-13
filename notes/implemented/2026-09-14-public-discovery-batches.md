@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Decision
 
-The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires stable random browsing across enabled spaces. A server-issued batch retains card metadata and immutable page identities, never document bodies or authority. The homepage redirects to a URL containing its batch ID; pagination preserves that ID. An explicit new-batch link selects and shuffles another bounded sample.
+The [multi-user discovery contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires stable random browsing across enabled spaces. A server-issued batch retains card metadata and immutable page identities, never document bodies or authority. The homepage redirects to a URL containing its batch ID; pagination preserves that ID. An explicit new-batch link selects and shuffles another bounded sample.
 
 A batch samples up to four documents per space from up to 32 enabled spaces. A continuation batch advances the catalog keyset, returning to the beginning after its final page. Unavailable or expired repository snapshots contribute no cards; HTTP requests never fetch remote Git. This is a discovery sample, not an exhaustive site-search index.
 
@@ -16,6 +16,8 @@ Retain at most 256 batches and 8 MiB of card string data, with at most 128 cards
 
 Reshuffling on every page would repeat or skip cards. Storing document bodies in each batch would duplicate repository snapshots and retain unnecessary content after withdrawal. Reusing stored metadata without current permission checks would expose withdrawn cards.
 
-The initial entrance identifies each space and links articles and folder pages. Author display metadata, album classification and thumbnails, collection sequence, complete site search and reading-return state remain required by the parent contract. This record remains proposed until the batch entrance is verified in the running frontend and backend.
+The initial entrance identifies each space and links articles and folder pages. Author display metadata, album classification and thumbnails, collection sequence, complete site search and reading-return state remain required by the parent contract.
 
-The same-topic audit retains the parent multi-user proposal and the [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md). Their product scope and authorization decisions remain applicable.
+Real PostgreSQL/HTTP integration verifies mixing two independent repositories, replaying a batch, withholding private content and removing withdrawn-space cards. Browser acceptance with the real frontend and backend verifies pagination without repetition, stable order after article/back navigation, withdrawal without shifting remaining cards, explicit expiry recovery and the mobile layout. These checks do not establish large-catalog capacity or complete the remaining reading features.
+
+The same-topic audit retains the parent multi-user proposal and the [website delivery boundary](2026-09-14-workspace-public-delivery.md). Their product scope and authorization decisions remain applicable.
