@@ -23,25 +23,31 @@ class BinaryCapture:
     def __init__(self, root, path, cancelled=lambda: False, maximum=MAX_BINARY_BYTES):
         selected_paths([path], [])
         if type(maximum) is not int or not 0 <= maximum <= MAX_BINARY_BYTES:
-            raise CaptureRejected('Invalid binary capture bound')
+            raise CaptureRejected('Invalid binary capture bound', 'INVALID_ARGUMENTS')
         self.id, self.path = str(uuid.uuid4()), path
         self.stage = Path(root) / ('outgoing-' + self.id)
         self.fd = None
         self.created = False
         self.size = 0
+        repository_open = False
+        source_open = False
         try:
             with ExitStack() as handles:
                 lease = _directory(handles, None, root)
                 work = _directory(handles, lease, 'work')
                 parent = _directory(handles, work, 'repository')
+                repository_open = True
                 parts = path.split('/')
                 for part in parts[:-1]:
                     parent = _directory(handles, parent, part)
                 source = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
                 handles.callback(os.close, source)
+                source_open = True
                 before = os.fstat(source)
-                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > maximum:
-                    raise CaptureRejected('Binary source must be one bounded regular file')
+                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                    raise CaptureRejected('Binary source must be one regular file', 'NOT_REGULAR_FILE')
+                if before.st_size > maximum:
+                    raise CaptureRejected('Binary source exceeds its bound', 'BINARY_LIMIT')
                 self.fd = os.open(self.stage, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 self.created = True
                 digest = hashlib.sha256()
@@ -50,7 +56,7 @@ class BinaryCapture:
                         raise CaptureRejected('Binary capture was cancelled')
                     self.size += len(block)
                     if self.size > maximum:
-                        raise CaptureRejected('Binary source exceeds its bound')
+                        raise CaptureRejected('Binary source exceeds its bound', 'BINARY_LIMIT')
                     digest.update(block)
                     remaining = memoryview(block)
                     while remaining:
@@ -62,13 +68,14 @@ class BinaryCapture:
                 if (identity(before) != identity(os.fstat(source))
                         or identity(before) != identity(os.stat(parts[-1], dir_fd=parent, follow_symlinks=False))
                         or self.size != before.st_size):
-                    raise CaptureRejected('Binary source changed during capture')
+                    raise CaptureRejected('Binary source changed during capture', 'FILE_CHANGED')
                 self.digest = digest.hexdigest()
         except (OSError, CaptureRejected) as error:
             self.close()
             if isinstance(error, CaptureRejected):
                 raise
-            raise CaptureRejected('Binary source is unavailable or unsafe') from error
+            reason = 'NOT_FOUND' if repository_open and not source_open and isinstance(error, FileNotFoundError) else 'CAPTURE_UNAVAILABLE'
+            raise CaptureRejected('Binary source is unavailable or unsafe', reason) from error
 
     def manifest(self):
         return {'captureId': self.id, 'writes': [{'path': self.path, 'bytes': self.size, 'sha256': self.digest}],

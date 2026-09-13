@@ -7,6 +7,21 @@ from session_files import CaptureRejected, MAX_TEXT_BYTES, capture_text, capture
 
 
 class SelectedFileCaptureTests(unittest.TestCase):
+    def test_rejected_selections_expose_stable_reasons_without_confusing_missing_roots(self):
+        (self.repository / 'binary').write_bytes(b'\xff')
+        (self.repository / 'directory').mkdir()
+        for root, writes, reason in (
+                (self.root, ['missing.md'], 'NOT_FOUND'),
+                (self.root / 'absent', ['missing.md'], 'CAPTURE_UNAVAILABLE'),
+                (self.root, ['binary'], 'NOT_UTF8'),
+                (self.root, ['directory'], 'NOT_REGULAR_FILE'),
+                (self.root, ['../outside'], 'INVALID_PATH'),
+                (self.root, ['binary', 'binary'], 'PATH_COLLISION'),
+                (self.root, [], 'SELECTION_LIMIT')):
+            with self.subTest(reason=reason), self.assertRaises(CaptureRejected) as raised:
+                capture_text(root, writes, [])
+            self.assertEqual(reason, raised.exception.reason)
+
     def test_optional_capture_distinguishes_absence_empty_files_and_invalid_roots(self):
         self.assertEqual(('missing/child.md',), capture_optional(self.root, 'missing/child.md')['absent'])
         (self.repository / 'empty.md').write_bytes(b'')

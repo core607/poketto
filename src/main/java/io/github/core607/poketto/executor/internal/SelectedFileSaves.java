@@ -60,7 +60,7 @@ final class SelectedFileSaves {
         if (writes.size() + deletes.size() < 1
                 || writes.size() + deletes.size() > RepositoryPatch.MAX_CHANGES
                 || deletes.stream().anyMatch(path -> !paths.add(path))) {
-            throw new IllegalArgumentException("Select distinct files within the save bound");
+            throw new InvalidSelectionException(InvalidSelectionException.Reason.INVALID_ARGUMENTS);
         }
         var changes = new ArrayList<RepositoryTextChange>();
         state.requireTracking(paths);
@@ -69,7 +69,7 @@ final class SelectedFileSaves {
             var baseline = reader.getFile(actor, workspace, Optional.of(expectedCommit), path);
             if (!baseline.commit().equals(Optional.of(expectedCommit))
                     || (!baseline.expectedAbsence() && baseline.revision().isEmpty())) {
-                throw new IllegalArgumentException("Selected path has no writable text baseline");
+                throw new InvalidSelectionException(InvalidSelectionException.Reason.NO_WRITABLE_BASELINE);
             }
             changes.add(new RepositoryTextChange(
                     path, baseline.expectedAbsence(), baseline.revision(), Optional.ofNullable(writes.get(path))));

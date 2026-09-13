@@ -5,6 +5,7 @@ import static io.github.core607.poketto.executor.internal.ProtocolValues.require
 import static io.github.core607.poketto.executor.internal.ProtocolValues.uuid;
 
 import io.github.core607.poketto.assets.ManagedAsset;
+import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.content.RepositoryPatch;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -84,6 +86,23 @@ final class BridgeArguments {
                 string(fields, "mediaType"),
                 string(fields, "key"),
                 bool(fields, "replace"));
+    }
+
+    static MediaLink mediaLink(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, MediaLink.class);
+        return new MediaLink(
+                string(fields, "path"), string(fields, "assetId"), string(fields, "revision"), bool(fields, "replace"));
+    }
+
+    record MediaLink(String path, String assetId, String revision, boolean replace) {
+        MediaLink {
+            assetId = uuid(assetId, "assetId");
+            revision = ProtocolValues.hex(revision, 64, "revision");
+        }
+
+        ManagedAssetReference reference() {
+            return new ManagedAssetReference(UUID.fromString(assetId), revision);
+        }
     }
 
     static Export export(JsonNode arguments) {

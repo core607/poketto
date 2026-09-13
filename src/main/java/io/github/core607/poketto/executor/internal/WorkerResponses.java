@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static io.github.core607.poketto.executor.internal.ProtocolValues.require;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -127,9 +128,22 @@ final class WorkerResponses {
             absent = ProtocolValues.paths(absent, 64, "absent");
             long total = 0;
             for (CapturedFile file : writes) {
+                require(file.bytes() <= MAX_CAPTURED_BYTES, "file bytes", "must fit the text capture bound");
                 total += file.bytes();
             }
             require(total <= MAX_CAPTURED_BYTES, "captured bytes", "must not exceed " + MAX_CAPTURED_BYTES);
+        }
+    }
+
+    /** Binary imports have the original-file bound, independently of the text selection budget. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record BinaryCaptureManifest(String captureId, List<CapturedFile> writes) {
+        BinaryCaptureManifest {
+            captureId = ProtocolValues.uuid(captureId, "captureId");
+            require(writes != null, "writes", "must be present");
+            require(writes.size() == 1, "writes", "must contain one binary file");
+            writes = List.copyOf(writes);
+            ProtocolValues.inRange(writes.getFirst().bytes(), 0, ManagedBlobStore.MAX_FILE_BYTES, "binary bytes");
         }
     }
 
