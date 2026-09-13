@@ -26,6 +26,8 @@ Initial admission must identify the new copy before dependent work. Subsequent r
 
 Recovery is explicit and bound to the original subject, workspace and currently permitted scope. Never auto-claim by subject and workspace alone: two chats using one identity own independent copies. A copy has one fenced writer lease. A stale transport or worker cannot continue writing after ownership transfers; simultaneous recovery attempts cannot both win. Permission revocation or public-projection withdrawal denies access immediately, regardless of retained bytes.
 
+Explicit recovery and execution must be possible in one admitted request. A client may open a new MCP transport for each tool call, so a separate resume call cannot require that the next command reuse its transport. A recovery request identifies the exact copy and expected writer generation, transfers ownership atomically, and fences the previous owner before executing. A stale generation is refused before execution. Transport replacement never authorizes a fresh copy or an identity-wide automatic claim.
+
 ## Durable retained work
 
 Use a durable working directory, or an atomically published recovery checkpoint at command completion. A success response follows durable publication of the retained state. Exit cleanup cannot provide the guarantee: abrupt termination may bypass it. Failed persistence returns an explicit failure rather than acknowledging recoverable work.
