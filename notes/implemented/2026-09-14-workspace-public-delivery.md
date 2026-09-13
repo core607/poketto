@@ -38,6 +38,8 @@ Revalidating every old reference against a newer page could preserve more cached
 
 Real PostgreSQL and HTTP integration exercise owner and CSRF enforcement, string workspace identity in responses, independent repositories with different content at identical paths, and disabled-space exclusion. The native Linux suite exercises withdrawn Git-image cache replay, force-pushed history, preparation races, token expiry and authorized member access to originals.
 
+The [native member-media run](../../executor-native/evidence/2026-09-14-member-projection-media.json) exercises actual CLI fetches while website delivery is disabled, private-path denial, projection withdrawal and cleanup. Its authorization is synthetic; PostgreSQL and HTTP protocol checks remain separate. The focused result does not claim that the earlier all-scenarios native run, which exceeded its aggregate deadline, completed.
+
 The production frontend, Spring application, PostgreSQL and Caddy were exercised together against two synthetic Git repositories. Browser acceptance covers default-off publication, cancellation, explicit enablement, scoped reading and images, mobile tag and search navigation, and withdrawal while member editing remains available. A paused and resumed backend verifies that the error page's reload action requests server-rendered content again. Public probes reject the withdrawn space and its earlier image token while the default site remains available. These fixtures do not prove production HTTPS rollout, provider provisioning or large-catalog capacity.
 
 Cross-space discovery batches, author attribution, collections and reading-return state remain owned by the broader multi-user record.

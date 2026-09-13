@@ -141,6 +141,8 @@ public final class ExecutorNativeProbe {
             probe.run();
         } else if (args[1].equals("exports")) {
             probe.portableExports();
+        } else if (args[1].equals("media")) {
+            probe.mediaFetch();
         } else if (args[1].equals("peer-only")) {
             probe.rejectNonRootPeer();
         } else {
