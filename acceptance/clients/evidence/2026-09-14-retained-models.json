@@ -1,0 +1,95 @@
+{
+  "date": "2026-09-14",
+  "applicationSourceCommit": "8f42111cb725af71a9e4dd94476c341ea2025e25",
+  "modelDriven": true,
+  "transport": "HTTP over loopback SSH forwarding",
+  "services": [
+    "Spring application",
+    "PostgreSQL",
+    "normally issued API keys",
+    "native SRT"
+  ],
+  "clients": [
+    {
+      "client": "codex",
+      "pinnedCommit": "55e8126590a36b905bdc53359960397052be7804",
+      "savedCommit": "c088793bc555ea3791a28ef3a7c330b30c9732e1",
+      "initialGeneration": 1,
+      "finalGeneration": 3,
+      "toolCalls": {
+        "create": 4,
+        "resumeSaveDiscard": 6
+      },
+      "transcriptSha256": {
+        "create": "d801e0ac588d113d50b4d4678757060d3a26f66c04fa2d70cdfe23defe1eed24",
+        "resume": "4e501317b70861ef05ad984070b02a2b0a300051ae9136ff5a688c18a737417b"
+      },
+      "result": "PASS",
+      "authoritativeHttp": "PASS",
+      "restoredTextAndBinaryBytes": "PASS",
+      "discardThenAbsentThenMissingCopy": "PASS"
+    },
+    {
+      "client": "claude",
+      "pinnedCommit": "c088793bc555ea3791a28ef3a7c330b30c9732e1",
+      "savedCommit": "ddadb011ff118cd491c7a561d6cb64718afedff2",
+      "initialGeneration": 1,
+      "finalGeneration": 2,
+      "toolCalls": {
+        "create": 4,
+        "resumeSaveDiscard": 7
+      },
+      "transcriptSha256": {
+        "create": "5f2c7cef112f3953fd3f3c202cd227ed568256206ccf3de1d66cfafeb8e29110",
+        "resume": "d1ba2ab23a31964e3a4eee5fb526cdca56949bc66a3684b44be80665498de1a5"
+      },
+      "result": "PASS",
+      "authoritativeHttp": "PASS",
+      "restoredTextAndBinaryBytes": "PASS",
+      "discardThenAbsentThenMissingCopy": "PASS"
+    }
+  ],
+  "claudeModelsReported": [
+    "claude-fable-5"
+  ],
+  "codexModel": "CLI default; model identifier not emitted in the JSON event stream",
+  "versions": {
+    "codex": "0.154.0-alpha.6.2",
+    "claude": "2.1.240"
+  },
+  "runtimeManifestSha256": "52364a5ce8dad7cedb6ad60812703866f604498ef63fad0c5883cb4fb22c81ce",
+  "controllerSha256": "485dac41d0d9b6ef54d120bd66b109c878dba2b8a2a0a3858ed99f45eddc43da",
+  "workerSources": {
+    "worker.py": "37882540fd975c85734d5594128648c552a2d762c40dd5638cf79988c6dddd34",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "c71cb79d284101a74cd08ab1606224b0bbcaa5910786fe9dd17e1c7e20260049",
+    "cli.py": "89e7ddd33f7ce20a251216122163ffbc96a7f26fe2d6b09bf7e2579570700468",
+    "session_files.py": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+    "binary_capture.py": "6a11b936bc8a29da06788d33a9e7df7d0298b226b32c3229af62ea03cbec2d53",
+    "materialize.py": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd",
+    "checkpoints.py": "53bb378eb042325bae301742dc10910b04c2497149e5257e67530206953fe11e",
+    "checkpoint_tree.py": "106ccf35c23c183f791a968b94ce158801a24c9de6bc2eff67a89457d6542d95"
+  },
+  "authoritativeGit": {
+    "authoritativeGit": "PASS",
+    "commits": [
+      "55e8126590a36b905bdc53359960397052be7804",
+      "c088793bc555ea3791a28ef3a7c330b30c9732e1",
+      "ddadb011ff118cd491c7a561d6cb64718afedff2"
+    ],
+    "newCommits": 2,
+    "onlySelectedPathsChanged": true,
+    "unsavedBinariesAbsent": true
+  },
+  "limitations": [
+    "Final deployed HTTPS and chat-app OAuth acceptance remain pending.",
+    "The synthetic repository has no root AGENTS.md; clients inspected CLI help after its absence.",
+    "Codex corrected an unavailable python executable to python3 before verifying and saving.",
+    "Claude corrected a rejected save -m option after reading help; no write occurred on the rejected call."
+  ],
+  "controllerCleanup": "PASS",
+  "harnessSha256": "eecfbba03a363cda6e123ca9fc204d0065332e2bd05e241566c5492cb79d670b",
+  "transcriptVerifierSha256": "98cece40b4a0a9b7cb9ebc6989cc4da29f97be30e28b6f2d353f0d8636c4cda9"
+}

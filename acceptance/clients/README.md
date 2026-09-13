@@ -14,8 +14,22 @@ explicit recovery at the original commit; stale generations cannot execute, and
 restored drafts save with authoritative HTTP readback. Discard is owner-bound and
 idempotent without undoing remote Git. Public projections recover without private
 files, and revoked credentials cannot initialize another session. All five checks
-and controller cleanup pass. This deterministic run does not establish model-driven
-retained-copy or final HTTPS acceptance.
+and controller cleanup pass. This deterministic run supplements the model-driven
+retained-copy acceptance below; final HTTPS acceptance remains pending.
+
+The [retained model-client run](evidence/2026-09-14-retained-models.json) uses actual
+Codex and Claude Code processes with real account authentication, PostgreSQL and
+native SRT. For each client, one process leaves verified unsaved text and binary
+files; a second explicitly resumes the same copy and generation at its original
+commit, saves only the text and discards the retained work. Repeated discard returns
+`ABSENT`, and later recovery returns `MISSING_COPY` without executing a command.
+Independent tool transcripts, authenticated HTTP and remote Git confirm exactly
+two selected-file commits and no saved binary scratch files. Cleanup passes.
+Both clients recover from the fixture's absent root guidance; Codex corrects an
+unavailable `python` command to `python3`, and Claude removes an unsupported save
+option after reading help. These recoveries are recorded rather than counted as
+first-attempt success. Final deployed HTTPS and chat-app OAuth acceptance remain
+pending.
 
 The [focused CLI move run](evidence/2026-09-10-cli-moves.json) verifies actual
 Codex calls through real Spring authentication, PostgreSQL, HTTP MCP and native
