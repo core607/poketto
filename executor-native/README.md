@@ -81,6 +81,8 @@ focused diagnosis. The default `--scenario all` includes them with the complete
 adapter lifecycle checks and process-loss expiry. A focused result does not prove
 the omitted scenarios. Each mode uses a fresh native fixture and checks cleanup.
 
+The complete Java batch has a 360-second supervisor and harness deadline to cover its repeated cold opens and intentional worker restarts. Focused batches retain a 240-second deadline. These are whole-test budgets; each command and lease keeps its independently checked timeout, and cleanup still verifies that no execution processes remain.
+
 ```sh
 sudo env PYTHONPATH=/prepared/tools/python python3 probe.py \
   --runtime /staged/runtime \

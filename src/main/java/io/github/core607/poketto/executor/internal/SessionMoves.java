@@ -135,7 +135,9 @@ final class SessionMoves {
         if (state.uncertain || state.move != null || !state.baseCommit.equals(pending.request.baseCommit())) {
             throw new IllegalArgumentException("move baseline changed");
         }
-        state.move = pending;
+        SelectedFileSaves.State proposed = state.copy();
+        proposed.move = RetainedSaveState.Move.capture(pending).restore();
+        state.install(proposed);
         return write(actor, workspace, state, false);
     }
 
@@ -147,6 +149,10 @@ final class SessionMoves {
             return pendingResult(state.move, "LOCAL_MOVE_PENDING");
         }
         if (state.move.attempt == null) {
+            if (state.tracked()) {
+                clearMove(state);
+                return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
+            }
             return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
         }
         return write(actor, workspace, state, true);
@@ -155,55 +161,98 @@ final class SessionMoves {
     private BridgeReplies.Reply write(
             AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, boolean recovery) {
         Pending pending = state.move;
+        RepositoryPatchResult result;
         try {
-            pending.result = recovery
-                    ? service.recover(actor, workspace, pending.request, pending.attempt)
-                    : service.move(actor, workspace, pending.request);
-            return pendingResult(pending, "LOCAL_MOVE_PENDING");
+            result = writeRemote(actor, workspace, state, recovery, pending);
         } catch (RepositoryWriteAmbiguousException unknown) {
-            if (pending.attempt == null) {
-                pending.attempt = unknown.attempt().orElse(null);
+            SelectedFileSaves.State proposed = state.copy();
+            if (proposed.move.attempt == null) {
+                proposed.move.attempt = unknown.attempt().orElse(null);
             }
-            return pendingResult(pending, "WRITE_OUTCOME_UNKNOWN");
+            state.install(proposed);
+            return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
         } catch (RepositoryConflictException conflict) {
-            state.move = null;
+            clearMove(state);
             return BridgeReplies.failed("REPOSITORY_CONFLICT");
         } catch (AuthException | ContentRepositoryException | IllegalArgumentException failure) {
             if (!recovery) {
-                state.move = null;
+                clearMove(state);
             }
             throw failure;
         }
+        SelectedFileSaves.State proposed = state.copy();
+        proposed.move.result = result;
+        state.install(proposed);
+        return pendingResult(state.move, "LOCAL_MOVE_PENDING");
+    }
+
+    private RepositoryPatchResult writeRemote(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            SelectedFileSaves.State state,
+            boolean recovery,
+            Pending pending) {
+        if (state.tracked()) {
+            return recovery
+                    ? service.recover(
+                            actor,
+                            workspace,
+                            pending.request,
+                            pending.attempt,
+                            attempt -> retainAttempt(state, attempt))
+                    : service.move(actor, workspace, pending.request, attempt -> retainAttempt(state, attempt));
+        }
+        return recovery
+                ? service.recover(actor, workspace, pending.request, pending.attempt)
+                : service.move(actor, workspace, pending.request);
+    }
+
+    private static void retainAttempt(SelectedFileSaves.State state, RepositoryWriteAttempt attempt) {
+        SelectedFileSaves.State proposed = state.copy();
+        proposed.move.attempt = attempt;
+        state.install(proposed);
+    }
+
+    private static void clearMove(SelectedFileSaves.State state) {
+        SelectedFileSaves.State proposed = state.copy();
+        proposed.move = null;
+        state.install(proposed);
     }
 
     BridgeReplies.Reply installed(SelectedFileSaves.State state) {
-        Pending pending = Objects.requireNonNull(state.move);
+        Pending pending =
+                Objects.requireNonNull(state.move, "move must be present before installation acknowledgement");
         if (pending.result == null) {
             throw new IllegalStateException("move is not acknowledged");
         }
-        var result = pending.result;
-        state.acknowledgeMove(result.commit(), pending.paths);
-        var reply = BridgeReplies.succeeded(new BridgeReplies.MoveInstalled(
+        RepositoryPatchResult result = pending.result;
+        SelectedFileSaves.State proposed = state.copy();
+        proposed.acknowledgeMove(result.commit(), pending.paths);
+        BridgeReplies.Reply reply = BridgeReplies.succeeded(new BridgeReplies.MoveInstalled(
                 result.commit(),
                 result.committed(),
                 result.snapshotUpdated(),
                 true,
                 pending.request.source(),
                 pending.request.destination()));
-        state.lastSave = reply;
+        proposed.lastSave = reply;
+        state.install(proposed);
         return reply;
     }
 
     BridgeReplies.Reply skipLocal(SelectedFileSaves.State state) {
-        Pending pending = Objects.requireNonNull(state.move);
-        var result = Objects.requireNonNull(pending.result, "move must be confirmed before skipping installation");
+        Pending pending = Objects.requireNonNull(state.move, "move must be present before skipping installation");
+        RepositoryPatchResult result =
+                Objects.requireNonNull(pending.result, "move must be confirmed before skipping installation");
         // Local bytes did not advance: retain every per-file baseline to guard later saves.
-        state.baseCommit = result.commit();
-        state.move = null;
-        var reply = BridgeReplies.succeededWithMessage(
+        SelectedFileSaves.State proposed = state.copy();
+        proposed.baseCommit = result.commit();
+        proposed.move = null;
+        BridgeReplies.Reply reply = BridgeReplies.succeededWithMessage(
                 new BridgeReplies.MoveSkipped(result.commit(), result.committed(), false, true),
                 "Local files are unchanged. Use poketto sync on affected text and index paths before saving them.");
-        state.lastSave = reply;
+        proposed.lastSave = reply;
+        state.install(proposed);
         return reply;
     }
 

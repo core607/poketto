@@ -973,7 +973,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 authorize(session);
                 var committed =
                         saves.moves().commit(session.principal, session.key.workspace(), session.saveState, pending);
-                if (session.saveState.move == null || pending.result == null) {
+                pending = session.saveState.move;
+                if (pending == null || pending.result == null) {
                     return committed;
                 }
             }

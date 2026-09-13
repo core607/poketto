@@ -59,15 +59,11 @@ final class SelectedFileSaves {
         }
         RepositoryPatch patch = selectedPatch(actor, workspace, state, writes, deletes);
         prepareRetainedWrite(state, patch);
+        RepositoryPatchResult result;
         try {
-            RepositoryPatchResult result = state.tracked()
+            result = state.tracked()
                     ? patches.apply(actor, workspace, patch, attempt -> retainAttempt(state, attempt))
                     : patches.apply(actor, workspace, patch);
-            return completed(
-                    state,
-                    result,
-                    patch.changes().stream().map(RepositoryTextChange::path).toList(),
-                    false);
         } catch (RepositoryWriteAmbiguousException unknown) {
             State proposed = state.copy();
             proposed.pending = patch;
@@ -82,6 +78,11 @@ final class SelectedFileSaves {
         } catch (RepositoryConflictException conflict) {
             return conflict(state, "Remote main changed; local edits and the host baseline are retained.");
         }
+        return completed(
+                state,
+                result,
+                patch.changes().stream().map(RepositoryTextChange::path).toList(),
+                false);
     }
 
     private RepositoryPatch selectedPatch(
@@ -139,8 +140,9 @@ final class SelectedFileSaves {
         if (state.pending == null || state.attempt.isEmpty()) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
+        RepositoryPatchResult result;
         try {
-            RepositoryPatchResult result = state.tracked()
+            result = state.tracked()
                     ? patches.recover(
                             actor,
                             workspace,
@@ -148,13 +150,6 @@ final class SelectedFileSaves {
                             state.attempt.orElseThrow(),
                             attempt -> retainAttempt(state, attempt))
                     : patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
-            return completed(
-                    state,
-                    result,
-                    state.pending.changes().stream()
-                            .map(RepositoryTextChange::path)
-                            .toList(),
-                    true);
         } catch (RepositoryWriteAmbiguousException unknown) {
             // Retain the same original patch and commit even if the recovery reply is also lost.
             return remember(state, state.copy(), BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN"));
@@ -162,6 +157,11 @@ final class SelectedFileSaves {
             return conflict(
                     state, "Remote main diverged from the retained attempt; local edits and baseline are retained.");
         }
+        return completed(
+                state,
+                result,
+                state.pending.changes().stream().map(RepositoryTextChange::path).toList(),
+                true);
     }
 
     private static BridgeReplies.Reply completed(

@@ -13,6 +13,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.file.Path;
@@ -102,11 +103,16 @@ class RetainedSelectedFileSavesTests {
         PublicExecutionNativeFixture fixture = fixture(false);
         var calls = new AtomicInteger();
         var failure = new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
+        var recoveryFailure = new RepositoryConflictException("checkpoint baseline unavailable");
         var state = new SelectedFileSaves.State(fixture.sourceCommit(), snapshot -> {
-            if (calls.incrementAndGet() == 3) {
+            int stage = calls.incrementAndGet();
+            if (stage == 3) {
                 assertThat(fixture.pushes()).isEqualTo(1);
                 assertThat(snapshot.uncertain()).isFalse();
                 throw failure;
+            }
+            if (stage == 4) {
+                throw recoveryFailure;
             }
         });
         SelectedFileSaves saves = saves(fixture);
@@ -120,6 +126,9 @@ class RetainedSelectedFileSavesTests {
         assertThat(state.baseCommit).isEqualTo(fixture.sourceCommit());
         assertThat(state.uncertain).isTrue();
         String candidate = state.attempt.orElseThrow().commit();
+        assertThatThrownBy(() -> saves.recover(actor, workspace, state)).isSameAs(recoveryFailure);
+        assertThat(state.uncertain).isTrue();
+        assertThat(state.attempt.orElseThrow().commit()).isEqualTo(candidate);
         assertThat(saves.recover(actor, workspace, state).ok()).isTrue();
         assertThat(state.baseCommit).isEqualTo(candidate);
         assertThat(state.uncertain).isFalse();

@@ -150,9 +150,12 @@ with socket.socket(socket.AF_UNIX) as connection:
 
     def execute_java(mode):
         nonlocal process
+        # The complete batch includes repeated cold opens and deliberately interrupted restarts.
+        timeout_seconds = 360 if mode == 'main' else 240
         agent, = list((runtime / 'jars').glob('byte-buddy-agent-*.jar'))
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', app_unit,
-                   '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64', '-p', 'RuntimeMaxSec=240',
+                   '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64',
+                   '-p', 'RuntimeMaxSec=' + str(timeout_seconds),
                    str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(root / 'home'),
                    '-javaagent:' + str(agent), '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
                    'io.github.core607.poketto.executor.internal.ExecutorNativeProbe', str(root / 'java.json'), mode]
@@ -164,7 +167,7 @@ with socket.socket(socket.AF_UNIX) as connection:
                 print(line, end='', flush=True)
         reader = threading.Thread(target=relay, daemon=True)
         reader.start()
-        deadline = time.monotonic() + 240
+        deadline = time.monotonic() + timeout_seconds
         while process.poll() is None:
             if time.monotonic() >= deadline:
                 raise AssertionError('Java native probe exceeded deadline')
@@ -269,6 +272,8 @@ with socket.socket(socket.AF_UNIX) as connection:
             'materializeSha256': digest(root / 'materialize.py'),
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'artifactsSha256': digest(root / 'artifacts.py'),
+            'checkpointsSha256': digest(root / 'checkpoints.py'),
+            'checkpointTreeSha256': digest(root / 'checkpoint_tree.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only', 'scenario': args.scenario}), flush=True)
     finally:

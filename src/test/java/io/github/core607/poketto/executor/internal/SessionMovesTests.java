@@ -102,7 +102,7 @@ class SessionMovesTests {
         assertThat(remote.files())
                 .containsKey("private/archive/manual.pdf")
                 .doesNotContainKeys("private/manual.pdf", "private/unsaved.pdf");
-        String committed = pending.result.commit();
+        String committed = state.move.result.commit();
         saves.moves().installed(state);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
@@ -125,7 +125,8 @@ class SessionMovesTests {
         assertThat(state.move).isSameAs(pending);
         state.move = null;
         saves.moves().commit(actor, workspace, state, pending);
-        String committed = pending.result.commit();
+        assertThat(pending.result).isNull();
+        String committed = state.move.result.commit();
         assertThat(saves.moves().skipLocal(state).ok()).isEqualTo(true);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
@@ -152,20 +153,22 @@ class SessionMovesTests {
         byte[] original = pending.payload.clone();
         assertThat(saves.moves().commit(actor, workspace, state, pending).code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
-        assertThat(pending.attempt).isNotNull();
+        assertThat(state.move.attempt).isNotNull();
+        assertThat(pending.attempt).isNull();
         assertThatThrownBy(() ->
                         saves.moves().prepare(actor, workspace, state, "article.md", "other.md", Optional.empty()))
                 .isInstanceOf(IllegalArgumentException.class);
         fixture.restoreTransport();
         assertThat(saves.moves().recover(actor, workspace, state).code()).isEqualTo("LOCAL_MOVE_PENDING");
-        assertThat(pending.result.commit()).isEqualTo(pending.attempt.commit());
-        assertThat(pending.payload).containsExactly(original);
+        assertThat(state.move.result.commit()).isEqualTo(state.move.attempt.commit());
+        assertThat(state.move.payload).containsExactly(original);
         assertThat(fixture.pushes()).isEqualTo(1);
         saves.moves().recover(actor, workspace, state);
         assertThat(fixture.pushes()).isEqualTo(1);
-        assertThat(state.move).isSameAs(pending);
+        assertThat(state.move).isNotSameAs(pending);
+        String committed = state.move.result.commit();
         saves.moves().installed(state);
         assertThat(state.move).isNull();
-        assertThat(state.baseCommit).isEqualTo(pending.result.commit());
+        assertThat(state.baseCommit).isEqualTo(committed);
     }
 }
