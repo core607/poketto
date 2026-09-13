@@ -78,11 +78,7 @@ final class SelectedFileSaves {
         } catch (RepositoryConflictException conflict) {
             return conflict(state, "Remote main changed; local edits and the host baseline are retained.");
         }
-        return completed(
-                state,
-                result,
-                patch.changes().stream().map(RepositoryTextChange::path).toList(),
-                false);
+        return completed(state, result, patch, false);
     }
 
     private RepositoryPatch selectedPatch(
@@ -97,7 +93,7 @@ final class SelectedFileSaves {
         state.requireTracking(paths);
         for (String path : paths) {
             String expectedCommit = state.baseline(path);
-            var baseline = reader.getFile(actor, workspace, Optional.of(expectedCommit), path);
+            var baseline = baselineFile(actor, workspace, state, path);
             if (!baseline.commit().equals(Optional.of(expectedCommit))
                     || (!baseline.expectedAbsence() && baseline.revision().isEmpty())) {
                 throw new InvalidSelectionException(InvalidSelectionException.Reason.NO_WRITABLE_BASELINE);
@@ -157,19 +153,25 @@ final class SelectedFileSaves {
             return conflict(
                     state, "Remote main diverged from the retained attempt; local edits and baseline are retained.");
         }
-        return completed(
-                state,
-                result,
-                state.pending.changes().stream().map(RepositoryTextChange::path).toList(),
-                true);
+        return completed(state, result, state.pending, true);
     }
 
     private static BridgeReplies.Reply completed(
-            State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
+            State state, RepositoryPatchResult result, RepositoryPatch patch, boolean recovered) {
+        List<String> paths =
+                patch.changes().stream().map(RepositoryTextChange::path).toList();
         State proposed = state.copy();
         proposed.baseCommit = result.commit();
         // Only these paths adopt the new remote baseline; unselected local edits keep theirs.
         paths.forEach(path -> proposed.baselines.put(path, result.commit()));
+        paths.forEach(proposed.fileBaselines::remove);
+        if (state.tracked()) {
+            patch.changes()
+                    .forEach(change -> proposed.fileBaselines.put(
+                            change.path(),
+                            new RetainedFileBaseline(
+                                    result.commit(), change.content().orElse(null))));
+        }
         proposed.uncertain = false;
         proposed.pending = null;
         proposed.attempt = Optional.empty();
@@ -199,6 +201,7 @@ final class SelectedFileSaves {
         private final String originalCommit;
         private final SaveStateCheckpoint checkpoint;
         private final Map<String, String> baselines = new HashMap<>();
+        private final Map<String, RetainedFileBaseline> fileBaselines = new HashMap<>();
         String baseCommit;
         boolean uncertain;
         RepositoryPatch pending;
@@ -238,6 +241,8 @@ final class SelectedFileSaves {
             baseCommit = proposed.baseCommit;
             baselines.clear();
             baselines.putAll(proposed.baselines);
+            fileBaselines.clear();
+            fileBaselines.putAll(proposed.fileBaselines);
             uncertain = proposed.uncertain;
             pending = proposed.pending;
             attempt = proposed.attempt;
@@ -251,6 +256,7 @@ final class SelectedFileSaves {
                     originalCommit,
                     baseCommit,
                     baselines,
+                    fileBaselines,
                     uncertain,
                     pending,
                     attempt.orElse(null),
@@ -267,6 +273,7 @@ final class SelectedFileSaves {
             var state = new State(snapshot.originalCommit(), checkpoint);
             state.baseCommit = snapshot.baseCommit();
             state.baselines.putAll(snapshot.baselines());
+            state.fileBaselines.putAll(snapshot.fileBaselines());
             state.uncertain = snapshot.uncertain();
             state.pending = snapshot.pending();
             state.attempt = Optional.ofNullable(snapshot.attempt());
@@ -289,6 +296,7 @@ final class SelectedFileSaves {
         void acknowledgeMove(String commit, Set<String> paths) {
             requireTracking(paths);
             paths.forEach(path -> baselines.put(path, commit));
+            paths.forEach(fileBaselines::remove);
             baseCommit = commit;
             move = null;
         }
@@ -311,7 +319,7 @@ final class SelectedFileSaves {
         }
         state.requireTracking(List.of(path));
         String previous = state.baseline(path);
-        var original = reader.getFile(actor, workspace, Optional.of(previous), path);
+        var original = baselineFile(actor, workspace, state, path);
         var remote = reader.getFile(actor, workspace, Optional.empty(), path);
         if ((!original.expectedAbsence() && original.source().isEmpty())
                 || (!remote.expectedAbsence() && remote.source().isEmpty())
@@ -324,6 +332,7 @@ final class SelectedFileSaves {
                 state.baseCommit,
                 previous,
                 remote.commit().orElseThrow(),
+                remote.source(),
                 local.map(value -> DocumentRevision.sha256(value.getBytes(StandardCharsets.UTF_8))
                         .value()
                         .substring(7)),
@@ -332,6 +341,11 @@ final class SelectedFileSaves {
     }
 
     RepositoryFile baselineFile(AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
+        RetainedFileBaseline retained = state.fileBaselines.get(path);
+        if (retained != null) {
+            return auth.withAuthorization(
+                    actor, workspace, Set.of(Capability.READ_PRIVATE), () -> retained.file(workspace, path));
+        }
         return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
     }
 
@@ -344,6 +358,13 @@ final class SelectedFileSaves {
         state.requireTracking(List.of(plan.path()));
         State proposed = state.copy();
         proposed.baselines.put(plan.path(), plan.remoteCommit());
+        proposed.fileBaselines.remove(plan.path());
+        if (state.tracked()) {
+            proposed.fileBaselines.put(
+                    plan.path(),
+                    new RetainedFileBaseline(
+                            plan.remoteCommit(), plan.remoteSource().orElse(null)));
+        }
         proposed.baseCommit = plan.remoteCommit();
         state.install(proposed);
     }
@@ -353,6 +374,7 @@ final class SelectedFileSaves {
             String previousCommit,
             String previousPathCommit,
             String remoteCommit,
+            Optional<String> remoteSource,
             Optional<String> expectedLocalSha256,
             Optional<String> content,
             boolean conflicted) {}

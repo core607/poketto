@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -191,7 +192,10 @@ class RetainedCopyStoreTests {
                 UUID.randomUUID(),
                 RetainedCopyRecord.Outcome.RUNNING,
                 new RetainedCopyRecord.Checkpoint(
-                        UUID.randomUUID(), "e".repeat(64), 30, withImport(live.snapshot(), "unconfirmed command")));
+                        UUID.randomUUID(),
+                        "e".repeat(64),
+                        30,
+                        withTextBaseline(withImport(live.snapshot(), "unconfirmed command"))));
         var next = changed(initial, 1, 1, initial.transportHash(), initial.acknowledged(), pending);
         first.replace(0, 1, next);
 
@@ -203,6 +207,9 @@ class RetainedCopyStoreTests {
         assertThat(loaded.acknowledged().state().baseCommit()).isEqualTo(BASE);
         assertThat(loaded.command().checkpoint().state().baseCommit()).isEqualTo("2".repeat(40));
         assertThat(loaded.command().checkpoint().state().baselines()).containsEntry("one.md", "2".repeat(40));
+        assertThat(loaded.command().checkpoint().state().fileBaselines())
+                .containsEntry("one.md", new RetainedFileBaseline("2".repeat(40), "已保存的旧正文"));
+        assertThat(loaded.acknowledged().state().fileBaselines()).isEmpty();
         assertThat(loaded.command().checkpoint().id())
                 .isEqualTo(pending.checkpoint().id());
         assertThat(loaded.command().checkpoint().id())
@@ -419,6 +426,20 @@ class RetainedCopyStoreTests {
             assertThat(failure.reason()).isIn(RetainedCopyException.Reason.BUSY, RetainedCopyException.Reason.STALE);
             return false;
         }
+    }
+
+    private static RetainedSaveState withTextBaseline(RetainedSaveState snapshot) {
+        return new RetainedSaveState(
+                snapshot.originalCommit(),
+                snapshot.baseCommit(),
+                snapshot.baselines(),
+                Map.of("one.md", new RetainedFileBaseline("2".repeat(40), "已保存的旧正文")),
+                snapshot.uncertain(),
+                snapshot.pending(),
+                snapshot.attempt(),
+                snapshot.move(),
+                snapshot.lastSave(),
+                snapshot.lastImport());
     }
 
     private static RetainedSaveState withImport(RetainedSaveState snapshot, String message) {

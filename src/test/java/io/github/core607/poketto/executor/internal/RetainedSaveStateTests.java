@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchResult;
@@ -226,6 +227,7 @@ class RetainedSaveStateTests {
                         ORIGINAL,
                         ADVANCED,
                         Map.of("../escape.md", ORIGINAL),
+                        Map.of(),
                         false,
                         null,
                         null,
@@ -237,6 +239,35 @@ class RetainedSaveStateTests {
         assertThatThrownBy(() -> new BridgeReplies.RestoredReceipt(oversized))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("64 KiB");
+    }
+
+    @Test
+    void retainedTextChecksUtf8BytesAndCannotSubstituteAnotherPathCommit() {
+        String exact = "猫".repeat(ContentLimits.MAX_DOCUMENT_BYTES / 3) + "a";
+        assertThat(new RetainedFileBaseline(ADVANCED, exact).source()).isEqualTo(exact);
+        assertThatThrownBy(() -> new RetainedFileBaseline(ADVANCED, exact + "b"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("byte limit");
+        assertThatThrownBy(() -> new RetainedFileBaseline(ADVANCED, "\uD800"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("UTF-8");
+        assertThatThrownBy(() -> new RetainedFileBaseline(ADVANCED, "a\0b"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("NUL");
+        var receipt = BridgeReplies.RestoredReceipt.capture(new BridgeReplies.Absent());
+        assertThatThrownBy(() -> new RetainedSaveState(
+                        ORIGINAL,
+                        ADVANCED,
+                        Map.of("one.md", ADVANCED),
+                        Map.of("one.md", new RetainedFileBaseline(ORIGINAL, "wrong base")),
+                        false,
+                        null,
+                        null,
+                        null,
+                        receipt,
+                        receipt))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tracked path commit");
     }
 
     private static SelectedFileSaves.State stateWithIndependentBaselines() {

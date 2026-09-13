@@ -214,6 +214,8 @@ Bridge responses carry the same lease fields plus `executionId` and `bridgeReque
 
 `poketto recover` reconciles the exact host-retained commit against current remote history. An observed commit is acknowledged without another push; otherwise recovery retries that same commit only while the original remote base still matches. It revalidates the original patch and current authorization, retains newer local edits, and returns a conflict on divergence. A further lost reply retains the same attempt.
 
+In retained mode, acknowledged saves and synchronizations persist each selected file's exact baseline text or absence with its commit. Sync retains the remote input, independently of its merged local output. Later operations can use these versions after historical cache reads become unavailable, while current authorization and remote conflict checks still apply. Original and moved-file baseline lookup remains incomplete; retention stays disabled by default under the [continuity proposal](../notes/proposed/2026-09-12-executor-work-continuity.md).
+
 `poketto move SOURCE DESTINATION` moves saved files, folders and indexed media
 through the shared atomic writer and repairs Markdown references. A full-read
 session and write authority are required; public changes also require publication

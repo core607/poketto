@@ -19,6 +19,7 @@ record RetainedSaveState(
         String originalCommit,
         String baseCommit,
         Map<String, String> baselines,
+        Map<String, RetainedFileBaseline> fileBaselines,
         boolean uncertain,
         RepositoryPatch pending,
         RepositoryWriteAttempt attempt,
@@ -34,6 +35,15 @@ record RetainedSaveState(
             RepositoryPaths.validate(path);
             commit(revision);
         });
+        fileBaselines = Map.copyOf(fileBaselines);
+        require(fileBaselines.size() <= 16384, "file baselines", "must not exceed 16384 paths");
+        for (var entry : fileBaselines.entrySet()) {
+            RepositoryPaths.validate(entry.getKey());
+            require(
+                    entry.getValue().commit().equals(baselines.get(entry.getKey())),
+                    "file baseline",
+                    "must match its tracked path commit");
+        }
         require(uncertain == (pending != null), "pending save", "must match the uncertain state");
         require(attempt == null || uncertain, "save attempt", "requires a pending save");
         require(move == null || !uncertain, "pending move", "cannot coexist with a pending save");
