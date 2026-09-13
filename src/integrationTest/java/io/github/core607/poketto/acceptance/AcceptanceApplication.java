@@ -113,7 +113,7 @@ public final class AcceptanceApplication {
             // A JPEG header without a pixel stream exercises the browser image error.
             Files.write(
                     directory.resolve("public/相册/03-unreadable.jpg"),
-                    Base64.getDecoder().decode("/9j/wAALCAAgACABAREA/9k="));
+                    Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
             git.add().addFilepattern(".").call();
             git.commit()
                     .setMessage("Create synthetic acceptance content")
