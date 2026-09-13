@@ -41,6 +41,7 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.executor.internal.RetainedCommandTests",
             "io.github.core607.poketto.executor.internal.SessionMovesTests",
             "io.github.core607.poketto.executor.internal.RetainedSessionMovesTests",
+            "io.github.core607.poketto.executor.internal.RetainedNonTextMoveTests",
             "io.github.core607.poketto.content.internal.PortableArchiveWriterTests",
             "io.github.core607.poketto.content.internal.PortableContentPlannerTests",
             "io.github.core607.poketto.content.internal.LocalPortableContentExportsTests",

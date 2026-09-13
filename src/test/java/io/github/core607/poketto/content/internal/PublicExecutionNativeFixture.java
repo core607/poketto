@@ -29,8 +29,12 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.mockito.Mockito;
 
 /** Synthetic Git authority and real projection service for the native worker acceptance. */
@@ -243,6 +247,27 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public String sourceCommit() {
         return sourceCommit;
+    }
+
+    public String seedFile(String path, byte[] bytes) throws Exception {
+        var entries = new LinkedHashMap<String, byte[]>();
+        var modes = new LinkedHashMap<String, FileMode>();
+        try (Repository remote = repository.openRemote(workspace);
+                var revisions = new RevWalk(remote);
+                var tree = new TreeWalk(remote)) {
+            tree.addTree(revisions
+                    .parseCommit(remote.resolve(Constants.R_HEADS + "main"))
+                    .getTree());
+            tree.setRecursive(true);
+            while (tree.next()) {
+                entries.put(
+                        tree.getPathString(), remote.open(tree.getObjectId(0)).getBytes());
+                modes.put(tree.getPathString(), tree.getFileMode(0));
+            }
+        }
+        entries.put(path, bytes);
+        modes.put(path, FileMode.REGULAR_FILE);
+        return repository.commitRemote(workspace, entries, modes).name();
     }
 
     public void withdraw() throws Exception {

@@ -244,14 +244,14 @@ class RetainedSaveStateTests {
     @Test
     void retainedTextChecksUtf8BytesAndCannotSubstituteAnotherPathCommit() {
         String exact = "猫".repeat(ContentLimits.MAX_DOCUMENT_BYTES / 3) + "a";
-        assertThat(new RetainedFileBaseline(ADVANCED, exact).source()).isEqualTo(exact);
-        assertThatThrownBy(() -> new RetainedFileBaseline(ADVANCED, exact + "b"))
+        assertThat(RetainedFileBaseline.saved(ADVANCED, exact).source()).isEqualTo(exact);
+        assertThatThrownBy(() -> RetainedFileBaseline.saved(ADVANCED, exact + "b"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("byte limit");
-        assertThatThrownBy(() -> new RetainedFileBaseline(ADVANCED, "\uD800"))
+        assertThatThrownBy(() -> RetainedFileBaseline.saved(ADVANCED, "\uD800"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("UTF-8");
-        assertThatThrownBy(() -> new RetainedFileBaseline(ADVANCED, "a\0b"))
+        assertThatThrownBy(() -> RetainedFileBaseline.saved(ADVANCED, "a\0b"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("NUL");
         var receipt = BridgeReplies.RestoredReceipt.capture(new BridgeReplies.Absent());
@@ -259,7 +259,7 @@ class RetainedSaveStateTests {
                         ORIGINAL,
                         ADVANCED,
                         Map.of("one.md", ADVANCED),
-                        Map.of("one.md", new RetainedFileBaseline(ORIGINAL, "wrong base")),
+                        Map.of("one.md", RetainedFileBaseline.saved(ORIGINAL, "wrong base")),
                         false,
                         null,
                         null,

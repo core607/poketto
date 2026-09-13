@@ -66,8 +66,8 @@ class RetainedSessionMovesTests {
         assertThat(retained.get(2).move().fileBaselines())
                 .containsEntry(
                         "private/moved.md",
-                        new RetainedFileBaseline(state.move.result.commit(), "current-secret-needle"))
-                .containsEntry("private/secret.md", new RetainedFileBaseline(state.move.result.commit(), null));
+                        RetainedFileBaseline.saved(state.move.result.commit(), "current-secret-needle"))
+                .containsEntry("private/secret.md", RetainedFileBaseline.saved(state.move.result.commit(), null));
         assertThat(plan.result).isNull();
         assertThat(plan.attempt).isNull();
         String committed = state.move.result.commit();

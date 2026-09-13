@@ -38,7 +38,7 @@ record RetainedSaveState(
         fileBaselines = Map.copyOf(fileBaselines);
         require(fileBaselines.size() <= 16384, "file baselines", "must not exceed 16384 paths");
         for (var entry : fileBaselines.entrySet()) {
-            RepositoryPaths.validate(entry.getKey());
+            entry.getValue().requirePath(entry.getKey());
             require(
                     entry.getValue().commit().equals(baselines.get(entry.getKey())),
                     "file baseline",
@@ -53,6 +53,19 @@ record RetainedSaveState(
         }
         Objects.requireNonNull(lastSave, "last save receipt must be present");
         Objects.requireNonNull(lastImport, "last import receipt must be present");
+    }
+
+    void requireRecoverable() {
+        require(
+                fileBaselines.keySet().equals(baselines.keySet()),
+                "retained file baselines",
+                "must cover every advanced path");
+        if (move != null && move.result() != null) {
+            require(
+                    move.fileBaselines().keySet().equals(move.paths()),
+                    "retained move baselines",
+                    "must cover every acknowledged affected path");
+        }
     }
 
     private static void validatePending(RepositoryPatch pending, String baseCommit) {
@@ -98,7 +111,9 @@ record RetainedSaveState(
             paths.forEach(RepositoryPaths::validate);
             fileBaselines = Map.copyOf(fileBaselines);
             require(paths.containsAll(fileBaselines.keySet()), "move file baselines", "must belong to affected paths");
-            for (var baseline : fileBaselines.values()) {
+            for (var entry : fileBaselines.entrySet()) {
+                RetainedFileBaseline baseline = entry.getValue();
+                baseline.requirePath(entry.getKey());
                 require(
                         result != null && baseline.commit().equals(result.commit()),
                         "move file baseline",

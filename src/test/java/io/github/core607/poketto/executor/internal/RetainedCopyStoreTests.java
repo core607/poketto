@@ -209,7 +209,7 @@ class RetainedCopyStoreTests {
         assertThat(loaded.command().checkpoint().state().baseCommit()).isEqualTo("2".repeat(40));
         assertThat(loaded.command().checkpoint().state().baselines()).containsEntry("one.md", "2".repeat(40));
         assertThat(loaded.command().checkpoint().state().fileBaselines())
-                .containsEntry("one.md", new RetainedFileBaseline("2".repeat(40), "已保存的旧正文"));
+                .containsEntry("one.md", RetainedFileBaseline.saved("2".repeat(40), "已保存的旧正文"));
         assertThat(loaded.acknowledged().state().fileBaselines()).isEmpty();
         assertThat(loaded.command().checkpoint().id())
                 .isEqualTo(pending.checkpoint().id());
@@ -434,7 +434,7 @@ class RetainedCopyStoreTests {
                 snapshot.originalCommit(),
                 snapshot.baseCommit(),
                 snapshot.baselines(),
-                Map.of("one.md", new RetainedFileBaseline("2".repeat(40), "已保存的旧正文")),
+                Map.of("one.md", RetainedFileBaseline.saved("2".repeat(40), "已保存的旧正文")),
                 snapshot.uncertain(),
                 snapshot.pending(),
                 snapshot.attempt(),

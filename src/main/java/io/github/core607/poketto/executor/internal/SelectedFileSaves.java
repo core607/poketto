@@ -105,14 +105,19 @@ final class SelectedFileSaves {
         for (String path : paths) {
             String expectedCommit = state.baseline(path);
             var baseline = baselineFile(actor, workspace, state, path);
-            if (!baseline.commit().equals(Optional.of(expectedCommit))
-                    || (!baseline.expectedAbsence() && baseline.revision().isEmpty())) {
+            if (!writableBaseline(baseline, expectedCommit)) {
                 throw new InvalidSelectionException(InvalidSelectionException.Reason.NO_WRITABLE_BASELINE);
             }
             changes.add(new RepositoryTextChange(
                     path, baseline.expectedAbsence(), baseline.revision(), Optional.ofNullable(writes.get(path))));
         }
         return new RepositoryPatch(Optional.of(state.baseCommit), changes);
+    }
+
+    private static boolean writableBaseline(RepositoryFile baseline, String commit) {
+        return baseline.commit().equals(Optional.of(commit))
+                && (baseline.expectedAbsence()
+                        || (baseline.source().isPresent() && baseline.revision().isPresent()));
     }
 
     private static void prepareRetainedWrite(State state, RepositoryPatch patch) {
@@ -180,7 +185,7 @@ final class SelectedFileSaves {
             patch.changes()
                     .forEach(change -> proposed.fileBaselines.put(
                             change.path(),
-                            new RetainedFileBaseline(
+                            RetainedFileBaseline.saved(
                                     result.commit(), change.content().orElse(null))));
         }
         proposed.uncertain = false;
@@ -369,7 +374,10 @@ final class SelectedFileSaves {
             return auth.withAuthorization(
                     actor, workspace, Set.of(Capability.READ_PRIVATE), () -> retained.file(workspace, path));
         }
-        if (state.originals != null && state.baseline(path).equals(state.originalCommit)) {
+        if (state.originals != null) {
+            if (!state.baseline(path).equals(state.originalCommit)) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
+            }
             auth.authorize(actor, workspace, Capability.READ_PRIVATE);
             RepositoryFile file = state.originals.file(actor, workspace, state.originalCommit, path);
             return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> file);
@@ -390,7 +398,7 @@ final class SelectedFileSaves {
         if (state.tracked()) {
             proposed.fileBaselines.put(
                     plan.path(),
-                    new RetainedFileBaseline(
+                    RetainedFileBaseline.saved(
                             plan.remoteCommit(), plan.remoteSource().orElse(null)));
         }
         proposed.baseCommit = plan.remoteCommit();

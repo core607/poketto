@@ -197,9 +197,7 @@ final class SessionMoves {
             if (!file.commit().equals(Optional.of(commit))) {
                 throw new ContentRepositoryException("acknowledged move baseline is unavailable");
             }
-            if (file.expectedAbsence() || file.source().isPresent()) {
-                result.put(path, new RetainedFileBaseline(commit, file.source().orElse(null)));
-            }
+            result.put(path, RetainedFileBaseline.capture(workspace, commit, path, file));
         }
         return Map.copyOf(result);
     }

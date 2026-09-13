@@ -38,6 +38,12 @@ record RetainedCopyRecord(
                 owner, fullRead, publicExport, acknowledged.state().originalCommit());
         RetainedBaseline.validateBinding(
                 owner, copyId, fullRead, expiresAt, acknowledged.state().originalCommit(), originalBaseline);
+        if (fullRead) {
+            acknowledged.state().requireRecoverable();
+            if (command != null) {
+                command.checkpoint().state().requireRecoverable();
+            }
+        }
         if (command != null) {
             require(
                     command.checkpoint()

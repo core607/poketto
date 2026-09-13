@@ -128,7 +128,7 @@ final class RetainedBaselineFiles {
             RepositoryPaths.validate(file.path());
             if (file.source().isPresent()) {
                 String source = file.source().orElseThrow();
-                new RetainedFileBaseline(identity.commit(), source);
+                RetainedFileBaseline.saved(identity.commit(), source);
                 var revision = DocumentRevision.sha256(source.getBytes(StandardCharsets.UTF_8));
                 if (!file.revision().equals(Optional.of(revision))) {
                     throw new IOException("retained baseline source revision differs");
