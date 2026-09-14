@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -12,6 +13,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Refusals are checked by the error code the client receives rather than by exception type,
  * because that code is the contract.
+ *
+ * <p>Registration and the authorization request are checked separately: accepting a callback at
+ * registration means nothing if the request naming it is then turned away.
  */
 class OAuthRedirectTests {
 
@@ -78,5 +82,48 @@ class OAuthRedirectTests {
         assertThatThrownBy(() -> OAuthRedirects.validate("myapp://127.0.0.1/cb"))
                 .hasMessage(REFUSED);
         assertThatThrownBy(() -> OAuthRedirects.validate(null)).hasMessage(REFUSED);
+    }
+
+    @Test
+    void aLoopbackClientMayListenOnAPortItLearnsAfterRegistering() {
+        assertThat(OAuthRedirects.permits("http://127.0.0.1/cb", "http://127.0.0.1:52765/cb"))
+                .isTrue();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1234/cb", "http://127.0.0.1:52765/cb"))
+                .isTrue();
+        assertThat(OAuthRedirects.permits("http://localhost:1234/callback", "http://localhost:9/callback"))
+                .isTrue();
+    }
+
+    @Test
+    void anUnchangedCallbackIsPermittedAnywhere() {
+        assertThat(OAuthRedirects.permits("https://chat.example.com/cb", "https://chat.example.com/cb"))
+                .isTrue();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:52765/cb", "http://127.0.0.1:52765/cb"))
+                .isTrue();
+    }
+
+    @Test
+    void onlyThePortMayDifferAndOnlyOnLoopback() {
+        assertThat(OAuthRedirects.permits("https://chat.example.com/cb", "https://chat.example.com:8443/cb"))
+                .isFalse();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb", "http://127.0.0.1:2/other"))
+                .isFalse();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb?a=1", "http://127.0.0.1:2/cb?a=2"))
+                .isFalse();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb", "http://localhost:1/cb"))
+                .isFalse();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb", "https://127.0.0.1:1/cb"))
+                .isFalse();
+    }
+
+    /** A different port must not be a way past the checks a registered address had to pass. */
+    @Test
+    void aRequestedCallbackIsCheckedLikeARegisteredOne() {
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb", "http://user:secret@127.0.0.1:2/cb"))
+                .isFalse();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb", "http://127.0.0.1:2/cb#fragment"))
+                .isFalse();
+        assertThat(OAuthRedirects.permits("http://127.0.0.1:1/cb", null)).isFalse();
+        assertThat(OAuthRedirects.permits(null, "http://127.0.0.1:2/cb")).isFalse();
     }
 }

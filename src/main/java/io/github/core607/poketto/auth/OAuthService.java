@@ -114,7 +114,7 @@ public final class OAuthService {
         if (client.unconnectedUntil() != null && !client.unconnectedUntil().isAfter(clock.instant())) {
             throw failure("invalid_client");
         }
-        if (!client.redirectUris().contains(redirect)) {
+        if (client.redirectUris().stream().noneMatch(uri -> OAuthRedirects.permits(uri, redirect))) {
             throw failure("invalid_request");
         }
         if (!"code".equals(responseType)) {
