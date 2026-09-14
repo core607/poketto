@@ -89,3 +89,14 @@ export function publicOrigin() {
     throw new PublicApiError(503);
   return url.origin;
 }
+
+export function sitemapSpaces() {
+  return get<string[]>("/api/public/sitemap");
+}
+
+export function spaceSitemap(slug: string) {
+  return get<{
+    slug: string;
+    pages: { route: string; updatedAt: string }[];
+  }>(`/api/public/spaces/${encodeURIComponent(slug)}/sitemap`);
+}
