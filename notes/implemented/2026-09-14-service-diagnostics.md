@@ -14,7 +14,9 @@ The reader is usually an agent working from one error string, not a person watch
 
 Every HTTP request and every MCP tool call produces one record.
 
-`RequestDiagnosticsFilter` runs ahead of admission, origin and authentication filters, so a request refused before reaching a controller is still recorded. It names the method, route, status, duration, caller kind and subject, and the workspace when the route selects one. An asynchronous request completes on another thread, so the record is written from a completion listener using values captured on the request thread rather than thread-local context.
+`RequestDiagnosticsFilter` runs ahead of admission, origin and authentication filters, so a request refused before reaching a controller is still recorded. It names the method, route, status, duration, caller kind and subject, and the workspace when the route selects one. An asynchronous request completes on another thread, so the record is written from a completion listener using values captured on the request thread rather than thread-local context; if the dispatch has already finished, the record is written directly rather than letting a diagnostic throw out of a request that succeeded.
+
+That outer position cannot read the caller: the security chain clears its context before returning, so an identity read there is always anonymous. `RequestCallerFilter` is registered inside the chain, where the context still holds the identity, and leaves the kind and subject on the request, which survives an asynchronous dispatch. Two filters are the cost of recording both a refusal that never reached authentication and the identity behind one that did.
 
 `McpToolOutcomes` wraps the single dispatch point every tool shares. It records the tool, the duration, and the outcome code read back from the result. Reading the code from the body rather than accepting it as a parameter also covers an operation that returns a refusal of its own without raising. A refusal built without a code is recorded as `UNREPORTED` rather than omitted, because that is a defect in the producer.
 
@@ -27,6 +29,8 @@ A request identifier is generated per request, placed in the logging context so 
 ## What is never recorded
 
 Request bodies carry repository tokens and account passwords. MCP tool arguments carry commands and document content. Query strings and repository paths name private material. None of them reach a record. An admin route is reduced to its stable shape and its workspace identifier moved to a separate field, so a route never varies per workspace. Container health probes are excluded entirely: they run continuously and report nothing a reader acts on.
+
+An image URL carries its authorization in the path. `/api/public/assets/{token}` and the private equivalent name a grant of 32 random bytes that anyone holding it can redeem for that image until it expires, so a recorded route containing one would hand the image to any reader of the log. Route segments are therefore collapsed by shape rather than against a list of known routes: a UUID becomes `:id` and a run of 24 or more URL-safe characters becomes `:token`. A route added later is covered without revisiting this filter, and a readable slug is short enough to survive.
 
 Recording a path digest instead of a path, so that repeated failures on one file can still be recognised, is accepted but not implemented here. It belongs with the per-file operations in content and execution.
 
@@ -44,6 +48,6 @@ Not covered here, in the order they matter: identity and permission events in `a
 
 ## Verification
 
-`RequestDiagnosticsFilterTests` covers the recorded route, status, caller and workspace, a server failure recorded at warning, an excluded health probe, a malformed admin route, and that a query string carrying a private path reaches no record. `McpToolOutcomeTests` covers a refusal recorded with the code the caller received, a success recorded without its output, a refusal without a code, unreadable content, and that the result is returned unchanged.
+`RequestDiagnosticsFilterTests` covers the recorded route, status, caller and workspace, an authenticated caller taken from the request rather than a cleared context, public and private image grants absent from the record, a readable slug surviving, a server failure recorded at warning, an excluded health probe, a malformed admin route, and that a query string carrying a private path reaches no record. `McpToolOutcomeTests` covers a refusal recorded with the code the caller received, a success recorded without its output, a refusal without a code, unreadable content, and that the result is returned unchanged.
 
 These are unit checks on the record's shape. They do not establish behaviour under a real transport, and no deployed installation emits structured records until an operator sets the variable.

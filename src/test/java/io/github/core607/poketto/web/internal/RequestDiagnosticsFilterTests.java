@@ -11,7 +11,6 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * The recorded route is the only part of a request that reaches a log, so these cover what it must
@@ -33,6 +32,53 @@ class RequestDiagnosticsFilterTests {
         assertThat(output).contains("http request");
         assertThat(output).contains("/api/public/documents");
         assertThat(output).contains("anonymous");
+    }
+
+    @Test
+    void anAuthenticatedCallerIsNamedFromTheRequestRatherThanClearedContext(CapturedOutput output) throws Exception {
+        var request = new MockHttpServletRequest("GET", "/api/public/documents");
+        request.setAttribute(RequestCallerFilter.CALLER, "ACCOUNT:" + UUID.randomUUID());
+        var response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(output).contains("ACCOUNT:");
+        assertThat(output).doesNotContain("anonymous");
+    }
+
+    @Test
+    void aPublicImageGrantNeverReachesTheRecord(CapturedOutput output) throws Exception {
+        String token = "Zm9vYmFyYmF6cXV1eGNvcmdlZ3JhdWx0Z2FycGx5";
+        var request = new MockHttpServletRequest("GET", "/api/public/assets/" + token);
+        var response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(output).doesNotContain(token);
+        assertThat(output).contains("/api/public/assets/:token");
+    }
+
+    @Test
+    void aPrivateImageGrantNeverReachesTheRecord(CapturedOutput output) throws Exception {
+        String token = "cXV1eGNvcmdlZ3JhdWx0Z2FycGx5d2FsZG9mcmVk";
+        var request = new MockHttpServletRequest(
+                "GET", "/api/admin/workspaces/" + WorkspaceId.random() + "/assets/images/" + token);
+        var response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(output).doesNotContain(token);
+        assertThat(output).contains("/api/admin/assets/images/:token");
+    }
+
+    @Test
+    void aReadableSlugSurvivesTheRoute(CapturedOutput output) throws Exception {
+        var request = new MockHttpServletRequest("GET", "/api/public/spaces/my-personal-notes/documents");
+        var response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(output).contains("/api/public/spaces/my-personal-notes/documents");
     }
 
     @Test
@@ -110,7 +156,6 @@ class RequestDiagnosticsFilterTests {
         @Override
         public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response) {
             observed = org.slf4j.MDC.get(RequestDiagnosticsFilter.REQUEST_ID);
-            SecurityContextHolder.clearContext();
         }
     }
 }

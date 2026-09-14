@@ -1,6 +1,5 @@
 package io.github.core607.poketto.web.internal;
 
-import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
@@ -11,10 +10,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -41,6 +40,12 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RequestDiagnosticsFilter.class);
 
+    private static final Pattern UUID_SEGMENT =
+            Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
+    /** An image grant is 32 random bytes as base64url, so anything this long is treated as one. */
+    private static final Pattern OPAQUE_SEGMENT = Pattern.compile("[A-Za-z0-9_-]{24,}");
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws IOException, ServletException {
@@ -65,27 +70,33 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
             record(request, response, id, started);
             return;
         }
-        request.getAsyncContext().addListener(new AsyncListener() {
-            @Override
-            public void onComplete(AsyncEvent event) {
-                record(request, response, id, started);
-            }
+        try {
+            request.getAsyncContext().addListener(new AsyncListener() {
+                @Override
+                public void onComplete(AsyncEvent event) {
+                    record(request, response, id, started);
+                }
 
-            @Override
-            public void onTimeout(AsyncEvent event) {
-                // Completion still follows a timeout, so the record is written once, from onComplete.
-            }
+                @Override
+                public void onTimeout(AsyncEvent event) {
+                    // Completion still follows a timeout, so the record is written from onComplete.
+                }
 
-            @Override
-            public void onError(AsyncEvent event) {
-                // Completion still follows an error, so the record is written once, from onComplete.
-            }
+                @Override
+                public void onError(AsyncEvent event) {
+                    // Completion still follows an error, so the record is written from onComplete.
+                }
 
-            @Override
-            public void onStartAsync(AsyncEvent event) {
-                event.getAsyncContext().addListener(this);
-            }
-        });
+                @Override
+                public void onStartAsync(AsyncEvent event) {
+                    event.getAsyncContext().addListener(this);
+                }
+            });
+        } catch (IllegalStateException completed) {
+            // The dispatch finished before the listener could attach; record it here instead of
+            // letting a diagnostic throw out of a request that otherwise succeeded.
+            record(request, response, id, started);
+        }
     }
 
     private void record(HttpServletRequest request, HttpServletResponse response, String id, long started) {
@@ -93,7 +104,7 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
         int status = response.getStatus();
         String method = request.getMethod();
         String route = route(request);
-        String caller = caller();
+        String caller = caller(request);
         String workspace = workspace(request);
         var entry = status >= 500 ? log.atWarn() : log.atInfo();
         // Values appear as key values for JSON records and in the message for the readable format,
@@ -116,12 +127,25 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
                 .log();
     }
 
-    /** Reduces the request to a stable route: no query string, and no workspace identifier. */
+    /**
+     * Reduces the request to a stable route: no query string, no workspace identifier, and no
+     * opaque segment.
+     *
+     * <p>Collapsing by shape rather than by a list of known routes matters because an image URL
+     * carries its authorization in the path. That token is a bearer capability for the exact
+     * image until it expires, so a recorded route containing one hands anyone who can read the
+     * log the image it names. A shape rule also covers a route added later without this filter
+     * being revisited; a readable slug is short and survives.
+     */
     private static String route(HttpServletRequest request) {
         String path = request.getRequestURI();
         if (path == null || path.isBlank()) {
             return "/";
         }
+        return withoutOpaqueSegments(adminRoute(path));
+    }
+
+    private static String adminRoute(String path) {
         if (!path.startsWith(WorkspaceHttpRoutes.ADMIN)) {
             return path;
         }
@@ -130,6 +154,24 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
         } catch (IllegalArgumentException malformed) {
             return WorkspaceHttpRoutes.ADMIN;
         }
+    }
+
+    private static String withoutOpaqueSegments(String path) {
+        String[] segments = path.split("/", -1);
+        for (int index = 0; index < segments.length; index++) {
+            segments[index] = placeholder(segments[index]);
+        }
+        return String.join("/", segments);
+    }
+
+    private static String placeholder(String segment) {
+        if (UUID_SEGMENT.matcher(segment).matches()) {
+            return ":id";
+        }
+        if (OPAQUE_SEGMENT.matcher(segment).matches()) {
+            return ":token";
+        }
+        return segment;
     }
 
     private static String workspace(HttpServletRequest request) {
@@ -144,16 +186,13 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
         }
     }
 
-    /** Names the authenticated kind and subject, never an account name or a credential. */
-    private static String caller() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return "anonymous";
-        }
-        if (authentication.getPrincipal() instanceof AuthPrincipal principal) {
-            return principal.toString();
-        }
-        return "anonymous";
+    /**
+     * Names the authenticated kind and subject, never an account name or a credential. The
+     * security chain has already cleared its context by the time a record is written, so the
+     * identity comes from {@link RequestCallerFilter} through the request.
+     */
+    private static String caller(HttpServletRequest request) {
+        return request.getAttribute(RequestCallerFilter.CALLER) instanceof String caller ? caller : "anonymous";
     }
 
     /** Container probes run continuously and report nothing a reader would act on. */

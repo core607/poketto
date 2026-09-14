@@ -41,6 +41,19 @@ class WebConfiguration {
         return registration;
     }
 
+    // Registered after the security chain proxy so it runs inside it, where the authenticated
+    // identity is still in context. The diagnostics filter outside cannot read it: the chain
+    // clears its context before returning.
+    @Bean
+    FilterRegistrationBean<RequestCallerFilter> requestCallerFilter() {
+        var registration = new FilterRegistrationBean<>(new RequestCallerFilter());
+        registration.setUrlPatterns(List.of("/*"));
+        // The security chain proxy registers at -100, so -99 nests inside it.
+        registration.setOrder(-99);
+        registration.setAsyncSupported(true);
+        return registration;
+    }
+
     @Bean
     FilterRegistrationBean<ImageMemoryFilter> imageMemoryFilter(ImageMemoryAdmission admission) {
         var registration = new FilterRegistrationBean<>(new ImageMemoryFilter(admission));
