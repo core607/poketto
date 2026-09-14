@@ -184,7 +184,7 @@ final class SelectedFileSaves {
             proposed.pending = null;
             return remember(state, proposed, BridgeReplies.succeeded(new BridgeReplies.Recovery(false)));
         }
-        if (state.pending == null || state.attempt.isEmpty()) {
+        if (state.pending == null) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
         RepositoryPatchResult result;
@@ -414,9 +414,6 @@ final class SelectedFileSaves {
                     actor, workspace, Set.of(Capability.READ_PRIVATE), () -> retained.file(workspace, path));
         }
         if (state.originals != null) {
-            if (!state.baseline(path).equals(state.originalCommit)) {
-                throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
-            }
             auth.authorize(actor, workspace, Capability.READ_PRIVATE);
             RepositoryFile file = state.originals.file(actor, workspace, state.originalCommit, path);
             return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> file);
