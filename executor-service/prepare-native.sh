@@ -15,7 +15,9 @@ curl --fail --silent --show-error --location https://nodejs.org/dist/v22.22.0/SH
   cp "node-v22.22.0-linux-x64/bin/node" node
   cp -- "$spike/package.json" "$spike/package-lock.json" .
   PATH="$target/node-v22.22.0-linux-x64/bin:$PATH" npm ci --ignore-scripts --no-audit --no-fund
-  apt download bubblewrap socat ripgrep
+  apt download bubblewrap socat ripgrep debianutils
   for package in ./*.deb; do dpkg-deb -x "$package" extracted; done
+  # Keep which inside the toolchain; the host /etc/alternatives link is not readable in SRT.
+  ln -sfn which.debianutils extracted/usr/bin/which
 )
 chmod -R a+rX -- "$target"
