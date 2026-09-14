@@ -51,7 +51,15 @@ test("public and authenticated previews use separate approved image entrances", 
   );
   assert.doesNotMatch(
     renderToStaticMarkup(
-      <Gallery items={[{ src: mapping["private.png"], alt: "Private" }]} />,
+      <Gallery
+        items={[
+          {
+            src: mapping["private.png"],
+            original: mapping["private.png"],
+            alt: "Private",
+          },
+        ]}
+      />,
     ),
     /<img/,
   );
@@ -359,7 +367,13 @@ test("empty incomplete galleries expose a notice without unsafe image fallbacks"
         <Gallery
           status={status}
           preview={preview}
-          items={[{ src: "../private/image.png", alt: "Hidden" }]}
+          items={[
+            {
+              src: "../private/image.png",
+              original: "../private/image.png",
+              alt: "Hidden",
+            },
+          ]}
         />,
       );
       assert.match(html, /role="status"/);

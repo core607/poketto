@@ -279,7 +279,7 @@ class AssetDeliveryTests {
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
-        var media = service(fixture, snapshots)
+        var media = galleryService(fixture, snapshots)
                 .publicDocument(workspace, "/")
                 .orElseThrow()
                 .media();
@@ -301,7 +301,7 @@ class AssetDeliveryTests {
         var commit = fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
-        var complete = service(fixture, snapshots)
+        var complete = galleryService(fixture, snapshots)
                 .publicDocument(workspace, "/目录")
                 .orElseThrow()
                 .media();
@@ -381,7 +381,7 @@ class AssetDeliveryTests {
         fixture.commitRemote(workspace, files);
         var snapshots = snapshots(fixture, Duration.ofHours(1));
         snapshots.refresh(workspace);
-        var media = service(fixture, snapshots)
+        var media = galleryService(fixture, snapshots)
                 .publicDocument(workspace, "/")
                 .orElseThrow()
                 .media();
@@ -1265,6 +1265,15 @@ class AssetDeliveryTests {
         return service(fixture, snapshots, new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
     }
 
+    private AssetService galleryService(RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots) {
+        return service(
+                fixture,
+                snapshots,
+                new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO),
+                mock(ManagedBlobStore.class),
+                256);
+    }
+
     private AssetService service(
             RemoteRepositoryFixture fixture, JGitPublicContentSnapshots snapshots, ImageMemoryAdmission memory) {
         return service(fixture, snapshots, memory, mock(ManagedBlobStore.class));
@@ -1275,6 +1284,15 @@ class AssetDeliveryTests {
             JGitPublicContentSnapshots snapshots,
             ImageMemoryAdmission memory,
             ManagedBlobStore originals) {
+        return service(fixture, snapshots, memory, originals, 128);
+    }
+
+    private AssetService service(
+            RemoteRepositoryFixture fixture,
+            JGitPublicContentSnapshots snapshots,
+            ImageMemoryAdmission memory,
+            ManagedBlobStore originals,
+            int maxGrants) {
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(invocation -> {
             if (!authorized.get()) {
                 throw new SecurityException("authorization revoked");
@@ -1290,7 +1308,7 @@ class AssetDeliveryTests {
                 () -> originals,
                 directory.resolve("image-cache"),
                 16L * 1024 * 1024,
-                128,
+                maxGrants,
                 clock,
                 memory);
     }

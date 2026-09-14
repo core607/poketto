@@ -339,11 +339,11 @@ class RepositoryAdminIntegrationIT {
             }
             http(client, "GET", "/api/public/document?route=" + encode("/private/隐藏 %#"), null, null, 404);
             http(client, "GET", "/api/public/document?route=" + encode("/explicit ?%#"), null, null, 404);
-            overflowingGalleryOverHttp(client, csrf);
             // Durable managed originals require native directory synchronization; CI exercises this on Linux.
             if (System.getProperty("os.name").equals("Linux")) {
                 rawMediaUploadOverHttp(client, csrf);
             }
+            overflowingGalleryOverHttp(client, csrf);
         }
     }
 
@@ -383,14 +383,33 @@ class RepositoryAdminIntegrationIT {
         assertThat(page.get("gallery").size()).isEqualTo(128);
         assertThat(page.get("gallery").get(127).get("alt").stringValue()).isEqualTo("photo-127.png");
         assertThat(page.toString()).doesNotContain("hidden-", "private/", "repositoryPath", "diagnostics");
-        String imageUrl = page.get("gallery").get(0).get("src").stringValue();
-        var image = client.send(
+        JsonNode galleryImage = page.get("gallery").get(0);
+        String imageUrl = galleryImage.get("src").stringValue();
+        String originalUrl = galleryImage.get("original").stringValue();
+        assertThat(imageUrl).startsWith("/api/public/assets/");
+        assertThat(originalUrl).startsWith("/api/public/assets/");
+        assertThat(imageUrl).isNotEqualTo(originalUrl);
+        var thumbnail = client.send(
                 HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + imageUrl))
                         .GET()
                         .build(),
                 HttpResponse.BodyHandlers.ofByteArray());
-        assertThat(image.statusCode()).isEqualTo(200);
-        assertThat(image.body()).isEqualTo(Files.readAllBytes(checkout.resolve("public/album/photo-000.png")));
+        assertThat(thumbnail.statusCode()).isEqualTo(200);
+        String thumbnailType = thumbnail.headers().firstValue("content-type").orElseThrow();
+        assertThat(thumbnailType).isIn("image/png", "image/jpeg");
+        try (var stream = new ByteArrayInputStream(thumbnail.body())) {
+            var decoded = ImageIO.read(stream);
+            assertThat(decoded).isNotNull();
+            assertThat(decoded.getWidth()).isLessThanOrEqualTo(640);
+            assertThat(decoded.getHeight()).isLessThanOrEqualTo(640);
+        }
+        var original = client.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + originalUrl))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(original.statusCode()).isEqualTo(200);
+        assertThat(original.body()).isEqualTo(Files.readAllBytes(checkout.resolve("public/album/photo-000.png")));
         http(client, "GET", "/api/public/document?route=/private", null, null, 404);
         JsonNode preview = http(
                 client,
@@ -403,6 +422,24 @@ class RepositoryAdminIntegrationIT {
         assertThat(preview.get("gallery").size()).isEqualTo(128);
         assertThat(preview.get("gallery").get(0).get("src").stringValue())
                 .startsWith(scoped("/api/admin/assets/images/"));
+        assertThat(preview.get("gallery").get(0).get("original").stringValue())
+                .startsWith(scoped("/api/admin/assets/images/"));
+        assertThat(preview.get("gallery").get(0).get("original").stringValue())
+                .isEqualTo(preview.get("gallery").get(0).get("src").stringValue());
+        try (Git git = Git.open(checkout.toFile())) {
+            Files.writeString(
+                    checkout.resolve(".poketto/publishing.yaml"),
+                    "enabled: false\nmode: public-root\nexclude: ['public/album/hidden-*.png']\n");
+            git.add().addFilepattern(".poketto/publishing.yaml").call();
+            git.commit()
+                    .setMessage("Withdraw gallery publication")
+                    .setAuthor("Fixture", "fixture@example.test")
+                    .call();
+            git.push().call();
+        }
+        snapshots.refresh(catalog.defaultWorkspace().id());
+        http(client, "GET", imageUrl, null, null, 404);
+        http(client, "GET", originalUrl, null, null, 404);
     }
 
     private void rawMediaUploadOverHttp(HttpClient client, JsonNode csrf) throws Exception {

@@ -1,5 +1,7 @@
 package io.github.core607.poketto.assets;
 
+import io.github.core607.poketto.assets.internal.AlbumThumbnailRenderer;
+import io.github.core607.poketto.assets.internal.PublicThumbnailCache;
 import io.github.core607.poketto.assets.internal.RepositoryImageCache;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -44,7 +46,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Shared browser/MCP authorization, exact image reads, and snapshot-bound rendering references. */
+/** Shared browser/MCP authorization, exact originals, and snapshot-bound rendering representations. */
 public final class AssetService {
     private static final Logger log = LoggerFactory.getLogger(AssetService.class);
     private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
@@ -64,6 +66,7 @@ public final class AssetService {
     private final PublicContentSnapshots snapshots;
     private final Supplier<ManagedBlobStore> managed;
     private final RepositoryImageCache cache;
+    private final PublicThumbnailCache thumbnails;
     private final Clock clock;
     private final int maxGrants;
     private final ImageMemoryAdmission memory;
@@ -95,6 +98,7 @@ public final class AssetService {
         this.snapshots = snapshots;
         this.managed = managed;
         this.cache = new RepositoryImageCache(cacheDirectory, cacheBytes);
+        this.thumbnails = new PublicThumbnailCache(cacheDirectory.resolveSibling("public-album-thumbnails"));
         this.clock = clock;
         this.maxGrants = maxGrants;
         this.memory = Objects.requireNonNull(memory);
@@ -364,10 +368,49 @@ public final class AssetService {
     public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
         Grant grant = grant(workspace, token, "");
         requireCurrentPublication(grant);
-        AssetBytes image = bytes(workspace, grant.key().target());
+        AssetBytes image = publicRepresentation(grant);
         grant(workspace, token, "");
         requireCurrentPublication(grant);
         return image;
+    }
+
+    private AssetBytes publicRepresentation(Grant grant) {
+        WorkspaceId workspace = grant.key().workspace();
+        Target target = grant.key().target();
+        if (grant.key().representation() == Representation.ORIGINAL) {
+            return bytes(workspace, target);
+        }
+        String version = thumbnailSource(target);
+        byte[] image = thumbnails.get(workspace, version, () -> {
+            byte[] rendered =
+                    AlbumThumbnailRenderer.render(bytes(workspace, target).bytes());
+            requireCurrentPublication(grant);
+            return rendered;
+        });
+        AssetSource source =
+                switch (target) {
+                    case Git git ->
+                        new AssetSource.Repository(
+                                Optional.of(git.blob().commit()), git.blob().path());
+                    case Indexed indexed -> new AssetSource.Repository(Optional.of(indexed.commit()), indexed.path());
+                    case Managed value -> new AssetSource.Managed(value.reference());
+                };
+        return new AssetBytes(
+                source,
+                version + ":" + AlbumThumbnailRenderer.REPRESENTATION,
+                AlbumThumbnailRenderer.validateEncoded(image),
+                image);
+    }
+
+    private static String thumbnailSource(Target target) {
+        return switch (target) {
+            case Git git -> "git:" + git.blob().objectId();
+            case Indexed indexed ->
+                "managed:" + indexed.media().assetId() + ":" + indexed.media().revision();
+            case Managed value ->
+                "managed:" + value.reference().assetId() + ":"
+                        + value.reference().revision();
+        };
     }
 
     private void requireCurrentPublication(Grant grant) {
@@ -624,10 +667,19 @@ public final class AssetService {
             PreparedMedia prepared,
             boolean publicScope) {
         Map<Target, String> resolved = new HashMap<>();
+        Map<Target, String> previews = new HashMap<>();
         Map<String, String> images = new LinkedHashMap<>();
         for (var image : prepared.images().entrySet()) {
             String url = imageUrl(
-                    workspace, page, prepared.commit(), actor, expires, image.getValue(), resolved, publicScope);
+                    workspace,
+                    page,
+                    prepared.commit(),
+                    actor,
+                    expires,
+                    image.getValue(),
+                    resolved,
+                    publicScope,
+                    Representation.ORIGINAL);
             if (url != null) {
                 images.put(image.getKey(), url);
             }
@@ -635,10 +687,30 @@ public final class AssetService {
         List<ResolvedMedia.GalleryImage> gallery = new ArrayList<>();
         var status = prepared.galleryStatus();
         for (var image : prepared.gallery()) {
-            String url =
-                    imageUrl(workspace, page, prepared.commit(), actor, expires, image.target(), resolved, publicScope);
-            if (url != null) {
-                gallery.add(new ResolvedMedia.GalleryImage(url, image.alt()));
+            String original = imageUrl(
+                    workspace,
+                    page,
+                    prepared.commit(),
+                    actor,
+                    expires,
+                    image.target(),
+                    resolved,
+                    publicScope,
+                    Representation.ORIGINAL);
+            String preview = actor.isEmpty() && original != null
+                    ? imageUrl(
+                            workspace,
+                            page,
+                            prepared.commit(),
+                            actor,
+                            expires,
+                            image.target(),
+                            previews,
+                            publicScope,
+                            Representation.ALBUM_THUMBNAIL_V1)
+                    : original;
+            if (preview != null && original != null) {
+                gallery.add(new ResolvedMedia.GalleryImage(preview, original, image.alt()));
             } else if (status == ResolvedMedia.GalleryStatus.COMPLETE) {
                 status = ResolvedMedia.GalleryStatus.PARTIAL;
             }
@@ -655,13 +727,15 @@ public final class AssetService {
             Instant expires,
             Target target,
             Map<Target, String> resolved,
-            boolean publicScope) {
+            boolean publicScope,
+            Representation representation) {
         if (resolved.containsKey(target)) {
             return resolved.get(target);
         }
         String url = null;
         try {
-            Optional<String> token = mint(new GrantKey(workspace, commit, page, target, actor, publicScope), expires);
+            Optional<String> token =
+                    mint(new GrantKey(workspace, commit, page, target, actor, publicScope, representation), expires);
             if (token.isPresent()) {
                 url = (actor.isEmpty()
                                 ? "/api/public/assets/"
@@ -907,7 +981,18 @@ public final class AssetService {
     private record PageAttempt(boolean retry, Optional<ResolvedPublicDocument> page) {}
 
     private record GrantKey(
-            WorkspaceId workspace, String commit, String page, Target target, String actor, boolean publicScope) {}
+            WorkspaceId workspace,
+            String commit,
+            String page,
+            Target target,
+            String actor,
+            boolean publicScope,
+            Representation representation) {}
+
+    private enum Representation {
+        ORIGINAL,
+        ALBUM_THUMBNAIL_V1
+    }
 
     private record Grant(GrantKey key, Instant issued, Instant expires) {}
 
