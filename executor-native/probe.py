@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -273,7 +273,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
             'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
             'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
-        if args.scenario == 'ephemeral-lifecycle':
+        if args.scenario in ('ephemeral-lifecycle', 'account-state'):
             assert args.fixture_parent == '/var/lib', 'Disk fixture must not allocate its image in tmpfs'
             disk_pool.mkdir()
             disk_image = root / 'copies.img'
@@ -313,10 +313,11 @@ with socket.socket(socket.AF_UNIX) as connection:
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:
-            if args.scenario == 'ephemeral-lifecycle':
+            if args.scenario in ('ephemeral-lifecycle', 'account-state'):
                 execute_java('account-state-produce')
                 execute_java('account-state-consume')
-            execute_java('main' if args.scenario == 'all' else args.scenario)
+            if args.scenario != 'account-state':
+                execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
             expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
             assert str(uuid.UUID(expired)) == expired

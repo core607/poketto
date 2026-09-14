@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** One admitted command lazily opens its immutable original once; the caller rechecks current authorization. */
-final class RetainedOriginalLookup implements AutoCloseable {
+final class RetainedOriginalLookup implements OriginalFileLookup, AutoCloseable {
     private final RetainedBaselineStore store;
     private final RetainedFileLocks.Held writer;
     private final RetainedBaseline.Reference reference;
@@ -23,7 +23,8 @@ final class RetainedOriginalLookup implements AutoCloseable {
         this.reference = Objects.requireNonNull(reference, "original reference must be present");
     }
 
-    RepositoryFile file(AuthPrincipal actor, WorkspaceId workspace, String commit, String path) {
+    @Override
+    public RepositoryFile file(AuthPrincipal actor, WorkspaceId workspace, String commit, String path) {
         if (closed) {
             throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
         }

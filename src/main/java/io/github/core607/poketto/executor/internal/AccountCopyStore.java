@@ -2,6 +2,9 @@ package io.github.core607.poketto.executor.internal;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.content.RepositoryFile;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,9 +15,11 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** One private journal per account/workspace/read scope, using the existing bounded durable codec. */
 final class AccountCopyStore {
@@ -155,9 +160,10 @@ final class AccountCopyStore {
         return new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);
     }
 
-    final class Lease implements AutoCloseable {
+    final class Lease implements OriginalFileLookup, AutoCloseable {
         private final AccountCopyRecord.Owner owner;
         private final RetainedFileLocks.Held held;
+        private final AccountOriginalFiles originals;
         private AccountCopyRecord current;
         private boolean uncertain;
 
@@ -165,11 +171,58 @@ final class AccountCopyStore {
             this.owner = owner;
             this.held = held;
             this.current = current;
+            originals = new AccountOriginalFiles(root, key(owner), directory, limits.originalFiles(), this::liveRecord);
         }
 
         Optional<AccountCopyRecord> record() {
             requireUsable();
             return Optional.ofNullable(current);
+        }
+
+        AccountCopyRecord.Original captureOriginal(Consumer<Consumer<RepositoryFile>> source) {
+            try {
+                return originals.capture(source);
+            } catch (IOException failure) {
+                uncertain = true;
+                throw unavailable(failure);
+            }
+        }
+
+        @Override
+        public RepositoryFile file(AuthPrincipal actor, WorkspaceId workspace, String commit, String path) {
+            var record = liveRecord();
+            ProtocolValues.require(
+                    actor.accountId().equals(owner.accountId())
+                            && workspace.value().equals(owner.workspaceId())
+                            && commit.equals(record.state().originalCommit()),
+                    "original owner",
+                    "must match the account, workspace and original commit");
+            try {
+                return originals
+                        .find(path)
+                        .orElseGet(() -> new RepositoryFile(
+                                workspace,
+                                Optional.of(commit),
+                                path,
+                                true,
+                                Optional.empty(),
+                                Optional.empty(),
+                                List.of(),
+                                false));
+            } catch (IOException failure) {
+                throw unavailable(failure);
+            }
+        }
+
+        private AccountCopyRecord liveRecord() {
+            requireUsable();
+            if (current == null) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.MISSING);
+            }
+            if (expired(current)) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.EXPIRED);
+            }
+            return current;
         }
 
         void write(AccountCopyRecord next) {
@@ -236,6 +289,7 @@ final class AccountCopyStore {
                     "must match the held copy");
             try (var index = index()) {
                 index.requireValid();
+                originals.remove();
                 Files.delete(recordPath(owner));
                 RetainedDirectory.sync(root);
                 current = null;
@@ -248,6 +302,7 @@ final class AccountCopyStore {
         @Override
         public void close() throws IOException {
             try {
+                originals.close();
                 if (current == null) {
                     try (var index = index()) {
                         index.requireValid();
@@ -270,8 +325,11 @@ final class AccountCopyStore {
         }
     }
 
-    record Limits(int copies, long recordBytes, long poolBytes, Duration idle) {
+    record Limits(int copies, long recordBytes, long poolBytes, Duration idle, RetainedBaseline.Limits originalFiles) {
         Limits {
+            Objects.requireNonNull(originalFiles, "original archive bounds must be present");
+            ProtocolValues.require(
+                    originalFiles.archiveBytes() <= poolBytes, "original archive", "must fit the storage pool");
             ProtocolValues.inRange(copies, 1, 1024, "stored copy count");
             ProtocolValues.inRange(recordBytes, 4096, 64L * 1024 * 1024, "copy journal bytes");
             ProtocolValues.inRange(poolBytes, recordBytes, 1024L * 1024 * 1024 * 1024, "executor pool bytes");
