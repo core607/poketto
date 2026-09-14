@@ -266,13 +266,7 @@ final class AccountCopyStore {
 
         @Override
         public RepositoryFile file(AuthPrincipal actor, WorkspaceId workspace, String commit, String path) {
-            var record = liveRecord();
-            ProtocolValues.require(
-                    actor.accountId().equals(owner.accountId())
-                            && workspace.value().equals(owner.workspaceId())
-                            && commit.equals(record.state().originalCommit()),
-                    "original owner",
-                    "must match the account, workspace and original commit");
+            requireOriginalOwner(actor, workspace, commit);
             try {
                 return originals
                         .find(path)
@@ -288,6 +282,26 @@ final class AccountCopyStore {
             } catch (IOException failure) {
                 throw unavailable(failure);
             }
+        }
+
+        @Override
+        public void visit(AuthPrincipal actor, WorkspaceId workspace, String commit, Consumer<RepositoryFile> sink) {
+            requireOriginalOwner(actor, workspace, commit);
+            try {
+                originals.visit(sink);
+            } catch (IOException failure) {
+                throw unavailable(failure);
+            }
+        }
+
+        private void requireOriginalOwner(AuthPrincipal actor, WorkspaceId workspace, String commit) {
+            var record = liveRecord();
+            ProtocolValues.require(
+                    actor.accountId().equals(owner.accountId())
+                            && workspace.value().equals(owner.workspaceId())
+                            && commit.equals(record.state().originalCommit()),
+                    "original owner",
+                    "must match the account, workspace and original commit");
         }
 
         private AccountCopyRecord liveRecord() {

@@ -294,7 +294,11 @@ final class RetainedBaselineFiles {
                 int middle = (low + high) >>> 1;
                 int compared = Arrays.compareUnsigned(hashAt(middle), wanted);
                 if (compared == 0) {
-                    return Optional.of(read(path, entryAt(middle)));
+                    RepositoryFile file = read(entryAt(middle));
+                    if (!path.equals(file.path())) {
+                        throw new IOException("retained baseline file address differs");
+                    }
+                    return Optional.of(file);
                 }
                 if (compared < 0) {
                     low = middle + 1;
@@ -305,7 +309,20 @@ final class RetainedBaselineFiles {
             return Optional.empty();
         }
 
-        private RepositoryFile read(String path, Entry entry) throws IOException {
+        synchronized void visit(Consumer<RepositoryFile> sink) throws IOException {
+            if (!channel.isOpen()) {
+                throw new IOException("retained baseline reader is closed");
+            }
+            for (int row = 0; row < header.entries(); row++) {
+                RepositoryFile file = read(entryAt(row));
+                if (!Arrays.equals(hashAt(row), pathHash(file.path()))) {
+                    throw new IOException("retained baseline file address differs");
+                }
+                sink.accept(file);
+            }
+        }
+
+        private RepositoryFile read(Entry entry) throws IOException {
             channel.position(entry.offset());
             try (var gzip = new GZIPInputStream(new RetainedBaselineIo.FrameInput(channel, entry.compressed()))) {
                 byte[] bytes = gzip.readNBytes((int) entry.expanded() + 1);
@@ -314,9 +331,6 @@ final class RetainedBaselineFiles {
                 }
                 RepositoryFile file = JSON.readValue(bytes, RepositoryFile.class);
                 validateFile(header.identity(), file);
-                if (!path.equals(file.path())) {
-                    throw new IOException("retained baseline file address differs");
-                }
                 return file;
             } catch (JacksonException failure) {
                 throw new IOException("retained baseline entry decoding failed", failure);

@@ -17,6 +17,7 @@ import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -61,6 +62,33 @@ final class SelectedFileSaves {
             RepositoryBaselineLimits limits,
             Consumer<RepositoryFile> sink) {
         reader.visitBaseline(actor, workspace, commit, limits, sink);
+    }
+
+    WorkspaceSyncInputs prepareWorkspaceSync(AuthPrincipal actor, WorkspaceId workspace, State state) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        if (state.uncertain || state.move != null) {
+            throw new IllegalArgumentException("recover the pending write before synchronizing");
+        }
+        String remoteCommit = reader.currentCommit(actor, workspace)
+                .orElseThrow(() -> new IllegalArgumentException("synchronization requires an existing remote commit"));
+        var limits = new RepositoryBaselineLimits(
+                WorkspaceSyncInputs.MAX_PATHS, WorkspaceSyncInputs.MAX_TEXT_BYTES, Duration.ofSeconds(20));
+        var inputs = new WorkspaceSyncInputs.Collector(state.baseCommit, remoteCommit);
+        Consumer<RepositoryFile> baseline = file -> {
+            RetainedFileBaseline advanced = state.fileBaselines.get(file.path());
+            inputs.baseline(advanced == null ? file : advanced.file(workspace, file.path()));
+        };
+        if (state.originals == null) {
+            reader.visitBaseline(actor, workspace, state.originalCommit, limits, baseline);
+        } else {
+            state.originals.visit(actor, workspace, state.originalCommit, baseline);
+        }
+        for (String path : state.baselines.keySet()) {
+            inputs.baseline(baselineFile(actor, workspace, state, path));
+        }
+        reader.visitBaseline(actor, workspace, remoteCommit, limits, inputs::remote);
+        WorkspaceSyncInputs result = inputs.finish();
+        return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> result);
     }
 
     BridgeReplies.Reply save(

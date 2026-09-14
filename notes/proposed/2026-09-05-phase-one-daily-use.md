@@ -81,7 +81,7 @@ Use the Spring AI 2.0.1 WebMVC Streamable HTTP server at `/mcp`, authenticated w
 | `repo_discard` | Explicit owner-authorized disposal by copy ID; never reverses remote saves |
 | `get_artifact` | Bounded access to an artifact created by an authorized execution lease |
 
-Default copies are keyed by Poketto account, workspace and reading scope. Authorized clients share the same copy; a restricted public projection cannot expose a full copy. Commands serialize, while exact-text edits and final save conflicts retain operation-level protections. An omitted commit keeps the original pinned baseline; confirmed saves retain separate per-file baselines. Authoritative reads never use command-modified execution files. MCP disconnects do not remove work; the account-copy contract owns disk quotas, seven-day idle expiry, reattachment, interrupted commands and explicit disposal.
+Default copies are keyed by Poketto account, workspace and reading scope. Authorized clients share the same copy; a restricted public projection cannot expose a full copy. Commands serialize, while exact-text edits and final save conflicts retain operation-level protections. An omitted commit uses the current copy. Confirmed saves advance its local Git baseline while retaining host-owned per-file write preconditions; [Git baseline installation](../implemented/2026-09-15-executor-git-baseline-installation.md) owns pending local installation and its recovery. Authoritative reads never use command-modified execution files. MCP disconnects do not remove work; the account-copy contract owns disk quotas, seven-day idle expiry, reattachment, interrupted commands and explicit disposal.
 
 ## Execution boundary
 

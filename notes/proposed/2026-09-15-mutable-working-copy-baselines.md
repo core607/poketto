@@ -18,6 +18,12 @@ A remote success followed by a failed local installation is a pending local upda
 
 Remove the worker's unused CHECKPOINT, CHECKPOINT_ACTIVE, CHECKPOINT_REMOVE and RESTORE protocol, archive files and archive-only tests. Current account journals, disk quotas, containment, revocation, pending-write receipts and actual disk recovery remain. Update executable fixtures and installation source lists with the code; historical evidence retains its original hashes and claims.
 
+## Implementation boundaries
+
+Collect the original retained paths and acknowledged per-file versions before comparing them with one fixed remote commit. Bound the combined path count, text bytes and traversal duration before changing local files. Preserve non-text presence and diagnostics in that inventory; unreadable, oversized or indexed-media paths cannot be interpreted as deletions.
+
+The local application step must handle additions, deletions and conflicting edits across the workspace, retain non-text content, and report interrupted or partially installed work explicitly. Consolidate retained baseline state only with a corresponding recovery path; collecting the inventory alone does not implement workspace synchronization. The command entrance, local installation, interruption recovery, baseline consolidation and real-client acceptance remain required.
+
 ## Alternatives and consequences
 
 Keeping separate original and per-path baselines while only relabeling tool output would leave local Git misleading. Automatically resetting the worktree would lose edits. Trusting the sandbox's own refs would let arbitrary commands change remote-write preconditions. The chosen design must keep authoritative baseline installation separate from user edits and preserve recovery when either side fails.
