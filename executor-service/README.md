@@ -180,13 +180,15 @@ JSON keys. Every payload contains exactly these fields:
 | `operation`, `requestId` | Operation below and unique UUID |
 | `issuedAt`, `expiresAt` | Integer Unix seconds; validity no longer than `leaseSeconds` |
 | `principalId`, `accountId`, `workspaceId` | API key, owner account, and workspace UUIDs |
-| `serverSessionHash` | Lowercase SHA-256 of the server-issued MCP session ID |
+| `serverSessionHash` | Stable lowercase SHA-256 of the copy's reading scope; not an MCP transport identity |
 | `leaseId` | Application-generated opaque UUID |
 | `data` | Operation-specific object |
 
 | Operation | Exact `data` fields and behavior |
 |---|---|
-| `OPEN` | `exportId` UUID, `bundleSha256` 64 lowercase hex, `bundleBytes` positive integer, `commit` 40 lowercase hex. Blocks until READY or failure. Initialization accepts concurrent RENEW, but has its own hard timeout. |
+| `OPEN` | `copyId` UUID, `scope` full or public, `exportId` UUID, `bundleSha256` 64 lowercase hex, `bundleBytes` positive integer, `commit` 40 lowercase hex. Blocks until READY or failure. Initialization accepts concurrent RENEW, but has its own hard timeout. |
+| `ATTACH` | `copyId`, `scope`, original `commit`. Claims an existing disk copy under a new execution lease after checking the signed account/workspace, pinned baseline and exclusive copy lock. Does not clone or replace files. |
+| `DISCARD` | `copyId`, `scope`, original `commit`. Deletes an owner-matched disk copy only after all execution leases release its lock. Returns DISCARDED or ABSENT; an active copy returns COPY_BUSY. |
 | `CHECKPOINT` | `checkpointId` UUID, `expiresAt` positive epoch milliseconds within retention, `scope` full or public. Requires READY; durably captures the work tree and trusted original bundle. |
 | `CHECKPOINT_ACTIVE` | `checkpointId`, `expiresAt`, `scope` and matching `executionId`. Requires RUNNING; freezes the cgroup during capture. Returns a checkpoint descriptor and RUNNING, never a command completion. |
 | `CHECKPOINT_REMOVE` | `checkpointId`, `sha256` 64 lowercase hex and `bytes` within the configured checkpoint limit. Verifies the immutable reference and signed owner before removal. |

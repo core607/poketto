@@ -157,7 +157,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'ATTACH', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_ACTIVE', 'CHECKPOINT_REMOVE',
+        if p['operation'] not in ('OPEN', 'ATTACH', 'DISCARD', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_ACTIVE', 'CHECKPOINT_REMOVE',
                                   'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
                                   'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
                                   'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
@@ -227,6 +227,20 @@ class Service:
             return self.capture_dispatch(p)
         if op in ('BRIDGE_POLL', 'BRIDGE_COMPLETE'):
             return self.bridge_dispatch(p)
+        if op == 'DISCARD':
+            if set(d) != {'copyId', 'scope', 'commit'}:
+                raise Rejected('INVALID_REQUEST')
+            identifier(d['copyId'])
+            hex_value(d['commit'], 40)
+            if d['scope'] not in ('full', 'public'):
+                raise Rejected('INVALID_REQUEST')
+            with self.lock:
+                self.authorized(p)
+            if not self.config.get('copyRoot'):
+                raise Rejected('COPY_UNAVAILABLE', 'NOT_CONFIGURED')
+            state = self.backend.discard(p)
+            return {'ok': True, 'leaseId': p['leaseId'], 'copyId': d['copyId'],
+                    'commit': d['commit'], 'state': state}
         metadata = self.restore_metadata(p) if op == 'RESTORE' else None
         with self.lock:
             if op == 'REVOKE':
@@ -357,13 +371,14 @@ class Service:
             hex_value(data['bundleSha256'], 64)
             integer(data['bundleBytes'], 1, self.config['maxBundleBytes'])
         elif p['operation'] == 'ATTACH':
-            if not self.config.get('copyRoot'):
-                raise Rejected('COPY_UNAVAILABLE', 'NOT_CONFIGURED')
             if set(data) != {'copyId', 'scope', 'commit'}:
                 raise Rejected('INVALID_REQUEST')
             identifier(data['copyId'])
             if data['scope'] not in ('full', 'public'):
                 raise Rejected('INVALID_REQUEST')
+            hex_value(data['commit'], 40)
+            if not self.config.get('copyRoot'):
+                raise Rejected('COPY_UNAVAILABLE', 'NOT_CONFIGURED')
         else:
             if p['expiresAt'] <= self.clock():
                 raise Rejected('LEASE_EXPIRED')
@@ -826,6 +841,7 @@ class SystemdBackend:
 
     def prepare_files(self, s, target):
         os.chown(target, 0, self.user.pw_gid)
+        os.chmod(target, 0o750)
         bootstrap = target / 'bootstrap'
         bootstrap.mkdir(mode=0o555)
         bootstrap.chmod(0o555)
@@ -1210,6 +1226,19 @@ class DiskSystemdBackend(SystemdBackend):
         target = self.mount_path(s)
         if not (target / '.initialized').is_file():
             raise Rejected('COPY_UNAVAILABLE', 'INITIALIZATION_INCOMPLETE')
+
+    def discard(self, request):
+        data = request['data']
+        try:
+            self.disks.discard(data['copyId'], request['accountId'], request['workspaceId'],
+                               data['scope'], data['commit'])
+            return 'DISCARDED'
+        except FileNotFoundError:
+            return 'ABSENT'
+        except BlockingIOError as busy:
+            raise Rejected('COPY_BUSY') from busy
+        except ValueError as invalid:
+            raise Rejected('COPY_UNAVAILABLE', 'IDENTITY_MISMATCH') from invalid
 
     def open(self, s, data):
         super().open(s, data)

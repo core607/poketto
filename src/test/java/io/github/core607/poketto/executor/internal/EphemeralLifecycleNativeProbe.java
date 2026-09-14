@@ -2,16 +2,20 @@ package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
+import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.UUID;
 
-/** Runs timeout and explicit disposal through the real worker with retention disabled. */
+/** Runs account-copy reconnects, timeout and disposal through the real disk worker. */
 record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal actor, WorkspaceId workspace) {
     private static final ExecutionCancellation CANCELLATION = new ExecutionCancellation() {
         @Override
@@ -31,6 +35,7 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
         assertThat(first.exitCode()).isZero();
         assertThat(first.retention()).isNull();
         verifyLocalEditing(first);
+        verifyReconnection(first);
         RepositoryExecutor.ExecutionResult timedOut =
                 execute(first.copyId(), "printf partial >> draft.txt; (sleep 40; touch late.txt) & wait", 5);
         assertThat(timedOut.copyId()).isEqualTo(first.copyId());
@@ -73,7 +78,8 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
     }
 
     private void discardAndReopen(RepositoryExecutor.ExecutionResult first) {
-        assertThatThrownBy(() -> execute("new", "touch should-not-run", 30))
+        assertThat(execute("new", "pwd", 30).copyId()).isEqualTo(first.copyId());
+        assertThatThrownBy(() -> execute(UUID.randomUUID().toString(), "touch should-not-run", 30))
                 .isInstanceOfSatisfying(
                         SessionReplacedException.class,
                         failure ->
@@ -98,10 +104,39 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
     }
 
     private RepositoryExecutor.ExecutionResult execute(String copy, String command, int seconds) {
+        return executeAs(actor, copy, command, seconds);
+    }
+
+    private void verifyReconnection(RepositoryExecutor.ExecutionResult first) {
+        ((IsolatedRepositoryExecutor) executor)
+                .closed(new McpSessionClosed(
+                        workspace, actor.subjectId(), "previous-transport", McpSessionClosed.Reason.IDLE_EXPIRY));
+        assertThat(execute(first.copyId(), "test \"$(cat draft.txt)\" = before", 30)
+                        .exitCode())
+                .isZero();
+        AuthPrincipal otherGrant = mock(AuthPrincipal.class);
+        UUID accountId = actor.accountId();
+        when(otherGrant.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
+        when(otherGrant.subjectId()).thenReturn(UUID.randomUUID());
+        when(otherGrant.accountId()).thenReturn(accountId);
+        var continued = executeAs(
+                otherGrant,
+                first.copyId(),
+                "set -eu; test \"$(cat draft.txt)\" = before; test \"$(cat private/edit-check.md)\" = 'changed other'",
+                30);
+        assertThat(continued.exitCode())
+                .describedAs(continued.stdout() + continued.stderr())
+                .isZero();
+        assertThat(continued.copyId()).isEqualTo(first.copyId());
+        assertThat(continued.commit()).isEqualTo(first.commit());
+    }
+
+    private RepositoryExecutor.ExecutionResult executeAs(
+            AuthPrincipal current, String copy, String command, int seconds) {
         return executor.execute(
-                actor,
+                current,
                 workspace,
-                "ephemeral-lifecycle",
+                "transport-" + UUID.randomUUID(),
                 new RepositoryExecutor.CopyRequest(copy, null, false),
                 Optional.empty(),
                 command,

@@ -162,7 +162,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         .isPresent()) {
             throw new IllegalArgumentException("Invalid bounded execution request");
         }
-        SessionKey key = new SessionKey(principal.subjectId(), workspace, hash(serverSessionId));
+        SessionKey key = keyFor(principal, workspace, access);
         if (cancellation.isCancelled()) {
             throw new WorkerUnavailableException();
         }
@@ -214,6 +214,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     throw rejected("session_busy");
                 }
                 ownsCommand = true;
+                session = refreshLease(session, principal);
                 if (retention != null) {
                     retained = admitRetained(session, expectedCopy);
                 }
@@ -318,7 +319,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (request.generation() == null) {
             throw new IllegalArgumentException("Retained discard requires the expected generation");
         }
-        var owner = new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value());
+        var owner = new RetainedCopyRecord.Owner(principal.accountId(), workspace.value());
         RetainedDiscard held = null;
         Session control = null;
         try {
@@ -369,7 +370,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         Session selected;
         synchronized (this) {
             selected = sessions.values().stream()
-                    .filter(session -> session.key.principal().equals(principal.subjectId())
+                    .filter(session -> session.key.account().equals(principal.accountId())
                             && session.key.workspace().equals(workspace)
                             && session.copyId.toString().equals(request.id()))
                     .findFirst()
@@ -386,6 +387,23 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 stopAndAwait(selected, "session_closed");
             }
             requireDiscardAuthorization(principal, workspace, cancellation);
+            var identity = new WorkerClient.Identity(
+                    principal.subjectId(),
+                    principal.accountId(),
+                    workspace.value(),
+                    selected.key.scopeHash(),
+                    selected.leaseId);
+            JsonNode response = worker.request(
+                    worker.hello(),
+                    identity,
+                    "DISCARD",
+                    new WorkerRequests.DiskCopy(
+                            selected.copyId, selected.fullRead ? "full" : "public", selected.commit),
+                    closeTimeout);
+            requireOk(response, selected);
+            if (!Set.of("DISCARDED", "ABSENT").contains(response.path("state").asString(""))) {
+                throw new WorkerUnavailableException();
+            }
             synchronized (this) {
                 sessions.remove(selected.key, selected);
             }
@@ -493,7 +511,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new WorkerUnavailableException();
             }
             held.transferAfterContainment(
-                    session.key.sessionHash(),
+                    session.key.scopeHash(),
                     new RetainedCopyRecord.Writer(
                             session.hello.workerBootId(), worker.applicationBootId(), session.leaseId));
             session.retainedRecord = held.record();
@@ -598,7 +616,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         synchronized (this) {
             old = sessions.values().stream()
                     .filter(value -> value.copyId.equals(record.copyId())
-                            && value.key.principal().equals(record.owner().subjectId())
+                            && value.key.account().equals(record.owner().subjectId())
                             && value.key
                                     .workspace()
                                     .value()
@@ -643,7 +661,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private RetainedCopyRecord retainedRecord(AuthPrincipal principal, WorkspaceId workspace, String copyId) {
         try {
-            var owner = new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value());
+            var owner = new RetainedCopyRecord.Owner(principal.accountId(), workspace.value());
             RetainedCopyRecord record = retention.read(owner, UUID.fromString(copyId));
             authorizeRecord(principal, workspace, record);
             return record;
@@ -705,7 +723,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private RetainedCommand admitRetained(Session session, CopyRequest expected) {
         var owner = new RetainedCopyRecord.Owner(
-                session.key.principal(), session.key.workspace().value());
+                session.key.account(), session.key.workspace().value());
         RetainedCommand admitted = null;
         try {
             admitted = new RetainedCommand(
@@ -769,7 +787,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return;
         }
         retained.initialize(
-                session.key.sessionHash(),
+                session.key.scopeHash(),
                 session.fullRead,
                 session.publicExport,
                 new RetainedCopyRecord.Writer(
@@ -819,7 +837,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         Session session;
         synchronized (this) {
-            session = sessions.get(new SessionKey(principal.subjectId(), workspace, hash(serverSessionId)));
+            session = sessions.get(keyFor(principal, workspace, authorize(principal, workspace)));
         }
         if (session == null) {
             return Optional.empty();
@@ -836,9 +854,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw rejected("session_busy");
             }
             ownsRead = true;
-            try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
+            session = refreshLease(session, principal);
+            Session active = session;
+            try (var registration = cancellation.onCancel(() -> stopAndAwait(active, "cancelled"))) {
                 requireLive(session);
                 authorize(session);
+                if (!session.ready && session.attaching) {
+                    attach(session);
+                }
                 if (!session.ready) {
                     throw new WorkerUnavailableException();
                 }
@@ -898,25 +921,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private synchronized Session observedCopy(SessionKey key, String expectedCopyId) {
-        Session observed = sessions.get(key);
-        if (RepositoryExecutor.NEW_COPY.equals(expectedCopyId) && replaceable(observed)) {
-            sessions.remove(key, observed);
-            return null;
-        }
-        return observed;
+        return sessions.get(key);
     }
 
     private void requireExpectedCopy(Session session, String expected, boolean createdHere) {
         boolean fresh = RepositoryExecutor.NEW_COPY.equals(expected);
-        boolean mismatch = session == null
-                ? !fresh
-                : session.stopping.get()
-                        || (fresh ? !createdHere : !session.copyId.toString().equals(expected));
+        boolean mismatch =
+                session == null ? !fresh : !fresh && !session.copyId.toString().equals(expected);
         if (!mismatch) {
             return;
-        }
-        if (session != null) {
-            authorize(session);
         }
         rejected.get("copy_mismatch").increment();
         boolean closedCopy = session != null && session.stopping.get();
@@ -934,9 +947,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return session != null && session.stopping.get() && session.capacityReleased && !session.busy.get();
     }
 
-    private WorkerUnavailableException rejected(String reason) {
+    private ExecutionAdmissionException rejected(String reason) {
         rejected.get(reason).increment();
-        return new WorkerUnavailableException();
+        return new ExecutionAdmissionException(
+                reason.equals("session_limit")
+                        ? ExecutionAdmissionException.Reason.CAPACITY
+                        : ExecutionAdmissionException.Reason.BUSY,
+                null,
+                false);
     }
 
     void bindMetrics(MeterRegistry registry) {
@@ -997,6 +1015,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private void open(Session session, Optional<String> requested) {
+        if (session.attaching) {
+            attach(session);
+        } else {
+            initializeCopy(session, requested);
+        }
+    }
+
+    private void initializeCopy(Session session, Optional<String> requested) {
         session.hello = retention == null ? worker.hello() : worker.retainedHello();
         requireLive(session);
         RepositorySnapshotExports.Export export;
@@ -1061,6 +1087,66 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new SecurityException("Execution requires an API key");
         }
         return auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
+    }
+
+    private static SessionKey keyFor(AuthPrincipal principal, WorkspaceId workspace, WorkspaceAccess access) {
+        return new SessionKey(
+                principal.accountId(),
+                workspace,
+                hash(access.capabilities().contains(Capability.READ_PRIVATE) ? "full" : "public"));
+    }
+
+    private Session refreshLease(Session previous, AuthPrincipal principal) {
+        if (!previous.stopping.get() && previous.principal.subjectId().equals(principal.subjectId())) {
+            previous.principal = principal;
+            return previous;
+        }
+        WorkerClient.Hello hello = worker.hello();
+        if (previous.hello != null && !previous.hello.workerBootId().equals(hello.workerBootId())) {
+            previous.stopping.set(true);
+            releaseCapacity(previous);
+            previous.stopped.complete(null);
+        } else {
+            stopAndAwait(previous, "session_closed");
+        }
+        if (previous.commit == null || previous.saveState == null) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, null, false);
+        }
+        var current = new Session(previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID());
+        current.busy.set(true);
+        current.attaching = true;
+        current.hello = hello;
+        current.commit = previous.commit;
+        current.saveState = previous.saveState;
+        current.publicExport = previous.publicExport;
+        current.retainedRecord = previous.retainedRecord;
+        synchronized (this) {
+            if (closed || !sessions.replace(previous.key, previous, current)) {
+                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, true);
+            }
+        }
+        previous.busy.set(false);
+        return current;
+    }
+
+    private void attach(Session session) {
+        authorize(session);
+        synchronized (session) {
+            requireLive(session);
+            session.openAttempted = true;
+            session.nextRenew = System.nanoTime()
+                    + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
+        }
+        JsonNode response = requestLive(
+                session,
+                "ATTACH",
+                new WorkerRequests.DiskCopy(session.copyId, session.fullRead ? "full" : "public", session.commit),
+                openTimeout);
+        requireOk(response, session);
+        if (!response.path("state").asString("").equals("READY")) {
+            throw new WorkerUnavailableException();
+        }
+        session.ready = true;
     }
 
     private void authorize(Session session) {
@@ -2068,7 +2154,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         authorize(session);
         var selected = SessionExportSelection.resolve(selections, session.fullRead ? null : session.publicExport);
         boolean publicOnly = !session.fullRead || requested.publicOnly();
-        var client = Optional.of(session.key.sessionHash());
+        var client = Optional.of(session.key.scopeHash());
         try {
             var receipt = packages.create(session.principal, session.key.workspace(), selected, publicOnly, client);
             synchronized (session) {
@@ -2095,7 +2181,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } finally {
             // Covers a close event that raced before create registered its build. No package handle
             // is exposed to the sandbox; every command owns only its materialized local result.
-            packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
+            packages.closeClient(session.principal, session.key.workspace(), session.key.scopeHash());
         }
     }
 
@@ -2215,7 +2301,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return session.stopped;
             }
             session.closeReason = reason;
-            packages.closeClient(session.principal, session.key.workspace(), session.key.sessionHash());
+            packages.closeClient(session.principal, session.key.workspace(), session.key.scopeHash());
             if (!session.openAttempted) {
                 releaseCapacity(session);
                 session.stopped.complete(null);
@@ -2250,9 +2336,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     /**
-     * Frees the admission slot. Unless explicitly discarded, the session stays reachable by key
-     * until its MCP session ends. A later command then finds the stopping session instead of
-     * opening a second lease beside it.
+     * Releases confirmed worker capacity while preserving the account binding. A later command
+     * can attach the same disk files under a new lease; explicit disposal removes the binding.
      */
     private synchronized void releaseCapacity(Session session) {
         if (!session.capacityReleased && !session.auxiliary) {
@@ -2291,27 +2376,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         throw new WorkerUnavailableException();
     }
 
-    /**
-     * The MCP session ended, so nothing will ask this lease for more work. The session is removed
-     * only if its capacity was already released; otherwise the release path removes it, and one of
-     * the two orders always applies because both run under this object's monitor.
-     */
+    /** Transport closure does not release the account's working copy or execution authority. */
     @EventListener
     void closed(McpSessionClosed event) {
-        SessionKey key = new SessionKey(event.keyId(), event.workspaceId(), hash(event.sessionId()));
-        Session session;
-        synchronized (this) {
-            session = sessions.get(key);
-            if (session != null) {
-                session.detached = true;
-                if (session.capacityReleased) {
-                    sessions.remove(key, session);
-                }
-            }
-        }
-        if (session != null) {
-            stopAndAwait(session, "session_closed");
-        }
+        // Explicit cancellation, revocation, disposal and expiry own their separate lifecycle actions.
     }
 
     @EventListener
@@ -2320,7 +2388,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         synchronized (this) {
             affected = sessions.values().stream()
                     .filter(session -> session.key.workspace().equals(event.workspaceId())
-                            && (event.apiKeyIds().contains(session.key.principal())
+                            && (event.apiKeyIds().contains(session.principal.subjectId())
                                     || event.accountIds().contains(session.principal.accountId())))
                     .toList();
         }
@@ -2486,7 +2554,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private record SessionKey(UUID principal, WorkspaceId workspace, String sessionHash) {}
+    private record SessionKey(UUID account, WorkspaceId workspace, String scopeHash) {}
 
     private static void checkMaterialization(JsonNode response) {
         String code = response.path("code").asString("");
@@ -2498,42 +2566,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final class MaterializationCapacity extends RuntimeException {}
 
     /**
-     * One MCP client's execution lease, from admission to removal.
+     * An account copy's current execution lease. The busy claim serializes commands and principal
+     * refreshes; changing grants fences the old lease before attaching the same files. Worker
+     * requests remain bound to that lease's grant, while every host operation rechecks current
+     * authorization. Closing a transport does not release this binding.
      *
-     * <p>A session is created on the first command, opens a worker lease, serves commands one at a
-     * time, and is then stopped either because the client went away or because something failed. It
-     * is removed from the table only when both of two independent things have happened: the worker
-     * lease is confirmed released, and the MCP session it belonged to is gone. Either can happen
-     * first, so neither alone may remove it. Keeping a session whose lease is unconfirmed is what
-     * prevents its admission slot from being reused while a worker process may still be running.
-     *
-     * <p>The flags below are set by different threads: commands run on the caller's thread, renewal
-     * and close reconciliation on the control pool, and closure and revocation on Spring's event
-     * threads. Each flag is therefore a one-way latch or a compare-and-set claim, never a plain
-     * read-modify-write.
-     *
-     * <ul>
-     *   <li>{@code openAttempted} - a lease may exist at the worker from here on, so cleanup must
-     *       run even if opening failed. Nothing before this point can have left worker state.
-     *   <li>{@code ready} - the worker reported READY, so commands may run. Set once, never unset;
-     *       a session that stops is discarded rather than returned to a not-ready state.
-     *   <li>{@code busy} - one command or artifact read owns this session. Claimed with
-     *       compare-and-set, because the protocol allows exactly one command per lease at a time.
-     *   <li>{@code renewing} - the control pool owns the next lease action. Also a claim, so a slow
-     *       renewal cannot overlap the reconciliation that follows a failed close.
-     *   <li>{@code stopping} - termination has begun. Renewal stops honouring this session, and
-     *       close reconciliation takes over.
-     *   <li>{@code stopped} - completed when termination finishes, so a caller can wait for the
-     *       worker's process tree to be gone rather than assume it.
-     *   <li>{@code capacityReleased} - the admission slot is free again. Set only after the worker
-     *       confirms CLOSED or a different worker boot proves the old lease cannot exist.
-     *   <li>{@code detached} - the MCP session ended, so no new command can arrive for this key.
-     * </ul>
+     * <p>Command, renewal and revocation threads share the lifecycle latches. Capacity is released
+     * only after confirmed containment, never merely because an RPC or a close request failed.
      */
     private static final class Session {
         private final UUID copyId;
         private final SessionKey key;
-        private final AuthPrincipal principal;
+        private volatile AuthPrincipal principal;
         private final boolean fullRead;
         private volatile RepositorySnapshotExports.PublicExport publicExport;
         private final UUID leaseId;
@@ -2548,6 +2592,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private volatile RetainedCopyRecord retainedRecord;
         private volatile boolean openAttempted;
         private volatile boolean ready;
+        private boolean attaching;
         private volatile boolean capacityReleased;
         private volatile boolean detached;
         private boolean auxiliary;
@@ -2565,7 +2610,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
         private WorkerClient.Identity identity() {
             return new WorkerClient.Identity(
-                    key.principal(), principal.accountId(), key.workspace().value(), key.sessionHash(), leaseId);
+                    principal.subjectId(),
+                    principal.accountId(),
+                    key.workspace().value(),
+                    key.scopeHash(),
+                    leaseId);
         }
     }
 }

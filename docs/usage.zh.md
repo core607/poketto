@@ -122,7 +122,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
-`repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。确认旧命令已退出、租约已释放后，可以在同一 MCP 会话里显式传 `"new"` 开始不同的副本。管理员开启保留执行模式后（默认关闭），结果还会包含 `retention.generation` 和固定到期时间；后续调用须将该代次作为 `expectedGeneration` 传回。重连后，携带同一 ID 和代次，显式设置 `resume: true`，并使用只读命令检查恢复状态。`EXECUTION_REFUSED` 只表示本次请求未执行，先前中断的工作仍可能部分完成。重试写入前应核对拒绝原因、当前代次、`retention.lastInterruptedCommand` 和 `poketto status`。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则与尚未完成的验收范围。
+`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；此后传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。关闭 MCP 连接会保留副本。显式调用 `repo_discard` 将其移除后，再用 `"new"` 创建不同的副本。管理员开启保留执行模式后（默认关闭），结果还会包含 `retention.generation` 和固定到期时间；后续调用须将该代次作为 `expectedGeneration` 传回。重连后，携带同一 ID 和代次，显式设置 `resume: true`，并使用只读命令检查恢复状态。`EXECUTION_REFUSED` 只表示本次请求未执行，先前中断的工作仍可能部分完成。重试写入前应核对拒绝原因、当前代次、`retention.lastInterruptedCommand` 和 `poketto status`。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则与尚未完成的验收范围。
 
 `EXECUTION_UNCONFIRMED` 表示已尝试执行保留命令，但未能确认完成。响应包含实际 `copyId`、`currentGeneration`、固定 `expiresAt`、`mayHaveExecuted: true` 和恢复资格。本地修改与远端写入都可能部分完成。保留这些身份信息，先显式恢复并检查状态，再决定是否重试写入；此结果绝不表示命令没有执行。
 
@@ -136,7 +136,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
-完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
+完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。同一账号的授权客户端在同一空间和读取范围内共享磁盘副本；完整源码和公开投影仍然隔离。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
 
 `poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。`poketto media link PATH --asset ID --revision REV` 将已经上传的原件接入该本地索引，不传输原件字节。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。
 

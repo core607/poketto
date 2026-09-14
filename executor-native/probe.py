@@ -60,6 +60,8 @@ def main():
     process = None
     config_path = root / 'worker.json'
     worker_config = None
+    disk_mounted = False
+    disk_pool = root / 'copy-pool'
     evidence = []
     for name in ('worker.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py'):
         shutil.copy2(worker_source / name, root / name)
@@ -269,6 +271,16 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
             'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
             'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
+        if args.scenario == 'ephemeral-lifecycle':
+            assert args.fixture_parent == '/var/lib', 'Disk fixture must not allocate its image in tmpfs'
+            disk_pool.mkdir()
+            disk_image = root / 'copies.img'
+            run(['fallocate', '-l', '512M', str(disk_image)])
+            run(['mkfs.xfs', '-f', str(disk_image)])
+            run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(disk_image), str(disk_pool)])
+            disk_mounted = True
+            worker_config.pop('checkpointRoot')
+            worker_config.update(copyRoot=str(disk_pool), poolBytes=512*1024*1024)
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'
@@ -342,6 +354,9 @@ with socket.socket(socket.AF_UNIX) as connection:
                 cleanup = subprocess.run([sys.executable, str(root / 'worker.py'), '--config', str(config_path), '--cleanup'], capture_output=True, timeout=30)
                 sessions = root / 'runtime/sessions'
                 assert not sessions.exists() or not list(sessions.iterdir())
+                if disk_mounted:
+                    run(['umount', str(disk_pool)])
+                    disk_mounted = False
                 mounts = run(['findmnt', '-rn', '-o', 'TARGET']).splitlines()
                 assert not any(value == str(root) or value.startswith(str(root) + '/') for value in mounts)
             for user in reversed(created_users):

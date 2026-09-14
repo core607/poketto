@@ -46,6 +46,7 @@ final class WorkerRequests {
                     CaptureRead,
                     CaptureRelease,
                     Close,
+                    DiskCopy,
                     Checkpoint,
                     CheckpointReference,
                     Exec,
@@ -124,6 +125,14 @@ final class WorkerRequests {
             hex(bundleSha256, 64, "bundleSha256");
             require(bundleBytes > 0, "bundleBytes", "must be positive");
             hex(commit, 40, "commit");
+        }
+    }
+
+    record DiskCopy(UUID copyId, String scope, String commit) implements Data {
+        DiskCopy {
+            require(copyId != null, "copyId", "must be present");
+            scope = retainedScope(scope);
+            commit = hex(commit, 40, "commit");
         }
     }
 

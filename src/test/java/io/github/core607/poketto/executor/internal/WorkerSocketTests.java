@@ -1963,6 +1963,7 @@ class WorkerSocketTests {
                             "renewAfterSeconds",
                             1));
                     hello.put("checkpointProtocol", checkpointProtocol);
+                    hello.put("diskCopyProtocol", 1);
                     response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()

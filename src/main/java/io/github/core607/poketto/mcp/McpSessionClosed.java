@@ -3,7 +3,7 @@ package io.github.core607.poketto.mcp;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.UUID;
 
-/** Execution owners release this trusted session's lease and descendants when it closes. */
+/** A transport has closed; account working copies have an independent lifetime. */
 public record McpSessionClosed(WorkspaceId workspaceId, UUID keyId, String sessionId, Reason reason) {
     public enum Reason {
         CLIENT_DELETE,

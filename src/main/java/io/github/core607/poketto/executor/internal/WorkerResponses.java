@@ -127,6 +127,7 @@ final class WorkerResponses {
             int artifactProtocol,
             int moveProtocol,
             int exportProtocol,
+            int diskCopyProtocol,
             String workerBootId,
             int leaseSeconds,
             int renewAfterSeconds) {
@@ -139,6 +140,7 @@ final class WorkerResponses {
             require(artifactProtocol == 1, "artifactProtocol", "must be 1");
             require(moveProtocol == 1, "moveProtocol", "must be 1");
             require(exportProtocol == 1, "exportProtocol", "must be 1");
+            require(diskCopyProtocol == 1, "diskCopyProtocol", "must be 1");
             require(leaseSeconds >= 10 && leaseSeconds <= 3600, "leaseSeconds", "must be between 10 and 3600");
             // Renewing three times within one lease leaves room for two lost attempts.
             require(
