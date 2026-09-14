@@ -103,6 +103,7 @@ public final class AuthService {
     /** Uniform credential rejection includes missing accounts; the HTTP caller must also throttle attempts. */
     public AuthPrincipal authenticatePassword(String login, String password) {
         if (password == null || password.length() > 256) {
+            AuditRecords.refused("password.authentication", INVALID_CREDENTIALS.name());
             throw failure(INVALID_CREDENTIALS);
         }
         String normalized;
@@ -118,6 +119,7 @@ public final class AuthService {
         String encoded =
                 accounts.isEmpty() ? dummyPasswordHash : accounts.getFirst().hash();
         if (!passwords.matches(password, encoded) || accounts.isEmpty()) {
+            AuditRecords.refused("password.authentication", INVALID_CREDENTIALS.name());
             throw failure(INVALID_CREDENTIALS);
         }
         AccountCredential account = accounts.getFirst();
@@ -128,7 +130,9 @@ public final class AuthService {
                     account.id(),
                     encoded);
         }
-        return accountPrincipal(account.id());
+        AuthPrincipal principal = accountPrincipal(account.id());
+        AuditRecords.authenticated("password.authentication", principal);
+        return principal;
     }
 
     public AuthPrincipal authenticateApiKey(String token) {
@@ -151,8 +155,10 @@ public final class AuthService {
                 timestamp(),
                 oauthResource);
         if (matches.isEmpty()) {
+            AuditRecords.refused("key.authentication", INVALID_CREDENTIALS.name());
             throw failure(INVALID_CREDENTIALS);
         }
+        AuditRecords.authenticated("key.authentication", matches.getFirst());
         return matches.getFirst();
     }
 
@@ -335,6 +341,7 @@ public final class AuthService {
                                 "text", permissions.stream().map(Enum::name).toArray(String[]::new)));
                 return statement;
             });
+            AuditRecords.granted("invitation.issued", actor, workspace, id, permissions);
             return new IssuedToken(id, token);
         });
     }
@@ -462,6 +469,7 @@ public final class AuthService {
             });
             revokeMembershipKeys(workspace, account, before, role, active, permissions);
         });
+        AuditRecords.granted("member.permissions.changed", actor, workspace, account, permissions);
     }
 
     private void revokeMembershipKeys(
@@ -560,6 +568,7 @@ public final class AuthService {
                                 "text", capabilities.stream().map(Enum::name).toArray(String[]::new)));
                 return statement;
             });
+            AuditRecords.granted("key.issued", actor, workspace, id, capabilities);
             return new IssuedToken(id, token);
         });
     }
@@ -597,6 +606,7 @@ public final class AuthService {
                     workspace.value(),
                     keyId);
             if (!keys.isEmpty()) {
+                AuditRecords.changed("key.revoked", actor, workspace, keyId);
                 publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
             }
         });
