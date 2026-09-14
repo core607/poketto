@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user discovery contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires author display names on public reading cards. A login identifier, account address or Git commit identity is not an explicit public signature. Folder landings also need an authored name for albums and collections.
+The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires author display names on public reading cards. A login identifier, account address or Git commit identity is not an explicit public signature. Folder landings also need an authored name for albums and collections.
 
 ## Decision
 

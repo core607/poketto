@@ -9,7 +9,7 @@ A document route is an absolute logical identifier containing the original repos
 
 Spaces, non-control Unicode whitespace, `%`, `?`, and `#` are ordinary route characters. `/a%20b` and `/a b` identify different documents; `/literal%2Fname` and `/literal/name` are distinct. A leading slash is required. Existing repository path bounds and guards still reject empty, dot and parent segments, Git internals, backslashes, colons, and control characters. Source-path publication rules and normalized collision detection remain unchanged: `private/` stays private, while `notes.md` and `notes/index.md` still compete for one route.
 
-The URI restrictions previously applied to routes prevented valid Markdown names from entering structured reads, public snapshots, previews, or patches without changing their metadata. A folder containing these characters could not use even that workaround because its index must retain the folder route. Preserving names implements the existing [repository authoring](2026-09-05-repository-authoring-foundations.md) and [phase-one corpus](../proposed/2026-09-05-phase-one-daily-use.md) contracts without rewriting content.
+The URI restrictions previously applied to routes prevented valid Markdown names from entering structured reads, public snapshots, previews, or patches without changing their metadata. A folder containing these characters could not use even that workaround because its index must retain the folder route. Preserving names implements the existing [repository authoring](2026-09-05-repository-authoring-foundations.md) and [phase-one corpus](2026-09-05-phase-one-daily-use.md) contracts without rewriting content.
 
 ## Transport boundaries
 

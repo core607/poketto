@@ -4,9 +4,9 @@ Date: 2026-09-11
 
 ## Problem
 
-Account registration, workspace membership, and installation currently share a browser entrance. Browser and MCP requests resolve the default workspace even though relational identity and storage already carry workspace identifiers. Public navigation treats directory indexes as ordinary articles, emits Markdown fragments as summaries, and loses collection and search context.
+The original account registration, workspace membership, and installation shared a browser entrance. Browser and MCP requests resolve the default workspace even though relational identity and storage already carry workspace identifiers. Public navigation treats directory indexes as ordinary articles, emits Markdown fragments as summaries, and loses collection and search context.
 
-This delivery extends [workspace identity](../implemented/2026-09-06-workspace-identity-http.md), [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md), and [MCP OAuth](../implemented/2026-09-11-mcp-oauth.md). It preserves their operation-level authorization and remote Git authority. It replaces the automatic personal-repository provisioning choice in [consumer accounts](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md). The invitation, frontend, and phase-one proposals retain their independently applicable requirements; this record owns the multi-user behavior and discovery changes described below.
+This delivery extends [workspace identity](2026-09-06-workspace-identity-http.md), [remote repository authority](2026-09-01-remote-repository-authority.md), and [MCP OAuth](2026-09-11-mcp-oauth.md). It preserves their operation-level authorization and remote Git authority. It replaces the automatic personal-repository provisioning choice in [consumer accounts](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md). The invitation, frontend, and phase-one records retain their independently applicable requirements; this record owns the multi-user behavior and discovery changes described below.
 
 ## Accounts and installation
 
@@ -36,7 +36,7 @@ Account identity is available independently of workspace access. Private HTTP op
 
 The root site becomes cross-workspace public discovery. Space websites use `/s/{slug}`; existing published default-space article URLs redirect to their canonical new routes. Both logged-in and anonymous visitors see public discovery; accounts additionally have a My spaces entrance. Cards identify their author display name, space, and collection without exposing private account fields.
 
-The [public sitemap contract](../implemented/2026-09-14-public-sitemaps.md) specifies complete
+The [public sitemap contract](2026-09-14-public-sitemaps.md) specifies complete
 enumeration of canonical space URLs and robots.txt discovery independently of
 sampled browsing batches.
 
@@ -52,13 +52,13 @@ Reading-text extraction is shared by public and authorized management search. Co
 
 Site search covers enabled public spaces; space search fixes one space. Authenticated management search fixes both a space and the caller's current authorization. Literal visible-text matching is retained without semantic search. Titles and snippets highlight matches using escaped text nodes and `mark`, while article bodies retain normal reading. Snippets surround visible matches rather than raw URL or Markdown bytes.
 
-The [site search decision](../implemented/2026-09-14-public-site-search.md) implements complete bounded search across enabled public spaces, with space-specific result identity and preserved site-search return state.
+The [site search decision](2026-09-14-public-site-search.md) implements complete bounded search across enabled public spaces, with space-specific result identity and preserved site-search return state.
 
 Search query, pagination, and space scope live in URLs. Browser-history-local state preserves the result anchor and scroll offset. Articles entered from search offer Return to results; direct entries use their space or collection. Browser Back must continue to work. Raw or cross-origin return URLs are not trusted navigation targets.
 
 Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix.
 
-The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
+The [website delivery boundary](2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
 
 ## Administration experience
 
@@ -66,7 +66,7 @@ New note and New folder actions operate in the selected directory. New notes and
 
 Management tabs, selected space, folder, and document have restorable URLs. Unsaved changes are handled before changing space or document. The editor distinguishes saved Git state from public-page availability, labels visibility, offers View public page, and updates image previews automatically. Publishing reuses repository public/private roots and coordinated moves and references; it does not add a second per-document visibility authority outside files.
 
-The [content navigation decision](../implemented/2026-09-14-admin-content-navigation.md) implements independent folder/document URLs, guarded history traversal, and private note/folder draft creation. [Repository-wide filename search](../implemented/2026-09-14-administration-filename-search.md) and [explicit public-page availability](../implemented/2026-09-14-editor-public-page-state.md) implement the remaining editor capabilities; final installation acceptance remains part of this delivery.
+The [content navigation decision](2026-09-14-admin-content-navigation.md) implements independent folder/document URLs, guarded history traversal, and private note/folder draft creation. [Repository-wide filename search](2026-09-14-administration-filename-search.md) and [explicit public-page availability](2026-09-14-editor-public-page-state.md) implement the remaining editor capabilities; final installation acceptance remains part of this delivery.
 
 ## Alternatives and boundaries
 
@@ -86,8 +86,8 @@ This delivery excludes cross-instance identities, automatic remote creation, per
 - Homepage and search cards contain no encoded destinations, broken Markdown, or repeated title. Search matches highlight safely, and browser/page returns restore query, page, and reading position.
 - New-file, filename search, editor state, keyboard navigation, and mobile flows use a real running frontend and backend for evidence.
 
-Implement cohesive changes in dependency order: account/registration foundation and installation; workspace provisioning and scoped entrances; member and machine authorization; discovery and reading; management interaction. Keep this record proposed until the complete behavior is demonstrated, while completed subsystem records describe their shipped contracts. Required database, storage, executor, UI, and deployment checks follow each changed surface; final HTTPS acceptance preserves existing managed originals and independently verifies public and private behavior.
+The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) maps the complete behavior to real provider, database, browser, native-worker and production evidence. Subsystem records retain their contracts and limitations. HTTPS acceptance preserves existing managed originals and independently verifies public and private behavior.
 
-[Account working copies](../implemented/2026-09-14-account-working-copies.md) implements disk-backed, transport-independent execution with real authenticated HTTP evidence. The production connector has demonstrated reconnection, timeout retention, save/readback and application-restart continuity. Search and editor delivery has [real two-space browser evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json), and the demonstrated frontend is unchanged in application revision `9474a8121c3aadb9cacd236f005a77b54a0eafd1`. The complete delivery audit remains outstanding. External clients unavailable to the operator are not final completion conditions and must not be described as tested; current callable connectors and real service integration supply the execution evidence.
+[Account working copies](2026-09-14-account-working-copies.md) implements disk-backed, transport-independent execution with real authenticated HTTP evidence. The production connector has demonstrated reconnection, timeout retention, save/readback and application-restart continuity. Search and editor delivery has [real two-space browser evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json), and the demonstrated frontend is unchanged in application revision `9474a8121c3aadb9cacd236f005a77b54a0eafd1`. The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) consolidates the complete delivery audit and its evidence limits. External clients unavailable to the operator are not final completion conditions and must not be described as tested; current callable connectors and real service integration supply the execution evidence.
 
 The [real GitHub connection run](../../acceptance/evidence/2026-09-15-provider-connection.json) verifies failed credentials, successful same-request retry, authoritative result lookup, idempotent replay and duplicate-binding rollback against PostgreSQL. Git metadata and transport advertisements use a real existing private repository without modifying it. Browser evidence verifies retained failure controls and private website defaults. CNB interoperability and remote content writes are not claims of that run.

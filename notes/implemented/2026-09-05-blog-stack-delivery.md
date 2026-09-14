@@ -4,7 +4,7 @@ Date: 2026-09-05
 
 ## Problem
 
-The [continuous-delivery baseline](2026-09-03-continuous-delivery.md) deploys Spring and PostgreSQL. The [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md) also needs the Next.js blog and administration, one HTTPS origin for browser sessions and MCP, and a separately installed host executor. A frontend image from another commit can silently disagree with Spring request and response contracts.
+The [continuous-delivery baseline](2026-09-03-continuous-delivery.md) deploys Spring and PostgreSQL. The [phase-one delivery](2026-09-05-phase-one-daily-use.md) also needs the Next.js blog and administration, one HTTPS origin for browser sessions and MCP, and a separately installed host executor. A frontend image from another commit can silently disagree with Spring request and response contracts.
 
 ## Decision
 

@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user administration contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires the editor to distinguish a saved Git revision from an available public page. The previous file response carried publication scope, but the editor did not label it or provide an authoritative public-page entrance. A path below `public/` may be excluded by policy, have no valid article, belong to a disabled website, or wait for a current verified snapshot. A successful save alone cannot decide these states.
+The [multi-user administration contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires the editor to distinguish a saved Git revision from an available public page. The previous file response carried publication scope, but the editor did not label it or provide an authoritative public-page entrance. A path below `public/` may be excluded by policy, have no valid article, belong to a disabled website, or wait for a current verified snapshot. A successful save alone cannot decide these states.
 
 ## Decision
 

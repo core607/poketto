@@ -5,7 +5,7 @@ Status: Implemented
 
 The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
 
-The proposed [phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md) replaces whole-commit document rejection with per-file diagnostics and stops public service at snapshot expiry. Those changes are implemented by the linked foundations record; this record retains the baseline mechanism and rationale.
+The proposed [phase-one delivery](2026-09-05-phase-one-daily-use.md) replaces whole-commit document rejection with per-file diagnostics and stops public service at snapshot expiry. Those changes are implemented by the linked foundations record; this record retains the baseline mechanism and rationale.
 
 ## Problem
 

@@ -2,20 +2,20 @@
 
 Date: 2026-09-05
 
-The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
+The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) supersedes
 standalone agent file-read, list and patch tool selections in this record. Shared
 service contracts and outstanding delivery requirements remain applicable.
-The [MCP OAuth extension](../implemented/2026-09-11-mcp-oauth.md) adds owner-approved client connections. The [multi-user delivery](2026-09-11-multiuser-workspaces-and-discovery.md) adds invitation-gated registration and connecting existing repositories; social login and automatic provider-side repository creation remain excluded. [Account working copies](../implemented/2026-09-14-account-working-copies.md) owns durable disk storage, shared account/workspace identity and transport-independent execution.
+The [MCP OAuth extension](2026-09-11-mcp-oauth.md) adds owner-approved client connections. The [multi-user delivery](2026-09-11-multiuser-workspaces-and-discovery.md) adds invitation-gated registration and connecting existing repositories; social login and automatic provider-side repository creation remain excluded. [Account working copies](2026-09-14-account-working-copies.md) owns durable disk storage, shared account/workspace identity and transport-independent execution.
 
-Status: Proposed
+Status: Implemented
 
-## Next development priority
+## Delivered components
 
-[CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md) own the implemented repository-agent contract: workspace-scoped local media, public/private roots, isolated execution and host-mediated persistence. The broader installation acceptance below remains required.
+[CodeAct content and media](2026-09-09-codeact-content-and-media.md) own the implemented repository-agent contract: workspace-scoped local media, public/private roots, isolated execution and host-mediated persistence. The broader installation acceptance below remains required.
 
-The [identity HTTP backend](../implemented/2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. This phase remains proposed until the other functionality and final installation acceptance are complete.
+The [identity HTTP backend](2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) consolidates installation and daily-use evidence.
 
-The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](../implemented/2026-09-06-blog-browser-interface.md) provides public pages and the editor. Final integrated installation acceptance remains open.
+The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](../proposed/2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor. Integrated installation evidence is recorded in the acceptance record.
 
 ## Problem
 
@@ -23,7 +23,7 @@ The executable baseline serves canonical documents through a read-only public AP
 
 ## Delivery boundary
 
-Deliver a single-host installation with a blog, authenticated administration, and repository MCP access through currently callable clients and real service integration. Remote `main` remains authoritative for content. The operator supplies an existing private content repository without moving Markdown into `documents/`, adding mandatory frontmatter, or reformatting untouched files. Repository coordinates, host addresses, credentials, and machine-specific operating records remain private operator configuration. The public domain is operator configuration as well; the README links the author's own instance.
+The single-host installation provides a blog, authenticated administration, and repository MCP access verified through currently callable clients and real service integration. Remote `main` remains authoritative for content. The operator supplies an existing private content repository without moving Markdown into `documents/`, adding mandatory frontmatter, or reformatting untouched files. Repository coordinates, host addresses, credentials, and machine-specific operating records remain private operator configuration. The public domain is operator configuration as well; the README links the author's own instance.
 
 The public interface includes an article stream, article and folder pages, tags, archive, bounded search, RSS, and sitemap. Administration includes a file tree, Markdown editing and preview, image selection and upload, invitations, memberships, and API keys. Interface text is Simplified Chinese; interface language switching is outside this delivery.
 
@@ -39,7 +39,7 @@ An eligible `index.md` owns its folder route. Its gallery contains eligible sibl
 
 ### Publication and freshness
 
-Publication requires a valid, explicitly enabled `.poketto/publishing.yaml` and the owner's independent website switch. The [CodeAct content contract](../implemented/2026-09-09-codeact-content-and-media.md) owns the publication mode and public/private roots. Missing or disabled policy exposes no content. An invalid policy fails public service closed; it cannot retain an earlier public policy. Root `private/` and configured exclusions always win over article references and galleries. These paths remain readable by authorized members and AI keys with `READ_PRIVATE`.
+Publication requires a valid, explicitly enabled `.poketto/publishing.yaml` and the owner's independent website switch. The [CodeAct content contract](2026-09-09-codeact-content-and-media.md) owns the publication mode and public/private roots. Missing or disabled policy exposes no content. An invalid policy fails public service closed; it cannot retain an earlier public policy. Root `private/` and configured exclusions always win over article references and galleries. These paths remain readable by authorized members and AI keys with `READ_PRIVATE`.
 
 The YAML schema has `enabled` (boolean), `mode` (`public-root`), and optional `exclude` (a list of repository-relative globs). Reject unknown, duplicate, or YAML merge keys, malformed UTF-8, multiple YAML documents, collection aliases, policies over 16 KiB, more than 64 exclusions, and patterns over the repository path bound. `*` and `?` match within one segment; a whole `**` segment matches zero or more segments. Matching is case-sensitive. Directory exclusions use a trailing `/**`; absolute paths, traversal, backslashes, character classes, and brace expansion are not accepted.
 
@@ -63,11 +63,11 @@ Workspace API keys store verification digests and reveal the full token only on 
 
 The asset module owns a local authoritative `ManagedBlobStore`, bounded idempotent uploads, immutable references, and a disposable read-only Git-image cache. Acknowledged originals survive cache cleanup and application restart. Uploads do not mutate Git or publish an image. Image validation checks signature, type, bytes, path containment, and cumulative response bounds; production limits must accommodate the designated corpus without permitting unbounded allocation.
 
-Public image grants are opaque and bind workspace, page commit, and exact Git blob or managed revision. Their lifetime is at most five minutes and never exceeds the content snapshot expiry. Image delivery validates that grant and exact bytes; it does not reinterpret an old page against a newer tree. The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md) additionally invalidates issued public grants on withdrawal or snapshot replacement. Private preview checks current identity on every request. Public page and image caches cannot outlive the authorization they contain.
+Public image grants are opaque and bind workspace, page commit, and exact Git blob or managed revision. Their lifetime is at most five minutes and never exceeds the content snapshot expiry. Image delivery validates that grant and exact bytes; it does not reinterpret an old page against a newer tree. The [website delivery boundary](2026-09-14-workspace-public-delivery.md) additionally invalidates issued public grants on withdrawal or snapshot replacement. Private preview checks current identity on every request. Public page and image caches cannot outlive the authorization they contain.
 
 ## Frontend and MCP
 
-[Directory navigation](../implemented/2026-09-08-repository-directory-navigation.md) extends the basic read surface while retaining the remaining installation and client acceptance in this proposal.
+[Directory navigation](2026-09-08-repository-directory-navigation.md) extends the basic read surface with the installation and client evidence recorded for this delivery.
 
 Next.js owns presentation and consumes Spring contracts; it never reads repositories, blob stores, or PostgreSQL directly. Spring owns authorization, mutations, asset resolution, and business state. Public pages and editor preview share restricted Markdown rendering: raw HTML disabled, safe URLs and media, and CSP. Public initial HTML remains readable with JavaScript disabled. Mutable public responses have no uncoordinated cross-request Next.js cache.
 
@@ -81,7 +81,7 @@ Use the Spring AI 2.0.1 WebMVC Streamable HTTP server at `/mcp`, authenticated w
 | `repo_discard` | Explicit owner-authorized disposal by copy ID; never reverses remote saves |
 | `get_artifact` | Bounded access to an artifact created by an authorized execution lease |
 
-Default copies are keyed by Poketto account, workspace and reading scope. Authorized clients share the same copy; a restricted public projection cannot expose a full copy. Commands serialize, while exact-text edits and final save conflicts retain operation-level protections. An omitted commit uses the current copy. Confirmed saves advance its local Git baseline while retaining host-owned per-file write preconditions; [Git baseline installation](../implemented/2026-09-15-executor-git-baseline-installation.md) owns pending local installation and its recovery. Authoritative reads never use command-modified execution files. MCP disconnects do not remove work; the account-copy contract owns disk quotas, seven-day idle expiry, reattachment, interrupted commands and explicit disposal.
+Default copies are keyed by Poketto account, workspace and reading scope. Authorized clients share the same copy; a restricted public projection cannot expose a full copy. Commands serialize, while exact-text edits and final save conflicts retain operation-level protections. An omitted commit uses the current copy. Confirmed saves advance its local Git baseline while retaining host-owned per-file write preconditions; [Git baseline installation](2026-09-15-executor-git-baseline-installation.md) owns pending local installation and its recovery. Authoritative reads never use command-modified execution files. MCP disconnects do not remove work; the account-copy contract owns disk quotas, seven-day idle expiry, reattachment, interrupted commands and explicit disposal.
 
 ## Execution boundary
 
@@ -108,6 +108,8 @@ Use bounded parallel implementation with independent review of critical contract
 
 ## Acceptance
 
+The [delivery evidence](2026-09-15-multiuser-daily-use-acceptance.md) maps these requirements to real service, browser, client and installation results.
+
 - The existing corpus works without directory moves or mandatory frontmatter; Chinese paths, malformed files, route collisions, and large images have deterministic outcomes.
 - Public pages, galleries, search, RSS, sitemap, stale URLs, and errors cannot expose private or excluded content. Authorized private reads work.
 - Browser and MCP creation, update, move, and deletion share atomic revision checks. Concurrent edits conflict; remote outages and lost replies do not fabricate success.
@@ -125,17 +127,17 @@ The scoped same-topic audit retains these records; none is archived or rejected 
 
 | Record | Relationship |
 |---|---|
-| [Remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) | Retain exact-ref authority, conflict, and lost-response semantics |
-| [Validated content snapshot](../implemented/2026-09-04-validated-content-snapshot.md) | Retain snapshot and resource ownership; this proposal replaces whole-tree document rejection and indefinite stale public service |
-| [Repository publishing](2026-09-01-repository-native-publishing-and-assets.md) | Retain discovery, policy, gallery, and patch contracts; bound delivery grants explicitly here |
-| [Repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain composable exploration and isolation; exclude Q&A and selective cold transfer from this delivery |
-| [Asset storage](2026-09-01-repository-asset-blob-store.md) | Deliver local storage and Git-image cache; retain OSS and physical reclamation as unimplemented scope |
-| [Invitation-only membership](2026-08-27-invitation-only-membership.md) | Deliver self-hosted identity lifecycle and member administration |
-| [Next.js frontend](2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |
-| [Continuous delivery](../implemented/2026-09-03-continuous-delivery.md) | Retain immutable artifacts and deployment verification; this delivery does not require a backup gate |
-| [Off-host backup](2026-08-27-off-host-backup-and-restore.md) and [source-encrypted recovery](2026-09-01-source-encrypted-backup-recovery.md) | Retain as future work, excluded from phase-one completion |
+| [Remote repository authority](2026-09-01-remote-repository-authority.md) | Retain exact-ref authority, conflict, and lost-response semantics |
+| [Validated content snapshot](2026-09-04-validated-content-snapshot.md) | Retain snapshot and resource ownership; this proposal replaces whole-tree document rejection and indefinite stale public service |
+| [Repository publishing](../proposed/2026-09-01-repository-native-publishing-and-assets.md) | Retain discovery, policy, gallery, and patch contracts; bound delivery grants explicitly here |
+| [Repository retrieval and execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain composable exploration and isolation; exclude Q&A and selective cold transfer from this delivery |
+| [Asset storage](../proposed/2026-09-01-repository-asset-blob-store.md) | Deliver local storage and Git-image cache; retain OSS and physical reclamation as unimplemented scope |
+| [Invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) | Deliver self-hosted identity lifecycle and member administration |
+| [Next.js frontend](../proposed/2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |
+| [Continuous delivery](2026-09-03-continuous-delivery.md) | Retain immutable artifacts and deployment verification; this delivery does not require a backup gate |
+| [Off-host backup](../proposed/2026-08-27-off-host-backup-and-restore.md) and [source-encrypted recovery](../proposed/2026-09-01-source-encrypted-backup-recovery.md) | Retain as future work, excluded from phase-one completion |
 | [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) | Deliver invitation-gated accounts, existing-repository spaces, scoped access and public discovery |
-| [Serverless](2026-09-01-optional-serverless-deployment-profile.md) | Retain as an independent future profile |
+| [Serverless](../proposed/2026-09-01-optional-serverless-deployment-profile.md) | Retain as an independent future profile |
 
 Whole-commit rejection preserves an all-valid document set but lets a malformed private file hide unrelated articles. Per-file diagnostics preserve the actual commit while identifying precisely which structured results are unavailable. Invalid publication policy still closes the entire public surface because its authorization decision cannot be reconstructed safely.
 

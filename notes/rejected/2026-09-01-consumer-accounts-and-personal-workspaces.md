@@ -3,9 +3,9 @@
 Date: 2026-09-01
 Status: Rejected
 
-The [multi-user workspace delivery](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) separates invitation-gated account registration from explicit workspace creation and connects existing repositories. Automatically creating a personal repository during registration adds provider-side lifecycle and credential requirements that are not selected. This record retains that alternative's constraints if automatic provisioning is reconsidered.
+The [multi-user workspace delivery](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md) separates invitation-gated account registration from explicit workspace creation and connects existing repositories. Automatically creating a personal repository during registration adds provider-side lifecycle and credential requirements that are not selected. This record retains that alternative's constraints if automatic provisioning is reconsidered.
 
-This remains an independent future delivery. [Phase-one delivery](../proposed/2026-09-05-phase-one-daily-use.md) uses one pre-provisioned workspace and invitation-only membership, without consumer account or personal-workspace provisioning.
+This remains an independent future delivery. [Phase-one delivery](../implemented/2026-09-05-phase-one-daily-use.md) uses one pre-provisioned workspace and invitation-only membership, without consumer account or personal-workspace provisioning.
 
 ## Problem
 

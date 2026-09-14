@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user administration contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires filename search across all authorized files, separately from body search. The previous editor filtered only loaded directory branches. A matching file inside a collapsed directory was invisible, and the structured Markdown index cannot represent arbitrary files or indexed media.
+The [multi-user administration contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires filename search across all authorized files, separately from body search. The previous editor filtered only loaded directory branches. A matching file inside a collapsed directory was invisible, and the structured Markdown index cannot represent arbitrary files or indexed media.
 
 ## Decision
 
@@ -30,4 +30,4 @@ Filename results describe accessible paths, not a guarantee that every result ca
 
 A real Spring/PostgreSQL/Next/Caddy run with two independent sample spaces finds an unopened nested file, pages 79 paths as 50 plus 29 results, and preserves a dirty draft when switching is cancelled. A temporary gateway 503 on filename reads leaves the draft intact and reports a read failure without implying an uncertain write. The same run verifies literal highlights and 390-pixel mobile layouts. [Daily-use UI evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json) records revisions and scope; this loopback fixture does not claim production HTTPS acceptance.
 
-The same-topic audit retains [directory navigation](2026-09-08-repository-directory-navigation.md), [logical media](2026-09-09-logical-media-index.md), [member permissions](2026-09-12-member-content-permissions.md), [authoring foundations](2026-09-05-repository-authoring-foundations.md), [reading text](2026-09-12-shared-checks.md), [search highlights](2026-09-14-search-highlights-and-reading-return.md), and [content navigation](2026-09-14-admin-content-navigation.md) as independent contracts. The parent proposal remains active for its outstanding work.
+The same-topic audit retains [directory navigation](2026-09-08-repository-directory-navigation.md), [logical media](2026-09-09-logical-media-index.md), [member permissions](2026-09-12-member-content-permissions.md), [authoring foundations](2026-09-05-repository-authoring-foundations.md), [reading text](2026-09-12-shared-checks.md), [search highlights](2026-09-14-search-highlights-and-reading-return.md), and [content navigation](2026-09-14-admin-content-navigation.md) as independent contracts. The parent delivery is verified by the [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md).

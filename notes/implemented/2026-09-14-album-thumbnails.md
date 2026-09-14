@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Decision
 
-The [multi-user reading contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires recognizable album thumbnails while preserving original media. The [album entrance and lightbox](2026-09-14-album-entrances-and-lightbox.md) owns folder navigation and sequential image reading. Thumbnail delivery avoids transferring full originals before the visitor selects an image.
+The [multi-user reading contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires recognizable album thumbnails while preserving original media. The [album entrance and lightbox](2026-09-14-album-entrances-and-lightbox.md) owns folder navigation and sequential image reading. Thumbnail delivery avoids transferring full originals before the visitor selects an image.
 
 Public galleries return distinct authorized thumbnail and original URLs. The grid loads a metadata-free image whose longest side is at most 640 pixels: PNG for transparency, otherwise JPEG at quality 0.82. The lightbox loads the exact original only after selection. Animated sources use their first frame for the thumbnail. A failed thumbnail shows an explicit preview placeholder that still opens the authorized original. It never silently downloads the original as a thumbnail fallback. Authenticated editor galleries retain their exact original delivery in this slice.
 

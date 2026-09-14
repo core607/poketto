@@ -40,8 +40,8 @@ background refresh succeeds.
 
 The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md)
 continues to own withdrawal and image invalidation. The
-[multiuser plan](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) and
-[daily-use plan](../proposed/2026-09-05-phase-one-daily-use.md) retain their remaining scope.
+[multiuser plan](2026-09-11-multiuser-workspaces-and-discovery.md) and
+[daily-use plan](2026-09-05-phase-one-daily-use.md) retain their remaining scope.
 The [frontend boundary](../proposed/2026-08-30-nextjs-frontend.md) retains Next.js ownership of
 presentation resources; this change supplies its multi-space sitemap contract.
 
