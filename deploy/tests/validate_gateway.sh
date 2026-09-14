@@ -35,6 +35,7 @@ MSYS_NO_PATHCONV=1 "$DOCKER" run --rm --cidfile "$cidfile" --network none --read
 port="${POKETTO_GATEWAY_PROBE_PORT:-18097}"
 marker_path="KOHAKUMARKERPATH"
 marker_grant="KOHAKUMARKERGRANTAAAAAAAAAAAAAAAAAAAAAAA"
+marker_referrer="KOHAKUMARKERREFERRER"
 probe="$work/probe.id"
 case "$(uname -s)" in MINGW*|MSYS*) probe="$(cygpath -w "$probe")" ;; esac
 MSYS_NO_PATHCONV=1 "$DOCKER" run -d --cidfile "$probe" --read-only     --user 10002:10002 --cap-drop ALL --cap-add NET_BIND_SERVICE --security-opt no-new-privileges:true     --memory 128m --cpus 0.5 --pids-limit 128 --publish "127.0.0.1:$port:8080"     --tmpfs /data:size=16m,uid=10002,gid=10002,mode=0700     --tmpfs /config:size=16m,uid=10002,gid=10002,mode=0700 --tmpfs /tmp:size=16m,mode=1777     --env POKETTO_PUBLIC_DOMAIN=":8080"     --mount "type=bind,source=$config,target=/etc/caddy/Caddyfile,readonly"     "$image" >/dev/null
@@ -48,6 +49,9 @@ done
 # The application is deliberately absent, which is the redeployment window this must survive.
 "${POKETTO_CURL:-curl}" -sS -o /dev/null --max-time 5     "http://127.0.0.1:$port/api/admin/workspaces/11111111-2222-3333-4444-555555555555/media?path=private/$marker_path.md" >/dev/null 2>&1 || true
 "${POKETTO_CURL:-curl}" -sS -o /dev/null --max-time 5     "http://127.0.0.1:$port/api/public/assets/$marker_grant" >/dev/null 2>&1 || true
+# An administration page puts the open document's path in its own address, which a same-origin
+# request then carries in this header.
+"${POKETTO_CURL:-curl}" -sS -o /dev/null --max-time 5     -H "Referer: http://site.example.invalid/admin?path=private/$marker_referrer.md"     "http://127.0.0.1:$port/api/public/documents" >/dev/null 2>&1 || true
 sleep 2
 recorded="$("$DOCKER" logs "$container" 2>&1 || true)"
 [ -n "$recorded" ] || { echo 'the gateway recorded nothing at all; the probe proves nothing' >&2; exit 1; }
@@ -57,4 +61,7 @@ esac
 case "$recorded" in
     *"$marker_grant"*) echo 'an image grant reached a gateway record' >&2; exit 1 ;;
 esac
-echo "gateway records carry neither the query string nor an image grant"
+case "$recorded" in
+    *"$marker_referrer"*) echo 'a referring address reached a gateway record' >&2; exit 1 ;;
+esac
+echo "gateway records carry no query string, image grant or referring address"

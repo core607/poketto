@@ -8,8 +8,9 @@
     # this work most wants recorded. Filtering the default logger covers it.
     #
     # The address is dropped rather than rewritten: a single field takes a single filter, and no
-    # one expression both strips a query and collapses a grant. Nothing is lost, because the
-    # access log still records the route and status of the same request.
+    # one expression both strips a query and collapses a grant. The access log still records the
+    # route and status of the same request, except for the image addresses it skips, which appear
+    # in the application's own records instead.
     log {
         output stderr
         format filter {
@@ -19,6 +20,7 @@
                 request>headers>Cookie delete
                 request>headers>Authorization delete
                 request>headers>Set-Cookie delete
+                request>headers>Referer delete
             }
         }
     }
@@ -41,7 +43,11 @@
     # collapsed. The cost is that a gateway-level failure on an image request appears nowhere.
     #
     # Credential headers go for the same reason: a session cookie or bearer token is the
-    # credential itself.
+    # credential itself. The referring address goes with them: an administration page puts the
+    # open document's path in its own address, and a same-origin request carries that address
+    # whole, so the path removed from the request line arrives again in another field. The
+    # referrer policy already keeps it from leaving this origin, which makes these records its
+    # only exposure.
     @grant path /api/public/assets/* /api/admin/workspaces/*/assets/images/*
     log_skip @grant
 
@@ -54,6 +60,7 @@
                 request>headers>Cookie delete
                 request>headers>Authorization delete
                 request>headers>Set-Cookie delete
+                request>headers>Referer delete
                 resp_headers>Set-Cookie delete
             }
         }
