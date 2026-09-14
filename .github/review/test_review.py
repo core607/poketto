@@ -487,15 +487,38 @@ class ReviewTests(unittest.TestCase):
         # run a title or body edit starts. The job must therefore always run under that exact
         # name, and must actually verify: a run that reports success without executing its
         # steps would hand a green required check to a commit whose verification failed.
+        # Verification runs in parallel lanes, so "verify" now gates on their results instead of
+        # invoking the work itself. That indirection is only safe while the assertions below hold:
+        # the job always runs, every lane it waits on is named in its own decision, and only a
+        # successful lane counts. A lane added to `needs` but not to the decision would otherwise
+        # be able to fail unnoticed.
         verify = ci.split("\n  verify:\n", 1)[1].split("\n  publish:\n", 1)[0]
-        self.assertIn("\n    name: verify\n", verify)
-        self.assertNotIn("\n    if:", verify)
+        self.assertIn("    name: verify\n", verify)
+        self.assertEqual(["if: always()"], [line.strip() for line in verify.splitlines()
+                                            if line.startswith("    if:")])
         self.assertNotIn("METADATA_ONLY", ci)
         steps = [line for line in verify.splitlines() if line.startswith("      - name:")]
-        conditional = [line for line in verify.splitlines() if line.strip().startswith("if:")]
         self.assertTrue(steps)
-        self.assertEqual(["if: failure()"], [line.strip() for line in conditional])
-        self.assertIn("./gradlew check --no-daemon", verify)
+        self.assertEqual([], [line for line in verify.splitlines()
+                              if line.strip().startswith("if:") and line.startswith("        ")])
+        needs = verify.split("needs: [", 1)[1].split("]", 1)[0]
+        lanes = [lane.strip() for lane in needs.split(",")]
+        self.assertIn("changes", lanes)
+        decision = verify.split("run: |", 1)[1]
+        for lane in lanes:
+            if lane == "changes":
+                continue
+            self.assertIn(lane + "=$", decision, lane + " is awaited but never required")
+        # A lane that reports anything other than success, including a skip, fails the check.
+        self.assertIn("success) ;;", decision)
+        self.assertIn("exit 1", decision)
+        # Every task the check lifecycle runs still belongs to a lane.
+        for task in ("test", "spotlessCheck", "checkstyleMain", "checkstyleTest",
+                     "checkstyleIntegrationTest", "repoCheck", "integrationTest", "frontendCheck",
+                     "appImageIdentityCheck", "executorServiceTests", "deployScriptTests",
+                     "existingDeploymentTests", "gatewayConfigCheck", "proxyForwardingCheck",
+                     "linuxStorageTest"):
+            self.assertIn(" " + task, ci, task + " is no longer run by any lane")
 
     def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):
         pr = self.github.current()
