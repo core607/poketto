@@ -163,7 +163,7 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
 
-对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像。配置受保护的更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing` 与 transfer 模式；Compose 文件、环境配置和依赖服务继续由运维配置维护。
+对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像。配置受保护的更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境配置和依赖服务继续由运维配置维护。
 
 Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](../notes/implemented/2026-09-05-blog-stack-delivery.md)。
 

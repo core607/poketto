@@ -240,8 +240,7 @@ jobs:
             *) missing+=("variable POKETTO_DEPLOY_MODE must be pull, transfer or mirror") ;;
           esac
           case "${DEPLOY_LAYOUT:-standard}" in
-            standard) ;;
-            existing) [[ "${DEPLOY_MODE:-pull}" = transfer || "$DEPLOY_MODE" = mirror ]] || missing+=("existing installations require transfer or mirror mode") ;;
+            standard|existing) ;;
             *) missing+=("variable POKETTO_DEPLOY_LAYOUT must be standard or existing") ;;
           esac
           if [ ${#missing[@]} -gt 0 ]; then
@@ -290,16 +289,25 @@ jobs:
           MIRROR_USERNAME: ${{ vars.POKETTO_MIRROR_USERNAME }}
           MIRROR_PULL_PASSWORD: ${{ secrets.POKETTO_MIRROR_PULL_PASSWORD }}
           REVISION: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing)
-          if [ "$DEPLOY_MODE" = mirror ]; then
-            printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
-              | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin
-          else
-            bash deploy/transfer.sh "${args[@]}"
-          fi
+          # Pull mode reaches the canonical registry from the host and needs no archive; mirror mode
+          # substitutes the delivery mirror's credentials; transfer mode keeps the archive path for
+          # hosts that cannot reach either registry.
+          case "${DEPLOY_MODE:-pull}" in
+            mirror)
+              printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
+                | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin ;;
+            transfer)
+              bash deploy/transfer.sh "${args[@]}" ;;
+            *)
+              printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
+                | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin ;;
+          esac
 
       - name: Deploy
         if: vars.POKETTO_DEPLOY_LAYOUT != 'existing'

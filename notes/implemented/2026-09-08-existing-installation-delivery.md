@@ -8,7 +8,7 @@ Date: 2026-09-08
 
 An existing installation can use operator-owned Compose files, private environment files and a separately installed worker. Synchronizing the generic deployment stack into that directory replaces those choices. Streaming a repository password from an older CI configuration can also invalidate the application's current content authority.
 
-Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses verified-main publication with checksummed archive transfer or configured mirror pulls. It does not synchronize Compose, forward application settings, restart dependencies or update the external worker.
+Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses verified-main publication with a canonical registry pull, a configured mirror pull, or a checksummed archive transfer. Pull mode is the default: the host authenticates to the canonical registry with the deployment job's own package-read token, which no operator credential has to carry. A host that cannot reach that registry selects mirror mode, and one that can reach neither keeps the archive transfer. Mode selection is operator configuration; the updater's behavior is identical once both image digests are present on the host. It does not synchronize Compose, forward application settings, restart dependencies or update the external worker.
 
 ## Operator setup
 
