@@ -56,6 +56,8 @@ Public articles, album and collection landings, discovery cards and search summa
 
 Public and authorized management search match literal titles and parsed Markdown reading text. Link labels, image descriptions, code, table cells and referenced footnotes participate; hidden destinations, raw HTML and unused footnote definitions do not. Summaries collapse whitespace and omit an opening level-one heading only when its text repeats the page title, then take a bounded excerpt around the match. Stored Markdown and article bodies remain unchanged.
 
+Public search highlights exact matches in titles and snippets. Opening a result provides **Return to search results**, preserving its query, page and space. Browser Back restores the selected result and scroll position; the explicit return link also restores them while the browser retains that tab's entry. If local storage is unavailable or the result has been removed, the search page still opens normally. Direct article visits retain their space and collection navigation.
+
 Authenticated `/api/admin/workspaces/{workspaceId}/repository` endpoints provide the Markdown index, paginated directory listing, file reads, search, preview, atomic patches and moves. The browser destination picker moves files or folders and repairs Markdown references in the same commit. Text changes carry revisions or explicit absence against the base commit; moves check the source and destination at that base. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/workspaces/{workspaceId}/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
 
 The editor retains the selected folder and document in its URL, independently of

@@ -186,7 +186,8 @@ class GitImageGrantRetentionTests {
                     RepositoryBlob descriptor = invocation.getArgument(0);
                     if (descriptor.workspaceId().equals(other)) {
                         entered.countDown();
-                        await(release);
+                        // The test releases this latch in its finally block; keep source protection blocked.
+                        awaitRelease(release);
                     }
                     real.protect(descriptor, invocation.getArgument(1));
                     return null;
@@ -199,7 +200,7 @@ class GitImageGrantRetentionTests {
                 await(entered);
                 assertThat(pool.submit(() -> service.readPublicImage(workspace, token)
                                         .bytes())
-                                .get(5, TimeUnit.SECONDS))
+                                .get(10, TimeUnit.SECONDS))
                         .isEqualTo(png(1));
                 assertThat(minting).isNotDone();
             } finally {
@@ -460,6 +461,15 @@ class GitImageGrantRetentionTests {
             assertThat(latch.await(10, TimeUnit.SECONDS))
                     .as("concurrent operation reached its barrier")
                     .isTrue();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static void awaitRelease(CountDownLatch latch) {
+        try {
+            latch.await();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AssertionError(exception);

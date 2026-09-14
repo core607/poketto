@@ -49,7 +49,12 @@ export default async function Search({
       )}
       <p className="muted search-help">在公开文章中按原文匹配。</p>
       {page && (
-        <ArticleList page={page} base="/search" parameters={{ query }} />
+        <ArticleList
+          page={page}
+          base="/search"
+          parameters={{ query }}
+          searchQuery={query}
+        />
       )}
     </div>
   );
