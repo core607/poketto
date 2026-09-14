@@ -117,7 +117,7 @@ def main():
                     return
         threading.Thread(target=renew, daemon=True).start()
         answer = send(identity, 'OPEN', {'exportId': export_id, 'bundleSha256': bundle_sha,
-                    'bundleBytes': bundle.stat().st_size, 'commit': commit})
+                    'bundleBytes': bundle.stat().st_size, 'commit': commit, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
         assert answer.get('ok') and answer['state'] == 'READY', answer
         return identity, stop
     def execute(identity, command, timeout=10000, execution_id=None):

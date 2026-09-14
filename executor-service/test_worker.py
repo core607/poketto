@@ -387,7 +387,7 @@ class ProtocolTests(unittest.TestCase):
 
     def opened(self):
         p = self.payload('OPEN', {'exportId': uid(), 'bundleSha256': 'b' * 64,
-                                 'bundleBytes': 80, 'commit': 'c' * 40})
+                                 'bundleBytes': 80, 'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
         self.assertTrue(self.send(p)['ok'])
         return p
 
@@ -451,7 +451,7 @@ class ProtocolTests(unittest.TestCase):
     def test_initializer_can_renew_and_cancel(self):
         self.backend.wait = threading.Event()
         p = self.payload('OPEN', {'exportId': uid(), 'bundleSha256': 'b' * 64,
-                                 'bundleBytes': 80, 'commit': 'c' * 40})
+                                 'bundleBytes': 80, 'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
         result = []
         thread = threading.Thread(target=lambda: result.append(self.send(p)))
         thread.start()
@@ -496,14 +496,14 @@ class ProtocolTests(unittest.TestCase):
     def test_close_before_open_prevents_late_creation(self):
         self.assertEqual('CLOSED', self.send(self.payload('CLOSE'))['state'])
         p = self.payload('OPEN', {'exportId': uid(), 'bundleSha256': 'b' * 64,
-                                 'bundleBytes': 80, 'commit': 'c' * 40})
+                                 'bundleBytes': 80, 'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
         self.assertEqual('SESSION_CLOSED', self.send(p)['code'])
         self.assertFalse(self.backend.opened)
 
     def test_account_revocation_before_open_prevents_creation(self):
         self.assertTrue(self.send(self.payload('REVOKE', {'keyIds': [], 'accountIds': [self.identity['accountId']]}))['ok'])
         p = self.payload('OPEN', {'exportId': uid(), 'bundleSha256': 'b' * 64,
-                                 'bundleBytes': 80, 'commit': 'c' * 40})
+                                 'bundleBytes': 80, 'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
         self.assertEqual('AUTH_REVOKED', self.send(p)['code'])
         self.assertFalse(self.backend.opened)
 
@@ -515,7 +515,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_limits_and_no_path_fields(self):
         p = self.payload('OPEN', {'exportId': '../source', 'bundleSha256': 'b' * 64,
-                                 'bundleBytes': 80, 'commit': 'c' * 40})
+                                 'bundleBytes': 80, 'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
         self.assertEqual('INVALID_REQUEST', self.send(p)['code'])
         self.opened()
         p = self.execution()

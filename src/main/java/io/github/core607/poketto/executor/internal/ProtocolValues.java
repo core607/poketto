@@ -16,6 +16,7 @@ import java.util.UUID;
  * reads it.
  */
 final class ProtocolValues {
+    static final long MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
 
     private ProtocolValues() {}
 

@@ -1,8 +1,8 @@
 package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -56,13 +57,22 @@ public final class RetainedProcessNativeProbe {
     private final AuthService auth = mock(AuthService.class);
     private final AuthPrincipal actor = mock(AuthPrincipal.class);
     private final WorkspaceId workspace;
-    private final RetainedCopyStore records;
-    private final RetainedWorkStores stores;
+    private final AccountCopyStore records;
+    private final AtomicReference<AccountCopyRecord> observed = new AtomicReference<>();
+    private boolean publicationArmed;
+    private boolean discardArmed;
 
     private RetainedProcessNativeProbe(Path configuration, String mode) throws Exception {
         config = JSON.readTree(Files.readString(configuration));
         scenario = mode.substring(mode.lastIndexOf('-') + 1);
-        if (!Set.of("acknowledged", "interrupted", "uncertain", "beforepublish", "afterpublish")
+        if (!Set.of(
+                        "acknowledged",
+                        "interrupted",
+                        "uncertain",
+                        "beforepublish",
+                        "afterpublish",
+                        "discarding",
+                        "expired")
                 .contains(scenario)) {
             throw new IllegalArgumentException("Unknown process-loss scenario");
         }
@@ -78,11 +88,18 @@ public final class RetainedProcessNativeProbe {
         var identity = JSON.readValue(Files.readString(root.resolve("identity.json")), Identity.class);
         workspace = new WorkspaceId(identity.workspace());
         authorize(identity);
-        records = spy(new RetainedCopyStore(
-                root.resolve("records"),
-                new RetainedCopyStore.Limits(4, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofMinutes(10)),
-                Clock.systemUTC()));
-        stores = RetainedBaselineTestData.stores(records, root.resolve("originals"));
+        Clock clock = !producer && scenario.equals("expired")
+                ? Clock.offset(Clock.systemUTC(), Duration.ofDays(8))
+                : Clock.systemUTC();
+        records = spy(AccountCopyTestData.disk(path("accountMetadata"), clock));
+        doAnswer(call -> {
+                    var original = (AccountCopyStore.Lease) call.callRealMethod();
+                    var lease = mock(AccountCopyStore.Lease.class, delegatesTo(original));
+                    observeWrites(lease, original);
+                    return lease;
+                })
+                .when(records)
+                .acquire(any());
     }
 
     public static void main(String[] args) throws Exception {
@@ -114,7 +131,7 @@ public final class RetainedProcessNativeProbe {
     private IsolatedRepositoryExecutor adapter(PublicExecutionNativeFixture fixture) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.of(stores),
+                        records,
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -137,18 +154,13 @@ public final class RetainedProcessNativeProbe {
             var result = execute(
                     executor,
                     "producer",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     "set -eu; printf 'acknowledged local draft' > private/draft.md; "
                             + "python3 -c \"from pathlib import Path; Path('private/draft.bin').write_bytes(bytes([0,255,9]))\"; "
                             + "printf 'saved before loss' > private/saved-before.md; poketto save private/saved-before.md");
-            RetainedCopyRecord before = records.read(owner(), UUID.fromString(result.copyId()));
-            assertThat(before.command()).isNull();
-            assertThat(before.acknowledged()
-                            .state()
-                            .lastSave()
-                            .value()
-                            .path("ok")
-                            .booleanValue())
+            AccountCopyRecord before = readRecord();
+            assertThat(before.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+            assertThat(before.state().lastSave().value().path("ok").booleanValue())
                     .isTrue();
             if (scenario.equals("interrupted")) {
                 before = interruptibleCommand(executor, before);
@@ -159,50 +171,73 @@ public final class RetainedProcessNativeProbe {
             if (scenario.equals("beforepublish") || scenario.equals("afterpublish")) {
                 publicationCommand(executor, before);
             }
+            if (scenario.equals("discarding")) {
+                discardArmed = true;
+                executor.discard(
+                        actor,
+                        workspace,
+                        new RepositoryExecutor.DiscardRequest(before.copyId().toString()),
+                        CANCELLATION);
+                throw new IllegalStateException("Discard escaped the process-loss barrier");
+            }
             readyToKill(before);
         }
     }
 
-    private void publicationCommand(IsolatedRepositoryExecutor executor, RetainedCopyRecord acknowledged) {
+    private void observeWrites(AccountCopyStore.Lease lease, AccountCopyStore.Lease original) {
         doAnswer(call -> {
-                    RetainedCopyRecord next = call.getArgument(2);
-                    if (next.command() != null) {
-                        return call.callRealMethod();
+                    AccountCopyRecord next = call.getArgument(0);
+                    AccountCopyRecord previous = lease.record().orElse(null);
+                    boolean completion = publicationArmed
+                            && previous != null
+                            && previous.phase() == AccountCopyRecord.Phase.RUNNING
+                            && next.phase() == AccountCopyRecord.Phase.READY;
+                    if (completion && scenario.equals("beforepublish")) {
+                        readyToKill(previous);
                     }
-                    RetainedCopyRecord current = records.read(owner(), acknowledged.copyId());
-                    assertThat(current.command()).isNotNull();
-                    assertThat(current.acknowledged()).isEqualTo(acknowledged.acknowledged());
-                    assertThat(next.acknowledged().id())
-                            .isNotEqualTo(current.acknowledged().id());
-                    if (scenario.equals("beforepublish")) {
-                        readyToKill(current);
+                    original.write(next);
+                    observed.set(next);
+                    if (completion && scenario.equals("afterpublish")) {
+                        readyToKill(next);
                     }
-                    call.callRealMethod();
-                    assertThat(encoded(records.read(owner(), next.copyId()))).isEqualTo(encoded(next));
-                    readyToKill(next);
-                    throw new IllegalStateException("Producer returned past the acknowledgement publication barrier");
+                    return null;
                 })
-                .when(records)
-                .replace(anyLong(), anyLong(), any());
+                .when(lease)
+                .write(any());
+        doAnswer(call -> {
+                    if (discardArmed) {
+                        readyToKill(lease.record().orElseThrow());
+                    }
+                    original.remove(call.getArgument(0));
+                    return null;
+                })
+                .when(lease)
+                .remove(any());
+    }
+
+    private AccountCopyRecord readRecord() throws Exception {
+        try (var lease = records.acquire(owner())) {
+            return lease.record().orElseThrow();
+        }
+    }
+
+    private void publicationCommand(IsolatedRepositoryExecutor executor, AccountCopyRecord before) {
+        publicationArmed = true;
         execute(
                 executor,
                 "producer",
-                new RepositoryExecutor.CopyRequest(acknowledged.copyId().toString(), acknowledged.generation(), false),
+                new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                 "printf 'completion before response' > private/draft.md");
-        throw new IllegalStateException("Command response escaped the publication termination barrier");
+        throw new IllegalStateException("Command escaped the journal publication barrier");
     }
 
     private void uncertainCommand(
-            IsolatedRepositoryExecutor executor,
-            PublicExecutionNativeFixture fixture,
-            RetainedCopyRecord acknowledged) {
+            IsolatedRepositoryExecutor executor, PublicExecutionNativeFixture fixture, AccountCopyRecord before) {
         fixture.afterSuccessfulPush(candidate -> {
-            RetainedCopyRecord record = records.read(owner(), acknowledged.copyId());
-            assertThat(record.command()).isNotNull();
-            RetainedSaveState state = record.command().checkpoint().state();
-            assertThat(state.uncertain()).isTrue();
-            assertThat(state.attempt().commit()).isEqualTo(candidate);
-            assertThat(record.acknowledged()).isEqualTo(acknowledged.acknowledged());
+            AccountCopyRecord record = observed.get();
+            assertThat(record.phase()).isEqualTo(AccountCopyRecord.Phase.RUNNING);
+            assertThat(record.state().uncertain()).isTrue();
+            assertThat(record.state().attempt().commit()).isEqualTo(candidate);
             try {
                 readyToKill(record);
             } catch (IOException | InterruptedException failure) {
@@ -212,21 +247,20 @@ public final class RetainedProcessNativeProbe {
         execute(
                 executor,
                 "producer",
-                new RepositoryExecutor.CopyRequest(acknowledged.copyId().toString(), acknowledged.generation(), false),
+                new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                 "set -eu; printf 'candidate before process loss' > private/uncertain.md; poketto save private/uncertain.md");
-        throw new IllegalStateException("Producer returned past the remote-push termination barrier");
+        throw new IllegalStateException("Producer escaped the remote-push termination barrier");
     }
 
-    private void readyToKill(RetainedCopyRecord before) throws IOException, InterruptedException {
+    private void readyToKill(AccountCopyRecord before) throws IOException, InterruptedException {
         Files.writeString(root.resolve("before.json"), JSON.writeValueAsString(before));
         System.out.println(JSON.writeValueAsString(new Ready(scenario)));
         requestKill();
     }
 
-    private RetainedCopyRecord interruptibleCommand(
-            IsolatedRepositoryExecutor executor, RetainedCopyRecord acknowledged) throws Exception {
-        var copy =
-                new RepositoryExecutor.CopyRequest(acknowledged.copyId().toString(), acknowledged.generation(), false);
+    private AccountCopyRecord interruptibleCommand(IsolatedRepositoryExecutor executor, AccountCopyRecord before)
+            throws Exception {
+        var copy = new RepositoryExecutor.CopyRequest(before.copyId().toString());
         var running = CompletableFuture.supplyAsync(
                 () -> execute(
                         executor,
@@ -238,26 +272,17 @@ public final class RetainedProcessNativeProbe {
             assertThat(running.isDone())
                     .as("producer must remain in an uncompleted command")
                     .isFalse();
-            RetainedCopyRecord record;
-            try {
-                record = records.read(owner(), acknowledged.copyId());
-            } catch (RetainedCopyException busy) {
-                if (busy.reason() != RetainedCopyException.Reason.BUSY) {
-                    throw busy;
-                }
-                Thread.sleep(30);
-                continue;
-            }
-            if (record.command() != null) {
-                RetainedSaveState state = record.command().checkpoint().state();
-                if (state.fileBaselines().containsKey("private/inside.md")) {
-                    assertThat(state.fileBaselines().get("private/inside.md").source())
-                            .isEqualTo("host acknowledged during command");
-                    assertThat(state.lastSave().value().path("ok").booleanValue())
-                            .isTrue();
-                    assertThat(record.acknowledged()).isEqualTo(acknowledged.acknowledged());
-                    return record;
-                }
+            AccountCopyRecord record = observed.get();
+            if (record.phase() == AccountCopyRecord.Phase.RUNNING
+                    && record.state().fileBaselines().containsKey("private/inside.md")) {
+                assertThat(record.state()
+                                .fileBaselines()
+                                .get("private/inside.md")
+                                .source())
+                        .isEqualTo("host acknowledged during command");
+                assertThat(record.state().lastSave().value().path("ok").booleanValue())
+                        .isTrue();
+                return record;
             }
             Thread.sleep(30);
         }
@@ -275,11 +300,9 @@ public final class RetainedProcessNativeProbe {
     }
 
     private void resume() throws Exception {
-        var before = JSON.readValue(Files.readString(root.resolve("before.json")), RetainedCopyRecord.class);
-        assertThat(encoded(records.read(owner(), before.copyId()))).isEqualTo(encoded(before));
-        RetainedSaveState selected = before.command() == null
-                ? before.acknowledged().state()
-                : before.command().checkpoint().state();
+        var before = JSON.readValue(Files.readString(root.resolve("before.json")), AccountCopyRecord.class);
+        assertThat(encoded(readRecord())).isEqualTo(encoded(before));
+        RetainedSaveState selected = before.state();
         try (var fixture = PublicExecutionNativeFixture.reopen(
                         root.resolve("authority"), path("exports"), auth, workspace);
                 var executor = adapter(fixture)) {
@@ -288,26 +311,36 @@ public final class RetainedProcessNativeProbe {
                             selected.attempt() == null
                                     ? selected.baseCommit()
                                     : selected.attempt().commit());
-            String inspection = inspection(before);
-            var result = execute(
-                    executor,
-                    "new-process-new-transport",
-                    new RepositoryExecutor.CopyRequest(before.copyId().toString(), before.generation(), true),
-                    inspection);
-            RetainedCopyRecord after = records.read(owner(), before.copyId());
-            assertRestored(before, after, selected, result);
-            if (selected.uncertain()) {
-                after = reconcile(executor, fixture, after, selected);
+            if (scenario.equals("expired")) {
+                expireCopy(executor, fixture, before);
+            } else if (scenario.equals("discarding")) {
+                resumeDiscard(executor, fixture, before);
+            } else {
+                var result = execute(
+                        executor,
+                        "new-process-new-transport",
+                        new RepositoryExecutor.CopyRequest(before.copyId().toString()),
+                        inspection(before));
+                AccountCopyRecord after = readRecord();
+                assertRestored(before, after, selected, result);
+                if (selected.uncertain()) {
+                    after = reconcile(executor, fixture, after, selected);
+                }
+                execute(
+                        executor,
+                        "another-new-transport",
+                        new RepositoryExecutor.CopyRequest(after.copyId().toString()),
+                        "poketto save private/draft.md");
+                assertThat(fixture.reader(auth)
+                                .getFile(actor, workspace, Optional.empty(), "private/draft.md")
+                                .source())
+                        .contains(expectedDraft());
+                executor.discard(
+                        actor,
+                        workspace,
+                        new RepositoryExecutor.DiscardRequest(after.copyId().toString()),
+                        CANCELLATION);
             }
-            execute(
-                    executor,
-                    "another-new-transport",
-                    new RepositoryExecutor.CopyRequest(after.copyId().toString(), after.generation(), true),
-                    "poketto save private/draft.md");
-            assertThat(fixture.reader(auth)
-                            .getFile(actor, workspace, Optional.empty(), "private/draft.md")
-                            .source())
-                    .contains(expectedDraft());
         }
         System.out.println(JSON.writeValueAsString(new Result(
                 "retained-jvm-loss-" + scenario,
@@ -317,26 +350,84 @@ public final class RetainedProcessNativeProbe {
                 classHash(IsolatedRepositoryExecutor.class))));
     }
 
-    private RetainedCopyRecord reconcile(
+    private void expireCopy(
+            IsolatedRepositoryExecutor executor, PublicExecutionNativeFixture fixture, AccountCopyRecord before)
+            throws Exception {
+        assertThat(records.expired(before)).isTrue();
+        try (var busy = records.acquire(owner())) {
+            assertThat(executor.collectExpiredCopies()).isZero();
+            assertThat(busy.record().orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+        }
+        try (var maintenance = new AccountCopyMaintenance(executor, Duration.ofMillis(50))) {
+            long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+            boolean absent = false;
+            while (!absent && System.nanoTime() < deadline) {
+                try (var lease = records.acquire(owner())) {
+                    absent = lease.record().isEmpty();
+                } catch (RetainedCopyException busy) {
+                    if (busy.reason() != RetainedCopyException.Reason.BUSY) {
+                        throw busy;
+                    }
+                }
+                Thread.sleep(20);
+            }
+            assertThat(absent)
+                    .as("scheduled expiry must remove an idle copy without another tool call")
+                    .isTrue();
+        }
+        var fresh = execute(
+                executor,
+                "new-after-expiry",
+                new RepositoryExecutor.CopyRequest("new"),
+                "test ! -e private/draft.md && test ! -e private/draft.bin");
+        assertThat(fresh.copyId()).isNotEqualTo(before.copyId().toString());
+        assertThat(fixture.reader(auth)
+                        .getFile(actor, workspace, Optional.empty(), "private/saved-before.md")
+                        .source())
+                .contains("saved before loss");
+        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId()), CANCELLATION);
+    }
+
+    private void resumeDiscard(
+            IsolatedRepositoryExecutor executor, PublicExecutionNativeFixture fixture, AccountCopyRecord before) {
+        assertThat(before.phase()).isEqualTo(AccountCopyRecord.Phase.DISCARDING);
+        var discard = new RepositoryExecutor.DiscardRequest(before.copyId().toString());
+        assertThat(executor.discard(actor, workspace, discard, CANCELLATION).status())
+                .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+        assertThat(executor.discard(actor, workspace, discard, CANCELLATION).status())
+                .isEqualTo(RepositoryExecutor.DiscardStatus.ABSENT);
+        var fresh = execute(
+                executor,
+                "new-after-discard",
+                new RepositoryExecutor.CopyRequest("new"),
+                "test ! -e private/draft.md && test ! -e private/draft.bin");
+        assertThat(fresh.copyId()).isNotEqualTo(before.copyId().toString());
+        assertThat(fixture.reader(auth)
+                        .getFile(actor, workspace, Optional.empty(), "private/saved-before.md")
+                        .source())
+                .contains("saved before loss");
+        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId()), CANCELLATION);
+    }
+
+    private AccountCopyRecord reconcile(
             IsolatedRepositoryExecutor executor,
             PublicExecutionNativeFixture fixture,
-            RetainedCopyRecord before,
-            RetainedSaveState selected) {
+            AccountCopyRecord before,
+            RetainedSaveState selected)
+            throws Exception {
         execute(
                 executor,
                 "reconcile-new-process",
-                new RepositoryExecutor.CopyRequest(before.copyId().toString(), before.generation(), true),
+                new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                 "poketto recover");
-        RetainedCopyRecord after = records.read(owner(), before.copyId());
+        AccountCopyRecord after = readRecord();
         assertThat(fixture.pushes())
-                .as("reconciliation must not repeat an acknowledged remote push")
+                .as("reconciliation must not repeat a successful remote push")
                 .isZero();
-        assertThat(after.acknowledged().state().uncertain()).isFalse();
-        assertThat(after.acknowledged().state().attempt()).isNull();
-        assertThat(after.acknowledged().state().baseCommit())
-                .isEqualTo(selected.attempt().commit());
-        assertThat(after.acknowledged().state().lastSave().value().path("ok").booleanValue())
-                .isTrue();
+        assertThat(after.state().uncertain()).isFalse();
+        assertThat(after.state().attempt()).isNull();
+        assertThat(after.state().baseCommit()).isEqualTo(selected.attempt().commit());
+        assertThat(after.state().lastSave().value().path("ok").booleanValue()).isTrue();
         assertThat(fixture.reader(auth)
                         .getFile(actor, workspace, Optional.empty(), "private/uncertain.md")
                         .source())
@@ -344,9 +435,9 @@ public final class RetainedProcessNativeProbe {
         return after;
     }
 
-    private String inspection(RetainedCopyRecord before) {
+    private String inspection(AccountCopyRecord before) {
         String command = "set -eu; test \"$(git rev-parse HEAD)\" = "
-                + before.acknowledged().state().originalCommit()
+                + before.state().originalCommit()
                 + "; test \"$(cat private/draft.md)\" = '" + expectedDraft() + "'; "
                 + "test \"$(cat private/saved-before.md)\" = 'saved before loss'; "
                 + "python3 -c \"from pathlib import Path; assert Path('private/draft.bin').read_bytes() == bytes([0,255,9])\"; ";
@@ -359,24 +450,25 @@ public final class RetainedProcessNativeProbe {
     }
 
     private String expectedDraft() {
-        return scenario.equals("afterpublish") ? "completion before response" : "acknowledged local draft";
+        return (scenario.equals("afterpublish") || scenario.equals("beforepublish"))
+                ? "completion before response"
+                : "acknowledged local draft";
     }
 
     private static void assertRestored(
-            RetainedCopyRecord before,
-            RetainedCopyRecord after,
+            AccountCopyRecord before,
+            AccountCopyRecord after,
             RetainedSaveState selected,
             RepositoryExecutor.ExecutionResult result) {
         assertThat(after.copyId()).isEqualTo(before.copyId());
-        assertThat(after.generation()).isEqualTo(before.generation() + 1);
+        assertThat(after.revision()).isGreaterThan(before.revision());
         assertThat(after.writer().appBootId()).isNotEqualTo(before.writer().appBootId());
         assertThat(after.writer().workerBootId()).isEqualTo(before.writer().workerBootId());
-        assertThat(after.originalBaseline()).isEqualTo(before.originalBaseline());
-        assertThat(encoded(after.acknowledged().state())).isEqualTo(encoded(selected));
+        assertThat(after.original()).isEqualTo(before.original());
+        assertThat(encoded(after.state())).isEqualTo(encoded(selected));
         assertThat(result.retention().resumed()).isTrue();
-        assertThat(result.retention().lastInterruptedCommand())
-                .isEqualTo(before.command() == null ? null : before.command().id());
-        assertThat(after.command()).isNull();
+        assertThat(result.retention().lastInterruptedCommand()).isEqualTo(before.executionId());
+        assertThat(after.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
     }
 
     private RepositoryExecutor.ExecutionResult execute(
@@ -392,8 +484,8 @@ public final class RetainedProcessNativeProbe {
         return result;
     }
 
-    private RetainedCopyRecord.Owner owner() {
-        return new RetainedCopyRecord.Owner(actor.subjectId(), workspace.value());
+    private AccountCopyRecord.Owner owner() {
+        return new AccountCopyRecord.Owner(actor.accountId(), workspace.value(), true);
     }
 
     private static JsonNode encoded(Object value) {

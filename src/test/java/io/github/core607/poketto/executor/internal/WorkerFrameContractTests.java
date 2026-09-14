@@ -40,11 +40,9 @@ class WorkerFrameContractTests {
     /** One frame per protocol operation, in the order the worker reference lists them. */
     private static Map<String, WorkerRequests.Data> frames() {
         var frames = new LinkedHashMap<String, WorkerRequests.Data>();
-        frames.put("OPEN", new WorkerRequests.Open(EXPORT, DIGEST, 4096, COMMIT));
-        frames.put("CHECKPOINT", new WorkerRequests.Checkpoint(CAPTURE, 1300000, "full"));
-        frames.put("CHECKPOINT_ACTIVE", new WorkerRequests.ActiveCheckpoint(CAPTURE, 1300000, "full", EXECUTION));
-        frames.put("CHECKPOINT_REMOVE", new WorkerRequests.CheckpointReference(CAPTURE, DIGEST, 4096));
-        frames.put("RESTORE", new WorkerRequests.Restore(CAPTURE, DIGEST, 4096, COMMIT, "full", TRANSFER));
+        frames.put("OPEN", new WorkerRequests.Open(EXPORT, "full", EXPORT, DIGEST, 4096, COMMIT));
+        frames.put("ATTACH", new WorkerRequests.DiskCopy(EXPORT, "full", COMMIT));
+        frames.put("DISCARD", new WorkerRequests.DiskCopy(EXPORT, "full", COMMIT));
         frames.put("EXEC", new WorkerRequests.Exec(EXECUTION, COMMIT, "git log", 1000));
         frames.put("RENEW", new WorkerRequests.Renew());
         frames.put("CLOSE", new WorkerRequests.Close("session_closed"));
@@ -108,10 +106,10 @@ class WorkerFrameContractTests {
 
     @Test
     void constructionRejectsEachViolatedRuleAndNamesItsField() {
-        assertThatThrownBy(() -> new WorkerRequests.Open(EXPORT, "short", 1, COMMIT))
+        assertThatThrownBy(() -> new WorkerRequests.Open(EXPORT, "full", EXPORT, "short", 1, COMMIT))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bundleSha256");
-        assertThatThrownBy(() -> new WorkerRequests.Open(EXPORT, DIGEST, 0, COMMIT))
+        assertThatThrownBy(() -> new WorkerRequests.Open(EXPORT, "full", EXPORT, DIGEST, 0, COMMIT))
                 .hasMessageContaining("bundleBytes");
         assertThatThrownBy(() -> new WorkerRequests.Exec(EXECUTION, COMMIT, "a\0b", 1))
                 .hasMessageContaining("command");

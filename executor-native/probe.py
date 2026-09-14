@@ -32,8 +32,10 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state', 'public-scope', 'admission'), default='all')
+    parser.add_argument('--process-case', choices=('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired'))
     args = parser.parse_args()
+    assert args.process_case is None or args.scenario == 'retained-process'
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
                                          (args.runtime, args.worker_source, args.tools, args.java)]
@@ -60,8 +62,10 @@ def main():
     process = None
     config_path = root / 'worker.json'
     worker_config = None
+    disk_mounted = False
+    disk_pool = root / 'copy-pool'
     evidence = []
-    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py'):
+    for name in ('worker.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -181,7 +185,7 @@ with socket.socket(socket.AF_UNIX) as connection:
                 if request['operation'] == 'kill-application':
                     assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted',
                                     'retained-produce-uncertain', 'retained-produce-beforepublish',
-                                    'retained-produce-afterpublish')
+                                    'retained-produce-afterpublish', 'retained-produce-discarding', 'retained-produce-expired')
                     assert killed_pid is None
                     killed_pid = int(run(['systemctl', 'show', '--value', '-p', 'MainPID', app_unit]))
                     assert killed_pid > 1 and Path(f'/proc/{killed_pid}/exe').resolve(strict=True) == java
@@ -221,9 +225,20 @@ with socket.socket(socket.AF_UNIX) as connection:
                 'full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits',
                 'member-projection-fetch-survives-website-shutdown-without-source-history',
                 'public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal'}
+        elif mode == 'admission':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'worker-capacity-refusal-is-actionable-and-retry-does-not-leak-a-copy'}
+        elif mode == 'public-scope':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'public-scope-real-projection-has-no-private-files-metadata-or-original-history',
+                'permission-increase-does-not-expand-existing-public-worker-files',
+                'public-artifact-delivery-rechecks-publication-before-returning-bytes',
+                'withdrawn-public-projection-denies-further-worker-output'}
         elif mode == 'ephemeral-lifecycle':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy'}
+        elif mode in ('account-state-produce', 'account-state-consume'):
+            assert any(item.get('test') == mode and item.get('result') == 'PASS' for item in parsed)
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -269,6 +284,17 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
             'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
             'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
+        if args.scenario in ('ephemeral-lifecycle', 'account-state', 'retained-process', 'public-scope', 'admission'):
+            assert args.fixture_parent == '/var/lib', 'Disk fixture must not allocate its image in tmpfs'
+            disk_pool.mkdir()
+            disk_image = root / 'copies.img'
+            run(['fallocate', '-l', '512M', str(disk_image)])
+            run(['mkfs.xfs', '-f', str(disk_image)])
+            run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(disk_image), str(disk_pool)])
+            disk_mounted = True
+            worker_config.pop('checkpointRoot')
+            worker_config.update(copyRoot=str(disk_pool), poolBytes=512*1024*1024)
+            run(['install', '-d', '-m', '700', '-o', app_user, '-g', app_user, str(disk_pool / 'metadata')])
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'
@@ -289,15 +315,21 @@ with socket.socket(socket.AF_UNIX) as connection:
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
             'publicFixture': str(root / 'public-fixture'),
+            'accountMetadata': str(disk_pool / 'metadata'),
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         if args.scenario == 'retained-process':
-            for case in ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish'):
+            cases = (args.process_case,) if args.process_case else ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired')
+            for case in cases:
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:
-            execute_java('main' if args.scenario == 'all' else args.scenario)
+            if args.scenario in ('ephemeral-lifecycle', 'account-state'):
+                execute_java('account-state-produce')
+                execute_java('account-state-consume')
+            if args.scenario != 'account-state':
+                execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
             expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
             assert str(uuid.UUID(expired)) == expired
@@ -324,7 +356,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointsSha256': digest(root / 'checkpoints.py'),
             'checkpointTreeSha256': digest(root / 'checkpoint_tree.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
-            'source': 'synthetic-only', 'scenario': args.scenario}), flush=True)
+            'source': 'synthetic-only', 'scenario': args.scenario, 'processCase': args.process_case}), flush=True)
     finally:
         try:
             diagnostic = root / 'initialization.json'
@@ -342,6 +374,9 @@ with socket.socket(socket.AF_UNIX) as connection:
                 cleanup = subprocess.run([sys.executable, str(root / 'worker.py'), '--config', str(config_path), '--cleanup'], capture_output=True, timeout=30)
                 sessions = root / 'runtime/sessions'
                 assert not sessions.exists() or not list(sessions.iterdir())
+                if disk_mounted:
+                    run(['umount', str(disk_pool)])
+                    disk_mounted = False
                 mounts = run(['findmnt', '-rn', '-o', 'TARGET']).splitlines()
                 assert not any(value == str(root) or value.startswith(str(root) + '/') for value in mounts)
             for user in reversed(created_users):

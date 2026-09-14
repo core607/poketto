@@ -36,7 +36,6 @@ final class WorkerRequests {
      */
     sealed interface Data
             permits ArtifactCreate,
-                    ActiveCheckpoint,
                     ArtifactRead,
                     ArtifactRemove,
                     BridgeComplete,
@@ -46,54 +45,15 @@ final class WorkerRequests {
                     CaptureRead,
                     CaptureRelease,
                     Close,
-                    Checkpoint,
-                    CheckpointReference,
+                    DiskCopy,
                     Exec,
                     MaterializeBegin,
                     MoveBegin,
                     Open,
                     Renew,
-                    Restore,
                     Revoke,
                     Transfer,
                     TransferChunk {}
-
-    record Checkpoint(String checkpointId, long expiresAt, String scope) implements Data {
-        Checkpoint {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "expiresAt");
-            scope = retainedScope(scope);
-        }
-    }
-
-    record ActiveCheckpoint(String checkpointId, long expiresAt, String scope, String executionId) implements Data {
-        ActiveCheckpoint {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "expiresAt");
-            scope = retainedScope(scope);
-            executionId = execution(executionId);
-        }
-    }
-
-    record CheckpointReference(String checkpointId, String sha256, long bytes) implements Data {
-        CheckpointReference {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            sha256 = hex(sha256, 64, "sha256");
-            inRange(bytes, 1, 1024L * 1024 * 1024, "bytes");
-        }
-    }
-
-    record Restore(String checkpointId, String sha256, long bytes, String commit, String scope, String previousLeaseId)
-            implements Data {
-        Restore {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            sha256 = hex(sha256, 64, "sha256");
-            inRange(bytes, 1, 1024L * 1024 * 1024, "bytes");
-            commit = hex(commit, 40, "commit");
-            scope = retainedScope(scope);
-            previousLeaseId = uuid(previousLeaseId, "previousLeaseId");
-        }
-    }
 
     private static String retainedScope(String value) {
         require("full".equals(value) || "public".equals(value), "scope", "must be full or public");
@@ -115,12 +75,23 @@ final class WorkerRequests {
         }
     }
 
-    record Open(UUID exportId, String bundleSha256, long bundleBytes, String commit) implements Data {
+    record Open(UUID copyId, String scope, UUID exportId, String bundleSha256, long bundleBytes, String commit)
+            implements Data {
         Open {
+            require(copyId != null, "copyId", "must be present");
+            scope = retainedScope(scope);
             require(exportId != null, "exportId", "must be present");
             hex(bundleSha256, 64, "bundleSha256");
             require(bundleBytes > 0, "bundleBytes", "must be positive");
             hex(commit, 40, "commit");
+        }
+    }
+
+    record DiskCopy(UUID copyId, String scope, String commit) implements Data {
+        DiskCopy {
+            require(copyId != null, "copyId", "must be present");
+            scope = retainedScope(scope);
+            commit = hex(commit, 40, "commit");
         }
     }
 
