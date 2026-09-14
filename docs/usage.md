@@ -223,7 +223,7 @@ What never reaches a record: request bodies, which carry repository tokens and p
 
 Changes to who can do what are recorded separately under the logger name `poketto.audit`, each naming an action such as `member.access.granted` or `key.revoked`, the actor who decided it, the subject, and the capabilities that actually apply afterwards. A suspension or downgrade is recorded as `member.access.revoked` rather than as a grant. Records are written after the change commits. Authentication outcomes are recorded there too, so a rejected credential is distinguishable from a rejected authorization. Login names, passwords, tokens and invitation codes never appear; a refusal carries this service's own fixed reason, not the submitted value.
 
-Set `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` on the application to emit one JSON line per record, with each field addressable and stack traces inside the record rather than spread over many lines. Leaving it unset keeps the readable console format for development.
+The supplied deployment emits one JSON record per line, with each field addressable and stack traces inside the record rather than spread over many lines. `POKETTO_LOG_FORMAT` selects the format and defaults to `ecs`; set it empty for the readable console format. Development without the deployment keeps the readable format by default.
 
 Every service writes to the host journal. A container log lives and dies with its container, and this deployment replaces containers on each verified commit, so the record of whatever went wrong just before would otherwise be gone. The journal also already holds the executor's own records, which puts the application and its sandbox on one timeline. Give journald an explicit budget, because its default is a share of the filesystem rather than a size you chose:
 
@@ -238,9 +238,9 @@ RateLimitIntervalSec=0
 sudo systemctl restart systemd-journald
 ```
 
-Rate limiting is disabled deliberately: a dropped record makes a reader conclude that nothing happened, which is worse than a slow query. Read one service with `journalctl CONTAINER_NAME=<container> -o cat`, which yields the record itself; add `| jq` when structured output is enabled. Select the security history with `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`.
+The gateway records what never reaches the application, and skips image addresses so a grant does not travel into the journal. Rate limiting is disabled deliberately: a dropped record makes a reader conclude that nothing happened, which is worse than a slow query. Read one service with `journalctl CONTAINER_NAME=<container> -o cat`, which yields the record itself; add `| jq` when structured output is enabled. Select the security history with `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`.
 
-An operator-owned Compose installation does not receive these files through image delivery. Applying them there means editing that installation's own Compose configuration and gateway file: set each service's logging driver to `journald`, add the gateway access log, and set the application's `LOGGING_STRUCTURED_FORMAT_CONSOLE`. Until that is done the service keeps running and keeps recording, in the readable format, into logs that a redeployment discards.
+An operator-owned Compose installation does not receive these files through image delivery. Applying them there means editing that installation's own Compose configuration and gateway file: set each service's logging driver to `journald`, set the application's `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`, and add the gateway access log together with the rule that skips image addresses, which authorize the image they name. Until that is done the service keeps running and keeps recording, in the readable format, into logs that a redeployment discards.
 
 See the [diagnostics record](../notes/implemented/2026-09-14-service-diagnostics.md) for what remains uncovered.
 

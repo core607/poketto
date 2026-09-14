@@ -29,6 +29,9 @@ services:
       POKETTO_REPOSITORY_USERNAME: "${POKETTO_REPOSITORY_USERNAME:?POKETTO_REPOSITORY_USERNAME is required}"
       POKETTO_REPOSITORY_PASSWORD: "${POKETTO_REPOSITORY_PASSWORD:?POKETTO_REPOSITORY_PASSWORD is required}"
       POKETTO_REPOSITORY_CREDENTIAL_KEY: "${POKETTO_REPOSITORY_CREDENTIAL_KEY:-}"
+      # One JSON record per line is the point of collecting them; a reader filters fields rather
+      # than parsing a sentence. Set POKETTO_LOG_FORMAT to empty for the readable console format.
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT:-ecs}"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError"
     ports:
       - "127.0.0.1:${POKETTO_HTTP_PORT:-8080}:8080"

@@ -14,6 +14,9 @@ DB_IMAGE="$(sed -n 's/^POKETTO_DB_IMAGE=//p' "$DEPLOY_DIR/.env.example" | tr -d 
 [ -n "$DB_IMAGE" ] || { echo "deployment example has no database image"; exit 1; }
 
 export POKETTO_DOCKER=docker POKETTO_CURL=curl POKETTO_SSH=ssh
+# The entrance requires a journald socket because every service logs through it. The suite
+# runs on a developer machine, so it points that check at a file it owns.
+export POKETTO_JOURNAL_SOCKET="$ROOT/journal.socket"
 export POKETTO_HEALTH_INTERVAL=0 POKETTO_MIN_FREE_MB=1 POKETTO_APP_UID="$(id -u)" POKETTO_GATEWAY_UID="$(id -u)"
 unset DOCKER_CONFIG POKETTO_DEPLOY_LOCK_FD POKETTO_DEPLOY_LOCK_HELD
 
@@ -22,6 +25,7 @@ setup_root() {
     rm -rf "$ROOT" "$FAKE_STATE"
     mkdir -p "$ROOT" "$FAKE_STATE"
     cp "$DEPLOY_DIR/compose.yaml" "$DEPLOY_DIR/compose.executor.yaml" "$DEPLOY_DIR/Caddyfile" "$DEPLOY_DIR/deploy.sh" "$ROOT/"
+    : > "$ROOT/journal.socket"
     cat > "$ROOT/.env" <<EOF
 POKETTO_APP_IMAGE=$DIGEST_IMAGE
 POKETTO_APP_REVISION=$REVISION

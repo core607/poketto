@@ -58,6 +58,7 @@ CONFIG_KEYS=(
     POKETTO_EXECUTOR_MAX_SESSIONS POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS
     POKETTO_EXECUTOR_MAX_BUNDLE_BYTES POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
+    POKETTO_LOG_FORMAT
 )
 PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE)
 
@@ -390,6 +391,7 @@ load_configuration() {
     [ -f "$ROOT/Caddyfile" ] || fail "missing $ROOT/Caddyfile"
     check_proxy_network
     check_directories
+    check_journal
 
     HTTP_BIND=127.0.0.1
     HTTP_PORT="${POKETTO_HTTP_PORT:-8080}"
@@ -499,6 +501,13 @@ check_free_space() {
     free_mb="$(df -Pm -- "$path" | awk 'NR == 2 { print $4 }')"
     [ "${free_mb:-0}" -ge "$MIN_FREE_MB" ] \
         || fail "only ${free_mb:-0} MB free below $path; at least $MIN_FREE_MB MB is required"
+}
+
+# Every service logs through the host journal. Without a journald socket the container runtime
+# refuses to start them, so this is a precondition of the deployment rather than of one service.
+check_journal() {
+    local socket="${POKETTO_JOURNAL_SOCKET:-/run/systemd/journal/socket}"
+    [ -S "$socket" ] || [ -e "$socket" ]         || fail "the host has no journald socket at $socket; every service logs through it"
 }
 
 check_executor() {

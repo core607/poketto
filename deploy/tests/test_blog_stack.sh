@@ -80,8 +80,17 @@ grep -Fq 'respond 404' "$DEPLOY_DIR/Caddyfile"
 # A request the gateway refuses or serves itself reaches no application record, so the access log
 # is the only account of it. Every service writes to the journal, which outlives the containers
 # this deployment replaces on each verified commit.
-grep -Fq 'format json' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'output stderr' "$DEPLOY_DIR/Caddyfile"
+# An image address authorizes the image it names, so the gateway must not record those requests:
+# the application already records them with that segment collapsed. Credential headers go too.
+grep -Fq 'log_skip @grant' "$DEPLOY_DIR/Caddyfile"
+grep -Fq '/api/public/assets/*' "$DEPLOY_DIR/Caddyfile"
+grep -Fq 'request>headers>Cookie delete' "$DEPLOY_DIR/Caddyfile"
+grep -Fq 'request>headers>Authorization delete' "$DEPLOY_DIR/Caddyfile"
+# A documented setting that the configuration whitelist rejects cannot be applied.
+grep -Fq 'LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT:-ecs}"' "$DEPLOY_DIR/compose.yaml"
+grep -Fq 'POKETTO_LOG_FORMAT' "$DEPLOY_DIR/deploy.sh"
+grep -Fq '/run/systemd/journal/socket' "$DEPLOY_DIR/deploy.sh"
 if grep -q 'driver: json-file' "$DEPLOY_DIR/compose.yaml"; then
     echo "a service still logs to a driver that is discarded with its container"
     exit 1

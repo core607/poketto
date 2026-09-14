@@ -6,9 +6,26 @@
     # Spring records what reaches it; without this, a request refused or served by the gateway
     # itself left no trace at all. Caddy writes JSON to stderr, which the container log driver
     # carries to the same journal as everything else.
+    #
+    # An image address carries its own authorization, and the application removes that segment
+    # from its records for exactly that reason. Recording the request line here would hand the
+    # grant back to every reader of the journal, so these requests are left to the application,
+    # which already records them with the segment collapsed. Credential headers are dropped for
+    # the same reason: a session cookie or bearer token is the credential itself.
+    @grant path /api/public/assets/* /api/admin/workspaces/*/assets/images/*
+    log_skip @grant
+
     log {
         output stderr
-        format json
+        format filter {
+            wrap json
+            fields {
+                request>headers>Cookie delete
+                request>headers>Authorization delete
+                request>headers>Set-Cookie delete
+                resp_headers>Set-Cookie delete
+            }
+        }
     }
 
     @management path /actuator /actuator/*
