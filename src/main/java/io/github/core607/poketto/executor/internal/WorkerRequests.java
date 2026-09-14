@@ -115,8 +115,11 @@ final class WorkerRequests {
         }
     }
 
-    record Open(UUID exportId, String bundleSha256, long bundleBytes, String commit) implements Data {
+    record Open(UUID copyId, String scope, UUID exportId, String bundleSha256, long bundleBytes, String commit)
+            implements Data {
         Open {
+            require(copyId != null, "copyId", "must be present");
+            scope = retainedScope(scope);
             require(exportId != null, "exportId", "must be present");
             hex(bundleSha256, 64, "bundleSha256");
             require(bundleBytes > 0, "bundleBytes", "must be positive");

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import shutil
 import selectors
 import socket
 import socketserver
@@ -29,6 +30,7 @@ from materialize import IncomingFile, IncomingMove, MaterializationCapacity
 from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 from checkpoints import CheckpointError, CheckpointStore
+from disk_pool import DiskPool
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -104,6 +106,9 @@ class Session:
     incoming: object = None
     artifacts: object = None
     restored_from: str = ''
+    copy_id: str = ''
+    scope: str = 'full'
+    disk_lock: int = -1
 
 
 class Service:
@@ -123,6 +128,7 @@ class Service:
 
     def hello(self):
         return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
+                'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0,
                 'checkpointProtocol': 1 if self.config.get('checkpointRoot') else 0, 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
@@ -151,7 +157,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_ACTIVE', 'CHECKPOINT_REMOVE',
+        if p['operation'] not in ('OPEN', 'ATTACH', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_ACTIVE', 'CHECKPOINT_REMOVE',
                                   'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
                                   'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
                                   'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
@@ -241,7 +247,7 @@ class Service:
             if op != 'CLOSE':
                 self.authorized(p)
             s = self.sessions.get(p['leaseId'])
-            if op in ('OPEN', 'RESTORE'):
+            if op in ('OPEN', 'ATTACH', 'RESTORE'):
                 if p['leaseId'] in self.closed_leases:
                     raise Rejected('SESSION_CLOSED')
                 self.validate_open(p, metadata)
@@ -250,6 +256,8 @@ class Service:
                 if sum(x.state != 'CLOSED' for x in self.sessions.values()) >= self.config['maxSessions']:
                     raise Rejected('SESSION_CAPACITY')
                 s = Session(p['leaseId'], self.identity(p), d['commit'], p['expiresAt'])
+                if op != 'RESTORE':
+                    s.copy_id, s.scope = d['copyId'], d['scope']
                 if op == 'RESTORE':
                     s.restored_from = d['checkpointId']
                 self.sessions[s.id] = s
@@ -300,6 +308,9 @@ class Service:
                 if op == 'OPEN':
                     self.backend.open(s, d)
                     result = None
+                elif op == 'ATTACH':
+                    self.backend.attach(s)
+                    result = None
                 elif op == 'RESTORE':
                     self.backend.restore(s, d)
                     result = None
@@ -337,11 +348,22 @@ class Service:
     def validate_open(self, p, metadata):
         data = p['data']
         if p['operation'] == 'OPEN':
-            if set(data) != {'exportId', 'bundleSha256', 'bundleBytes', 'commit'}:
+            if set(data) != {'copyId', 'scope', 'exportId', 'bundleSha256', 'bundleBytes', 'commit'}:
+                raise Rejected('INVALID_REQUEST')
+            identifier(data['copyId'])
+            if data['scope'] not in ('full', 'public'):
                 raise Rejected('INVALID_REQUEST')
             identifier(data['exportId'])
             hex_value(data['bundleSha256'], 64)
             integer(data['bundleBytes'], 1, self.config['maxBundleBytes'])
+        elif p['operation'] == 'ATTACH':
+            if not self.config.get('copyRoot'):
+                raise Rejected('COPY_UNAVAILABLE', 'NOT_CONFIGURED')
+            if set(data) != {'copyId', 'scope', 'commit'}:
+                raise Rejected('INVALID_REQUEST')
+            identifier(data['copyId'])
+            if data['scope'] not in ('full', 'public'):
+                raise Rejected('INVALID_REQUEST')
         else:
             if p['expiresAt'] <= self.clock():
                 raise Rejected('LEASE_EXPIRED')
@@ -760,6 +782,8 @@ def checked(args, **kwargs):
 
 
 class SystemdBackend:
+    persistent = False
+
     def __init__(self, config):
         self.c = config
         self.pool = None
@@ -798,6 +822,9 @@ class SystemdBackend:
         checked(['mount', '-t', 'tmpfs', '-o',
                  f"size={self.c['diskBytes']},nr_inodes={self.c['diskInodes']},mode=0750,nosuid,nodev",
                  'tmpfs', str(target)])
+        return self.prepare_files(s, target)
+
+    def prepare_files(self, s, target):
         os.chown(target, 0, self.user.pw_gid)
         bootstrap = target / 'bootstrap'
         bootstrap.mkdir(mode=0o555)
@@ -816,7 +843,9 @@ class SystemdBackend:
         # The untrusted account can replace only children, never the root mountpoint or records.
         for name in ('work', 'home', 'tmp'):
             path = target / name
-            path.mkdir(mode=0o700)
+            path.mkdir(mode=0o700, exist_ok=True)
+            if path.is_symlink() or not path.is_dir():
+                raise RuntimeError('Invalid copy directory')
             os.chown(path, self.user.pw_uid, self.user.pw_gid)
         s.bridge = LeaseBridge(target / 'bridge', self.user.pw_gid)
         s.artifacts = ArtifactStore(target)
@@ -861,7 +890,7 @@ class SystemdBackend:
             raise Rejected('INITIALIZATION_FAILED')
         # This immutable supervisor-owned export survives independently of work/repository/.git.
         # It is not granted to execute-mode sandboxes.
-        if self.checkpoints is None:
+        if self.checkpoints is None and not self.persistent:
             (target / 'snapshot.bundle').unlink()
 
     def collect_checkpoints(self):
@@ -1135,6 +1164,84 @@ class SystemdBackend:
             record.unlink()
 
 
+class DiskSystemdBackend(SystemdBackend):
+    """Execution leases mount disk copies; releasing a lease never deletes work."""
+    persistent = True
+
+    def __init__(self, config):
+        self.disks = DiskPool(config['copyRoot'], config['poolBytes'],
+                              config['diskBytes'], config['diskInodes'])
+        super().__init__(config)
+
+    def prepare(self, s):
+        self.pool.verify()
+        identity = (s.copy_id, s.identity[1], s.identity[2], s.scope, s.commit)
+        if not s.copy_id:
+            raise Rejected('INVALID_REQUEST')
+        source = (self.disks.reopen(*identity) if s.restored_from == 'disk'
+                  else self.disks.create(*identity))
+        lock = os.open(source / '.lease.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as busy:
+                raise Rejected('COPY_BUSY') from busy
+            # These trees belong to the expired execution lease. No copy command
+            # is running while its exclusive lease lock is held by this opener.
+            for name in ('bootstrap', 'bridge', 'artifacts', 'tmp'):
+                old = source / name
+                if old.is_symlink():
+                    raise RuntimeError('Invalid runtime directory')
+                if old.exists():
+                    shutil.rmtree(old)
+            target = self.mount_path(s)
+            target.mkdir(mode=0o750)
+            checked(['mount', '--bind', str(source), str(target)])
+            s.disk_lock = lock
+            return self.prepare_files(s, target)
+        except BaseException:
+            if s.disk_lock != lock:
+                os.close(lock)
+            raise
+
+    def attach(self, s):
+        s.restored_from = 'disk'
+        self.prepare(s)
+        target = self.mount_path(s)
+        if not (target / '.initialized').is_file():
+            raise Rejected('COPY_UNAVAILABLE', 'INITIALIZATION_INCOMPLETE')
+
+    def open(self, s, data):
+        super().open(s, data)
+        target = self.mount_path(s)
+        # Initialization is acknowledged only after the original copied tree is
+        # durable. The marker is supervisor-owned, outside the exposed work tree.
+        self.flush(s)
+        marker = target / '.initialized'
+        with marker.open('xb') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(b'1\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        self.disks._sync(target)
+
+    def flush(self, s):
+        checked(['sync', '-f', str(self.mount_path(s))])
+
+    def execute(self, s, data):
+        result = super().execute(s, data)
+        self.flush(s)
+        return result
+
+    def close(self, s):
+        super().close(s)
+        # A failed containment keeps the lock: another lease must not acquire a
+        # copy while descendants of its old command may still be running.
+        if s.disk_lock >= 0:
+            os.close(s.disk_lock)
+            s.disk_lock = -1
+
+
 def recv_exact(sock, count):
     result = bytearray()
     while len(result) < count:
@@ -1217,6 +1324,16 @@ def load_config(path):
         integer(c['minimumFreeBytes'], 0, 2**40)
         if c['maxRetainedBytes'] < c['maxCheckpointBytes']:
             raise ValueError('Aggregate checkpoint bound must cover one checkpoint')
+    if c.get('copyRoot'):
+        root = Path(c['copyRoot'])
+        runtime = Path(c['runtimeRoot'])
+        if (not root.is_absolute() or '..' in root.parts
+                or not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(root))
+                or root.is_relative_to(runtime) or runtime.is_relative_to(root)):
+            raise ValueError('Disk copies must be separate from disposable runtime storage')
+        integer(c['poolBytes'], 1, 2**40)
+        if c.get('checkpointRoot'):
+            raise ValueError('Disk copies replace archived worker checkpoints')
     return c
 
 
@@ -1228,7 +1345,7 @@ def main():
     if os.geteuid() != 0:
         raise SystemExit('The resource supervisor requires root; execution uses a separate account')
     config = load_config(args.config)
-    backend = SystemdBackend(config)
+    backend = DiskSystemdBackend(config) if config.get('copyRoot') else SystemdBackend(config)
     if args.cleanup:
         return
     # Cleanup precedes pool validation, so a broken installation cannot strand old trees.

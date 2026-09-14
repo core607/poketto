@@ -1022,7 +1022,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     session,
                     "OPEN",
                     new WorkerRequests.Open(
-                            export.exportId(), export.bundleSha256(), export.bundleBytes(), export.commit()),
+                            session.copyId,
+                            session.fullRead ? "full" : "public",
+                            export.exportId(),
+                            export.bundleSha256(),
+                            export.bundleBytes(),
+                            export.commit()),
                     openTimeout);
             while (true) {
                 requireOk(response, session);
