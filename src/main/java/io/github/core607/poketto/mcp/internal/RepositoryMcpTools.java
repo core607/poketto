@@ -125,7 +125,7 @@ final class RepositoryMcpTools {
         if (executors.getIfAvailable() != null) {
             tools.add(tool(
                     "repo_discard",
-                    "Permanently discard the exact retained working copy and its unsaved work. Supply its copyId as expectedCopyId and latest retention.generation as expectedGeneration. Busy or stale copies are refused. No command is executed and remote Git commits are not undone. DISCARDED or ABSENT confirms this owner has no recoverable copy at that ID; physical cleanup may finish later. After an unconfirmed response, retry only the same ID and generation. Requires current execution permission; no recovery or content-read permission is granted.",
+                    "Discard the exact working copy and its unsaved work. Supply its copyId as expectedCopyId. For a retained copy, also supply its latest retention.generation as expectedGeneration; omit generation for a non-retained copy. Busy or stale copies are refused. DISCARDED or ABSENT confirms the target is gone. Use new after this transport's live copy has been discarded. No command executes and remote Git commits are not undone. After an unconfirmed response, retry only the same ID and generation. Requires current execution permission and ownership of that copy.",
                     object(
                             Map.of(
                                     "expectedCopyId",
@@ -144,7 +144,7 @@ final class RepositoryMcpTools {
                                                     1,
                                                     "maximum",
                                                     RepositoryExecutor.MAX_GENERATION)),
-                            List.of("expectedCopyId", "expectedGeneration")),
+                            List.of("expectedCopyId")),
                     false,
                     true,
                     true,
@@ -487,9 +487,6 @@ final class RepositoryMcpTools {
     private McpSchema.CallToolResult discard(McpSyncServerExchange exchange, Map<String, Object> input) {
         fields(input, Set.of("expectedCopyId", "expectedGeneration"));
         RepositoryExecutor.CopyRequest copy = McpCopyAdmission.copyRequest(input);
-        if (copy.generation() == null) {
-            throw new IllegalArgumentException("Discard requires the expected generation");
-        }
         var request = new RepositoryExecutor.DiscardRequest(copy.id(), copy.generation());
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);

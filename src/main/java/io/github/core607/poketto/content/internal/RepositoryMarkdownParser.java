@@ -116,11 +116,11 @@ final class RepositoryMarkdownParser {
                 }
             }
         }
-        String route = RepositoryPathRules.validateRoute(
-                optionalText(metadata, "route").orElseGet(() -> RepositoryPathRules.route(path)));
-        if (RepositoryPathRules.folderPage(path) && !route.equals(RepositoryPathRules.route(path))) {
-            throw new IllegalArgumentException("folder landings must use their folder route");
-        }
+        // Folder identity follows its path, including after a move that preserves authored frontmatter.
+        String route = RepositoryPathRules.folderPage(path)
+                ? RepositoryPathRules.route(path)
+                : RepositoryPathRules.validateRoute(
+                        optionalText(metadata, "route").orElseGet(() -> RepositoryPathRules.route(path)));
         Optional<Instant> createdAt = date(metadata, "created_at");
         if (createdAt.isEmpty()) {
             createdAt = date(metadata, "date");

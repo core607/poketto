@@ -1,4 +1,4 @@
-import { articles } from "../../lib/public-api";
+import { siteSearch } from "../../lib/public-api";
 import { ArticleList } from "../../components/articles";
 import { pageOffset } from "../../lib/pagination";
 export const metadata = { title: "搜索" };
@@ -15,7 +15,7 @@ export default async function Search({
   const tooLong = query.length > 200;
   const page =
     query && !tooLong
-      ? await articles({ query, offset: pageOffset(offset), limit: "12" })
+      ? await siteSearch({ query, offset: pageOffset(offset), limit: "12" })
       : null;
   return (
     <div className="page-shell">
@@ -47,10 +47,17 @@ export default async function Search({
           搜索内容过长，请缩短后再试。
         </p>
       )}
-      <p className="muted search-help">在公开文章中按原文匹配。</p>
+      <p className="muted search-help">在所有已开启网站的空间中按原文匹配。</p>
       {page && (
         <ArticleList
-          page={page}
+          page={{
+            ...page,
+            items: page.items.map(({ space, spaceName, document }) => ({
+              ...document,
+              space,
+              spaceName,
+            })),
+          }}
           base="/search"
           parameters={{ query }}
           searchQuery={query}

@@ -390,8 +390,9 @@ class RepositoryContentReaderTests {
                 .isEqualTo("Real title");
         assertThatThrownBy(() -> parser.parse("note.md", "---\ntitle: one\ntitle: two\n---\nBody"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> parser.parse("index.md", "---\nroute: /elsewhere\n---\n# Folder"))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(parser.parse("index.md", "---\nroute: /elsewhere\n---\n# Folder")
+                        .route())
+                .isEqualTo("/");
     }
 
     @Test

@@ -875,6 +875,110 @@ class WorkerSocketTests {
         }
     }
 
+    @Test
+    void nonRetainedDiscardKeepsOwnershipAndRequiresConfirmedContainment() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "discard",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            var request = new RepositoryExecutor.DiscardRequest(first.copyId(), null);
+            assertThat(executor.discard(principal(), WORKSPACE, request, new Cancellation())
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.ABSENT);
+            assertThat(executor.discard(actor, WorkspaceId.random(), request, new Cancellation())
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.ABSENT);
+            assertThat(peer.operations("CLOSE")).isEmpty();
+            peer.dropClose = true;
+            assertThatThrownBy(() -> executor.discard(actor, WORKSPACE, request, new Cancellation()))
+                    .isInstanceOf(ExecutionAdmissionException.class);
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            "discard",
+                            new RepositoryExecutor.CopyRequest("new", null, false),
+                            Optional.empty(),
+                            "must not run",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOf(SessionReplacedException.class);
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            peer.dropClose = false;
+            long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+            while (true) {
+                try {
+                    assertThat(executor.discard(actor, WORKSPACE, request, new Cancellation())
+                                    .status())
+                            .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+                    break;
+                } catch (ExecutionAdmissionException pending) {
+                    if (System.nanoTime() >= deadline) {
+                        throw pending;
+                    }
+                    Thread.sleep(20);
+                }
+            }
+            assertThat(executor.discard(actor, WORKSPACE, request, new Cancellation())
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.ABSENT);
+        }
+    }
+
+    @Test
+    void nonRetainedDiscardRefusesAnActiveCommand() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "busy-discard",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            peer.holdExecReply = true;
+            var running = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "busy-discard",
+                    Optional.empty(),
+                    "held",
+                    Duration.ofSeconds(5),
+                    new Cancellation()));
+            try {
+                long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+                while (peer.operations("EXEC").size() < 2 && System.nanoTime() < deadline) {
+                    Thread.sleep(10);
+                }
+                assertThat(peer.operations("EXEC")).hasSize(2);
+                assertThatThrownBy(() -> executor.discard(
+                                actor,
+                                WORKSPACE,
+                                new RepositoryExecutor.DiscardRequest(first.copyId(), null),
+                                new Cancellation()))
+                        .isInstanceOfSatisfying(
+                                ExecutionAdmissionException.class,
+                                failure -> assertThat(failure.reason())
+                                        .isEqualTo(ExecutionAdmissionException.Reason.BUSY));
+                assertThat(peer.operations("CLOSE")).isEmpty();
+            } finally {
+                peer.execReplyRelease.countDown();
+            }
+            assertThat(running.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+        }
+    }
+
     private static AuthService fullAuth() {
         AuthService auth = mock(AuthService.class);
         when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))

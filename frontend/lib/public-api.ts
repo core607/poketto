@@ -1,4 +1,10 @@
-import type { Article, ArticlePage, TagPage, DiscoveryPage } from "./types";
+import type {
+  Article,
+  ArticlePage,
+  TagPage,
+  DiscoveryPage,
+  SiteSearchPage,
+} from "./types";
 import { cache } from "react";
 
 export class PublicApiError extends Error {
@@ -24,6 +30,11 @@ async function get<T>(path: string): Promise<T> {
 export function articles(parameters: Record<string, string> = {}) {
   return get<ArticlePage>(
     "/api/public/documents?" + new URLSearchParams(parameters),
+  );
+}
+export function siteSearch(parameters: Record<string, string>) {
+  return get<SiteSearchPage>(
+    "/api/public/search?" + new URLSearchParams(parameters),
   );
 }
 export function discovery(parameters: Record<string, string> = {}) {
@@ -88,4 +99,15 @@ export function publicOrigin() {
   if (!/^https?:$/.test(url.protocol) || url.username || url.password)
     throw new PublicApiError(503);
   return url.origin;
+}
+
+export function sitemapSpaces() {
+  return get<string[]>("/api/public/sitemap");
+}
+
+export function spaceSitemap(slug: string) {
+  return get<{
+    slug: string;
+    pages: { route: string; updatedAt: string }[];
+  }>(`/api/public/spaces/${encodeURIComponent(slug)}/sitemap`);
 }

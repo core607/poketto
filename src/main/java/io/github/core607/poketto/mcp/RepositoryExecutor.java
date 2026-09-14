@@ -37,12 +37,12 @@ public interface RepositoryExecutor {
         }
     }
 
-    record DiscardRequest(String id, long generation) {
+    record DiscardRequest(String id, Long generation) {
         public DiscardRequest {
             if (NEW_COPY.equals(requireCopyId(id))) {
                 throw new IllegalArgumentException("Discard requires an existing copy ID");
             }
-            if (generation < 1 || generation > MAX_GENERATION) {
+            if (generation != null && (generation < 1 || generation > MAX_GENERATION)) {
                 throw new IllegalArgumentException("Discard requires a positive safe generation");
             }
         }
@@ -56,7 +56,8 @@ public interface RepositoryExecutor {
     record DiscardResult(String copyId, DiscardStatus status) {}
 
     /**
-     * Discards only this subject's exact retained copy after containing its writer. Current execution
+     * Discards only this subject's exact copy after containing its writer. Non-retained copies omit
+     * generation; retained copies require their last observed generation. Current execution
      * permission is required, but no content is returned and private-read/publication grants need not
      * survive. Expired records may be discarded. Busy or stale writers prevent deletion. ABSENT is
      * idempotent and reveals no other owner's copy. Remote Git writes are never undone. Physical

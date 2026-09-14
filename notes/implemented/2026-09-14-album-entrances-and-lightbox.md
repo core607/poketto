@@ -14,6 +14,10 @@ The [thumbnail delivery record](2026-09-14-album-thumbnails.md) owns the public 
 
 ## Alternatives and verification
 
+The [path-derived folder route rule](2026-09-14-folder-route-moves.md)
+addresses stale route overrides during moves while preserving this directory
+identity and all authored source bytes.
+
 Publishing both filenames at the same folder route would either duplicate the landing or make both fail collision validation. Renaming authored files would alter repository content unnecessarily. Opening images in separate tabs would lose sequential browsing and make keyboard return less predictable.
 
 Real PostgreSQL and repository integration covers README-only folders, index precedence, an excluded index, relative folder links and untouched raw source. The production frontend, Spring, PostgreSQL and Caddy fixture demonstrates a named folder gallery, previous/next by mouse and keyboard, focus containment, Escape and Close return, a delivered image's decode failure, and a 390-pixel mobile layout without horizontal overflow. Native Linux storage and asset regressions preserve public withdrawal and private-image authorization. These local checks do not prove production HTTPS rollout or thumbnail delivery.

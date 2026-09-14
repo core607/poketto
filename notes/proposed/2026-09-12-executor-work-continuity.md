@@ -106,6 +106,11 @@ The [native discard evidence](../../executor-native/evidence/2026-09-13-retained
 
 ## Resource and admission changes
 
+[Command timeout and explicit disposal](../implemented/2026-09-14-ephemeral-copy-lifecycle.md)
+implements live-copy preservation after a confirmed command timeout and explicit
+non-retained disposal. It does not implement durable recovery or change the
+remaining resource-exhaustion, expiry and restart behavior below.
+
 Move retained work off aggregate tmpfs into quota-controlled disk storage, leaving temporary command files bounded and disposable. Reserve host disk headroom and bound I/O as well as bytes. Apply resource accounting to each copy from its creation; moving a process into another cgroup does not transfer memory charged while populating its files.
 
 Timeout and command resource exhaustion terminate the command group and preserve recoverable state when the worker can verify containment and storage integrity. Worker or pool failure follows the interrupted-command contract; it cannot report an intact live copy without verification. Cancellation stops execution; credential revocation additionally prevents recovery access. Cleanup must not erase the last acknowledged retained work as a side effect of releasing runtime capacity.

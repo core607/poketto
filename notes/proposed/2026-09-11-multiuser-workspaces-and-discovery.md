@@ -36,6 +36,10 @@ Account identity is available independently of workspace access. Private HTTP op
 
 The root site becomes cross-workspace public discovery. Space websites use `/s/{slug}`; existing published default-space article URLs redirect to their canonical new routes. Both logged-in and anonymous visitors see public discovery; accounts additionally have a My spaces entrance. Cards identify their author display name, space, and collection without exposing private account fields.
 
+The [public sitemap contract](../implemented/2026-09-14-public-sitemaps.md) specifies complete
+enumeration of canonical space URLs and robots.txt discovery independently of
+sampled browsing batches.
+
 Discovery mixes public article, album, and collection cards. It does not turn every raw media file into a post. Random order is stable within a browsing batch, including pagination and return navigation; an explicit reshuffle starts a new batch. Publication withdrawal overrides old batches. Discovery uses bounded verified public data, not a synchronous repository fetch for every space on each request.
 
 Albums and collections have stable navigation entrances. Folder landing detection prefers `index.md`, with `README.md` when no index exists; two files in one folder must not produce duplicate landing cards. Existing authored text remains intact. Album thumbnails use a disposable cache keyed by workspace, immutable media version, and representation; originals remain authoritative. A lightbox supports previous/next, Escape, and focus restoration. Album and collection names are content-derived, never hard-coded to demonstration data.
@@ -47,6 +51,8 @@ Summaries come from parsed visible Markdown text before truncation. Link labels 
 Reading-text extraction is shared by public and authorized management search. CommonMark nodes and the table, strikethrough, task-list and footnote extensions retain authored prose, code and image descriptions without interpreting link destinations as text. Only reachable footnote definitions participate, in reference order. Text normalization and summary generation are transient reads; they never rewrite repository content. Summary suppression does not itself suppress the separately rendered article heading; that remains a frontend reading requirement.
 
 Site search covers enabled public spaces; space search fixes one space. Authenticated management search fixes both a space and the caller's current authorization. Literal visible-text matching is retained without semantic search. Titles and snippets highlight matches using escaped text nodes and `mark`, while article bodies retain normal reading. Snippets surround visible matches rather than raw URL or Markdown bytes.
+
+The [site search decision](../implemented/2026-09-14-public-site-search.md) implements complete bounded search across enabled public spaces, with space-specific result identity and preserved site-search return state.
 
 Search query, pagination, and space scope live in URLs. Browser-history-local state preserves the result anchor and scroll offset. Articles entered from search offer Return to results; direct entries use their space or collection. Browser Back must continue to work. Raw or cross-origin return URLs are not trusted navigation targets.
 
