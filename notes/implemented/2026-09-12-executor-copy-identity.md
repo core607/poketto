@@ -2,6 +2,10 @@
 
 Date: 2026-09-12
 
+[Account working copies](../proposed/2026-09-14-account-working-copies.md) proposes
+replacing transport ownership with account-owned disk copies while preserving
+explicit replacement detection and authorization boundaries.
+
 ## Decision
 
 Every `repo_exec` request includes `expectedCopyId`. The literal `new` explicitly admits a fresh copy when this MCP transport has no live or unconfirmed copy. Other values must match the opaque UUID returned as `copyId` by an earlier command result. `poketto status` returns the same ID. The ID is separate from the pinned Git commit, worker lease and transport session.
