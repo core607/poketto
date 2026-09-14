@@ -161,15 +161,13 @@ JSON keys. Every payload contains exactly these fields:
 | `leaseId` | Application-generated opaque UUID |
 | `data` | Operation-specific object |
 
+The application sends the following operations for account disk copies.
+
 | Operation | Exact `data` fields and behavior |
 |---|---|
 | `OPEN` | `copyId` UUID, `scope` full or public, `exportId` UUID, `bundleSha256` 64 lowercase hex, `bundleBytes` positive integer, `commit` 40 lowercase hex. Blocks until READY or failure. Initialization accepts concurrent RENEW, but has its own hard timeout. |
 | `ATTACH` | `copyId`, `scope`, original `commit`. Claims an existing disk copy under a new execution lease after checking the signed account/workspace, pinned baseline and exclusive copy lock. Does not clone or replace files. |
 | `DISCARD` | `copyId`, `scope`, original `commit`. Deletes an owner-matched disk copy only after all execution leases release its lock. Returns DISCARDED or ABSENT; an active copy returns COPY_BUSY. |
-| `CHECKPOINT` | `checkpointId` UUID, `expiresAt` positive epoch milliseconds within retention, `scope` full or public. Requires READY; durably captures the work tree and trusted original bundle. |
-| `CHECKPOINT_ACTIVE` | `checkpointId`, `expiresAt`, `scope` and matching `executionId`. Requires RUNNING; freezes the cgroup during capture. Returns a checkpoint descriptor and RUNNING, never a command completion. |
-| `CHECKPOINT_REMOVE` | `checkpointId`, `sha256` 64 lowercase hex and `bytes` within the configured checkpoint limit. Verifies the immutable reference and signed owner before removal. |
-| `RESTORE` | `checkpointId`, `sha256`, `bytes`, original `commit`, fixed `scope` and `previousLeaseId` UUID. Uses a new signed lease, contains old writers, and restores verified bytes into its fresh private mount. |
 | `EXEC` | `executionId` UUID, `commit`, `command` nonempty UTF-8 text up to 64 KiB without NUL, `timeoutMillis` within worker bounds. Requires READY and the pinned commit; blocks until the entire process tree terminates. |
 | `RENEW` | Empty object. Extends an unexpired INITIALIZING, READY, or RUNNING lease to `expiresAt`. Other operations do not renew it. |
 | `BRIDGE_POLL` | Empty object. Claims one CLI request, or returns null after a bounded wait; includes the current `executionId`. Contention with input cleanup or another poll returns no request without cancelling the lease. Does not acquire the command operation lock. |

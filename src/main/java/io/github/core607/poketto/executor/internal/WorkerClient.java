@@ -55,19 +55,8 @@ final class WorkerClient {
     }
 
     Hello hello() {
-        return hello(false);
-    }
-
-    Hello retainedHello() {
-        return hello(true);
-    }
-
-    private Hello hello(boolean requireRetention) {
         JsonNode response = exchange(new WorkerRequests.Hello(), Duration.ofSeconds(3));
         try {
-            if (requireRetention) {
-                WorkerResponses.read(response, WorkerResponses.RetentionHandshake.class);
-            }
             var handshake = WorkerResponses.read(response, WorkerResponses.Handshake.class);
             return new Hello(handshake.bootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
         } catch (WorkerUnavailableException rejected) {

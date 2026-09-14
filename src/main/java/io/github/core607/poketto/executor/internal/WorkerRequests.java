@@ -36,7 +36,6 @@ final class WorkerRequests {
      */
     sealed interface Data
             permits ArtifactCreate,
-                    ActiveCheckpoint,
                     ArtifactRead,
                     ArtifactRemove,
                     BridgeComplete,
@@ -47,54 +46,14 @@ final class WorkerRequests {
                     CaptureRelease,
                     Close,
                     DiskCopy,
-                    Checkpoint,
-                    CheckpointReference,
                     Exec,
                     MaterializeBegin,
                     MoveBegin,
                     Open,
                     Renew,
-                    Restore,
                     Revoke,
                     Transfer,
                     TransferChunk {}
-
-    record Checkpoint(String checkpointId, long expiresAt, String scope) implements Data {
-        Checkpoint {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            inRange(expiresAt, 1, ProtocolValues.MAX_SAFE_INTEGER, "expiresAt");
-            scope = retainedScope(scope);
-        }
-    }
-
-    record ActiveCheckpoint(String checkpointId, long expiresAt, String scope, String executionId) implements Data {
-        ActiveCheckpoint {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            inRange(expiresAt, 1, ProtocolValues.MAX_SAFE_INTEGER, "expiresAt");
-            scope = retainedScope(scope);
-            executionId = execution(executionId);
-        }
-    }
-
-    record CheckpointReference(String checkpointId, String sha256, long bytes) implements Data {
-        CheckpointReference {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            sha256 = hex(sha256, 64, "sha256");
-            inRange(bytes, 1, 1024L * 1024 * 1024, "bytes");
-        }
-    }
-
-    record Restore(String checkpointId, String sha256, long bytes, String commit, String scope, String previousLeaseId)
-            implements Data {
-        Restore {
-            checkpointId = uuid(checkpointId, "checkpointId");
-            sha256 = hex(sha256, 64, "sha256");
-            inRange(bytes, 1, 1024L * 1024 * 1024, "bytes");
-            commit = hex(commit, 40, "commit");
-            scope = retainedScope(scope);
-            previousLeaseId = uuid(previousLeaseId, "previousLeaseId");
-        }
-    }
 
     private static String retainedScope(String value) {
         require("full".equals(value) || "public".equals(value), "scope", "must be full or public");
