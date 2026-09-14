@@ -72,6 +72,45 @@ test("search article cards highlight and carry only structured return fields", (
   assert.doesNotMatch(html, /<script/);
 });
 
+test("cross-space search cards keep duplicate routes and links scoped", () => {
+  const summary = (space: string, spaceName: string) => ({
+    space,
+    spaceName,
+    route: "/note",
+    title: `${spaceName} needle`,
+    authorName: `${spaceName} author`,
+    tags: ["tag"],
+    createdAt: "2026-09-14T00:00:00Z",
+    updatedAt: "2026-09-14T00:00:00Z",
+    snippet: `${spaceName} needle body`,
+  });
+  const html = renderToStaticMarkup(
+    <ArticleList
+      page={{
+        total: 2,
+        offset: 0,
+        limit: 12,
+        items: [summary("alpha", "Alpha"), summary("beta", "Beta")],
+      }}
+      base="/search"
+      parameters={{ query: "needle" }}
+      searchQuery="needle"
+    />,
+  );
+  assert.match(html, /id="search-result-alpha:%2Fnote"/);
+  assert.match(html, /id="search-result-beta:%2Fnote"/);
+  assert.match(
+    html,
+    /href="\/s\/alpha\/read\/note\?searchQuery=needle&amp;searchOffset=0&amp;searchScope=site"/,
+  );
+  assert.match(
+    html,
+    /href="\/s\/beta\/read\/note\?searchQuery=needle&amp;searchOffset=0&amp;searchScope=site"/,
+  );
+  assert.match(html, /href="\/s\/alpha\/tags\?tag=tag"/);
+  assert.match(html, /href="\/s\/beta\/tags\?tag=tag"/);
+});
+
 test("reading returns stay on the current scope and reject unstructured values", () => {
   const entry = uuid(1);
   const site = readingSearchReturn(

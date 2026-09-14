@@ -41,6 +41,12 @@ export type ArticlePage = Snapshot & {
   offset: number;
   limit: number;
 };
+export type SiteSearchPage = {
+  items: { space: string; spaceName: string; document: ArticleSummary }[];
+  total: number;
+  offset: number;
+  limit: number;
+};
 export type Article = Snapshot &
   Omit<ArticleSummary, "snippet"> & {
     body: string;
