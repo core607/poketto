@@ -14,10 +14,12 @@ cp -- "$source_dir/package.json" "$source_dir/package-lock.json" "$tools/"
 (
     cd -- "$tools"
     npm ci --ignore-scripts --no-audit --no-fund
-    apt download bubblewrap socat ripgrep
+    apt download bubblewrap socat ripgrep debianutils
     for package in ./*.deb; do
         dpkg-deb -x "$package" extracted
     done
+    # Avoid the host's /etc/alternatives indirection inside the sandbox.
+    ln -sfn which.debianutils extracted/usr/bin/which
 )
 chmod -R a+rX -- "$tools"
 printf 'Prepared disposable tools; run probe.py --tools %q as root.\n' "$tools"

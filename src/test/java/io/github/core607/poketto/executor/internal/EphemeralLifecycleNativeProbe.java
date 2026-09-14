@@ -30,6 +30,7 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
                 "new", "printf before > draft.txt; python3 -c \"open('scratch.bin','wb').write(bytes([0,255]))\"", 30);
         assertThat(first.exitCode()).isZero();
         assertThat(first.retention()).isNull();
+        verifyLocalEditing(first);
         RepositoryExecutor.ExecutionResult timedOut =
                 execute(first.copyId(), "printf partial >> draft.txt; (sleep 40; touch late.txt) & wait", 5);
         assertThat(timedOut.copyId()).isEqualTo(first.copyId());
@@ -43,6 +44,32 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
         assertThat(inspected.exitCode()).isZero();
         assertThat(inspected.commit()).isEqualTo(first.commit());
         discardAndReopen(first);
+    }
+
+    private void verifyLocalEditing(RepositoryExecutor.ExecutionResult first) {
+        RepositoryExecutor.ExecutionResult edited = execute(first.copyId(), """
+                set -eu
+                poketto create private/edit-check.md --text 'alpha beta'
+                poketto edit private/edit-check.md --old alpha --new changed
+                poketto edit private/edit-check.md --old beta --new other
+                test "$(cat private/edit-check.md)" = 'changed other'
+                if poketto edit private/edit-check.md --old alpha --new stale > /tmp/edit-result; then exit 91; fi
+                grep -q OLD_TEXT_NOT_FOUND /tmp/edit-result
+                if poketto create private/edit-check.md --text overwrite > /tmp/edit-result; then exit 92; fi
+                grep -q ALREADY_EXISTS /tmp/edit-result
+                test "$(cat private/edit-check.md)" = 'changed other'
+                poketto create private/ambiguous-check.md --text 'same same'
+                if poketto edit private/ambiguous-check.md --old same --new lost > /tmp/edit-result; then exit 93; fi
+                grep -q AMBIGUOUS_MATCH /tmp/edit-result
+                test "$(cat private/ambiguous-check.md)" = 'same same'
+                if poketto edit private/edit-check.md --old '' --new lost > /tmp/edit-result; then exit 94; fi
+                test "$(cat private/edit-check.md)" = 'changed other'
+                ! git cat-file -e HEAD:private/edit-check.md 2>/dev/null
+                """, 30);
+        assertThat(edited.exitCode())
+                .describedAs(edited.stdout() + edited.stderr())
+                .isZero();
+        assertThat(edited.commit()).isEqualTo(first.commit());
     }
 
     private void discardAndReopen(RepositoryExecutor.ExecutionResult first) {

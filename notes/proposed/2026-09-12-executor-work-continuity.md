@@ -2,6 +2,11 @@
 
 Date: 2026-09-12
 
+[Account working copies](2026-09-14-account-working-copies.md) defines the accepted
+replacement for transport ownership and the shared-copy alternative below. Its
+implementation must retain this record's acknowledged-work and uncertain-write
+guarantees; the proposed replacement is not shipped behavior.
+
 ## Contract and scope
 
 Work retained by a successfully acknowledged command must be recoverable. An interrupted command must explicitly report that it may have partially completed.
