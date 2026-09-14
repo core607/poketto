@@ -42,7 +42,7 @@ Set `poketto.executor.copies.metadata-root` to the application's private metadat
 
 Acknowledged full-read saves and moves advance local HEAD and the index before CLI success, leaving unselected working files in place. The signed BASELINE operation imports an incremental authoritative bundle and runs Git inside SRT. A missing prerequisite retries local installation with a full bundle; it never repeats a remote write. Local commit objects remain available through Git history, and distinct staged content is retained in a stash before the index is reset. The original export commit remains the lease identity, while `gitCommit` is the current installed baseline. Public copies cannot invoke BASELINE.
 
-`LOCAL_BASELINE_PENDING` means the remote result was retained but local Git installation did not finish. `poketto status` reports the acknowledged `baseCommit`, installed `gitCommit` and `localBaselinePending`; `poketto recover` finishes installation without republishing. A reopened lease reads its protected baseline marker. The application still validates save preconditions from its own authoritative baseline, not sandbox Git refs or index entries.
+`LOCAL_BASELINE_PENDING` means the remote result was retained but local Git installation did not finish. `poketto status` reports the acknowledged `baseCommit`, installed `gitCommit` and `localBaselinePending`; `poketto recover` finishes installation without republishing. A reopened lease reads its protected baseline marker and attempts pending installation once. A contained helper failure leaves the parent command and lease usable; subsequent inspection does not retry it on every call. Parent cancellation still stops the helper, and unconfirmed helper containment fences the lease. Temporary baseline bundles and pending markers are removed after failures and on attachment. The application still validates save preconditions from its own authoritative baseline, not sandbox Git refs or index entries.
 
 The private journal stores ownership, the pinned original commit, per-file baselines, pending remote-write receipts and the previous worker/application/grant/lease identity. Original text uses one immutable, checksummed archive bound to the copy; extending idle expiry does not rewrite it. Public copies retain their host-owned projection proof and cannot carry a private original archive. Journal publication requires file fsync, atomic rename and directory fsync. An unconfirmed publication cannot acknowledge a completed command.
 
@@ -378,7 +378,7 @@ the pinned SRT toolchain without installing global packages.
 sudo env PYTHONPATH=/temporary/probe/tools/python python3 /temporary/probe/native_probe.py --root /temporary/probe
 ```
 
-Only exit zero plus both `summary: PASS` and `cleanup: PASS` completes the probe.
+Add `--baseline-only` to focus on baseline advancement, helper timeout cleanup and parent cancellation with the real worker. Only exit zero plus both `summary: PASS` and `cleanup: PASS` completes the probe.
 The disposable source, tools, and logs remain for inspection; remove that exact
 verified probe directory after its mounts and units are gone. The checked-in
 [evidence](evidence.jsonl) records 19 synthetic checks, including supervisor and

@@ -87,6 +87,16 @@ def json_read(value):
                       parse_constant=lambda _: (_ for _ in ()).throw(Rejected('INVALID_REQUEST')))
 
 
+class CommandCancellation(threading.Event):
+    """Parent cancellation propagates; a helper timeout never cancels its parent."""
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+
+    def is_set(self):
+        return super().is_set() or self.parent.is_set()
+
+
 @dataclass
 class Session:
     id: str
@@ -109,6 +119,7 @@ class Session:
     scope: str = 'full'
     git_commit: str = ''
     disk_lock: int = -1
+    maintenance: 'Session | None' = None
 
 
 class Service:
@@ -824,29 +835,40 @@ class SystemdBackend:
 
     def baseline(self, s, data, active):
         target = self.mount_path(s)
-        with self.frozen(s) if active else nullcontext():
-            destination = target / 'baseline.bundle'
+        destination = target / 'baseline.bundle'
+        try:
+            with self.frozen(s) if active else nullcontext():
+                destination.unlink(missing_ok=True)
+                self.copy_export(s, data, destination)
+                helper = Session(s.id, s.identity, s.commit, s.deadline, cancelled=CommandCancellation(s.cancelled))
+                s.maintenance = helper
+                try:
+                    result = self.run(helper, {'mode': 'baseline', 'commit': data['commit']}, self.c['initTimeoutMillis'])
+                finally:
+                    if helper.unit:
+                        s.reason = 'sandbox_failed'
+                        s.cancelled.set()
+                    else:
+                        s.maintenance = None
+                if result['exitCode'] == 10 and result['terminationReason'] == 'normal':
+                    raise Rejected('BASELINE_MISSING_OBJECTS')
+                if result['exitCode'] != 0 or result['terminationReason'] != 'normal':
+                    raise Rejected('BASELINE_UNAVAILABLE')
+                marker = target / '.git-baseline.pending'
+                with marker.open('w') as stream:
+                    stream.write(data['commit'])
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                marker.replace(target / '.git-baseline')
+                directory = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+                s.git_commit = data['commit']
+        finally:
             destination.unlink(missing_ok=True)
-            self.copy_export(s, data, destination)
-            helper = Session(s.id, s.identity, s.commit, s.deadline, cancelled=s.cancelled)
-            result = self.run(helper, {'mode': 'baseline', 'commit': data['commit']}, self.c['initTimeoutMillis'])
-            if result['exitCode'] == 10 and result['terminationReason'] == 'normal':
-                raise Rejected('BASELINE_MISSING_OBJECTS')
-            if result['exitCode'] != 0 or result['terminationReason'] != 'normal':
-                raise Rejected('BASELINE_UNAVAILABLE')
-            marker = target / '.git-baseline.pending'
-            with marker.open('w') as stream:
-                stream.write(data['commit'])
-                stream.flush()
-                os.fsync(stream.fileno())
-            marker.replace(target / '.git-baseline')
-            directory = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-            s.git_commit = data['commit']
-            destination.unlink()
+            (target / '.git-baseline.pending').unlink(missing_ok=True)
 
     def execute(self, s, data):
         result = self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
@@ -1022,6 +1044,10 @@ class SystemdBackend:
 
     def close(self, s):
         with s.files_lock:
+            if s.maintenance is not None and s.maintenance.unit:
+                checked(['systemctl', 'stop', s.maintenance.unit])
+                self.assert_empty(s.maintenance.unit)
+                s.maintenance = None
             if s.bridge is not None:
                 s.bridge.close()
             if s.unit:
@@ -1086,6 +1112,8 @@ class DiskSystemdBackend(SystemdBackend):
                 raise Rejected('COPY_BUSY') from busy
             # These trees belong to the expired execution lease. No copy command
             # is running while its exclusive lease lock is held by this opener.
+            for name in ('baseline.bundle', '.git-baseline.pending'):
+                (source / name).unlink(missing_ok=True)
             for name in ('bootstrap', 'bridge', 'artifacts', 'tmp'):
                 old = source / name
                 if old.is_symlink():

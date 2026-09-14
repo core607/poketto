@@ -318,7 +318,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         "The requested commit differs from the working-copy baseline; synchronize explicitly");
             }
             authorize(session);
-            if (!session.ready) {
+            boolean opening = !session.ready;
+            if (opening) {
                 if (session.attaching) {
                     held.bind(writer(session));
                     session.accountRecord = held.record();
@@ -329,16 +330,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             held.bind(writer(session));
             session.saveState = held.state();
-            installGitBaseline(session, "");
+            if (opening) {
+                refreshGitOnOpen(session);
+            }
             UUID execution = UUID.randomUUID();
             held.begin(execution);
             session.accountRecord = held.record();
             attempted = true;
             JsonNode response = executeWithBridge(session, execution.toString(), command, timeout);
             if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
+                attempted = false;
                 held.refused();
                 session.accountRecord = held.record();
-                attempted = false;
                 throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, true);
             }
             requireOk(response, session);
@@ -1295,7 +1298,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (session.saveState.uncertain) {
                 return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
             }
-            installGitBaseline(session, executionId);
+            if (!installGitBaseline(session, executionId)) {
+                return baselinePending();
+            }
             var reply =
                     switch (operation) {
                         case "move" -> moveCommand(session, executionId, arguments);
@@ -1317,34 +1322,51 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return reply;
         }
         try {
-            installGitBaseline(session, executionId);
-            return reply;
+            return installGitBaseline(session, executionId) ? reply : baselinePending();
         } catch (WorkerUnavailableException | ContentRepositoryException pending) {
             log.warn("Acknowledged repository write awaits local Git baseline installation", pending);
-            return BridgeReplies.failed(
-                    "LOCAL_BASELINE_PENDING",
-                    "The remote result is retained. Run poketto recover to finish the local Git update; do not repeat the save.");
+            return baselinePending();
         }
     }
 
-    private void installGitBaseline(Session session, String executionId) {
+    private static BridgeReplies.Reply baselinePending() {
+        return BridgeReplies.failed(
+                "LOCAL_BASELINE_PENDING",
+                "The remote result is retained. Run poketto recover to finish the local Git update; do not repeat the save.");
+    }
+
+    private void refreshGitOnOpen(Session session) {
+        try {
+            installGitBaseline(session, "");
+        } catch (ContentRepositoryException pending) {
+            log.warn("Retained Git baseline export is unavailable; local inspection remains available", pending);
+        }
+    }
+
+    private boolean installGitBaseline(Session session, String executionId) {
         if (!session.fullRead || session.saveState.baseCommit.equals(session.gitCommit)) {
-            return;
+            return true;
         }
         authorize(session);
         var export = exports.update(
                 session.principal, session.key.workspace(), session.gitCommit, session.saveState.baseCommit);
-        if (!installGitExport(session, executionId, export)) {
+        GitInstallation installed = installGitExport(session, executionId, export);
+        if (installed == GitInstallation.MISSING_OBJECTS) {
             var complete = exports.create(
                     session.principal, session.key.workspace(), Optional.of(session.saveState.baseCommit));
-            if (!installGitExport(session, executionId, complete)) {
-                throw new WorkerUnavailableException(
-                        new IllegalStateException("Working-copy Git metadata cannot accept the authoritative export"));
-            }
+            installed = installGitExport(session, executionId, complete);
         }
+        return installed == GitInstallation.INSTALLED;
     }
 
-    private boolean installGitExport(Session session, String executionId, RepositorySnapshotExports.Export export) {
+    private enum GitInstallation {
+        INSTALLED,
+        MISSING_OBJECTS,
+        UNAVAILABLE
+    }
+
+    private GitInstallation installGitExport(
+            Session session, String executionId, RepositorySnapshotExports.Export export) {
         try {
             if (!export.commit().equals(session.saveState.baseCommit)) {
                 throw new WorkerUnavailableException(
@@ -1361,7 +1383,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             export.commit()),
                     openTimeout);
             if (WorkerResponses.refused(answer, "BASELINE_MISSING_OBJECTS")) {
-                return false;
+                return GitInstallation.MISSING_OBJECTS;
+            }
+            if (WorkerResponses.refused(answer, "BASELINE_UNAVAILABLE")) {
+                return GitInstallation.UNAVAILABLE;
             }
             requireOk(answer, session);
             String installed = WorkerResponses.read(answer, WorkerResponses.GitBaseline.class)
@@ -1372,9 +1397,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             authorize(session);
             session.gitCommit = installed;
-            return true;
+            return GitInstallation.INSTALLED;
         } finally {
-            exports.release(export.exportId());
+            try {
+                exports.release(export.exportId());
+            } catch (ContentRepositoryException cleanup) {
+                log.warn("Git export cleanup failed; the installation outcome is unchanged", cleanup);
+            }
         }
     }
 

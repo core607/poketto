@@ -77,6 +77,70 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void failedGitInstallationLeavesInspectionAvailableWithoutRetryingOnEachCommand() throws Exception {
+        var actor = principal();
+        var saves = mock(SelectedFileSaves.class);
+        var exports = exports();
+        String target = "d".repeat(40);
+        when(exports.update(any(), any(), any(), any()))
+                .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), target, "e".repeat(64), 128));
+        doAnswer(call -> {
+                    SelectedFileSaves.State state = call.getArgument(2);
+                    state.baseCommit = target;
+                    return BridgeReplies.succeeded(new BridgeReplies.Recovery(true));
+                })
+                .when(saves)
+                .recover(any(), any(), any());
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        saves,
+                        fullAuth(),
+                        exports,
+                        peer.client(),
+                        8,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.baselineUnavailable = true;
+            peer.bridgeCommand =
+                    Map.of("requestId", UUID.randomUUID().toString(), "operation", "recover", "arguments", Map.of());
+            var client = new RememberingExecutorClient();
+            var first = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "poketto recover",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(peer.operations("BRIDGE_COMPLETE")
+                            .getFirst()
+                            .path("data")
+                            .path("response")
+                            .path("code")
+                            .asString())
+                    .isEqualTo("LOCAL_BASELINE_PENDING");
+            peer.bridgeCommand = null;
+            var inspected = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "cat draft.md",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(inspected.copyId()).isEqualTo(first.copyId());
+            assertThat(inspected.retention().lastInterruptedCommand()).isNull();
+            assertThat(peer.operations("BASELINE")).hasSize(1);
+            assertThat(peer.operations("CLOSE")).isEmpty();
+        }
+    }
+
+    @Test
     void replayCapacityRefusesWithoutMarkingAnInterruptionAndNextLeaseKeepsTheCopy() throws Exception {
         var actor = principal();
         var client = new RememberingExecutorClient();
@@ -1307,6 +1371,7 @@ class WorkerSocketTests {
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile boolean executionCapacity;
+        private volatile boolean baselineUnavailable;
         private volatile String terminationReason = "normal";
         private volatile String attachRefusal;
         private volatile String stdout = "fixture result";
@@ -1468,6 +1533,15 @@ class WorkerSocketTests {
             response.put("gitCommit", COMMIT);
             response.put("state", "READY");
             switch (operation) {
+                case "BASELINE" -> {
+                    response.put("ok", !baselineUnavailable);
+                    if (baselineUnavailable) {
+                        response.put("code", "BASELINE_UNAVAILABLE");
+                    } else {
+                        response.put(
+                                "gitCommit", request.path("data").path("commit").stringValue());
+                    }
+                }
                 case "DISCARD" -> {
                     response.put("state", "DISCARDED");
                     response.put("copyId", request.path("data").path("copyId").stringValue());

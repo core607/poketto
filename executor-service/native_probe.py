@@ -37,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--tools', type=Path)
+    parser.add_argument('--baseline-only', action='store_true')
     args = parser.parse_args()
     assert os.geteuid() == 0
     root = args.root.resolve(strict=True)
@@ -145,6 +146,87 @@ def main():
         record = {'test': name, 'result': 'PASS', **data}
         evidence.append(record)
         print(json.dumps(record), flush=True)
+    def baseline_checks(resumed):
+        nonlocal boot
+        authority = root / 'baseline-source'
+        run(['git', 'clone', '--no-local', '--quiet', str(source), str(authority)])
+        (authority / 'article.md').write_text('saved through authority')
+        run(['git', '-C', str(authority), 'add', 'article.md'])
+        run(['git', '-C', str(authority), '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
+             'commit', '-qm', 'Acknowledged save'])
+        updated = run(['git', '-C', str(authority), 'rev-parse', 'HEAD'])
+        run(['git', '-C', str(authority), 'bundle', 'create', str(exports / 'updated.bundle'), 'HEAD'])
+        export = str(uuid.uuid4())
+        updated_bundle = exports / (export + '.bundle')
+        (exports / 'updated.bundle').rename(updated_bundle)
+        assert execute(resumed, 'printf "saved through authority" > article.md; printf unsaved > unselected.md')['exitCode'] == 0
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 4; git rev-parse HEAD; git status --porcelain; cat unselected.md', 15000, execution)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
+            if units:
+                break
+            time.sleep(.05)
+        updated_reply = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                            'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                            'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        assert updated_reply.get('ok') and updated_reply['gitCommit'] == updated, updated_reply
+        result = future.result(timeout=20)
+        assert result['exitCode'] == 0 and updated in result['stdout'] and 'unsaved' in result['stdout'], result
+        assert 'article.md' not in result['stdout'], result
+        resumed = attach(resumed)
+        assert updated in execute(resumed, 'git rev-parse HEAD')['stdout']
+        passed('authoritative-git-baseline-advances-inside-active-command-preserves-drafts-and-survives-reattach')
+        run(['systemctl', 'stop', supervisor])
+        config['initTimeoutMillis'] = 100
+        (root / 'config.json').write_text(json.dumps(config))
+        boot = start()['workerBootId']
+        resumed = attach(resumed)
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 3; printf parent-survived', 10000, execution)
+        wait_units(1)
+        refused = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                       'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                       'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        assert refused.get('code') == 'BASELINE_UNAVAILABLE', refused
+        result = future.result(timeout=15)
+        assert result['exitCode'] == 0 and result['stdout'] == 'parent-survived', result
+        lease_root = runtime / 'sessions' / resumed['leaseId']
+        assert not (lease_root / 'baseline.bundle').exists()
+        assert not (lease_root / '.git-baseline.pending').exists()
+        assert execute(resumed, 'cat unselected.md')['stdout'] == 'unsaved'
+        passed('baseline-helper-timeout-cleans-staging-and-preserves-the-parent-command-and-lease')
+        run(['systemctl', 'stop', supervisor])
+        config['initTimeoutMillis'] = 15000
+        (root / 'config.json').write_text(json.dumps(config))
+        boot = start()['workerBootId']
+        resumed = attach(resumed)
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 30', 30000, execution)
+        wait_units(1)
+        update = pool.submit(send, resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                             'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                             'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        wait_units(2)
+        assert send(resumed, 'CLOSE', {'reason': 'cancelled'}).get('ok')
+        future.result(timeout=15)
+        update.result(timeout=15)
+        closed = send(resumed, 'CLOSE')
+        assert closed.get('ok') and closed['state'] == 'CLOSED', closed
+        assert not (runtime / 'sessions' / resumed['leaseId']).exists()
+        passed('parent-cancellation-contains-the-active-baseline-helper-before-releasing-the-copy')
+        return resumed
+
+    def wait_units(count):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
+            if len(units.splitlines()) >= count:
+                return
+            time.sleep(.02)
+        raise AssertionError('Expected active command units were not observed')
+
     try:
         assert run(['findmnt', '-n', '-o', 'FSTYPE', '-T', str(root)]) != 'tmpfs'
         disk_pool.mkdir()
@@ -174,6 +256,12 @@ def main():
         assert supervisor_umask == '0077'
         started = time.monotonic()
         first, first_stop = new_session()
+        if args.baseline_only:
+            first_stop.set()
+            ended = baseline_checks(first)
+            assert send(ended, 'DISCARD', {'copyId': copy_ids[ended['leaseId']], 'scope': 'full', 'commit': commit}).get('ok')
+            print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'scenario': 'baseline-only', 'source': 'synthetic-only'}), flush=True)
+            return
         source_inodes = {(p.stat().st_dev, p.stat().st_ino) for p in (source / '.git/objects').rglob('*') if p.is_file()}
         copied_objects = runtime / 'sessions' / first['leaseId'] / 'work/repository/.git/objects'
         assert all((p.stat().st_dev, p.stat().st_ino) not in source_inodes for p in copied_objects.rglob('*') if p.is_file())
@@ -371,37 +459,7 @@ def main():
         resumed = attach(identity)
         result = execute(resumed, 'cat acknowledged-draft; git rev-parse HEAD')
         assert result['exitCode'] == 0 and 'disk-before-interruption' in result['stdout'] and commit in result['stdout'], result
-        # Advance synthetic authority only after the immutable-source probes have completed.
-        authority = root / 'baseline-source'
-        run(['git', 'clone', '--no-local', '--quiet', str(source), str(authority)])
-        (authority / 'article.md').write_text('saved through authority')
-        run(['git', '-C', str(authority), 'add', 'article.md'])
-        run(['git', '-C', str(authority), '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
-             'commit', '-qm', 'Acknowledged save'])
-        updated = run(['git', '-C', str(authority), 'rev-parse', 'HEAD'])
-        run(['git', '-C', str(authority), 'bundle', 'create', str(exports / 'updated.bundle'), 'HEAD'])
-        export = str(uuid.uuid4())
-        updated_bundle = exports / (export + '.bundle')
-        (exports / 'updated.bundle').rename(updated_bundle)
-        assert execute(resumed, 'printf "saved through authority" > article.md; printf unsaved > unselected.md')['exitCode'] == 0
-        execution = str(uuid.uuid4())
-        future = pool.submit(execute, resumed, 'sleep 4; git rev-parse HEAD; git status --porcelain; cat unselected.md', 15000, execution)
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
-            if units:
-                break
-            time.sleep(.05)
-        updated_reply = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
-                            'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
-                            'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
-        assert updated_reply.get('ok') and updated_reply['gitCommit'] == updated, updated_reply
-        result = future.result(timeout=20)
-        assert result['exitCode'] == 0 and updated in result['stdout'] and 'unsaved' in result['stdout'], result
-        assert 'article.md' not in result['stdout'], result
-        resumed = attach(resumed)
-        assert updated in execute(resumed, 'git rev-parse HEAD')['stdout']
-        passed('authoritative-git-baseline-advances-inside-active-command-preserves-drafts-and-survives-reattach')
+        resumed = baseline_checks(resumed)
         assert send(resumed, 'CLOSE').get('ok')
         removed = send(resumed, 'DISCARD', {'copyId': copy_ids[resumed['leaseId']], 'scope': 'full', 'commit': commit})
         assert removed.get('ok'), removed
