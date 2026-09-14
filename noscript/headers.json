@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "csp": [
+    "script-src 'none'; object-src 'none'"
+  ],
+  "scriptsPresent": true
+}
