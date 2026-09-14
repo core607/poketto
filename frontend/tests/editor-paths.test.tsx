@@ -30,6 +30,7 @@ test("editor inserts and previews new images relative to a new draft destination
     "document",
     "navigator",
     "HTMLElement",
+    "HTMLDialogElement",
     "HTMLInputElement",
     "FormData",
     "Event",
@@ -46,6 +47,7 @@ test("editor inserts and previews new images relative to a new draft destination
     document: window.document,
     navigator: window.navigator,
     HTMLElement: window.HTMLElement,
+    HTMLDialogElement: window.HTMLDialogElement,
     HTMLInputElement: window.HTMLInputElement,
     FormData: window.FormData,
     Event: window.Event,
@@ -155,6 +157,7 @@ test("editor inserts and previews new images relative to a new draft destination
             capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
           }}
           onDirtyChange={() => {}}
+          onNavigate={() => {}}
         />
       </ConfirmationProvider>,
     ),
@@ -169,12 +172,19 @@ test("editor inserts and previews new images relative to a new draft destination
   const openPath =
     openForm.querySelector<HTMLInputElement>('input[name="path"]');
   assert.ok(openPath);
-  openPath.value = "notes/a.md";
-  await act(async () => {
-    openForm.dispatchEvent(
-      new window.Event("submit", { bubbles: true, cancelable: true }),
+  const submitPath = async (path: string) => {
+    openPath.value = path;
+    await act(async () => {
+      openForm.dispatchEvent(
+        new window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    const discard = [...container.querySelectorAll("button")].find((item) =>
+      item.textContent?.trim().startsWith("放弃并"),
     );
-  });
+    if (discard) await act(async () => discard.click());
+  };
+  await submitPath("notes/a.md");
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 550));
   });
@@ -184,12 +194,7 @@ test("editor inserts and previews new images relative to a new draft destination
     "Reopening unchanged bytes must replace the cleared preview",
   );
   assert.doesNotMatch(container.textContent!, /正在更新预览/);
-  openPath.value = "private/denied.md";
-  await act(async () => {
-    openForm.dispatchEvent(
-      new window.Event("submit", { bubbles: true, cancelable: true }),
-    );
-  });
+  await submitPath("private/denied.md");
   assert.match(container.textContent!, /当前身份无权执行此操作/);
   assert.match(container.textContent!, /部分同目录图片未展示/);
   assert.doesNotMatch(container.textContent!, /正在更新预览/);

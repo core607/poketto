@@ -1,0 +1,739 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { Window } from "happy-dom";
+import { scopedRoot, workspaceId } from "./workspace-fixture";
+import {
+  navigationFolder,
+  privateCreationPath,
+  type ContentLocation,
+} from "../lib/repository-navigation";
+
+type RequestHandler = (url: URL, options?: RequestInit) => Promise<Response>;
+type Control = {
+  value: string;
+  dispatchEvent: (event: unknown) => boolean;
+};
+type Clickable = { click: () => void };
+type FormControl = Control & {
+  closest: (selector: string) => Control | null;
+};
+
+const owner = {
+  accountId: "owner",
+  workspaceId,
+  role: "OWNER" as const,
+  capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
+};
+
+function json(value: unknown) {
+  return Response.json(value);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function mountEditor(
+  url: string,
+  handler: RequestHandler,
+  onNavigate: (location: ContentLocation, replace?: boolean) => void,
+) {
+  const window = new Window({ url });
+  const globals = {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    HTMLElement: window.HTMLElement,
+    HTMLDialogElement: window.HTMLDialogElement,
+    HTMLInputElement: window.HTMLInputElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
+    FormData: window.FormData,
+    Event: window.Event,
+    IS_REACT_ACT_ENVIRONMENT: true,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
+    cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+  };
+  const previous = new Map(
+    Object.keys(globals).map((name) => [
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    ]),
+  );
+  for (const [name, value] of Object.entries(globals))
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (input, options) =>
+    handler(new URL(String(input), "http://localhost"), options);
+  const { act } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  const { Editor } = await import("../components/editor");
+  const { ConfirmationProvider } = await import("../components/confirmation");
+  const container = window.document.createElement("div");
+  window.document.body.append(container);
+  const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));
+  let mounted = true;
+  await act(async () =>
+    root.render(
+      <ConfirmationProvider>
+        <Editor
+          identity={owner}
+          onDirtyChange={() => {}}
+          onNavigate={onNavigate}
+        />
+      </ConfirmationProvider>,
+    ),
+  );
+  return {
+    window,
+    container,
+    act,
+    async cleanup() {
+      if (mounted) {
+        await act(async () => root.unmount());
+        mounted = false;
+      }
+      globalThis.fetch = previousFetch;
+      await window.happyDOM.close();
+      for (const [name, descriptor] of previous) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else Reflect.deleteProperty(globalThis, name);
+      }
+    },
+    async unmount() {
+      if (!mounted) return;
+      await act(async () => root.unmount());
+      mounted = false;
+    },
+  };
+}
+
+async function settle(act: (callback: () => unknown) => Promise<unknown>) {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+function directoryResponse(
+  path: string,
+  entries: { path: string; kind: "FILE" | "DIRECTORY" }[],
+  expectedAbsence = false,
+  commit = "before",
+) {
+  return json({
+    commit,
+    path,
+    expectedAbsence,
+    entries,
+    nextOffset: null,
+  });
+}
+
+test("folder navigation preserves a dirty draft and reports folder separately from path", async (t) => {
+  const navigations: { location: ContentLocation; replace?: boolean }[] = [];
+  const editor = await mountEditor(
+    "http://localhost/admin?path=public%2Fnotes%2Fexisting.md&folder=public%2Fnotes",
+    async (url) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory")) {
+        const path = url.searchParams.get("path") ?? "";
+        return path === ""
+          ? directoryResponse(path, [
+              { path: "public", kind: "DIRECTORY" },
+              { path: "private", kind: "DIRECTORY" },
+            ])
+          : path === "public"
+            ? directoryResponse(path, [
+                { path: "public/notes", kind: "DIRECTORY" },
+              ])
+            : directoryResponse(path, [
+                { path: "public/notes/existing.md", kind: "FILE" },
+              ]);
+      }
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: "public/notes/existing.md",
+          source: "# Existing",
+          revision: "revision",
+          commit: "before",
+          expectedAbsence: false,
+          publicScope: true,
+          diagnostics: [],
+        });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({
+          body: "# Existing",
+          images: {},
+          galleryStatus: "COMPLETE",
+        });
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    (location, replace) => navigations.push({ location, replace }),
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  navigations.length = 0;
+  const textarea = editor.container.querySelector("textarea") as Control | null;
+  assert.ok(textarea);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLTextAreaElement.prototype,
+    "value",
+  )!.set!.call(textarea, "# Unsaved draft");
+  await editor.act(async () =>
+    textarea.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
+  );
+  const publicSummary = [...editor.container.querySelectorAll("summary")].find(
+    (item) => item.textContent?.trim() === "public",
+  );
+  assert.ok(publicSummary);
+  await editor.act(async () => publicSummary.click());
+  assert.equal(textarea.value, "# Unsaved draft");
+  assert.deepEqual(navigations, [
+    {
+      location: {
+        folder: "public",
+        path: "public/notes/existing.md",
+      },
+      replace: false,
+    },
+  ]);
+  assert.equal(editor.container.querySelector("dialog[open]"), null);
+});
+
+test("creation paths keep the selected category under private content", () => {
+  assert.equal(navigationFolder("public/notes/"), "public/notes");
+  assert.equal(
+    privateCreationPath("public/notes", "new note", "note"),
+    "private/notes/new note.md",
+  );
+  assert.equal(
+    privateCreationPath("public/notes", "travel", "folder"),
+    "private/notes/travel/index.md",
+  );
+  assert.equal(
+    privateCreationPath("private/notes", "already.md", "note"),
+    "private/notes/already.md",
+  );
+  assert.throws(
+    () => privateCreationPath("public/notes", "../escape", "note"),
+    /路径分隔符或控制字符/,
+  );
+});
+
+test("creation prepares private folder drafts, saves index.md explicitly, and rejects duplicates", async (t) => {
+  const navigations: ContentLocation[] = [];
+  const patches: { path: string; body: string }[] = [];
+  const editor = await mountEditor(
+    "http://localhost/admin?tab=content&folder=public%2Fnotes",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory")) {
+        const path = url.searchParams.get("path") ?? "";
+        return directoryResponse(path, [], path === "private/notes/travel");
+      }
+      if (url.pathname.endsWith("/repository/file")) {
+        const path = url.searchParams.get("path");
+        if (path?.endsWith("/existing.md"))
+          return json({
+            path,
+            source: "# Existing",
+            revision: "revision",
+            commit: "before",
+            expectedAbsence: false,
+            publicScope: false,
+            diagnostics: [],
+          });
+        return json({
+          path,
+          source: null,
+          revision: null,
+          commit: "before",
+          expectedAbsence: true,
+          publicScope: false,
+          diagnostics: [],
+        });
+      }
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "", images: {}, galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/repository/patch")) {
+        const body = JSON.parse(String(options?.body)) as {
+          changes: { path: string; content: string }[];
+        };
+        patches.push({
+          path: body.changes[0].path,
+          body: body.changes[0].content,
+        });
+        return json({
+          commit: "after",
+          committed: true,
+          snapshotUpdated: false,
+          revisions: { [body.changes[0].path]: "after-revision" },
+        });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    (location) => navigations.push(location),
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const button = (label: string) => {
+    const item = [...editor.container.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    assert.ok(item, label);
+    return item;
+  };
+  await editor.act(async () => button("新建笔记").click());
+  assert.match(editor.container.textContent!, /默认创建在 private\/notes\//);
+  await editor.act(async () => button("取消").click());
+  await editor.act(async () => button("新建文件夹").click());
+  const name = editor.container.querySelector(
+    'input[name="name"]',
+  ) as FormControl | null;
+  assert.ok(name);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLInputElement.prototype,
+    "value",
+  )!.set!.call(name, "travel");
+  await editor.act(async () =>
+    name.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
+  );
+  const creationForm = name.closest("form");
+  assert.ok(creationForm);
+  await editor.act(async () =>
+    creationForm.dispatchEvent(
+      new editor.window.Event("submit", { bubbles: true, cancelable: true }),
+    ),
+  );
+  await settle(editor.act);
+  assert.equal(patches.length, 0, "preparing a draft must not write");
+  assert.match(
+    editor.container.textContent!,
+    /文件夹入口已准备，保存后创建文件夹/,
+  );
+  assert.equal(
+    (editor.container.querySelector(".path-label input") as Control | null)
+      ?.value,
+    "private/notes/travel/index.md",
+  );
+  const textarea = editor.container.querySelector("textarea") as Control | null;
+  assert.ok(textarea);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLTextAreaElement.prototype,
+    "value",
+  )!.set!.call(textarea, "# Travel");
+  await editor.act(async () =>
+    textarea.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
+  );
+  await editor.act(async () => button("保存").click());
+  await settle(editor.act);
+  assert.deepEqual(patches, [
+    { path: "private/notes/travel/index.md", body: "# Travel" },
+  ]);
+  assert.match(editor.container.textContent!, /已保存/);
+  const navigationCount = navigations.length;
+  await editor.act(async () => button("新建笔记").click());
+  const duplicateName = editor.container.querySelector(
+    'input[name="name"]',
+  ) as FormControl | null;
+  assert.ok(duplicateName);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLInputElement.prototype,
+    "value",
+  )!.set!.call(duplicateName, "existing.md");
+  await editor.act(async () =>
+    duplicateName.dispatchEvent(
+      new editor.window.Event("input", { bubbles: true }),
+    ),
+  );
+  const duplicateForm = duplicateName.closest("form");
+  assert.ok(duplicateForm);
+  await editor.act(async () =>
+    duplicateForm.dispatchEvent(
+      new editor.window.Event("submit", { bubbles: true, cancelable: true }),
+    ),
+  );
+  await settle(editor.act);
+  assert.match(editor.container.textContent!, /同名文件已经存在/);
+  assert.equal(patches.length, 1);
+  assert.equal(navigations.length, navigationCount);
+});
+
+test("opening and saving a file after selecting a folder retains that folder", async (t) => {
+  const navigations: { location: ContentLocation; replace?: boolean }[] = [];
+  const patches: string[] = [];
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fb%2Fold.md&folder=private%2Fb",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory")) {
+        const path = url.searchParams.get("path") ?? "";
+        return path === ""
+          ? directoryResponse(path, [{ path: "private", kind: "DIRECTORY" }])
+          : path === "private"
+            ? directoryResponse(path, [
+                { path: "private/b", kind: "DIRECTORY" },
+                { path: "private/a.md", kind: "FILE" },
+              ])
+            : directoryResponse(path, [
+                { path: "private/b/old.md", kind: "FILE" },
+              ]);
+      }
+      if (url.pathname.endsWith("/repository/file")) {
+        const path = url.searchParams.get("path")!;
+        return json({
+          path,
+          source: `# ${path}`,
+          revision: "revision",
+          commit: "before",
+          expectedAbsence: false,
+          publicScope: false,
+          diagnostics: [],
+        });
+      }
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({
+          body: "# preview",
+          images: {},
+          galleryStatus: "COMPLETE",
+        });
+      if (url.pathname.endsWith("/repository/patch")) {
+        const body = JSON.parse(String(options?.body)) as {
+          changes: { path: string }[];
+        };
+        patches.push(body.changes[0].path);
+        return json({
+          commit: "after",
+          committed: true,
+          snapshotUpdated: false,
+          revisions: { [body.changes[0].path]: "after-revision" },
+        });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    (location, replace) => navigations.push({ location, replace }),
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  navigations.length = 0;
+  const folderSummary = [...editor.container.querySelectorAll("summary")].find(
+    (item) => item.textContent?.trim() === "b",
+  );
+  assert.ok(folderSummary);
+  await editor.act(async () => folderSummary.click());
+  const fileButton = [
+    ...editor.container.querySelectorAll(".tree-file-row button"),
+  ].find((item) => item.textContent?.trim().includes("a.md"));
+  assert.ok(fileButton);
+  await editor.act(async () => (fileButton as unknown as Clickable).click());
+  await settle(editor.act);
+  assert.deepEqual(navigations.at(-1), {
+    location: { folder: "private/b", path: "private/a.md" },
+    replace: false,
+  });
+  const textarea = editor.container.querySelector("textarea") as Control | null;
+  assert.ok(textarea);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLTextAreaElement.prototype,
+    "value",
+  )!.set!.call(textarea, "# Edited");
+  await editor.act(async () =>
+    textarea.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
+  );
+  const save = [...editor.container.querySelectorAll("button")].find(
+    (item) => item.textContent?.trim() === "保存",
+  );
+  assert.ok(save);
+  await editor.act(async () => save.click());
+  await settle(editor.act);
+  assert.deepEqual(patches, ["private/a.md"]);
+  assert.deepEqual(navigations.at(-1), {
+    location: { folder: "private/b", path: "private/a.md" },
+    replace: true,
+  });
+});
+
+test("a server case-fold conflict keeps the edited draft in place", async (t) => {
+  let patchAttempts = 0;
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse(url.searchParams.get("path") ?? "", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: "private/note.md",
+          source: "# Original",
+          revision: "revision",
+          commit: "before",
+          expectedAbsence: false,
+          publicScope: false,
+          diagnostics: [],
+        });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({
+          body: "# preview",
+          images: {},
+          galleryStatus: "COMPLETE",
+        });
+      if (url.pathname.endsWith("/repository/patch")) {
+        patchAttempts += 1;
+        return Response.json({ code: "CASE_FOLD_CONFLICT" }, { status: 409 });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    () => {},
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const textarea = editor.container.querySelector("textarea") as Control | null;
+  assert.ok(textarea);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLTextAreaElement.prototype,
+    "value",
+  )!.set!.call(textarea, "# Draft survives conflict");
+  await editor.act(async () =>
+    textarea.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
+  );
+  const save = [...editor.container.querySelectorAll("button")].find(
+    (item) => item.textContent?.trim() === "保存",
+  );
+  assert.ok(save);
+  await editor.act(async () => save.click());
+  await settle(editor.act);
+  assert.equal(patchAttempts, 1);
+  assert.equal(textarea.value, "# Draft survives conflict");
+  assert.match(editor.container.textContent!, /操作与当前状态冲突/);
+});
+
+test("moving a folder maps a selected descendant but preserves an unrelated folder", async (t) => {
+  let moved = false;
+  const moves: { source: string; destination: string }[] = [];
+  const navigations: ContentLocation[] = [];
+  const editor = await mountEditor(
+    "http://localhost/admin?tab=content&folder=private%2Fold%2Fchild",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({
+          commit: moved ? "after" : "before",
+          entries: [],
+          diagnostics: [],
+        });
+      if (url.pathname.endsWith("/repository/directory")) {
+        const path = url.searchParams.get("path") ?? "";
+        const entries =
+          path === ""
+            ? moved
+              ? [
+                  { path: "private", kind: "DIRECTORY" as const },
+                  { path: "archive", kind: "DIRECTORY" as const },
+                ]
+              : [{ path: "private", kind: "DIRECTORY" as const }]
+            : path === "private"
+              ? moved
+                ? [{ path: "private/other", kind: "DIRECTORY" as const }]
+                : [
+                    { path: "private/old", kind: "DIRECTORY" as const },
+                    { path: "private/other", kind: "DIRECTORY" as const },
+                  ]
+              : path === "private/old"
+                ? [{ path: "private/old/child", kind: "DIRECTORY" as const }]
+                : path === "archive"
+                  ? moved
+                    ? [{ path: "archive/old", kind: "DIRECTORY" as const }]
+                    : []
+                  : path === "archive/old"
+                    ? [
+                        {
+                          path: "archive/old/child",
+                          kind: "DIRECTORY" as const,
+                        },
+                      ]
+                    : [];
+        return directoryResponse(
+          path,
+          entries,
+          false,
+          moved ? "after" : "before",
+        );
+      }
+      if (url.pathname.endsWith("/repository/move")) {
+        const body = JSON.parse(String(options?.body)) as {
+          source: string;
+          destination: string;
+        };
+        moves.push(body);
+        moved = true;
+        return json({
+          commit: "after",
+          committed: true,
+          snapshotUpdated: false,
+          revisions: {},
+        });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    (location) => navigations.push(location),
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const moveFolder = (path: string) => {
+    const button = editor.container.querySelector(
+      `button[aria-label="移动文件夹 ${path}"]`,
+    );
+    assert.ok(button, path);
+    return button as unknown as Clickable;
+  };
+  await editor.act(async () => moveFolder("private/old").click());
+  await settle(editor.act);
+  const firstDialog = editor.container.querySelector("dialog[open]");
+  assert.ok(firstDialog);
+  const rootButton = [...firstDialog.querySelectorAll("button")].find(
+    (item) => item.textContent?.trim() === "根目录",
+  );
+  assert.ok(rootButton);
+  await editor.act(async () => rootButton.click());
+  await settle(editor.act);
+  const newFolder = [...firstDialog.querySelectorAll("input")].find((item) =>
+    item.parentElement?.textContent?.includes("新建子文件夹"),
+  );
+  assert.ok(newFolder);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLInputElement.prototype,
+    "value",
+  )!.set!.call(newFolder, "archive");
+  await editor.act(async () =>
+    newFolder.dispatchEvent(
+      new editor.window.Event("input", { bubbles: true }),
+    ),
+  );
+  const firstMove = [...firstDialog.querySelectorAll("button")].find(
+    (item) => item.textContent?.trim() === "移动到这里",
+  );
+  assert.ok(firstMove);
+  await editor.act(async () => firstMove.click());
+  await settle(editor.act);
+  assert.deepEqual(moves[0], {
+    baseCommit: "before",
+    source: "private/old",
+    destination: "archive/old",
+  });
+  assert.deepEqual(navigations.at(-1), {
+    folder: "archive/old/child",
+    path: "",
+  });
+  const privateSummary = [...editor.container.querySelectorAll("summary")].find(
+    (item) => item.textContent?.trim() === "private",
+  );
+  assert.ok(privateSummary);
+  await editor.act(async () => privateSummary.click());
+  await settle(editor.act);
+  const unrelated = [...editor.container.querySelectorAll("summary")].find(
+    (item) => item.textContent?.trim() === "other",
+  );
+  assert.ok(unrelated);
+  await editor.act(async () => unrelated.click());
+  await editor.act(async () => moveFolder("archive/old").click());
+  await settle(editor.act);
+  const secondDialog = editor.container.querySelector("dialog[open]");
+  assert.ok(secondDialog);
+  const secondName = secondDialog.querySelector("input") as Control | null;
+  assert.ok(secondName);
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLInputElement.prototype,
+    "value",
+  )!.set!.call(secondName, "new");
+  await editor.act(async () =>
+    secondName.dispatchEvent(
+      new editor.window.Event("input", { bubbles: true }),
+    ),
+  );
+  const secondMove = [...secondDialog.querySelectorAll("button")].find(
+    (item) => item.textContent?.trim() === "移动到这里",
+  );
+  assert.ok(secondMove);
+  await editor.act(async () => secondMove.click());
+  await settle(editor.act);
+  assert.deepEqual(moves[1], {
+    baseCommit: "after",
+    source: "archive/old",
+    destination: "archive/new",
+  });
+  assert.deepEqual(navigations.at(-1), {
+    folder: "private/other",
+    path: "",
+  });
+});
+
+test("an editor unmount prevents a late file response from changing navigation", async (t) => {
+  const tree = deferred<Response>();
+  const file = deferred<Response>();
+  const navigations: ContentLocation[] = [];
+  const requested: string[] = [];
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Flate.md",
+    async (url) => {
+      if (url.pathname.endsWith("/repository/tree")) {
+        requested.push("tree");
+        return tree.promise;
+      }
+      if (url.pathname.endsWith("/repository/file")) {
+        requested.push("file");
+        return file.promise;
+      }
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    (location) => navigations.push(location),
+  );
+  t.after(() => editor.cleanup());
+  await editor.act(async () => {
+    tree.resolve(
+      json({
+        commit: "before",
+        entries: [],
+        diagnostics: [],
+      }),
+    );
+    await Promise.resolve();
+  });
+  await settle(editor.act);
+  assert.deepEqual(requested, ["tree", "file"]);
+  await editor.unmount();
+  file.resolve(
+    json({
+      path: "private/late.md",
+      source: "# Late",
+      revision: "revision",
+      commit: "before",
+      expectedAbsence: false,
+      publicScope: false,
+      diagnostics: [],
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(navigations, []);
+});

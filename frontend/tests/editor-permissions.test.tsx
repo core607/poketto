@@ -139,6 +139,7 @@ for (const scenario of [
               capabilities: scenario.capabilities,
             }}
             onDirtyChange={() => {}}
+            onNavigate={() => {}}
           />
         </ConfirmationProvider>,
       ),
