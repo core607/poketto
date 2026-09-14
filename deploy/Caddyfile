@@ -1,5 +1,27 @@
 {
     admin off
+
+    # Caddy keeps two logs. The site's access log is filtered below, but the process log, which
+    # carries reverse-proxy and TLS failures, is a separate logger and was recording the whole
+    # request object: query string, image grant and headers, unfiltered. That happens exactly
+    # during a redeployment, when the application is briefly unreachable, which is the window
+    # this work most wants recorded. Filtering the default logger covers it.
+    #
+    # The address is dropped rather than rewritten: a single field takes a single filter, and no
+    # one expression both strips a query and collapses a grant. Nothing is lost, because the
+    # access log still records the route and status of the same request.
+    log {
+        output stderr
+        format filter {
+            wrap json
+            fields {
+                request>uri delete
+                request>headers>Cookie delete
+                request>headers>Authorization delete
+                request>headers>Set-Cookie delete
+            }
+        }
+    }
 }
 
 {$POKETTO_PUBLIC_DOMAIN} {
