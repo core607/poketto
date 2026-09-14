@@ -82,6 +82,14 @@ Human owners manage the website switch from the selected workspace's **Website p
 
 Each enabled website has an entrance at `/s/{slug}`, with its own `/search`, `/tags`, `/archive` and `/read/...` pages. The corresponding `/api/public/spaces/{slug}` endpoints fix document and media scope to that space. Unknown and disabled slugs return 404. Background refresh rotates through at most eight enabled spaces per pass, plus the default workspace for repository health. Newly enabled sites can remain unavailable until refresh succeeds; requests never fetch remote Git. Public original-download URLs include a required `workspace` query parameter alongside the page route, commit and logical path. Opaque image tokens already bind their workspace.
 
+`/sitemap.xml` indexes the root site and all enabled space websites. Its child
+sitemaps contain canonical `/s/{slug}` and `/s/{slug}/read/...` URLs from each
+space's current approved snapshot, without sampling discovery batches. Unavailable
+snapshots or exceeded enumeration bounds return 503 instead of an incomplete list;
+disabled or unknown spaces return 404. `/robots.txt` advertises this index using
+`POKETTO_PUBLIC_URL` and discourages crawling `/admin` and `/api/`. These crawler
+directives do not grant or revoke content access.
+
 The root homepage samples enabled public spaces into a stable browsing batch. Pagination and browser return keep its order; **New batch** explicitly reshuffles. Withdrawal removes cards from existing batches. A batch lasts up to 30 minutes and can expire earlier after restart or cache eviction; an expired link offers a new batch. Discovery samples at most four pages per space and 32 spaces per batch, with later batches advancing through the catalog. It is not an exhaustive search. See [discovery batches](../notes/implemented/2026-09-14-public-discovery-batches.md).
 
 Homepage cards distinguish articles, directories, albums and collections. A folder with both sibling images and an authored reading sequence shows both album and collection labels. Visible album cards load one thumbnail linking to the named folder; an unavailable cover keeps that entrance without downloading an original. Revisiting a current batch page refreshes its short-lived cover URLs while retaining the card order.
