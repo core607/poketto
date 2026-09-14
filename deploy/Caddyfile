@@ -7,11 +7,19 @@
     # itself left no trace at all. Caddy writes JSON to stderr, which the container log driver
     # carries to the same journal as everything else.
     #
-    # An image address carries its own authorization, and the application removes that segment
-    # from its records for exactly that reason. Recording the request line here would hand the
-    # grant back to every reader of the journal, so these requests are left to the application,
-    # which already records them with the segment collapsed. Credential headers are dropped for
-    # the same reason: a session cookie or bearer token is the credential itself.
+    # Two parts of a request line are credentials or private material rather than routing.
+    #
+    # A query string carries repository paths: a member downloading their own file passes it as a
+    # parameter, so an unfiltered access log would accumulate the shape of their private tree. It
+    # is removed from every record.
+    #
+    # An image address carries its own authorization in its path, and the application removes that
+    # segment from its records for exactly that reason. A single field takes a single filter, so
+    # these requests are left to the application, which already records them with the segment
+    # collapsed. The cost is that a gateway-level failure on an image request appears nowhere.
+    #
+    # Credential headers go for the same reason: a session cookie or bearer token is the
+    # credential itself.
     @grant path /api/public/assets/* /api/admin/workspaces/*/assets/images/*
     log_skip @grant
 
@@ -20,6 +28,7 @@
         format filter {
             wrap json
             fields {
+                request>uri regexp "\?.*$" ""
                 request>headers>Cookie delete
                 request>headers>Authorization delete
                 request>headers>Set-Cookie delete

@@ -194,7 +194,7 @@ RateLimitIntervalSec=0
 sudo systemctl restart systemd-journald
 ```
 
-网关只记录到不了应用的那部分请求，并跳过图片地址，避免凭证随日志进入 journal。关闭限流是有意为之：记录被静默丢弃会让阅读者得出"什么都没发生"的结论，比查得慢危险。查看单个服务用 `journalctl CONTAINER_NAME=<容器名> -o cat`，得到的就是记录本身；启用结构化输出后再接 `| jq`。筛安全历史用 `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`。
+网关只记录到不了应用的那部分请求。查询字符串会从记录中删除，因为仓库路径走在那里；图片地址整条跳过，因为它本身就是取图凭证；凭证类请求头也一并删除。关闭限流是有意为之：记录被静默丢弃会让阅读者得出"什么都没发生"的结论，比查得慢危险。查看单个服务用 `journalctl CONTAINER_NAME=<容器名> -o cat`，得到的就是记录本身；启用结构化输出后再接 `| jq`。筛安全历史用 `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`。
 
 运维自行维护的 Compose 实例不会通过镜像交付收到这些文件。要在那里生效，需要修改该实例自己的 Compose 配置和网关文件：把各服务的日志驱动改为 `journald`、为应用设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`，并加上网关访问日志以及跳过图片地址的规则——那类地址本身就是取图凭证。在此之前服务照常运行、照常记录，只是格式仍是便于阅读的那种，且日志会在重新部署时被丢弃。
 

@@ -506,8 +506,12 @@ check_free_space() {
 # Every service logs through the host journal. Without a journald socket the container runtime
 # refuses to start them, so this is a precondition of the deployment rather than of one service.
 check_journal() {
-    local socket="${POKETTO_JOURNAL_SOCKET:-/run/systemd/journal/socket}"
-    [ -S "$socket" ] || [ -e "$socket" ]         || fail "the host has no journald socket at $socket; every service logs through it"
+    # Only a socket counts, and only where systemd runs at all: a check satisfied by any path
+    # that happens to exist would report a green light for a host that cannot start a single
+    # service. A host without systemd is not diagnosed here; it fails when the containers start,
+    # which is the honest limit of a check the entrance can make from outside.
+    [ -d /run/systemd ] || return 0
+    [ -S /run/systemd/journal/socket ]         || fail "systemd is running but /run/systemd/journal/socket is absent; every service logs through it"
 }
 
 check_executor() {

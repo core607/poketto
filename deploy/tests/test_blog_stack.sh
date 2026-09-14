@@ -87,10 +87,12 @@ grep -Fq 'log_skip @grant' "$DEPLOY_DIR/Caddyfile"
 grep -Fq '/api/public/assets/*' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'request>headers>Cookie delete' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'request>headers>Authorization delete' "$DEPLOY_DIR/Caddyfile"
+# A query string carries repository paths, so it leaves every gateway record.
+grep -Fq 'request>uri regexp' "$DEPLOY_DIR/Caddyfile"
+grep -Fq 'LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT-ecs}"' "$DEPLOY_DIR/compose.yaml"
 # A documented setting that the configuration whitelist rejects cannot be applied.
-grep -Fq 'LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT:-ecs}"' "$DEPLOY_DIR/compose.yaml"
 grep -Fq 'POKETTO_LOG_FORMAT' "$DEPLOY_DIR/deploy.sh"
-grep -Fq '/run/systemd/journal/socket' "$DEPLOY_DIR/deploy.sh"
+grep -Fq '[ -S /run/systemd/journal/socket ]' "$DEPLOY_DIR/deploy.sh"
 if grep -q 'driver: json-file' "$DEPLOY_DIR/compose.yaml"; then
     echo "a service still logs to a driver that is discarded with its container"
     exit 1
