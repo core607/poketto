@@ -44,6 +44,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -104,6 +105,9 @@ class RepositoryAdminIntegrationIT {
 
     @Autowired
     WorkspaceCatalog catalog;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     @LocalServerPort
     int port;
@@ -321,6 +325,90 @@ class RepositoryAdminIntegrationIT {
                     200);
             assertThat(saved.get("committed").booleanValue()).isTrue();
             assertThat(saved.get("snapshotUpdated").booleanValue()).isTrue();
+            String savedCommit = saved.get("commit").stringValue();
+            JsonNode filenamePage = http(
+                    client,
+                    "GET",
+                    scoped("/api/admin/repository/filenames?query=literal&offset=0&limit=1"),
+                    null,
+                    null,
+                    200);
+            assertThat(filenamePage.get("commit").stringValue()).isEqualTo(savedCommit);
+            assertThat(filenamePage.get("total").intValue()).isEqualTo(2);
+            assertThat(filenamePage.get("paths").get(0).stringValue()).isEqualTo("public/literal%2Fname.md");
+            JsonNode filenameRemainder = http(
+                    client,
+                    "GET",
+                    scoped("/api/admin/repository/filenames?query=literal&commit=" + savedCommit + "&offset=1&limit=1"),
+                    null,
+                    null,
+                    200);
+            assertThat(filenameRemainder.get("commit").stringValue()).isEqualTo(savedCommit);
+            assertThat(filenameRemainder.get("paths").get(0).stringValue()).isEqualTo("public/literal/name.md");
+
+            JsonNode advanced = http(
+                    client,
+                    "POST",
+                    scoped("/api/admin/repository/patch"),
+                    csrf,
+                    Map.of(
+                            "baseCommit",
+                            savedCommit,
+                            "changes",
+                            List.of(Map.of(
+                                    "path", "public/after-search.md", "expectedAbsence", true, "content", "# later"))),
+                    200);
+            assertThat(advanced.get("commit").stringValue()).isNotEqualTo(savedCommit);
+            assertThat(http(
+                                    client,
+                                    "GET",
+                                    scoped("/api/admin/repository/filenames?query=literal&commit=" + savedCommit),
+                                    null,
+                                    null,
+                                    200)
+                            .get("total")
+                            .intValue())
+                    .isEqualTo(2);
+            createPublicOnlyMember();
+            try (var memberClient = HttpClient.newBuilder()
+                    .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .build()) {
+                JsonNode memberCsrf = http(memberClient, "GET", "/api/auth/csrf", null, null, 200);
+                var memberLogin = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/login"))
+                        .timeout(Duration.ofSeconds(10))
+                        .header(
+                                memberCsrf.get("headerName").stringValue(),
+                                memberCsrf.get("token").stringValue())
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "username=filename-public&password=" + encode(password)))
+                        .build();
+                assertThat(memberClient
+                                .send(memberLogin, HttpResponse.BodyHandlers.discarding())
+                                .statusCode())
+                        .isEqualTo(204);
+                JsonNode memberPage = http(
+                        memberClient, "GET", scoped("/api/admin/repository/filenames?query=literal"), null, null, 200);
+                assertThat(memberPage.get("total").intValue()).isEqualTo(2);
+                assertThat(http(
+                                        memberClient,
+                                        "GET",
+                                        scoped("/api/admin/repository/filenames?query=隐藏"),
+                                        null,
+                                        null,
+                                        200)
+                                .get("total")
+                                .intValue())
+                        .isZero();
+                http(
+                        memberClient,
+                        "GET",
+                        scoped("/api/admin/repository/filenames?query=literal&commit=" + savedCommit),
+                        null,
+                        null,
+                        403);
+            }
             for (var entry : routes.entrySet()) {
                 JsonNode file = http(
                         client,
@@ -345,6 +433,22 @@ class RepositoryAdminIntegrationIT {
             }
             overflowingGalleryOverHttp(client, csrf);
         }
+    }
+
+    private void createPublicOnlyMember() {
+        UUID member = UUID.randomUUID();
+        UUID workspace = catalog.defaultWorkspace().id().value();
+        jdbc.update(
+                "insert into auth_accounts(account_id,login_name,password_hash) "
+                        + "select ?, ?, password_hash from auth_accounts where login_name = ?",
+                member,
+                "filename-public",
+                "editor");
+        jdbc.update(
+                "insert into auth_memberships(workspace_id,account_id,role,permissions) values (?,?,'MEMBER',?)",
+                workspace,
+                member,
+                new String[0]);
     }
 
     private void overflowingGalleryOverHttp(HttpClient client, JsonNode csrf) throws Exception {

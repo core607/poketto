@@ -18,6 +18,17 @@ import org.springframework.core.Ordered;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class WebConfiguration {
     @Bean
+    PublicFilePresentation publicFilePresentation(
+            PublicContentSnapshots snapshots, WorkspacePublications publications) {
+        return new PublicFilePresentation(publications, new WebsiteContentSnapshots(snapshots, publications));
+    }
+
+    @Bean
+    PublicSiteSearch publicSiteSearch(PublicContentSnapshots snapshots, WorkspacePublications publications) {
+        return new PublicSiteSearch(publications, new WebsiteContentSnapshots(snapshots, publications));
+    }
+
+    @Bean
     PublicSitemaps publicSitemaps(PublicContentSnapshots snapshots, WorkspacePublications publications) {
         return new PublicSitemaps(publications, new WebsiteContentSnapshots(snapshots, publications));
     }

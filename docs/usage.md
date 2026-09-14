@@ -56,6 +56,8 @@ Public articles, album and collection landings, discovery cards and search summa
 
 Public and authorized management search match literal titles and parsed Markdown reading text. Link labels, image descriptions, code, table cells and referenced footnotes participate; hidden destinations, raw HTML and unused footnote definitions do not. Summaries collapse whitespace and omit an opening level-one heading only when its text repeats the page title, then take a bounded excerpt around the match. Stored Markdown and article bodies remain unchanged.
 
+Site search at `/search` uses `/api/public/search` to combine every enabled website's current verified public snapshot. Result cards identify their space and open its canonical article; space search remains scoped to `/s/{slug}/search`. Combined results sort by newest creation time, then space slug and route, with a total across the searched corpus. Every page reads current content, so publication changes can change counts and page boundaries. An unavailable snapshot or a changed corpus during the request refuses the whole response instead of returning partial results. The service permits two concurrent queries and bounds each scan to 256 spaces, 100,000 documents, 64 Mi UTF-16 body characters and a five-second deadline checked between processing steps. Exceeding a bound asks the reader to retry or search an available space directly. The default `/api/public/documents` endpoint retains its default-space scope for archive and feed consumers.
+
 Public search highlights exact matches in titles and snippets. Opening a result provides **Return to search results**, preserving its query, page and space. Browser Back restores the selected result and scroll position; the explicit return link also restores them while the browser retains that tab's entry. If local storage is unavailable or the result has been removed, the search page still opens normally. Direct article visits retain their space and collection navigation.
 
 Authenticated `/api/admin/workspaces/{workspaceId}/repository` endpoints provide the Markdown index, paginated directory listing, file reads, search, preview, atomic patches and moves. The browser destination picker moves files or folders and repairs Markdown references in the same commit. Text changes carry revisions or explicit absence against the base commit; moves check the source and destination at that base. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/workspaces/{workspaceId}/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
@@ -75,6 +77,30 @@ In the move picker, the private/public
 directory buttons retain the category path while switching roots. Selecting a
 destination does not write until the move is submitted. Moving a directory includes
 its indexed media; moving one document does not move shared dependencies.
+
+**Search filenames** searches all authorized regular Git files and indexed-media
+paths, including unopened folders. It matches the repository-relative path
+literally and shows up to 50 results per page. Paging retains the returned commit;
+starting a new search reads current main. Public-only members see only current
+publication-eligible paths, even when the website is disabled. Body search remains
+a separate form. Both forms highlight literal matches; searching leaves the draft
+intact, and opening a different result asks before discarding edits. Binary files
+retain their existing text-read restrictions.
+
+The filename endpoint is `/api/admin/workspaces/{workspaceId}/repository/filenames`
+with `query`, optional `commit`, `offset` and `limit`. Queries contain 1–200
+characters; page limits are 1–200 and offsets 0–100,000. Continuations require the
+first page's commit. A scan refuses more than 100,000 combined Git tree and indexed
+media entries, including traversed directories; it does not return partial counts.
+
+The editor distinguishes saved content, publication scope and public-page
+availability. **View public page** opens the confirmed canonical page in a new
+tab; unsaved edits remain in the editor and do not change that page. Disabled
+websites and unavailable pages have separate labels. After a confirmed save, a
+separate exact-commit read refreshes this information. If that read fails, the
+confirmed save and body remain intact; **Check status again** retries only the
+read. New drafts and changed destination paths wait for Save before confirming
+their public-page state.
 
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Disabling website delivery or replacing its public snapshot also invalidates previously issued image URLs; reload the page to obtain current URLs. Private previews recheck the current identity. The [website delivery boundary](../notes/implemented/2026-09-14-workspace-public-delivery.md) records this authorization change; the [foundations record](../notes/implemented/2026-09-05-repository-authoring-foundations.md) retains storage guarantees and bounds.
 

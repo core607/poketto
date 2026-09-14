@@ -318,6 +318,22 @@ class SpacePublicationIntegrationIT {
         assertThat(Files.readString(root.resolve("public/signed.md"))).isEqualTo(signed);
     }
 
+    private void replaceSecondPublicNote() throws Exception {
+        Path root = directory.resolve("second.git-seed");
+        Files.writeString(
+                root.resolve("public/note.md"),
+                "# Second replacement sentinel\n\n![Picture](picture.png)\n\n[Download](source.pdf)\n");
+        try (Git git = Git.open(root.toFile())) {
+            git.add().addFilepattern("public/note.md").call();
+            git.commit()
+                    .setAuthor("Fixture", "fixture@example.invalid")
+                    .setMessage("Replace public search sentinel")
+                    .call();
+            git.push().setRemote("origin").setPushAll().call();
+        }
+        snapshots.refresh(PublicationRepositories.SECOND);
+    }
+
     private void verifyCatalog(AuthPrincipal owner, WorkspaceId first) throws Exception {
         WorkspaceId second = PublicationRepositories.SECOND;
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
@@ -368,10 +384,45 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get("/api/public/spaces/second-site/document").param("route", "/secret"))
                 .andExpect(status().isNotFound());
         service.setEnabled(owner, first, true);
+        var siteSearch = mvc.perform(
+                        get("/api/public/search").param("query", "").param("limit", "100"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        var siteItems = json.readTree(siteSearch).get("items");
+        assertThat(siteItems.size()).isEqualTo(2);
+        assertThat(siteItems.get(0).get("document").get("route").stringValue()).isEqualTo("/note");
+        assertThat(siteItems.get(1).get("document").get("route").stringValue()).isEqualTo("/note");
+        assertThat(siteItems.get(0).get("space").stringValue())
+                .isNotEqualTo(siteItems.get(1).get("space").stringValue());
+        assertThat(siteSearch)
+                .contains("\"space\":\"home\"", "\"space\":\"second-site\"")
+                .doesNotContain("Private sentinel");
         String batch = verifyDiscovery();
+        replaceSecondPublicNote();
+        var changedSiteSearch = mvc.perform(get("/api/public/search").param("query", "Second replacement sentinel"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(changedSiteSearch)
+                .contains("Second replacement sentinel", "\"space\":\"second-site\"")
+                .doesNotContain("Second unique sentinel");
+        mvc.perform(get("/api/public/search").param("query", "Second unique sentinel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
         service.setEnabled(owner, second, false);
         mvc.perform(get("/api/public/spaces/second-site/documents")).andExpect(status().isNotFound());
         mvc.perform(get(image)).andExpect(status().isServiceUnavailable());
+        var withdrawnSiteSearch = mvc.perform(get("/api/public/search").param("query", ""))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(withdrawnSiteSearch)
+                .contains("\"space\":\"home\"")
+                .doesNotContain("second-site", "Second unique sentinel", "Private sentinel");
         mvc.perform(get("/api/public/discovery").param("batch", batch))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))

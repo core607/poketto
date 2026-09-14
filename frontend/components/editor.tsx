@@ -3,6 +3,7 @@ import { useConfirmation } from "./confirmation";
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/browser-api";
 import { useWorkspaceApi } from "./workspace-context";
+import { EditorPublicPage } from "./editor-public-page";
 import type {
   GalleryStatus,
   RepositoryFile,
@@ -15,6 +16,8 @@ import { message, type Identity } from "./admin";
 import { AssetPicker } from "./asset-picker";
 import { Gallery } from "./gallery";
 import { FileTree } from "./file-tree";
+import { FilenameSearch } from "./filename-search";
+import { SearchHighlight } from "./search-highlight";
 import { FolderPicker } from "./folder-picker";
 import { ExportDialog } from "./export-dialog";
 import { DiagnosticMessage } from "./diagnostic";
@@ -53,10 +56,12 @@ export function Editor({
   const [creation, setCreation] = useState<"note" | "folder" | null>(null);
   const creationTrigger = useRef<HTMLButtonElement | null>(null);
   const alive = useRef(false);
-  const [filter, setFilter] = useState("");
-  const [search, setSearch] = useState<
-    { path: string; title: string; snippet: string }[] | null
-  >(null);
+  const pageRequest = useRef(0);
+  const [pagePending, setPagePending] = useState(false);
+  const [search, setSearch] = useState<{
+    query: string;
+    items: { path: string; title: string; snippet: string }[];
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [exportSelection, setExportSelection] = useState<{
     source: string;
@@ -164,6 +169,8 @@ export function Editor({
       }))
     )
       return;
+    pageRequest.current++;
+    setPagePending(false);
     setBusy(true);
     setError("");
     setNotice("");
@@ -224,13 +231,42 @@ export function Editor({
         "/api/admin/repository/search?" +
           new URLSearchParams({ query, limit: "20" }),
       );
-      setSearch(result.items);
+      setSearch({ query, items: result.items });
     } catch (error) {
       setError(message(error));
     } finally {
       setBusy(false);
     }
   }
+  async function refreshPublicPage(saved: RepositoryFile) {
+    if (!saved.commit || saved.expectedAbsence) return;
+    const request = ++pageRequest.current;
+    setPagePending(true);
+    try {
+      const result = await api<RepositoryFile>(
+        "/api/admin/repository/file?" +
+          new URLSearchParams({ path: saved.path, commit: saved.commit }),
+      );
+      if (!alive.current || request !== pageRequest.current) return;
+      setFile((current) =>
+        current?.path === saved.path &&
+        current.commit === saved.commit &&
+        current.revision === saved.revision
+          ? {
+              ...current,
+              publicScope: result.publicScope,
+              publicPage: result.publicPage,
+            }
+          : current,
+      );
+    } catch {
+      // The write acknowledgement remains authoritative when this separate read fails.
+    } finally {
+      if (alive.current && request === pageRequest.current)
+        setPagePending(false);
+    }
+  }
+
   async function save(target = file?.path, remove = false) {
     if (!file || !target) return;
     if (unreadable && !remove) {
@@ -250,21 +286,26 @@ export function Editor({
         remove,
       );
       if (remove) {
+        pageRequest.current++;
+        setPagePending(false);
         setFile(null);
         setSource("");
         setPath("");
         navigate("", folder);
       } else {
-        setFile({
+        const saved: RepositoryFile = {
           ...file,
           path: target,
           commit: result.commit,
           source,
           revision: result.revisions[target],
           expectedAbsence: false,
-        });
+          publicPage: null,
+        };
+        setFile(saved);
         setPath(target);
         navigate(target, folder, true);
+        void refreshPublicPage(saved);
       }
       setNotice(
         !result.committed
@@ -392,6 +433,7 @@ export function Editor({
   function insert(markdown: string) {
     const start = textarea.current?.selectionStart;
     const end = textarea.current?.selectionEnd;
+    setNotice("");
     setSource(
       (current) =>
         current.slice(0, start ?? current.length) +
@@ -528,20 +570,15 @@ export function Editor({
             </form>
           )}
         </section>
-        <label className="sr-only" htmlFor="file-filter">
-          筛选文件
-        </label>
-        <input
-          id="file-filter"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="筛选已展开的文件…"
+        <FilenameSearch
+          busy={busy}
+          commit={tree?.commit ?? null}
+          onOpen={(path) => void open(path)}
         />
         <nav className="file-tree" aria-label="仓库文件">
           {tree && (
             <FileTree
               commit={tree.commit}
-              filter={filter}
               selected={file?.path}
               selectedFolder={folder}
               onSelectFolder={(selectedFolder) =>
@@ -613,17 +650,23 @@ export function Editor({
                 收起
               </button>
             </div>
-            {search.map((item) => (
+            {search.items.map((item) => (
               <button
                 key={item.path}
                 disabled={busy}
                 onClick={() => void open(item.path)}
               >
-                <strong>{item.title}</strong>
-                <small>{item.snippet}</small>
+                <strong>
+                  <SearchHighlight text={item.title} query={search.query} />
+                </strong>
+                <small>
+                  <SearchHighlight text={item.snippet} query={search.query} />
+                </small>
               </button>
             ))}
-            {!search.length && <p className="muted">没有找到匹配内容。</p>}
+            {!search.items.length && (
+              <p className="muted">没有找到匹配内容。</p>
+            )}
           </section>
         )}
         {tree?.diagnostics.length ? (
@@ -668,7 +711,10 @@ export function Editor({
                 文件路径
                 <input
                   value={path}
-                  onChange={(event) => setPath(event.target.value)}
+                  onChange={(event) => {
+                    setNotice("");
+                    setPath(event.target.value);
+                  }}
                   disabled={!writable || busy || !file.expectedAbsence}
                   maxLength={255}
                 />
@@ -709,6 +755,13 @@ export function Editor({
                 </button>
               </div>
             </div>
+            <EditorPublicPage
+              file={file}
+              path={path}
+              dirty={dirty}
+              pending={busy || pagePending}
+              onRefresh={() => void refreshPublicPage(file)}
+            />
             {file.source === null && !file.expectedAbsence ? (
               <p className="notice danger">
                 这个文件无法作为 UTF-8 文本读取。请查看诊断，不要覆盖原文件。
@@ -744,7 +797,10 @@ export function Editor({
                     <textarea
                       ref={textarea}
                       value={source}
-                      onChange={(event) => setSource(event.target.value)}
+                      onChange={(event) => {
+                        setNotice("");
+                        setSource(event.target.value);
+                      }}
                       onKeyDown={(event) => {
                         if (
                           (event.ctrlKey || event.metaKey) &&

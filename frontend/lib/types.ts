@@ -41,6 +41,12 @@ export type ArticlePage = Snapshot & {
   offset: number;
   limit: number;
 };
+export type SiteSearchPage = {
+  items: { space: string; spaceName: string; document: ArticleSummary }[];
+  total: number;
+  offset: number;
+  limit: number;
+};
 export type Article = Snapshot &
   Omit<ArticleSummary, "snippet"> & {
     body: string;
@@ -70,8 +76,16 @@ export type TagPage = Snapshot & {
   offset: number;
   limit: number;
 };
+export type PublicPage = {
+  state:
+    "UNSAVED" | "PRIVATE" | "WEBSITE_DISABLED" | "UNAVAILABLE" | "AVAILABLE";
+  space: string | null;
+  route: string | null;
+};
 export type RepositoryFile = {
   publicScope: boolean;
+  // Cleared locally after an acknowledged save until exact-revision metadata is read.
+  publicPage: PublicPage | null;
   commit: string | null;
   path: string;
   source: string | null;

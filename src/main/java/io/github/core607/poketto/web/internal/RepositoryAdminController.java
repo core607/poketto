@@ -5,6 +5,8 @@ import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
+import io.github.core607.poketto.content.RepositoryFilenamePage;
+import io.github.core607.poketto.content.RepositoryFilenameSearch;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
@@ -35,16 +37,19 @@ class RepositoryAdminController {
     private final RepositoryPatchService patches;
     private final RepositoryMoveService moves;
     private final BrowserWorkspace workspaces;
+    private final PublicFilePresentation presentation;
 
     RepositoryAdminController(
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             RepositoryMoveService moves,
-            BrowserWorkspace workspaces) {
+            BrowserWorkspace workspaces,
+            PublicFilePresentation presentation) {
         this.reader = reader;
         this.patches = patches;
         this.moves = moves;
         this.workspaces = workspaces;
+        this.presentation = presentation;
     }
 
     @GetMapping("/directory")
@@ -57,6 +62,20 @@ class RepositoryAdminController {
         var page = reader.listDirectory(actor, workspaces.selected(), Optional.ofNullable(commit), path, offset, limit);
         return new Directory(
                 page.commit().orElse(null), page.path(), page.expectedAbsence(), page.entries(), page.nextOffset());
+    }
+
+    @GetMapping("/filenames")
+    RepositoryFilenamePage filenames(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @RequestParam String query,
+            @RequestParam(required = false) String commit,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "50") int limit) {
+        return reader.searchFilenames(
+                actor,
+                workspaces.selected(),
+                Optional.ofNullable(commit),
+                new RepositoryFilenameSearch(query, offset, limit));
     }
 
     @PostMapping("/move")
@@ -94,7 +113,8 @@ class RepositoryAdminController {
                 file.revision().map(DocumentRevision::value).orElse(null),
                 file.expectedAbsence(),
                 file.diagnostics(),
-                file.publicScope());
+                file.publicScope(),
+                presentation.page(file));
     }
 
     @GetMapping("/search")
@@ -157,7 +177,8 @@ class RepositoryAdminController {
             String revision,
             boolean expectedAbsence,
             List<RepositoryDiagnostic> diagnostics,
-            boolean publicScope) {}
+            boolean publicScope,
+            PublicFilePresentation.Page publicPage) {}
 
     record Change(String path, boolean expectedAbsence, String expectedRevision, String content) {}
 

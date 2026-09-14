@@ -167,7 +167,9 @@ test("editor inserts and previews new images relative to a new draft destination
   });
   const firstPreviewCount = previews.length;
   assert.ok(firstPreviewCount > 0);
-  const openForm = container.querySelector<HTMLFormElement>("form.open-path");
+  const openForm = container.querySelector<HTMLFormElement>(
+    "details.advanced-path form.open-path",
+  );
   assert.ok(openForm);
   const openPath =
     openForm.querySelector<HTMLInputElement>('input[name="path"]');

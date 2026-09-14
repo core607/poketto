@@ -9,6 +9,8 @@ import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.content.RepositoryDocument;
 import io.github.core607.poketto.content.RepositoryFile;
+import io.github.core607.poketto.content.RepositoryFilenamePage;
+import io.github.core607.poketto.content.RepositoryFilenameSearch;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryTree;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -53,6 +55,33 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 workspaceId,
                 commit,
                 (repository, resolved) -> readTreeObjects(workspaceId, repository, resolved, path -> true));
+    }
+
+    @Override
+    public RepositoryFilenamePage searchFilenames(
+            WorkspaceId workspace, Optional<String> commit, RepositoryFilenameSearch search) {
+        requireFilenameCommit(commit, search);
+        return resolve(
+                workspace,
+                commit,
+                (repository, resolved) ->
+                        JGitRepositoryFilenameSearch.search(repository, resolved, search, path -> true));
+    }
+
+    @Override
+    public RepositoryFilenamePage searchPublicFilenames(
+            WorkspaceId workspace, Optional<String> commit, RepositoryFilenameSearch search) {
+        requireFilenameCommit(commit, search);
+        return resolveCurrent(workspace, commit, (repository, resolved) -> {
+            var policy = PublicRepositoryDirectories.publicPolicy(repository, resolved);
+            return JGitRepositoryFilenameSearch.search(repository, resolved, search, policy::permitsPath);
+        });
+    }
+
+    private static void requireFilenameCommit(Optional<String> commit, RepositoryFilenameSearch search) {
+        if (search.offset() > 0 && commit.isEmpty()) {
+            throw new IllegalArgumentException("Filename search continuations require a pinned commit");
+        }
     }
 
     @Override

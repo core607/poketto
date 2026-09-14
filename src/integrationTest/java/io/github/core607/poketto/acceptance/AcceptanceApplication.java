@@ -98,7 +98,8 @@ public final class AcceptanceApplication {
                     "---\npublic_author: 故障封面作者\ncreated_at: 2026-09-02T08:00:00Z\n---\n# 暂时打不开的相册\n\n这个入口故意只保留一张损坏封面，用于确认发现页仍保留相册入口。\n");
             write(directory, "private/日记.md", "# 私有验收样例\n\nPRIVATE_ACCEPTANCE_SENTINEL\n\n![私有图片](hidden.png)\n");
             write(directory, "public/drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
-            for (int number = 1; number <= 28; number++) {
+            // Keep the original 28 entries and add 51 more for real filename pagination.
+            for (int number = 1; number <= 79; number++) {
                 String sequence = String.format("%02d", number);
                 write(directory, "public/检索/回链验收-" + sequence + ".md", """
                         ---
