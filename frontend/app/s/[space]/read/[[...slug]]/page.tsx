@@ -4,6 +4,10 @@ import { date, spaceHref } from "../../../../../lib/format";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
 import { CollectionNavigation } from "../../../../../components/collection-navigation";
+import {
+  readingSearchReturn,
+  type ReadingSearchParameters,
+} from "../../../../../lib/search-return";
 
 export async function generateMetadata({
   params,
@@ -24,7 +28,9 @@ export default async function Article({
   searchParams,
 }: {
   params: Promise<{ space: string; slug?: string[] }>;
-  searchParams?: Promise<{ collection?: string | string[] }>;
+  searchParams?: Promise<
+    ReadingSearchParameters & { collection?: string | string[] }
+  >;
 }) {
   const { space, slug = [] } = await params;
   // Next's page catch-all segments are URI-encoded; metadata params are decoded.
@@ -49,11 +55,13 @@ export default async function Article({
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
   });
-  const selected = (await searchParams)?.collection;
+  const parameters = (await searchParams) ?? {};
+  const selected = parameters.collection;
+  const returnToSearch = readingSearchReturn(parameters, space);
   return (
     <article className="reading-shell">
-      <a href={spaceHref(space)} className="back-link">
-        ← 回到这个空间
+      <a href={returnToSearch ?? spaceHref(space)} className="back-link">
+        {returnToSearch ? "← 返回搜索结果" : "← 回到这个空间"}
       </a>
       <header className="reading-header">
         <div className="article-meta">

@@ -1,6 +1,10 @@
 import { notFound, permanentRedirect } from "next/navigation";
 import { article, defaultSpace, PublicApiError } from "../../../lib/public-api";
 import { articleHref } from "../../../lib/format";
+import {
+  carryReadingSearch,
+  type ReadingSearchParameters,
+} from "../../../lib/search-return";
 
 export async function generateMetadata({
   params,
@@ -18,8 +22,10 @@ export async function generateMetadata({
 
 export default async function Article({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug?: string[] }>;
+  searchParams?: Promise<ReadingSearchParameters>;
 }) {
   const { slug = [] } = await params;
   // Next's page catch-all segments are URI-encoded; metadata params are decoded.
@@ -45,5 +51,8 @@ export default async function Article({
     throw error;
   });
   const space = await defaultSpace();
-  permanentRedirect(articleHref(route, space.slug));
+  permanentRedirect(
+    articleHref(route, space.slug) +
+      carryReadingSearch((await searchParams) ?? {}),
+  );
 }
