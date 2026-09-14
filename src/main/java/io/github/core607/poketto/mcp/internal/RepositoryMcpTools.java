@@ -143,7 +143,7 @@ final class RepositoryMcpTools {
                     this::discard));
             tools.add(tool(
                     "get_artifact",
-                    "Read an unexpired artifact created by this MCP execution session. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
+                    "Read an unexpired artifact from the account's current execution lease. A grant change or process restart can invalidate the handle; recreate it from the retained copy. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
                     object(
                             Map.of(
                                     "artifactId",

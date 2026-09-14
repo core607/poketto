@@ -68,7 +68,7 @@ The [content navigation decision](../implemented/2026-09-14-admin-content-naviga
 
 ## Alternatives and boundaries
 
-A default-space blog cannot represent several independent accounts. Account-owned storage would lose the shared-space authorization boundary. Open registration and provider-side private-repository creation add provisioning and abuse mechanisms beyond connecting an existing repository, so registration remains invitation-gated and remote creation is excluded.
+A default-space blog cannot represent several independent accounts. Content storage owned only by an account would lose the shared-space authorization boundary; account-owned executor copies remain scoped to an authorized workspace. Open registration and provider-side private-repository creation add provisioning and abuse mechanisms beyond connecting an existing repository, so registration remains invitation-gated and remote creation is excluded.
 
 Purely client-side workspace switching could save edits into another tab's selected repository; request-scoped workspace selection is required. Hiding private links in UI would leave image, history, export, and execution entrances exposed, so service authorization owns visibility. Per-request random ordering would break pagination and reading returns, so randomization has a stable batch.
 
@@ -85,3 +85,5 @@ This delivery excludes cross-instance identities, automatic remote creation, per
 - New-file, filename search, editor state, keyboard navigation, and mobile flows use a real running frontend and backend for evidence.
 
 Implement cohesive changes in dependency order: account/registration foundation and installation; workspace provisioning and scoped entrances; member and machine authorization; discovery and reading; management interaction. Keep this record proposed until the complete behavior is demonstrated, while completed subsystem records describe their shipped contracts. Required database, storage, executor, UI, and deployment checks follow each changed surface; final HTTPS acceptance preserves existing managed originals and independently verifies public and private behavior.
+
+[Account working copies](../implemented/2026-09-14-account-working-copies.md) implements disk-backed, transport-independent execution with real authenticated HTTP evidence. Production connector acceptance and the search/editor requirements above remain part of this delivery.

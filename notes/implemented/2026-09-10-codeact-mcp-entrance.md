@@ -19,10 +19,10 @@ and local Git commits do not acknowledge a remote save.
 
 The MCP catalog contains `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset`
 when the isolated executor and asset services are available. `get_artifact`
-returns session-scoped results; the two asset tools retain the bounded external
+returns execution-lease-scoped results; the two asset tools retain the bounded external
 image transfer channel. `repo_discard` is a lifecycle operation for explicit owner
-deletion when retained execution is enabled; the [continuity contract](../proposed/2026-09-12-executor-work-continuity.md)
-defines its generation, containment and cleanup rules. `list_directory`, `get_file` and `repo_patch` are removed,
+deletion for account-owned disk copies; the [account-copy contract](2026-09-14-account-working-copies.md)
+defines its copy identity, containment and cleanup rules. `list_directory`, `get_file` and `repo_patch` are removed,
 including their request mappings and service dependencies. Unknown tool names are
 rejected by the protocol; no alias or compatibility fallback invokes them.
 

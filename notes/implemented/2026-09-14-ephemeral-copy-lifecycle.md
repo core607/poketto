@@ -67,6 +67,6 @@ broader final HTTPS or model-client work-continuity acceptance.
 The same-topic audit retains [copy identity](../implemented/2026-09-12-executor-copy-identity.md),
 [CodeAct authoring](../implemented/2026-09-09-codeact-content-and-media.md),
 [session artifacts](../implemented/2026-09-10-session-artifacts.md) and the broader
-[work-continuity proposal](../proposed/2026-09-12-executor-work-continuity.md). This decision
+[account-copy lifecycle](2026-09-14-account-working-copies.md). This decision
 changes timeout and explicit disposal only; durability, scheduling and isolation
 work remain separately owned.
