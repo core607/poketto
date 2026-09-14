@@ -14,7 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-/** Host write authority restored with a worktree checkpoint, never reconstructed from remote main. */
+/** Host write authority stored with a disk copy, never reconstructed from remote main. */
 record RetainedSaveState(
         String originalCommit,
         String baseCommit,

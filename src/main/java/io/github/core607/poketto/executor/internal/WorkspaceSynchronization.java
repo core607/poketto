@@ -85,6 +85,9 @@ final class WorkspaceSynchronization {
             Files files) {
         RepositoryFile base = inputs.baseline().getOrDefault(path, absent(workspace, state.baseline(path), path));
         RepositoryFile remote = inputs.remote().getOrDefault(path, absent(workspace, inputs.remoteCommit(), path));
+        if (base.equals(remote)) {
+            return unchanged(path, RetainedFileBaseline.capture(workspace, inputs.remoteCommit(), path, remote), false);
+        }
         RepositorySyncEntry before = blob(actor, workspace, base);
         RepositorySyncEntry after = blob(actor, workspace, remote);
         RetainedFileBaseline baseline = retained(workspace, remote, after);

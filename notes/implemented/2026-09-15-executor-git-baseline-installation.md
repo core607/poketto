@@ -20,7 +20,7 @@ A signed EXECUTION_CAPACITY rejection occurs before command execution. The appli
 
 Changing only tool output would leave Git misleading. Replacing the entire Git directory would discard local references and staged-only work. Running Git in the privileged supervisor would expose host authority to command-modified configuration. Incremental import within SRT preserves the existing isolation boundary and avoids copying complete history on every save.
 
-Application and worker versions must be coordinated: the application requires `gitBaselineProtocol: 1`. The worker retains the existing disk protocol so it can be installed before the application. Whole-workspace synchronization and consolidation of per-file baselines remain in the [mutable baseline proposal](../proposed/2026-09-15-mutable-working-copy-baselines.md); this change does not claim either is complete.
+Application and worker versions must be coordinated: the application requires `gitBaselineProtocol: 1`. The worker retains the existing disk protocol so it can be installed before the application. [Mutable working copy baselines](2026-09-15-mutable-working-copy-baselines.md) owns the later whole-workspace synchronization and runtime baseline consolidation.
 
 ## Verification
 

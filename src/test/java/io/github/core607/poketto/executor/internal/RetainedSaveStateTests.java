@@ -44,7 +44,10 @@ class RetainedSaveStateTests {
         assertThat(restored.attempt.orElseThrow().commit()).isEqualTo(CANDIDATE);
         assertThat(restored.attempt.orElseThrow().object()).containsExactly(0, 1, 2, -1);
         assertThat(JSON.<JsonNode>valueToTree(restored.lastSave)).isEqualTo(JSON.valueToTree(state.lastSave));
-        state.acknowledgeMove(CANDIDATE, Set.of("untouched.md"), Map.of());
+        state.acknowledgeMove(
+                CANDIDATE,
+                Set.of("untouched.md"),
+                Map.of("untouched.md", RetainedFileBaseline.saved(CANDIDATE, "updated")));
         assertThat(restored.baseline("untouched.md")).isEqualTo(ORIGINAL);
         assertThat(snapshot.baselines()).containsOnlyKeys("changed.md");
     }
@@ -57,6 +60,11 @@ class RetainedSaveStateTests {
                 new RepositoryMoveRequest(ADVANCED, "from.md", "to.md"), payload, Set.of("from.md", "to.md"));
         state.move.attempt = new RepositoryWriteAttempt(CANDIDATE, new byte[] {4, 5, 6});
         state.move.result = new RepositoryPatchResult(CANDIDATE, true, false, Map.of("from.md", Optional.empty()));
+        state.move.fileBaselines = Map.of(
+                "from.md",
+                RetainedFileBaseline.saved(CANDIDATE, null),
+                "to.md",
+                RetainedFileBaseline.saved(CANDIDATE, "moved"));
         state.lastSave = BridgeReplies.succeeded(new BridgeReplies.MoveSkipped(ADVANCED, true, false, true));
         var snapshot = state.snapshot();
         payload[0] = 99;
@@ -274,7 +282,8 @@ class RetainedSaveStateTests {
 
     private static SelectedFileSaves.State stateWithIndependentBaselines() {
         var state = new SelectedFileSaves.State(ORIGINAL);
-        state.acknowledgeMove(ADVANCED, Set.of("changed.md"), Map.of());
+        state.acknowledgeMove(
+                ADVANCED, Set.of("changed.md"), Map.of("changed.md", RetainedFileBaseline.saved(ADVANCED, "changed")));
         return state;
     }
 

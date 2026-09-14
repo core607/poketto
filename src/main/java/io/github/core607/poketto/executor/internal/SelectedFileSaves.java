@@ -88,7 +88,7 @@ final class SelectedFileSaves {
         } else {
             state.originals.visit(actor, workspace, state.originalCommit, baseline);
         }
-        for (String path : state.baselines.keySet()) {
+        for (String path : state.fileBaselines.keySet()) {
             inputs.baseline(baselineFile(actor, workspace, state, path));
         }
         reader.visitBaseline(actor, workspace, remoteCommit, limits, inputs::remote);
@@ -112,9 +112,7 @@ final class SelectedFileSaves {
         prepareRetainedWrite(state, patch);
         RepositoryPatchResult result;
         try {
-            result = state.tracked()
-                    ? patches.apply(actor, workspace, patch, attempt -> retainAttempt(state, attempt))
-                    : patches.apply(actor, workspace, patch);
+            result = patches.apply(actor, workspace, patch, attempt -> retainAttempt(state, attempt));
         } catch (RepositoryWriteAmbiguousException unknown) {
             State proposed = state.copy();
             proposed.pending = patch;
@@ -161,9 +159,6 @@ final class SelectedFileSaves {
     }
 
     private static void prepareRetainedWrite(State state, RepositoryPatch patch) {
-        if (!state.tracked()) {
-            return;
-        }
         State proposed = state.copy();
         proposed.pending = patch;
         proposed.attempt = Optional.empty();
@@ -182,26 +177,24 @@ final class SelectedFileSaves {
         if (!state.uncertain) {
             return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
         }
-        if (state.tracked() && state.attempt.isEmpty()) {
-            // A tracked remote push cannot begin before its exact candidate was durably retained.
+        if (state.attempt.isEmpty()) {
+            // A remote push cannot begin before its exact candidate was durably retained.
             State proposed = state.copy();
             proposed.uncertain = false;
             proposed.pending = null;
             return remember(state, proposed, BridgeReplies.succeeded(new BridgeReplies.Recovery(false)));
         }
-        if (state.pending == null || state.attempt.isEmpty()) {
+        if (state.pending == null) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
         RepositoryPatchResult result;
         try {
-            result = state.tracked()
-                    ? patches.recover(
-                            actor,
-                            workspace,
-                            state.pending,
-                            state.attempt.orElseThrow(),
-                            attempt -> retainAttempt(state, attempt))
-                    : patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
+            result = patches.recover(
+                    actor,
+                    workspace,
+                    state.pending,
+                    state.attempt.orElseThrow(),
+                    attempt -> retainAttempt(state, attempt));
         } catch (RepositoryWriteAmbiguousException unknown) {
             // Retain the same original patch and commit even if the recovery reply is also lost.
             return remember(state, state.copy(), BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN"));
@@ -219,15 +212,11 @@ final class SelectedFileSaves {
         State proposed = state.copy();
         proposed.baseCommit = result.commit();
         // Only these paths adopt the new remote baseline; unselected local edits keep theirs.
-        paths.forEach(path -> proposed.baselines.put(path, result.commit()));
-        paths.forEach(proposed.fileBaselines::remove);
-        if (state.tracked()) {
-            patch.changes()
-                    .forEach(change -> proposed.fileBaselines.put(
-                            change.path(),
-                            RetainedFileBaseline.saved(
-                                    result.commit(), change.content().orElse(null))));
-        }
+        patch.changes()
+                .forEach(change -> proposed.fileBaselines.put(
+                        change.path(),
+                        RetainedFileBaseline.saved(
+                                result.commit(), change.content().orElse(null))));
         proposed.uncertain = false;
         proposed.pending = null;
         proposed.attempt = Optional.empty();
@@ -257,7 +246,6 @@ final class SelectedFileSaves {
         private final String originalCommit;
         private final SaveStateJournal journal;
         private final OriginalFileLookup originals;
-        private final Map<String, String> baselines = new HashMap<>();
         private final Map<String, RetainedFileBaseline> fileBaselines = new HashMap<>();
         String baseCommit;
         boolean uncertain;
@@ -269,7 +257,7 @@ final class SelectedFileSaves {
         PendingWorkspaceSync sync;
 
         State(String baseCommit) {
-            this(baseCommit, SaveStateJournal.UNTRACKED);
+            this(baseCommit, SaveStateJournal.NONE);
         }
 
         State(String baseCommit, SaveStateJournal journal) {
@@ -283,10 +271,6 @@ final class SelectedFileSaves {
             this.originals = originals;
         }
 
-        boolean tracked() {
-            return journal != SaveStateJournal.UNTRACKED;
-        }
-
         State copy() {
             return restore(snapshot(), journal, originals);
         }
@@ -294,16 +278,12 @@ final class SelectedFileSaves {
         void install(State proposed) {
             ProtocolValues.require(
                     originalCommit.equals(proposed.originalCommit), "save state", "must keep its original commit");
-            if (tracked()) {
-                journal.retain(proposed.snapshot());
-            }
+            journal.retain(proposed.snapshot());
             copyFields(proposed);
         }
 
         private void copyFields(State proposed) {
             baseCommit = proposed.baseCommit;
-            baselines.clear();
-            baselines.putAll(proposed.baselines);
             fileBaselines.clear();
             fileBaselines.putAll(proposed.fileBaselines);
             uncertain = proposed.uncertain;
@@ -315,11 +295,18 @@ final class SelectedFileSaves {
             sync = proposed.sync;
         }
 
+        /** The disk record's redundant commit index is derived only at the serialization boundary. */
+        private Map<String, String> fileCommits() {
+            var commits = new HashMap<String, String>();
+            fileBaselines.forEach((path, file) -> commits.put(path, file.commit()));
+            return commits;
+        }
+
         RetainedSaveState snapshot() {
             return new RetainedSaveState(
                     originalCommit,
                     baseCommit,
-                    baselines,
+                    fileCommits(),
                     fileBaselines,
                     uncertain,
                     pending,
@@ -331,7 +318,7 @@ final class SelectedFileSaves {
         }
 
         static State restore(RetainedSaveState snapshot) {
-            return restore(snapshot, SaveStateJournal.UNTRACKED);
+            return restore(snapshot, SaveStateJournal.NONE);
         }
 
         static State restore(RetainedSaveState snapshot, SaveStateJournal journal) {
@@ -339,9 +326,9 @@ final class SelectedFileSaves {
         }
 
         static State restore(RetainedSaveState snapshot, SaveStateJournal journal, OriginalFileLookup originals) {
+            snapshot.requireRecoverable();
             var state = new State(snapshot.originalCommit(), journal, originals);
             state.baseCommit = snapshot.baseCommit();
-            state.baselines.putAll(snapshot.baselines());
             state.fileBaselines.putAll(snapshot.fileBaselines());
             state.uncertain = snapshot.uncertain();
             state.pending = snapshot.pending();
@@ -364,7 +351,6 @@ final class SelectedFileSaves {
             PendingWorkspaceSync pendingSync = Objects.requireNonNull(sync, "pending sync must be present");
             PendingWorkspaceSync.File file = Objects.requireNonNull(pendingSync.current(), "sync file must be present");
             requireTracking(List.of(file.path()));
-            baselines.put(file.path(), pendingSync.commit());
             fileBaselines.put(file.path(), file.baseline());
             sync = pendingSync.advanced();
         }
@@ -393,13 +379,18 @@ final class SelectedFileSaves {
         }
 
         String baseline(String path) {
-            return baselines.getOrDefault(path, originalCommit);
+            RetainedFileBaseline file = fileBaselines.get(path);
+            return file == null ? originalCommit : file.commit();
         }
 
         void acknowledgeMove(String commit, Set<String> paths, Map<String, RetainedFileBaseline> retainedFiles) {
             requireTracking(paths);
-            paths.forEach(path -> baselines.put(path, commit));
-            paths.forEach(fileBaselines::remove);
+            ProtocolValues.require(retainedFiles.keySet().equals(paths), "move baselines", "must cover affected paths");
+            retainedFiles.forEach((path, file) -> {
+                file.requirePath(path);
+                ProtocolValues.require(
+                        file.commit().equals(commit), "move baseline", "must match the acknowledged commit");
+            });
             fileBaselines.putAll(retainedFiles);
             baseCommit = commit;
             move = null;
@@ -408,9 +399,9 @@ final class SelectedFileSaves {
         void requireTracking(Collection<String> paths) {
             long additional = paths.stream()
                     .distinct()
-                    .filter(path -> !baselines.containsKey(path))
+                    .filter(path -> !fileBaselines.containsKey(path))
                     .count();
-            if (baselines.size() + additional > 16384) {
+            if (fileBaselines.size() + additional > 16384) {
                 throw new IllegalArgumentException("session baseline capacity exhausted");
             }
         }
@@ -423,9 +414,6 @@ final class SelectedFileSaves {
                     actor, workspace, Set.of(Capability.READ_PRIVATE), () -> retained.file(workspace, path));
         }
         if (state.originals != null) {
-            if (!state.baseline(path).equals(state.originalCommit)) {
-                throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
-            }
             auth.authorize(actor, workspace, Capability.READ_PRIVATE);
             RepositoryFile file = state.originals.file(actor, workspace, state.originalCommit, path);
             return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> file);

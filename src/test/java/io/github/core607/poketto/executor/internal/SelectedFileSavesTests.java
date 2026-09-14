@@ -137,7 +137,7 @@ class SelectedFileSavesTests {
         var workspace = WorkspaceId.random();
         var fixture = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
         var patches = mock(RepositoryPatchService.class);
-        when(patches.apply(any(), any(), any())).thenThrow(new RepositoryWriteAmbiguousException("offline"));
+        when(patches.apply(any(), any(), any(), any())).thenThrow(new RepositoryWriteAmbiguousException("offline"));
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), patches, fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "uncertain"), List.of())
@@ -146,7 +146,7 @@ class SelectedFileSavesTests {
         assertThat(saves.save(actor, workspace, state, Map.of("private/secret.md", "retry"), List.of())
                         .code())
                 .isEqualTo("WRITE_OUTCOME_UNKNOWN");
-        verify(patches, times(1)).apply(any(), any(), any());
+        verify(patches, times(1)).apply(any(), any(), any(), any());
         assertThat(state.baseCommit).isEqualTo(fixture.sourceCommit());
         assertThat(((BridgeReplies.Reply) state.lastSave).code()).isEqualTo("WRITE_OUTCOME_UNKNOWN");
     }

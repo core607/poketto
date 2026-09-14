@@ -1,0 +1,68 @@
+{
+  "result": "PASS",
+  "applicationCommit": "7cc3bfbfb6acabcb7018c894e16f796380602b93",
+  "source": "real-auth-PG-HTTP-MCP-native-SRT",
+  "modelDriven": false,
+  "production": false,
+  "runtimeManifestSha256": "ea074014f0312f117a41aefc290b22565fbd5f9ae03ec09f5dcc4166f893bb01",
+  "controllerSha256": "3217859ba0cc34cd9c9079fad90755e768107bdf7239e1220f55da90e22e838a",
+  "clientSha256": "359d01bb23b1418cdf0a5215bde92637c2d27b1ca951419727526932123bf2e4",
+  "httpSupportSha256": "7b2203192ec2cd9995a2ed87ea347df546a1074fc9a9ee280962ca80363efd9b",
+  "workerSources": {
+    "disk_pool.py": "a674b65203864ec7d43b03fe4f12f0633493030e0bb7fce8083bf1552f60c09a",
+    "worker.py": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+    "launcher.py": "4bebbfdb15525f1c11f2fc8dc04f7177103222b5f50bc756599f63e3f43be21b",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "ca7b017f7c7d0c72406d75764579f6f8e8132537f9af862aebc5001608c57a67",
+    "cli.py": "93d35133c69a39cba3269e923c687efe03d64e7963815ae86e8790a0a0d431da",
+    "session_files.py": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+    "binary_capture.py": "a63463b05997c6b0a595822759a3efc9ba4ede93a2653ae8b712932659efb62e",
+    "materialize.py": "f1f6697a4e661859e3ea8749524de1af4147443e32fc5932019719d4eece2334",
+    "artifacts.py": "0ab2cd12280b4c2791f37a650641cf9babd0e12f4859bbd04ffe54f4e4476799"
+  },
+  "poolBytes": 536870912,
+  "copyBytes": 67108864,
+  "tests": [
+    "account-http-copy-initialization-waits-for-a-contended-journal-index",
+    "account-http-new-transports-and-grants-share-work-without-private-scope-escalation",
+    "account-http-consecutive-saves-advance-head-index-and-tool-commit-without-saving-binary-drafts",
+    "account-http-timeout-preserves-work-and-save-is-visible-through-authoritative-readback",
+    "account-http-status-detects-browser-write-without-changing-local-work-or-save-base",
+    "account-http-workspace-sync-discovers-additions-deletions-and-preserves-unsaved-files",
+    "account-http-workspace-sync-installs-remote-binary-and-preserves-conflicting-local-bytes",
+    "account-http-workspace-sync-conflicts-retain-all-text-versions-without-saving",
+    "account-http-public-copy-keeps-its-scope-when-accessed-by-a-full-grant",
+    "account-http-revocation-denies-the-grant-without-deleting-account-work",
+    "account-http-shared-disposal-clears-only-local-work-and-retains-saved-authority"
+  ],
+  "cleanup": "PASS",
+  "faultInjection": "The test holds the shared journal index lock for 500 ms during initial original capture.",
+  "separateChecks": [
+    "Executor unit gate passed",
+    "MCP protocol integration passed",
+    "Linux storage replay: 259 passed, 0 skipped",
+    "Worker suite: 76 passed"
+  ],
+  "limitations": [
+    "Synthetic accounts and content; not an external chat application.",
+    "Lost local installation acknowledgement is covered separately by journal-reopen and worker tests.",
+    "Follow-up latency uses a 112-path synthetic local Git authority, not production latency."
+  ],
+  "sameSnapshotFollowup": [
+    {
+      "sample": "same-immutable-workspace",
+      "iteration": 1,
+      "seconds": 1.51,
+      "paths": 112,
+      "result": "PASS"
+    },
+    {
+      "sample": "same-immutable-workspace",
+      "iteration": 2,
+      "seconds": 1.534,
+      "paths": 112,
+      "result": "PASS"
+    }
+  ],
+  "diskRecordFormatChanged": false
+}

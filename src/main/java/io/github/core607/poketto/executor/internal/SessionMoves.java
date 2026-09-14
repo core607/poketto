@@ -149,11 +149,8 @@ final class SessionMoves {
             return pendingResult(state.move, "LOCAL_MOVE_PENDING");
         }
         if (state.move.attempt == null) {
-            if (state.tracked()) {
-                clearMove(state);
-                return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
-            }
-            return pendingResult(state.move, "WRITE_OUTCOME_UNKNOWN");
+            clearMove(state);
+            return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
         }
         return write(actor, workspace, state, true);
     }
@@ -182,9 +179,7 @@ final class SessionMoves {
         }
         SelectedFileSaves.State proposed = state.copy();
         proposed.move.result = result;
-        if (state.tracked()) {
-            proposed.move.fileBaselines = fileBaselines(actor, workspace, result.commit(), pending.paths);
-        }
+        proposed.move.fileBaselines = fileBaselines(actor, workspace, result.commit(), pending.paths);
         state.install(proposed);
         return pendingResult(state.move, "LOCAL_MOVE_PENDING");
     }
@@ -208,19 +203,10 @@ final class SessionMoves {
             SelectedFileSaves.State state,
             boolean recovery,
             Pending pending) {
-        if (state.tracked()) {
-            return recovery
-                    ? service.recover(
-                            actor,
-                            workspace,
-                            pending.request,
-                            pending.attempt,
-                            attempt -> retainAttempt(state, attempt))
-                    : service.move(actor, workspace, pending.request, attempt -> retainAttempt(state, attempt));
-        }
         return recovery
-                ? service.recover(actor, workspace, pending.request, pending.attempt)
-                : service.move(actor, workspace, pending.request);
+                ? service.recover(
+                        actor, workspace, pending.request, pending.attempt, attempt -> retainAttempt(state, attempt))
+                : service.move(actor, workspace, pending.request, attempt -> retainAttempt(state, attempt));
     }
 
     private static void retainAttempt(SelectedFileSaves.State state, RepositoryWriteAttempt attempt) {
