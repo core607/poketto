@@ -27,6 +27,12 @@ assert_not_contains "$existing_step" 'POKETTO_REPOSITORY_PASSWORD'
 assert_not_contains "$existing_step" '--sync'
 assert_contains "$existing_step" '--pull --set-stdin'
 assert_contains "$existing_step" 'POKETTO_MIRROR_PULL_PASSWORD'
+# Existing installations accept all three delivery modes. Pull reaches the canonical registry with
+# the job's own package-read token, so the archive path is no longer the only credential-free route.
+assert_contains "$existing_step" 'secrets.GITHUB_TOKEN'
+assert_contains "$existing_step" 'transfer)'
+grep -Fq 'standard|existing) ;;' "$workflow" \
+    || { echo "the workflow still restricts which modes an existing installation accepts"; exit 1; }
 
 publication="$(sed -n '/^  publish:/,/^  mirror:/p' "$workflow")"
 assert_not_contains "$publication" 'MIRROR_PASSWORD'
