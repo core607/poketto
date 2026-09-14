@@ -4,7 +4,6 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
-import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryFile;
@@ -16,7 +15,6 @@ import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -49,6 +47,10 @@ final class SelectedFileSaves {
 
     SessionMoves moves() {
         return moves;
+    }
+
+    AuthorizedRepositoryReader repository() {
+        return reader;
     }
 
     Optional<String> currentCommit(AuthPrincipal actor, WorkspaceId workspace) {
@@ -94,6 +96,9 @@ final class SelectedFileSaves {
     BridgeReplies.Reply save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         auth.authorize(actor, workspace);
+        if (state.sync != null) {
+            return BridgeReplies.failed("RECOVER_SYNC_FIRST");
+        }
         if (state.move != null) {
             return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
         }
@@ -258,6 +263,7 @@ final class SelectedFileSaves {
         BridgeReplies.Recorded lastSave = new BridgeReplies.Absent();
         BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         SessionMoves.Pending move;
+        PendingWorkspaceSync sync;
 
         State(String baseCommit) {
             this(baseCommit, SaveStateJournal.UNTRACKED);
@@ -303,6 +309,7 @@ final class SelectedFileSaves {
             lastSave = proposed.lastSave;
             lastImport = proposed.lastImport;
             move = proposed.move;
+            sync = proposed.sync;
         }
 
         RetainedSaveState snapshot() {
@@ -316,7 +323,8 @@ final class SelectedFileSaves {
                     attempt.orElse(null),
                     RetainedSaveState.Move.capture(move),
                     BridgeReplies.RestoredReceipt.capture(lastSave),
-                    BridgeReplies.RestoredReceipt.capture(lastImport));
+                    BridgeReplies.RestoredReceipt.capture(lastImport),
+                    sync);
         }
 
         static State restore(RetainedSaveState snapshot) {
@@ -338,7 +346,42 @@ final class SelectedFileSaves {
             state.move = snapshot.move() == null ? null : snapshot.move().restore();
             state.lastSave = snapshot.lastSave();
             state.lastImport = snapshot.lastImport();
+            state.sync = snapshot.sync();
             return state;
+        }
+
+        void retainSync(PendingWorkspaceSync pendingSync) {
+            State proposed = copy();
+            proposed.sync = pendingSync;
+            install(proposed);
+        }
+
+        void acknowledgeSyncFile() {
+            PendingWorkspaceSync pendingSync = Objects.requireNonNull(sync, "pending sync must be present");
+            PendingWorkspaceSync.File file = Objects.requireNonNull(pendingSync.current(), "sync file must be present");
+            requireTracking(List.of(file.path()));
+            State proposed = copy();
+            proposed.baselines.put(file.path(), pendingSync.commit());
+            proposed.fileBaselines.put(file.path(), file.baseline());
+            proposed.sync = pendingSync.advanced();
+            install(proposed);
+        }
+
+        BridgeReplies.Reply finishSync(boolean skipped) {
+            PendingWorkspaceSync pendingSync = Objects.requireNonNull(sync, "pending sync must be present");
+            State proposed = copy();
+            proposed.sync = null;
+            if (!skipped) {
+                proposed.baseCommit = pendingSync.commit();
+            }
+            var result = BridgeReplies.workspaceSyncResult(pendingSync, skipped);
+            BridgeReplies.Reply reply = BridgeReplies.outcome(
+                    pendingSync.conflicts().isEmpty(),
+                    skipped ? "SYNC_RELEASED" : pendingSync.conflicts().isEmpty() ? "SYNCHRONIZED" : "MERGE_CONFLICT",
+                    result);
+            proposed.lastSave = reply;
+            install(proposed);
+            return reply;
         }
 
         void acknowledgeImport(BridgeReplies.ImportReceipt receipt) {
@@ -371,34 +414,6 @@ final class SelectedFileSaves {
         }
     }
 
-    SyncPlan prepareSync(AuthPrincipal actor, WorkspaceId workspace, State state, String path, Optional<String> local) {
-        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        if (state.uncertain || state.move != null) {
-            throw new IllegalArgumentException("recover the pending write before synchronizing");
-        }
-        state.requireTracking(List.of(path));
-        String previous = state.baseline(path);
-        var original = baselineFile(actor, workspace, state, path);
-        var remote = reader.getFile(actor, workspace, Optional.empty(), path);
-        if ((!original.expectedAbsence() && original.source().isEmpty())
-                || (!remote.expectedAbsence() && remote.source().isEmpty())
-                || remote.commit().isEmpty()) {
-            throw new IllegalArgumentException("synchronization requires a text path and an existing remote commit");
-        }
-        var merged = TextReconciliation.merge(original.source(), local, remote.source());
-        return new SyncPlan(
-                path,
-                state.baseCommit,
-                previous,
-                remote.commit().orElseThrow(),
-                remote.source(),
-                local.map(value -> DocumentRevision.sha256(value.getBytes(StandardCharsets.UTF_8))
-                        .value()
-                        .substring(7)),
-                merged.content(),
-                merged.conflicted());
-    }
-
     RepositoryFile baselineFile(AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
         RetainedFileBaseline retained = state.fileBaselines.get(path);
         if (retained != null) {
@@ -415,34 +430,4 @@ final class SelectedFileSaves {
         }
         return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
     }
-
-    void acknowledgeSync(State state, SyncPlan plan) {
-        if (state.uncertain
-                || !state.baseCommit.equals(plan.previousCommit())
-                || !state.baseline(plan.path()).equals(plan.previousPathCommit())) {
-            throw new IllegalStateException("session baseline changed during synchronization");
-        }
-        state.requireTracking(List.of(plan.path()));
-        State proposed = state.copy();
-        proposed.baselines.put(plan.path(), plan.remoteCommit());
-        proposed.fileBaselines.remove(plan.path());
-        if (state.tracked()) {
-            proposed.fileBaselines.put(
-                    plan.path(),
-                    RetainedFileBaseline.saved(
-                            plan.remoteCommit(), plan.remoteSource().orElse(null)));
-        }
-        proposed.baseCommit = plan.remoteCommit();
-        state.install(proposed);
-    }
-
-    record SyncPlan(
-            String path,
-            String previousCommit,
-            String previousPathCommit,
-            String remoteCommit,
-            Optional<String> remoteSource,
-            Optional<String> expectedLocalSha256,
-            Optional<String> content,
-            boolean conflicted) {}
 }

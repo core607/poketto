@@ -5,6 +5,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -27,6 +28,26 @@ final class RetainedFileLocks {
         } catch (IOException | OverlappingFileLockException | RetainedCopyException failure) {
             failedOpen(path, channel, failure);
             throw failure;
+        }
+    }
+
+    /** Index users may wait; owner locks remain nonblocking while an index lock is held. */
+    static Held await(Path path, Opener opener, Duration timeout) throws IOException {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (true) {
+            try {
+                return acquire(path, opener);
+            } catch (RetainedCopyException busy) {
+                if (busy.reason() != RetainedCopyException.Reason.BUSY || System.nanoTime() >= deadline) {
+                    throw busy;
+                }
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new RetainedCopyException(RetainedCopyException.Reason.BUSY, interrupted);
+                }
+            }
         }
     }
 

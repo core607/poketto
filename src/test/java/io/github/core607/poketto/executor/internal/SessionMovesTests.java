@@ -135,8 +135,8 @@ class SessionMovesTests {
         assertThat(saves.save(actor, workspace, state, Map.of("private/moved.md", "later local edit"), List.of())
                         .code())
                 .isEqualTo("REPOSITORY_CONFLICT");
-        var plan = saves.prepareSync(actor, workspace, state, "private/moved.md", Optional.empty());
-        assertThat(plan).isNotNull();
+        var inputs = saves.prepareWorkspaceSync(actor, workspace, state);
+        assertThat(inputs.paths()).contains("private/moved.md");
         assertThat(fixture.reader(auth)
                         .getFile(actor, workspace, Optional.empty(), "private/moved.md")
                         .commit())

@@ -64,7 +64,8 @@ final class BridgeArguments {
     }
 
     static Sync sync(JsonNode arguments) {
-        return new Sync(string(exactly(arguments, Sync.class), "path"));
+        exactly(arguments, Sync.class);
+        return new Sync();
     }
 
     static Edit edit(JsonNode arguments) {
@@ -137,7 +138,7 @@ final class BridgeArguments {
 
     record Move(String source, String destination) {}
 
-    record Sync(String path) {}
+    record Sync() {}
 
     record Edit(String path, String oldText, String newText) {
         Edit {

@@ -165,7 +165,7 @@ final class AccountCopyStore {
     private RetainedFileLocks.Held index() throws IOException {
         directory.checkRoot();
         Path lock = root.resolve(".index.lock");
-        return RetainedFileLocks.acquire(lock, () -> directory.openLock(lock));
+        return RetainedFileLocks.await(lock, () -> directory.openLock(lock), Duration.ofSeconds(5));
     }
 
     private int countOwners() throws IOException {

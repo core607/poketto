@@ -12,9 +12,11 @@ import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryFilenamePage;
 import io.github.core607.poketto.content.RepositoryFilenameSearch;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
+import io.github.core607.poketto.content.RepositorySyncEntry;
 import io.github.core607.poketto.content.RepositoryTree;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -447,6 +449,27 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         resolve(workspace, Optional.of(commit), (repository, selected) -> {
             new JGitRepositoryBaselineReader(repository, workspace, selected.orElseThrow(), limits, deadline, sink)
                     .visit();
+            return null;
+        });
+    }
+
+    @Override
+    public RepositorySyncEntry inspectBlob(WorkspaceId workspace, String commit, String path) {
+        return resolve(
+                workspace,
+                Optional.of(commit),
+                (repository, selected) -> JGitRepositorySyncReader.read(
+                        repository, selected.orElseThrow(), path, OutputStream.nullOutputStream()));
+    }
+
+    @Override
+    public void copyBlob(WorkspaceId workspace, RepositorySyncEntry blob, OutputStream output) {
+        resolve(workspace, Optional.of(blob.commit()), (repository, selected) -> {
+            RepositorySyncEntry copied =
+                    JGitRepositorySyncReader.read(repository, selected.orElseThrow(), blob.path(), output);
+            if (!copied.equals(blob) || copied.kind() != RepositorySyncEntry.Kind.FILE) {
+                throw new IOException("repository blob differs from the staged selection");
+            }
             return null;
         });
     }

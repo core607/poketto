@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.OutputStream;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -24,6 +25,11 @@ public interface RepositoryContentReader {
 
     /** Reads committed text; indexed media reports MANAGED_MEDIA rather than absence or placeholder bytes. */
     RepositoryFile getFile(WorkspaceId workspaceId, Optional<String> commit, String path);
+
+    RepositorySyncEntry inspectBlob(WorkspaceId workspace, String commit, String path);
+
+    /** Streams exact committed bytes into caller-owned staging; no caller-visible publication happens here. */
+    void copyBlob(WorkspaceId workspace, RepositorySyncEntry blob, OutputStream output);
 
     /**
      * Visits one pinned commit's Git entries (including directories) and indexed-media paths once.

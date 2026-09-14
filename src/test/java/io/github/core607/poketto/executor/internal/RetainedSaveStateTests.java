@@ -233,7 +233,8 @@ class RetainedSaveStateTests {
                         null,
                         null,
                         receipt,
-                        receipt))
+                        receipt,
+                        null))
                 .isInstanceOf(IllegalArgumentException.class);
         var oversized = JSON.createObjectNode().put("message", "x".repeat(65536));
         assertThatThrownBy(() -> new BridgeReplies.RestoredReceipt(oversized))
@@ -265,7 +266,8 @@ class RetainedSaveStateTests {
                         null,
                         null,
                         receipt,
-                        receipt))
+                        receipt,
+                        null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tracked path commit");
     }

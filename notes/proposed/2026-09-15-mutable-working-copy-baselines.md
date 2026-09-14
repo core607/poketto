@@ -8,7 +8,7 @@ Account-owned disk copies outlive their initial Git export. Selected saves advan
 
 ## Decision
 
-[Git baseline installation](../implemented/2026-09-15-executor-git-baseline-installation.md) implements acknowledged Git advancement and removes the archive worker. Whole-workspace synchronization and per-file baseline consolidation below remain pending.
+[Git baseline installation](../implemented/2026-09-15-executor-git-baseline-installation.md) implements acknowledged Git advancement and removes the archive worker. [Whole-workspace synchronization](../implemented/2026-09-15-workspace-synchronization.md) implements explicit reconciliation and interruption recovery. Per-file baseline consolidation below remains pending.
 
 A full-read copy represents a mutable Git working tree. After an acknowledged save or move, install the confirmed authoritative commit as its local Git baseline while preserving unrelated local edits. Report the installed current commit to the caller. Keep the original commit only where provenance or pending-write reconciliation needs it. Sandbox Git state is untrusted and never authorizes a remote write.
 
@@ -22,7 +22,7 @@ Remove the worker's unused CHECKPOINT, CHECKPOINT_ACTIVE, CHECKPOINT_REMOVE and 
 
 Collect the original retained paths and acknowledged per-file versions before comparing them with one fixed remote commit. Bound the combined path count, text bytes and traversal duration before changing local files. Preserve non-text presence and diagnostics in that inventory; unreadable, oversized or indexed-media paths cannot be interpreted as deletions.
 
-The local application step must handle additions, deletions and conflicting edits across the workspace, retain non-text content, and report interrupted or partially installed work explicitly. Consolidate retained baseline state only with a corresponding recovery path; collecting the inventory alone does not implement workspace synchronization. The command entrance, local installation, interruption recovery, baseline consolidation and real-client acceptance remain required.
+The local application step must handle additions, deletions and conflicting edits across the workspace, retain non-text content, and report interrupted or partially installed work explicitly. Consolidate retained baseline state only with a corresponding recovery path; collecting the inventory alone does not implement workspace synchronization. The command entrance, local installation and interruption recovery are implemented by the linked synchronization decision. Consolidating retained baseline state remains required, including removal of redundant initial/per-path representations only after their durability and authorization obligations have a single replacement owner.
 
 ## Alternatives and consequences
 

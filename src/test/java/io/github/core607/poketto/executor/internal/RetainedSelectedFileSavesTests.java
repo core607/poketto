@@ -163,24 +163,6 @@ class RetainedSelectedFileSavesTests {
     }
 
     @Test
-    void failedSyncCheckpointDoesNotAdvanceTheLivePathBaseline() throws Exception {
-        PublicExecutionNativeFixture fixture = fixture(false);
-        fixture.competingWrite(auth, actor);
-        var proposed = new ArrayList<RetainedSaveState>();
-        var failure = new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
-        var state = new SelectedFileSaves.State(fixture.sourceCommit(), snapshot -> {
-            proposed.add(snapshot);
-            throw failure;
-        });
-        SelectedFileSaves saves = saves(fixture);
-        SelectedFileSaves.SyncPlan plan = saves.prepareSync(actor, workspace, state, "AGENTS.md", Optional.empty());
-        assertThatThrownBy(() -> saves.acknowledgeSync(state, plan)).isSameAs(failure);
-        assertThat(proposed.getFirst().baselines()).containsEntry("AGENTS.md", plan.remoteCommit());
-        assertThat(state.baseCommit).isEqualTo(fixture.sourceCommit());
-        assertThat(state.baseline("AGENTS.md")).isEqualTo(fixture.sourceCommit());
-    }
-
-    @Test
     void reopenedSaveUsesIndependentRetainedTextAndAbsenceWithoutHistoricalReads() throws Exception {
         PublicExecutionNativeFixture fixture = fixture(false);
         SelectedFileSaves original = saves(fixture);
@@ -215,49 +197,6 @@ class RetainedSelectedFileSavesTests {
                         .getFile(actor, workspace, Optional.empty(), "private/secret.md")
                         .source())
                 .contains("recreated");
-    }
-
-    @Test
-    void syncRetainsRemoteSourceSeparatelyFromLocalMergeAndStillChecksRemoteConflicts() throws Exception {
-        PublicExecutionNativeFixture fixture = fixture(false);
-        SelectedFileSaves original = saves(fixture);
-        var state = new SelectedFileSaves.State(fixture.sourceCommit(), snapshot -> {});
-        String baseline = "first\nmiddle\nlast\n";
-        assertThat(original.save(actor, workspace, state, Map.of("AGENTS.md", baseline), List.of())
-                        .ok())
-                .isTrue();
-        var competitor = new SelectedFileSaves.State(state.baseCommit);
-        String remote = "first\nmiddle\nremote\n";
-        assertThat(original.save(actor, workspace, competitor, Map.of("AGENTS.md", remote), List.of())
-                        .ok())
-                .isTrue();
-        SelectedFileSaves resumed = withoutHistoricalReads(fixture);
-        SelectedFileSaves.State restored = reopen(state);
-        assertThat(resumed.save(actor, workspace, restored, Map.of("AGENTS.md", "must conflict"), List.of())
-                        .code())
-                .isEqualTo("REPOSITORY_CONFLICT");
-        var plan = resumed.prepareSync(actor, workspace, restored, "AGENTS.md", Optional.of("local\nmiddle\nlast\n"));
-        assertThat(plan.conflicted()).isFalse();
-        assertThat(plan.content()).contains("local\nmiddle\nremote\n");
-        resumed.acknowledgeSync(restored, plan);
-        restored = reopen(restored);
-        assertThat(resumed.baselineFile(actor, workspace, restored, "AGENTS.md").source())
-                .contains(remote);
-        assertThat(restored.baseline("private/secret.md")).isEqualTo(fixture.sourceCommit());
-        var next = resumed.prepareSync(actor, workspace, restored, "AGENTS.md", plan.content());
-        assertThat(next.content()).isEqualTo(plan.content());
-        assertThat(resumed.save(
-                                actor,
-                                workspace,
-                                restored,
-                                Map.of("AGENTS.md", next.content().orElseThrow()),
-                                List.of())
-                        .ok())
-                .isTrue();
-        assertThat(fixture.reader(auth)
-                        .getFile(actor, workspace, Optional.empty(), "AGENTS.md")
-                        .source())
-                .isEqualTo(plan.content());
     }
 
     @Test

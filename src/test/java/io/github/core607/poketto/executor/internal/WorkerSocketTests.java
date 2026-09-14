@@ -1462,6 +1462,7 @@ class WorkerSocketTests {
                             1));
                     hello.put("diskCopyProtocol", 1);
                     hello.put("gitBaselineProtocol", 1);
+                    hello.put("workspaceSyncProtocol", 1);
                     response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()
