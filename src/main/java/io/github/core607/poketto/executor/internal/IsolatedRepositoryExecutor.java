@@ -887,8 +887,25 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /** Only OPEN/ATTACH replies reach this boundary; no user command has been submitted. */
+    private static void requireInitializationAccepted(JsonNode response, boolean existingCopy) {
+        if (!response.path("ok").isBoolean() || response.path("ok").booleanValue()) {
+            return;
+        }
+        ExecutionAdmissionException.Reason reason =
+                switch (response.path("code").asString("")) {
+                    case "SESSION_CAPACITY", "REQUEST_CAPACITY" -> ExecutionAdmissionException.Reason.CAPACITY;
+                    case "SESSION_BUSY", "COPY_BUSY", "SESSION_EXISTS" -> ExecutionAdmissionException.Reason.BUSY;
+                    default -> null;
+                };
+        if (reason != null) {
+            throw new ExecutionAdmissionException(reason, existingCopy);
+        }
+    }
+
     private void awaitInitialized(Session session, JsonNode response, long deadline) {
         while (true) {
+            requireInitializationAccepted(response, session.attaching);
             requireOk(response, session);
             requireLive(session);
             String state = response.path("state").asString("");

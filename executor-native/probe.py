@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state', 'public-scope'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state', 'public-scope', 'admission'), default='all')
     parser.add_argument('--process-case', choices=('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired'))
     args = parser.parse_args()
     assert args.process_case is None or args.scenario == 'retained-process'
@@ -225,6 +225,9 @@ with socket.socket(socket.AF_UNIX) as connection:
                 'full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits',
                 'member-projection-fetch-survives-website-shutdown-without-source-history',
                 'public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal'}
+        elif mode == 'admission':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'worker-capacity-refusal-is-actionable-and-retry-does-not-leak-a-copy'}
         elif mode == 'public-scope':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'public-scope-real-projection-has-no-private-files-metadata-or-original-history',
@@ -281,7 +284,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
             'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
             'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
-        if args.scenario in ('ephemeral-lifecycle', 'account-state', 'retained-process', 'public-scope'):
+        if args.scenario in ('ephemeral-lifecycle', 'account-state', 'retained-process', 'public-scope', 'admission'):
             assert args.fixture_parent == '/var/lib', 'Disk fixture must not allocate its image in tmpfs'
             disk_pool.mkdir()
             disk_image = root / 'copies.img'

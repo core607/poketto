@@ -26,6 +26,7 @@ import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
@@ -143,6 +144,8 @@ public final class ExecutorNativeProbe {
             probe.portableExports();
         } else if (args[1].equals("media")) {
             probe.mediaFetch();
+        } else if (args[1].equals("admission")) {
+            probe.capacityAdmission();
         } else if (args[1].equals("public-scope")) {
             probe.publicProjection();
         } else if (args[1].equals("peer-only")) {
@@ -1875,6 +1878,60 @@ public final class ExecutorNativeProbe {
                             .expectedAbsence())
                     .isTrue();
             passed("single-file-cli-sync-merges-conflicts-and-keeps-unselected-baselines-and-local-deletions");
+        }
+    }
+
+    private void capacityAdmission() throws Exception {
+        try (var executor = adapter(path("socket"), 8)) {
+            var occupied = new LinkedHashMap<WorkspaceId, String>();
+            for (int index = 0; index < 4; index++) {
+                var selected = WorkspaceId.random();
+                var result = executor.execute(
+                        principal,
+                        selected,
+                        "capacity",
+                        new RepositoryExecutor.CopyRequest("new"),
+                        Optional.empty(),
+                        "printf occupied",
+                        Duration.ofSeconds(5),
+                        new Cancellation());
+                assertThat(result.exitCode()).isZero();
+                occupied.put(selected, result.copyId());
+            }
+            var waiting = WorkspaceId.random();
+            assertThatThrownBy(() -> executor.execute(
+                            principal,
+                            waiting,
+                            "capacity",
+                            new RepositoryExecutor.CopyRequest("new"),
+                            Optional.empty(),
+                            "touch never-started",
+                            Duration.ofSeconds(5),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            failure -> assertThat(failure.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.CAPACITY));
+            var released = occupied.entrySet().iterator().next();
+            assertThat(executor.discard(
+                                    principal,
+                                    released.getKey(),
+                                    new RepositoryExecutor.DiscardRequest(released.getValue()),
+                                    new Cancellation())
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+            var result = executor.execute(
+                    principal,
+                    waiting,
+                    "capacity-retry",
+                    new RepositoryExecutor.CopyRequest("new"),
+                    Optional.empty(),
+                    "test ! -e never-started && printf admitted",
+                    Duration.ofSeconds(5),
+                    new Cancellation());
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout()).isEqualTo("admitted");
+            passed("worker-capacity-refusal-is-actionable-and-retry-does-not-leak-a-copy");
         }
     }
 
