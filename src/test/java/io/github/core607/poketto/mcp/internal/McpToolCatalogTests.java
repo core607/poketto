@@ -24,7 +24,7 @@ class McpToolCatalogTests {
                 .specifications();
         assertThat(tools)
                 .extracting(specification -> specification.tool().name())
-                .containsExactlyInAnyOrder("repo_exec", "get_artifact", "get_asset", "put_asset");
+                .containsExactlyInAnyOrder("repo_exec", "repo_discard", "get_artifact", "get_asset", "put_asset");
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /** Repository primitives for already-authorized callers; these results include private content. */
 public interface RepositoryContentReader {
@@ -19,6 +20,15 @@ public interface RepositoryContentReader {
 
     /** Reads committed text; indexed media reports MANAGED_MEDIA rather than absence or placeholder bytes. */
     RepositoryFile getFile(WorkspaceId workspaceId, Optional<String> commit, String path);
+
+    /**
+     * Visits one pinned commit's Git entries (including directories) and indexed-media paths once.
+     * Uses the same file semantics as getFile, without following links or loading original media.
+     * The sink may stage partial private data; it must discard that data if this method fails.
+     * Absence can be inferred only after successful completion, for valid file paths not visited.
+     */
+    void visitBaseline(
+            WorkspaceId workspace, String commit, RepositoryBaselineLimits limits, Consumer<RepositoryFile> sink);
 
     /** Current publication-eligible source, independent of the workspace website switch; never historical content. */
     RepositoryTree readPublicTree(WorkspaceId workspaceId, Optional<String> commit);

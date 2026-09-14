@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'media'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -61,7 +61,7 @@ def main():
     config_path = root / 'worker.json'
     worker_config = None
     evidence = []
-    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -150,21 +150,27 @@ with socket.socket(socket.AF_UNIX) as connection:
 
     def execute_java(mode):
         nonlocal process
+        # The complete batch includes repeated cold opens and deliberately interrupted restarts.
+        timeout_seconds = 360 if mode == 'main' else 240
         agent, = list((runtime / 'jars').glob('byte-buddy-agent-*.jar'))
+        retained_process = mode.startswith(('retained-produce-', 'retained-resume-'))
+        entrypoint = 'RetainedProcessNativeProbe' if retained_process else 'ExecutorNativeProbe'
         command = ['systemd-run', '--quiet', '--wait', '--pipe', '--collect', '--unit', app_unit,
-                   '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64', '-p', 'RuntimeMaxSec=240',
+                   '-p', 'User=' + app_user, '-p', 'MemoryMax=402653184', '-p', 'TasksMax=64',
+                   '-p', 'RuntimeMaxSec=' + str(timeout_seconds),
                    str(java), '-Xmx128m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(root / 'home'),
                    '-javaagent:' + str(agent), '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
-                   'io.github.core607.poketto.executor.internal.ExecutorNativeProbe', str(root / 'java.json'), mode]
+                   'io.github.core607.poketto.executor.internal.' + entrypoint, str(root / 'java.json'), mode]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         output = []
+        killed_pid = None
         def relay():
             for line in process.stdout:
                 output.append(line)
                 print(line, end='', flush=True)
         reader = threading.Thread(target=relay, daemon=True)
         reader.start()
-        deadline = time.monotonic() + 240
+        deadline = time.monotonic() + timeout_seconds
         while process.poll() is None:
             if time.monotonic() >= deadline:
                 raise AssertionError('Java native probe exceeded deadline')
@@ -172,6 +178,16 @@ with socket.socket(socket.AF_UNIX) as connection:
             if request_file.exists():
                 request = json.loads(request_file.read_text())
                 assert str(uuid.UUID(request['id'])) == request['id']
+                if request['operation'] == 'kill-application':
+                    assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted',
+                                    'retained-produce-uncertain', 'retained-produce-beforepublish',
+                                    'retained-produce-afterpublish')
+                    assert killed_pid is None
+                    killed_pid = int(run(['systemctl', 'show', '--value', '-p', 'MainPID', app_unit]))
+                    assert killed_pid > 1 and Path(f'/proc/{killed_pid}/exe').resolve(strict=True) == java
+                    run(['systemctl', 'kill', '--kill-who=all', '--signal=KILL', app_unit])
+                    request_file.unlink()
+                    continue
                 control(request)
                 request_file.unlink()
                 response = root / 'control/response.tmp'
@@ -181,14 +197,25 @@ with socket.socket(socket.AF_UNIX) as connection:
                 response.replace(root / 'control/response.json')
             time.sleep(.02)
         reader.join(timeout=5)
-        assert process.returncode == 0, 'Java native fixture failed'
         parsed = [json.loads(line) for line in output if line.startswith('{')]
+        if mode.startswith('retained-produce-'):
+            scenario = mode.removeprefix('retained-produce-')
+            assert killed_pid is not None and process.returncode != 0, 'Producer was not externally killed'
+            assert not Path(f'/proc/{killed_pid}').exists(), 'Producer JVM still exists'
+            assert any(item.get('retainedLossReady') == scenario for item in parsed)
+            passed('retained-producer-externally-killed-' + scenario)
+            return
+        assert killed_pid is None and process.returncode == 0, 'Java native fixture failed'
         if mode == 'main':
             assert any(item.get('summary') == 'PASS' for item in parsed)
         elif mode == 'exports':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority',
                 'public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files'}
+        elif mode.startswith('retained-resume-'):
+            scenario = mode.removeprefix('retained-resume-')
+            assert any(item.get('test') == 'retained-jvm-loss-' + scenario and item.get('result') == 'PASS'
+                       for item in parsed)
         elif mode == 'media':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits',
@@ -235,7 +262,10 @@ with socket.socket(socket.AF_UNIX) as connection:
             'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
-            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
+            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000,
+            'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
+            'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
+            'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'
@@ -259,12 +289,25 @@ with socket.socket(socket.AF_UNIX) as connection:
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
-        execute_java('main' if args.scenario == 'all' else args.scenario)
+        if args.scenario == 'retained-process':
+            for case in ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish'):
+                execute_java('retained-produce-' + case)
+                execute_java('retained-resume-' + case)
+        else:
+            execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
+            expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
+            assert str(uuid.UUID(expired)) == expired
+            assert not list(Path(worker_config['checkpointRoot']).glob('*_' + expired + '.checkpoint'))
+            passed('expired-checkpoint-reclaimed-by-worker-without-client-removal')
             execute_java('abandon')
         no_processes(wait=22)
-        passed('java-process-loss-expires-real-worker-lease' if args.scenario == 'all'
-               else 'selected-scenario-closes-worker-leases')
+        if args.scenario == 'retained-process':
+            passed('retained-process-recovery-closes-worker-leases')
+        elif args.scenario == 'all':
+            passed('java-process-loss-expires-real-worker-lease')
+        else:
+            passed('selected-scenario-closes-worker-leases')
         control({'operation': 'assert-source-unchanged'})
         print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
@@ -275,6 +318,8 @@ with socket.socket(socket.AF_UNIX) as connection:
             'materializeSha256': digest(root / 'materialize.py'),
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'artifactsSha256': digest(root / 'artifacts.py'),
+            'checkpointsSha256': digest(root / 'checkpoints.py'),
+            'checkpointTreeSha256': digest(root / 'checkpoint_tree.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only', 'scenario': args.scenario}), flush=True)
     finally:

@@ -16,7 +16,9 @@ import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
@@ -70,10 +72,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
     private final MediaFileService media;
+    private final RetainedCopyStore retention;
+    private final RetainedBaselineStore originals;
     private final int maxSessions;
     private final Duration openTimeout;
     private final Duration closeTimeout;
     private final Map<SessionKey, Session> sessions = new LinkedHashMap<>();
+    private final Map<UUID, Session> closingLeases = new LinkedHashMap<>();
     private final Semaphore executions = new Semaphore(4);
     private final LongAdder createdCopies = new LongAdder();
     private final LongAdder releasedCopies = new LongAdder();
@@ -102,6 +107,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private boolean closed;
 
     IsolatedRepositoryExecutor(
+            RetainedWorkStores retention,
             PortableContentExports packages,
             MediaFileService media,
             SelectedFileSaves saves,
@@ -111,6 +117,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int maxSessions,
             Duration openTimeout,
             Duration closeTimeout) {
+        this.retention = retention == null ? null : retention.records();
+        this.originals = retention == null ? null : retention.originals();
         this.packages = packages;
         this.media = media;
         this.saves = saves;
@@ -128,13 +136,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             AuthPrincipal principal,
             WorkspaceId workspace,
             String serverSessionId,
-            String expectedCopyId,
+            CopyRequest expectedCopy,
             Optional<String> requestedCommit,
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
         var access = authorize(principal, workspace);
-        RepositoryExecutor.requireCopyId(expectedCopyId);
+        String expectedCopyId = Objects.requireNonNull(expectedCopy, "copy request must be present")
+                .id();
+        if (retention == null && (expectedCopy.resume() || expectedCopy.generation() != null)) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, false);
+        }
         if (serverSessionId == null
                 || serverSessionId.isBlank()
                 || serverSessionId.length() > 128
@@ -157,41 +169,54 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw rejected("operation_limit");
         }
         Session session = null;
+        RetainedCommand retained = null;
         boolean ownsCommand = false;
         boolean createdCopy = false;
+        boolean executionAttempted = false;
         try {
-            recoverRestartedLeases(key, RepositoryExecutor.NEW_COPY.equals(expectedCopyId));
-            requireExpectedCopy(observedCopy(key, expectedCopyId), expectedCopyId, false);
-            synchronized (this) {
-                if (closed) {
-                    throw new WorkerUnavailableException();
+            if (expectedCopy.resume()) {
+                Resumed resumed = resumeCopy(principal, workspace, key, expectedCopy, requestedCommit, cancellation);
+                session = resumed.session();
+                retained = resumed.command();
+                ownsCommand = true;
+            } else {
+                recoverRestartedLeases(key, RepositoryExecutor.NEW_COPY.equals(expectedCopyId));
+                requireRetainedBinding(principal, workspace, key, expectedCopy);
+                requireExpectedCopy(observedCopy(key, expectedCopyId), expectedCopyId, false);
+                synchronized (this) {
+                    if (closed) {
+                        throw new WorkerUnavailableException();
+                    }
+                    session = sessions.get(key);
+                    if (session == null) {
+                        requireExpectedCopy(null, expectedCopyId, false);
+                        if (sessions.size() >= 1024
+                                || sessions.values().stream()
+                                                .filter(value -> !value.capacityReleased)
+                                                .count()
+                                        >= maxSessions) {
+                            throw rejected("session_limit");
+                        }
+                        boolean fullRead = access.capabilities().contains(Capability.READ_PRIVATE);
+                        if (!fullRead && requestedCommit.isPresent()) {
+                            throw new IllegalArgumentException(
+                                    "Public execution starts from current publication; omit commit");
+                        }
+                        session = new Session(key, principal, fullRead, UUID.randomUUID(), UUID.randomUUID());
+                        sessions.put(key, session);
+                        createdCopies.increment();
+                        createdCopy = true;
+                    }
                 }
-                session = sessions.get(key);
-                if (session == null) {
-                    requireExpectedCopy(null, expectedCopyId, false);
-                    if (sessions.size() >= 1024
-                            || sessions.values().stream()
-                                            .filter(value -> !value.capacityReleased)
-                                            .count()
-                                    >= maxSessions) {
-                        throw rejected("session_limit");
-                    }
-                    boolean fullRead = access.capabilities().contains(Capability.READ_PRIVATE);
-                    if (!fullRead && requestedCommit.isPresent()) {
-                        throw new IllegalArgumentException(
-                                "Public execution starts from current publication; omit commit");
-                    }
-                    session = new Session(key, principal, fullRead);
-                    sessions.put(key, session);
-                    createdCopies.increment();
-                    createdCopy = true;
+                requireExpectedCopy(session, expectedCopyId, createdCopy);
+                if (!session.busy.compareAndSet(false, true)) {
+                    throw rejected("session_busy");
+                }
+                ownsCommand = true;
+                if (retention != null) {
+                    retained = admitRetained(session, expectedCopy);
                 }
             }
-            requireExpectedCopy(session, expectedCopyId, createdCopy);
-            if (!session.busy.compareAndSet(false, true)) {
-                throw rejected("session_busy");
-            }
-            ownsCommand = true;
             Session selected = session;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(selected, "cancelled"))) {
                 requireLive(session);
@@ -207,11 +232,25 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 requireLive(session);
                 authorize(session);
-                JsonNode response = executeWithBridge(session, command, timeout);
+                UUID executionId = UUID.randomUUID();
+                prepareRetained(session, retained, executionId);
+                executionAttempted = true;
+                JsonNode response = executeWithBridge(session, executionId.toString(), command, timeout);
                 requireOk(response, session);
                 authorize(session);
-                ExecutionResult result = result(response.path("result"), session.copyId.toString(), session.commit);
+                ExecutionResult result = result(
+                        response.path("result"),
+                        session.copyId.toString(),
+                        session.commit,
+                        retained == null ? null : retained.view());
                 String state = response.path("state").asString("");
+                if (retained != null) {
+                    if (!state.equals("READY")) {
+                        throw new RetainedCopyException(RetainedCopyException.Reason.UNCERTAIN);
+                    }
+                    retained.complete(session.saveState.snapshot());
+                    authorize(session);
+                }
                 if (state.equals("CLOSING")
                         || state.equals("CLOSED")
                         || result.terminationReason() == TerminationReason.CANCELLED
@@ -222,19 +261,490 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return result;
             }
         } catch (RuntimeException exception) {
-            if (session != null && ownsCommand && !(exception instanceof IllegalArgumentException)) {
+            if (session != null
+                    && ownsCommand
+                    && (executionAttempted || !(exception instanceof IllegalArgumentException))
+                    && (createdCopy || !(exception instanceof ExecutionAdmissionException))) {
                 try {
                     stopAndAwait(session, "cancelled");
                 } catch (RuntimeException closeFailure) {
                     log.warn("Worker termination not acknowledged; lease renewal has stopped", closeFailure);
                 }
             }
-            throw exception;
+            throw executionFailure(session, retained, executionAttempted, exception);
         } finally {
-            if (session != null && ownsCommand) {
-                session.busy.set(false);
+            try {
+                releaseRetained(session, retained);
+            } finally {
+                if (session != null && ownsCommand) {
+                    session.busy.set(false);
+                }
+                executions.release();
             }
-            executions.release();
+        }
+    }
+
+    private RuntimeException executionFailure(
+            Session session, RetainedCommand retained, boolean attempted, RuntimeException failure) {
+        if (!attempted || retained == null) {
+            return failure;
+        }
+        if (failure instanceof AuthException || failure instanceof SecurityException) {
+            return failure;
+        }
+        log.warn("Retained command completion was not confirmed", failure);
+        authorize(session);
+        return new ExecutionUnconfirmedException(
+                session.copyId.toString(),
+                retained.view(),
+                !retention.expired(retained.record().expiresAt()),
+                failure);
+    }
+
+    @Override
+    public DiscardResult discard(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            DiscardRequest request,
+            ExecutionCancellation cancellation) {
+        authorize(principal, workspace);
+        if (retention == null || closed) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, false);
+        }
+        var owner = new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value());
+        RetainedDiscard held = null;
+        Session control = null;
+        try {
+            held = new RetainedDiscard(retention, owner, UUID.fromString(request.id()), request.generation());
+            RetainedCopyRecord record = held.record();
+            requireDiscardAuthorization(principal, workspace, cancellation);
+            if (record == null) {
+                return new DiscardResult(request.id(), DiscardStatus.ABSENT);
+            }
+            WorkerClient.Hello hello = worker.retainedHello();
+            control = containmentControl(principal, record, hello);
+            containRetained(record, control, hello);
+            requireDiscardAuthorization(principal, workspace, cancellation);
+            held.removeAfterContainment(control.contained);
+            removeDiscardedCheckpoints(principal, workspace, record, control);
+            return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
+        } catch (RuntimeException failure) {
+            log.warn("Retained discard completion was not confirmed", failure);
+            throw admissionFailure(failure, held == null ? null : held.record());
+        } finally {
+            if (held != null) {
+                if (control == null) {
+                    held.close();
+                } else {
+                    control.contained.thenRun(held::close);
+                }
+            }
+        }
+    }
+
+    private void requireDiscardAuthorization(
+            AuthPrincipal principal, WorkspaceId workspace, ExecutionCancellation cancellation) {
+        authorize(principal, workspace);
+        if (cancellation.isCancelled()) {
+            throw new WorkerUnavailableException();
+        }
+    }
+
+    private void containRetained(RetainedCopyRecord record, Session control, WorkerClient.Hello hello) {
+        if (record.writer().workerBootId().equals(hello.workerBootId())) {
+            stopAndAwait(control, "session_closed");
+        } else {
+            control.stopping.set(true);
+            releaseCapacity(control);
+            control.stopped.complete(null);
+        }
+        retireContainedCopy(record);
+    }
+
+    private void removeDiscardedCheckpoints(
+            AuthPrincipal principal, WorkspaceId workspace, RetainedCopyRecord record, Session control) {
+        var points = new ArrayList<RetainedCopyRecord.Checkpoint>();
+        points.add(record.acknowledged());
+        if (record.command() != null
+                && !record.command()
+                        .checkpoint()
+                        .id()
+                        .equals(record.acknowledged().id())) {
+            points.add(record.command().checkpoint());
+        }
+        for (RetainedCopyRecord.Checkpoint point : points) {
+            try {
+                var reference =
+                        new WorkerRequests.CheckpointReference(point.id().toString(), point.sha256(), point.bytes());
+                WorkerResponses.read(
+                        WorkerCheckpointRequests.retryBusy(
+                                timeout -> worker.request(
+                                        worker.retainedHello(),
+                                        control.identity(),
+                                        "CHECKPOINT_REMOVE",
+                                        reference,
+                                        timeout),
+                                () -> authorize(principal, workspace),
+                                Duration.ofSeconds(5)),
+                        WorkerResponses.CheckpointRemoved.class);
+            } catch (RuntimeException failure) {
+                log.warn("Discarded checkpoint awaits periodic collection", failure);
+            }
+        }
+    }
+
+    private Resumed resumeCopy(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            SessionKey key,
+            CopyRequest expected,
+            Optional<String> requestedCommit,
+            ExecutionCancellation cancellation) {
+        RetainedCopyRecord initial = retainedRecord(principal, workspace, expected.id());
+        requireResumeSlot(key, initial.copyId());
+        var selected = new Session(key, principal, initial.fullRead(), initial.copyId(), UUID.randomUUID());
+        RetainedCommand held = null;
+        Session control = null;
+        boolean registered = false;
+        try {
+            held = RetainedCommand.resume(
+                    retention, initial.owner(), initial.copyId(), expected.generation(), checkpointPort(selected));
+            RetainedCopyRecord record = held.record();
+            authorizeRecord(principal, workspace, record);
+            selected.commit = record.acknowledged().state().originalCommit();
+            selected.publicExport = record.publicExport();
+            if (requestedCommit.isPresent() && !requestedCommit.orElseThrow().equals(selected.commit)) {
+                throw new IllegalArgumentException("Recovery must keep the original pinned commit");
+            }
+            selected.hello = worker.retainedHello();
+            control = containmentControl(principal, record, selected.hello);
+            if (record.writer().workerBootId().equals(selected.hello.workerBootId())) {
+                stopAndAwait(control, "session_closed");
+            } else {
+                control.stopping.set(true);
+                releaseCapacity(control);
+                control.stopped.complete(null);
+            }
+            retireContainedCopy(record);
+            reserveResumed(selected);
+            registered = true;
+            restoreClaim(selected, held, record.writer().leaseId(), cancellation);
+            return new Resumed(selected, held);
+        } catch (RuntimeException failure) {
+            cleanupResume(selected, held, control, registered);
+            log.warn("Retained copy recovery admission failed", failure);
+            throw admissionFailure(failure, held == null ? null : held.record());
+        }
+    }
+
+    private void restoreClaim(
+            Session session, RetainedCommand held, UUID previousLease, ExecutionCancellation cancellation) {
+        try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
+            requireLive(session);
+            if (cancellation.isCancelled()) {
+                throw new WorkerUnavailableException();
+            }
+            held.transferAfterContainment(
+                    session.key.sessionHash(),
+                    new RetainedCopyRecord.Writer(
+                            session.hello.workerBootId(), worker.applicationBootId(), session.leaseId));
+            session.retainedRecord = held.record();
+            RetainedCopyRecord.Checkpoint point = held.resumedPoint();
+            session.saveState = SelectedFileSaves.State.restore(point.state(), held::retain);
+            restoreWorker(session, point, previousLease);
+            authorize(session);
+        }
+    }
+
+    private void restoreWorker(Session session, RetainedCopyRecord.Checkpoint point, UUID previousLease) {
+        synchronized (session) {
+            requireLive(session);
+            session.openAttempted = true;
+            // RESTORE hashes the checkpoint before creating a lease; renewal cannot precede admission.
+            session.nextRenew = Long.MAX_VALUE;
+        }
+        long deadline = System.nanoTime() + openTimeout.toNanos();
+        JsonNode reply;
+        try {
+            var restore = new WorkerRequests.Restore(
+                    point.id().toString(),
+                    point.sha256(),
+                    point.bytes(),
+                    session.commit,
+                    session.fullRead ? "full" : "public",
+                    previousLease.toString());
+            reply = WorkerCheckpointRequests.retryBusy(
+                    timeout -> requestLive(session, "RESTORE", restore, timeout),
+                    () -> authorize(session),
+                    openTimeout);
+        } finally {
+            // A lost RESTORE reply must not disable subsequent CLOSE reconciliation.
+            session.nextRenew = System.nanoTime()
+                    + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
+        }
+        while (true) {
+            requireOk(reply, session);
+            requireLive(session);
+            String state = reply.path("state").asString("");
+            if (state.equals("READY")) {
+                session.ready = true;
+                return;
+            }
+            if (!state.equals("INITIALIZING") || System.nanoTime() >= deadline) {
+                throw new WorkerUnavailableException();
+            }
+            pause();
+            reply = requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
+        }
+    }
+
+    private void cleanupResume(Session selected, RetainedCommand held, Session control, boolean registered) {
+        if (registered) {
+            try {
+                stopAndAwait(selected, "cancelled");
+            } catch (RuntimeException failure) {
+                log.warn("Restored worker containment remains unconfirmed", failure);
+            }
+        }
+        if (held != null) {
+            CompletableFuture<Void> oldContained =
+                    control == null ? CompletableFuture.completedFuture(null) : control.contained;
+            CompletableFuture<Void> newContained =
+                    registered ? selected.contained : CompletableFuture.completedFuture(null);
+            CompletableFuture.allOf(oldContained, newContained).thenRun(held::close);
+        }
+    }
+
+    private Session containmentControl(AuthPrincipal principal, RetainedCopyRecord record, WorkerClient.Hello hello) {
+        synchronized (this) {
+            for (Session session : sessions.values()) {
+                if (session.leaseId.equals(record.writer().leaseId())) {
+                    return session;
+                }
+            }
+            Session existing = closingLeases.get(record.writer().leaseId());
+            if (existing != null) {
+                return existing;
+            }
+            var key = new SessionKey(
+                    record.owner().subjectId(), new WorkspaceId(record.owner().workspaceId()), record.transportHash());
+            var control = new Session(
+                    key,
+                    principal,
+                    record.fullRead(),
+                    record.copyId(),
+                    record.writer().leaseId());
+            control.auxiliary = true;
+            control.retainedAppBoot = record.writer().appBootId();
+            control.commit = record.acknowledged().state().originalCommit();
+            control.publicExport = record.publicExport();
+            control.hello = hello;
+            control.openAttempted = true;
+            closingLeases.put(control.leaseId, control);
+            return control;
+        }
+    }
+
+    private void retireContainedCopy(RetainedCopyRecord record) {
+        List<Session> old;
+        synchronized (this) {
+            old = sessions.values().stream()
+                    .filter(value -> value.copyId.equals(record.copyId())
+                            && value.key.principal().equals(record.owner().subjectId())
+                            && value.key
+                                    .workspace()
+                                    .value()
+                                    .equals(record.owner().workspaceId()))
+                    .toList();
+        }
+        for (Session session : old) {
+            session.stopping.set(true);
+            releaseCapacity(session);
+            session.stopped.complete(null);
+            synchronized (this) {
+                sessions.remove(session.key, session);
+            }
+        }
+    }
+
+    private void requireResumeSlot(SessionKey key, UUID copyId) {
+        Session current;
+        synchronized (this) {
+            current = sessions.get(key);
+        }
+        if (current != null && !current.copyId.equals(copyId) && !replaceable(current)) {
+            requireExpectedCopy(current, copyId.toString(), false);
+        }
+    }
+
+    private synchronized void reserveResumed(Session session) {
+        if (closed) {
+            throw new WorkerUnavailableException();
+        }
+        Session current = sessions.get(session.key);
+        if (current != null && !replaceable(current)) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, null, true);
+        }
+        if (sessions.size() >= 1024 || activeSessions() >= maxSessions) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, null, true);
+        }
+        session.busy.set(true);
+        sessions.put(session.key, session);
+        createdCopies.increment();
+    }
+
+    private RetainedCopyRecord retainedRecord(AuthPrincipal principal, WorkspaceId workspace, String copyId) {
+        try {
+            var owner = new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value());
+            RetainedCopyRecord record = retention.read(owner, UUID.fromString(copyId));
+            authorizeRecord(principal, workspace, record);
+            return record;
+        } catch (RetainedCopyException failure) {
+            throw admissionFailure(failure, null);
+        }
+    }
+
+    private void authorizeRecord(AuthPrincipal principal, WorkspaceId workspace, RetainedCopyRecord record) {
+        if (record.fullRead()) {
+            auth.authorize(principal, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
+        } else {
+            exports.requireCurrentPublic(principal, workspace, record.publicExport());
+        }
+    }
+
+    private void requireRetainedBinding(
+            AuthPrincipal principal, WorkspaceId workspace, SessionKey key, CopyRequest expected) {
+        if (retention == null || RepositoryExecutor.NEW_COPY.equals(expected.id())) {
+            return;
+        }
+        Session current;
+        synchronized (this) {
+            current = sessions.get(key);
+        }
+        if (current == null
+                || current.stopping.get()
+                || !current.copyId.toString().equals(expected.id())) {
+            RetainedCopyRecord record = retainedRecord(principal, workspace, expected.id());
+            throw new ExecutionAdmissionException(
+                    ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, record.generation(), true);
+        }
+    }
+
+    private static RuntimeException admissionFailure(RuntimeException failure, RetainedCopyRecord record) {
+        if (failure instanceof ExecutionAdmissionException
+                || failure instanceof AuthException
+                || failure instanceof SecurityException
+                || failure instanceof IllegalArgumentException
+                || failure instanceof SessionReplacedException
+                || failure instanceof ContentRepositoryException) {
+            return failure;
+        }
+        ExecutionAdmissionException.Reason reason = failure instanceof RetainedCopyException retained
+                ? switch (retained.reason()) {
+                    case MISSING -> ExecutionAdmissionException.Reason.MISSING_COPY;
+                    case EXPIRED -> ExecutionAdmissionException.Reason.EXPIRED;
+                    case BUSY -> ExecutionAdmissionException.Reason.BUSY;
+                    case LIMIT -> ExecutionAdmissionException.Reason.CAPACITY;
+                    case STALE, UNCERTAIN -> ExecutionAdmissionException.Reason.RECOVERY_REQUIRED;
+                    case UNAVAILABLE -> ExecutionAdmissionException.Reason.UNAVAILABLE;
+                }
+                : ExecutionAdmissionException.Reason.UNAVAILABLE;
+        boolean available = record != null && record.expiresAt() > System.currentTimeMillis();
+        return new ExecutionAdmissionException(reason, available ? record.generation() : null, available, failure);
+    }
+
+    private record Resumed(Session session, RetainedCommand command) {}
+
+    private RetainedCommand admitRetained(Session session, CopyRequest expected) {
+        var owner = new RetainedCopyRecord.Owner(
+                session.key.principal(), session.key.workspace().value());
+        RetainedCommand admitted = null;
+        try {
+            admitted = new RetainedCommand(
+                    retention, owner, session.copyId, session.retainedRecord, checkpointPort(session));
+            if (!RepositoryExecutor.NEW_COPY.equals(expected.id())) {
+                admitted.requireGeneration(expected.generation());
+            }
+            return admitted;
+        } catch (RuntimeException failure) {
+            if (admitted != null) {
+                admitted.close();
+            }
+            log.warn("Retained execution admission failed", failure);
+            throw admissionFailure(failure, null);
+        }
+    }
+
+    private RetainedCommand.Port checkpointPort(Session session) {
+        return new RetainedCommand.Port() {
+            @Override
+            public WorkerResponses.CheckpointReply capture(UUID id, long expiresAt, Optional<UUID> executionId) {
+                return captureRetained(session, id, expiresAt, executionId);
+            }
+
+            @Override
+            public void remove(RetainedCopyRecord.Checkpoint checkpoint) {
+                var reference = new WorkerRequests.CheckpointReference(
+                        checkpoint.id().toString(), checkpoint.sha256(), checkpoint.bytes());
+                WorkerResponses.read(
+                        WorkerCheckpointRequests.retryBusy(
+                                timeout -> requestLive(session, "CHECKPOINT_REMOVE", reference, timeout),
+                                () -> authorize(session),
+                                Duration.ofSeconds(5)),
+                        WorkerResponses.CheckpointRemoved.class);
+            }
+        };
+    }
+
+    private WorkerResponses.CheckpointReply captureRetained(
+            Session session, UUID id, long expiresAt, Optional<UUID> executionId) {
+        authorize(session);
+        String scope = session.fullRead ? "full" : "public";
+        WorkerRequests.Data data = executionId.isPresent()
+                ? new WorkerRequests.ActiveCheckpoint(
+                        id.toString(),
+                        expiresAt,
+                        scope,
+                        executionId.orElseThrow().toString())
+                : new WorkerRequests.Checkpoint(id.toString(), expiresAt, scope);
+        JsonNode reply = WorkerCheckpointRequests.retryBusy(
+                timeout -> requestLive(
+                        session, executionId.isPresent() ? "CHECKPOINT_ACTIVE" : "CHECKPOINT", data, timeout),
+                () -> authorize(session));
+        requireOk(reply, session);
+        authorize(session);
+        return WorkerResponses.read(reply, WorkerResponses.CheckpointReply.class);
+    }
+
+    private void prepareRetained(Session session, RetainedCommand retained, UUID executionId) {
+        if (retained == null) {
+            return;
+        }
+        retained.initialize(
+                session.key.sessionHash(),
+                session.fullRead,
+                session.publicExport,
+                new RetainedCopyRecord.Writer(
+                        session.hello.workerBootId(), worker.applicationBootId(), session.leaseId),
+                session.saveState.snapshot(),
+                originals,
+                sink -> saves.visitOriginal(
+                        session.principal, session.key.workspace(), session.commit, originals.traversalLimits(), sink));
+        session.retainedRecord = retained.record();
+        session.saveState = SelectedFileSaves.State.restore(
+                session.saveState.snapshot(), retained::retain, retained.originals(originals));
+        retained.begin(executionId);
+    }
+
+    private static void releaseRetained(Session session, RetainedCommand retained) {
+        if (retained == null) {
+            return;
+        }
+        session.retainedRecord = retained.record();
+        if (session.stopping.get()) {
+            session.contained.thenRun(retained::close);
+        } else {
+            retained.close();
         }
     }
 
@@ -439,7 +949,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private void open(Session session, Optional<String> requested) {
-        session.hello = worker.hello();
+        session.hello = retention == null ? worker.hello() : worker.retainedHello();
         requireLive(session);
         RepositorySnapshotExports.Export export;
         if (session.fullRead) {
@@ -515,10 +1025,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         List<Session> current;
         synchronized (this) {
             current = new ArrayList<>(sessions.values());
+            current.addAll(closingLeases.values());
         }
         for (Session session : current) {
             if (session.stopping.get()) {
                 reconcileClose(session);
+                continue;
+            }
+            RetainedCopyRecord record = session.retainedRecord;
+            if (retention != null && record != null && retention.expired(record.expiresAt())) {
+                stop(session, "session_closed");
                 continue;
             }
             if (!session.openAttempted
@@ -591,8 +1107,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private JsonNode executeWithBridge(Session session, String command, Duration timeout) {
-        String executionId = UUID.randomUUID().toString();
+    private JsonNode executeWithBridge(Session session, String executionId, String command, Duration timeout) {
         var running = commandIo.submit(() -> requestLive(
                 session,
                 "EXEC",
@@ -731,7 +1246,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         ? new BridgeReplies.Absent()
                         : SessionMoves.movePending(session.saveState.move),
                 session.saveState.lastSave,
-                session.lastImport));
+                session.saveState.lastImport));
     }
 
     private BridgeReplies.Reply exportCommand(Session session, String executionId, JsonNode arguments) {
@@ -973,7 +1488,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 authorize(session);
                 var committed =
                         saves.moves().commit(session.principal, session.key.workspace(), session.saveState, pending);
-                if (session.saveState.move == null || pending.result == null) {
+                pending = session.saveState.move;
+                if (pending == null || pending.result == null) {
                     return committed;
                 }
             }
@@ -1283,6 +1799,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 return page.decoded();
             })) {
                 asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
+                session.saveState.acknowledgeImport(importReceipt(path, asset, false));
                 if (!input.verified()
                         || asset.size() != size
                         || !asset.reference().revision().equals(digest)
@@ -1316,6 +1833,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!availableMediaPath(session, local, selected.path(), asset.mediaType())) {
             return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
         }
+        session.saveState.acknowledgeImport(importReceipt(selected.path(), asset, false));
         return indexMedia(session, executionId, selected.path(), asset, local, selected.replace());
     }
 
@@ -1367,12 +1885,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         Optional<String> source = local.source();
         RepositoryMediaIndex index = local.index();
         var entries = new LinkedHashMap<>(index.files());
-        session.lastImport = importReceipt(path, asset, false);
         var entry = new RepositoryMediaIndex.Media(
                 asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
         var previous = index.files().get(path);
         if (previous != null && !previous.equals(entry) && !replace) {
-            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.lastImport);
+            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.saveState.lastImport);
         }
         entries.put(path, entry);
         byte[] changed = entry.equals(previous)
@@ -1390,16 +1907,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     false,
                     false,
                     output -> output.write(changed))) {
-                return BridgeReplies.failedWith("INDEX_CHANGED", session.lastImport);
+                return BridgeReplies.failedWith("INDEX_CHANGED", session.saveState.lastImport);
             }
         } catch (MaterializationCapacity capacity) {
             return BridgeReplies.failedWith(
                     "MATERIALIZE_CAPACITY",
-                    session.lastImport,
+                    session.saveState.lastImport,
                     "Original stored; local index was not updated. Free session space and retry the same import or link.");
         }
-        session.lastImport = importReceipt(path, asset, true);
-        return BridgeReplies.succeeded(session.lastImport);
+        session.saveState.acknowledgeImport(importReceipt(path, asset, true));
+        return BridgeReplies.succeeded(session.saveState.lastImport);
     }
 
     private static BridgeReplies.ImportReceipt importReceipt(String path, ManagedAsset asset, boolean indexed) {
@@ -1616,10 +2133,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
      * the stopping session instead of opening a second lease beside it.
      */
     private synchronized void releaseCapacity(Session session) {
-        if (!session.capacityReleased) {
+        if (!session.capacityReleased && !session.auxiliary) {
             releasedCopies.increment();
         }
         session.capacityReleased = true;
+        session.contained.complete(null);
+        closingLeases.remove(session.leaseId, session);
         if (session.detached) {
             sessions.remove(session.key, session);
         }
@@ -1628,12 +2147,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private void closeWorker(Session session, String reason) {
         long deadline = System.nanoTime() + closeTimeout.toNanos();
         while (System.nanoTime() < deadline) {
-            JsonNode response = worker.request(
-                    session.hello,
-                    session.identity(),
-                    "CLOSE",
-                    new WorkerRequests.Close(reason),
-                    Duration.ofSeconds(3));
+            JsonNode response = session.auxiliary
+                    ? worker.closeRetainedLease(
+                            session.hello, session.identity(), session.retainedAppBoot, reason, Duration.ofSeconds(3))
+                    : worker.request(
+                            session.hello,
+                            session.identity(),
+                            "CLOSE",
+                            new WorkerRequests.Close(reason),
+                            Duration.ofSeconds(3));
             requireOk(response, session);
             String state = response.path("state").asString("");
             if (state.equals("CLOSED")) {
@@ -1721,7 +2243,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         synchronized (this) {
             closed = true;
             remaining = new ArrayList<>(sessions.values());
+            remaining.addAll(closingLeases.values());
             sessions.clear();
+            closingLeases.clear();
         }
         heartbeat.shutdownNow();
         remaining.forEach(session -> stop(session, "client_shutdown"));
@@ -1766,7 +2290,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private static ExecutionResult result(JsonNode result, String copyId, String commit) {
+    private static ExecutionResult result(JsonNode result, String copyId, String commit, CopyRetention retention) {
         try {
             var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
             // The commit is an echo of what this session pinned, so it is compared here.
@@ -1808,7 +2332,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     finished.timedOut(),
                     reason,
                     artifacts,
-                    artifactErrors);
+                    artifactErrors,
+                    retention);
         } catch (RuntimeException exception) {
             String reason = result.path("terminationReason").asString("");
             log.warn(
@@ -1884,31 +2409,36 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
      * </ul>
      */
     private static final class Session {
-        private final UUID copyId = UUID.randomUUID();
+        private final UUID copyId;
         private final SessionKey key;
         private final AuthPrincipal principal;
         private final boolean fullRead;
         private volatile RepositorySnapshotExports.PublicExport publicExport;
-        private final UUID leaseId = UUID.randomUUID();
+        private final UUID leaseId;
         private final AtomicBoolean busy = new AtomicBoolean();
         private final AtomicBoolean stopping = new AtomicBoolean();
         private final AtomicBoolean renewing = new AtomicBoolean();
         private final CompletableFuture<Void> stopped = new CompletableFuture<>();
+        private final CompletableFuture<Void> contained = new CompletableFuture<>();
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
         private SelectedFileSaves.State saveState;
-        private BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
+        private volatile RetainedCopyRecord retainedRecord;
         private volatile boolean openAttempted;
         private volatile boolean ready;
         private volatile boolean capacityReleased;
         private volatile boolean detached;
+        private boolean auxiliary;
+        private UUID retainedAppBoot;
         private String closeReason;
         private volatile long nextRenew;
 
-        private Session(SessionKey key, AuthPrincipal principal, boolean fullRead) {
+        private Session(SessionKey key, AuthPrincipal principal, boolean fullRead, UUID copyId, UUID leaseId) {
             this.key = key;
             this.principal = principal;
             this.fullRead = fullRead;
+            this.copyId = copyId;
+            this.leaseId = leaseId;
         }
 
         private WorkerClient.Identity identity() {

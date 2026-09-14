@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-13",
+  "result": "PASS",
+  "applicationSourceCommit": "48fb995b603194ad82fe6c80babc7a3cb9cd8c40",
+  "sourceHashesVerified": true,
+  "modelDriven": false,
+  "client": "retained-http-acceptance/1; independent Python HTTP MCP client",
+  "clientScriptSha256": "20e10061b4bc9e16c900f2485c87c0bc17d9ede011edc3197e8dcfb30e1ef123",
+  "controllerSha256": "485dac41d0d9b6ef54d120bd66b109c878dba2b8a2a0a3858ed99f45eddc43da",
+  "runtimeManifestSha256": "52364a5ce8dad7cedb6ad60812703866f604498ef63fad0c5883cb4fb22c81ce",
+  "workerSources": {
+    "worker.py": "37882540fd975c85734d5594128648c552a2d762c40dd5638cf79988c6dddd34",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "c71cb79d284101a74cd08ab1606224b0bbcaa5910786fe9dd17e1c7e20260049",
+    "cli.py": "89e7ddd33f7ce20a251216122163ffbc96a7f26fe2d6b09bf7e2579570700468",
+    "session_files.py": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+    "binary_capture.py": "6a11b936bc8a29da06788d33a9e7df7d0298b226b32c3229af62ea03cbec2d53",
+    "materialize.py": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd",
+    "checkpoints.py": "53bb378eb042325bae301742dc10910b04c2497149e5257e67530206953fe11e",
+    "checkpoint_tree.py": "106ccf35c23c183f791a968b94ce158801a24c9de6bc2eff67a89457d6542d95"
+  },
+  "scope": "Real Spring account login and normal API-key issuance backed by disposable PostgreSQL, with actual native SRT. Every tool request opens and deletes its own HTTP MCP transport. Private draft text and binary bytes survive explicit recovery at the original commit; stale generations do not execute and restored drafts save through the CLI with authoritative HTTP readback. Other API-key subjects cannot discard or recover the copy. Discard is idempotent and preserves remote Git. Public projections resume without private files. Revoked credentials cannot initialize another session. All five checks and native controller cleanup pass. This deterministic client does not establish model-driven or final production HTTPS acceptance.",
+  "events": [
+    {
+      "test": "retained-http-authenticated-five-tool-catalog",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "retained-http-new-transports-preserve-work-fence-stale-generations-and-save",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "retained-http-discard-is-owner-bound-idempotent-and-preserves-remote-git",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "retained-http-public-projection-resumes-without-private-files",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "retained-http-revoked-credential-and-other-subject-cannot-recover",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "retainedHttp": "PASS",
+      "tests": 5,
+      "source": "real-auth-PG-HTTP-MCP-native-SRT",
+      "modelDriven": false
+    }
+  ],
+  "cleanup": "PASS"
+}

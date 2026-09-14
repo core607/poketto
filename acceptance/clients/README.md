@@ -7,6 +7,30 @@ scratch retention, artifact bytes, public projection isolation, capability denia
 and revocation. Authoritative HTTP readback and controller cleanup pass. This
 deterministic protocol run supplements the model-driven workflows below.
 
+The [retained HTTP run](evidence/2026-09-13-retained-http.json) uses real account
+login, normally issued API keys, PostgreSQL and native SRT. Each tool call opens
+and closes a separate MCP transport. Private draft text and binary bytes survive
+explicit recovery at the original commit; stale generations cannot execute, and
+restored drafts save with authoritative HTTP readback. Discard is owner-bound and
+idempotent without undoing remote Git. Public projections recover without private
+files, and revoked credentials cannot initialize another session. All five checks
+and controller cleanup pass. This deterministic run supplements the model-driven
+retained-copy acceptance below; final HTTPS acceptance remains pending.
+
+The [retained model-client run](evidence/2026-09-14-retained-models.json) uses actual
+Codex and Claude Code processes with real account authentication, PostgreSQL and
+native SRT. For each client, one process leaves verified unsaved text and binary
+files; a second explicitly resumes the same copy and generation at its original
+commit, saves only the text and discards the retained work. Repeated discard returns
+`ABSENT`, and later recovery returns `MISSING_COPY` without executing a command.
+Independent tool transcripts, authenticated HTTP and remote Git confirm exactly
+two selected-file commits and no saved binary scratch files. Cleanup passes.
+Both clients recover from the fixture's absent root guidance; Codex corrects an
+unavailable `python` command to `python3`, and Claude removes an unsupported save
+option after reading help. These recoveries are recorded rather than counted as
+first-attempt success. Final deployed HTTPS and chat-app OAuth acceptance remain
+pending.
+
 The [focused CLI move run](evidence/2026-09-10-cli-moves.json) verifies actual
 Codex calls through real Spring authentication, PostgreSQL, HTTP MCP and native
 SRT. A folder move repairs inbound and outbound links and relocates its indexed
@@ -24,6 +48,17 @@ This run uses real Spring authentication, PostgreSQL, HTTP MCP and native SRT;
 public projection isolation remains covered by the native executor probe.
 
 For CodeAct on a native systemd host, `native-host.py` holds the real synthetic Spring application, a pinned disposable PostgreSQL container and the real root worker for external clients. It takes `--runtime`, `--worker-source`, `--tools`, and `--java` paths plus an optional loopback `--port`. Stage `stageAcceptanceRuntime` with a `manifest.sha256` covering every runtime file, as in the native executor entrance. Run the controller as root with the worker's Python dependencies available. It prints a ready receipt with the generated fixture root; only root can read the disposable password from that root's `client.json`. Obtain client keys through normal HTTP administration. Forward only the loopback application port when the clients run elsewhere. Create `stop` in the reported fixture root when finished; the controller also enforces a bounded lifetime and removes its services, database, accounts, mounts and secrets. Require its `cleanup: PASS` result. A ready receipt is setup evidence, not a successful model-driven workflow.
+
+Add `--retained-execution` to enable bounded worker checkpoints and separate private
+application metadata/original stores inside this disposable fixture. The ready
+receipt records this mode and the controller hash. Run `retained-http.py --fixture
+FIXTURE_ROOT` as root for a deterministic HTTP check using real account login,
+key issuance, PostgreSQL and SRT. Every tool request initializes and closes its own
+MCP transport. The script exercises private/public recovery, stale-generation
+refusal, owner-bound discard, authoritative save readback and key revocation. It
+reads credentials only from the private fixture receipt and creates the controller's
+`stop` marker even on failure. Require both its `retainedHttp: PASS` and controller
+`cleanup: PASS`; this script supplements actual model-driven client acceptance.
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
 

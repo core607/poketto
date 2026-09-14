@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Test client retains only IDs acknowledged by actual results; a rejected call never adopts another copy. */
 final class RememberingExecutorClient {
-    private final Map<Key, String> copies = new ConcurrentHashMap<>();
+    private final Map<Key, RepositoryExecutor.CopyRequest> copies = new ConcurrentHashMap<>();
 
     RepositoryExecutor.ExecutionResult execute(
             RepositoryExecutor executor,
@@ -28,12 +28,17 @@ final class RememberingExecutorClient {
                 principal,
                 workspace,
                 session,
-                copies.getOrDefault(key, RepositoryExecutor.NEW_COPY),
+                copies.getOrDefault(key, new RepositoryExecutor.CopyRequest(RepositoryExecutor.NEW_COPY, null, false)),
                 commit,
                 command,
                 timeout,
                 cancellation);
-        copies.put(key, result.copyId());
+        copies.put(
+                key,
+                new RepositoryExecutor.CopyRequest(
+                        result.copyId(),
+                        result.retention() == null ? null : result.retention().generation(),
+                        false));
         return result;
     }
 

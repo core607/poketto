@@ -19,6 +19,7 @@ import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.content.RepositoryWriteAttempt;
+import io.github.core607.poketto.content.RepositoryWriteCheckpoint;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
@@ -86,22 +87,42 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
 
     @Override
     public RepositoryPatchResult apply(AuthPrincipal principal, WorkspaceId workspace, RepositoryPatch patch) {
-        return apply(principal, workspace, patch, Optional.empty());
+        return apply(principal, workspace, patch, RepositoryWriteCheckpoint.UNTRACKED);
+    }
+
+    @Override
+    public RepositoryPatchResult apply(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryPatch patch,
+            RepositoryWriteCheckpoint checkpoint) {
+        return apply(principal, workspace, patch, Optional.empty(), checkpoint);
     }
 
     @Override
     public RepositoryPatchResult recover(
             AuthPrincipal principal, WorkspaceId workspace, RepositoryPatch patch, RepositoryWriteAttempt attempt) {
-        return apply(principal, workspace, patch, Optional.of(attempt));
+        return recover(principal, workspace, patch, attempt, RepositoryWriteCheckpoint.UNTRACKED);
+    }
+
+    @Override
+    public RepositoryPatchResult recover(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryPatch patch,
+            RepositoryWriteAttempt attempt,
+            RepositoryWriteCheckpoint checkpoint) {
+        return apply(principal, workspace, patch, Optional.of(attempt), checkpoint);
     }
 
     private RepositoryPatchResult apply(
             AuthPrincipal principal,
             WorkspaceId workspace,
             RepositoryPatch patch,
-            Optional<RepositoryWriteAttempt> recovery) {
+            Optional<RepositoryWriteAttempt> recovery,
+            RepositoryWriteCheckpoint checkpoint) {
         Map<String, byte[]> replacements = validate(patch);
-        return write(principal, workspace, patch.baseCommit(), Set.of(), recovery, (repository, index) -> {
+        return write(principal, workspace, patch.baseCommit(), Set.of(), recovery, checkpoint, (repository, index) -> {
             var currentPolicy = policy(repository, index);
             Set<Capability> required = patch.changes().stream()
                     .map(change ->
@@ -217,7 +238,16 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
 
     @Override
     public RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
-        return move(principal, workspace, request, Optional.empty());
+        return move(principal, workspace, request, RepositoryWriteCheckpoint.UNTRACKED);
+    }
+
+    @Override
+    public RepositoryPatchResult move(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteCheckpoint checkpoint) {
+        return move(principal, workspace, request, Optional.empty(), checkpoint);
     }
 
     @Override
@@ -226,16 +256,33 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             WorkspaceId workspace,
             RepositoryMoveRequest request,
             RepositoryWriteAttempt attempt) {
-        return move(principal, workspace, request, Optional.of(attempt));
+        return recover(principal, workspace, request, attempt, RepositoryWriteCheckpoint.UNTRACKED);
+    }
+
+    @Override
+    public RepositoryPatchResult recover(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteAttempt attempt,
+            RepositoryWriteCheckpoint checkpoint) {
+        return move(principal, workspace, request, Optional.of(attempt), checkpoint);
     }
 
     private RepositoryPatchResult move(
             AuthPrincipal principal,
             WorkspaceId workspace,
             RepositoryMoveRequest request,
-            Optional<RepositoryWriteAttempt> recovery) {
+            Optional<RepositoryWriteAttempt> recovery,
+            RepositoryWriteCheckpoint checkpoint) {
         return write(
-                principal, workspace, Optional.of(request.baseCommit()), Set.of(), recovery, (repository, index) -> {
+                principal,
+                workspace,
+                Optional.of(request.baseCommit()),
+                Set.of(),
+                recovery,
+                checkpoint,
+                (repository, index) -> {
                     var currentPolicy = policy(repository, index);
                     var media = mediaIndex(repository, index);
                     var changes = RepositoryMovePlanner.prepare(repository, index, request, currentPolicy, media);
@@ -286,7 +333,9 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             Optional<String> baseCommit,
             Set<Capability> capabilities,
             Optional<RepositoryWriteAttempt> recovery,
+            RepositoryWriteCheckpoint checkpoint,
             Preparer preparer) {
+        Objects.requireNonNull(checkpoint, "repository write checkpoint is required");
         boolean[] acknowledged = {false};
         RepositoryWriteAttempt[] attempt = {null};
         try {
@@ -479,6 +528,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                                 }
                             }
                             attempt[0] = new RepositoryWriteAttempt(commit.name(), commitBytes);
+                            checkpoint.retain(attempt[0]);
                             // Close the prior authorization before a remote outcome can become uncertain.
                             // Failure to persist this marker must prevent the push itself.
                             if (needsPublish) {

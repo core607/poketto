@@ -43,7 +43,7 @@ Default article routes omit the root prefix, while explicit routes do not grant
 publication. The [content contract](2026-09-09-codeact-content-and-media.md)
 owns the coordinated conversion and format boundaries.
 
-`/mcp` uses Streamable HTTP and workspace Bearer API keys or OAuth access tokens independently of browser sessions. The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) exposes `repo_exec`, `get_artifact`, `get_asset` and `put_asset` when the isolated executor and asset services are available. There is no standalone file CRUD fallback: file access requires the verified [local worker](../../executor-service/README.md) and `EXECUTE_REPOSITORY`. Enabling the adapter does not substitute for verifying the real process boundary.
+`/mcp` uses Streamable HTTP and workspace Bearer API keys or OAuth access tokens independently of browser sessions. The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) exposes `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset` when the isolated executor and asset services are available. There is no standalone file CRUD fallback: file access requires the verified [local worker](../../executor-service/README.md) and `EXECUTE_REPOSITORY`. Enabling the adapter does not substitute for verifying the real process boundary.
 
 Agents use ordinary listings, search, shell and Python to inspect files and progressively read repository-owned `AGENTS.md` guides. The server does not interpret those guides. [Directory navigation](2026-09-08-repository-directory-navigation.md) remains available to browser HTTP through the shared reader without an executor.
 
