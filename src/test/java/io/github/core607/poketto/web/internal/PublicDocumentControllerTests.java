@@ -21,6 +21,7 @@ import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import io.github.core607.poketto.workspace.Workspace;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -192,7 +193,8 @@ class PublicDocumentControllerTests {
                                     List.of("notes", "知识"),
                                     Instant.parse("2026-09-03T00:00:00Z"),
                                     VERIFIED,
-                                    false),
+                                    false,
+                                    ""),
                             new PublicArticle(
                                     "older.md",
                                     "/older",
@@ -201,7 +203,8 @@ class PublicDocumentControllerTests {
                                     List.of("notes"),
                                     Instant.parse("2026-09-01T00:00:00Z"),
                                     VERIFIED,
-                                    false)));
+                                    false,
+                                    "")));
         }
 
         @Override
@@ -249,7 +252,11 @@ class PublicDocumentControllerTests {
                     128,
                     Clock.fixed(VERIFIED, ZoneOffset.UTC),
                     new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
-            return new PublicDocuments(snapshots, workspaces, assets);
+            var publications = Mockito.mock(WorkspacePublications.class);
+            Mockito.when(publications.settings(DEFAULT.id()))
+                    .thenReturn(new WorkspacePublications.Publication(
+                            DEFAULT.id(), "home", DEFAULT.displayName(), true, ""));
+            return new PublicDocuments(snapshots, workspaces, assets, publications);
         }
     }
 }

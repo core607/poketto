@@ -110,6 +110,7 @@ export async function PublicSpacePage({
       )}
       {root && (
         <section className="root-note">
+          <p className="article-meta author-name">{root.authorName}</p>
           <Markdown
             source={root.body}
             images={root.images}

@@ -108,7 +108,8 @@ class MediaFileServiceTests {
                         List.of(),
                         now,
                         now,
-                        false)));
+                        false,
+                        "")));
         when(snapshots.withCurrent(eq(workspace), any()))
                 .thenAnswer(
                         invocation -> ((Function<PublicContentSnapshot, ?>) invocation.getArgument(1)).apply(snapshot));

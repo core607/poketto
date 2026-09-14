@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.ResolvedMedia;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicCollections;
 import io.github.core607.poketto.content.PublicContentSnapshot;
+import io.github.core607.poketto.workspace.PublicAuthorNames;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,8 +26,10 @@ record PublicDocument(
         Map<String, String> images,
         List<ResolvedMedia.GalleryImage> gallery,
         ResolvedMedia.GalleryStatus galleryStatus,
-        PublicCollections.Navigation navigation) {
-    static PublicDocument of(PublicArticle article, PublicContentSnapshot snapshot, ResolvedMedia media) {
+        PublicCollections.Navigation navigation,
+        String authorName) {
+    static PublicDocument of(
+            PublicArticle article, PublicContentSnapshot snapshot, ResolvedMedia media, String workspaceAuthor) {
         return new PublicDocument(
                 snapshot.commit().orElse(null),
                 snapshot.verifiedAt(),
@@ -43,6 +46,7 @@ record PublicDocument(
                 media.images(),
                 media.gallery(),
                 media.galleryStatus(),
-                snapshot.collections().forArticle(article.route()));
+                snapshot.collections().forArticle(article.route()),
+                PublicAuthorNames.select(article.publicAuthor(), workspaceAuthor));
     }
 }

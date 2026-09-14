@@ -9,6 +9,7 @@ type Publication = {
   workspaceId: string;
   slug: string;
   displayName: string;
+  publicAuthorName: string;
   enabled: boolean;
 };
 
@@ -16,6 +17,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
   const base = `/api/auth/workspaces/${encodeURIComponent(workspaceId)}/publication`;
   const confirm = useConfirmation();
   const [publication, setPublication] = useState<Publication | null>(null);
+  const [author, setAuthor] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
@@ -35,6 +37,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
         if (value.workspaceId !== workspaceId)
           throw new Error("空间状态不匹配");
         setPublication(value);
+        setAuthor(value.publicAuthorName);
       }
     } catch (failure) {
       if (version === epoch.current) setError(message(failure));
@@ -101,6 +104,40 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
     }
   }
 
+  async function saveAuthor() {
+    if (!publication || busy.current) return;
+    const version = epoch.current;
+    busy.current = true;
+    setPending(true);
+    setError("");
+    setReceipt("");
+    try {
+      const value = await api<Publication>(base + "/author", {
+        method: "PUT",
+        body: { name: author },
+      });
+      if (version === epoch.current) {
+        if (value.workspaceId !== workspaceId)
+          throw new Error("空间状态不匹配");
+        setPublication(value);
+        setAuthor(value.publicAuthorName);
+        setReceipt("公开署名已保存。");
+      }
+    } catch (failure) {
+      if (version === epoch.current) {
+        setPublication(null);
+        setError(
+          "未能确认署名当前状态，请重新读取后再操作。" + message(failure),
+        );
+      }
+    } finally {
+      if (version === epoch.current) {
+        busy.current = false;
+        setPending(false);
+      }
+    }
+  }
+
   return (
     <section className="sub-panel" aria-label="网站发布">
       <h2>网站发布</h2>
@@ -138,6 +175,32 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
             查看公开网站 ↗
           </a>
         </p>
+      )}
+      {publication && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveAuthor();
+          }}
+        >
+          <label htmlFor={`public-author-${workspaceId}`}>空间公开署名</label>
+          <input
+            id={`public-author-${workspaceId}`}
+            value={author}
+            disabled={pending}
+            maxLength={240}
+            placeholder={publication.displayName}
+            onChange={(event) => setAuthor(event.target.value)}
+            aria-describedby={`public-author-help-${workspaceId}`}
+          />
+          <p id={`public-author-help-${workspaceId}`} className="muted">
+            最多 120
+            个字符。文章填写了公开署名时优先使用文章署名；这里留空时使用空间名称。
+          </p>
+          <button disabled={pending || author === publication.publicAuthorName}>
+            保存公开署名
+          </button>
+        </form>
       )}
     </section>
   );

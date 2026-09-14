@@ -12,7 +12,8 @@ public record PublicArticle(
         List<String> tags,
         Instant createdAt,
         Instant updatedAt,
-        boolean folderPage) {
+        boolean folderPage,
+        String publicAuthor) {
     public PublicArticle {
         tags = List.copyOf(tags);
     }

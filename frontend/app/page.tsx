@@ -62,6 +62,7 @@ export default async function Home({
           <article className="article-card" key={item.space + ":" + item.route}>
             <div className="article-meta">
               <a href={spaceHref(item.space)}>{item.spaceName}</a>
+              <span className="author-name">{item.authorName}</span>
               <span>／</span>
               <span>{item.folderPage ? "目录" : "文章"}</span>
               <time dateTime={item.createdAt}>{date(item.createdAt)}</time>

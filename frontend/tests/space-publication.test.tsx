@@ -70,6 +70,7 @@ const publication = (workspaceId = "first", enabled = false) => ({
   enabled,
   slug: workspaceId,
   displayName: workspaceId,
+  publicAuthorName: "",
 });
 
 test("publication confirmation and authoritative acknowledgement control the visible state", async (t) => {

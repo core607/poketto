@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.DocumentSearch;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.workspace.PublicAuthorNames;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Clock;
@@ -58,9 +59,7 @@ final class PublicDiscovery {
         var cards = new ArrayList<Card>();
         for (int index = offset; index < end; index++) {
             Entry entry = batch.entries().get(index);
-            if (visible(entry)) {
-                cards.add(entry.card());
-            }
+            visibleCard(entry).ifPresent(cards::add);
         }
         return new Page(
                 batch.id(),
@@ -132,20 +131,29 @@ final class PublicDiscovery {
                                 search.snippet(article.title(), article.body()),
                                 article.tags().stream().limit(3).toList(),
                                 article.createdAt(),
-                                article.folderPage())))
+                                article.folderPage(),
+                                article.publicAuthor())))
                 .toList();
     }
 
-    private boolean visible(Entry entry) {
+    private Optional<Card> visibleCard(Entry entry) {
         try {
-            return snapshots.withCurrent(
-                    entry.workspace(),
-                    snapshot -> snapshot.commit().orElse("").equals(entry.commit())
-                            && snapshot.articles().stream()
-                                    .anyMatch(article ->
-                                            article.route().equals(entry.card().route())));
+            return snapshots.withCurrent(entry.workspace(), snapshot -> {
+                if (!snapshot.commit().orElse("").equals(entry.commit())) {
+                    return Optional.empty();
+                }
+                if (snapshot.articles().stream()
+                        .noneMatch(
+                                article -> article.route().equals(entry.card().route()))) {
+                    return Optional.empty();
+                }
+                return publications
+                        .findPublished(entry.card().space())
+                        .filter(space -> space.workspaceId().equals(entry.workspace()))
+                        .map(space -> entry.card().withAuthor(space.authorName()));
+            });
         } catch (ContentRepositoryException unavailable) {
-            return false;
+            return Optional.empty();
         }
     }
 
@@ -195,6 +203,7 @@ final class PublicDiscovery {
                                     + card.route().length()
                                     + card.title().length()
                                     + card.snippet().length()
+                                    + card.authorName().length()
                                     + card.tags().stream()
                                             .mapToInt(String::length)
                                             .sum());
@@ -214,7 +223,21 @@ final class PublicDiscovery {
             String snippet,
             List<String> tags,
             Instant createdAt,
-            boolean folderPage) {}
+            boolean folderPage,
+            String authorName) {
+        Card withAuthor(String workspaceAuthor) {
+            return new Card(
+                    space,
+                    spaceName,
+                    route,
+                    title,
+                    snippet,
+                    tags,
+                    createdAt,
+                    folderPage,
+                    PublicAuthorNames.select(authorName, workspaceAuthor));
+        }
+    }
 
     record Page(
             String batch,

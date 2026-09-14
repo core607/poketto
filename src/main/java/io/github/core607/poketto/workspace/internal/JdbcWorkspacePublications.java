@@ -1,5 +1,6 @@
 package io.github.core607.poketto.workspace.internal;
 
+import io.github.core607.poketto.workspace.PublicAuthorNames;
 import io.github.core607.poketto.workspace.PublicationUnavailableException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
@@ -13,7 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 final class JdbcWorkspacePublications implements WorkspacePublications {
-    private static final String COLUMNS = "workspace_id,public_slug,display_name,public_delivery";
+    private static final String COLUMNS = "workspace_id,public_slug,display_name,public_delivery,public_author_name";
     private final JdbcTemplate jdbc;
 
     JdbcWorkspacePublications(JdbcTemplate jdbc) {
@@ -89,11 +90,28 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
         }
     }
 
+    @Override
+    public Publication setAuthorName(WorkspaceId workspace, String name) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Public author changes require an owner-authorization transaction");
+        }
+        String normalized = PublicAuthorNames.normalize(name);
+        if (jdbc.update(
+                        "update workspaces set public_author_name=? where workspace_id=?",
+                        normalized,
+                        workspace.value())
+                != 1) {
+            throw new PublicationUnavailableException();
+        }
+        return settings(workspace);
+    }
+
     private static Publication read(ResultSet row, int number) throws SQLException {
         return new Publication(
                 new WorkspaceId(row.getObject("workspace_id", UUID.class)),
                 row.getString("public_slug"),
                 row.getString("display_name"),
-                row.getBoolean("public_delivery"));
+                row.getBoolean("public_delivery"),
+                row.getString("public_author_name"));
     }
 }

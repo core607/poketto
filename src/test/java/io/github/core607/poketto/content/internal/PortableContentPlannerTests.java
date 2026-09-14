@@ -140,7 +140,7 @@ class PortableContentPlannerTests {
         files.put(
                 "public/article.md",
                 text(
-                        "---\ntitle: Public\nprivate_note: secret-metadata\n---\n# Public\n![pic](images/pic.png)\n[unsafe](javascript:alert)\n<script>secret-html</script>\n"));
+                        "---\ntitle: Public\npublic_author: Public signature\nprivate_note: secret-metadata\n---\n# Public\n![pic](images/pic.png)\n[unsafe](javascript:alert)\n<script>secret-html</script>\n"));
         files.put("public/images/pic.png", new byte[] {0, -1, 2});
         files.put("private/hidden.md", text("# Secret\nprivate-body\n"));
         fixture.commitRemote(workspace, files);
@@ -152,7 +152,7 @@ class PortableContentPlannerTests {
         assertThat(contents).hasSize(2);
         String article = new String(contents.get("content/article-1.md"), StandardCharsets.UTF_8);
         assertThat(article)
-                .contains("title: \"Public\"", "../media/original-1.png")
+                .contains("title: \"Public\"", "../media/original-1.png", "public_author: \"Public signature\"")
                 .doesNotContain("secret-metadata", "secret-html", "javascript:", "private-body", "public/article.md");
         assertThat(contents.get("media/original-1.png")).containsExactly(0, -1, 2);
         assertThatThrownBy(() -> service.prepare(actor, workspace, List.of("private/hidden.md"), true))

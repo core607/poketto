@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.spaces.SpacePublicationService;
+import io.github.core607.poketto.workspace.PublicAuthorNames;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,12 +41,31 @@ class SpacePublicationController {
     }
 
     private static ResponseEntity<PublicationResponse> response(WorkspacePublications.Publication body) {
-        var response =
-                new PublicationResponse(body.workspaceId().toString(), body.slug(), body.displayName(), body.enabled());
+        var response = new PublicationResponse(
+                body.workspaceId().toString(),
+                body.slug(),
+                body.displayName(),
+                body.enabled(),
+                body.publicAuthorName());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
     }
 
-    record PublicationResponse(String workspaceId, String slug, String displayName, boolean enabled) {}
+    @PutMapping("/author")
+    ResponseEntity<PublicationResponse> updateAuthor(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestBody UpdateAuthor request) {
+        return response(publications.setAuthorName(actor, WorkspaceId.parse(workspaceId), request.name()));
+    }
+
+    record PublicationResponse(
+            String workspaceId, String slug, String displayName, boolean enabled, String publicAuthorName) {}
+
+    record UpdateAuthor(String name) {
+        UpdateAuthor {
+            name = PublicAuthorNames.normalize(name);
+        }
+    }
 
     record UpdatePublication(Boolean enabled) {
         UpdatePublication {
