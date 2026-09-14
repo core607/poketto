@@ -8,6 +8,8 @@ Long-lived account copies need an explicit way to discover new remote files, rem
 
 The host inventories retained baseline paths and the fixed remote tree before changing local files. It bounds paths, combined text bytes and traversal time. Missing text is not proof of absence: ordinary binary content participates through bounded Git blob inspection and transfer. Conflicting binary content, unsafe local entries and unsupported remote entries are preserved and reported. Text conflicts retain LOCAL/BASE/REMOTE versions. Untracked local-only files are outside the remote change set. Synchronization never publishes a remote commit.
 
+The application reuses this inventory throughout reconciliation instead of resolving each text path again. Progress for paths that do not change local files is batched; it is published together with the next exact installation intent or at completion. Recovery inventories the retained target commit, even if remote main has since advanced.
+
 ## Installation and recovery
 
 The account journal retains the fixed target revision, ordered paths, progress and exact next installation before the worker can change a file. Each installation checks the observed local digest under the command freeze. An interrupted acknowledgement can be replayed against the same desired bytes or completed deletion; newer local edits are not overwritten. The journal advances a file's remote baseline only after installation acknowledgement. The whole-copy commit advances only after all paths finish, including explicitly reported conflicts.

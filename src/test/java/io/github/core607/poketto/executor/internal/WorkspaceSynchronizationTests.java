@@ -74,6 +74,7 @@ class WorkspaceSynchronizationTests {
         assertThat(saves.save(actor, workspace, competitor, Map.of("AGENTS.md", remote), List.of())
                         .ok())
                 .isTrue();
+        String fixedRemote = competitor.baseCommit;
         Path local = Files.createDirectory(root.resolve("local"));
         Files.writeString(local.resolve("AGENTS.md"), "local\nmiddle\nlast\n");
         Files.writeString(local.resolve("draft.md"), "unsaved");
@@ -95,13 +96,14 @@ class WorkspaceSynchronizationTests {
         assertThat(resumed.baseCommit).isEqualTo(previous);
         assertThat(resumed.baseline("AGENTS.md")).isEqualTo(previous);
         assertThat(Files.readString(local.resolve("AGENTS.md"))).isEqualTo("local\nmiddle\nremote\n");
+        saveGuide(competitor, "later remote version");
         var stored = mapper.readValue(Files.readAllBytes(journal), RetainedSaveState.class);
         assertThat(stored.sync().current().path()).isEqualTo("AGENTS.md");
         var reopened = SelectedFileSaves.State.restore(
                 stored, snapshot -> write(journal, mapper.writeValueAsString(snapshot)));
         assertThat(sync.run(actor, workspace, reopened, localFiles(local)).ok()).isTrue();
         assertThat(reopened.sync).isNull();
-        assertThat(reopened.baseCommit).isEqualTo(competitor.baseCommit);
+        assertThat(reopened.baseCommit).isEqualTo(fixedRemote);
         assertThat(saves.baselineFile(actor, workspace, reopened, "AGENTS.md").source())
                 .contains(remote);
         assertThat(Files.readString(local.resolve("AGENTS.md"))).isEqualTo("local\nmiddle\nremote\n");
@@ -109,7 +111,13 @@ class WorkspaceSynchronizationTests {
         assertThat(fixture.reader(auth)
                         .getFile(actor, workspace, Optional.empty(), "AGENTS.md")
                         .source())
-                .contains(remote);
+                .contains("later remote version");
+    }
+
+    private void saveGuide(SelectedFileSaves.State state, String text) {
+        assertThat(saves.save(actor, workspace, state, Map.of("AGENTS.md", text), List.of())
+                        .ok())
+                .isTrue();
     }
 
     @Test

@@ -71,8 +71,11 @@ final class SelectedFileSaves {
         if (state.uncertain || state.move != null) {
             throw new IllegalArgumentException("recover the pending write before synchronizing");
         }
-        String remoteCommit = reader.currentCommit(actor, workspace)
-                .orElseThrow(() -> new IllegalArgumentException("synchronization requires an existing remote commit"));
+        String remoteCommit = state.sync == null
+                ? reader.currentCommit(actor, workspace)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException("synchronization requires an existing remote commit"))
+                : state.sync.commit();
         var limits = new RepositoryBaselineLimits(
                 WorkspaceSyncInputs.MAX_PATHS, WorkspaceSyncInputs.MAX_TEXT_BYTES, Duration.ofSeconds(20));
         var inputs = new WorkspaceSyncInputs.Collector(state.baseCommit, remoteCommit);
@@ -356,15 +359,14 @@ final class SelectedFileSaves {
             install(proposed);
         }
 
-        void acknowledgeSyncFile() {
+        /** Stages acknowledged progress on a private state copy before its next durable installation. */
+        void advanceSyncFile() {
             PendingWorkspaceSync pendingSync = Objects.requireNonNull(sync, "pending sync must be present");
             PendingWorkspaceSync.File file = Objects.requireNonNull(pendingSync.current(), "sync file must be present");
             requireTracking(List.of(file.path()));
-            State proposed = copy();
-            proposed.baselines.put(file.path(), pendingSync.commit());
-            proposed.fileBaselines.put(file.path(), file.baseline());
-            proposed.sync = pendingSync.advanced();
-            install(proposed);
+            baselines.put(file.path(), pendingSync.commit());
+            fileBaselines.put(file.path(), file.baseline());
+            sync = pendingSync.advanced();
         }
 
         BridgeReplies.Reply finishSync(boolean skipped) {
@@ -376,7 +378,7 @@ final class SelectedFileSaves {
             }
             var result = BridgeReplies.workspaceSyncResult(pendingSync, skipped);
             BridgeReplies.Reply reply = BridgeReplies.outcome(
-                    pendingSync.conflicts().isEmpty(),
+                    skipped || pendingSync.conflicts().isEmpty(),
                     skipped ? "SYNC_RELEASED" : pendingSync.conflicts().isEmpty() ? "SYNCHRONIZED" : "MERGE_CONFLICT",
                     result);
             proposed.lastSave = reply;

@@ -29,26 +29,31 @@ final class WorkspaceSynchronization {
     }
 
     BridgeReplies.Reply run(AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, Files files) {
+        WorkspaceSyncInputs inputs = saves.prepareWorkspaceSync(actor, workspace, state);
         if (state.sync == null) {
-            WorkspaceSyncInputs inputs = saves.prepareWorkspaceSync(actor, workspace, state);
             List<String> paths = ordered(inputs);
             state.retainSync(new PendingWorkspaceSync(inputs.remoteCommit(), paths, 0, List.of(), null));
         }
-        while (state.sync.next() < state.sync.paths().size()) {
-            if (state.sync.current() == null) {
-                String path = state.sync.paths().get(state.sync.next());
-                PendingWorkspaceSync.File selected = plan(actor, workspace, state, path, files);
-                state.retainSync(state.sync.prepared(selected));
+        SelectedFileSaves.State progress = state.copy();
+        while (progress.sync.next() < progress.sync.paths().size()) {
+            if (progress.sync.current() == null) {
+                String path = progress.sync.paths().get(progress.sync.next());
+                PendingWorkspaceSync.File selected = plan(actor, workspace, progress, inputs, path, files);
+                progress.sync = progress.sync.prepared(selected);
             }
-            PendingWorkspaceSync.File selected = state.sync.current();
-            if (selected.install() && !files.install(selected)) {
-                return BridgeReplies.failedWith(
-                        "LOCAL_SYNC_PENDING",
-                        progress(state.sync),
-                        "The local file changed. Its contents are preserved; recover this synchronization or release it with poketto recover --skip-local.");
+            PendingWorkspaceSync.File selected = progress.sync.current();
+            if (selected.install()) {
+                state.install(progress);
+                if (!files.install(selected)) {
+                    return BridgeReplies.failedWith(
+                            "LOCAL_SYNC_PENDING",
+                            progress(state.sync),
+                            "The local file changed. Its contents are preserved; recover this synchronization or release it with poketto recover --skip-local.");
+                }
             }
-            state.acknowledgeSyncFile();
+            progress.advanceSyncFile();
         }
+        state.install(progress);
         return state.finishSync(false);
     }
 
@@ -72,9 +77,14 @@ final class WorkspaceSynchronization {
     }
 
     private PendingWorkspaceSync.File plan(
-            AuthPrincipal actor, WorkspaceId workspace, SelectedFileSaves.State state, String path, Files files) {
-        RepositoryFile base = saves.baselineFile(actor, workspace, state, path);
-        RepositoryFile remote = saves.repository().getFile(actor, workspace, Optional.of(state.sync.commit()), path);
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            SelectedFileSaves.State state,
+            WorkspaceSyncInputs inputs,
+            String path,
+            Files files) {
+        RepositoryFile base = inputs.baseline().getOrDefault(path, absent(workspace, state.baseline(path), path));
+        RepositoryFile remote = inputs.remote().getOrDefault(path, absent(workspace, inputs.remoteCommit(), path));
         RepositorySyncEntry before = blob(actor, workspace, base);
         RepositorySyncEntry after = blob(actor, workspace, remote);
         RetainedFileBaseline baseline = retained(workspace, remote, after);
@@ -123,6 +133,11 @@ final class WorkspaceSynchronization {
 
     private static boolean text(RepositorySyncEntry blob, RepositoryFile file) {
         return blob.kind() != RepositorySyncEntry.Kind.FILE || file.source().isPresent();
+    }
+
+    private static RepositoryFile absent(WorkspaceId workspace, String commit, String path) {
+        return new RepositoryFile(
+                workspace, Optional.of(commit), path, true, Optional.empty(), Optional.empty(), List.of(), false);
     }
 
     private RepositorySyncEntry blob(AuthPrincipal actor, WorkspaceId workspace, RepositoryFile file) {
