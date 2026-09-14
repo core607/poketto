@@ -1,0 +1,31 @@
+{
+  "result": "PASS",
+  "sourceCommit": "9474a8121c3aadb9cacd236f005a77b54a0eafd1",
+  "production": false,
+  "mode": "CSP page-script prohibition, not a global browser JavaScript preference",
+  "headers": {
+    "status": 200,
+    "csp": [
+      "script-src 'none'; object-src 'none'"
+    ],
+    "scriptsPresent": true
+  },
+  "articleScriptElements": 10,
+  "nextBootstrapped": false,
+  "flightQueuePresent": false,
+  "publicArticleReadable": true,
+  "nativeSearchSubmission": true,
+  "searchMatches": 79,
+  "nextSearchOffset": 12,
+  "loadedImageWidths": [
+    320,
+    320,
+    320
+  ],
+  "malformedImageWidth": 0,
+  "cleanup": "PASS",
+  "artifacts": {
+    "article.jpg": "985d3b65412001c8ec9c16580dc455ab2fbd1722c2da5230972d7fef999189c8",
+    "search.jpg": "25b65992241a7e6031fead9c23db799d66c9751332203358fe64928f89dba1ee"
+  }
+}

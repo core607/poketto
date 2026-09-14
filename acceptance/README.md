@@ -60,6 +60,13 @@ measures an isolated initial disk copy and twenty reused native executions from 
 173 MB retained bundle. It records the exact earlier worker revision and cleanup;
 it does not measure provider-network transfer or current end-to-end MCP latency.
 
+The [public reading run](evidence/2026-09-15-public-reading.json) uses a real browser
+with all page scripts prohibited by a fixture-only CSP header. Initial HTML, article
+links, the native search form, pagination and valid inline/gallery images remain
+usable without application hydration. [Screenshots and method](https://github.com/core607/poketto/blob/56992d6016a128ace47ecf518c86d377d3485ffc/noscript/README.md)
+distinguish this mode from a global browser preference. Modal enlargement remains a
+JavaScript interaction. The fixture and its CSP override were removed after the run.
+
 Local HTTP acceptance does not satisfy the phase-one requirement for the final HTTPS domain, real content corpus, or currently callable MCP clients. The production executor is also absent until its separate service and signed-lease configuration are supplied. Record the source revision and real screenshots alongside each completed browser scenario; a successful container start alone is not acceptance. Unavailable external clients are not completion conditions and must not be reported as tested.
 
 For image-memory admission, stage the current runtime and run `python acceptance/image-memory-smoke.py`. This independent probe starts only the synthetic Linux application and PostgreSQL, uses a loopback port, and generates disposable credentials under ignored `.gradle/`. It applies a two-CPU quota and the deployment JVM heap percentage, reads the actual maximum heap, and stops at 90% of heap or container memory. The scenarios cover maximum 16 MiB images, public and private HTTP authorization, slow HTTP and MCP SSE responses, request rejection, article/preview/inventory degradation, cancellation and disconnect recovery, exact hashes, and an idempotent MCP upload of the original HTTP upload.
