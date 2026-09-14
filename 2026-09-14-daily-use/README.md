@@ -24,3 +24,8 @@ The mobile editor retains a new draft after a save, enables Save and removes the
 The browser returns JPEG screenshot bytes at the dimensions recorded in [checks.json](checks.json), which differ from CSS viewport dimensions. Files are unedited captures; only their extensions were corrected to match the encoded format. The record lists artifact hashes, exact observations and limitations. Screenshots were inspected for sensitive data and legibility. Synthetic content labels are not claims about production data.
 
 This run also verifies filename paging (50 plus 29), dirty-navigation cancellation, private and unsaved destinations, independent spaces, public readback and website withdrawal. The intentional gateway fault and website switch were restored. It does not establish production HTTPS, provider interoperability, or external ChatGPT/Claude acceptance.
+## Installed worker timing
+
+A separate disposable 512 MiB XFS fixture used the installed DiskSystemdBackend and SRT within the configured resource slice. The installed worker source revision was `afbfe17566fd95799b3cdec23631f63f9a7a799e`; its runtime files are byte-identical through the UI delivery. One 289-byte synthetic Git bundle opened in 672.02 ms. Twenty sequential `cat note.md` commands averaged 525.39 ms, with p95 612.98 ms. [Raw measurements](disk-copy-timing.json) include all samples and successful cleanup.
+
+This measures native worker startup and command isolation for a tiny fixture. It excludes application admission, MCP transport, provider latency and large-corpus clone cost. An initial attempt outside the configured resource slice was rejected by the worker preflight and cleaned up; the measured run used the normal required slice. No existing account copy was used or removed.

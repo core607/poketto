@@ -1,0 +1,32 @@
+{
+  "scope": "isolated 512 MiB XFS pool and real worker/SRT, synthetic Git",
+  "initialOpenMilliseconds": 672.02,
+  "bundleBytes": 289,
+  "twentyReusesMilliseconds": [
+    548.8,
+    593.01,
+    516.63,
+    505.47,
+    517.86,
+    525.46,
+    517.81,
+    598.0,
+    502.07,
+    612.98,
+    515.73,
+    410.72,
+    510.21,
+    421.49,
+    525.4,
+    506.72,
+    525.21,
+    411.54,
+    647.43,
+    595.19
+  ],
+  "meanMilliseconds": 525.39,
+  "p95Milliseconds": 612.98,
+  "sourceRevision": "afbfe17566fd95799b3cdec23631f63f9a7a799e",
+  "outcome": "PASS",
+  "cleanup": "PASS"
+}
