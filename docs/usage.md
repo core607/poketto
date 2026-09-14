@@ -157,7 +157,9 @@ verifies the authenticated export and artifact path.
 
 `EXECUTION_UNCONFIRMED` means a retained command was attempted but completion was not confirmed. It includes the actual `copyId`, `currentGeneration`, fixed `expiresAt`, `mayHaveExecuted: true` and recovery eligibility. Local changes and remote writes may have partially completed. Keep this identity and inspect through explicit recovery before deciding whether to retry any write; this result never means that the command did not execute.
 
-To permanently discard retained local work, call `repo_discard` with its exact `expectedCopyId` and latest `expectedGeneration`. It requires current execution permission and works after reconnecting, retention expiry or loss of content-read permission. It refuses busy or stale writers and contains the old lease before removing recovery metadata. `DISCARDED` or `ABSENT` confirms no recoverable copy remains at that owned ID; physical cleanup may finish later. An unconfirmed response permits retrying the same ID and generation, but does not prove the work still exists. Discard does not undo remote Git commits. This operation requires retained execution to be enabled.
+To discard local work, call `repo_discard` with its exact `expectedCopyId`. Omit `expectedGeneration` when retention is disabled; retained copies require their latest generation. Current execution permission and ownership of the copy are required, while lost content-read permission does not prevent cleanup. Busy copies are refused. Confirmed containment precedes removal of the copy binding; retained disposal also fences the writer and removes recovery metadata. `DISCARDED` or `ABSENT` confirms the addressed copy is gone. A subsequent `new` can start in the same transport when it has no other live copy. An unconfirmed response permits retrying the same ID and generation, but does not prove the work still exists. Discard never undoes remote Git commits.
+
+A command timeout preserves the current working copy after its process tree is confirmed stopped. The response reports timeout; earlier edits and any partial work from that command remain available under the same `copyId`. The next command gets a fresh `/tmp`. Resource exhaustion and lifecycle cancellation still close the copy. Without retained execution, this does not protect against transport expiry, application deployment or worker loss.
 
 Use `repo_exec` for file listings, search, reads and edits, then the `poketto` CLI for persistence. Read relevant repository-owned `AGENTS.md` files progressively. Standalone `list_directory`, `get_file` and `repo_patch` calls are not supported, including when the worker is disabled. The [CodeAct entrance record](../notes/implemented/2026-09-10-codeact-mcp-entrance.md) defines this boundary; the shared directory reader still serves browser navigation.
 
@@ -193,7 +195,7 @@ limits and can return `MEDIA_UNAVAILABLE` while that capacity is occupied.
 for the originating MCP session. `get_artifact` renders validated raster images
 or returns text/binary pages; long command output also supplies artifact handles.
 Handles expire after five minutes or session closure and do not upload, save or
-publish files. Timeout, resource limits and cancellation close the session, so
+publish files. Resource limits and cancellation close the session, so
 long output then has only its preview and an explicit artifact-unavailable error.
 The [worker reference](../executor-service/README.md#returned-artifacts)
 defines quotas, byte paging and authorization.

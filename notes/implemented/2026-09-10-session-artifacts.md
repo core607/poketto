@@ -33,6 +33,11 @@ lease expiry retain the existing session-closing policy: handles cannot outlive
 that authority. Unavailable long output is explicit and is interpreted with the
 command's termination reason.
 
+[Command timeout and explicit disposal](2026-09-14-ephemeral-copy-lifecycle.md)
+supersedes the timeout closure rule: confirmed command containment preserves the
+live copy and its artifact authority. Artifact expiry and the other closure
+conditions above remain unchanged.
+
 ## Alternatives and consequences
 
 A persistent blob registry would add durable identities and cleanup obligations
