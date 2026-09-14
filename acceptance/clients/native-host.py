@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py',
+MODULES = ('disk_pool.py', 'worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py',
            'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py')
 
 
@@ -41,7 +41,6 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--port', type=int, default=38189)
     parser.add_argument('--lifetime-seconds', type=int, default=1800)
-    parser.add_argument('--retained-execution', action='store_true')
     args = parser.parse_args()
     assert os.geteuid() == 0 and 1024 <= args.port <= 65535 and 60 <= args.lifetime_seconds <= 3600
     runtime, source, tools, java = [p.resolve(strict=True) for p in
@@ -67,17 +66,21 @@ def main():
     app_user, exec_user = 'pkt-capp-' + token, 'pkt-cexec-' + token
     worker_unit, app_unit, db = ['poketto-client-' + token + '-' + name for name in ('worker', 'app', 'db')]
     users, db_attempted, worker_config = [], False, None
+    disk_pool, disk_mounted = root / "pool", False
+    exports = disk_pool / "exports"
     try:
         pool.start()
         for user in (app_user, exec_user):
             run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
             users.append(user)
         app_account = pwd.getpwnam(app_user)
-        directories = ('exports', 'content', 'home')
-        if args.retained_execution:
-            directories += ('retained', 'baselines')
-        for name in directories:
-            path = root / name
+        disk_pool.mkdir()
+        image = root / 'copies.img'
+        run(['fallocate', '-l', '512M', str(image)])
+        run(['mkfs.xfs', '-f', str(image)])
+        run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(image), str(disk_pool)])
+        disk_mounted = True
+        for path in (exports, disk_pool / 'metadata', root / 'content', root / 'home'):
             path.mkdir(mode=0o700)
             os.chown(path, app_account.pw_uid, app_account.pw_gid)
         for name in MODULES:
@@ -91,22 +94,18 @@ def main():
         (root / 'public.pem').write_bytes(key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
         worker_config = root / 'worker.json'
         worker_settings = {
-            'runtimeRoot': str(root / 'runtime'), 'exportRoot': str(root / 'exports'),
+            'runtimeRoot': str(root / 'runtime'), 'exportRoot': str(exports),
             'socketPath': str(root / 'runtime/control.sock'), 'publicKey': str(root / 'public.pem'),
             'toolsRoot': str(tools), 'launcher': str(root / 'launcher.py'), 'execUser': exec_user,
             'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
             'unitPrefix': 'poketto-exec-c' + token + '-', 'supervisorUnit': worker_unit + '.service',
             'resourceSlice': pool.name, 'leaseSeconds': 30, 'renewAfterSeconds': 10,
             'maxRequests': 8192, 'maxConnections': 32, 'maxExecutionsPerSession': 128,
-            'maxSessions': 2, 'maxBundleBytes': 16777216, 'diskBytes': 67108864,
+            'maxSessions': 4, 'maxBundleBytes': 16777216, 'diskBytes': 67108864,
             'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
             'maxTimeoutMillis': 60000, 'initTimeoutMillis': 15000}
-        if args.retained_execution:
-            worker_settings.update({
-                'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 64,
-                'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
-                'maxRetainedBytes': 268435456, 'minimumFreeBytes': 0, 'retentionSeconds': 600})
+        worker_settings.update(copyRoot=str(disk_pool), poolBytes=512 * 1024 * 1024)
         worker_config.write_text(json.dumps(worker_settings))
         run(['systemd-run', '--quiet', '--unit', worker_unit, '--slice', pool.name,
              '-p', 'User=root', '-p', 'UMask=0077',
@@ -137,21 +136,11 @@ def main():
             'POKETTO_ACCEPTANCE_ORIGIN=http://127.0.0.1:' + str(args.port),
             'POKETTO_SESSION_COOKIE_SECURE=false', 'HOME=' + str(root / 'home')]) + '\n')
         app_environment.chmod(0o600)
-        retained_args = []
-        if args.retained_execution:
-            retained_args = [
-                '--poketto.executor.retention.enabled=true',
-                '--poketto.executor.retention.root=' + str(root / 'retained'),
-                '--poketto.executor.retention.baseline-root=' + str(root / 'baselines'),
-                '--poketto.executor.retention.max-copies=8',
-                '--poketto.executor.retention.max-record-bytes=8388608',
-                '--poketto.executor.retention.max-total-bytes=67108864',
-                '--poketto.executor.retention.disk-reserve-bytes=0',
-                '--poketto.executor.retention.seconds=600',
-                '--poketto.executor.retention.max-baseline-bytes=8388608',
-                '--poketto.executor.retention.max-baseline-expanded-bytes=16777216',
-                '--poketto.executor.retention.max-baseline-entries=10000',
-                '--poketto.executor.retention.max-baseline-total-bytes=67108864']
+        copy_args = [
+            '--poketto.executor.copies.metadata-root=' + str(disk_pool / 'metadata'),
+            '--poketto.executor.copies.pool-bytes=536870912',
+            '--poketto.executor.copies.original-bytes=67108864',
+            '--poketto.executor.copies.original-expanded-bytes=268435456']
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
              '-p', 'MemoryMax=768M', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
@@ -162,7 +151,7 @@ def main():
              '--server.address=127.0.0.1', '--server.port=' + str(args.port),
              '--poketto.executor.enabled=true', '--poketto.executor.socket=' + str(root / 'runtime/control.sock'),
              '--poketto.executor.signing-key=' + str(private),
-             '--poketto.executor.staging-directory=' + str(root / 'exports')] + retained_args)
+             '--poketto.executor.staging-directory=' + str(exports)] + copy_args)
         endpoint = 'http://127.0.0.1:' + str(args.port)
         deadline = time.monotonic() + 90
         while True:
@@ -177,7 +166,7 @@ def main():
         receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root)}))
         receipt.chmod(0o600)
         print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint,
-                          'retainedExecution': args.retained_execution, 'controllerSha256': sha(Path(__file__)),
+                          'accountDiskCopies': True, 'controllerSha256': sha(Path(__file__)),
                           'runtimeManifestSha256': sha(runtime / 'manifest.sha256'),
                           'workerSources': {name: sha(root / name) for name in MODULES}}), flush=True)
         deadline = time.monotonic() + args.lifetime_seconds
@@ -203,6 +192,8 @@ def main():
         # Stop the owned slice even when another component failed. Never remove a
         # mounted fixture or an unverified container just to report successful cleanup.
         attempt('resource pool cleanup', pool.close)
+        if disk_mounted:
+            attempt('copy pool unmount', lambda: run(['umount', str(disk_pool)]))
         if db_attempted:
             def remove_database():
                 if run(['docker', 'inspect', '--format', '{{index .Config.Labels "poketto.acceptance"}}', db]) != token:

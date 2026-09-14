@@ -58,7 +58,7 @@ not provide recovery after host or process loss.
   acknowledged timeout before allowing later recovery.
 
 The [native probe](../../executor-native/README.md) exercises real process
-containment with synthetic authorization. The [HTTP client](../../acceptance/clients/ephemeral-http.py)
+containment with synthetic authorization. The [HTTP client](../../acceptance/clients/account-http.py)
 uses normal account login and API keys with PostgreSQL and native SRT; it checks
 unchanged Git authority through the authenticated file reader. Socket tests inject
 lost CLOSE replies and concurrent commands. These checks do not establish the
