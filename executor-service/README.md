@@ -344,6 +344,11 @@ fresh signatures after that boundary remain Spring's authorization responsibilit
 
 ## Verification
 
+The root-only `python3 executor-service/disk_pool_probe.py` creates a disposable
+512 MiB XFS mount. It kills allocation processes before identity publication,
+after identity fsync and after publication, then checks recovery and preservation
+of an existing copy. Both the phase results and cleanup must report `PASS`.
+
 Run protocol and state tests on Linux with the pinned Python dependencies:
 
 ```sh

@@ -916,6 +916,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 "ATTACH",
                 new WorkerRequests.DiskCopy(session.copyId, session.fullRead ? "full" : "public", session.commit),
                 openTimeout);
+        requireInitializationAccepted(response, true);
         requireOk(response, session);
         if (!response.path("state").asString("").equals("READY")) {
             throw new WorkerUnavailableException();

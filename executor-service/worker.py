@@ -1185,9 +1185,9 @@ class DiskSystemdBackend(SystemdBackend):
     persistent = True
 
     def __init__(self, config):
+        super().__init__(config)
         self.disks = DiskPool(config['copyRoot'], config['poolBytes'],
                               config['diskBytes'], config['diskInodes'])
-        super().__init__(config)
 
     def prepare(self, s):
         self.pool.verify()
@@ -1374,9 +1374,10 @@ def main():
     if os.geteuid() != 0:
         raise SystemExit('The resource supervisor requires root; execution uses a separate account')
     config = load_config(args.config)
-    backend = DiskSystemdBackend(config) if config.get('copyRoot') else SystemdBackend(config)
     if args.cleanup:
+        SystemdBackend(config)
         return
+    backend = DiskSystemdBackend(config) if config.get('copyRoot') else SystemdBackend(config)
     # Cleanup precedes pool validation, so a broken installation cannot strand old trees.
     backend.pool = ResourcePool(config.get('resourceSlice'))
     backend.pool.verify()

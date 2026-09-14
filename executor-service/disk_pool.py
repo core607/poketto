@@ -1,4 +1,5 @@
 """Persistent copy directories bounded by an XFS pool and inherited project quotas."""
+from contextlib import contextmanager
 import fcntl
 import json
 import os
@@ -46,6 +47,8 @@ class DiskPool:
         info = self.copies.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise ValueError('Copy parent must remain supervisor-owned')
+        with self._projects_lock():
+            self._collect_unpublished()
 
     @staticmethod
     def _run(*args):
@@ -67,19 +70,17 @@ class DiskPool:
         """Allocate a new empty copy with hard limits before making it writable."""
         owner = self._identity(copy_id, account_id, workspace_id, scope, commit)
         self.verify()
-        lock = os.open(self.root / '.projects.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        try:
-            info = os.fstat(lock)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
-                raise ValueError('Invalid project lock ownership')
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with self._projects_lock():
+            self._collect_unpublished()
             project = self._allocate_project()
-            target = self.copies / copy_id
+            destination = self.copies / copy_id
+            if destination.exists() or destination.is_symlink():
+                raise FileExistsError(destination)
+            target = self.copies / ('.creating-' + copy_id)
             target.mkdir(mode=0o750)
             try:
                 self._run('xfs_quota', '-x', '-c', f'project -s -p {target} {project}', str(self.root))
-                # XFS block quotas use KiB. Round down so the configured byte
-                # ceiling cannot be exceeded by unit conversion.
+                # XFS block quotas use KiB. Round down to preserve the byte ceiling.
                 blocks = self.copy_bytes // 1024
                 if blocks == 0:
                     raise ValueError('Copy quota must allow at least one KiB')
@@ -93,15 +94,44 @@ class DiskPool:
                     stream.flush()
                     os.fsync(stream.fileno())
                 self._sync(target)
+                os.rename(target, destination)
                 self._sync(self.copies)
-                return target
+                return destination
             except BaseException:
-                # No command has received this directory yet; never recurse here.
-                (target / '.copy.json').unlink(missing_ok=True)
-                target.rmdir()
+                # Only unpublished allocation staging can be removed here.
+                if target.exists():
+                    (target / '.copy.json').unlink(missing_ok=True)
+                    target.rmdir()
                 raise
+
+    @contextmanager
+    def _projects_lock(self):
+        lock = os.open(self.root / '.projects.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            info = os.fstat(lock)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+                raise ValueError('Invalid project lock ownership')
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            yield
         finally:
             os.close(lock)
+
+    def _collect_unpublished(self):
+        # The allocation lock excludes live creators. These names are never
+        # mounted into a command; published copy identities are never swept.
+        for target in self.copies.iterdir():
+            if not target.name.startswith('.creating-'):
+                continue
+            suffix = target.name.removeprefix('.creating-')
+            if str(uuid.UUID(suffix)) != suffix:
+                raise ValueError('Invalid allocation staging name')
+            info = target.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError('Invalid allocation staging ownership')
+            if not shutil.rmtree.avoids_symlink_attacks:
+                raise RuntimeError('Descriptor-based removal is required')
+            shutil.rmtree(target)
+            self._sync(self.copies)
 
     def reopen(self, copy_id, account_id, workspace_id, scope, commit):
         """Reattach the original directory only when its protected identity matches.

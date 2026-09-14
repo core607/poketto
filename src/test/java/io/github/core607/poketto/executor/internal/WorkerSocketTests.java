@@ -981,6 +981,33 @@ class WorkerSocketTests {
     }
 
     @Test
+    void refusedReattachmentPreservesTheCopyAndReportsAdmissionReason() throws Exception {
+        for (String code : List.of("SESSION_CAPACITY", "REQUEST_CAPACITY", "COPY_BUSY", "SESSION_BUSY")) {
+            var actor = principal();
+            try (var peer = new Peer();
+                    var executor = executor(fullAuth(), exports(), peer)) {
+                peer.terminationReason = "cancelled";
+                var first = command(executor, actor, "new");
+                peer.terminationReason = "normal";
+                peer.attachRefusal = code;
+                assertThatThrownBy(() -> command(executor, actor, first.copyId()))
+                        .isInstanceOfSatisfying(ExecutionAdmissionException.class, error -> {
+                            assertThat(error.reason())
+                                    .isEqualTo(
+                                            code.endsWith("CAPACITY")
+                                                    ? ExecutionAdmissionException.Reason.CAPACITY
+                                                    : ExecutionAdmissionException.Reason.BUSY);
+                            assertThat(error.recoveryAvailable()).isTrue();
+                        });
+                assertThat(peer.operations("EXEC")).hasSize(1);
+                peer.attachRefusal = null;
+                assertThat(command(executor, actor, first.copyId()).copyId()).isEqualTo(first.copyId());
+                assertThat(peer.operations("OPEN")).hasSize(1);
+            }
+        }
+    }
+
+    @Test
     void failureBeforeOpenReleasesAdmissionForAnotherClient() throws Exception {
         var exports = exports();
         when(exports.create(any(), any(), any()))
@@ -1209,6 +1236,7 @@ class WorkerSocketTests {
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
+        private volatile String attachRefusal;
         private volatile String stdout = "fixture result";
 
         Peer() throws Exception {
@@ -1371,6 +1399,11 @@ class WorkerSocketTests {
                     response.put("copyId", request.path("data").path("copyId").stringValue());
                 }
                 case "OPEN", "ATTACH" -> {
+                    if (operation.equals("ATTACH") && attachRefusal != null) {
+                        response.put("ok", false);
+                        response.put("code", attachRefusal);
+                        break;
+                    }
                     states.put(lease, "INITIALIZING");
                     openEntered.countDown();
                     if (blockOpen) {
