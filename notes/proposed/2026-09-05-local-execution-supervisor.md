@@ -5,6 +5,9 @@ Date: 2026-09-05
 The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
 standalone agent file-read, list and patch tool selections in this record. Shared
 service contracts and outstanding delivery requirements remain applicable.
+The [account-copy decision](../implemented/2026-09-14-account-working-copies.md)
+owns disk quotas, shared copy identity, expiry and restart persistence. Runtime
+leases and command containment remain separate from stored-copy lifetime.
 Status: Proposed
 
 ## Problem
@@ -18,29 +21,29 @@ revocation, or restart contract.
 ## Implemented components
 
 Use a small root resource supervisor behind a permissioned local UNIX socket.
-It verifies Ed25519-signed Spring requests, owns bounded session tmpfs mounts,
+It verifies Ed25519-signed Spring requests, mounts quota-bounded disk copies,
 and launches fixed systemd units under an independent unprivileged execution
 account. Both Git initialization and user commands run through pinned SRT
 0.0.75. The supervisor never interprets shell commands or opens application
 repository caches. Spring receives no Docker socket or elevated host capability.
 
 Spring exports a bounded Git bundle containing the pinned commit and ancestor
-history. A signed lease binds workspace, key, account, server MCP session,
+history. A signed lease binds workspace, requesting grant, account, copy identity,
 application epoch, worker epoch, export ID, commit, byte count, and digest.
 The worker maps opaque export IDs under its configured export directory; caller
 arguments cannot select a host path or remote address. A new bundle clone has
 no source inode sharing, alternates, credentials, or inherited Git configuration.
 
 Each command gets a fresh process tree in a fixed low-privilege SRT unit while
-the session's own directory persists. Runtime, CPU, memory, swap, descendant
+the account/workspace copy persists across transports. Runtime, CPU, memory, swap, descendant
 count, output, temporary storage, and repository storage are bounded outside
-the command. Only one command runs per session. Session and request admission
+the command. Only one command runs per shared copy. Lease and request admission
 have explicit bounds. Sandbox failure never invokes an ordinary subprocess.
 
 A dedicated systemd slice supplies the aggregate memory, swap, process and CPU
 budget. The root supervisor and every transient command explicitly use the same
-slice; per-command limits alone cannot bound tmpfs pages retained after a command
-exits or bundles copied by the supervisor. The slice owns the quota values, while
+slice; per-command limits alone cannot bound supervisor allocations and all
+concurrent commands. XFS project quotas bound retained storage separately. The slice owns the resource values, while
 worker configuration names it. Startup and new operations verify actual cgroup
 membership and finite kernel limits. A prefix drop-in is insufficient because
 an omitted installation step could place commands outside the pool. Cleanup and
@@ -54,7 +57,9 @@ pre-initialization cancellation establish tombstones before cleanup begins.
 A worker restart invalidates all prior signatures. Service dependencies and
 root-owned cleanup recover from supervisor SIGKILL; cleanup stops known units,
 verifies empty cgroups, unmounts only generated session mountpoints, and removes
-empty mount directories without traversing caller-controlled files.
+empty mount directories without traversing caller-controlled files. This runtime
+cleanup preserves published disk copies and their protected account journals;
+only explicit disposal or idle expiry removes retained work.
 The worker publishes a new boot ID through HELLO only after acquiring its
 exclusive lock and completing startup cleanup. The application may use a
 different authenticated boot ID to retire unresolved leases from the earlier
@@ -96,23 +101,23 @@ properties. Resource examples require real corpus sizing before production.
 
 ## MCP and Java integration
 
-Spring AI 2.0.1 supplies WebMVC Streamable HTTP at `/mcp`. Browser sessions do not authenticate it; the existing [identity boundary](../implemented/2026-09-06-workspace-identity-http.md) verifies workspace Bearer keys. The official SDK session ID binds the principal and workspace; independent clients sharing one key receive independent sessions. Tools use the [repository authoring services](../implemented/2026-09-05-repository-authoring-foundations.md) for authoritative files, exact images, idempotent uploads and revision-checked patches.
+Spring AI 2.0.1 supplies WebMVC Streamable HTTP at `/mcp`. Browser sessions do not authenticate it; the existing [identity boundary](../implemented/2026-09-06-workspace-identity-http.md) verifies workspace Bearer credentials. SDK transports bind their current principal and workspace, but do not own copy identity or lifetime. Authorized clients of one account and workspace share the default copy within the same reading scope. Tools use the [repository authoring services](../implemented/2026-09-05-repository-authoring-foundations.md) for authoritative files, exact images, idempotent uploads and revision-checked saves.
 
 MCP initialization requests are limited to 16 KiB and session POST bodies to 32 MiB. Before SDK dispatch, the filter reads at most the limit plus one byte and rejects excess with 413. Four data slots cover body buffering and asynchronous handling; four separate slots admit complete `notifications/initialized` and `notifications/cancelled` bodies up to 16 KiB, with eight bounded prefix readers. Large admitted requests each reserve one 32 MiB buffer plus a sentinel byte. SDK transport exceptions become JSON-RPC error envelopes without exception internals; HTTP status, headers and cookies remain intact. Errors without an identifiable request omit `id`, as allowed by the [Streamable HTTP contract](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports). Standard RPC responses and event streams retain the SDK handling.
 
 Before buffering a large session POST or dispatching `get_asset` or `put_asset`, the transport reserves the shared [image memory budget](../implemented/2026-09-05-repository-authoring-foundations.md). Small cancellation and initialization notifications use their separate control slots. A streaming Jackson preflight limits each JSON envelope to 4096 tokens and 32 nested containers before the SDK creates its argument tree. Request identifiers are strings of at most 128 UTF-16 code units or signed 64-bit integers; invalid identifiers receive a fixed HTTP 400 JSON-RPC error without echoing the value. Method and tool names are at most 128 code units. A `get_asset` envelope is limited to 16 KiB, including unused metadata and whitespace, to keep a large retained request from overlapping its image response. `put_asset` retains the 32 MiB body limit for a maximum 16 MiB original. Oversized envelopes or excessive JSON structure receive 413.
 
-The `executor` Java module implements `RepositoryExecutor` through the signed local worker client. It validates root-owned protected socket paths, root peer credentials and a private Ed25519 PKCS8 signing key. Snapshot exports contain exact authoritative Git history without credentials, source object inode sharing or alternates. `get_file` never reads a command-modified execution copy. An omitted commit keeps an execution session pinned, and a patch does not silently switch it.
+The `executor` Java module implements `RepositoryExecutor` through the signed local worker client. It validates root-owned protected socket paths, root peer credentials and a private Ed25519 PKCS8 signing key. Snapshot exports contain exact authoritative Git history without credentials, source object inode sharing or alternates. Authoritative file reads never use a command-modified execution copy. An omitted commit keeps the original copy baseline pinned, and a save does not silently switch it.
 
-Set `POKETTO_EXECUTOR_ENABLED=true` only on Linux with the separate worker configured. Required application settings are `POKETTO_EXECUTOR_SOCKET`, `POKETTO_EXECUTOR_SIGNING_KEY` and `POKETTO_EXECUTOR_STAGING_DIRECTORY`. The default application admission is two sessions and the maximum bundle is 128 MiB; these starting values must not exceed the worker's configured limits and are not production sizing evidence. With execution disabled, `repo_exec` is absent from tool discovery. Worker or isolation failure never creates an ordinary subprocess fallback.
+Set `POKETTO_EXECUTOR_ENABLED=true` only on Linux with the separate worker configured. Application settings include `POKETTO_EXECUTOR_SOCKET`, `POKETTO_EXECUTOR_SIGNING_KEY`, `POKETTO_EXECUTOR_STAGING_DIRECTORY` and persistent account-copy metadata; the worker requires its enforcing XFS pool. The default application admission is four active leases and the maximum bundle is 128 MiB; these values must not exceed the worker's configured limits and are not production sizing evidence. Retained copy count and storage expiry are separate limits. With execution disabled, `repo_exec` is absent from tool discovery. Worker or isolation failure never creates an ordinary subprocess fallback.
 
 Exports independently limit compressed bundle bytes and preflight work: reachable blob sizes may total at most twice the configured bundle limit, with at most 100,000 commits and 250,000 total visited objects. The raw-byte check bounds compression work and can reject highly compressible history whose bundle would fit; it does not estimate the resulting bundle size. Both checks retain the export deadline.
 
-The adapter renews leases while initialization or execution waits, rechecks stored authority on renewal, and propagates cancellation and committed revocation to the complete worker unit. Unconfirmed closure retains admission capacity. After a failed close attempt, the bounded control pool rechecks CLOSE at the worker's advertised renewal interval, without renewing authority or retrying execution. The original failed acknowledgement remains a failure until closure is actually confirmed. Only confirmed CLOSED or a different authenticated worker boot after startup cleanup releases that capacity; the old MCP session cannot reopen. Lost execution responses require reconciliation rather than a blind retry.
+The adapter renews leases while initialization or execution waits, rechecks stored authority on renewal, and propagates cancellation and committed revocation to the complete worker unit. Unconfirmed closure retains admission capacity. After a failed close attempt, bounded control handling rechecks CLOSE without retrying execution. The original failed acknowledgement remains a failure until closure is actually confirmed. Only confirmed CLOSED or a different authenticated worker boot after startup cleanup releases that capacity. An authorized caller can then attach the preserved copy under a new lease. Lost execution responses require reconciliation rather than a blind retry.
 
 ## Verification and remaining acceptance
 
-The [native evidence](../../executor-service/evidence.jsonl) covers a synthetic
+The original [native evidence](../../executor-service/evidence.jsonl) covers a synthetic
 bundle, twenty directory reuses, same-key client isolation, denied host and
 cross-session reads, PID namespace and network checks, external resource limits,
 source immutability, cancellation, revocation, abandoned leases, and supervisor
@@ -122,7 +127,9 @@ identity, expiration, admission, and initialization races. The required Gradle
 tests; Windows uses a pinned Linux container. The normal `check` also runs actual
 HTTP MCP protocol and PostgreSQL tests, Java socket tests, module checks and native
 managed-storage replay. These gates do not rerun the privileged SRT probe or
-replace real client and final deployment acceptance.
+replace real client and final deployment acceptance. Its same-key directory
+separation predates shared account copies; current ownership, retention and
+disposal evidence is linked from the account-copy decision.
 
 The Java adapter, MCP transport, live authorization boundary and worker source are
 implemented. The checked-in [combined Java/worker evidence](../../executor-native/evidence/2026-09-05-combined.json)
@@ -130,7 +137,7 @@ records the exact synthetic runtime and source hashes, including lease and resta
 behavior. It is distinct from a run against the final installed application.
 This proposal remains pending for deployment integration and verification of the
 exact production topology.
-Real Codex and Claude Code acceptance, actual corpus/history costs, production
+Currently callable MCP client acceptance, actual corpus/history costs, production
 resource values, and final deployed-version agreement remain required by the
 phase-one record. A passing synthetic probe does not satisfy those conditions.
 
