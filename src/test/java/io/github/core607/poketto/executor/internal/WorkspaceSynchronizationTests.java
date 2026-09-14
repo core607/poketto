@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -113,7 +114,7 @@ class WorkspaceSynchronizationTests {
 
     @Test
     void conflictReceiptStaysWithinRetainedReplyBoundsWithoutHidingTheTotal() {
-        List<String> paths = java.util.stream.IntStream.range(0, 16384)
+        List<String> paths = IntStream.range(0, 16384)
                 .mapToObj(index -> "private/" + "长".repeat(90) + index + ".md")
                 .toList();
         var pending = new PendingWorkspaceSync("a".repeat(40), paths, paths.size(), paths, null);
