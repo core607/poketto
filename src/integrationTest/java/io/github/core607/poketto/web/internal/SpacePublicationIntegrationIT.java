@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -27,6 +28,10 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -43,6 +48,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -51,6 +57,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers
@@ -145,6 +152,9 @@ class SpacePublicationIntegrationIT {
 
     @Autowired
     PublicContentSnapshots snapshots;
+
+    @Autowired
+    AssetService assets;
 
     @Autowired
     PlatformTransactionManager transactions;
@@ -424,8 +434,125 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get("/api/public/spaces/home/document").param("route", "/note"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.navigation.memberships").isEmpty());
+        verifyDiscoveryAlbumCards(owner, workspace, root);
         service.setEnabled(owner, workspace, false);
         mvc.perform(get(endpoint).param("route", "/guide")).andExpect(status().isNotFound());
+    }
+
+    private void verifyDiscoveryAlbumCards(AuthPrincipal owner, WorkspaceId workspace, Path root) throws Exception {
+        Files.writeString(
+                root.resolve("public/album/README.md"),
+                "# Album from README\n\n[Guide](../guide/)\n\nOriginal caption.\n");
+        try (Git git = Git.open(root.toFile())) {
+            git.add().addFilepattern("public/album/README.md").call();
+            git.commit()
+                    .setAuthor("Fixture", "fixture@example.invalid")
+                    .setMessage("Link album into guide collection")
+                    .call();
+            git.push().setRemote("origin").setPushAll().call();
+        }
+        snapshots.refresh(workspace);
+        var first = discoveryWithRoutes("/album", "/guide");
+        JsonNode album = item(first, "/album");
+        JsonNode guide = item(first, "/guide");
+        assertThat(first.get("items").size()).isLessThanOrEqualTo(6);
+        assertThat(album.get("album").booleanValue()).isTrue();
+        assertThat(album.get("collection").booleanValue()).isTrue();
+        assertThat(album.get("cover").isTextual()).isTrue();
+        assertThat(guide.get("album").booleanValue()).isFalse();
+        assertThat(guide.get("collection").booleanValue()).isTrue();
+        assertThat(guide.get("cover").isNull()).isTrue();
+        String firstCover = album.get("cover").stringValue();
+        var thumbnail = mvc.perform(get(firstCover))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+        assertThat(thumbnail).isNotEmpty();
+        assertThat(ImageIO.read(new ByteArrayInputStream(thumbnail))).isNotNull();
+
+        String batch = first.get("batch").stringValue();
+        var replay = discovery(batch);
+        assertThat(routeList(replay.get("items"))).containsExactlyElementsOf(routeList(first.get("items")));
+
+        // The real grant table is purged with a time beyond its five-minute lifetime; the
+        // snapshot and batch remain current, so reopening must preserve order and mint a new URL.
+        ReflectionTestUtils.invokeMethod(assets, "purge", Instant.now().plus(Duration.ofMinutes(6)));
+        var renewed = discovery(batch);
+        assertThat(routeList(renewed.get("items"))).containsExactlyElementsOf(routeList(first.get("items")));
+        String renewedCover = item(renewed, "/album").get("cover").stringValue();
+        assertThat(renewedCover).isNotEqualTo(firstCover);
+        mvc.perform(get(firstCover)).andExpect(status().isNotFound());
+        mvc.perform(get(renewedCover)).andExpect(status().isOk());
+
+        Files.writeString(
+                root.resolve("public/album/README.md"),
+                "# Album after commit\n\n[Guide](../guide/)\n\nChanged caption.\n");
+        try (Git git = Git.open(root.toFile())) {
+            git.add().addFilepattern("public/album/README.md").call();
+            git.commit()
+                    .setAuthor("Fixture", "fixture@example.invalid")
+                    .setMessage("Change album publication")
+                    .call();
+            git.push().setRemote("origin").setPushAll().call();
+        }
+        snapshots.refresh(workspace);
+        mvc.perform(get(renewedCover)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/discovery").param("batch", batch))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.route == '/album')]").isEmpty())
+                .andExpect(jsonPath("$.items[?(@.route == '/guide')]").isEmpty());
+
+        service.setEnabled(owner, workspace, true);
+        snapshots.refresh(workspace);
+        var withdrawal = discoveryWithRoutes("/album");
+        String withdrawalCover = item(withdrawal, "/album").get("cover").stringValue();
+        service.setEnabled(owner, workspace, false);
+        mvc.perform(get(withdrawalCover)).andExpect(status().isServiceUnavailable());
+    }
+
+    private JsonNode discoveryWithRoutes(String... routes) throws Exception {
+        for (int attempt = 0; attempt < 40; attempt++) {
+            JsonNode page = discovery(null);
+            boolean found = true;
+            for (String route : routes) {
+                found &= item(page, route) != null;
+            }
+            if (found) {
+                return page;
+            }
+        }
+        throw new AssertionError("discovery sampling did not expose requested routes");
+    }
+
+    private JsonNode discovery(String batch) throws Exception {
+        var request = get("/api/public/discovery");
+        if (batch != null) {
+            request.param("batch", batch);
+        }
+        String response = mvc.perform(request)
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return json.readTree(response);
+    }
+
+    private static JsonNode item(JsonNode page, String route) {
+        for (JsonNode value : page.get("items")) {
+            if (route.equals(value.get("route").stringValue())) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> routeList(JsonNode items) {
+        var routes = new ArrayList<String>();
+        for (JsonNode item : items) {
+            routes.add(item.get("route").stringValue());
+        }
+        return routes;
     }
 
     private static void seedFolderLandings(Path root) throws Exception {

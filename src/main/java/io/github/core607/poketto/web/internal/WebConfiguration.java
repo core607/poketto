@@ -17,9 +17,10 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class WebConfiguration {
     @Bean
-    PublicDiscovery publicDiscovery(PublicContentSnapshots snapshots, WorkspacePublications publications) {
+    PublicDiscovery publicDiscovery(
+            PublicContentSnapshots snapshots, WorkspacePublications publications, AssetService assets) {
         return new PublicDiscovery(
-                publications, new WebsiteContentSnapshots(snapshots, publications), Clock.systemUTC());
+                publications, new WebsiteContentSnapshots(snapshots, publications), assets, Clock.systemUTC());
     }
 
     @Bean
