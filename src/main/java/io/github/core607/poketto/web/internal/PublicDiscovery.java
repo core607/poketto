@@ -1,5 +1,7 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.PublicAlbumCover;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentSearch;
 import io.github.core607.poketto.content.PublicArticle;
@@ -13,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,14 +36,17 @@ final class PublicDiscovery {
     private static final Duration LIFETIME = Duration.ofMinutes(30);
     private final WorkspacePublications publications;
     private final PublicContentSnapshots snapshots;
+    private final AssetService assets;
     private final Clock clock;
     private final Semaphore building = new Semaphore(2);
     private final Map<String, Batch> batches = new LinkedHashMap<>();
     private long textBytes;
 
-    PublicDiscovery(WorkspacePublications publications, PublicContentSnapshots snapshots, Clock clock) {
+    PublicDiscovery(
+            WorkspacePublications publications, PublicContentSnapshots snapshots, AssetService assets, Clock clock) {
         this.publications = publications;
         this.snapshots = snapshots;
+        this.assets = assets;
         this.clock = clock;
     }
 
@@ -56,10 +62,20 @@ final class PublicDiscovery {
         }
         Batch batch = id == null ? create(afterBatch) : lookup(id);
         int end = Math.min(batch.entries().size(), offset + PAGE_SIZE);
-        var cards = new ArrayList<Card>();
+        var spaces = new LinkedHashMap<WorkspaceId, List<Entry>>();
         for (int index = offset; index < end; index++) {
             Entry entry = batch.entries().get(index);
-            visibleCard(entry).ifPresent(cards::add);
+            spaces.computeIfAbsent(entry.workspace(), ignored -> new ArrayList<>())
+                    .add(entry);
+        }
+        var visible = new HashMap<Entry, Card>();
+        spaces.values().forEach(entries -> visible.putAll(visibleCards(entries)));
+        var cards = new ArrayList<Card>();
+        for (int index = offset; index < end; index++) {
+            Card card = visible.get(batch.entries().get(index));
+            if (card != null) {
+                cards.add(card);
+            }
         }
         return new Page(
                 batch.id(),
@@ -132,29 +148,70 @@ final class PublicDiscovery {
                                 article.tags().stream().limit(3).toList(),
                                 article.createdAt(),
                                 article.folderPage(),
-                                article.publicAuthor())))
+                                article.publicAuthor(),
+                                false,
+                                collectionLanding(snapshot, article),
+                                null)))
                 .toList();
     }
 
-    private Optional<Card> visibleCard(Entry entry) {
+    private static boolean collectionLanding(PublicContentSnapshot snapshot, PublicArticle article) {
+        var navigation = snapshot.collections().forArticle(article.route());
+        return article.folderPage()
+                && navigation.available()
+                && !navigation.entries().isEmpty();
+    }
+
+    private Map<Entry, Card> visibleCards(List<Entry> entries) {
         try {
-            return snapshots.withCurrent(entry.workspace(), snapshot -> {
-                if (!snapshot.commit().orElse("").equals(entry.commit())) {
-                    return Optional.empty();
+            Entry first = entries.getFirst();
+            PublicContentSnapshot selected = snapshots.withCurrent(first.workspace(), snapshot -> snapshot);
+            var articles = new LinkedHashMap<Entry, PublicArticle>();
+            for (Entry entry : entries) {
+                currentArticle(selected, entry).ifPresent(article -> articles.put(entry, article));
+            }
+            // Source I/O and image admission must not run under the public snapshot installation lock.
+            Map<String, PublicAlbumCover> covers = assets.publicAlbumCovers(
+                    selected,
+                    articles.values().stream().filter(PublicArticle::folderPage).toList());
+            return snapshots.withCurrent(first.workspace(), snapshot -> {
+                var publication = publications
+                        .findPublished(first.card().space())
+                        .filter(space -> space.workspaceId().equals(first.workspace()));
+                if (publication.isEmpty()) {
+                    return Map.of();
                 }
-                if (snapshot.articles().stream()
-                        .noneMatch(
-                                article -> article.route().equals(entry.card().route()))) {
-                    return Optional.empty();
+                var cards = new HashMap<Entry, Card>();
+                for (var entry : articles.entrySet()) {
+                    PublicArticle expected = entry.getValue();
+                    PublicAlbumCover cover =
+                            expected.folderPage() ? covers.get(expected.route()) : new PublicAlbumCover(false, null);
+                    if (cover != null
+                            && currentArticle(snapshot, entry.getKey())
+                                    .filter(expected::equals)
+                                    .isPresent()) {
+                        cards.put(
+                                entry.getKey(),
+                                entry.getKey()
+                                        .card()
+                                        .withPresentation(
+                                                publication.orElseThrow().authorName(), cover));
+                    }
                 }
-                return publications
-                        .findPublished(entry.card().space())
-                        .filter(space -> space.workspaceId().equals(entry.workspace()))
-                        .map(space -> entry.card().withAuthor(space.authorName()));
+                return cards;
             });
         } catch (ContentRepositoryException unavailable) {
+            return Map.of();
+        }
+    }
+
+    private static Optional<PublicArticle> currentArticle(PublicContentSnapshot snapshot, Entry entry) {
+        if (!snapshot.commit().orElse("").equals(entry.commit())) {
             return Optional.empty();
         }
+        return snapshot.articles().stream()
+                .filter(article -> article.route().equals(entry.card().route()))
+                .findFirst();
     }
 
     private synchronized void remember(Batch batch) {
@@ -224,8 +281,11 @@ final class PublicDiscovery {
             List<String> tags,
             Instant createdAt,
             boolean folderPage,
-            String authorName) {
-        Card withAuthor(String workspaceAuthor) {
+            String authorName,
+            boolean album,
+            boolean collection,
+            String cover) {
+        Card withPresentation(String workspaceAuthor, PublicAlbumCover preview) {
             return new Card(
                     space,
                     spaceName,
@@ -235,7 +295,10 @@ final class PublicDiscovery {
                     tags,
                     createdAt,
                     folderPage,
-                    PublicAuthorNames.select(authorName, workspaceAuthor));
+                    PublicAuthorNames.select(authorName, workspaceAuthor),
+                    preview.album(),
+                    collection,
+                    preview.src());
         }
     }
 

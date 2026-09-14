@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -59,6 +60,8 @@ public final class AssetService {
     // does not give any of them more memory.
     private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
+    private static final int COVER_CANDIDATES = 8;
+    private static final long COVER_IMAGE_BYTES = 32L * 1024 * 1024;
     private final AuthService auth;
     private final RepositoryContentReader content;
     private final RepositoryBlobReader blobs;
@@ -359,6 +362,138 @@ public final class AssetService {
         throw new ContentRepositoryException("public snapshot changed during both image preparation attempts");
     }
 
+    /**
+     * Prepares at most six visible folder covers, sharing one media inventory for the selected
+     * workspace and commit. Publication is checked before and after source preparation outside
+     * the snapshot lock. Missing routes are no longer current; a null URL only means no cover.
+     */
+    public Map<String, PublicAlbumCover> publicAlbumCovers(
+            PublicContentSnapshot selected, List<PublicArticle> requested) {
+        if (requested.size() > 6 || requested.stream().anyMatch(article -> !article.folderPage())) {
+            throw new IllegalArgumentException("cover preparation requires at most six folder landings");
+        }
+        if (requested.isEmpty() || selected.commit().isEmpty()) {
+            return Map.of();
+        }
+        WorkspaceId workspace = selected.workspaceId();
+        List<PublicArticle> current = snapshots.withCurrent(
+                workspace,
+                snapshot -> requested.stream()
+                        .filter(expected -> sameArticle(snapshot, selected, expected))
+                        .distinct()
+                        .toList());
+        if (current.isEmpty()) {
+            return Map.of();
+        }
+        String commit = selected.commit().orElseThrow();
+        RepositoryMediaSnapshot catalog = availableMedia(workspace, commit);
+        var prepared = new LinkedHashMap<PublicArticle, PreparedCover>();
+        for (PublicArticle article : current) {
+            prepared.put(article, prepareAlbumCover(workspace, commit, article, catalog));
+        }
+        return snapshots.withCurrent(workspace, snapshot -> {
+            var covers = new LinkedHashMap<String, PublicAlbumCover>();
+            for (var entry : prepared.entrySet()) {
+                PublicArticle expected = entry.getKey();
+                if (sameArticle(snapshot, selected, expected)) {
+                    PreparedCover cover = entry.getValue();
+                    String url = cover.target() == null
+                            ? null
+                            : imageUrl(
+                                    workspace,
+                                    expected.repositoryPath(),
+                                    commit,
+                                    "",
+                                    snapshot.expiresAt(),
+                                    cover.target(),
+                                    new HashMap<>(),
+                                    true,
+                                    Representation.ALBUM_THUMBNAIL_V1);
+                    covers.put(expected.route(), new PublicAlbumCover(cover.album(), url));
+                }
+            }
+            Instant now = clock.instant();
+            if (now.isBefore(snapshot.verifiedAt()) || !now.isBefore(snapshot.expiresAt())) {
+                throw new ContentRepositoryException("public snapshot expired during cover preparation");
+            }
+            return Map.copyOf(covers);
+        });
+    }
+
+    private static boolean sameArticle(
+            PublicContentSnapshot current, PublicContentSnapshot selected, PublicArticle expected) {
+        return current.commit().equals(selected.commit())
+                && article(current, expected.route()).filter(expected::equals).isPresent();
+    }
+
+    private PreparedCover prepareAlbumCover(
+            WorkspaceId workspace, String commit, PublicArticle article, RepositoryMediaSnapshot catalog) {
+        var candidates = new TreeMap<String, Target>();
+        try {
+            Set<String> inline = new HashSet<>();
+            for (String authored : MarkdownDestinations.parse(article.body()).images()) {
+                MarkdownDestinations.path(article.repositoryPath(), authored).ifPresent(inline::add);
+            }
+            coverCandidates(workspace, commit, article.repositoryPath(), inline, catalog, candidates);
+        } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
+            // Card text remains readable when its optional image inventory is unavailable.
+        }
+        Map<Target, Boolean> resolved = new HashMap<>();
+        long[] total = {0};
+        for (Target target : candidates.values()) {
+            if (imageAllowance(target) > COVER_IMAGE_BYTES - total[0]) {
+                continue;
+            }
+            try {
+                if (prepareImage(workspace, target, resolved, total)) {
+                    return new PreparedCover(true, target);
+                }
+            } catch (AssetStorageException | ContentRepositoryException unavailable) {
+                // A later candidate may still have independently available original bytes.
+            }
+        }
+        return new PreparedCover(!candidates.isEmpty(), null);
+    }
+
+    private void coverCandidates(
+            WorkspaceId workspace,
+            String commit,
+            String path,
+            Set<String> inline,
+            RepositoryMediaSnapshot catalog,
+            TreeMap<String, Target> selected) {
+        try {
+            for (RepositoryBlob blob : blobs.siblings(workspace, commit, path, COVER_CANDIDATES, true, inline)
+                    .items()) {
+                if (blob.publicPath() && !inline.contains(blob.path())) {
+                    selected.put(blob.path(), new Git(blob));
+                }
+            }
+        } catch (ContentRepositoryException unavailable) {
+            // A previously validated media index can still supply an independent managed cover.
+        }
+        if (catalog == null) {
+            return;
+        }
+        String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
+        for (var entry : catalog.index().files().entrySet()) {
+            String name = entry.getKey();
+            boolean eligible = name.startsWith(prefix)
+                    && !name.substring(prefix.length()).contains("/")
+                    && !inline.contains(name)
+                    && entry.getValue().mediaType().startsWith("image/")
+                    && catalog.publicPaths().contains(name);
+            if (eligible) {
+                selected.putIfAbsent(name, new Indexed(commit, name, entry.getValue(), true));
+                if (selected.size() > COVER_CANDIDATES) {
+                    selected.pollLastEntry();
+                }
+            }
+        }
+    }
+
+    private record PreparedCover(boolean album, Target target) {}
+
     /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
     public AssetBytes readPublicImage(String token) {
         Grant selected = grant(token, "");
@@ -627,7 +762,7 @@ public final class AssetService {
         if (resolved.containsKey(target)) {
             return resolved.get(target);
         }
-        long allowance = target instanceof Git git ? git.blob().size() : ManagedBlobStore.MAX_UPLOAD_BYTES;
+        long allowance = imageAllowance(target);
         if (allowance > PAGE_IMAGE_BYTES - total[0]) {
             resolved.put(target, false);
             return false;
@@ -657,6 +792,10 @@ public final class AssetService {
         } finally {
             scope.responseComplete();
         }
+    }
+
+    private static long imageAllowance(Target target) {
+        return target instanceof Git git ? git.blob().size() : ManagedBlobStore.MAX_UPLOAD_BYTES;
     }
 
     private ResolvedMedia finishMedia(

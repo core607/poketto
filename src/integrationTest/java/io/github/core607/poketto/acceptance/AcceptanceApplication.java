@@ -88,7 +88,14 @@ public final class AcceptanceApplication {
                     directory,
                     "public/手册/写作.md",
                     "---\ntags: [手册]\ncreated_at: 2026-08-30T08:00:00Z\n---\n# 从一段 Markdown 开始\n\n正文无需补齐元数据即可读取。修改时保留未改动的内容。\n");
-            write(directory, "public/相册/README.md", "# 窗边的颜色\n\n两张颜色练习，留给慢慢看的时候。\n");
+            write(
+                    directory,
+                    "public/相册/README.md",
+                    "# 窗边的颜色\n\n![正文内嵌封面](00-inline.png)\n\n[进入手册](../手册/index.md)\n\n两张颜色练习，留给慢慢看的时候。\n");
+            write(
+                    directory,
+                    "public/故障相册/index.md",
+                    "---\npublic_author: 故障封面作者\ncreated_at: 2026-09-02T08:00:00Z\n---\n# 暂时打不开的相册\n\n这个入口故意只保留一张损坏封面，用于确认发现页仍保留相册入口。\n");
             write(directory, "private/日记.md", "# 私有验收样例\n\nPRIVATE_ACCEPTANCE_SENTINEL\n\n![私有图片](hidden.png)\n");
             write(directory, "public/drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
             for (int number = 1; number <= 28; number++) {
@@ -116,6 +123,8 @@ public final class AcceptanceApplication {
             ImageIO.write(image, "png", directory.resolve("private/hidden.png").toFile());
             ImageIO.write(
                     image, "png", directory.resolve("public/相册/01-morning.png").toFile());
+            ImageIO.write(
+                    image, "png", directory.resolve("public/相册/00-inline.png").toFile());
             for (int y = 0; y < image.getHeight(); y++) {
                 for (int x = 0; x < image.getWidth(); x++) {
                     image.setRGB(x, y, ((190 + y / 4) << 16) | ((120 + x / 5) << 8) | 110);
@@ -123,9 +132,20 @@ public final class AcceptanceApplication {
             }
             ImageIO.write(
                     image, "png", directory.resolve("public/相册/02-evening.png").toFile());
+            Files.createDirectories(directory.resolve("public/相册/nested"));
+            ImageIO.write(
+                    image,
+                    "png",
+                    directory.resolve("public/相册/nested/ignored.png").toFile());
+            Files.createDirectories(directory.resolve("private/相册"));
+            ImageIO.write(
+                    image, "png", directory.resolve("private/相册/secret.png").toFile());
             // A JPEG header without a pixel stream exercises the browser image error.
             Files.write(
                     directory.resolve("public/相册/03-unreadable.jpg"),
+                    Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
+            Files.write(
+                    directory.resolve("public/故障相册/00-unreadable.jpg"),
                     Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
             git.add().addFilepattern(".").call();
             git.commit()

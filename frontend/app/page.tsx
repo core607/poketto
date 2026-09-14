@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { discovery, PublicApiError } from "../lib/public-api";
 import { articleHref, date, spaceHref } from "../lib/format";
+import { DiscoveryCover } from "../components/discovery-cover";
 
 type Parameters = {
   batch?: string | string[];
@@ -60,11 +61,26 @@ export default async function Home({
       <div className="article-list">
         {page.items.map((item) => (
           <article className="article-card" key={item.space + ":" + item.route}>
+            {item.album && (
+              <DiscoveryCover
+                src={item.cover}
+                href={articleHref(item.route, item.space)}
+                title={item.title}
+              />
+            )}
             <div className="article-meta">
               <a href={spaceHref(item.space)}>{item.spaceName}</a>
               <span className="author-name">{item.authorName}</span>
               <span>／</span>
-              <span>{item.folderPage ? "目录" : "文章"}</span>
+              <span>
+                {item.album || item.collection
+                  ? [item.album && "相册", item.collection && "合集"]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : item.folderPage
+                    ? "目录"
+                    : "文章"}
+              </span>
               <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
             </div>
             <h2>
@@ -86,7 +102,12 @@ export default async function Home({
               ))}
             </div>
             <a className="read-link" href={articleHref(item.route, item.space)}>
-              继续阅读 ↗
+              {item.album
+                ? "打开相册"
+                : item.collection
+                  ? "浏览合集"
+                  : "继续阅读"}{" "}
+              ↗
             </a>
           </article>
         ))}

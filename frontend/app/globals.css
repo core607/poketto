@@ -257,6 +257,30 @@ img {
   color: var(--muted);
   font-size: 11px;
 }
+.discovery-cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f1eb;
+  color: var(--muted);
+}
+.discovery-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.discovery-cover span {
+  padding: 20px;
+  font-size: 12px;
+  text-align: center;
+}
 .article-meta a {
   color: #627152;
 }

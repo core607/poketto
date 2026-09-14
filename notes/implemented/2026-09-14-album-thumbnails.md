@@ -18,7 +18,7 @@ Image generation runs inside the existing browser memory admission. The decoder 
 
 Serving originals from grid tiles retains the current bandwidth cost. Eager generation while preparing every album page would multiply decoding latency, including images outside the viewport; lazy authorized requests avoid that work. A shared cache with private previews would add a new disclosure boundary, so this slice remains public-only. The cache does not retain content authority and needs no durable recovery mechanism.
 
-Malformed or unsupported media can still make a preview unavailable. Existing grants expire after five minutes, so a long-lived page may require refresh before opening an original. Album discovery classification and homepage cover selection remain separate work under the parent contract.
+Malformed or unsupported media can still make a preview unavailable. Existing grants expire after five minutes, so a long-lived page may require refresh before opening an original. [Discovery cards](2026-09-14-discovery-album-cards.md) owns album classification and homepage cover selection.
 
 ## Verification
 
