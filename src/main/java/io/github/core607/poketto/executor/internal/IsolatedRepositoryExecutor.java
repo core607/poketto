@@ -1151,11 +1151,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     /** Where this session's writes stand, as the agent needs to see them before deciding what to do. */
-    private static BridgeReplies.Reply status(Session session) {
+    private BridgeReplies.Reply status(Session session) {
+        BridgeReplies.RemoteStatus remote;
+        try {
+            remote = remoteStatus(session);
+        } catch (ContentRepositoryException unavailable) {
+            log.warn("Remote head could not be checked; local copy status remains available", unavailable);
+            remote = new BridgeReplies.RemoteStatus(BridgeReplies.RemoteState.UNAVAILABLE, null);
+        } catch (AuthException denied) {
+            return BridgeReplies.failed("ACCESS_DENIED");
+        }
         return BridgeReplies.succeeded(new BridgeReplies.Status(
                 session.copyId.toString(),
                 session.fullRead ? "full" : "public",
                 session.saveState.baseCommit,
+                remote,
                 session.saveState.uncertain
                         || (session.saveState.move != null && session.saveState.move.result == null),
                 session.saveState.move != null,
@@ -1164,6 +1174,20 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         : SessionMoves.movePending(session.saveState.move),
                 session.saveState.lastSave,
                 session.saveState.lastImport));
+    }
+
+    private BridgeReplies.RemoteStatus remoteStatus(Session session) {
+        // Public copies use a synthetic commit. The existing public-proof check guards each command;
+        // do not reveal an authority commit or compare it with the unrelated projection commit.
+        if (!session.fullRead) {
+            return new BridgeReplies.RemoteStatus(BridgeReplies.RemoteState.PUBLIC_PROJECTION, session.commit);
+        }
+        Optional<String> commit = saves.currentCommit(session.principal, session.key.workspace());
+        return new BridgeReplies.RemoteStatus(
+                commit.filter(session.saveState.baseCommit::equals).isPresent()
+                        ? BridgeReplies.RemoteState.MATCHES_BASE
+                        : BridgeReplies.RemoteState.DIFFERS_FROM_BASE,
+                commit.orElse(null));
     }
 
     private BridgeReplies.Reply exportCommand(Session session, String executionId, JsonNode arguments) {

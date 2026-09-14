@@ -38,12 +38,18 @@ def verify(browser, left, right, public):
     authoritative = browser.file('private/draft.md')
     assert authoritative['source'] == 'beforepartial'
     passed('account-http-timeout-preserves-work-and-save-is-visible-through-authoritative-readback')
+    verify_remote_status(browser, left, copy, authoritative)
     projection = public.call('repo_exec', {'expectedCopyId': 'new', 'command':
         'set -eu; test ! -e private; printf scoped > public-draft'})
     assert projection['exitCode'] == 0 and projection['copyId'] != copy
     scoped = left.call('repo_exec', {'expectedCopyId': projection['copyId'], 'command':
         'set -eu; test ! -e private; cat public-draft'})
     assert scoped['exitCode'] == 0 and scoped['stdout'] == 'scoped' and scoped['copyId'] == projection['copyId']
+    public_status = left.call('repo_exec', {'expectedCopyId': projection['copyId'], 'command': 'poketto status'})
+    assert public_status['exitCode'] == 0
+    assert json.loads(public_status['stdout'])['result']['remote'] == {
+        'state': 'PUBLIC_PROJECTION', 'commit': projection['commit']}
+    assert projection['commit'] != browser.file('private/draft.md')['commit']
     assert public.call('repo_discard', {'expectedCopyId': projection['copyId']})['status'] == 'DISCARDED'
     passed('account-http-public-copy-keeps-its-scope-when-accessed-by-a-full-grant')
     issued = browser.key(['READ_PRIVATE', 'WRITE_PRIVATE', 'EXECUTE_REPOSITORY'])
@@ -60,9 +66,37 @@ def verify(browser, left, right, public):
     fresh = left.call('repo_exec', {'expectedCopyId': 'new', 'command':
         'set -eu; test ! -e private/draft.bin; test ! -e private/late.md; cat private/draft.md'})
     assert fresh['exitCode'] == 0 and fresh['copyId'] != copy and fresh['stdout'] == 'beforepartial'
-    assert browser.file('private/draft.md')['commit'] == authoritative['commit']
+    assert browser.file('private/draft.md')['source'] == authoritative['source']
     assert left.call('repo_discard', {'expectedCopyId': fresh['copyId']})['status'] == 'DISCARDED'
     passed('account-http-shared-disposal-clears-only-local-work-and-retains-saved-authority')
+
+
+def verify_remote_status(browser, client, copy, saved):
+    def status():
+        result = client.call('repo_exec', {'expectedCopyId': copy, 'command': 'poketto status'})
+        assert result['exitCode'] == 0
+        reply = json.loads(result['stdout'])
+        assert reply['ok']
+        return reply['result']
+
+    before = status()
+    assert before['baseCommit'] == saved['commit']
+    assert before['remote'] == {'state': 'MATCHES_BASE', 'commit': saved['commit']}
+    draft = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        "printf unsaved > private/local-only.md"})
+    assert draft['exitCode'] == 0
+    changed = browser.api('POST', browser.admin + '/repository/patch', {
+        'baseCommit': saved['commit'], 'changes': [{'path': 'private/browser-only.md',
+            'expectedAbsence': True, 'content': 'from browser'}]})
+    assert changed['committed'] and changed['commit'] != saved['commit']
+    after = status()
+    assert after['baseCommit'] == before['baseCommit'] and after['lastSave'] == before['lastSave']
+    assert after['remote'] == {'state': 'DIFFERS_FROM_BASE', 'commit': changed['commit']}
+    untouched = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        "set -eu; test ! -e private/browser-only.md; "
+        "test \"$(cat private/draft.md)\" = beforepartial; cat private/local-only.md"})
+    assert untouched['exitCode'] == 0 and untouched['stdout'] == 'unsaved'
+    passed('account-http-status-detects-browser-write-without-changing-local-work-or-save-base')
 
 
 def main():
@@ -81,7 +115,7 @@ def main():
         right = Mcp(browser.endpoint, browser.key(full)['token'])
         public = Mcp(browser.endpoint, browser.key(['EXECUTE_REPOSITORY'])['token'])
         verify(browser, left, right, public)
-        print(json.dumps({'accountHttp': 'PASS', 'tests': 5,
+        print(json.dumps({'accountHttp': 'PASS', 'tests': 6,
                           'source': 'real-auth-PG-HTTP-MCP-native-SRT', 'modelDriven': False}), flush=True)
     finally:
         (root / 'stop').touch()

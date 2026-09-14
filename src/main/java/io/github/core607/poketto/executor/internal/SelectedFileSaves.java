@@ -50,6 +50,10 @@ final class SelectedFileSaves {
         return moves;
     }
 
+    Optional<String> currentCommit(AuthPrincipal actor, WorkspaceId workspace) {
+        return reader.currentCommit(actor, workspace);
+    }
+
     void visitOriginal(
             AuthPrincipal actor,
             WorkspaceId workspace,

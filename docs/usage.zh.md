@@ -132,6 +132,8 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回结果中的 `copyId`。重连会自动接回原副本和原始基线，无需代次或恢复标志。关闭 MCP 连接会保留副本。每次成功且获授权的副本操作都会将闲置期限延长为七天，期限由 `retention.expiresAt` 返回。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示本次命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入。不要重复执行结果不确定的写入：先用同一副本 ID 执行只读检查，核对 `retention.lastInterruptedCommand` 和 `poketto status`，远端保存待确认时再使用 `poketto recover`。[副本身份契约](../executor-service/README.md#working-copy-identity)说明执行边界。
 
+完整读取副本的 `poketto status` 还会检查远端 main：`remote.state` 返回 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`，已知的远端提交由 `remote.commit` 返回。比较使用最近一次已确认的保存或同步基线，不代表所有本地文件都已更新。远端检查失败仍会返回本地状态和保存回执。状态查询不修改工作文件或基线；需要更新时显式执行 `poketto sync PATH`，后续保存仍逐项检查所选文件的冲突。公开副本返回 `PUBLIC_PROJECTION` 和合成提交 ID，不暴露真实仓库提交；每次命令仍须通过现有的公开投影有效性检查。
+
 `EXECUTION_UNCONFIRMED` 表示已尝试执行保留命令，但未能确认完成。响应包含实际 `copyId`、`currentGeneration`、固定 `expiresAt`、`mayHaveExecuted: true` 和恢复资格。本地修改与远端写入都可能部分完成。保留这些身份信息，先显式恢复并检查状态，再决定是否重试写入；此结果绝不表示命令没有执行。
 
 要丢弃本地工作，调用 `repo_discard` 并传入准确的 `expectedCopyId`。此操作要求当前执行权限和副本归属，内容读取权限收回不妨碍清理。忙碌副本会被拒绝。删除前会记录关闭意图，进程中断后可以继续收尾；确认工作进程已停止后才移除本地文件和宿主元数据。`DISCARDED` 或 `ABSENT` 确认目标副本已不存在，随后可用 `new` 创建另一份副本。未确认的关闭操作只能用同一 ID 重试。丢弃不会撤销远端 Git 提交。
