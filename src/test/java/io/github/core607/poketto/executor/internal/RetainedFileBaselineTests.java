@@ -101,14 +101,14 @@ class RetainedFileBaselineTests {
     @Test
     void retainedStateRequiresEveryAdvancedPathAndChecksDiagnosticBinding() {
         var state = new SelectedFileSaves.State("b".repeat(40));
-        state.acknowledgeMove(COMMIT, Set.of("one.bin"), Map.of());
-        assertThatThrownBy(() -> state.snapshot().requireRecoverable()).hasMessageContaining("every advanced path");
+        assertThatThrownBy(() -> state.acknowledgeMove(COMMIT, Set.of("one.bin"), Map.of()))
+                .hasMessageContaining("must cover affected paths");
         var nonText = new RetainedFileBaseline(
                 COMMIT,
                 new RetainedFileBaseline.NonText(Optional.empty()),
                 List.of(new RepositoryDiagnostic("other.bin", "MANAGED_MEDIA", "indexed")),
                 false);
-        state.acknowledgeMove(COMMIT, Set.of("one.bin"), Map.of("one.bin", nonText));
-        assertThatThrownBy(state::snapshot).hasMessageContaining("file path");
+        assertThatThrownBy(() -> state.acknowledgeMove(COMMIT, Set.of("one.bin"), Map.of("one.bin", nonText)))
+                .hasMessageContaining("file path");
     }
 }

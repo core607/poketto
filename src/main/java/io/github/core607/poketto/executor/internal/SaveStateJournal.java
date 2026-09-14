@@ -4,7 +4,7 @@ package io.github.core607.poketto.executor.internal;
 @FunctionalInterface
 interface SaveStateJournal {
     /** No durable journal has been bound to this state yet. */
-    SaveStateJournal UNTRACKED = state -> {};
+    SaveStateJournal NONE = state -> {};
 
     void retain(RetainedSaveState state);
 }

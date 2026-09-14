@@ -1,4 +1,4 @@
-"""Ephemeral immutable artifacts, retained only inside one lease's bounded tmpfs."""
+"""Ephemeral immutable artifacts, retained in one lease's quota-backed disk copy."""
 import base64
 from dataclasses import dataclass
 import hashlib
