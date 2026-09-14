@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Real login, PostgreSQL, HTTP MCP and native SRT acceptance for shared account copies."""
 import argparse
+import fcntl
+import hashlib
+import subprocess
+import threading
 import json
 import os
 from pathlib import Path
@@ -10,15 +14,19 @@ import time
 from mcp_http import Browser, Mcp, passed
 
 
-def verify(browser, left, right, public):
+def verify(browser, left, right, public, root):
     tools = left.rpc('tools/list', {})['tools']
     execution = next(tool for tool in tools if tool['name'] == 'repo_exec')['inputSchema']
     disposal = next(tool for tool in tools if tool['name'] == 'repo_discard')['inputSchema']
     assert 'resume' not in execution['properties'] and 'expectedGeneration' not in execution['properties']
     assert disposal['required'] == ['expectedCopyId']
+    contention = index_contention(root)
     first = left.call('repo_exec', {'expectedCopyId': 'new', 'command':
         "set -eu; printf before > private/draft.md; "
         "python3 -c \"from pathlib import Path; Path('private/draft.bin').write_bytes(bytes([0,255]))\""})
+    contention.join(3)
+    assert contention.held and not contention.is_alive(), 'index contention probe did not complete'
+    passed('account-http-copy-initialization-waits-for-a-contended-journal-index')
     copy = first['copyId']
     assert first['exitCode'] == 0 and first['retention']['expiresAt'] > int(time.time() * 1000)
     same = right.call('repo_exec', {'expectedCopyId': 'new', 'command': 'cat private/draft.md'})
@@ -39,7 +47,7 @@ def verify(browser, left, right, public):
     authoritative = browser.file('private/draft.md')
     assert authoritative['source'] == 'beforepartial'
     passed('account-http-timeout-preserves-work-and-save-is-visible-through-authoritative-readback')
-    verify_remote_status(browser, left, copy, authoritative)
+    verify_remote_status(browser, left, copy, authoritative, root)
     projection = public.call('repo_exec', {'expectedCopyId': 'new', 'command':
         'set -eu; test ! -e private; printf scoped > public-draft'})
     assert projection['exitCode'] == 0 and projection['copyId'] != copy
@@ -102,7 +110,7 @@ PY
     passed('account-http-consecutive-saves-advance-head-index-and-tool-commit-without-saving-binary-drafts')
 
 
-def verify_remote_status(browser, client, copy, saved):
+def verify_remote_status(browser, client, copy, saved, root):
     def status():
         result = client.call('repo_exec', {'expectedCopyId': copy, 'command': 'poketto status'})
         assert result['exitCode'] == 0
@@ -128,12 +136,114 @@ def verify_remote_status(browser, client, copy, saved):
         "test \"$(cat private/draft.md)\" = beforepartial; cat private/local-only.md"})
     assert untouched['exitCode'] == 0 and untouched['stdout'] == 'unsaved'
     passed('account-http-status-detects-browser-write-without-changing-local-work-or-save-base')
+    removed = browser.file('private/second-saved.md')
+    latest = browser.api('POST', browser.admin + '/repository/patch', {
+        'baseCommit': changed['commit'], 'changes': [{'path': 'private/second-saved.md',
+            'expectedAbsence': False, 'expectedRevision': removed['revision'], 'content': None}]})
+    synced = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60,
+        'command': 'poketto sync'})
+    assert synced['exitCode'] == 0, synced
+    reply = json.loads(synced['stdout'])
+    assert reply['ok'] and reply['code'] == 'SYNCHRONIZED', reply
+    assert synced['commit'] == latest['commit']
+    checked = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        "set -eu; test ! -e private/second-saved.md; test \"$(cat private/local-only.md)\" = unsaved; "
+        "test \"$(cat private/browser-only.md)\" = 'from browser'; "
+        "git diff --cached --quiet; poketto status"})
+    assert checked['exitCode'] == 0, checked
+    status = json.loads(checked['stdout'])['result']
+    assert not status['syncPending'] and not status['localBaselinePending']
+    assert status['baseCommit'] == latest['commit']
+    passed('account-http-workspace-sync-discovers-additions-deletions-and-preserves-unsaved-files')
+    verify_sync_conflicts(browser, client, copy, root)
+
+
+def verify_sync_conflicts(browser, client, copy, root):
+    original = bytes([0, 255, 1, 2])
+    commit_binary(root, original)
+    binary = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60,
+        'command': "poketto sync && python3 -c \"from pathlib import Path; assert Path('private/remote-sync.bin').read_bytes() == bytes([0,255,1,2])\""})
+    assert binary['exitCode'] == 0, binary
+    local = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        "python3 -c \"from pathlib import Path; Path('private/remote-sync.bin').write_bytes(bytes([0,255,9]))\""})
+    assert local['exitCode'] == 0
+    commit_binary(root, bytes([0, 255, 3, 4]))
+    binary_conflict = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60, 'command': 'poketto sync'})
+    reply = json.loads(binary_conflict['stdout'])
+    assert binary_conflict['exitCode'] == 1 and reply['code'] == 'MERGE_CONFLICT', binary_conflict
+    assert 'private/remote-sync.bin' in reply['result']['conflicts']
+    kept = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        "python3 -c \"from pathlib import Path; assert Path('private/remote-sync.bin').read_bytes() == bytes([0,255,9])\""})
+    assert kept['exitCode'] == 0
+    passed('account-http-workspace-sync-installs-remote-binary-and-preserves-conflicting-local-bytes')
+    assert client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        "printf 'local text' > private/browser-only.md"})['exitCode'] == 0
+    observed = browser.file('private/browser-only.md')
+    competing = browser.api('POST', browser.admin + '/repository/patch', {
+        'baseCommit': observed['commit'], 'changes': [{'path': 'private/browser-only.md',
+            'expectedAbsence': False, 'expectedRevision': observed['revision'], 'content': 'remote text'}]})
+    conflict = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60, 'command': 'poketto sync'})
+    reply = json.loads(conflict['stdout'])
+    assert conflict['exitCode'] == 1 and reply['code'] == 'MERGE_CONFLICT', conflict
+    assert conflict['commit'] == competing['commit'] and 'private/browser-only.md' in reply['result']['conflicts']
+    versions = client.call('repo_exec', {'expectedCopyId': copy, 'command': 'cat private/browser-only.md'})
+    assert all(text in versions['stdout'] for text in ('<<<<<<< LOCAL', '||||||| BASE', 'local text', 'from browser', 'remote text'))
+    assert browser.file('private/browser-only.md')['source'] == 'remote text'
+    passed('account-http-workspace-sync-conflicts-retain-all-text-versions-without-saving')
+
+
+
+def index_contention(root):
+    metadata = root / 'pool/metadata'
+    def hold():
+        deadline = time.monotonic() + 30
+        while not list(metadata.glob('.original-*')):
+            if time.monotonic() >= deadline:
+                return
+            time.sleep(.002)
+        descriptor = os.open(metadata / '.index.lock', os.O_RDWR | os.O_NOFOLLOW)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            thread.held = True
+            time.sleep(.5)
+        finally:
+            os.close(descriptor)
+    thread = threading.Thread(target=hold, daemon=True)
+    thread.held = False
+    thread.start()
+    return thread
+
+
+def commit_binary(root, content):
+    seed = root / 'content/seed'
+    assert seed.resolve().is_relative_to(root) and seed.is_dir()
+    owner = seed.stat()
+    environment = {'PATH': '/usr/bin:/bin', 'HOME': str(root / 'home'),
+                   'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1'}
+    def git(*arguments):
+        result = subprocess.run(['setpriv', '--reuid=' + str(owner.st_uid), '--regid=' + str(owner.st_gid),
+            '--clear-groups', 'git', '-C', str(seed), *arguments], env=environment,
+            capture_output=True, check=True, timeout=30)
+        return result.stdout
+    remote = root / 'content/remote.git'
+    assert remote.resolve().is_relative_to(root) and remote.is_dir()
+    git('fetch', str(remote), 'main')
+    git('reset', '--hard', 'FETCH_HEAD')
+    target = seed / 'private/remote-sync.bin'
+    target.write_bytes(content)
+    os.chown(target, owner.st_uid, owner.st_gid)
+    git('add', '--', 'private/remote-sync.bin')
+    git('-c', 'user.name=Acceptance', '-c', 'user.email=acceptance@example.invalid',
+        'commit', '-qm', 'Update synthetic binary fixture')
+    git('push', str(remote), 'HEAD:main')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fixture', type=Path, required=True)
-    root = parser.parse_args().fixture.resolve(strict=True)
+    parser.add_argument('--keep', action='store_true', help='Keep this isolated fixture for follow-up probes until its controller expires')
+    args = parser.parse_args()
+    root = args.fixture.resolve(strict=True)
     assert os.geteuid() == 0 and root.parent == Path('/var/lib') and root.name.startswith('poketto-client-')
     info = (root / 'client.json').stat()
     assert info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o600
@@ -145,11 +255,12 @@ def main():
         left = Mcp(browser.endpoint, browser.key(full)['token'])
         right = Mcp(browser.endpoint, browser.key(full)['token'])
         public = Mcp(browser.endpoint, browser.key(['EXECUTE_REPOSITORY'])['token'])
-        verify(browser, left, right, public)
-        print(json.dumps({'accountHttp': 'PASS', 'tests': 7,
+        verify(browser, left, right, public, root)
+        print(json.dumps({'accountHttp': 'PASS', 'tests': 11,
                           'source': 'real-auth-PG-HTTP-MCP-native-SRT', 'modelDriven': False}), flush=True)
     finally:
-        (root / 'stop').touch()
+        if not args.keep:
+            (root / 'stop').touch()
 
 
 if __name__ == '__main__':

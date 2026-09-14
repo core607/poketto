@@ -139,7 +139,7 @@ class Service:
 
     def hello(self):
         return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
-                'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1,
+                'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1, 'workspaceSyncProtocol': 1,
                 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}

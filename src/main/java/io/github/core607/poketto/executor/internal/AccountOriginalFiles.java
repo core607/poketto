@@ -62,6 +62,20 @@ final class AccountOriginalFiles implements AutoCloseable {
     }
 
     Optional<RepositoryFile> find(String path) throws IOException {
+        Optional<RepositoryFile> result = reader().find(path);
+        live.get();
+        return result;
+    }
+
+    void visit(Consumer<RepositoryFile> sink) throws IOException {
+        reader().visit(file -> {
+            live.get();
+            sink.accept(file);
+        });
+        live.get();
+    }
+
+    private RetainedBaselineFiles.Reader reader() throws IOException {
         var record = live.get();
         ProtocolValues.require(
                 record.owner().fullRead() && record.original() != null,
@@ -75,9 +89,7 @@ final class AccountOriginalFiles implements AutoCloseable {
                     identity(record), original.sha256(), original.bytes(), original.entries());
             reader = RetainedBaselineFiles.open(archive, reference, limits);
         }
-        var result = reader.find(path);
-        live.get();
-        return result;
+        return reader;
     }
 
     void remove() throws IOException {

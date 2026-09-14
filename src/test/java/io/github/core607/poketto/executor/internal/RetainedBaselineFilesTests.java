@@ -93,6 +93,9 @@ class RetainedBaselineFilesTests {
         assertThat(RetainedBaselineFiles.identity(archive, LIMITS.archiveBytes()))
                 .isEqualTo(reference.identity());
         try (var stored = RetainedBaselineFiles.open(archive, reference, LIMITS)) {
+            var traversed = new ArrayList<RepositoryFile>();
+            stored.visit(traversed::add);
+            assertThat(traversed).containsExactlyInAnyOrderElementsOf(captured);
             for (RepositoryFile file : captured.reversed()) {
                 assertThat(stored.find(file.path())).contains(file);
             }
@@ -110,6 +113,9 @@ class RetainedBaselineFilesTests {
         Path path = root.resolve("types.pending");
         var reference = RetainedBaselineFiles.write(path, identity, LIMITS, sink -> files.forEach(sink));
         try (var stored = RetainedBaselineFiles.open(path, reference, LIMITS)) {
+            var traversed = new ArrayList<RepositoryFile>();
+            stored.visit(traversed::add);
+            assertThat(traversed).containsExactlyInAnyOrderElementsOf(files);
             for (RepositoryFile file : files) {
                 assertThat(stored.find(file.path())).contains(file);
             }
@@ -118,6 +124,9 @@ class RetainedBaselineFilesTests {
         var closed = RetainedBaselineFiles.open(path, reference, LIMITS);
         closed.close();
         assertThatThrownBy(() -> closed.find("missing.md"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("closed");
+        assertThatThrownBy(() -> closed.visit(file -> {}))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("closed");
     }

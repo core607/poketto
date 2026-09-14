@@ -99,6 +99,24 @@ class MaterializeTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob('incoming-*')))
         self.assertEqual(b'unsaved', (self.repository / 'scratch.md').read_bytes())
 
+    def test_reopened_delete_accepts_lost_acknowledgement_but_not_a_recreated_file(self):
+        path = self.repository / 'note.md'
+        path.write_bytes(b'old')
+        self.install(self.incoming('note.md', b'', digest(b'old'), delete=True))
+        for recreated in (False, True):
+            if recreated:
+                path.write_bytes(b'new local work')
+            retry = IncomingFile(self.root, 'note.md', 0, digest(b''), digest(b'old'),
+                                 delete=True, allow_identical=True)
+            self.addCleanup(retry.close)
+            if recreated:
+                with self.assertRaises(CaptureRejected):
+                    self.install(retry)
+                self.assertEqual(b'new local work', path.read_bytes())
+            else:
+                self.install(retry)
+                self.assertFalse(path.exists())
+
     def test_disk_exhaustion_during_transfer_discards_only_staging(self):
         path = self.repository / 'note.md'
         path.write_bytes(b'local')

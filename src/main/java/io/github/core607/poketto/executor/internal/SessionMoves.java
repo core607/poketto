@@ -42,7 +42,7 @@ final class SessionMoves {
             String source,
             String destination,
             Optional<String> localIndex) {
-        if (state.uncertain || state.move != null) {
+        if (state.uncertain || state.move != null || state.sync != null) {
             throw new IllegalArgumentException("recover the pending write first");
         }
         var request = new RepositoryMoveRequest(state.baseCommit, source, destination);
@@ -266,7 +266,7 @@ final class SessionMoves {
         proposed.move = null;
         BridgeReplies.Reply reply = BridgeReplies.succeededWithMessage(
                 new BridgeReplies.MoveSkipped(result.commit(), result.committed(), false, true),
-                "Local files are unchanged. Use poketto sync on affected text and index paths before saving them.");
+                "Local files are unchanged. Use poketto sync to reconcile the workspace before saving affected paths.");
         proposed.lastSave = reply;
         state.install(proposed);
         return reply;

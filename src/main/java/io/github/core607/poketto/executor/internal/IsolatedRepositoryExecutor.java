@@ -1189,6 +1189,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 session.saveState.move == null
                         ? new BridgeReplies.Absent()
                         : SessionMoves.movePending(session.saveState.move),
+                session.saveState.sync != null,
+                session.saveState.sync == null
+                        ? new BridgeReplies.Absent()
+                        : WorkspaceSynchronization.progress(session.saveState.sync),
                 session.saveState.lastSave,
                 session.saveState.lastImport));
     }
@@ -1298,6 +1302,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (session.saveState.uncertain) {
                 return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
             }
+            if (session.saveState.sync != null && !operation.equals("sync")) {
+                return BridgeReplies.failed("RECOVER_SYNC_FIRST");
+            }
             if (!installGitBaseline(session, executionId)) {
                 return baselinePending();
             }
@@ -1318,7 +1325,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private BridgeReplies.Reply finishBaseline(Session session, String executionId, BridgeReplies.Reply reply) {
-        if (!reply.ok()) {
+        if (!reply.ok() && !"MERGE_CONFLICT".equals(reply.code())) {
             return reply;
         }
         try {
@@ -1408,12 +1415,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     /**
-     * Finishes whichever write was left unresolved. A move that the remote acknowledged still has
-     * to be installed locally, and {@code --skip-local} releases that installation instead, which
-     * is only meaningful once the remote outcome is known.
+     * Resumes retained synchronization or reconciles an uncertain remote write. {@code --skip-local}
+     * releases an interrupted synchronization or a confirmed move's pending local installation.
      */
     private BridgeReplies.Reply recoverCommand(Session session, String executionId, JsonNode arguments) {
         boolean skipLocal = BridgeArguments.recoverSkipsLocal(arguments);
+        if (session.saveState.sync != null) {
+            return skipLocal ? session.saveState.finishSync(true) : synchronizeWorkspace(session, executionId);
+        }
         if (session.saveState.move != null) {
             var recovered = saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
             if (session.saveState.move == null || session.saveState.move.result == null) {
@@ -1425,7 +1434,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return moveFiles(session, executionId, session.saveState.move, true);
         }
         if (skipLocal) {
-            throw new IllegalArgumentException("no confirmed move to skip");
+            throw new IllegalArgumentException("no pending synchronization or confirmed move to skip");
         }
         return saves.recover(session.principal, session.key.workspace(), session.saveState);
     }
@@ -1443,32 +1452,118 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return moveFiles(session, executionId, pending, false);
     }
 
-    /**
-     * Merges one file against its own baseline. The capture is optional because the agent may have
-     * deleted the file, and an absent path is a deletion to reconcile rather than a missing input.
-     */
     private BridgeReplies.Reply syncCommand(Session session, String executionId, JsonNode arguments) {
-        String path = BridgeArguments.sync(arguments).path();
+        BridgeArguments.sync(arguments);
+        return synchronizeWorkspace(session, executionId);
+    }
+
+    private BridgeReplies.Reply synchronizeWorkspace(Session session, String executionId) {
+        return new WorkspaceSynchronization(saves)
+                .run(
+                        session.principal,
+                        session.key.workspace(),
+                        session.saveState,
+                        new WorkspaceSynchronization.Files() {
+                            @Override
+                            public WorkspaceSynchronization.Local read(String path) {
+                                return captureSyncFile(session, executionId, path);
+                            }
+
+                            @Override
+                            public boolean install(PendingWorkspaceSync.File file) {
+                                return installSyncFile(session, executionId, file);
+                            }
+                        });
+    }
+
+    private boolean installSyncFile(Session session, String executionId, PendingWorkspaceSync.File file) {
+        byte[] bytes = file.text() == null ? new byte[0] : file.text().getBytes(StandardCharsets.UTF_8);
+        long size = file.blob() == null ? bytes.length : file.blob().bytes();
+        String digest = file.blob() == null
+                ? DocumentRevision.sha256(bytes).value().substring(7)
+                : file.blob().sha256();
+        return materialize(
+                session, executionId, file.path(), size, digest, file.expectedSha256(), file.delete(), true, output -> {
+                    if (file.blob() == null) {
+                        output.write(bytes);
+                    } else {
+                        saves.repository().copyBlob(session.principal, session.key.workspace(), file.blob(), output);
+                    }
+                });
+    }
+
+    private WorkspaceSynchronization.Local captureSyncFile(Session session, String executionId, String path) {
         JsonNode manifest = requestLive(
-                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
+                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(8));
         if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
+            String reason = manifest.path("reason").asString("");
+            if (reason.equals("NOT_FOUND")) {
+                return new WorkspaceSynchronization.Local(null, null, false);
+            }
+            if (reason.equals("NOT_REGULAR_FILE") || reason.equals("BINARY_LIMIT")) {
+                return new WorkspaceSynchronization.Local(null, null, true);
+            }
+            throw InvalidSelectionException.capture(reason);
         }
         requireOk(manifest, session);
-        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
-                .absent();
-        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
-            throw new WorkerUnavailableException();
+        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
+        try {
+            var file = captured.writes().getFirst();
+            if (!file.path().equals(path)) {
+                throw new WorkerUnavailableException();
+            }
+            String text = file.bytes() <= ContentLimits.MAX_DOCUMENT_BYTES
+                    ? capturedSyncText(session, executionId, captured.captureId(), file)
+                    : null;
+            return new WorkspaceSynchronization.Local(file.sha256(), text, false);
+        } finally {
+            requireOk(
+                    requestLive(
+                            session,
+                            "CAPTURE_RELEASE",
+                            new WorkerRequests.CaptureRelease(executionId, captured.captureId()),
+                            Duration.ofSeconds(3)),
+                    session);
         }
-        var captured =
-                readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of());
-        var plan = saves.prepareSync(
-                session.principal,
-                session.key.workspace(),
-                session.saveState,
-                path,
-                Optional.ofNullable(captured.get(path)));
-        return synchronizeFile(session, executionId, plan);
+    }
+
+    private String capturedSyncText(
+            Session session, String executionId, String captureId, WorkerResponses.CapturedFile file) {
+        if (file.bytes() == 0) {
+            if (!file.sha256().equals(hash(""))) {
+                throw new WorkerUnavailableException();
+            }
+            return "";
+        }
+        try (var input = new CapturedBinaryInput(file.bytes(), file.sha256(), (offset, limit) -> {
+            authorize(session);
+            JsonNode chunk = requestLive(
+                    session,
+                    "CAPTURE_READ",
+                    new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
+                    Duration.ofSeconds(3));
+            requireOk(chunk, session);
+            var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
+            if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
+                throw new WorkerUnavailableException();
+            }
+            return page.decoded();
+        })) {
+            byte[] bytes = input.readNBytes((int) file.bytes());
+            try {
+                String text = StandardCharsets.UTF_8
+                        .newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(bytes))
+                        .toString();
+                return text.indexOf('\0') < 0 ? text : null;
+            } catch (CharacterCodingException binary) {
+                return null;
+            }
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure);
+        }
     }
 
     private BridgeReplies.Reply saveCommand(Session session, String executionId, JsonNode arguments) {
@@ -1717,28 +1812,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return installed
                 ? BridgeReplies.succeeded(new BridgeReplies.LocalEditResult(path, false))
                 : BridgeReplies.failedBecause("EDIT_REJECTED", "LOCAL_FILE_CHANGED");
-    }
-
-    private BridgeReplies.Reply synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
-        byte[] content = plan.content().orElse("").getBytes(StandardCharsets.UTF_8);
-        boolean installed = materialize(
-                session,
-                executionId,
-                plan.path(),
-                content.length,
-                hash(plan.content().orElse("")),
-                plan.expectedLocalSha256().orElse(null),
-                plan.content().isEmpty(),
-                false,
-                output -> output.write(content));
-        if (!installed) {
-            return BridgeReplies.failed("LOCAL_UPDATE_REJECTED");
-        }
-        saves.acknowledgeSync(session.saveState, plan);
-        return BridgeReplies.outcome(
-                !plan.conflicted(),
-                plan.conflicted() ? "MERGE_CONFLICT" : "SYNCHRONIZED",
-                new BridgeReplies.SyncResult(plan.path(), plan.remoteCommit(), false, plan.conflicted()));
     }
 
     private BridgeReplies.Reply listMedia(Session session, String executionId, JsonNode arguments) {

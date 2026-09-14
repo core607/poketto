@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -20,6 +21,36 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code nextOffset} as an explicit null, because the CLI reads that null as end of listing.
  */
 final class BridgeReplies {
+
+    record WorkspaceSyncResult(
+            String commit,
+            int completedPaths,
+            int totalPaths,
+            int conflictCount,
+            List<String> conflicts,
+            boolean conflictsTruncated,
+            boolean released) {}
+
+    static WorkspaceSyncResult workspaceSyncResult(PendingWorkspaceSync pending, boolean released) {
+        var sample = new ArrayList<String>();
+        int bytes = 0;
+        for (String path : pending.conflicts()) {
+            int length = path.getBytes(StandardCharsets.UTF_8).length;
+            if (sample.size() == 64 || bytes + length > 16384) {
+                break;
+            }
+            sample.add(path);
+            bytes += length;
+        }
+        return new WorkspaceSyncResult(
+                pending.commit(),
+                pending.next(),
+                pending.paths().size(),
+                pending.conflicts().size(),
+                List.copyOf(sample),
+                sample.size() != pending.conflicts().size(),
+                released);
+    }
 
     private BridgeReplies() {}
 
@@ -139,6 +170,8 @@ final class BridgeReplies {
             boolean writeOutcomeUnknown,
             boolean movePending,
             Object move,
+            boolean syncPending,
+            Object sync,
             Recorded lastSave,
             Recorded lastImport) {}
 
@@ -173,8 +206,6 @@ final class BridgeReplies {
      * is confirmed and stays in the frame as null, because its absence would read as "no move".
      */
     record MovePending(boolean committed, String commit, boolean worktreeUpdated, String source, String destination) {}
-
-    record SyncResult(String path, String baseCommit, boolean saved, boolean conflicted) {}
 
     record LocalEditResult(String path, boolean saved) {}
 

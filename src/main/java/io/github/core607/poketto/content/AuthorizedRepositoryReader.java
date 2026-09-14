@@ -4,6 +4,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.OutputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -57,6 +58,18 @@ public final class AuthorizedRepositoryReader {
                 privateAccess
                         ? reader.getFile(workspace, commit, path)
                         : reader.getPublicFile(workspace, commit, path));
+    }
+
+    public RepositorySyncEntry inspectBlob(AuthPrincipal actor, WorkspaceId workspace, String commit, String path) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        return recheck(actor, workspace, true, reader.inspectBlob(workspace, commit, path));
+    }
+
+    /** The destination remains private staging until this method's final authorization check succeeds. */
+    public void copyBlob(AuthPrincipal actor, WorkspaceId workspace, RepositorySyncEntry blob, OutputStream output) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        reader.copyBlob(workspace, blob, output);
+        recheck(actor, workspace, true, true);
     }
 
     public RepositoryFilenamePage searchFilenames(

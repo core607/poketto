@@ -103,10 +103,9 @@ def main():
     create = commands.add_parser('create', help='Create a local text file only when its path is absent; does not save or publish')
     create.add_argument('path')
     create.add_argument('--text', required=True)
-    recover = commands.add_parser('recover', help='Recover a pending save or move using its retained commit and local completion receipt')
-    recover.add_argument('--skip-local', action='store_true', help='For a confirmed move, keep local files untouched and release pending installation; sync affected files before saving')
-    sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
-    sync.add_argument('path')
+    recover = commands.add_parser('recover', help='Resume a pending sync or recover a save or move using its retained commit and local completion receipt')
+    recover.add_argument('--skip-local', action='store_true', help='Keep local files untouched and release a pending sync or confirmed move; completed local updates remain')
+    commands.add_parser('sync', help='Merge the current remote workspace into local edits without saving or publishing')
     move = commands.add_parser('move', help='Atomically move saved content and repair references; unselected edits stay local')
     move.add_argument('source')
     move.add_argument('destination')
@@ -153,8 +152,6 @@ def main():
         arguments = {'path': args.path, 'oldText': args.old, 'newText': args.new}
     if args.operation == 'create':
         arguments = {'path': args.path, 'text': args.text}
-    if args.operation == 'sync':
-        arguments = {'path': args.path}
     if args.operation == 'recover' and args.skip_local:
         arguments = {'skipLocal': True}
     if args.operation == 'move':

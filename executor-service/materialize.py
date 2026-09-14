@@ -15,7 +15,7 @@ import uuid
 
 from session_files import CaptureRejected, MAX_CHUNK_BYTES, selected_paths
 
-# ZIP exports share this streaming channel; the lease tmpfs still enforces the actual disk quota.
+# ZIP exports share this streaming channel; the quota-backed copy filesystem still enforces the actual disk quota.
 MAX_FILE_BYTES = 1024 * 1024 * 1024
 TRANSFER_HEADROOM = 1024 * 1024
 
@@ -70,7 +70,7 @@ class IncomingFile:
 
     Keep one transfer per lease. The caller holds the lease filesystem lock for
     every method and freezes the complete command cgroup throughout install().
-    Staging is outside command-readable paths and is charged to the lease tmpfs.
+    Staging is outside command-readable paths and is charged to the quota-backed copy filesystem.
     Remote authority and the host baseline change separately, after acknowledgement.
     """
 
@@ -80,7 +80,7 @@ class IncomingFile:
         _hash(expected)
         if (type(size) is not int or not 0 <= size <= MAX_FILE_BYTES or digest is None
                 or type(delete) is not bool or type(allow_identical) is not bool
-                or (delete and (size != 0 or allow_identical))):
+                or (delete and size != 0)):
             raise CaptureRejected('Invalid materialization size or operation')
         self.id = str(uuid.uuid4())
         self.root = Path(root)
@@ -159,7 +159,7 @@ class IncomingFile:
                         os.fchown(child, uid, gid)
                     parent = child
                 current, mode = _current(parent, parts[-1])
-                if self.allow_identical and current == self.digest:
+                if self.allow_identical and current == (None if self.delete else self.digest):
                     return self._finished(False)
                 if current != self.expected:
                     raise CaptureRejected('Local file changed before materialization')

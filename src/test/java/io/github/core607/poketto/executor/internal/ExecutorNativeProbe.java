@@ -1484,8 +1484,7 @@ public final class ExecutorNativeProbe {
                     test "$(cat private/moved.md)" = 'later local edit'
                     test ! -e private/skipped.md
                     if poketto save private/moved.md; then exit 99; fi
-                    poketto sync private/moved.md
-                    poketto sync private/skipped.md
+                    poketto sync
                     test ! -e private/moved.md
                     test "$(cat private/skipped.md)" = 'later local edit'
                     """,
@@ -1805,7 +1804,7 @@ public final class ExecutorNativeProbe {
                     workspace,
                     "selected-save",
                     Optional.empty(),
-                    "set -eu; poketto sync private/secret.md; poketto save private/secret.md",
+                    "poketto sync; sync_result=$?; test \"$sync_result\" = 1 && poketto save private/secret.md",
                     Duration.ofSeconds(25),
                     new Cancellation());
             assertThat(aligned.exitCode())
@@ -1814,30 +1813,7 @@ public final class ExecutorNativeProbe {
             assertThat(reader.getFile(principal, workspace, Optional.empty(), "AGENTS.md")
                             .source())
                     .contains("externally-updated-guide");
-            var unselected = client.execute(
-                    executor,
-                    principal,
-                    workspace,
-                    "selected-save",
-                    Optional.empty(),
-                    "poketto save AGENTS.md",
-                    Duration.ofSeconds(15),
-                    new Cancellation());
-            assertThat(unselected.exitCode()).isEqualTo(1);
-            assertThat(unselected.stdout()).contains("REPOSITORY_CONFLICT");
-            var merged = client.execute(
-                    executor,
-                    principal,
-                    workspace,
-                    "selected-save",
-                    Optional.empty(),
-                    "poketto sync AGENTS.md",
-                    Duration.ofSeconds(15),
-                    new Cancellation());
-            assertThat(merged.exitCode())
-                    .as("sync stdout=%s stderr=%s", merged.stdout(), merged.stderr())
-                    .isEqualTo(1);
-            assertThat(merged.stdout()).contains("MERGE_CONFLICT");
+            assertThat(aligned.stdout()).contains("MERGE_CONFLICT");
             var versions = client.execute(
                     executor,
                     principal,
@@ -1861,7 +1837,7 @@ public final class ExecutorNativeProbe {
                     "selected-save",
                     Optional.empty(),
                     "set -eu; printf 'resolved-guide' > AGENTS.md; poketto save AGENTS.md; "
-                            + "rm private/secret.md; poketto sync private/secret.md; test ! -e private/secret.md; poketto save --delete private/secret.md",
+                            + "rm private/secret.md; poketto sync; test ! -e private/secret.md; poketto save --delete private/secret.md",
                     Duration.ofSeconds(30),
                     new Cancellation());
             assertThat(resolved.exitCode())
@@ -1873,7 +1849,7 @@ public final class ExecutorNativeProbe {
             assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
                             .expectedAbsence())
                     .isTrue();
-            passed("single-file-cli-sync-merges-conflicts-and-keeps-unselected-baselines-and-local-deletions");
+            passed("workspace-cli-sync-merges-conflicts-and-keeps-unsaved-edits-and-local-deletions");
         }
     }
 

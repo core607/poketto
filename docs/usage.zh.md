@@ -134,7 +134,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 完整读取副本的保存或移动得到确认后，会先更新本地 Git HEAD 与索引，再由 CLI 报告成功。未选中的工作文件保留在本地。`repo_exec.commit` 与 `poketto status` 结果中的 `gitCommit` 表示已安装的 Git 基线；若远端结果已保留但本地安装尚未完成，状态中的 `localBaselinePending` 会标明，使用 `poketto recover` 收尾，不要重复保存。宿主的权威写入检查不依赖沙箱 Git 元数据。
 
-完整读取副本的 `poketto status` 还会检查远端 main：`remote.state` 返回 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`，已知的远端提交由 `remote.commit` 返回。比较使用最近一次已确认的保存或同步基线，不代表所有本地文件都已更新。远端检查失败仍会返回本地状态和保存回执。状态查询不修改工作文件或基线；需要更新时显式执行 `poketto sync PATH`，后续保存仍逐项检查所选文件的冲突。公开副本返回 `PUBLIC_PROJECTION` 和合成提交 ID，不暴露真实仓库提交；每次命令仍须通过现有的公开投影有效性检查。
+完整读取副本的 `poketto status` 还会检查远端 main：`remote.state` 返回 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`，已知的远端提交由 `remote.commit` 返回。比较使用最近一次已确认的保存或同步基线，不代表所有本地文件都已更新。远端检查失败仍会返回本地状态和保存回执。状态查询不修改工作文件或基线；需要更新时显式执行 `poketto sync`，将整个工作空间与同一个远端版本对齐，包括新增和删除的路径。同步保留仅存在于本地的文件及冲突的二进制内容，重叠的文本修改会写入 LOCAL/BASE/REMOTE 冲突标记；它不会保存远端。中断后，`poketto status` 会显示 `syncPending` 和进度；`poketto recover` 继续已记录的同步，`poketto recover --skip-local` 则解除待处理状态，但不撤销已经安装的文件。后续保存仍逐项检查所选文件与权威远端的冲突。公开副本返回 `PUBLIC_PROJECTION` 和合成提交 ID，不暴露真实仓库提交；每次命令仍须通过现有的公开投影有效性检查。
 
 要丢弃本地工作，调用 `repo_discard` 并传入准确的 `expectedCopyId`。此操作要求当前执行权限和副本归属，内容读取权限收回不妨碍清理。忙碌副本会被拒绝。删除前会记录关闭意图，进程中断后可以继续收尾；确认工作进程已停止后才移除本地文件和宿主元数据。`DISCARDED` 或 `ABSENT` 确认目标副本已不存在，随后可用 `new` 创建另一份副本。未确认的关闭操作只能用同一 ID 重试。丢弃不会撤销远端 Git 提交。
 

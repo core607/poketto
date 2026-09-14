@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import stat
 import uuid
+import errno
 
 from session_files import CaptureRejected, MAX_CHUNK_BYTES, _directory, selected_paths
 
@@ -17,7 +18,7 @@ class BinaryCapture:
 
     The supervisor supplies root. Keep at most one capture per lease and close it
     on release, command completion, cancellation, and cleanup. Snapshot bytes are
-    charged to the lease tmpfs, not accumulated in worker process memory.
+    charged to the quota-backed copy filesystem, not accumulated in worker process memory.
     """
 
     def __init__(self, root, path, cancelled=lambda: False, maximum=MAX_BINARY_BYTES):
@@ -75,6 +76,8 @@ class BinaryCapture:
             if isinstance(error, CaptureRejected):
                 raise
             reason = 'NOT_FOUND' if repository_open and not source_open and isinstance(error, FileNotFoundError) else 'CAPTURE_UNAVAILABLE'
+            if repository_open and error.errno in (errno.ENOTDIR, errno.ELOOP):
+                reason = 'NOT_REGULAR_FILE'
             raise CaptureRejected('Binary source is unavailable or unsafe', reason) from error
 
     def manifest(self):
