@@ -26,11 +26,12 @@ class AuditRecordTests {
     }
 
     @Test
-    void aWithdrawalIsNotRecordedAsAGrant(CapturedOutput output) {
-        AuditRecords.changed("member.access.revoked", null, WorkspaceId.random(), UUID.randomUUID());
+    void aWithdrawalIsNamedByItsOwnActionRatherThanTheGrantOne(CapturedOutput output) {
+        AuditRecords.granted("member.access.revoked", null, WorkspaceId.random(), UUID.randomUUID(), Set.of());
 
         assertThat(output).contains("member.access.revoked");
-        assertThat(output).doesNotContain("granting");
+        assertThat(output).doesNotContain("member.access.granted");
+        assertThat(output).contains("[]");
     }
 
     @Test
