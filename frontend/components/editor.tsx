@@ -252,13 +252,18 @@ export function Editor({
         current?.path === saved.path &&
         current.commit === saved.commit &&
         current.revision === saved.revision
-          ? { ...current, publicScope: result.publicScope, publicPage: result.publicPage }
+          ? {
+              ...current,
+              publicScope: result.publicScope,
+              publicPage: result.publicPage,
+            }
           : current,
       );
     } catch {
       // The write acknowledgement remains authoritative when this separate read fails.
     } finally {
-      if (alive.current && request === pageRequest.current) setPagePending(false);
+      if (alive.current && request === pageRequest.current)
+        setPagePending(false);
     }
   }
 

@@ -18,7 +18,9 @@ export function EditorPublicPage({
 }) {
   const page = file.publicPage;
   if (file.expectedAbsence || path !== file.path)
-    return <p className="editor-public-state muted">保存后确认公开页面状态。</p>;
+    return (
+      <p className="editor-public-state muted">保存后确认公开页面状态。</p>
+    );
 
   if (!page)
     return (
@@ -41,13 +43,22 @@ export function EditorPublicPage({
       {page.state === "WEBSITE_DISABLED" && <span>网站未开启</span>}
       {page.state === "UNAVAILABLE" && <span>公开页面暂不可用</span>}
       {(page.state === "UNAVAILABLE" || page.state === "WEBSITE_DISABLED") && (
-        <button type="button" className="text-button" disabled={pending} onClick={onRefresh}>
+        <button
+          type="button"
+          className="text-button"
+          disabled={pending}
+          onClick={onRefresh}
+        >
           {pending ? "正在查询…" : "重新查询状态"}
         </button>
       )}
       {page.state === "AVAILABLE" && page.space && page.route && (
         <>
-          <a href={articleHref(page.route, page.space)} target="_blank" rel="noopener noreferrer">
+          <a
+            href={articleHref(page.route, page.space)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             查看公开页面 ↗
           </a>
           {dirty && <span className="muted">公开页面显示已保存的版本。</span>}
