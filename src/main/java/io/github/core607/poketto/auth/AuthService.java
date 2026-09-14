@@ -28,6 +28,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
@@ -103,6 +105,7 @@ public final class AuthService {
     /** Uniform credential rejection includes missing accounts; the HTTP caller must also throttle attempts. */
     public AuthPrincipal authenticatePassword(String login, String password) {
         if (password == null || password.length() > 256) {
+            AuditRecords.refused("password.authentication", INVALID_CREDENTIALS.name());
             throw failure(INVALID_CREDENTIALS);
         }
         String normalized;
@@ -118,6 +121,7 @@ public final class AuthService {
         String encoded =
                 accounts.isEmpty() ? dummyPasswordHash : accounts.getFirst().hash();
         if (!passwords.matches(password, encoded) || accounts.isEmpty()) {
+            AuditRecords.refused("password.authentication", INVALID_CREDENTIALS.name());
             throw failure(INVALID_CREDENTIALS);
         }
         AccountCredential account = accounts.getFirst();
@@ -128,7 +132,9 @@ public final class AuthService {
                     account.id(),
                     encoded);
         }
-        return accountPrincipal(account.id());
+        AuthPrincipal principal = accountPrincipal(account.id());
+        AuditRecords.authenticated("password.authentication", principal);
+        return principal;
     }
 
     public AuthPrincipal authenticateApiKey(String token) {
@@ -151,8 +157,10 @@ public final class AuthService {
                 timestamp(),
                 oauthResource);
         if (matches.isEmpty()) {
+            AuditRecords.refused("key.authentication", INVALID_CREDENTIALS.name());
             throw failure(INVALID_CREDENTIALS);
         }
+        AuditRecords.authenticated("key.authentication", matches.getFirst());
         return matches.getFirst();
     }
 
@@ -316,7 +324,7 @@ public final class AuthService {
 
     public IssuedToken createInvitation(AuthPrincipal actor, WorkspaceId workspace, Set<Capability> requested) {
         Set<Capability> permissions = contentPermissions(requested);
-        return transactions.execute(status -> {
+        IssuedToken issued = transactions.execute(status -> {
             lockWorkspace(workspace);
             requireHumanOwner(actor, workspace);
             UUID id = UUID.randomUUID();
@@ -337,18 +345,29 @@ public final class AuthService {
             });
             return new IssuedToken(id, token);
         });
+        AuditRecords.granted("invitation.issued", actor, workspace, issued.id(), permissions);
+        return issued;
     }
 
     public void revokeInvitation(AuthPrincipal actor, WorkspaceId workspace, UUID invitationId) {
+        var withdrawn = new AtomicBoolean();
         transactions.executeWithoutResult(status -> {
             lockWorkspace(workspace);
             requireHumanOwner(actor, workspace);
-            jdbc.update(
-                    "update auth_invitations set revoked_at = coalesce(revoked_at, ?) where workspace_id = ? and invitation_id = ?",
+            // Only a row whose revocation time this call set is a withdrawal. A repeat, a
+            // mistyped identifier and another workspace's invitation all leave the link live,
+            // and a record claiming otherwise would retire a link that still works.
+            List<UUID> withdrawnIds = jdbc.query(
+                    "update auth_invitations set revoked_at = ? where workspace_id = ? and invitation_id = ? and revoked_at is null returning invitation_id",
+                    (rs, row) -> rs.getObject(1, UUID.class),
                     timestamp(),
                     workspace.value(),
                     invitationId);
+            withdrawn.set(!withdrawnIds.isEmpty());
         });
+        if (withdrawn.get()) {
+            AuditRecords.changed("invitation.revoked", actor, workspace, invitationId);
+        }
     }
 
     public Page<WorkspaceInvitationInfo> listInvitations(
@@ -379,12 +398,19 @@ public final class AuthService {
         if (account == null || account.kind() != AuthPrincipal.Kind.ACCOUNT) {
             throw failure(DENIED);
         }
-        return transactions.execute(status -> {
+        var admitted = new AtomicBoolean();
+        WorkspaceId joined = transactions.execute(status -> {
             Invitation invitation = lockInvitation(token);
             requireUsableInvitation(invitation, account.accountId());
-            join(invitation, account.accountId());
+            admitted.set(join(invitation, account.accountId()));
             return invitation.workspace();
         });
+        // Replaying a consumed token succeeds and changes nothing, so recording it again would
+        // overstate how many accounts joined and when.
+        if (admitted.get()) {
+            AuditRecords.changed("invitation.redeemed", account, joined, account.accountId());
+        }
+        return joined;
     }
 
     public Page<MemberInfo> listMembers(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
@@ -421,6 +447,7 @@ public final class AuthService {
         if (role == null || account == null) {
             throw failure(INVALID_INPUT);
         }
+        var held = new AtomicReference<Set<Capability>>(Set.of());
         transactions.executeWithoutResult(status -> {
             lockWorkspace(workspace);
             requireHumanOwner(actor, workspace);
@@ -438,6 +465,7 @@ public final class AuthService {
                 throw failure(DENIED);
             }
             MemberInfo before = members.getFirst();
+            held.set(before.active() ? memberCapabilities(before.role(), before.permissions()) : Set.of());
             if (before.active() && before.role() == MembershipRole.OWNER && (!active || role != MembershipRole.OWNER)) {
                 Integer owners = jdbc.queryForObject(
                         "select count(*) from auth_memberships where workspace_id = ? and role = 'OWNER' and suspended_at is null",
@@ -462,6 +490,16 @@ public final class AuthService {
             });
             revokeMembershipKeys(workspace, account, before, role, active, permissions);
         });
+        Set<Capability> effective = active ? memberCapabilities(role, permissions) : Set.of();
+        // Narrowing also revokes the member's over-scoped keys, so recording it as a grant would
+        // hide the withdrawal behind the action a reader filters on to find grants. Suspension is
+        // a withdrawal even when the member already held nothing: the call still refreshes the
+        // suspension and revokes keys again, so it is not a grant of the empty set.
+        if (active && effective.containsAll(held.get())) {
+            AuditRecords.granted("member.access.granted", actor, workspace, account, effective);
+        } else {
+            AuditRecords.granted("member.access.revoked", actor, workspace, account, effective);
+        }
     }
 
     private void revokeMembershipKeys(
@@ -525,7 +563,7 @@ public final class AuthService {
     private IssuedToken issueApiKey(
             AuthPrincipal actor, WorkspaceId workspace, UUID holder, Set<Capability> requested, boolean oauth) {
         Set<Capability> capabilities = requested == null ? DEFAULT_AI_CAPABILITIES : Set.copyOf(requested);
-        return transactions.execute(status -> {
+        IssuedToken issued = transactions.execute(status -> {
             lockWorkspace(workspace);
             WorkspaceAccess access = oauth ? authorize(actor, workspace) : requireKeyManager(actor, workspace);
             if (actor.kind() == AuthPrincipal.Kind.API_KEY
@@ -562,6 +600,8 @@ public final class AuthService {
             });
             return new IssuedToken(id, token);
         });
+        AuditRecords.granted("key.issued", actor, workspace, issued.id(), capabilities);
+        return issued;
     }
 
     public Page<ApiKeyInfo> listApiKeys(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
@@ -587,6 +627,7 @@ public final class AuthService {
     }
 
     public void revokeApiKey(AuthPrincipal actor, WorkspaceId workspace, UUID keyId) {
+        var revoked = new AtomicBoolean();
         transactions.executeWithoutResult(status -> {
             lockWorkspace(workspace);
             requireKeyManager(actor, workspace);
@@ -597,9 +638,13 @@ public final class AuthService {
                     workspace.value(),
                     keyId);
             if (!keys.isEmpty()) {
+                revoked.set(true);
                 publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
             }
         });
+        if (revoked.get()) {
+            AuditRecords.changed("key.revoked", actor, workspace, keyId);
+        }
     }
 
     /** Caller holds the workspace row lock after validating an OAuth grant or its replay proof. */
@@ -647,7 +692,8 @@ public final class AuthService {
         }
     }
 
-    private void join(Invitation invitation, UUID account) {
+    /** Reports whether this call admitted the account, as opposed to replaying a consumed token. */
+    private boolean join(Invitation invitation, UUID account) {
         List<Boolean> membership = jdbc.query(
                 "select suspended_at is null from auth_memberships where workspace_id = ? and account_id = ?",
                 (rs, row) -> rs.getBoolean(1),
@@ -656,7 +702,7 @@ public final class AuthService {
         if (!membership.isEmpty() && !membership.getFirst()) {
             throw failure(INVALID_INVITATION);
         }
-        jdbc.update(connection -> {
+        int admitted = jdbc.update(connection -> {
             var statement = connection.prepareStatement(
                     "insert into auth_memberships (workspace_id,account_id,role,permissions) values (?,?,'MEMBER',?) on conflict(workspace_id,account_id) do nothing");
             statement.setObject(1, invitation.workspace().value());
@@ -673,6 +719,7 @@ public final class AuthService {
                 timestamp(),
                 account,
                 invitation.id());
+        return admitted > 0;
     }
 
     private WorkspaceAccess requireKeyManager(AuthPrincipal actor, WorkspaceId workspace) {

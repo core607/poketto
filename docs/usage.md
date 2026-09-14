@@ -221,6 +221,8 @@ Records carry a request identifier that stays on the server. It joins the severa
 
 What never reaches a record: request bodies, which carry repository tokens and passwords; MCP tool arguments, which carry commands and content; query strings and repository file paths; and document content. An admin route is reduced to its stable shape with the workspace identifier moved to its own field, and opaque route segments are collapsed: a UUID becomes `:id` and a long URL-safe run becomes `:opaque`. That keeps image grants, which authorize the exact image they name, out of the record; a public site slug is kept as authored. Container health probes are not recorded at all.
 
+Changes to who can do what are recorded separately under the logger name `poketto.audit`, each naming an action such as `member.access.granted` or `key.revoked`, the actor who decided it, the subject, and the capabilities that actually apply afterwards. A suspension or downgrade is recorded as `member.access.revoked` rather than as a grant. Records are written after the change commits. Authentication outcomes are recorded there too, so a rejected credential is distinguishable from a rejected authorization. Login names, passwords, tokens and invitation codes never appear; a refusal carries this service's own fixed reason, not the submitted value.
+
 Set `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` on the application to emit one JSON line per record, with each field addressable and stack traces inside the record rather than spread over many lines. Leaving it unset keeps the readable console format for development. See the [diagnostics record](../notes/implemented/2026-09-14-service-diagnostics.md) for what remains uncovered.
 
 ## OAuth connections
