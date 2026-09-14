@@ -181,6 +181,7 @@ test("folder selection cancels without writing and moves via the host service be
             capabilities: ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"],
           }}
           onDirtyChange={() => {}}
+          onNavigate={() => {}}
         />
       </ConfirmationProvider>,
     ),

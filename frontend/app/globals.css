@@ -1417,6 +1417,39 @@ td select {
   color: #67715d;
   padding: 4px 8px;
 }
+.tree-directory summary[aria-current="location"] {
+  background: #e3e8d7;
+  color: var(--ink);
+  border-radius: 4px;
+}
+.content-creation {
+  padding: 10px 0 14px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.selected-folder {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.creation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.creation-actions button {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.content-creation .muted {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.advanced-path > summary {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 10px 0;
+}
 .tree-directory > div {
   margin-left: 12px;
   border-left: 1px solid var(--line);

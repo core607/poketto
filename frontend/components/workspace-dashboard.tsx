@@ -12,6 +12,7 @@ import { Keys } from "./keys";
 import { Connections } from "./connections";
 import { RepositoryConnection } from "./repository-connection";
 import { SpacePublication } from "./space-publication";
+import type { ContentLocation } from "../lib/repository-navigation";
 
 export type SpaceSummary = {
   workspaceId: string;
@@ -29,6 +30,15 @@ const tabs = {
   publication: "网站发布",
 };
 type Tab = keyof typeof tabs;
+
+function historyPosition() {
+  const position: unknown = window.history.state?.pokettoAdminPosition;
+  return typeof position === "number" &&
+    Number.isSafeInteger(position) &&
+    position >= 0
+    ? position
+    : null;
+}
 
 export function WorkspaceDashboard({
   account,
@@ -49,6 +59,9 @@ export function WorkspaceDashboard({
   const initial = useRef(false);
   const generation = useRef(0);
   const currentUrl = useRef("");
+  const acceptedPosition = useRef(0);
+  const returningPosition = useRef<number | null>(null);
+  const confirmingNavigation = useRef(false);
   async function discard() {
     return (
       !dirty ||
@@ -64,15 +77,32 @@ export function WorkspaceDashboard({
     nextTab: Tab,
     replace: boolean,
     retainPath: boolean,
+    contentLocation?: ContentLocation,
   ) {
     const url = new URL(window.location.href);
     if (workspace) url.searchParams.set("workspace", workspace);
     else url.searchParams.delete("workspace");
     url.searchParams.set("tab", nextTab);
-    if (!retainPath) url.searchParams.delete("path");
-    currentUrl.current = url.pathname + url.search + url.hash;
-    window.history[replace ? "replaceState" : "pushState"](
-      window.history.state,
+    if (!retainPath) {
+      url.searchParams.delete("path");
+      url.searchParams.delete("folder");
+    }
+    if (contentLocation) {
+      for (const key of ["path", "folder"] as const) {
+        if (contentLocation[key])
+          url.searchParams.set(key, contentLocation[key]);
+        else url.searchParams.delete(key);
+      }
+    }
+    const nextUrl = url.pathname + url.search + url.hash;
+    const replaceEntry = replace || nextUrl === currentUrl.current;
+    const position = replaceEntry
+      ? (historyPosition() ?? acceptedPosition.current)
+      : acceptedPosition.current + 1;
+    currentUrl.current = nextUrl;
+    acceptedPosition.current = position;
+    window.history[replaceEntry ? "replaceState" : "pushState"](
+      { ...window.history.state, pokettoAdminPosition: position },
       "",
       currentUrl.current,
     );
@@ -119,13 +149,44 @@ export function WorkspaceDashboard({
     );
   }, [page.loading, page.error]);
   useEffect(() => {
+    let active = true;
     const restore = async () => {
-      const previous = currentUrl.current;
-      const query = new URLSearchParams(window.location.search);
-      if (!(await discard())) {
-        window.history.replaceState(window.history.state, "", previous);
+      const position = historyPosition();
+      if (returningPosition.current !== null) {
+        if (position === returningPosition.current)
+          returningPosition.current = null;
+        else if (position !== null)
+          window.history.go(returningPosition.current - position);
         return;
       }
+      if (confirmingNavigation.current) return;
+      confirmingNavigation.current = true;
+      const accepted = await discard();
+      confirmingNavigation.current = false;
+      if (!active) return;
+      if (!accepted) {
+        const reachedPosition = historyPosition();
+        if (reachedPosition !== null) {
+          const delta = acceptedPosition.current - reachedPosition;
+          if (delta) {
+            returningPosition.current = acceptedPosition.current;
+            window.history.go(delta);
+          }
+        } else {
+          // Entries outside this dashboard have no known traversal distance.
+          // Preserve the reached entry instead of replacing its destination.
+          window.history.pushState(
+            {
+              ...window.history.state,
+              pokettoAdminPosition: acceptedPosition.current,
+            },
+            "",
+            currentUrl.current,
+          );
+        }
+        return;
+      }
+      const query = new URLSearchParams(window.location.search);
       const requested = query.get("tab") ?? "account";
       await select(
         query.get("workspace") ?? "",
@@ -135,7 +196,10 @@ export function WorkspaceDashboard({
       );
     };
     window.addEventListener("popstate", restore);
-    return () => window.removeEventListener("popstate", restore);
+    return () => {
+      active = false;
+      window.removeEventListener("popstate", restore);
+    };
   }, [dirty]);
   const activeTab = !identity
     ? "account"
@@ -171,7 +235,13 @@ export function WorkspaceDashboard({
           ))}
       </nav>
       {activeTab === "content" && identity && (
-        <Editor identity={identity} onDirtyChange={setDirty} />
+        <Editor
+          identity={identity}
+          onDirtyChange={setDirty}
+          onNavigate={(location, replace = false) =>
+            writeUrl(selected, "content", replace, true, location)
+          }
+        />
       )}
       {activeTab === "members" && <Members />}
       {activeTab === "keys" && identity && <Keys identity={identity} />}

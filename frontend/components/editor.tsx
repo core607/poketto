@@ -18,6 +18,13 @@ import { FileTree } from "./file-tree";
 import { FolderPicker } from "./folder-picker";
 import { ExportDialog } from "./export-dialog";
 import { DiagnosticMessage } from "./diagnostic";
+import { inContentRoot, readDirectory } from "../lib/repository-directory";
+import {
+  navigationFolder,
+  parentDirectory,
+  privateCreationPath,
+  type ContentLocation,
+} from "../lib/repository-navigation";
 
 type Preview = {
   body?: string;
@@ -30,9 +37,11 @@ type Preview = {
 export function Editor({
   identity,
   onDirtyChange,
+  onNavigate,
 }: {
   identity: Identity;
   onDirtyChange: (dirty: boolean) => void;
+  onNavigate: (location: ContentLocation, replace?: boolean) => void;
 }) {
   const api = useWorkspaceApi();
   const confirm = useConfirmation();
@@ -40,6 +49,10 @@ export function Editor({
   const [file, setFile] = useState<RepositoryFile | null>(null);
   const [source, setSource] = useState("");
   const [path, setPath] = useState("");
+  const [folder, setFolder] = useState("");
+  const [creation, setCreation] = useState<"note" | "folder" | null>(null);
+  const creationTrigger = useRef<HTMLButtonElement | null>(null);
+  const alive = useRef(false);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState<
     { path: string; title: string; snippet: string }[] | null
@@ -65,25 +78,39 @@ export function Editor({
   const [view, setView] = useState("split");
   const textarea = useRef<HTMLTextAreaElement>(null);
   const editorRoot = useRef<HTMLDivElement>(null);
-  const dirty =
-    file !== null && (source !== (file.source ?? "") || path !== file.path);
   const unreadable =
     file !== null && file.source === null && !file.expectedAbsence;
   const writable = identity.capabilities.includes(
     file?.publicScope ? "PUBLISH" : "WRITE_PRIVATE",
   );
+  const dirty =
+    file !== null &&
+    ((file.expectedAbsence && writable) ||
+      source !== (file.source ?? "") ||
+      path !== file.path);
   async function reloadTree() {
     const next = await api<RepositoryTree>("/api/admin/repository/tree");
     setTree(next);
     return next;
   }
   useEffect(() => {
+    alive.current = true;
     void reloadTree()
       .then(() => {
-        const initial = new URLSearchParams(window.location.search).get("path");
-        if (initial) void open(initial);
+        if (!alive.current) return;
+        const query = new URLSearchParams(window.location.search);
+        const initial = query.get("path");
+        const selectedFolder = navigationFolder(
+          query.get("folder") ?? parentDirectory(initial ?? ""),
+        );
+        setFolder(selectedFolder);
+        if (initial)
+          void open(initial, { folder: selectedFolder, replace: true });
       })
       .catch((error) => setError(message(error)));
+    return () => {
+      alive.current = false;
+    };
   }, []);
   useEffect(() => {
     onDirtyChange(dirty);
@@ -115,10 +142,21 @@ export function Editor({
       window.clearTimeout(timer);
     };
   }, [path, file?.commit, source, previewVersion, unreadable]);
-  async function open(target: string, discard = false) {
+  function navigate(nextPath: string, nextFolder = folder, replace = false) {
+    if (!alive.current) return;
+    setFolder(nextFolder);
+    onNavigate({ folder: nextFolder, path: nextPath }, replace);
+  }
+  async function open(
+    target: string,
+    options: {
+      folder?: string;
+      replace?: boolean;
+      create?: "note" | "folder";
+    } = {},
+  ) {
     if (
       dirty &&
-      !discard &&
       !(await confirm({
         title: "放弃未保存的修改？",
         description: `打开「${target}」将丢弃当前编辑框中未保存的修改。`,
@@ -134,11 +172,42 @@ export function Editor({
       const result = await api<RepositoryFile>(
         "/api/admin/repository/file?" + new URLSearchParams({ path: target }),
       );
+      if (!alive.current) return;
+      if (options.create && !result.expectedAbsence)
+        throw new ApiError(
+          409,
+          "同名文件已经存在，请换一个名称，或从文件树打开它。",
+        );
+      if (options.create === "folder") {
+        const directory = await readDirectory(
+          api,
+          result.commit,
+          parentDirectory(result.path),
+        );
+        if (!alive.current) return;
+        if (!directory.expectedAbsence)
+          throw new ApiError(
+            409,
+            "文件夹已经存在，请换一个名称，或在文件树选择它。",
+          );
+      }
       setPreview({ galleryStatus: "COMPLETE" });
       setFile(result);
       setPath(result.path);
       setSource(result.source ?? "");
       setPreviewVersion((version) => version + 1);
+      navigate(result.path, options.folder ?? folder, options.replace);
+      if (options.create) {
+        setCreation(null);
+        setNotice(
+          options.create === "folder"
+            ? "文件夹入口已准备，保存后创建文件夹。"
+            : "笔记草稿已打开，保存后写入仓库。",
+        );
+        requestAnimationFrame(() => {
+          if (alive.current) textarea.current?.focus();
+        });
+      }
     } catch (error) {
       setError(message(error));
     } finally {
@@ -184,6 +253,7 @@ export function Editor({
         setFile(null);
         setSource("");
         setPath("");
+        navigate("", folder);
       } else {
         setFile({
           ...file,
@@ -194,6 +264,7 @@ export function Editor({
           expectedAbsence: false,
         });
         setPath(target);
+        navigate(target, folder, true);
       }
       setNotice(
         !result.committed
@@ -248,6 +319,12 @@ export function Editor({
           destination,
         },
       });
+      if (!alive.current) return true;
+      const nextFolder =
+        folder === moveSelection.source ||
+        folder.startsWith(moveSelection.source + "/")
+          ? destination + folder.slice(moveSelection.source.length)
+          : folder;
       setSearch(null);
       let notice = result.snapshotUpdated
         ? "已移动，相关链接已更新。"
@@ -266,13 +343,16 @@ export function Editor({
             "/api/admin/repository/file?" +
               new URLSearchParams({ path: nextPath }),
           );
+          if (!alive.current) return true;
           setFile(current);
           setSource(current.source ?? "");
           setPath(current.path);
+          navigate(current.path, nextFolder, true);
         } catch {
+          navigate("", nextFolder, true);
           notice += " 当前文件未能重新读取，请刷新后打开。";
         }
-      }
+      } else navigate("", nextFolder, true);
       try {
         await reloadTree();
       } catch {
@@ -287,6 +367,7 @@ export function Editor({
         setSource("");
         setPath("");
         setSearch(null);
+        navigate("", navigationFolder(folder), true);
         try {
           await reloadTree();
           setError(
@@ -365,6 +446,88 @@ export function Editor({
             刷新
           </button>
         </div>
+        <section className="content-creation" aria-label="当前目录与新建">
+          <p className="selected-folder">当前目录：{folder || "仓库根目录"}</p>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => navigate(file?.path ?? "", "")}
+          >
+            选择根目录
+          </button>
+          <div className="creation-actions">
+            {(["note", "folder"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className="button-secondary"
+                disabled={
+                  busy || !identity.capabilities.includes("WRITE_PRIVATE")
+                }
+                onClick={(event) => {
+                  creationTrigger.current = event.currentTarget;
+                  setCreation(kind);
+                }}
+              >
+                {kind === "note" ? "新建笔记" : "新建文件夹"}
+              </button>
+            ))}
+          </div>
+          {creation && (
+            <form
+              className="open-path"
+              key={creation}
+              onSubmit={(event) => {
+                event.preventDefault();
+                try {
+                  const target = privateCreationPath(
+                    folder,
+                    String(new FormData(event.currentTarget).get("name") ?? ""),
+                    creation,
+                  );
+                  void open(target, {
+                    create: creation,
+                    folder: parentDirectory(target),
+                  });
+                } catch (failure) {
+                  setError(message(failure));
+                }
+              }}
+            >
+              <label>
+                {creation === "note" ? "笔记名称" : "文件夹名称"}
+                <input
+                  name="name"
+                  required
+                  maxLength={255}
+                  autoFocus
+                  disabled={busy}
+                  placeholder={
+                    creation === "note" ? "例如：新的灵感" : "例如：旅行记录"
+                  }
+                />
+              </label>
+              <p className="muted">
+                默认创建在 {inContentRoot(folder, "private")}/，保存后生效。
+              </p>
+              <button disabled={busy}>
+                准备{creation === "note" ? "笔记" : "文件夹"}
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => {
+                  setCreation(null);
+                  creationTrigger.current?.focus();
+                }}
+              >
+                取消
+              </button>
+            </form>
+          )}
+        </section>
         <label className="sr-only" htmlFor="file-filter">
           筛选文件
         </label>
@@ -380,6 +543,10 @@ export function Editor({
               commit={tree.commit}
               filter={filter}
               selected={file?.path}
+              selectedFolder={folder}
+              onSelectFolder={(selectedFolder) =>
+                navigate(file?.path ?? "", selectedFolder)
+              }
               busy={busy}
               onOpen={(path) => void open(path)}
               onMove={writable ? chooseMove : undefined}
@@ -389,30 +556,33 @@ export function Editor({
             />
           )}
         </nav>
-        <form
-          className="open-path"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const target = String(
-              new FormData(event.currentTarget).get("path"),
-            );
-            void open(target);
-          }}
-        >
-          <label>
-            打开或新建路径
-            <input
-              name="path"
-              defaultValue="private/"
-              placeholder="private/笔记/新文章.md"
-              required
-              maxLength={255}
-            />
-          </label>
-          <button className="button-secondary" disabled={busy}>
-            打开路径
-          </button>
-        </form>
+        <details className="advanced-path">
+          <summary>高级：完整路径</summary>
+          <form
+            className="open-path"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const target = String(
+                new FormData(event.currentTarget).get("path"),
+              );
+              void open(target);
+            }}
+          >
+            <label>
+              打开或新建路径
+              <input
+                name="path"
+                defaultValue="private/"
+                placeholder="private/笔记/新文章.md"
+                required
+                maxLength={255}
+              />
+            </label>
+            <button className="button-secondary" disabled={busy}>
+              打开路径
+            </button>
+          </form>
+        </details>
         <form
           className="open-path private-search"
           onSubmit={(event) => {
@@ -529,7 +699,9 @@ export function Editor({
                     busy ||
                     unreadable ||
                     !path ||
-                    (source === file.source && path === file.path)
+                    (!file.expectedAbsence &&
+                      source === file.source &&
+                      path === file.path)
                   }
                   onClick={() => void save(path)}
                 >
@@ -656,7 +828,7 @@ export function Editor({
           <div className="empty-state">
             <span aria-hidden>▤</span>
             <h2>从一篇记录开始。</h2>
-            <p>在左侧打开文件，或输入一个新路径。</p>
+            <p>在左侧选择目录、新建笔记，或打开已有文件。</p>
           </div>
         )}
       </section>
