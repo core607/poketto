@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.auth.RequestCaller;
 import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
@@ -45,6 +46,9 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
 
     /** An image grant is 32 random bytes as base64url, so anything this long is treated as one. */
     private static final Pattern OPAQUE_SEGMENT = Pattern.compile("[A-Za-z0-9_-]{24,}");
+
+    /** A public site slug follows this segment and names the space, so it is kept as authored. */
+    private static final String SLUG_PARENT = "spaces";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -135,7 +139,12 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
      * carries its authorization in the path. That token is a bearer capability for the exact
      * image until it expires, so a recorded route containing one hands anyone who can read the
      * log the image it names. A shape rule also covers a route added later without this filter
-     * being revisited; a readable slug is short and survives.
+     * being revisited.
+     *
+     * <p>What is kept is named explicitly instead, because failing to keep a readable segment
+     * costs legibility while failing to collapse an opaque one leaks a capability. A public site
+     * slug is the one such segment today: it is authored, already public, and distinguishes one
+     * space from another in a record.
      */
     private static String route(HttpServletRequest request) {
         String path = request.getRequestURI();
@@ -158,8 +167,10 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
 
     private static String withoutOpaqueSegments(String path) {
         String[] segments = path.split("/", -1);
-        for (int index = 0; index < segments.length; index++) {
-            segments[index] = placeholder(segments[index]);
+        for (int index = segments.length - 1; index > 0; index--) {
+            if (!SLUG_PARENT.equals(segments[index - 1])) {
+                segments[index] = placeholder(segments[index]);
+            }
         }
         return String.join("/", segments);
     }
@@ -169,7 +180,7 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
             return ":id";
         }
         if (OPAQUE_SEGMENT.matcher(segment).matches()) {
-            return ":token";
+            return ":opaque";
         }
         return segment;
     }
@@ -188,11 +199,12 @@ final class RequestDiagnosticsFilter extends OncePerRequestFilter {
 
     /**
      * Names the authenticated kind and subject, never an account name or a credential. The
-     * security chain has already cleared its context by the time a record is written, so the
-     * identity comes from {@link RequestCallerFilter} through the request.
+     * security chain has already cleared its context by the time a record is written, and a
+     * request refused during authorization never reaches the end of that chain, so the identity is
+     * remembered on the request when it is recognised.
      */
     private static String caller(HttpServletRequest request) {
-        return request.getAttribute(RequestCallerFilter.CALLER) instanceof String caller ? caller : "anonymous";
+        return RequestCaller.of(request);
     }
 
     /** Container probes run continuously and report nothing a reader would act on. */

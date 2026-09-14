@@ -3,6 +3,7 @@ package io.github.core607.poketto.auth.internal;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.RequestCaller;
 import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -52,6 +53,7 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                 }
                 AuthPrincipal principal =
                         auth.getObject().authenticateApiKey(headers.getFirst().substring(7));
+                RequestCaller.remember(request, principal);
                 auth.getObject().workspaceForKey(principal);
                 SecurityContextHolder.getContext()
                         .setAuthentication(new UsernamePasswordAuthenticationToken(
@@ -59,6 +61,9 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
             } else {
                 String path = AuthHttpErrors.path(request);
                 var authentication = SecurityContextHolder.getContext().getAuthentication();
+                if (authentication != null && authentication.getPrincipal() instanceof AuthPrincipal recognised) {
+                    RequestCaller.remember(request, recognised);
+                }
                 if (path.startsWith("/api/admin/")) {
                     if (authentication == null
                             || !authentication.isAuthenticated()

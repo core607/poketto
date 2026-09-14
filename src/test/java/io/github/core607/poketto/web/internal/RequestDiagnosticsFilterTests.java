@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.core607.poketto.auth.RequestCaller;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.FilterChain;
 import java.util.UUID;
@@ -37,7 +38,9 @@ class RequestDiagnosticsFilterTests {
     @Test
     void anAuthenticatedCallerIsNamedFromTheRequestRatherThanClearedContext(CapturedOutput output) throws Exception {
         var request = new MockHttpServletRequest("GET", "/api/public/documents");
-        request.setAttribute(RequestCallerFilter.CALLER, "ACCOUNT:" + UUID.randomUUID());
+        // A principal cannot be constructed outside its own package, so the attribute the auth
+        // module writes is set directly; RequestCallerTests covers the write side.
+        request.setAttribute(RequestCaller.class.getName(), "ACCOUNT:" + UUID.randomUUID());
         var response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());
@@ -55,7 +58,7 @@ class RequestDiagnosticsFilterTests {
         filter.doFilter(request, response, new MockFilterChain());
 
         assertThat(output).doesNotContain(token);
-        assertThat(output).contains("/api/public/assets/:token");
+        assertThat(output).contains("/api/public/assets/:opaque");
     }
 
     @Test
@@ -68,17 +71,18 @@ class RequestDiagnosticsFilterTests {
         filter.doFilter(request, response, new MockFilterChain());
 
         assertThat(output).doesNotContain(token);
-        assertThat(output).contains("/api/admin/assets/images/:token");
+        assertThat(output).contains("/api/admin/assets/images/:opaque");
     }
 
     @Test
-    void aReadableSlugSurvivesTheRoute(CapturedOutput output) throws Exception {
-        var request = new MockHttpServletRequest("GET", "/api/public/spaces/my-personal-notes/documents");
+    void aLongPublicSlugSurvivesTheRoute(CapturedOutput output) throws Exception {
+        var request = new MockHttpServletRequest("GET", "/api/public/spaces/personal-knowledge-service/documents");
         var response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());
 
-        assertThat(output).contains("/api/public/spaces/my-personal-notes/documents");
+        assertThat(output).contains("/api/public/spaces/personal-knowledge-service/documents");
+        assertThat(output).doesNotContain(":opaque");
     }
 
     @Test
