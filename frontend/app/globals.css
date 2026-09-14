@@ -293,6 +293,12 @@ img {
   font-size: 25px;
   line-height: 1.5;
 }
+.article-card mark {
+  color: inherit;
+  background: #e8edc9;
+  border-radius: 2px;
+  padding: 0 1px;
+}
 .article-card p {
   color: #72746c;
   line-height: 1.95;
