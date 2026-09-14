@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
@@ -322,7 +323,7 @@ public final class AuthService {
 
     public IssuedToken createInvitation(AuthPrincipal actor, WorkspaceId workspace, Set<Capability> requested) {
         Set<Capability> permissions = contentPermissions(requested);
-        return transactions.execute(status -> {
+        IssuedToken issued = transactions.execute(status -> {
             lockWorkspace(workspace);
             requireHumanOwner(actor, workspace);
             UUID id = UUID.randomUUID();
@@ -341,9 +342,10 @@ public final class AuthService {
                                 "text", permissions.stream().map(Enum::name).toArray(String[]::new)));
                 return statement;
             });
-            AuditRecords.granted("invitation.issued", actor, workspace, id, permissions);
             return new IssuedToken(id, token);
         });
+        AuditRecords.granted("invitation.issued", actor, workspace, issued.id(), permissions);
+        return issued;
     }
 
     public void revokeInvitation(AuthPrincipal actor, WorkspaceId workspace, UUID invitationId) {
@@ -356,6 +358,7 @@ public final class AuthService {
                     workspace.value(),
                     invitationId);
         });
+        AuditRecords.changed("invitation.revoked", actor, workspace, invitationId);
     }
 
     public Page<WorkspaceInvitationInfo> listInvitations(
@@ -386,12 +389,14 @@ public final class AuthService {
         if (account == null || account.kind() != AuthPrincipal.Kind.ACCOUNT) {
             throw failure(DENIED);
         }
-        return transactions.execute(status -> {
+        WorkspaceId joined = transactions.execute(status -> {
             Invitation invitation = lockInvitation(token);
             requireUsableInvitation(invitation, account.accountId());
             join(invitation, account.accountId());
             return invitation.workspace();
         });
+        AuditRecords.changed("invitation.redeemed", account, joined, account.accountId());
+        return joined;
     }
 
     public Page<MemberInfo> listMembers(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
@@ -469,7 +474,12 @@ public final class AuthService {
             });
             revokeMembershipKeys(workspace, account, before, role, active, permissions);
         });
-        AuditRecords.granted("member.permissions.changed", actor, workspace, account, permissions);
+        if (active) {
+            AuditRecords.granted(
+                    "member.access.granted", actor, workspace, account, memberCapabilities(role, permissions));
+        } else {
+            AuditRecords.changed("member.access.revoked", actor, workspace, account);
+        }
     }
 
     private void revokeMembershipKeys(
@@ -533,7 +543,7 @@ public final class AuthService {
     private IssuedToken issueApiKey(
             AuthPrincipal actor, WorkspaceId workspace, UUID holder, Set<Capability> requested, boolean oauth) {
         Set<Capability> capabilities = requested == null ? DEFAULT_AI_CAPABILITIES : Set.copyOf(requested);
-        return transactions.execute(status -> {
+        IssuedToken issued = transactions.execute(status -> {
             lockWorkspace(workspace);
             WorkspaceAccess access = oauth ? authorize(actor, workspace) : requireKeyManager(actor, workspace);
             if (actor.kind() == AuthPrincipal.Kind.API_KEY
@@ -568,9 +578,10 @@ public final class AuthService {
                                 "text", capabilities.stream().map(Enum::name).toArray(String[]::new)));
                 return statement;
             });
-            AuditRecords.granted("key.issued", actor, workspace, id, capabilities);
             return new IssuedToken(id, token);
         });
+        AuditRecords.granted("key.issued", actor, workspace, issued.id(), capabilities);
+        return issued;
     }
 
     public Page<ApiKeyInfo> listApiKeys(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
@@ -596,6 +607,7 @@ public final class AuthService {
     }
 
     public void revokeApiKey(AuthPrincipal actor, WorkspaceId workspace, UUID keyId) {
+        var revoked = new AtomicBoolean();
         transactions.executeWithoutResult(status -> {
             lockWorkspace(workspace);
             requireKeyManager(actor, workspace);
@@ -606,10 +618,13 @@ public final class AuthService {
                     workspace.value(),
                     keyId);
             if (!keys.isEmpty()) {
-                AuditRecords.changed("key.revoked", actor, workspace, keyId);
+                revoked.set(true);
                 publishRevocation(new AuthRevocation(workspace, Set.of(), Set.copyOf(keys)));
             }
         });
+        if (revoked.get()) {
+            AuditRecords.changed("key.revoked", actor, workspace, keyId);
+        }
     }
 
     /** Caller holds the workspace row lock after validating an OAuth grant or its replay proof. */

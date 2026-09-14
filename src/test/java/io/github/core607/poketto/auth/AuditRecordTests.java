@@ -26,6 +26,14 @@ class AuditRecordTests {
     }
 
     @Test
+    void aWithdrawalIsNotRecordedAsAGrant(CapturedOutput output) {
+        AuditRecords.changed("member.access.revoked", null, WorkspaceId.random(), UUID.randomUUID());
+
+        assertThat(output).contains("member.access.revoked");
+        assertThat(output).doesNotContain("granting");
+    }
+
+    @Test
     void aPermissionChangeNamesTheActorSubjectAndResultingCapabilities(CapturedOutput output) {
         WorkspaceId workspace = WorkspaceId.random();
         UUID subject = UUID.randomUUID();
