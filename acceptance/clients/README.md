@@ -62,6 +62,16 @@ reads credentials only from the private fixture receipt and creates the controll
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
 
+The [non-retained HTTP run](evidence/2026-09-14-ephemeral-lifecycle.json) passes
+both lifecycle scenarios and controller cleanup. With retained execution disabled,
+`ephemeral-http.py --fixture FIXTURE_ROOT`
+uses one persistent MCP transport to verify that a timeout preserves text, binary
+bytes, partial work and the pinned commit. It checks explicit generation-free
+disposal, repeated disposal, another credential's refusal and fresh admission
+without changing remote Git. It reads the private fixture receipt and creates
+the controller's stop marker on exit. Require `ephemeralHttp: PASS` and controller
+`cleanup: PASS`; this is deterministic HTTP evidence, not a model-driven run.
+
 The [focused artifact acceptance](evidence/2026-09-10-artifacts.json) verifies both
 clients receive actual PNG image content, read the exact end of a long text
 artifact, receive four exact binary bytes and reject a removed handle. Raw image

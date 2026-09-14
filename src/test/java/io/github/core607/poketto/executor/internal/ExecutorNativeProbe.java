@@ -146,6 +146,8 @@ public final class ExecutorNativeProbe {
             probe.mediaFetch();
         } else if (args[1].equals("peer-only")) {
             probe.rejectNonRootPeer();
+        } else if (args[1].equals("ephemeral-lifecycle")) {
+            probe.ephemeralLifecycle();
         } else {
             throw new IllegalArgumentException();
         }
@@ -222,11 +224,20 @@ public final class ExecutorNativeProbe {
         passed("retained-public-recovery-keeps-scope-and-rejects-withdrawal-after-worker-restart");
         passed("retained-discard-fences-writers-preserves-remote-writes-and-allows-withdrawn-owner-cleanup");
         passed("retained-checkpoint-busy-waits-without-replaying-the-command-or-remote-write");
-        passed("retained-command-timeout-exposes-recovery-identity-and-preserves-acknowledged-work");
+        passed("retained-command-timeout-checkpoints-partial-work-without-closing-the-copy");
+    }
+
+    private void ephemeralLifecycle() throws Exception {
+        try (var executor = adapter(path("socket"))) {
+            new EphemeralLifecycleNativeProbe(executor, principal, workspace).run();
+        }
+        control("assert-no-processes");
+        passed("timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy");
     }
 
     private void run() throws Exception {
         rejectNonRootPeer();
+        ephemeralLifecycle();
         retainedCommands();
         copyIdentityGuard();
         publicProjection();

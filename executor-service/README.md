@@ -48,7 +48,9 @@ A signed `RESTORE` request uses a fresh lease ID and carries `checkpointId`, `sh
 
 Setting `poketto.executor.retention.enabled=true` requires absolute `poketto.executor.retention.root` and `poketto.executor.retention.baseline-root` directories for metadata and original archives. The roots must use persistent host storage, have safe existing parents, remain private to the application account and neither contain the other. This mode requires worker checkpoint protocol 1; an unavailable capability never falls back to ephemeral execution. Retention remains disabled by default pending complete failure, storage and client acceptance. Private-copy admission captures its original archive and binds it into metadata. Original file baselines use that archive under the admitted writer; advanced versions, including non-text presence, travel with the host checkpoint.
 
-The `repo_discard` MCP operation addresses an owner's exact retained copy and generation without opening or restoring it. Current execution permission is required; private-read or publication withdrawal does not prevent cleanup. The application holds the copy writer, confirms the latest lease's containment, retires cached sessions and durably deletes metadata before attempting checkpoint removal. A lost close reply keeps metadata and the writer until independent containment confirmation. Original archives and checkpoints whose immediate cleanup fails are collected later. Expired records can be discarded, stale generations cannot, and repeating a completed request returns `ABSENT`. An unconfirmed deletion may already have removed metadata. No discard reverses a remote Git write; see the [continuity contract](../notes/proposed/2026-09-12-executor-work-continuity.md) for the recovery boundary.
+The `repo_discard` MCP operation requires an exact copy ID and current execution permission. A non-retained copy omits generation. The host checks its credential subject and workspace, refuses an active command and confirms containment before removing the binding. Lost CLOSE acknowledgement retains capacity until independent confirmation; successful disposal permits a fresh copy in the same transport and repeated disposal returns `ABSENT`.
+
+A retained copy additionally requires its current generation, without opening or restoring the copy. Private-read or publication withdrawal does not prevent cleanup. The application holds the copy writer, confirms the latest lease's containment, retires cached sessions and durably deletes metadata before attempting checkpoint removal. A lost close reply keeps metadata and the writer until independent containment confirmation. Original archives and checkpoints whose immediate cleanup fails are collected later. Expired records can be discarded, stale generations cannot, and repeating a completed request returns `ABSENT`. An unconfirmed deletion may already have removed metadata. No discard reverses a remote Git write; see the [continuity contract](../notes/proposed/2026-09-12-executor-work-continuity.md) for the recovery boundary.
 
 Application retention bounds are `max-copies` (32), `max-record-bytes` (100663296), `max-total-bytes` (536870912), `disk-reserve-bytes` (1073741824) and `seconds` (86400), all under `poketto.executor.retention`. These bound host metadata separately from worker checkpoints and original-baseline archives. A copy's expiry is fixed at admission. Deployment must size all three stores together; these defaults are not a promise that all copies can reach their individual byte limits simultaneously.
 
@@ -83,7 +85,7 @@ while `stdoutTruncated` and `stderrTruncated` describe the previews. An output
 limit preserves the lease and local files after process cleanup. Artifact quota
 or storage failures return explicit per-stream `artifactErrors`. UTF-8 decoding
 replaces malformed preview bytes; use binary artifact pages for exact bytes.
-The complete framed response has a separate 1 MiB bound. Timeout, resource-limit,
+The complete framed response has a separate 1 MiB bound. Resource-limit,
 cancelled and revoked sessions close under the existing lifecycle policy: they
 cannot retain or deliver artifact handles. Their shortened output reports
 `ARTIFACT_UNAVAILABLE`; the accompanying `terminationReason` identifies the cause.
@@ -330,7 +332,11 @@ publishes content, or creates an independently accessible URL.
 
 `terminationReason` is `normal`, `timeout`, `resource_limit`, `output_limit`,
 `cancelled`, `session_closed`, `client_shutdown`, `lease_expired`, or `revoked`.
-`normal` may have a nonzero exit code. Failed OPEN initialization is an operation
+`normal` may have a nonzero exit code. An execution timeout keeps the same copy
+after the complete command control group is confirmed empty. Prior files and
+partial command work remain local; the next command receives a fresh `/tmp`.
+Failed containment still closes the copy. Resource exhaustion and lifecycle
+cancellation retain their existing closure behavior. Failed OPEN initialization is an operation
 error, never a ready session. A failed launcher or SRT invocation does not run a
 replacement command.
 

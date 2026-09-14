@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-14",
+  "baseCommit": "21cc22055092a3b5def26830ea27a8b30583f6e4",
+  "scenario": "non-retained timeout and explicit disposal",
+  "retentionEnabled": false,
+  "modelDriven": false,
+  "runtimeManifestSha256": "0bbbe03490304b85df898381c7d7a60d25c53652aef629584a82ae26b8cfea2b",
+  "workerSha256": "58027eeb71e5e7b45c56765387f2ce00554e4bc40ce9a97b6209adae2db0ff1e",
+  "clientSha256": "92054f730b8f04d1d0838e64cf59ec7bc97f02603950dd5576068f7fa8898232",
+  "results": [
+    {
+      "test": "ephemeral-http-timeout-preserves-text-binary-partial-work-and-baseline",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "ephemeral-http-owner-bound-idempotent-discard-allows-new-without-changing-remote-git",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "ephemeralHttp": "PASS",
+      "tests": 2,
+      "source": "real-auth-PG-HTTP-MCP-native-SRT",
+      "modelDriven": false
+    }
+  ],
+  "cleanup": "PASS",
+  "limitations": [
+    "Deterministic authenticated HTTP client; not a model-driven chat client.",
+    "Disposable PostgreSQL and native SRT fixture; not the deployed HTTPS installation."
+  ]
+}

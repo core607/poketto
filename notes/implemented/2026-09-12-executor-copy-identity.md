@@ -24,6 +24,11 @@ Worker transport loss may leave an earlier operation indeterminate. Such failure
 
 A stopped copy is reconciled before identity refusal, even when the session pool is not full. A valid HELLO from a different worker boot proves that exclusive startup cleanup ended old worker units; only leases observed before that handshake may be retired. The rejected old-ID request can then report `newCopyAllowed: true` after its previous command exits. Missing or invalid HELLO and same-boot unconfirmed CLOSE responses keep admission closed. Handshake checks share the bounded operation admission; they never execute the rejected command or recover its files.
 
+[Command timeout and explicit disposal](2026-09-14-ephemeral-copy-lifecycle.md)
+changes timeout cleanup to preserve the live copy after verified command
+containment and permits generation-free disposal of non-retained copies. The
+identity guard and the remaining expiry and restart limits stay in force.
+
 ## Observability
 
 The configured Micrometer registry receives active session and operation gauges, created/released session counters, and admission-rejection counters with fixed reasons `copy_mismatch`, `session_limit`, `operation_limit` and `session_busy`. Session creation counts admission attempts, including initialization failures; release counts confirmed capacity release, including worker restart reconciliation. An unconfirmed close keeps its capacity charged.

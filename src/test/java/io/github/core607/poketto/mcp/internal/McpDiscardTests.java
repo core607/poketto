@@ -55,13 +55,13 @@ class McpDiscardTests {
     }
 
     @Test
-    void destructiveToolRequiresAnExactCopyAndSafeGeneration() {
+    void destructiveToolRequiresAnExactCopyAndValidOptionalGeneration() {
         var schema = json.valueToTree(tool.tool().inputSchema());
-        assertThat(schema.path("required").toString()).contains("expectedCopyId", "expectedGeneration");
+        assertThat(schema.path("required").toString()).isEqualTo("[\"expectedCopyId\"]");
         assertThat(tool.tool().annotations().destructiveHint()).isTrue();
         String id = UUID.randomUUID().toString();
         for (var input : List.of(
-                Map.<String, Object>of("expectedCopyId", id),
+                Map.<String, Object>of("expectedCopyId", "new"),
                 Map.<String, Object>of("expectedCopyId", "new", "expectedGeneration", 1),
                 Map.<String, Object>of("expectedCopyId", id, "expectedGeneration", 1.5),
                 Map.<String, Object>of("expectedCopyId", id, "expectedGeneration", 0),
@@ -76,13 +76,24 @@ class McpDiscardTests {
     @Test
     void forwardsOnlyTheServerIdentityAndExactDeletionTarget() {
         String id = UUID.randomUUID().toString();
-        var request = new RepositoryExecutor.DiscardRequest(id, 3);
+        var request = new RepositoryExecutor.DiscardRequest(id, 3L);
         when(executor.discard(eq(principal), eq(workspace), eq(request), any()))
                 .thenReturn(new RepositoryExecutor.DiscardResult(id, RepositoryExecutor.DiscardStatus.DISCARDED));
         var result = call(Map.of("expectedCopyId", id, "expectedGeneration", 3));
         assertThat(result.isError()).isFalse();
         assertThat(body(result).path("status").asString()).isEqualTo("DISCARDED");
         assertThat(body(result).path("copyId").asString()).isEqualTo(id);
+    }
+
+    @Test
+    void forwardsNonRetainedDiscardWithoutInventingAGeneration() {
+        String id = UUID.randomUUID().toString();
+        var request = new RepositoryExecutor.DiscardRequest(id, null);
+        when(executor.discard(eq(principal), eq(workspace), eq(request), any()))
+                .thenReturn(new RepositoryExecutor.DiscardResult(id, RepositoryExecutor.DiscardStatus.DISCARDED));
+        var result = call(Map.of("expectedCopyId", id));
+        assertThat(result.isError()).isFalse();
+        assertThat(body(result).path("status").asString()).isEqualTo("DISCARDED");
     }
 
     @Test
