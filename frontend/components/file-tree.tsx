@@ -9,7 +9,6 @@ type Props = {
   commit: string | null;
   selected?: string;
   selectedFolder?: string;
-  filter: string;
   busy: boolean;
   onOpen: (path: string) => void;
   onSelectFolder: (path: string) => void;
@@ -110,70 +109,61 @@ function DirectoryBranch({
   }, [opened]);
   const content = (
     <>
-      {page?.entries
-        .filter(
-          (entry) =>
-            entry.kind === "DIRECTORY" || entry.path.includes(props.filter),
-        )
-        .map((entry) =>
-          entry.kind === "DIRECTORY" ? (
-            <DirectoryBranch
-              key={entry.path}
-              {...props}
-              commit={page.commit}
-              path={entry.path}
-            />
-          ) : (
-            <div className="tree-file-row" key={entry.path}>
-              <button
-                type="button"
-                className={props.selected === entry.path ? "selected" : ""}
-                title={entry.path}
-                disabled={props.busy || entry.kind !== "FILE"}
-                onClick={() => props.onOpen(entry.path)}
-              >
-                <span aria-hidden>{entry.kind === "FILE" ? "▤" : "↗"}</span>
-                <span>{entry.path.split("/").at(-1)}</span>
-              </button>
-              {entry.kind === "FILE" &&
-                props.onMove &&
-                movablePath(entry.path) &&
-                page.commit && (
-                  <button
-                    type="button"
-                    className="tree-move"
-                    aria-label={`移动 ${entry.path}`}
-                    title="移动"
-                    disabled={props.busy}
-                    onClick={(event) =>
-                      props.onMove!(
-                        entry.path,
-                        page.commit!,
-                        event.currentTarget,
-                      )
-                    }
-                  >
-                    移动
-                  </button>
-                )}
-              {entry.kind === "FILE" &&
-                props.onExport &&
-                exportablePath(entry.path) && (
-                  <button
-                    type="button"
-                    className="tree-move"
-                    aria-label={`导出 ${entry.path}`}
-                    disabled={props.busy}
-                    onClick={(event) =>
-                      props.onExport!(entry.path, event.currentTarget)
-                    }
-                  >
-                    导出
-                  </button>
-                )}
-            </div>
-          ),
-        )}
+      {page?.entries.map((entry) =>
+        entry.kind === "DIRECTORY" ? (
+          <DirectoryBranch
+            key={entry.path}
+            {...props}
+            commit={page.commit}
+            path={entry.path}
+          />
+        ) : (
+          <div className="tree-file-row" key={entry.path}>
+            <button
+              type="button"
+              className={props.selected === entry.path ? "selected" : ""}
+              title={entry.path}
+              disabled={props.busy || entry.kind !== "FILE"}
+              onClick={() => props.onOpen(entry.path)}
+            >
+              <span aria-hidden>{entry.kind === "FILE" ? "▤" : "↗"}</span>
+              <span>{entry.path.split("/").at(-1)}</span>
+            </button>
+            {entry.kind === "FILE" &&
+              props.onMove &&
+              movablePath(entry.path) &&
+              page.commit && (
+                <button
+                  type="button"
+                  className="tree-move"
+                  aria-label={`移动 ${entry.path}`}
+                  title="移动"
+                  disabled={props.busy}
+                  onClick={(event) =>
+                    props.onMove!(entry.path, page.commit!, event.currentTarget)
+                  }
+                >
+                  移动
+                </button>
+              )}
+            {entry.kind === "FILE" &&
+              props.onExport &&
+              exportablePath(entry.path) && (
+                <button
+                  type="button"
+                  className="tree-move"
+                  aria-label={`导出 ${entry.path}`}
+                  disabled={props.busy}
+                  onClick={(event) =>
+                    props.onExport!(entry.path, event.currentTarget)
+                  }
+                >
+                  导出
+                </button>
+              )}
+          </div>
+        ),
+      )}
       {loading && (
         <p className="muted" role="status">
           正在读取目录…

@@ -15,6 +15,8 @@ import { message, type Identity } from "./admin";
 import { AssetPicker } from "./asset-picker";
 import { Gallery } from "./gallery";
 import { FileTree } from "./file-tree";
+import { FilenameSearch } from "./filename-search";
+import { SearchHighlight } from "./search-highlight";
 import { FolderPicker } from "./folder-picker";
 import { ExportDialog } from "./export-dialog";
 import { DiagnosticMessage } from "./diagnostic";
@@ -53,10 +55,10 @@ export function Editor({
   const [creation, setCreation] = useState<"note" | "folder" | null>(null);
   const creationTrigger = useRef<HTMLButtonElement | null>(null);
   const alive = useRef(false);
-  const [filter, setFilter] = useState("");
-  const [search, setSearch] = useState<
-    { path: string; title: string; snippet: string }[] | null
-  >(null);
+  const [search, setSearch] = useState<{
+    query: string;
+    items: { path: string; title: string; snippet: string }[];
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [exportSelection, setExportSelection] = useState<{
     source: string;
@@ -224,7 +226,7 @@ export function Editor({
         "/api/admin/repository/search?" +
           new URLSearchParams({ query, limit: "20" }),
       );
-      setSearch(result.items);
+      setSearch({ query, items: result.items });
     } catch (error) {
       setError(message(error));
     } finally {
@@ -528,20 +530,15 @@ export function Editor({
             </form>
           )}
         </section>
-        <label className="sr-only" htmlFor="file-filter">
-          筛选文件
-        </label>
-        <input
-          id="file-filter"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="筛选已展开的文件…"
+        <FilenameSearch
+          busy={busy}
+          commit={tree?.commit ?? null}
+          onOpen={(path) => void open(path)}
         />
         <nav className="file-tree" aria-label="仓库文件">
           {tree && (
             <FileTree
               commit={tree.commit}
-              filter={filter}
               selected={file?.path}
               selectedFolder={folder}
               onSelectFolder={(selectedFolder) =>
@@ -613,17 +610,23 @@ export function Editor({
                 收起
               </button>
             </div>
-            {search.map((item) => (
+            {search.items.map((item) => (
               <button
                 key={item.path}
                 disabled={busy}
                 onClick={() => void open(item.path)}
               >
-                <strong>{item.title}</strong>
-                <small>{item.snippet}</small>
+                <strong>
+                  <SearchHighlight text={item.title} query={search.query} />
+                </strong>
+                <small>
+                  <SearchHighlight text={item.snippet} query={search.query} />
+                </small>
               </button>
             ))}
-            {!search.length && <p className="muted">没有找到匹配内容。</p>}
+            {!search.items.length && (
+              <p className="muted">没有找到匹配内容。</p>
+            )}
           </section>
         )}
         {tree?.diagnostics.length ? (

@@ -63,6 +63,10 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 移动选择器中的私有／公开目录按钮在切换根目录时保留分类路径；选定目标后，提交移动才会写入仓库。移动目录包含其中的索引媒体，单独移动文档不会带走共享依赖。
 
+“搜索文件名”会搜索所有获准访问的普通 Git 文件和索引媒体路径，包括尚未展开的文件夹。查询按仓库相对路径作字面匹配，每页显示最多 50 项。翻页固定使用首次返回的 commit，重新搜索会读取当前 main。仅公开读取的成员只能找到当前符合发布策略的路径，网站开关关闭时仍可使用。正文搜索保留为独立表单，两种搜索都会高亮字面命中；搜索本身保留草稿，打开其他结果前会确认是否放弃修改。二进制文件继续遵循原有的文本读取限制。
+
+文件名接口为 `/api/admin/workspaces/{workspaceId}/repository/filenames`，参数是 `query`、可选 `commit`、`offset` 和 `limit`。查询长度为 1–200 个字符，每页允许 1–200 项，offset 为 0–100,000。后续页必须携带首页返回的 commit。单次扫描最多处理 100,000 个 Git 树与索引媒体条目，包括经过的目录；超限时明确失败，不返回部分计数。
+
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。关闭网站或替换公开快照也会使已签发的图片地址失效；刷新页面可取得当前地址。私有预览重新验证当前身份。[网站交付边界](../notes/implemented/2026-09-14-workspace-public-delivery.md)记录这次授权变化，[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)继续规定存储保证与限制。
 
 人类 owner 可在所选空间的“网站发布”面板，或通过 `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication` 读取和修改网站开关。修改须携带会话 CSRF token，并明确提交 `{ "enabled": true }` 或 `{ "enabled": false }`；省略字段会报错。面板会要求确认，回包不确定时须重新读取状态后再操作。关闭网站不影响成员读取获准访问的仓库文件。

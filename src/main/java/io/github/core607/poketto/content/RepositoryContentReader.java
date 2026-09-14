@@ -18,6 +18,10 @@ public interface RepositoryContentReader {
     RepositoryDirectoryPage listDirectory(
             WorkspaceId workspaceId, Optional<String> commit, String path, int offset, int limit);
 
+    /** Searches regular Git and indexed-media paths without reading document or original bytes. */
+    RepositoryFilenamePage searchFilenames(
+            WorkspaceId workspace, Optional<String> commit, RepositoryFilenameSearch search);
+
     /** Reads committed text; indexed media reports MANAGED_MEDIA rather than absence or placeholder bytes. */
     RepositoryFile getFile(WorkspaceId workspaceId, Optional<String> commit, String path);
 
@@ -36,6 +40,10 @@ public interface RepositoryContentReader {
     /** Filters private paths before pagination; a continuation must still name current remote main. */
     RepositoryDirectoryPage listPublicDirectory(
             WorkspaceId workspaceId, Optional<String> commit, String path, int offset, int limit);
+
+    /** Publication-eligible current filenames, independent of the anonymous website switch. */
+    RepositoryFilenamePage searchPublicFilenames(
+            WorkspaceId workspace, Optional<String> commit, RepositoryFilenameSearch search);
 
     /** Reads eligible current source only, including expected absence for an eligible new path. */
     RepositoryFile getPublicFile(WorkspaceId workspaceId, Optional<String> commit, String path);

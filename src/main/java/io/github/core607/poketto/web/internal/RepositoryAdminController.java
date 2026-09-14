@@ -5,6 +5,8 @@ import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
+import io.github.core607.poketto.content.RepositoryFilenamePage;
+import io.github.core607.poketto.content.RepositoryFilenameSearch;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
@@ -57,6 +59,20 @@ class RepositoryAdminController {
         var page = reader.listDirectory(actor, workspaces.selected(), Optional.ofNullable(commit), path, offset, limit);
         return new Directory(
                 page.commit().orElse(null), page.path(), page.expectedAbsence(), page.entries(), page.nextOffset());
+    }
+
+    @GetMapping("/filenames")
+    RepositoryFilenamePage filenames(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @RequestParam String query,
+            @RequestParam(required = false) String commit,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "50") int limit) {
+        return reader.searchFilenames(
+                actor,
+                workspaces.selected(),
+                Optional.ofNullable(commit),
+                new RepositoryFilenameSearch(query, offset, limit));
     }
 
     @PostMapping("/move")

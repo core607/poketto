@@ -76,6 +76,21 @@ directory buttons retain the category path while switching roots. Selecting a
 destination does not write until the move is submitted. Moving a directory includes
 its indexed media; moving one document does not move shared dependencies.
 
+**Search filenames** searches all authorized regular Git files and indexed-media
+paths, including unopened folders. It matches the repository-relative path
+literally and shows up to 50 results per page. Paging retains the returned commit;
+starting a new search reads current main. Public-only members see only current
+publication-eligible paths, even when the website is disabled. Body search remains
+a separate form. Both forms highlight literal matches; searching leaves the draft
+intact, and opening a different result asks before discarding edits. Binary files
+retain their existing text-read restrictions.
+
+The filename endpoint is `/api/admin/workspaces/{workspaceId}/repository/filenames`
+with `query`, optional `commit`, `offset` and `limit`. Queries contain 1–200
+characters; page limits are 1–200 and offsets 0–100,000. Continuations require the
+first page's commit. A scan refuses more than 100,000 combined Git tree and indexed
+media entries, including traversed directories; it does not return partial counts.
+
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Disabling website delivery or replacing its public snapshot also invalidates previously issued image URLs; reload the page to obtain current URLs. Private previews recheck the current identity. The [website delivery boundary](../notes/implemented/2026-09-14-workspace-public-delivery.md) records this authorization change; the [foundations record](../notes/implemented/2026-09-05-repository-authoring-foundations.md) retains storage guarantees and bounds.
 
 Human owners manage the website switch from the selected workspace's **Website publication** panel, or `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication`. A write requires the session CSRF token and `{ "enabled": true }` or `{ "enabled": false }`; omission is an error. The panel asks for confirmation and requires a fresh state read after an uncertain response. Website shutdown leaves member access to authorized repository files intact.

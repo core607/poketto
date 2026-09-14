@@ -52,6 +52,18 @@ public final class AuthorizedRepositoryReader {
                         : reader.getPublicFile(workspace, commit, path));
     }
 
+    public RepositoryFilenamePage searchFilenames(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, RepositoryFilenameSearch search) {
+        boolean privateAccess = privateAccess(actor, workspace);
+        return recheck(
+                actor,
+                workspace,
+                privateAccess,
+                privateAccess
+                        ? reader.searchFilenames(workspace, commit, search)
+                        : reader.searchPublicFilenames(workspace, commit, search));
+    }
+
     private boolean privateAccess(AuthPrincipal actor, WorkspaceId workspace) {
         return auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE);
     }
