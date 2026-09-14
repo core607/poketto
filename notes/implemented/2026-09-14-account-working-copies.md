@@ -40,7 +40,7 @@ The native account probes cover byte and inode quotas, aggregate exhaustion, pro
 
 Deployments provide the enforced XFS pool before enabling disk execution and configure application metadata, exports and worker copies on that same pool. Application and worker admission defaults are four active leases; stored-copy count and seven-day expiry are independent. The worker's disk-copy handshake is required, so application and worker installation must be coordinated.
 
-Production connector acceptance and the remaining discovery/search/editor delivery remain in the [multi-user plan](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md). Public-site search, administration filename search and editor public-page state retain their outstanding scope. This subsystem record does not mark that broader delivery complete.
+The [multi-user plan](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) owns final installation acceptance. [Site search](2026-09-14-public-site-search.md), [administration filename search](2026-09-14-administration-filename-search.md) and [editor public-page state](2026-09-14-editor-public-page-state.md) now have their own implementation and real browser evidence. This subsystem record does not mark the broader delivery complete.
 
 ## Alternatives and same-topic audit
 
