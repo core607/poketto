@@ -9,7 +9,7 @@ owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime
 
-The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1` and `diskCopyProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves and ZIP materialization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, `checkpoints.py` and `checkpoint_tree.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
+The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1` and `diskCopyProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves and ZIP materialization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py` and `disk_pool.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
 
 Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
 and the toolchain prepared by [the native spike](../executor-spike/README.md)
@@ -34,7 +34,7 @@ spaces, control characters, or systemd property metacharacters.
 
 ## Account copy storage
 
-The application uses one disk copy per account, content workspace and reading scope. OAuth grants authorize operations; they do not create separate copies. `copyRoot` must be a dedicated root-owned XFS mount with enforced project quotas and total capacity no greater than `poolBytes`. The application refuses workers without disk-copy protocol 1. A checkpoint-only worker cannot serve this application.
+The application uses one disk copy per account, content workspace and reading scope. OAuth grants authorize operations; they do not create separate copies. `copyRoot` must be a dedicated root-owned XFS mount with enforced project quotas and total capacity no greater than `poolBytes`. The application refuses workers without disk-copy protocol 1. The worker requires disk storage; archived-checkpoint transfer and the tmpfs-copy fallback are removed.
 
 The initial storage limits are 4 GiB per copy and 32 GiB for the executor pool. `diskBytes` and `diskInodes` are inherited project hard limits; command memory and temporary storage have separate limits. Place exports, copies, original archives and account metadata on that same bounded filesystem. Provision the mount and application-owned export/metadata directories before starting either service. A preallocated loopback filesystem provides the aggregate bound without remounting an existing host root; [account working copies](../notes/implemented/2026-09-14-account-working-copies.md) records the storage decision and its verification.
 
@@ -293,7 +293,7 @@ require session cleanup. Export authorization failures return `ACCESS_DENIED`.
 repository-relative regular file. `poketto artifact remove ID` releases it early.
 The worker retains at most 16 artifacts and 256 MiB per lease, with a 128 MiB
 per-file bound and a five-minute lifetime. Retained bytes count against the lease
-tmpfs quota. The protected copies are inaccessible to sandbox commands. There is
+disk quota. The protected copies are inaccessible to sandbox commands. There is
 no shared object registry or cross-workspace deduplication; closing or revoking
 the session invalidates handles and cleans up their storage.
 
@@ -358,12 +358,12 @@ python -m unittest discover -s executor-service -v
 ```
 
 The root-only [native probe](native_probe.py) creates synthetic history, a
-temporary account, transient units, and bounded tmpfs mounts. It verifies the
+temporary account, transient units, and an isolated 512 MiB XFS pool with per-copy project quotas. It verifies the
 actual signed socket entry point and cleans units, mounts, and the account in
 `finally`. Its runtime uses a new root-owned directory under `/run` and the
 production `UMask=0077`; this prevents the private `/tmp` write grant from
 concealing a production filesystem-mount error. Use a new disposable root
-directory containing worker.py, resource_pool.py, native_pool.py,
+directory on disk containing worker.py, disk_pool.py, resource_pool.py, native_pool.py,
 launcher.py, bridge.py, cli.py, session_files.py, binary_capture.py, materialize.py, artifacts.py, native_probe.py, and a prepared `tools` directory. Install the
 pinned Python dependencies into `tools/python`; the probe's supervisor uses
 that directory. `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike` creates

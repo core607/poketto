@@ -68,7 +68,7 @@ Build the reproducible runtime with Java 26:
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs,
 and a SHA-256 manifest. Copy that directory, `probe.py`, `rejected_peer.py`, and the corresponding
-worker, launcher, `resource_pool.py`, `native_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py`, `artifacts.py`, `checkpoints.py` and `checkpoint_tree.py` sources to isolated host staging. The probe verifies every
+worker, launcher, `resource_pool.py`, `native_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py`, `artifacts.py` and `disk_pool.py` sources to isolated host staging. The probe verifies every
 manifest entry before running. It never stages operator settings or credentials.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's
@@ -120,8 +120,8 @@ resource slice shared with its transient commands. The separate
 [aggregate pool probe](../executor-service/README.md#verification) checks retained
 tmpfs charges and deployment preflight without replacing this SRT acceptance.
 
-Run the same probe with `--fixture-parent /var/lib` to compare filesystem
-topologies without weakening ownership or sandbox checks. SRT 0.0.75 restores
+The probe uses `/var/lib` and an isolated XFS pool for every scenario.
+Repository copies must not be staged on tmpfs. SRT 0.0.75 restores
 write mounts before read mounts in `pushReadDenyDirMounts`. A read allowance for
 the whole session directory can therefore mount its writable children read-only.
 The worker must allow only its bootstrap directory and initialization bundle as

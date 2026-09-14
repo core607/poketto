@@ -103,12 +103,13 @@ class ResourcePoolTests(unittest.TestCase):
         with patch('sys.argv', ['worker', '--config', 'fixture', '--cleanup']):
             worker.main()
         self.assertEqual(['backend cleanup'], order)
-        with patch('sys.argv', ['worker', '--config', 'fixture']), self.assertRaises(PoolUnavailable):
+        with patch('worker.DiskSystemdBackend', side_effect=backend.side_effect), \
+                patch('sys.argv', ['worker', '--config', 'fixture']), self.assertRaises(PoolUnavailable):
             worker.main()
         self.assertEqual(['backend cleanup', 'backend cleanup', 'pool'], order)
 
     def test_failed_pool_rejects_before_mount_or_execution_records(self):
-        backend = worker.SystemdBackend.__new__(worker.SystemdBackend)
+        backend = worker.DiskSystemdBackend.__new__(worker.DiskSystemdBackend)
         backend.pool = Mock()
         backend.pool.verify.side_effect = PoolUnavailable('unlimited')
         # No root, records or session paths exist: admission must reject before touching them.

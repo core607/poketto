@@ -29,7 +29,6 @@ from session_files import CaptureRejected, CaptureSnapshot, capture_text, captur
 from materialize import IncomingFile, IncomingMove, MaterializationCapacity
 from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
-from checkpoints import CheckpointError, CheckpointStore
 from disk_pool import DiskPool
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
@@ -105,7 +104,7 @@ class Session:
     capture: object = None
     incoming: object = None
     artifacts: object = None
-    restored_from: str = ''
+    attaching: bool = False
     copy_id: str = ''
     scope: str = 'full'
     disk_lock: int = -1
@@ -129,7 +128,7 @@ class Service:
     def hello(self):
         return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
                 'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0,
-                'checkpointProtocol': 1 if self.config.get('checkpointRoot') else 0, 'workerBootId': self.boot,
+                'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
 
@@ -157,7 +156,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'ATTACH', 'DISCARD', 'RESTORE', 'CHECKPOINT', 'CHECKPOINT_ACTIVE', 'CHECKPOINT_REMOVE',
+        if p['operation'] not in ('OPEN', 'ATTACH', 'DISCARD',
                                   'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
                                   'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
                                   'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
@@ -213,10 +212,6 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
-        if op in ('CHECKPOINT', 'CHECKPOINT_REMOVE'):
-            return self.checkpoint_dispatch(p)
-        if op == 'CHECKPOINT_ACTIVE':
-            return self.active_checkpoint_dispatch(p)
         if op in ('MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT'):
             return self.move_dispatch(p)
         if op in ('ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE'):
@@ -241,7 +236,6 @@ class Service:
             state = self.backend.discard(p)
             return {'ok': True, 'leaseId': p['leaseId'], 'copyId': d['copyId'],
                     'commit': d['commit'], 'state': state}
-        metadata = self.restore_metadata(p) if op == 'RESTORE' else None
         with self.lock:
             if op == 'REVOKE':
                 if set(d) != {'keyIds', 'accountIds'} or any(not isinstance(d[k], list) or len(d[k]) > 1000 for k in d):
@@ -261,19 +255,16 @@ class Service:
             if op != 'CLOSE':
                 self.authorized(p)
             s = self.sessions.get(p['leaseId'])
-            if op in ('OPEN', 'ATTACH', 'RESTORE'):
+            if op in ('OPEN', 'ATTACH'):
                 if p['leaseId'] in self.closed_leases:
                     raise Rejected('SESSION_CLOSED')
-                self.validate_open(p, metadata)
+                self.validate_open(p)
                 if s or any(x.identity == self.identity(p) and x.state != 'CLOSED' for x in self.sessions.values()):
                     raise Rejected('SESSION_EXISTS')
                 if sum(x.state != 'CLOSED' for x in self.sessions.values()) >= self.config['maxSessions']:
                     raise Rejected('SESSION_CAPACITY')
                 s = Session(p['leaseId'], self.identity(p), d['commit'], p['expiresAt'])
-                if op != 'RESTORE':
-                    s.copy_id, s.scope = d['copyId'], d['scope']
-                if op == 'RESTORE':
-                    s.restored_from = d['checkpointId']
+                s.copy_id, s.scope = d['copyId'], d['scope']
                 self.sessions[s.id] = s
             else:
                 if op == 'CLOSE' and not s:
@@ -325,9 +316,6 @@ class Service:
                 elif op == 'ATTACH':
                     self.backend.attach(s)
                     result = None
-                elif op == 'RESTORE':
-                    self.backend.restore(s, d)
-                    result = None
                 else:
                     result = self.backend.execute(s, d)
                 with self.lock:
@@ -348,18 +336,8 @@ class Service:
                 self.cancel(s, 'sandbox_failed')
             raise
 
-    def restore_metadata(self, p):
-        self.checkpoint_reference(p['data'], {'commit', 'scope', 'previousLeaseId'})
-        identifier(p['data']['previousLeaseId'])
-        if p['data']['scope'] not in ('full', 'public'):
-            raise Rejected('INVALID_REQUEST')
-        hex_value(p['data']['commit'], 40)
-        with self.lock:
-            self.authorized(p)
-        # Hashing a bounded but potentially large checkpoint must not block other leases' renewals.
-        return self.backend.checkpoint_metadata(p)
 
-    def validate_open(self, p, metadata):
+    def validate_open(self, p):
         data = p['data']
         if p['operation'] == 'OPEN':
             if set(data) != {'copyId', 'scope', 'exportId', 'bundleSha256', 'bundleBytes', 'commit'}:
@@ -379,113 +357,8 @@ class Service:
             hex_value(data['commit'], 40)
             if not self.config.get('copyRoot'):
                 raise Rejected('COPY_UNAVAILABLE', 'NOT_CONFIGURED')
-        else:
-            if p['expiresAt'] <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
-            if metadata['commit'] != data['commit'] or metadata['scope'] != data['scope']:
-                raise Rejected('CHECKPOINT_UNAVAILABLE', 'SCOPE_MISMATCH')
-            previous_ids = {metadata['sourceLeaseId'], data['previousLeaseId']}
-            if p['leaseId'] in previous_ids:
-                raise Rejected('INVALID_REQUEST')
-            if any(s.restored_from == data['checkpointId'] and s.state != 'CLOSED' and s.id not in previous_ids
-                   for s in self.sessions.values()):
-                raise Rejected('SESSION_EXISTS')
-            previous_leases = [self.sessions[value] for value in previous_ids if value in self.sessions]
-            for previous in previous_leases:
-                if previous.identity[:3] != self.identity(p)[:3]:
-                    raise Rejected('SESSION_NOT_FOUND')
-            for previous_id in previous_ids:
-                self.closed_leases[previous_id] = self.clock() + self.config['leaseSeconds'] + 2
-            for previous in previous_leases:
-                # The app retains the latest writer lease, including an interrupted restored writer.
-                # No new writer starts until the old cgroup is confirmed empty and unmounted.
-                self.cancel(previous, 'session_closed')
-                if previous.state != 'CLOSED':
-                    raise Rejected('SESSION_BUSY')
         hex_value(data['commit'], 40)
 
-    def checkpoint_reference(self, data, extra=frozenset()):
-        if not self.config.get('checkpointRoot'):
-            raise Rejected('CHECKPOINT_UNAVAILABLE', 'NOT_CONFIGURED')
-        if set(data) != {'checkpointId', 'sha256', 'bytes'} | extra:
-            raise Rejected('INVALID_REQUEST')
-        identifier(data['checkpointId'])
-        hex_value(data['sha256'], 64)
-        integer(data['bytes'], 1, self.config['maxCheckpointBytes'])
-
-    def active_checkpoint_dispatch(self, p):
-        data = p['data']
-        if not self.config.get('checkpointRoot'):
-            raise Rejected('CHECKPOINT_UNAVAILABLE', 'NOT_CONFIGURED')
-        if set(data) != {'checkpointId', 'expiresAt', 'scope', 'executionId'} or data['scope'] not in ('full', 'public'):
-            raise Rejected('INVALID_REQUEST')
-        identifier(data['checkpointId'])
-        identifier(data['executionId'])
-        integer(data['expiresAt'], 1, 9_007_199_254_740_991)
-        with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
-            if s.state != 'RUNNING' or not s.unit or s.execution_id != data['executionId']:
-                raise Rejected('EXECUTION_MISMATCH')
-            if not s.files_lock.acquire(blocking=False):
-                raise Rejected('SESSION_BUSY')
-        try:
-            result = self.backend.active_checkpoint(s, data)
-            with self.lock:
-                self.authorized(p)
-                if s.cancelled.is_set() or s.deadline <= self.clock():
-                    raise Rejected('LEASE_EXPIRED')
-                if s.execution_id != data['executionId']:
-                    raise Rejected('EXECUTION_MISMATCH')
-                return {**self.response(s), 'checkpoint': result, 'executionId': s.execution_id}
-        finally:
-            s.files_lock.release()
-
-    def checkpoint_dispatch(self, p):
-        data = p['data']
-        if p['operation'] == 'CHECKPOINT_REMOVE':
-            self.checkpoint_reference(data)
-            with self.lock:
-                self.authorized(p)
-            self.backend.discard_checkpoint(p)
-            return {'ok': True, 'removed': True}
-        if not self.config.get('checkpointRoot'):
-            raise Rejected('CHECKPOINT_UNAVAILABLE', 'NOT_CONFIGURED')
-        if set(data) != {'checkpointId', 'expiresAt', 'scope'} or data['scope'] not in ('full', 'public'):
-            raise Rejected('INVALID_REQUEST')
-        identifier(data['checkpointId'])
-        integer(data['expiresAt'], 1, 9_007_199_254_740_991)
-        with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
-            if s.state != 'READY' or not s.operation.acquire(blocking=False):
-                raise Rejected('SESSION_BUSY')
-            s.state = 'CHECKPOINTING'
-        try:
-            result = self.backend.checkpoint(s, data)
-            with self.lock:
-                self.authorized(p)
-                if s.cancelled.is_set() or s.deadline <= self.clock():
-                    raise Rejected('LEASE_EXPIRED')
-                return {**self.response(s), 'state': 'READY', 'checkpoint': result}
-        finally:
-            with self.lock:
-                try:
-                    if s.cancelled.is_set():
-                        self.backend.close(s)
-                        s.state = 'CLOSED'
-                    else:
-                        s.state = 'READY'
-                finally:
-                    s.operation.release()
 
     def artifact_dispatch(self, p):
         op, data = p['operation'], p['data']
@@ -797,13 +670,9 @@ def checked(args, **kwargs):
 
 
 class SystemdBackend:
-    persistent = False
-
     def __init__(self, config):
         self.c = config
         self.pool = None
-        self.checkpoints = CheckpointStore(config['checkpointRoot'], config) if config.get('checkpointRoot') else None
-        self.next_checkpoint_collection = 0
         self.root = Path(config['runtimeRoot'])
         self.sessions = self.root / 'sessions'
         self.records = self.root / 'records'
@@ -829,15 +698,6 @@ class SystemdBackend:
 
     def mount_path(self, s):
         return self.sessions / identifier(s.id)
-
-    def prepare(self, s):
-        self.pool.verify()
-        target = self.mount_path(s)
-        target.mkdir(mode=0o750)
-        checked(['mount', '-t', 'tmpfs', '-o',
-                 f"size={self.c['diskBytes']},nr_inodes={self.c['diskInodes']},mode=0750,nosuid,nodev",
-                 'tmpfs', str(target)])
-        return self.prepare_files(s, target)
 
     def prepare_files(self, s, target):
         os.chown(target, 0, self.user.pw_gid)
@@ -906,66 +766,7 @@ class SystemdBackend:
             raise Rejected('INITIALIZATION_FAILED')
         # This immutable supervisor-owned export survives independently of work/repository/.git.
         # It is not granted to execute-mode sandboxes.
-        if self.checkpoints is None and not self.persistent:
-            (target / 'snapshot.bundle').unlink()
 
-    def collect_checkpoints(self):
-        if self.checkpoints is None or time.monotonic() < self.next_checkpoint_collection:
-            return
-        self.next_checkpoint_collection = time.monotonic() + 60
-        try:
-            self.checkpoints.collect_expired()
-        except CheckpointError as error:
-            if error.reason != 'BUSY':
-                logging.getLogger(__name__).warning('Checkpoint collection refused: %s', error.reason)
-        except OSError:
-            logging.getLogger(__name__).warning('Checkpoint collection failed', exc_info=True)
-
-    def checkpoint(self, s, data):
-        if s.unit:
-            raise Rejected('SESSION_BUSY')
-        return self.retain_checkpoint(s, data)
-
-    def active_checkpoint(self, s, data):
-        try:
-            with self.frozen(s):
-                return self.retain_checkpoint(s, {key: value for key, value in data.items() if key != 'executionId'})
-        except CaptureRejected as error:
-            raise Rejected('CHECKPOINT_UNAVAILABLE', 'UNAVAILABLE') from error
-
-    def retain_checkpoint(self, s, data):
-        metadata = {'format': 1, **dict(zip(IDENTITY[:3], s.identity[:3])),
-                    'sourceLeaseId': s.id, 'commit': s.commit, **data}
-        return self.checkpoint_call(lambda: self.checkpoints.capture(self.mount_path(s), metadata, s.cancelled.is_set))
-
-    def checkpoint_metadata(self, p):
-        return self.checkpoint_call(lambda: self.checkpoints.inspect(self.identity_owner(p), p['data']))
-
-    def discard_checkpoint(self, p):
-        self.checkpoint_call(lambda: self.checkpoints.discard(self.identity_owner(p), p['data']))
-
-    @staticmethod
-    def identity_owner(p):
-        return tuple(p[key] for key in IDENTITY[:3])
-
-    @staticmethod
-    def checkpoint_call(action):
-        try:
-            return action()
-        except CheckpointError as error:
-            raise Rejected('CHECKPOINT_UNAVAILABLE', error.reason) from error
-        except OSError as error:
-            raise Rejected('CHECKPOINT_UNAVAILABLE', 'UNAVAILABLE') from error
-
-    def restore(self, s, data):
-        target = self.prepare(s)
-        staging = target / '.restore'
-        staging.mkdir(mode=0o700)
-        self.checkpoint_call(lambda: self.checkpoints.restore(s.identity[:3], data, staging, s.commit,
-                             data['scope'], self.user.pw_uid, self.user.pw_gid, s.cancelled.is_set))
-        (staging / 'work').rename(target / 'work')
-        (staging / 'snapshot.bundle').rename(target / 'snapshot.bundle')
-        staging.rmdir()
 
     def execute(self, s, data):
         result = self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
@@ -1182,8 +983,6 @@ class SystemdBackend:
 
 class DiskSystemdBackend(SystemdBackend):
     """Execution leases mount disk copies; releasing a lease never deletes work."""
-    persistent = True
-
     def __init__(self, config):
         super().__init__(config)
         self.disks = DiskPool(config['copyRoot'], config['poolBytes'],
@@ -1194,7 +993,7 @@ class DiskSystemdBackend(SystemdBackend):
         identity = (s.copy_id, s.identity[1], s.identity[2], s.scope, s.commit)
         if not s.copy_id:
             raise Rejected('INVALID_REQUEST')
-        source = (self.disks.reopen(*identity) if s.restored_from == 'disk'
+        source = (self.disks.reopen(*identity) if s.attaching
                   else self.disks.create(*identity))
         lock = os.open(source / '.lease.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
@@ -1221,7 +1020,7 @@ class DiskSystemdBackend(SystemdBackend):
             raise
 
     def attach(self, s):
-        s.restored_from = 'disk'
+        s.attaching = True
         self.prepare(s)
         target = self.mount_path(s)
         if not (target / '.initialized').is_file():
@@ -1338,31 +1137,13 @@ def load_config(path):
         integer(c[name], 1, 2**40)
     if c['renewAfterSeconds'] >= c['leaseSeconds'] or not re.fullmatch(r'poketto-exec-[a-z0-9]+-', c['unitPrefix']):
         raise ValueError('Invalid executor configuration')
-    if c.get('checkpointRoot'):
-        root = Path(c['checkpointRoot'])
-        if (not root.is_absolute() or '..' in root.parts or
-                not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(root))):
-            raise ValueError('Checkpoint root must be an absolute host path')
-        runtime = Path(c['runtimeRoot'])
-        if root.is_relative_to(runtime) or runtime.is_relative_to(root):
-            raise ValueError('Checkpoint storage must be separate from disposable runtime storage')
-        for name, maximum in (('maxCheckpoints', 4096), ('maxCheckpointEntries', 131072),
-                              ('maxCheckpointBytes', 2**30), ('maxRetainedBytes', 2**40),
-                              ('retentionSeconds', 30 * 86400)):
-            integer(c[name], 1, maximum)
-        integer(c['minimumFreeBytes'], 0, 2**40)
-        if c['maxRetainedBytes'] < c['maxCheckpointBytes']:
-            raise ValueError('Aggregate checkpoint bound must cover one checkpoint')
-    if c.get('copyRoot'):
-        root = Path(c['copyRoot'])
-        runtime = Path(c['runtimeRoot'])
-        if (not root.is_absolute() or '..' in root.parts
-                or not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(root))
-                or root.is_relative_to(runtime) or runtime.is_relative_to(root)):
-            raise ValueError('Disk copies must be separate from disposable runtime storage')
-        integer(c['poolBytes'], 1, 2**40)
-        if c.get('checkpointRoot'):
-            raise ValueError('Disk copies replace archived worker checkpoints')
+    root = Path(c['copyRoot'])
+    runtime = Path(c['runtimeRoot'])
+    if (not root.is_absolute() or '..' in root.parts
+            or not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(root))
+            or root.is_relative_to(runtime) or runtime.is_relative_to(root)):
+        raise ValueError('Disk copies must be separate from disposable runtime storage')
+    integer(c['poolBytes'], 1, 2**40)
     return c
 
 
@@ -1377,7 +1158,7 @@ def main():
     if args.cleanup:
         SystemdBackend(config)
         return
-    backend = DiskSystemdBackend(config) if config.get('copyRoot') else SystemdBackend(config)
+    backend = DiskSystemdBackend(config)
     # Cleanup precedes pool validation, so a broken installation cannot strand old trees.
     backend.pool = ResourcePool(config.get('resourceSlice'))
     backend.pool.verify()
@@ -1400,7 +1181,6 @@ def main():
         try:
             while True:
                 service.sweep()
-                backend.collect_checkpoints()
                 time.sleep(0.2)
         finally:
             service.shutdown()
