@@ -48,6 +48,8 @@ Reading-text extraction is shared by public and authorized management search. Co
 
 Site search covers enabled public spaces; space search fixes one space. Authenticated management search fixes both a space and the caller's current authorization. Literal visible-text matching is retained without semantic search. Titles and snippets highlight matches using escaped text nodes and `mark`, while article bodies retain normal reading. Snippets surround visible matches rather than raw URL or Markdown bytes.
 
+The [site search decision](../implemented/2026-09-14-public-site-search.md) implements complete bounded search across enabled public spaces, with space-specific result identity and preserved site-search return state.
+
 Search query, pagination, and space scope live in URLs. Browser-history-local state preserves the result anchor and scroll offset. Articles entered from search offer Return to results; direct entries use their space or collection. Browser Back must continue to work. Raw or cross-origin return URLs are not trusted navigation targets.
 
 Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix.

@@ -4,9 +4,9 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires site search across enabled public spaces. The site search page currently calls the default workspace's document list. Adding another published space makes its content discoverable on the homepage but absent from site search. Different spaces may also publish the same route, so a route alone cannot identify a search result or its return anchor.
+The [multi-user contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires site search across enabled public spaces. The site search page previously called the default workspace's document list, leaving other published spaces absent from search. Different spaces may also publish the same route, so a route alone cannot identify a search result or its return anchor.
 
-## Proposal
+## Decision
 
 `GET /api/public/search` searches every currently enabled website's verified public snapshot. Space search keeps its existing space-specific endpoint. The default document, tag and archive endpoints retain their default-workspace scope. Requests never fetch remote Git, read private documents or enumerate raw media as search results.
 
@@ -24,11 +24,10 @@ Reusing discovery's sampled batches would silently omit spaces and articles and 
 
 One unavailable published workspace temporarily blocks combined search. This keeps the completeness contract explicit; readers can still search another available space directly. The operational limits do not change valid content bounds or the storage format.
 
-## Acceptance
+## Verification
 
-- Real Spring/PostgreSQL HTTP queries include matching public content from two independently backed enabled spaces, with space-specific author and canonical route data; space search stays scoped.
-- Private content, disabled websites, withdrawn routes and expired snapshots never leak through the combined response, including changes while a search is running.
-- More than 32 enabled spaces are searched without discovery sampling. Capacity overflow is an explicit failure; unchanged input gives stable combined order, page boundaries and counts, including duplicate routes across spaces.
-- The real frontend highlights title and snippet matches safely, labels each space and restores site query/page/focus through both browser Back and explicit Return to results. Direct space search remains scoped. Desktop and mobile evidence uses the changed runtime.
+Focused search tests cover complete catalogue traversal beyond discovery's space limit, combined ordering and pagination, duplicate routes, capacity refusal, unavailable snapshots and changed publication state. Real Spring/PostgreSQL HTTP queries cover two independent enabled spaces and scoped search through the production controllers.
+
+A real Spring/PostgreSQL/Next/Caddy browser run searches two synthetic spaces with 28 matching articles each. A mixed results page retains each space's canonical article and tag links, public identity and independent result anchor. Literal title and snippet matches render as text marks, and a query containing SVG syntax remains text. Browser Back and the explicit return link restore the site query, page and selected result; direct space search remains scoped. The mobile page has no horizontal overflow at a 390-pixel CSS viewport. This local fixture does not establish production HTTPS, external MCP behavior or provider interoperability.
 
 The same-topic audit retains [website delivery](../implemented/2026-09-14-workspace-public-delivery.md), [discovery batches](../implemented/2026-09-14-public-discovery-batches.md), [reading text](../implemented/2026-09-12-shared-checks.md), [public authorship](../implemented/2026-09-14-public-author-names.md), and [search return](../implemented/2026-09-14-search-highlights-and-reading-return.md) as independent owners. The parent remains proposed for its remaining requirements.
