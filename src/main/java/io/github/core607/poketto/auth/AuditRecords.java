@@ -45,7 +45,13 @@ final class AuditRecords {
                 .log();
     }
 
-    /** A permission change, which also names the capabilities the subject holds afterwards. */
+    /**
+     * A permission change, which also names the capabilities the subject holds afterwards.
+     *
+     * <p>The sentence states what is held rather than what was given, because the same shape
+     * reports a withdrawal. A template with a verb in it would read "granting" on a record whose
+     * action says the opposite, and a reader taking the sentence at face value would invert it.
+     */
     static void granted(
             String action, AuthPrincipal actor, WorkspaceId workspace, UUID subject, Set<Capability> capabilities) {
         String granted = capabilities.stream().map(Enum::name).sorted().toList().toString();
@@ -55,7 +61,7 @@ final class AuditRecords {
                 .addKeyValue("workspace", name(workspace))
                 .addKeyValue("subject", name(subject))
                 .addKeyValue("capabilities", granted)
-                .setMessage("audit {} by {} in workspace {} on {} granting {}")
+                .setMessage("audit {} by {} in workspace {} on {} now holding {}")
                 .addArgument(action)
                 .addArgument(name(actor))
                 .addArgument(name(workspace))

@@ -492,8 +492,10 @@ public final class AuthService {
         });
         Set<Capability> effective = active ? memberCapabilities(role, permissions) : Set.of();
         // Narrowing also revokes the member's over-scoped keys, so recording it as a grant would
-        // hide the withdrawal behind the action a reader filters on to find grants.
-        if (effective.containsAll(held.get())) {
+        // hide the withdrawal behind the action a reader filters on to find grants. Suspension is
+        // a withdrawal even when the member already held nothing: the call still refreshes the
+        // suspension and revokes keys again, so it is not a grant of the empty set.
+        if (active && effective.containsAll(held.get())) {
             AuditRecords.granted("member.access.granted", actor, workspace, account, effective);
         } else {
             AuditRecords.granted("member.access.revoked", actor, workspace, account, effective);

@@ -31,6 +31,7 @@ class AuditRecordTests {
 
         assertThat(output).contains("member.access.revoked");
         assertThat(output).doesNotContain("member.access.granted");
+        assertThat(output).doesNotContain("granting");
         assertThat(output).contains("[]");
     }
 
