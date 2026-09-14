@@ -11,6 +11,7 @@ test("saved files cannot bypass dependency repair through delete/create text pat
       {
         path: "a.md",
         publicScope: false,
+        publicPage: null,
         commit: "before",
         source: "# A",
         revision: "revision",
@@ -40,6 +41,7 @@ test("renaming an unsaved draft creates only its final path", async () => {
     const file: RepositoryFile = {
       path: "untitled.md",
       publicScope: false,
+      publicPage: null,
       expectedAbsence: true,
       revision: null,
       commit: "before",
@@ -83,6 +85,7 @@ test("an acknowledged unchanged save is returned without a retry or an uncertain
       {
         path: "a.md",
         publicScope: false,
+        publicPage: null,
         expectedAbsence: false,
         revision: "revision",
         commit: "same",
