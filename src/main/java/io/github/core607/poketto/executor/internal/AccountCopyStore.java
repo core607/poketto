@@ -15,6 +15,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -29,6 +30,7 @@ final class AccountCopyStore {
     private final RetainedRecordFiles files;
     private final Limits limits;
     private final Clock clock;
+    private String collectionCursor = "";
 
     AccountCopyStore(Path root, Limits limits, Clock clock) {
         ProtocolValues.require(root.isAbsolute(), "account copy root", "must be absolute");
@@ -61,6 +63,53 @@ final class AccountCopyStore {
 
     boolean expired(AccountCopyRecord record) {
         return record.expiresAt() <= clock.millis();
+    }
+
+    boolean collectible(AccountCopyRecord record) {
+        return expired(record)
+                || record.phase() == AccountCopyRecord.Phase.DISCARDING
+                || record.phase() == AccountCopyRecord.Phase.INITIALIZING;
+    }
+
+    List<AccountCopyRecord.Owner> collectionCandidates(int maximum) {
+        ProtocolValues.inRange(maximum, 1, 32, "collection batch size");
+        try (var index = index()) {
+            index.requireValid();
+            var names = new ArrayList<String>();
+            try (var entries = Files.newDirectoryStream(root, "*.account")) {
+                for (Path entry : entries) {
+                    String name = entry.getFileName().toString();
+                    if (!name.matches("[0-9a-f]{64}\\.account") || names.size() >= 1024) {
+                        throw new IOException("Invalid account journal inventory");
+                    }
+                    names.add(name);
+                }
+            }
+            names.sort(String::compareTo);
+            List<String> selected = names.stream()
+                    .filter(name -> name.compareTo(collectionCursor) > 0)
+                    .limit(maximum)
+                    .toList();
+            if (selected.isEmpty()) {
+                selected = names.stream().limit(maximum).toList();
+            }
+            var owners = new ArrayList<AccountCopyRecord.Owner>();
+            for (String name : selected) {
+                collectionCursor = name;
+                Path path = root.resolve(name);
+                directory.checkFile(path);
+                var record = files.read(path, AccountCopyRecord.class);
+                if (!path.equals(recordPath(record.owner()))) {
+                    throw new IOException("Account journal owner differs from its address");
+                }
+                if (collectible(record)) {
+                    owners.add(record.owner());
+                }
+            }
+            return List.copyOf(owners);
+        } catch (IOException failure) {
+            throw unavailable(failure);
+        }
     }
 
     Lease acquire(AccountCopyRecord.Owner owner) {

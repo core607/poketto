@@ -33,7 +33,9 @@ def main():
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
     parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state'), default='all')
+    parser.add_argument('--process-case', choices=('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired'))
     args = parser.parse_args()
+    assert args.process_case is None or args.scenario == 'retained-process'
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
                                          (args.runtime, args.worker_source, args.tools, args.java)]
@@ -183,7 +185,7 @@ with socket.socket(socket.AF_UNIX) as connection:
                 if request['operation'] == 'kill-application':
                     assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted',
                                     'retained-produce-uncertain', 'retained-produce-beforepublish',
-                                    'retained-produce-afterpublish', 'retained-produce-discarding')
+                                    'retained-produce-afterpublish', 'retained-produce-discarding', 'retained-produce-expired')
                     assert killed_pid is None
                     killed_pid = int(run(['systemctl', 'show', '--value', '-p', 'MainPID', app_unit]))
                     assert killed_pid > 1 and Path(f'/proc/{killed_pid}/exe').resolve(strict=True) == java
@@ -309,7 +311,8 @@ with socket.socket(socket.AF_UNIX) as connection:
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         if args.scenario == 'retained-process':
-            for case in ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding'):
+            cases = (args.process_case,) if args.process_case else ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired')
+            for case in cases:
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:
@@ -344,7 +347,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointsSha256': digest(root / 'checkpoints.py'),
             'checkpointTreeSha256': digest(root / 'checkpoint_tree.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
-            'source': 'synthetic-only', 'scenario': args.scenario}), flush=True)
+            'source': 'synthetic-only', 'scenario': args.scenario, 'processCase': args.process_case}), flush=True)
     finally:
         try:
             diagnostic = root / 'initialization.json'

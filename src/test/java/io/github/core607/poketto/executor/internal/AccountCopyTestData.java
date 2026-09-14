@@ -9,6 +9,10 @@ final class AccountCopyTestData {
     private AccountCopyTestData() {}
 
     static AccountCopyStore disk(Path root) {
+        return disk(root, Clock.systemUTC());
+    }
+
+    static AccountCopyStore disk(Path root, Clock clock) {
         return new AccountCopyStore(
                 root,
                 new AccountCopyStore.Limits(
@@ -17,6 +21,6 @@ final class AccountCopyTestData {
                         512L * 1024 * 1024,
                         Duration.ofDays(7),
                         new RetainedBaseline.Limits(64L * 1024 * 1024, 256L * 1024 * 1024, 100_000)),
-                Clock.systemUTC());
+                clock);
     }
 }

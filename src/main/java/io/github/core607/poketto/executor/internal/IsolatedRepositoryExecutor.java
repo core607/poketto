@@ -104,7 +104,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             Thread.ofPlatform().daemon().name("poketto-worker-control-", 0).factory());
     private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("poketto-worker-heartbeat").factory());
-    private boolean closed;
+    private volatile boolean closed;
 
     IsolatedRepositoryExecutor(
             AccountCopyStore accounts,
@@ -237,7 +237,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     || record.phase() == AccountCopyRecord.Phase.INITIALIZING
                     || record.phase() == AccountCopyRecord.Phase.DISCARDING) {
                 held.beginDiscard();
-                discardDisk(principal, record, key, hello);
+                discardDisk(principal.subjectId(), record, key, hello);
                 held.remove();
                 record = null;
                 requireAccountRequest(null, expected);
@@ -448,7 +448,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 var hello = worker.hello();
                 fenceAccount(principal, record, key, hello);
                 requireDiscardAuthorization(principal, workspace, cancellation);
-                discardDisk(principal, record, key, hello);
+                discardDisk(principal.subjectId(), record, key, hello);
                 held.remove();
                 return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
             } catch (RuntimeException failure) {
@@ -458,14 +458,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return new DiscardResult(request.id(), DiscardStatus.ABSENT);
     }
 
-    private void discardDisk(
-            AuthPrincipal principal, AccountCopyRecord record, SessionKey key, WorkerClient.Hello hello) {
+    private void discardDisk(UUID principalId, AccountCopyRecord record, SessionKey key, WorkerClient.Hello hello) {
         var identity = new WorkerClient.Identity(
-                principal.subjectId(),
-                principal.accountId(),
-                key.workspace().value(),
-                key.scopeHash(),
-                UUID.randomUUID());
+                principalId, key.account(), key.workspace().value(), key.scopeHash(), UUID.randomUUID());
         JsonNode response = worker.request(
                 hello,
                 identity,
@@ -483,6 +478,80 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         .contains(response.path("state").asString(""))) {
             throw new WorkerUnavailableException();
         }
+    }
+
+    int collectExpiredCopies() {
+        int removed = 0;
+        for (var owner : accounts.collectionCandidates(8)) {
+            if (closed || Thread.currentThread().isInterrupted()) {
+                break;
+            }
+            try (var lease = accounts.acquire(owner)) {
+                var record = lease.record().orElse(null);
+                if (record == null || !accounts.collectible(record)) {
+                    continue;
+                }
+                if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
+                    lease.write(record.discarding());
+                }
+                var key = new SessionKey(
+                        owner.accountId(),
+                        new WorkspaceId(owner.workspaceId()),
+                        hash(owner.fullRead() ? "full" : "public"));
+                var hello = worker.hello();
+                fenceCollectedAccount(record, key, hello);
+                discardDisk(record.writer().principalId(), record, key, hello);
+                lease.remove(record.copyId());
+                removed++;
+            } catch (RetainedCopyException busy) {
+                if (busy.reason() != RetainedCopyException.Reason.BUSY) {
+                    log.warn("Account copy collection will retry", busy);
+                }
+            } catch (IOException | WorkerUnavailableException unavailable) {
+                log.warn("Account copy collection awaits confirmed cleanup", unavailable);
+            }
+        }
+        return removed;
+    }
+
+    private void fenceCollectedAccount(AccountCopyRecord record, SessionKey key, WorkerClient.Hello hello) {
+        Session current;
+        synchronized (this) {
+            current = sessions.get(key);
+        }
+        if (current != null && current.copyId.equals(record.copyId())) {
+            fenceAccount(current.principal, record, key, hello);
+            return;
+        }
+        if (!record.writer().workerBootId().equals(hello.workerBootId())) {
+            return;
+        }
+        var identity = new WorkerClient.Identity(
+                record.writer().principalId(),
+                key.account(),
+                key.workspace().value(),
+                key.scopeHash(),
+                record.writer().leaseId());
+        long deadline = System.nanoTime() + closeTimeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            JsonNode response = worker.closeRetainedLease(
+                    hello, identity, record.writer().appBootId(), "session_closed", Duration.ofSeconds(3));
+            if (!response.path("ok").asBoolean()
+                    || !identity.leaseId()
+                            .toString()
+                            .equals(response.path("leaseId").asString())) {
+                throw new WorkerUnavailableException();
+            }
+            String state = response.path("state").asString("");
+            if (state.equals("CLOSED")) {
+                return;
+            }
+            if (!state.equals("CLOSING")) {
+                throw new WorkerUnavailableException();
+            }
+            pause();
+        }
+        throw new WorkerUnavailableException();
     }
 
     private void requireDiscardAuthorization(

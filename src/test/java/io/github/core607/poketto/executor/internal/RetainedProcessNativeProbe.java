@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Optional;
@@ -64,7 +65,14 @@ public final class RetainedProcessNativeProbe {
     private RetainedProcessNativeProbe(Path configuration, String mode) throws Exception {
         config = JSON.readTree(Files.readString(configuration));
         scenario = mode.substring(mode.lastIndexOf('-') + 1);
-        if (!Set.of("acknowledged", "interrupted", "uncertain", "beforepublish", "afterpublish", "discarding")
+        if (!Set.of(
+                        "acknowledged",
+                        "interrupted",
+                        "uncertain",
+                        "beforepublish",
+                        "afterpublish",
+                        "discarding",
+                        "expired")
                 .contains(scenario)) {
             throw new IllegalArgumentException("Unknown process-loss scenario");
         }
@@ -80,7 +88,10 @@ public final class RetainedProcessNativeProbe {
         var identity = JSON.readValue(Files.readString(root.resolve("identity.json")), Identity.class);
         workspace = new WorkspaceId(identity.workspace());
         authorize(identity);
-        records = spy(AccountCopyTestData.disk(path("accountMetadata")));
+        Clock clock = !producer && scenario.equals("expired")
+                ? Clock.offset(Clock.systemUTC(), Duration.ofDays(8))
+                : Clock.systemUTC();
+        records = spy(AccountCopyTestData.disk(path("accountMetadata"), clock));
         doAnswer(call -> {
                     var original = (AccountCopyStore.Lease) call.callRealMethod();
                     var lease = mock(AccountCopyStore.Lease.class, delegatesTo(original));
@@ -300,7 +311,9 @@ public final class RetainedProcessNativeProbe {
                             selected.attempt() == null
                                     ? selected.baseCommit()
                                     : selected.attempt().commit());
-            if (scenario.equals("discarding")) {
+            if (scenario.equals("expired")) {
+                expireCopy(executor, fixture, before);
+            } else if (scenario.equals("discarding")) {
                 resumeDiscard(executor, fixture, before);
             } else {
                 var result = execute(
@@ -335,6 +348,44 @@ public final class RetainedProcessNativeProbe {
                 "synthetic-only",
                 classHash(RetainedProcessNativeProbe.class),
                 classHash(IsolatedRepositoryExecutor.class))));
+    }
+
+    private void expireCopy(
+            IsolatedRepositoryExecutor executor, PublicExecutionNativeFixture fixture, AccountCopyRecord before)
+            throws Exception {
+        assertThat(records.expired(before)).isTrue();
+        try (var busy = records.acquire(owner())) {
+            assertThat(executor.collectExpiredCopies()).isZero();
+            assertThat(busy.record().orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+        }
+        try (var maintenance = new AccountCopyMaintenance(executor, Duration.ofMillis(50))) {
+            long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+            boolean absent = false;
+            while (!absent && System.nanoTime() < deadline) {
+                try (var lease = records.acquire(owner())) {
+                    absent = lease.record().isEmpty();
+                } catch (RetainedCopyException busy) {
+                    if (busy.reason() != RetainedCopyException.Reason.BUSY) {
+                        throw busy;
+                    }
+                }
+                Thread.sleep(20);
+            }
+            assertThat(absent)
+                    .as("scheduled expiry must remove an idle copy without another tool call")
+                    .isTrue();
+        }
+        var fresh = execute(
+                executor,
+                "new-after-expiry",
+                new RepositoryExecutor.CopyRequest("new", null, false),
+                "test ! -e private/draft.md && test ! -e private/draft.bin");
+        assertThat(fresh.copyId()).isNotEqualTo(before.copyId().toString());
+        assertThat(fixture.reader(auth)
+                        .getFile(actor, workspace, Optional.empty(), "private/saved-before.md")
+                        .source())
+                .contains("saved before loss");
+        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId(), null), CANCELLATION);
     }
 
     private void resumeDiscard(

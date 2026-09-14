@@ -12,6 +12,11 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(name = "poketto.executor.enabled", havingValue = "true")
 class ExecutorAccountConfiguration {
     @Bean
+    AccountCopyMaintenance accountCopyMaintenance(IsolatedRepositoryExecutor executor) {
+        return new AccountCopyMaintenance(executor, Duration.ofMinutes(1));
+    }
+
+    @Bean
     AccountCopyStore accountCopyStore(
             @Value("${poketto.executor.copies.metadata-root}") Path root,
             @Value("${poketto.executor.copies.max-copies:128}") int copies,
