@@ -1,8 +1,77 @@
 {
     admin off
+
+    # Caddy keeps two logs. The site's access log is filtered below, but the process log, which
+    # carries reverse-proxy and TLS failures, is a separate logger and was recording the whole
+    # request object: query string, image grant and headers, unfiltered. That happens exactly
+    # during a redeployment, when the application is briefly unreachable, which is the window
+    # this work most wants recorded. Filtering the default logger covers it.
+    #
+    # The address is dropped rather than rewritten: a single field takes a single filter, and no
+    # one expression both strips a query and collapses a grant. The access log still records the
+    # route and status of the same request, except for the image addresses it skips, which appear
+    # in the application's own records instead.
+    log {
+        output stderr
+        format filter {
+            wrap json
+            fields {
+                request>uri delete
+                request>headers>Cookie delete
+                request>headers>Authorization delete
+                request>headers>Set-Cookie delete
+                request>headers>Referer delete
+            }
+        }
+    }
 }
 
 {$POKETTO_PUBLIC_DOMAIN} {
+    # Spring records what reaches it; without this, a request refused or served by the gateway
+    # itself left no trace at all. Caddy writes JSON to stderr, which the container log driver
+    # carries to the same journal as everything else.
+    #
+    # Two parts of a request line are credentials or private material rather than routing.
+    #
+    # A query string carries repository paths: a member downloading their own file passes it as a
+    # parameter, so an unfiltered access log would accumulate the shape of their private tree. It
+    # is removed from every record.
+    #
+    # An image address carries its own authorization in its path, and the application removes that
+    # segment from its records for exactly that reason. A single field takes a single filter, so
+    # these requests are left to the application, which already records them with the segment
+    # collapsed. The cost is that a gateway-level failure on an image request appears nowhere.
+    #
+    # Credential headers go for the same reason: a session cookie or bearer token is the
+    # credential itself. The referring address goes with them: an administration page puts the
+    # open document's path in its own address, and a same-origin request carries that address
+    # whole, so the path removed from the request line arrives again in another field. The
+    # referrer policy already keeps it from leaving this origin, which makes these records its
+    # only exposure.
+    #
+    # The response side carries the same material back: a download names the file in its
+    # disposition header, so a member fetching their own media would leave that name behind even
+    # with the address and the referrer already gone. Removing it from the record does not change
+    # what the browser receives.
+    @grant path /api/public/assets/* /api/admin/workspaces/*/assets/images/*
+    log_skip @grant
+
+    log {
+        output stderr
+        format filter {
+            wrap json
+            fields {
+                request>uri regexp "\?.*$" ""
+                request>headers>Cookie delete
+                request>headers>Authorization delete
+                request>headers>Set-Cookie delete
+                request>headers>Referer delete
+                resp_headers>Set-Cookie delete
+                resp_headers>Content-Disposition delete
+            }
+        }
+    }
+
     @management path /actuator /actuator/*
     handle @management {
         respond 404

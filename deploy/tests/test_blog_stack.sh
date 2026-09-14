@@ -76,6 +76,28 @@ grep -Fq '@business path /api /api/* /mcp /mcp/*' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'reverse_proxy app:8080' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'reverse_proxy frontend:3000' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'respond 404' "$DEPLOY_DIR/Caddyfile"
+
+# A request the gateway refuses or serves itself reaches no application record, so the access log
+# is the only account of it. Every service writes to the journal, which outlives the containers
+# this deployment replaces on each verified commit.
+grep -Fq 'output stderr' "$DEPLOY_DIR/Caddyfile"
+# An image address authorizes the image it names, so the gateway must not record those requests:
+# the application already records them with that segment collapsed. Credential headers go too.
+grep -Fq 'log_skip @grant' "$DEPLOY_DIR/Caddyfile"
+grep -Fq '/api/public/assets/*' "$DEPLOY_DIR/Caddyfile"
+grep -Fq 'request>headers>Cookie delete' "$DEPLOY_DIR/Caddyfile"
+grep -Fq 'request>headers>Authorization delete' "$DEPLOY_DIR/Caddyfile"
+# A query string carries repository paths, so it leaves every gateway record.
+grep -Fq 'request>uri regexp' "$DEPLOY_DIR/Caddyfile"
+grep -Fq 'LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT-ecs}"' "$DEPLOY_DIR/compose.yaml"
+# A documented setting that the configuration whitelist rejects cannot be applied.
+grep -Fq 'POKETTO_LOG_FORMAT' "$DEPLOY_DIR/deploy.sh"
+grep -Fq '[ -S /run/systemd/journal/socket ]' "$DEPLOY_DIR/deploy.sh"
+if grep -q 'driver: json-file' "$DEPLOY_DIR/compose.yaml"; then
+    echo "a service still logs to a driver that is discarded with its container"
+    exit 1
+fi
+[ "$(grep -c 'driver: journald' "$DEPLOY_DIR/compose.yaml")" = 4 ]
 grep -Fq '127.0.0.1:${POKETTO_HTTP_PORT:-8080}:8080' "$DEPLOY_DIR/compose.yaml"
 frontend="$(sed -n '/^  frontend:/,/^  gateway:/p' "$DEPLOY_DIR/compose.yaml")"
 assert_not_contains "$frontend" 'PASSWORD'
