@@ -43,6 +43,23 @@ docker compose --env-file acceptance/.env -f acceptance/compose.yaml down --volu
 
 These volumes contain only this entrance's samples. They are separate from production deployment directories. A stopped run may be inspected before disposal; do not treat this seed-and-dispose entrance as a production restart strategy.
 
+The [real GitHub connection run](evidence/2026-09-15-provider-connection.json)
+verifies credential rejection, successful retry under the same request identity,
+result queries, idempotent replay and duplicate-binding rejection through authenticated
+HTTP and PostgreSQL. Provider metadata and Git read/write advertisements use a real
+existing empty private repository; no remote ref or file changes. Independent database
+reads verify encrypted credentials, private website defaults and complete rollback of
+failed bindings. The [browser evidence](https://github.com/core607/poketto/blob/eb8ab859e27e719c3b4aebe1735fd4136076e0c9/README.md)
+shows failure/query controls and the connected space's disabled website. CNB and remote
+content writes are outside this run. A local proxy's non-public DNS answers initially
+prevented provider access; the isolated rerun used real public DNS answers without
+disabling TLS verification or private-address rejection.
+
+The [real-corpus worker sample](evidence/2026-09-15-real-corpus-worker-timing.json)
+measures an isolated initial disk copy and twenty reused native executions from a
+173 MB retained bundle. It records the exact earlier worker revision and cleanup;
+it does not measure provider-network transfer or current end-to-end MCP latency.
+
 Local HTTP acceptance does not satisfy the phase-one requirement for the final HTTPS domain, real content corpus, or currently callable MCP clients. The production executor is also absent until its separate service and signed-lease configuration are supplied. Record the source revision and real screenshots alongside each completed browser scenario; a successful container start alone is not acceptance. Unavailable external clients are not completion conditions and must not be reported as tested.
 
 For image-memory admission, stage the current runtime and run `python acceptance/image-memory-smoke.py`. This independent probe starts only the synthetic Linux application and PostgreSQL, uses a loopback port, and generates disposable credentials under ignored `.gradle/`. It applies a two-CPU quota and the deployment JVM heap percentage, reads the actual maximum heap, and stops at 90% of heap or container memory. The scenarios cover maximum 16 MiB images, public and private HTTP authorization, slow HTTP and MCP SSE responses, request rejection, article/preview/inventory degradation, cancellation and disconnect recovery, exact hashes, and an idempotent MCP upload of the original HTTP upload.

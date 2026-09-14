@@ -1,0 +1,63 @@
+{
+  "result": "PASS",
+  "sourceCommit": "9474a8121c3aadb9cacd236f005a77b54a0eafd1",
+  "recordedDate": "2026-09-15",
+  "production": false,
+  "services": "real Spring, PostgreSQL 17.11, production Next.js, Caddy, GitHub metadata and Git transport",
+  "provider": "GitHub",
+  "providerMocked": false,
+  "remoteMutation": false,
+  "checks": [
+    {
+      "name": "invalid-provider-credential",
+      "stage": "FAILED",
+      "failureCode": "PERMISSION_DENIED"
+    },
+    {
+      "name": "same-request-valid-credential",
+      "stage": "READY",
+      "failureCode": null
+    },
+    {
+      "name": "authoritative-result-query",
+      "stage": "READY",
+      "failureCode": null
+    },
+    {
+      "name": "same-request-idempotent-replay",
+      "stage": "READY",
+      "failureCode": null
+    },
+    {
+      "name": "duplicate-binding",
+      "stage": "FAILED",
+      "failureCode": "DUPLICATE"
+    }
+  ],
+  "database": {
+    "managedBindings": 1,
+    "managedWorkspacePrivate": true,
+    "sealedCredentials": true,
+    "readyAttemptReleasedSecret": true,
+    "failedWorkspaceAbsent": true,
+    "failedMembershipAbsent": true
+  },
+  "remoteBranchesUnchanged": true,
+  "cleanup": "PASS",
+  "artifacts": {
+    "connection-private-default.jpg": {
+      "sha256": "aaa2657a5f401f22994f010ae3350130fc37b3b113c393b2a9a8e2ac70baeb55",
+      "bytes": 37619
+    },
+    "connection-retry.jpg": {
+      "sha256": "618436f4b6daa71fe2044031199a74688cc35ff26e45a5bd83e16ae6c6f1366a",
+      "bytes": 41026
+    }
+  },
+  "environmentCorrection": "The first fixture received 198.18/15 proxy DNS answers and correctly refused them. A fresh isolated fixture used public GitHub addresses resolved over HTTPS, preserving TLS and private-address validation.",
+  "limitations": [
+    "CNB provider interoperability was not exercised.",
+    "Creation and retry were driven through authenticated HTTP; the browser shows transport-failure query controls and the resulting private website state.",
+    "Content reads remain bound to the synthetic Git fixture. This run verifies provider metadata, upload-pack/receive-pack advertisement and binding lifecycle, not remote content writes."
+  ]
+}
