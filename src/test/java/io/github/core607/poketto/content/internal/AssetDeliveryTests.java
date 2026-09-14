@@ -594,7 +594,7 @@ class AssetDeliveryTests {
                 Optional.of("b".repeat(40)),
                 now,
                 now.plusSeconds(3600),
-                List.of(new PublicArticle("index.md", "/", "Text", body, List.of(), now, now, true)));
+                List.of(new PublicArticle("index.md", "/", "Text", body, List.of(), now, now, true, "")));
         var snapshots = mock(PublicContentSnapshots.class);
         when(snapshots.withCurrent(any(), any()))
                 .thenAnswer(call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(snapshot));

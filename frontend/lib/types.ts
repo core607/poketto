@@ -14,6 +14,7 @@ export type DiscoveryPage = {
   items: {
     space: string;
     spaceName: string;
+    authorName: string;
     route: string;
     title: string;
     snippet: string;
@@ -23,6 +24,7 @@ export type DiscoveryPage = {
   }[];
 };
 export type ArticleSummary = {
+  authorName: string;
   route: string;
   title: string;
   tags: string[];

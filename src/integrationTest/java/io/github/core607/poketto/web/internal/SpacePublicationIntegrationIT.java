@@ -186,6 +186,7 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get("/api/public/documents")).andExpect(status().isOk());
         mvc.perform(get(publicImage())).andExpect(status().isOk());
         mvc.perform(get(publication(workspace))).andExpect(status().isUnauthorized());
+        verifyAuthorNames(owner, workspace, ownerSession);
     }
 
     private void verifyMember(AuthPrincipal owner, WorkspaceId workspace, String password) throws Exception {
@@ -204,6 +205,10 @@ class SpacePublicationIntegrationIT {
                         .param("path", "private/secret.md"))
                 .andExpect(status().isForbidden());
         mvc.perform(get(publication(workspace)).session(session)).andExpect(status().isForbidden());
+        mvc.perform(csrf(session, put(publication(workspace) + "/author"))
+                        .contentType("application/json")
+                        .content("{\"name\":\"Denied\"}"))
+                .andExpect(status().isForbidden());
         mvc.perform(csrf(session, put(publication(workspace)))
                         .contentType("application/json")
                         .content("{\"enabled\":true}"))
@@ -212,6 +217,95 @@ class SpacePublicationIntegrationIT {
                 .token();
         assertThatThrownBy(() -> service.setEnabled(auth.authenticateApiKey(token), workspace, true))
                 .isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> service.setAuthorName(auth.authenticateApiKey(token), workspace, "Denied"))
+                .isInstanceOf(AuthException.class);
+    }
+
+    private void verifyAuthorNames(AuthPrincipal owner, WorkspaceId workspace, MockHttpSession session)
+            throws Exception {
+        seedAuthors(workspace);
+        String endpoint = "/api/public/spaces/home/document";
+        String authorEndpoint = publication(workspace) + "/author";
+        mvc.perform(put(authorEndpoint)
+                        .session(session)
+                        .contentType("application/json")
+                        .content("{\"name\":\"Denied\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(csrf(session, put(authorEndpoint))
+                        .contentType("application/json")
+                        .content("{\"name\":\"  Space signature  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicAuthorName").value("Space signature"));
+        mvc.perform(get(endpoint).param("route", "/signed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authorName").value("Article signature"));
+        mvc.perform(get(endpoint).param("route", "/unsigned"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authorName").value("Space signature"));
+        String batch = json.readTree(mvc.perform(get("/api/public/discovery"))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString())
+                .get("batch")
+                .stringValue();
+        service.setAuthorName(owner, workspace, "Changed signature");
+        mvc.perform(get("/api/public/discovery").param("batch", batch))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.route == '/unsigned')].authorName")
+                        .value(contains("Changed signature")))
+                .andExpect(
+                        jsonPath("$.items[?(@.route == '/signed')].authorName").value(contains("Article signature")));
+        mvc.perform(get("/api/public/spaces/home/documents").param("query", "Unsigned"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].authorName").value("Changed signature"));
+        assertThat(publications.settings(PublicationRepositories.SECOND).publicAuthorName())
+                .isEmpty();
+        mvc.perform(csrf(session, put(authorEndpoint))
+                        .contentType("application/json")
+                        .content(
+                                json.writeValueAsString(new SpacePublicationController.UpdateAuthor("🐾".repeat(120)))))
+                .andExpect(status().isOk());
+        mvc.perform(csrf(session, put(authorEndpoint))
+                        .contentType("application/json")
+                        .content("{\"name\":\"" + "🐾".repeat(121) + "\"}"))
+                .andExpect(status().isBadRequest());
+        service.setAuthorName(owner, workspace, "");
+        mvc.perform(get(endpoint).param("route", "/unsigned"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authorName")
+                        .value(catalog.defaultWorkspace().displayName()));
+        service.setEnabled(owner, workspace, false);
+        mvc.perform(get("/api/public/discovery").param("batch", batch))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        service.setEnabled(owner, workspace, true);
+    }
+
+    private void seedAuthors(WorkspaceId workspace) throws Exception {
+        Path root = directory.resolve("remote.git-seed");
+        String signed = "---\npublic_author: '  Article signature  '\nauthor: private-author-sentinel\n---\n# Signed\n";
+        try (Git git = Git.open(root.toFile())) {
+            Files.writeString(root.resolve("public/signed.md"), signed);
+            Files.writeString(
+                    root.resolve("public/unsigned.md"),
+                    "---\npublic_author: '  '\nauthor: private-author-sentinel\n---\n# Unsigned\n");
+            git.add().addFilepattern(".").call();
+            git.commit()
+                    .setAuthor("Private Git identity", "private@example.invalid")
+                    .setMessage("Add signatures")
+                    .call();
+            git.push().setRemote("origin").setPushAll().call();
+        }
+        snapshots.refresh(workspace);
+        String response = mvc.perform(get("/api/public/spaces/home/document").param("route", "/signed"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(response)
+                .doesNotContain("private-author-sentinel", "Private Git identity", "private@example.invalid");
+        assertThat(Files.readString(root.resolve("public/signed.md"))).isEqualTo(signed);
     }
 
     private void verifyCatalog(AuthPrincipal owner, WorkspaceId first) throws Exception {

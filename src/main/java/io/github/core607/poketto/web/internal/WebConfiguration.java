@@ -37,6 +37,6 @@ class WebConfiguration {
             WorkspaceCatalog workspaces,
             AssetService assets,
             WorkspacePublications publications) {
-        return new PublicDocuments(new WebsiteContentSnapshots(store, publications), workspaces, assets);
+        return new PublicDocuments(new WebsiteContentSnapshots(store, publications), workspaces, assets, publications);
     }
 }

@@ -7,6 +7,7 @@ import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Instant;
 import java.util.List;
 
@@ -15,11 +16,17 @@ final class PublicDocuments {
     private final PublicContentSnapshots snapshots;
     private final WorkspaceCatalog workspaces;
     private final AssetService assets;
+    private final WorkspacePublications publications;
 
-    PublicDocuments(PublicContentSnapshots snapshots, WorkspaceCatalog workspaces, AssetService assets) {
+    PublicDocuments(
+            PublicContentSnapshots snapshots,
+            WorkspaceCatalog workspaces,
+            AssetService assets,
+            WorkspacePublications publications) {
         this.snapshots = snapshots;
         this.workspaces = workspaces;
         this.assets = assets;
+        this.publications = publications;
     }
 
     Page search(String query, String tag, Instant from, Instant to, int offset, int limit) {
@@ -28,15 +35,24 @@ final class PublicDocuments {
 
     Page search(WorkspaceId workspace, String query, String tag, Instant from, Instant to, int offset, int limit) {
         var search = new DocumentSearch(query, tag, from, to, offset, limit);
-        return snapshots.withCurrent(workspace, snapshot -> search(snapshot, search, offset, limit));
+        return snapshots.withCurrent(
+                workspace,
+                snapshot -> search(
+                        snapshot,
+                        search,
+                        offset,
+                        limit,
+                        publications.settings(workspace).authorName()));
     }
 
-    private static Page search(PublicContentSnapshot snapshot, DocumentSearch search, int offset, int limit) {
+    private static Page search(
+            PublicContentSnapshot snapshot, DocumentSearch search, int offset, int limit, String authorName) {
         List<PublicArticle> matches = snapshot.articles().stream()
                 .filter(article -> search.matches(article.title(), article.body(), article.tags(), article.createdAt()))
                 .toList();
         List<PublicDocumentSummary> items = search.page(matches).stream()
-                .map(article -> PublicDocumentSummary.of(article, search.snippet(article.title(), article.body())))
+                .map(article ->
+                        PublicDocumentSummary.of(article, search.snippet(article.title(), article.body()), authorName))
                 .toList();
         return new Page(
                 snapshot.commit().orElse(null),
@@ -57,7 +73,11 @@ final class PublicDocuments {
             throw notFound();
         }
         return assets.publicDocument(workspace, route)
-                .map(value -> PublicDocument.of(value.article(), value.snapshot(), value.media()))
+                .map(value -> PublicDocument.of(
+                        value.article(),
+                        value.snapshot(),
+                        value.media(),
+                        publications.settings(workspace).authorName()))
                 .orElseThrow(PublicDocuments::notFound);
     }
 

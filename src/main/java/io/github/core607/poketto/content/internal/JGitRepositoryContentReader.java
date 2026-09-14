@@ -381,7 +381,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                     updatedAt,
                     metadata.route(),
                     RepositoryPathRules.folderPage(file.path()),
-                    RepositoryPathRules.privatePath(file.path())));
+                    RepositoryPathRules.privatePath(file.path()),
+                    metadata.publicAuthor()));
         }
         FolderLandings.preferIndex(documents, diagnostics);
         Set<String> excluded = collisions(paths, documents, diagnostics);
