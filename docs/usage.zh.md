@@ -122,11 +122,11 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
-`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；此后传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。关闭 MCP 连接会保留副本。显式调用 `repo_discard` 将其移除后，再用 `"new"` 创建不同的副本。管理员开启保留执行模式后（默认关闭），结果还会包含 `retention.generation` 和固定到期时间；后续调用须将该代次作为 `expectedGeneration` 传回。重连后，携带同一 ID 和代次，显式设置 `resume: true`，并使用只读命令检查恢复状态。`EXECUTION_REFUSED` 只表示本次请求未执行，先前中断的工作仍可能部分完成。重试写入前应核对拒绝原因、当前代次、`retention.lastInterruptedCommand` 和 `poketto status`。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则与尚未完成的验收范围。
+`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回结果中的 `copyId`。重连会自动接回原副本和原始基线，无需代次或恢复标志。关闭 MCP 连接会保留副本。每次成功且获授权的副本操作都会将闲置期限延长为七天，期限由 `retention.expiresAt` 返回。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示本次命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入。不要重复执行结果不确定的写入：先用同一副本 ID 执行只读检查，核对 `retention.lastInterruptedCommand` 和 `poketto status`，远端保存待确认时再使用 `poketto recover`。[副本身份契约](../executor-service/README.md#working-copy-identity)说明执行边界。
 
 `EXECUTION_UNCONFIRMED` 表示已尝试执行保留命令，但未能确认完成。响应包含实际 `copyId`、`currentGeneration`、固定 `expiresAt`、`mayHaveExecuted: true` 和恢复资格。本地修改与远端写入都可能部分完成。保留这些身份信息，先显式恢复并检查状态，再决定是否重试写入；此结果绝不表示命令没有执行。
 
-要丢弃本地工作，调用 `repo_discard` 并传入准确的 `expectedCopyId`。未开启保留时省略 `expectedGeneration`；保留副本仍须传入最新代次。此操作要求当前执行权限和副本归属，内容读取权限收回不妨碍清理。忙碌副本会被拒绝；确认进程与租约已停止后才移除副本绑定，保留副本还会校验写入者并删除恢复元数据。`DISCARDED` 或 `ABSENT` 确认目标副本已不存在；当前传输没有其他活副本时，随后可用 `new` 重开。未确认的响应允许用同一 ID 和代次重试，但不能据此认定工作仍然存在。丢弃不会撤销远端 Git 提交。
+要丢弃本地工作，调用 `repo_discard` 并传入准确的 `expectedCopyId`。此操作要求当前执行权限和副本归属，内容读取权限收回不妨碍清理。忙碌副本会被拒绝。删除前会记录关闭意图，进程中断后可以继续收尾；确认工作进程已停止后才移除本地文件和宿主元数据。`DISCARDED` 或 `ABSENT` 确认目标副本已不存在，随后可用 `new` 创建另一份副本。未确认的关闭操作只能用同一 ID 重试。丢弃不会撤销远端 Git 提交。
 
 命令超时后，执行器确认完整进程树已停止，再保留当前副本。响应会报告超时；之前的修改和本条命令已完成的部分仍可通过同一 `copyId` 读取。下一条命令使用新的 `/tmp`。资源超限和生命周期取消仍会关闭副本。未开启保留时，这不保证副本能跨传输过期、应用部署或 worker 丢失而恢复。
 

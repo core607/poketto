@@ -38,7 +38,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -144,6 +143,8 @@ public final class ExecutorNativeProbe {
             probe.portableExports();
         } else if (args[1].equals("media")) {
             probe.mediaFetch();
+        } else if (args[1].equals("public-scope")) {
+            probe.publicProjection();
         } else if (args[1].equals("peer-only")) {
             probe.rejectNonRootPeer();
         } else if (args[1].equals("ephemeral-lifecycle")) {
@@ -169,17 +170,14 @@ public final class ExecutorNativeProbe {
 
     private IsolatedRepositoryExecutor adapter(
             Path socket, int maxSessions, RepositorySnapshotExports selectedExports) {
-        return adapter(socket, maxSessions, selectedExports, Optional.empty());
+        return adapter(socket, maxSessions, selectedExports, AccountCopyTestData.disk(path("accountMetadata")));
     }
 
     private IsolatedRepositoryExecutor adapter(
-            Path socket,
-            int maxSessions,
-            RepositorySnapshotExports selectedExports,
-            Optional<RetainedCopyStore> retention) {
+            Path socket, int maxSessions, RepositorySnapshotExports selectedExports, AccountCopyStore accounts) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        AccountCopyTestData.disk(path("accountMetadata")),
+                        accounts,
                         auth,
                         selectedExports,
                         mock(PortableContentExports.class),
@@ -213,25 +211,6 @@ public final class ExecutorNativeProbe {
         passed("root-owned-socket-rejects-non-root-peer", "observation", Map.of("accepted", true, "requestBytes", 0));
     }
 
-    private void retainedCommands() throws Exception {
-        new RetainedCommandNativeProbe(
-                        path("publicFixture").resolve("retained"),
-                        path("exports"),
-                        path("socket"),
-                        path("privateKey"),
-                        auth,
-                        principal,
-                        workspace,
-                        JSON)
-                .run(() -> control("restart-worker"), privateRead);
-        passed("retained-command-checkpoints-pair-saves-imports-and-nonzero-work-with-restorable-worker-bytes");
-        passed("retained-worker-restart-restores-acknowledged-work-and-denies-revoked-private-recovery");
-        passed("retained-public-recovery-keeps-scope-and-rejects-withdrawal-after-worker-restart");
-        passed("retained-discard-fences-writers-preserves-remote-writes-and-allows-withdrawn-owner-cleanup");
-        passed("retained-checkpoint-busy-waits-without-replaying-the-command-or-remote-write");
-        passed("retained-command-timeout-checkpoints-partial-work-without-closing-the-copy");
-    }
-
     private void ephemeralLifecycle() throws Exception {
         try (var executor = adapter(path("socket"))) {
             new EphemeralLifecycleNativeProbe(executor, principal, workspace, () -> adapter(path("socket"))).run();
@@ -243,7 +222,6 @@ public final class ExecutorNativeProbe {
     private void run() throws Exception {
         rejectNonRootPeer();
         ephemeralLifecycle();
-        retainedCommands();
         copyIdentityGuard();
         publicProjection();
         selectedSaves();
@@ -334,7 +312,7 @@ public final class ExecutorNativeProbe {
                             principal,
                             workspace,
                             "cancel",
-                            new RepositoryExecutor.CopyRequest(ended.copyId(), null, false),
+                            new RepositoryExecutor.CopyRequest(ended.copyId()),
                             Optional.empty(),
                             "printf unexpected > rejected-command",
                             Duration.ofSeconds(3),
@@ -346,7 +324,7 @@ public final class ExecutorNativeProbe {
                     principal,
                     workspace,
                     "cancel",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "set -eu; test ! -e rejected-command; git rev-parse HEAD",
                     Duration.ofSeconds(3),
@@ -453,7 +431,7 @@ public final class ExecutorNativeProbe {
                     principal,
                     workspace,
                     "guard-left",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "printf left > local-draft; poketto status; exit 7",
                     Duration.ofSeconds(20),
@@ -468,7 +446,7 @@ public final class ExecutorNativeProbe {
                     principal,
                     workspace,
                     "guard-right",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "set -eu; test ! -e local-draft; printf right > local-draft",
                     Duration.ofSeconds(20),
@@ -479,7 +457,7 @@ public final class ExecutorNativeProbe {
                             principal,
                             workspace,
                             "guard-right",
-                            new RepositoryExecutor.CopyRequest(left.copyId(), null, false),
+                            new RepositoryExecutor.CopyRequest(left.copyId()),
                             Optional.empty(),
                             "printf corrupted > local-draft",
                             Duration.ofSeconds(20),
@@ -489,7 +467,7 @@ public final class ExecutorNativeProbe {
                                     principal,
                                     workspace,
                                     "guard-right",
-                                    new RepositoryExecutor.CopyRequest(right.copyId(), null, false),
+                                    new RepositoryExecutor.CopyRequest(right.copyId()),
                                     Optional.empty(),
                                     "cat local-draft",
                                     Duration.ofSeconds(20),
@@ -500,7 +478,7 @@ public final class ExecutorNativeProbe {
                                     principal,
                                     workspace,
                                     "guard-left",
-                                    new RepositoryExecutor.CopyRequest(left.copyId(), null, false),
+                                    new RepositoryExecutor.CopyRequest(left.copyId()),
                                     Optional.empty(),
                                     "cat local-draft",
                                     Duration.ofSeconds(20),
@@ -514,7 +492,7 @@ public final class ExecutorNativeProbe {
                             principal,
                             workspace,
                             "guard-reconnected",
-                            new RepositoryExecutor.CopyRequest(left.copyId(), null, false),
+                            new RepositoryExecutor.CopyRequest(left.copyId()),
                             Optional.empty(),
                             "printf unexpected > rejected-command",
                             Duration.ofSeconds(20),
@@ -527,7 +505,7 @@ public final class ExecutorNativeProbe {
                     principal,
                     workspace,
                     "guard-reconnected",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "set -eu; test ! -e rejected-command; test ! -e local-draft",
                     Duration.ofSeconds(20),
@@ -773,7 +751,7 @@ public final class ExecutorNativeProbe {
                             actor,
                             workspace,
                             "same-restart",
-                            new RepositoryExecutor.CopyRequest(old.copyId(), null, false),
+                            new RepositoryExecutor.CopyRequest(old.copyId()),
                             Optional.empty(),
                             "touch rejected-sentinel",
                             Duration.ofSeconds(3),
@@ -783,7 +761,7 @@ public final class ExecutorNativeProbe {
                     actor,
                     workspace,
                     "same-restart",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "test ! -e rejected-sentinel && git rev-parse HEAD",
                     Duration.ofSeconds(3),
@@ -802,7 +780,7 @@ public final class ExecutorNativeProbe {
                 actor,
                 workspace,
                 "same-restart",
-                new RepositoryExecutor.CopyRequest("new", null, false),
+                new RepositoryExecutor.CopyRequest("new"),
                 Optional.empty(),
                 "pwd",
                 Duration.ofSeconds(3),
@@ -811,7 +789,7 @@ public final class ExecutorNativeProbe {
                 actor,
                 workspace,
                 "same-restart",
-                new RepositoryExecutor.CopyRequest(old.copyId(), null, false),
+                new RepositoryExecutor.CopyRequest(old.copyId()),
                 Optional.empty(),
                 descendant(),
                 Duration.ofSeconds(25),
@@ -1902,12 +1880,9 @@ public final class ExecutorNativeProbe {
 
     private void publicProjection() throws Exception {
         var fixture = new PublicExecutionNativeFixture(path("publicFixture"), path("exports"), auth, workspace);
-        var retention = new RetainedCopyStore(
-                path("publicFixture").resolve("public-records"),
-                new RetainedCopyStore.Limits(8, 8 * 1024 * 1024, 64 * 1024 * 1024, 0, Duration.ofMinutes(10)),
-                Clock.systemUTC());
+        var accounts = AccountCopyTestData.disk(path("accountMetadata"));
         privateRead.set(false);
-        try (var executor = adapter(path("socket"), 8, fixture.exports(), Optional.of(retention))) {
+        try (var executor = adapter(path("socket"), 8, fixture.exports(), accounts)) {
             var result = client.execute(
                     executor,
                     principal,
@@ -1929,13 +1904,14 @@ public final class ExecutorNativeProbe {
                     .contains("\"scope\": \"public\"", "\"baseCommit\": \"" + result.commit() + "\"");
             assertThat(result.stdout()).contains("READ_ONLY_SCOPE");
             assertThat(result.commit()).isNotEqualTo(fixture.sourceCommit());
-            RetainedCopyRecord record = retention.read(
-                    new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value()),
-                    UUID.fromString(result.copyId()));
-            assertThat(record.originalBaseline()).isNull();
-            assertThat(record.fullRead()).isFalse();
-            assertThat(record.publicExport().authorityCommit()).isEqualTo(fixture.sourceCommit());
-            assertThat(record.publicExport().sourcePaths()).containsEntry("article/index.md", "public/article.md");
+            try (var held =
+                    accounts.acquire(new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), false))) {
+                var record = held.record().orElseThrow();
+                assertThat(record.original()).isNull();
+                assertThat(record.owner().fullRead()).isFalse();
+                assertThat(record.publicExport().authorityCommit()).isEqualTo(fixture.sourceCommit());
+                assertThat(record.publicExport().sourcePaths()).containsEntry("article/index.md", "public/article.md");
+            }
             passed("public-scope-real-projection-has-no-private-files-metadata-or-original-history");
             var publicArtifact = execute(
                     executor,
@@ -1962,6 +1938,10 @@ public final class ExecutorNativeProbe {
                     new Cancellation());
             assertThat(unchanged.exitCode()).isZero();
             assertThat(unchanged.commit()).isEqualTo(result.commit());
+            assertThat(unchanged.copyId()).isEqualTo(result.copyId());
+            assertThat(new String(readArtifact(executor, "public-native", publicArtifactId), StandardCharsets.UTF_8))
+                    .contains("public-native-body")
+                    .doesNotContain("secret-needle");
             passed("permission-increase-does-not-expand-existing-public-worker-files");
             fixture.withdraw();
             assertThatThrownBy(() -> executor.readArtifact(

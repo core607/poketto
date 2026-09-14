@@ -7,22 +7,10 @@ import java.util.UUID;
 final class RetainedBaseline {
     private RetainedBaseline() {}
 
-    static void validateBinding(
-            RetainedCopyRecord.Owner owner, UUID copyId, boolean fullRead, String commit, Reference reference) {
-        if (!fullRead) {
-            ProtocolValues.require(reference == null, "public original baseline", "must not contain private data");
-            return;
-        }
-        Objects.requireNonNull(reference, "full copy original baseline must be present");
-        ProtocolValues.require(
-                reference.identity().equals(new Identity(owner, copyId, commit)),
-                "original baseline identity",
-                "must match the copy owner and original commit");
-    }
-
-    record Identity(RetainedCopyRecord.Owner owner, UUID copyId, String commit) {
+    record Identity(AccountCopyRecord.Owner owner, UUID copyId, String commit) {
         Identity {
             Objects.requireNonNull(owner, "baseline owner must be present");
+            ProtocolValues.require(owner.fullRead(), "baseline scope", "must be a full copy");
             Objects.requireNonNull(copyId, "baseline copy must be present");
             commit = ProtocolValues.hex(commit, 40, "baseline commit");
         }

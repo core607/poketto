@@ -22,8 +22,8 @@ record AccountCopyRecord(
         ProtocolValues.require(format == 1, "account copy format", "must be 1");
         Objects.requireNonNull(owner, "copy owner must be present");
         Objects.requireNonNull(copyId, "copy ID must be present");
-        ProtocolValues.inRange(revision, 0, RetainedCopyRecord.MAX_VERSION - 1, "copy revision");
-        ProtocolValues.inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "copy expiry");
+        ProtocolValues.inRange(revision, 0, ProtocolValues.MAX_SAFE_INTEGER - 1, "copy revision");
+        ProtocolValues.inRange(expiresAt, 1, ProtocolValues.MAX_SAFE_INTEGER, "copy expiry");
         Objects.requireNonNull(writer, "writer identity must be present");
         Objects.requireNonNull(phase, "copy phase must be present");
         Objects.requireNonNull(state, "host save state must be present");
@@ -32,11 +32,7 @@ record AccountCopyRecord(
                 (phase == Phase.RUNNING || phase == Phase.INTERRUPTED) == (executionId != null),
                 "execution identity",
                 "must match the command phase");
-        RetainedPublicProjection.validate(
-                new RetainedCopyRecord.Owner(owner.accountId(), owner.workspaceId()),
-                owner.fullRead(),
-                publicExport,
-                state.originalCommit());
+        RetainedPublicProjection.validate(owner.workspaceId(), owner.fullRead(), publicExport, state.originalCommit());
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
         } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {

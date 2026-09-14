@@ -154,7 +154,7 @@ public final class RetainedProcessNativeProbe {
             var result = execute(
                     executor,
                     "producer",
-                    new RepositoryExecutor.CopyRequest("new", null, false),
+                    new RepositoryExecutor.CopyRequest("new"),
                     "set -eu; printf 'acknowledged local draft' > private/draft.md; "
                             + "python3 -c \"from pathlib import Path; Path('private/draft.bin').write_bytes(bytes([0,255,9]))\"; "
                             + "printf 'saved before loss' > private/saved-before.md; poketto save private/saved-before.md");
@@ -176,7 +176,7 @@ public final class RetainedProcessNativeProbe {
                 executor.discard(
                         actor,
                         workspace,
-                        new RepositoryExecutor.DiscardRequest(before.copyId().toString(), null),
+                        new RepositoryExecutor.DiscardRequest(before.copyId().toString()),
                         CANCELLATION);
                 throw new IllegalStateException("Discard escaped the process-loss barrier");
             }
@@ -226,7 +226,7 @@ public final class RetainedProcessNativeProbe {
         execute(
                 executor,
                 "producer",
-                new RepositoryExecutor.CopyRequest(before.copyId().toString(), null, false),
+                new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                 "printf 'completion before response' > private/draft.md");
         throw new IllegalStateException("Command escaped the journal publication barrier");
     }
@@ -247,7 +247,7 @@ public final class RetainedProcessNativeProbe {
         execute(
                 executor,
                 "producer",
-                new RepositoryExecutor.CopyRequest(before.copyId().toString(), null, false),
+                new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                 "set -eu; printf 'candidate before process loss' > private/uncertain.md; poketto save private/uncertain.md");
         throw new IllegalStateException("Producer escaped the remote-push termination barrier");
     }
@@ -260,7 +260,7 @@ public final class RetainedProcessNativeProbe {
 
     private AccountCopyRecord interruptibleCommand(IsolatedRepositoryExecutor executor, AccountCopyRecord before)
             throws Exception {
-        var copy = new RepositoryExecutor.CopyRequest(before.copyId().toString(), null, false);
+        var copy = new RepositoryExecutor.CopyRequest(before.copyId().toString());
         var running = CompletableFuture.supplyAsync(
                 () -> execute(
                         executor,
@@ -319,7 +319,7 @@ public final class RetainedProcessNativeProbe {
                 var result = execute(
                         executor,
                         "new-process-new-transport",
-                        new RepositoryExecutor.CopyRequest(before.copyId().toString(), null, false),
+                        new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                         inspection(before));
                 AccountCopyRecord after = readRecord();
                 assertRestored(before, after, selected, result);
@@ -329,7 +329,7 @@ public final class RetainedProcessNativeProbe {
                 execute(
                         executor,
                         "another-new-transport",
-                        new RepositoryExecutor.CopyRequest(after.copyId().toString(), null, false),
+                        new RepositoryExecutor.CopyRequest(after.copyId().toString()),
                         "poketto save private/draft.md");
                 assertThat(fixture.reader(auth)
                                 .getFile(actor, workspace, Optional.empty(), "private/draft.md")
@@ -338,7 +338,7 @@ public final class RetainedProcessNativeProbe {
                 executor.discard(
                         actor,
                         workspace,
-                        new RepositoryExecutor.DiscardRequest(after.copyId().toString(), null),
+                        new RepositoryExecutor.DiscardRequest(after.copyId().toString()),
                         CANCELLATION);
             }
         }
@@ -378,20 +378,20 @@ public final class RetainedProcessNativeProbe {
         var fresh = execute(
                 executor,
                 "new-after-expiry",
-                new RepositoryExecutor.CopyRequest("new", null, false),
+                new RepositoryExecutor.CopyRequest("new"),
                 "test ! -e private/draft.md && test ! -e private/draft.bin");
         assertThat(fresh.copyId()).isNotEqualTo(before.copyId().toString());
         assertThat(fixture.reader(auth)
                         .getFile(actor, workspace, Optional.empty(), "private/saved-before.md")
                         .source())
                 .contains("saved before loss");
-        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId(), null), CANCELLATION);
+        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId()), CANCELLATION);
     }
 
     private void resumeDiscard(
             IsolatedRepositoryExecutor executor, PublicExecutionNativeFixture fixture, AccountCopyRecord before) {
         assertThat(before.phase()).isEqualTo(AccountCopyRecord.Phase.DISCARDING);
-        var discard = new RepositoryExecutor.DiscardRequest(before.copyId().toString(), null);
+        var discard = new RepositoryExecutor.DiscardRequest(before.copyId().toString());
         assertThat(executor.discard(actor, workspace, discard, CANCELLATION).status())
                 .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
         assertThat(executor.discard(actor, workspace, discard, CANCELLATION).status())
@@ -399,14 +399,14 @@ public final class RetainedProcessNativeProbe {
         var fresh = execute(
                 executor,
                 "new-after-discard",
-                new RepositoryExecutor.CopyRequest("new", null, false),
+                new RepositoryExecutor.CopyRequest("new"),
                 "test ! -e private/draft.md && test ! -e private/draft.bin");
         assertThat(fresh.copyId()).isNotEqualTo(before.copyId().toString());
         assertThat(fixture.reader(auth)
                         .getFile(actor, workspace, Optional.empty(), "private/saved-before.md")
                         .source())
                 .contains("saved before loss");
-        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId(), null), CANCELLATION);
+        executor.discard(actor, workspace, new RepositoryExecutor.DiscardRequest(fresh.copyId()), CANCELLATION);
     }
 
     private AccountCopyRecord reconcile(
@@ -418,7 +418,7 @@ public final class RetainedProcessNativeProbe {
         execute(
                 executor,
                 "reconcile-new-process",
-                new RepositoryExecutor.CopyRequest(before.copyId().toString(), null, false),
+                new RepositoryExecutor.CopyRequest(before.copyId().toString()),
                 "poketto recover");
         AccountCopyRecord after = readRecord();
         assertThat(fixture.pushes())

@@ -144,10 +144,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         validateExecution(serverSessionId, expected, requested, command, timeout);
         var owner = new AccountCopyRecord.Owner(
                 principal.accountId(), workspace.value(), access.capabilities().contains(Capability.READ_PRIVATE));
-        try (var held = new AccountCommand(accounts, owner, cancellation)) {
+        try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
             acquireExecution(cancellation);
             try {
-                Session session = accountSession(principal, workspace, access, expected, held, cancellation);
+                Session session = accountSession(principal, workspace, expected, held, cancellation);
                 try {
                     return executeAccount(session, held, requested, command, timeout, cancellation);
                 } finally {
@@ -180,7 +180,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private void acquireExecution(ExecutionCancellation cancellation) {
         if (cancellation.isCancelled()) {
-            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, null, false);
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false);
         }
         try {
             if (!executions.tryAcquire(5, TimeUnit.SECONDS)) {
@@ -188,18 +188,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, null, false, interrupted);
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false, interrupted);
         }
     }
 
     private Session accountSession(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            WorkspaceAccess access,
             CopyRequest expected,
             AccountCommand held,
             ExecutionCancellation cancellation) {
-        SessionKey key = keyFor(principal, workspace, access);
+        SessionKey key = keyFor(held.owner());
         var record = held.record();
         requireAccountRequest(record, expected);
         WorkerClient.Hello hello = worker.hello();
@@ -218,8 +217,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 && previous.principal.subjectId().equals(principal.subjectId())
                 && hello.workerBootId().equals(previous.hello.workerBootId())
                 && record.phase() == AccountCopyRecord.Phase.READY
-                && !accounts.expired(record)
-                && !expected.resume()) {
+                && !accounts.expired(record)) {
             if (!previous.busy.compareAndSet(false, true)) {
                 throw rejected("session_busy");
             }
@@ -230,8 +228,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             fenceAccount(principal, record, key, hello);
             requireDiscardAuthorization(principal, workspace, cancellation);
             if (record.phase() == AccountCopyRecord.Phase.INITIALIZING && !NEW_COPY.equals(expected.id())) {
-                throw new ExecutionAdmissionException(
-                        ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, record.revision() + 1, false);
+                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, false);
             }
             if (accounts.expired(record)
                     || record.phase() == AccountCopyRecord.Phase.INITIALIZING
@@ -302,10 +299,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             : Optional.of(record.copyId().toString()),
                     record == null);
         }
-        if (record != null && expected.generation() != null && expected.generation() != record.revision() + 1) {
-            throw new ExecutionAdmissionException(
-                    ExecutionAdmissionException.Reason.GENERATION_MISMATCH, record.revision() + 1, true);
-        }
     }
 
     private ExecutionResult executeAccount(
@@ -367,7 +360,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             return held.view();
         } catch (RetainedCopyException unavailable) {
             var known = session.accountRecord;
-            return new CopyRetention(known.revision() + 1, known.expiresAt(), false, known.lastInterruptedCommand());
+            return new CopyRetention(known.expiresAt(), false, known.lastInterruptedCommand());
         }
     }
 
@@ -441,7 +434,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     continue;
                 }
                 if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
-                    requireAccountRequest(record, new CopyRequest(request.id(), request.generation(), false));
+                    requireAccountRequest(record, new CopyRequest(request.id()));
                 }
                 held.beginDiscard();
                 var key = new SessionKey(principal.accountId(), workspace, hash(full ? "full" : "public"));
@@ -584,7 +577,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 : ExecutionAdmissionException.Reason.UNAVAILABLE;
         boolean available = record != null && record.expiresAt() > System.currentTimeMillis();
-        return new ExecutionAdmissionException(reason, available ? record.revision() + 1 : null, available, failure);
+        return new ExecutionAdmissionException(reason, available, failure);
     }
 
     @Override
@@ -597,18 +590,26 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int limit,
             ExecutionCancellation cancellation) {
         var access = authorize(principal, workspace);
-        var owner = new AccountCopyRecord.Owner(
-                principal.accountId(), workspace.value(), access.capabilities().contains(Capability.READ_PRIVATE));
-        try (var held = new AccountCommand(accounts, owner, cancellation)) {
-            held.requireLive();
-            if (held.record() == null) {
-                return Optional.empty();
+        validateArtifactRequest(serverSessionId, artifactId, offset, limit);
+        List<Boolean> scopes =
+                access.capabilities().contains(Capability.READ_PRIVATE) ? List.of(true, false) : List.of(false);
+        for (boolean full : scopes) {
+            var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
+            try (var held = new AccountCommand(accounts, owner, cancellation)) {
+                if (held.record() == null || accounts.expired(held.record())) {
+                    continue;
+                }
+                held.requireLive();
+                var page = readAccountArtifact(
+                        principal, workspace, serverSessionId, artifactId, offset, limit, cancellation, held);
+                if (page.isPresent()) {
+                    return page;
+                }
+            } catch (RuntimeException failure) {
+                throw admissionFailure(failure, null);
             }
-            return readAccountArtifact(
-                    principal, workspace, serverSessionId, artifactId, offset, limit, cancellation, held);
-        } catch (RuntimeException failure) {
-            throw admissionFailure(failure, null);
         }
+        return Optional.empty();
     }
 
     private Optional<ArtifactChunk> readAccountArtifact(
@@ -624,7 +625,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         validateArtifactRequest(serverSessionId, artifactId, offset, limit);
         Session session;
         synchronized (this) {
-            session = sessions.get(keyFor(principal, workspace, authorize(principal, workspace)));
+            session = sessions.get(keyFor(held.owner()));
         }
         if (session == null) {
             return Optional.empty();
@@ -765,7 +766,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 reason.equals("session_limit")
                         ? ExecutionAdmissionException.Reason.CAPACITY
                         : ExecutionAdmissionException.Reason.BUSY,
-                null,
                 false);
     }
 
@@ -912,11 +912,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
     }
 
-    private static SessionKey keyFor(AuthPrincipal principal, WorkspaceId workspace, WorkspaceAccess access) {
+    private static SessionKey keyFor(AccountCopyRecord.Owner owner) {
         return new SessionKey(
-                principal.accountId(),
-                workspace,
-                hash(access.capabilities().contains(Capability.READ_PRIVATE) ? "full" : "public"));
+                owner.accountId(), new WorkspaceId(owner.workspaceId()), hash(owner.fullRead() ? "full" : "public"));
     }
 
     private Session refreshLease(Session previous, AuthPrincipal principal) {
@@ -933,7 +931,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             stopAndAwait(previous, "session_closed");
         }
         if (previous.commit == null || previous.saveState == null) {
-            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, null, false);
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, false);
         }
         var current = new Session(previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID());
         current.busy.set(true);
@@ -945,7 +943,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         current.accountRecord = previous.accountRecord;
         synchronized (this) {
             if (closed || !sessions.replace(previous.key, previous, current)) {
-                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, true);
+                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, true);
             }
         }
         previous.busy.set(false);

@@ -112,6 +112,25 @@ final class AccountCopyStore {
         }
     }
 
+    /** Routing only: the caller must lock the selected owner and check the copy ID again. */
+    AccountCopyRecord.Owner ownerFor(AccountCopyRecord.Owner permitted, String copyId) {
+        if (!permitted.fullRead() || copyId.equals("new")) {
+            return permitted;
+        }
+        try (var index = index()) {
+            index.requireValid();
+            var current = load(permitted);
+            if (current != null && current.copyId().toString().equals(copyId)) {
+                return permitted;
+            }
+            var publicOwner = new AccountCopyRecord.Owner(permitted.accountId(), permitted.workspaceId(), false);
+            var publicCopy = load(publicOwner);
+            return publicCopy != null && publicCopy.copyId().toString().equals(copyId) ? publicOwner : permitted;
+        } catch (IOException failure) {
+            throw unavailable(failure);
+        }
+    }
+
     Lease acquire(AccountCopyRecord.Owner owner) {
         Path lock = root.resolve(key(owner) + ".lock");
         try (var index = index()) {

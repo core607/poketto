@@ -97,10 +97,7 @@ final class AccountOriginalFiles implements AutoCloseable {
 
     private static RetainedBaseline.Identity identity(AccountCopyRecord record) {
         return new RetainedBaseline.Identity(
-                new RetainedCopyRecord.Owner(
-                        record.owner().accountId(), record.owner().workspaceId()),
-                record.copyId(),
-                record.state().originalCommit());
+                record.owner(), record.copyId(), record.state().originalCommit());
     }
 
     @Override

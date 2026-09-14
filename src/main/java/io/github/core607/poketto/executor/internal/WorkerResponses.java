@@ -60,7 +60,7 @@ final class WorkerResponses {
             checkpointId = ProtocolValues.uuid(checkpointId, "checkpointId");
             sha256 = ProtocolValues.hex(sha256, 64, "sha256");
             ProtocolValues.inRange(bytes, 1, 1024L * 1024 * 1024, "bytes");
-            ProtocolValues.inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "expiresAt");
+            ProtocolValues.inRange(expiresAt, 1, ProtocolValues.MAX_SAFE_INTEGER, "expiresAt");
         }
     }
 

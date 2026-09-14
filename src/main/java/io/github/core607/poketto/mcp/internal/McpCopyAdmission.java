@@ -27,9 +27,9 @@ final class McpCopyAdmission {
         String message =
                 switch (exception.reason()) {
                     case MISSING_COPY ->
-                        "Expected copy is unavailable in this MCP session; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
+                        "Expected copy is unavailable for this account and workspace; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
                     case DIFFERENT_COPY ->
-                        "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
+                        "Expected copy ID does not match the account working copy; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
                     case CLOSED_COPY ->
                         exception.newCopyAllowed()
                                 ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
@@ -51,21 +51,15 @@ final class McpCopyAdmission {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record AdmissionRefusal(
-            String code,
-            String reason,
-            boolean executed,
-            Long currentGeneration,
-            boolean recoveryAvailable,
-            String message) {}
+            String code, String reason, boolean executed, boolean recoveryAvailable, String message) {}
 
     static McpSchema.CallToolResult admissionRefused(ObjectMapper json, ExecutionAdmissionException exception) {
         var body = new AdmissionRefusal(
                 "EXECUTION_REFUSED",
                 exception.reason().name(),
                 false,
-                exception.currentGeneration(),
                 exception.recoveryAvailable(),
-                "This command did not execute. Recovery requires the intended copy ID, its current generation and resume=true. Earlier interrupted commands may have partially completed; inspect recovered state before retrying writes.");
+                "This command did not execute. Inspect the reason and retry a read-only command against the intended copy ID when available. Earlier interrupted commands may have partially completed; inspect local and remote state before retrying writes.");
         return McpSchema.CallToolResult.builder()
                 .addTextContent(json.writeValueAsString(body))
                 .isError(true)
@@ -75,7 +69,6 @@ final class McpCopyAdmission {
     private record UnconfirmedExecution(
             String code,
             String copyId,
-            long currentGeneration,
             long expiresAt,
             boolean mayHaveExecuted,
             boolean recoveryAvailable,
@@ -85,11 +78,10 @@ final class McpCopyAdmission {
         var body = new UnconfirmedExecution(
                 "EXECUTION_UNCONFIRMED",
                 exception.copyId(),
-                exception.retention().generation(),
                 exception.retention().expiresAt(),
                 true,
                 exception.recoveryAvailable(),
-                "This command may have partially completed, including remote writes. Do not replay it. Before expiry, recover this exact copy and generation with resume=true and a read-only inspection command; inspect retained interruption and pending-save state before continuing.");
+                "This command may have partially completed, including remote writes. Do not replay it. Before expiry, use this exact copy ID with a read-only inspection command. Reconnection is automatic; inspect interruption and pending-save state with poketto status before continuing.");
         return McpSchema.CallToolResult.builder()
                 .addTextContent(json.writeValueAsString(body))
                 .isError(true)
@@ -97,14 +89,13 @@ final class McpCopyAdmission {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record DiscardRefusal(String code, String reason, Long currentGeneration, String message) {}
+    private record DiscardRefusal(String code, String reason, String message) {}
 
     static McpSchema.CallToolResult discardRefused(ObjectMapper json, ExecutionAdmissionException exception) {
         var body = new DiscardRefusal(
                 "DISCARD_UNCONFIRMED",
                 exception.reason().name(),
-                exception.currentGeneration(),
-                "Discard completion was not confirmed. Retry only the same copy ID and expected generation after checking the reason. Remote Git commits are not undone. This response does not confirm that retained state still exists.");
+                "Discard completion was not confirmed. Retry only the same copy ID after checking the reason. Remote Git commits are not undone. This response does not confirm that retained state still exists.");
         return McpSchema.CallToolResult.builder()
                 .addTextContent(json.writeValueAsString(body))
                 .isError(true)
@@ -112,22 +103,7 @@ final class McpCopyAdmission {
     }
 
     static RepositoryExecutor.CopyRequest copyRequest(Map<String, Object> input) {
-        Long generation = null;
-        if (input.containsKey("expectedGeneration")) {
-            Object value = input.get("expectedGeneration");
-            if (!(value instanceof Number number)) {
-                throw new IllegalArgumentException("Expected generation must be an integer");
-            }
-            if (number.doubleValue() != number.longValue()) {
-                throw new IllegalArgumentException("Expected generation must be an integer");
-            }
-            generation = number.longValue();
-        }
-        Object resume = input.getOrDefault("resume", false);
-        if (!(resume instanceof Boolean recover)) {
-            throw new IllegalArgumentException("Resume must be a boolean");
-        }
-        return new RepositoryExecutor.CopyRequest(copyId(input), generation, recover);
+        return new RepositoryExecutor.CopyRequest(copyId(input));
     }
 
     private static String copyId(Map<String, Object> input) {

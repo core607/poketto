@@ -50,7 +50,8 @@ class RetainedBaselineFilesTests {
     Path root;
 
     private final WorkspaceId workspace = WorkspaceId.random();
-    private final RetainedCopyRecord.Owner owner = new RetainedCopyRecord.Owner(UUID.randomUUID(), workspace.value());
+    private final AccountCopyRecord.Owner owner =
+            new AccountCopyRecord.Owner(UUID.randomUUID(), workspace.value(), true);
     private final RetainedBaseline.Identity identity =
             new RetainedBaseline.Identity(owner, UUID.randomUUID(), "a".repeat(40));
     private static final RetainedBaseline.Limits LIMITS = new RetainedBaseline.Limits(1024 * 1024, 1024 * 1024, 100);

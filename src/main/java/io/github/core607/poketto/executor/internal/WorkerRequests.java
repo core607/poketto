@@ -62,7 +62,7 @@ final class WorkerRequests {
     record Checkpoint(String checkpointId, long expiresAt, String scope) implements Data {
         Checkpoint {
             checkpointId = uuid(checkpointId, "checkpointId");
-            inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "expiresAt");
+            inRange(expiresAt, 1, ProtocolValues.MAX_SAFE_INTEGER, "expiresAt");
             scope = retainedScope(scope);
         }
     }
@@ -70,7 +70,7 @@ final class WorkerRequests {
     record ActiveCheckpoint(String checkpointId, long expiresAt, String scope, String executionId) implements Data {
         ActiveCheckpoint {
             checkpointId = uuid(checkpointId, "checkpointId");
-            inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "expiresAt");
+            inRange(expiresAt, 1, ProtocolValues.MAX_SAFE_INTEGER, "expiresAt");
             scope = retainedScope(scope);
             executionId = execution(executionId);
         }

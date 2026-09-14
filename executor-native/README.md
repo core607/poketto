@@ -1,12 +1,6 @@
 # Java and sandbox execution acceptance
 
-The [timeout and disposal run](evidence/2026-09-14-ephemeral-lifecycle.json)
-passes all 46 Java scenarios, process-loss expiry and cleanup. A timed-out command
-preserves prior text, binary files, partial work and its pinned commit; explicit
-non-retained disposal permits a fresh copy in the same transport. Retained timeout
-work also survives recovery at the original baseline. The separate
-[authenticated HTTP run](../acceptance/clients/evidence/2026-09-14-ephemeral-lifecycle.json)
-verifies generation-free disposal through the MCP schema and account boundary.
+Current acceptance exercises account-owned disk copies on an isolated XFS pool. `--scenario ephemeral-lifecycle` covers transport/grant reconnection, timeout, adapter recreation and explicit disposal. `--scenario retained-process` uses independent JVMs, external SIGKILL and real JGit saves/readback; authentication and the Git authority are synthetic fixtures. Historical evidence entries below remain tied to their recorded revisions and do not replace current authenticated service acceptance.
 
 The [content-root run](evidence/2026-09-10-content-roots.json) uses the explicit
 `public-root` publication format. All 30 Java scenarios, process-loss lease expiry
@@ -94,18 +88,7 @@ includes both with the complete adapter lifecycle checks and process-loss expiry
 A focused result does not prove the omitted scenarios. Each mode uses a fresh native
 fixture and checks cleanup.
 
-`--scenario retained-process` runs independent producer and recovery JVMs. The
-controller verifies the producer service's Java process and sends SIGKILL after
-an acknowledged command, during a command with a checkpointed host save, or after
-the remote Git ref advances but before that reply reaches the host writer. It also
-kills immediately before final command metadata publication and after that durable
-publication but before response delivery. A new
-JVM reopens the same synthetic Git authority without reseeding, explicitly resumes
-the same copy, inspects its retained state and saves the restored draft. The
-uncertain-write case explicitly reconciles its exact candidate without another
-push. The worker
-boot stays unchanged. This focused mode checks lease closure and fixture cleanup;
-it does not rerun the complete adapter batch.
+`--scenario retained-process` runs independent producer and recovery JVMs. The controller verifies the producer service's Java executable and sends SIGKILL after an acknowledged command, during a command with an acknowledged host save, after a successful remote push, around final journal publication, or during disposal. A new JVM opens the same authority without reseeding, automatically attaches the original copy, checks its local work and saves the recovered draft. The uncertain-write case reconciles the candidate without repeating the push. The expiry case advances only the fixture clock, checks that a held writer prevents deletion, then verifies scheduled cleanup and preservation of remote commits. Use `--process-case` to select one of `acknowledged`, `interrupted`, `uncertain`, `beforepublish`, `afterpublish`, `discarding` or `expired`. Output records that selection. The focused mode checks lease closure and fixture cleanup.
 
 The complete Java batch has a 360-second supervisor and harness deadline to cover its repeated cold opens and intentional worker restarts. Focused batches retain a 240-second deadline. These are whole-test budgets; each command and lease keeps its independently checked timeout, and cleanup still verifies that no execution processes remain.
 
@@ -237,3 +220,5 @@ The [JVM process-loss run](evidence/2026-09-13-retained-jvm-process-loss.json) v
 The [post-push process-loss run](evidence/2026-09-13-retained-push-process-loss.json) adds external SIGKILL after the real remote accepts a commit but before the host writer receives its reply. Recovery retains the exact candidate and pending state. `poketto recover` confirms the candidate, clears uncertainty and preserves the saved file with zero additional pushes. All three focused process-loss cases, lease closure and cleanup pass. Authentication remains synthetic; command-acknowledgement publication boundaries and real-account/client acceptance remain pending.
 
 The [publication-boundary run](evidence/2026-09-13-retained-publication-process-loss.json) adds SIGKILL immediately before and after the final command metadata replacement. Before publication, recovery selects the prior acknowledged draft and reports interruption. After durable publication, it restores the completed draft even though the response was never delivered. Both restored versions can be saved and read from authoritative Git. All five focused process-loss cases, lease closure and cleanup pass. Authentication remains synthetic; real-account and actual-client acceptance remain pending. Process termination does not establish storage-device or host power-loss durability.
+
+The `--scenario public-scope --fixture-parent /var/lib` probe uses the real disk worker and Git public projection to check permission expansion, unchanged copy identity and content, artifact delivery, and withdrawal checks. Its authorization principal is synthetic; it does not claim external client acceptance.

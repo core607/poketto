@@ -109,7 +109,7 @@ record EphemeralLifecycleNativeProbe(
                         SessionReplacedException.class,
                         failure ->
                                 assertThat(failure.reason()).isEqualTo(SessionReplacedException.Reason.DIFFERENT_COPY));
-        var request = new RepositoryExecutor.DiscardRequest(first.copyId(), null);
+        var request = new RepositoryExecutor.DiscardRequest(first.copyId());
         assertThat(executor.discard(actor, workspace, request, CANCELLATION).status())
                 .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
         assertThat(executor.discard(actor, workspace, request, CANCELLATION).status())
@@ -122,7 +122,7 @@ record EphemeralLifecycleNativeProbe(
         assertThat(executor.discard(
                                 actor,
                                 workspace,
-                                new RepositoryExecutor.DiscardRequest(replacement.copyId(), null),
+                                new RepositoryExecutor.DiscardRequest(replacement.copyId()),
                                 CANCELLATION)
                         .status())
                 .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
@@ -162,7 +162,7 @@ record EphemeralLifecycleNativeProbe(
                 current,
                 workspace,
                 "transport-" + UUID.randomUUID(),
-                new RepositoryExecutor.CopyRequest(copy, null, false),
+                new RepositoryExecutor.CopyRequest(copy),
                 Optional.empty(),
                 command,
                 Duration.ofSeconds(seconds),

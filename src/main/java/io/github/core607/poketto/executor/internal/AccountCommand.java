@@ -43,6 +43,10 @@ final class AccountCommand implements AutoCloseable {
         throw new RetainedCopyException(RetainedCopyException.Reason.BUSY);
     }
 
+    AccountCopyRecord.Owner owner() {
+        return owner;
+    }
+
     AccountCopyRecord record() {
         return lease.record().orElse(null);
     }
@@ -146,8 +150,7 @@ final class AccountCommand implements AutoCloseable {
 
     CopyRetention view() {
         var current = record();
-        return new CopyRetention(
-                current.revision() + 1, current.expiresAt(), resumed, current.lastInterruptedCommand());
+        return new CopyRetention(current.expiresAt(), resumed, current.lastInterruptedCommand());
     }
 
     void beginDiscard() {
