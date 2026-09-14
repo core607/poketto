@@ -27,6 +27,7 @@ import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
@@ -79,6 +80,169 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void failedNewRetentionAdmissionReleasesItsSlotButStaleGenerationPreservesAnExistingCopy() throws Exception {
+        RetainedCopyStore store = metadataStore();
+        when(store.writer(any(), any()))
+                .thenThrow(new RetainedCopyException(RetainedCopyException.Reason.LIMIT))
+                .thenReturn(mock(RetainedFileLocks.Held.class));
+        var actor = principal();
+        var meters = new SimpleMeterRegistry();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        retainedStores(store),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.checkpointProtocol = 1;
+            executor.bindMetrics(meters);
+            var fresh = new RepositoryExecutor.CopyRequest("new", null, false);
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            "retained-retry",
+                            fresh,
+                            Optional.empty(),
+                            "rejected",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            failure -> assertThat(failure.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.CAPACITY));
+            assertThat(peer.operations("OPEN")).isEmpty();
+            assertThat(peer.operations("EXEC")).isEmpty();
+            assertThat(meters.get("poketto.executor.sessions.active").gauge().value())
+                    .isZero();
+            var result = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "retained-retry",
+                    fresh,
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(result.retention().generation()).isEqualTo(1);
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            "retained-retry",
+                            new RepositoryExecutor.CopyRequest(result.copyId(), 2L, false),
+                            Optional.empty(),
+                            "stale",
+                            Duration.ofSeconds(2),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            failure -> assertThat(failure.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.GENERATION_MISMATCH));
+            var continued = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "retained-retry",
+                    new RepositoryExecutor.CopyRequest(result.copyId(), 1L, false),
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(continued.copyId()).isEqualTo(result.copyId());
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(peer.operations("EXEC")).hasSize(2);
+        }
+    }
+
+    @Test
+    void retainedExpiryClosesTheLeaseWithoutWaitingForMcpIdleAndAllowsExplicitNew() throws Exception {
+        RetainedCopyStore store = metadataStore();
+        var expired = new AtomicBoolean();
+        when(store.expired(any(Long.class))).thenAnswer(call -> expired.get());
+        var actor = principal();
+        var meters = new SimpleMeterRegistry();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        retainedStores(store),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        1,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.checkpointProtocol = 1;
+            executor.bindMetrics(meters);
+            var fresh = new RepositoryExecutor.CopyRequest("new", null, false);
+            var first = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "expiry",
+                    fresh,
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            expired.set(true);
+            long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+            while (meters.get("poketto.executor.sessions.active").gauge().value() != 0) {
+                assertThat(System.nanoTime()).isLessThan(deadline);
+                Thread.sleep(20);
+            }
+            assertThat(peer.operations("CLOSE")).isNotEmpty();
+            expired.set(false);
+            var replacement = executor.execute(
+                    actor,
+                    WORKSPACE,
+                    "expiry",
+                    fresh,
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(replacement.copyId()).isNotEqualTo(first.copyId());
+            assertThat(peer.operations("OPEN")).hasSize(2);
+            assertThat(peer.operations("EXEC")).hasSize(2);
+        }
+    }
+
+    private static RetainedCopyStore metadataStore() {
+        RetainedCopyStore store = mock(RetainedCopyStore.class);
+        when(store.writer(any(), any())).thenReturn(mock(RetainedFileLocks.Held.class));
+        var record = new AtomicReference<RetainedCopyRecord>();
+        when(store.newExpiry()).thenReturn(System.currentTimeMillis() + 60000);
+        when(store.read(any(), any())).thenAnswer(call -> record.get());
+        doAnswer(call -> {
+                    record.set(call.getArgument(0));
+                    return null;
+                })
+                .when(store)
+                .create(any());
+        doAnswer(call -> {
+                    record.set(call.getArgument(2));
+                    return null;
+                })
+                .when(store)
+                .replace(any(Long.class), any(Long.class), any());
+        return store;
+    }
+
+    private static RetainedWorkStores retainedStores(RetainedCopyStore records) {
+        var originals = mock(RetainedBaselineStore.class);
+        when(originals.capture(any(), any(), any())).thenAnswer(call -> {
+            RetainedBaseline.Identity identity = call.getArgument(1);
+            return RetainedBaselineTestData.reference(
+                    identity.owner(), identity.copyId(), identity.commit(), identity.expiresAt());
+        });
+        return new RetainedWorkStores(records, originals);
+    }
+
+    @Test
     void idleReconnectAtTheSameCommitRequiresExplicitAdmissionAndNeverRunsTheRejectedCommand() throws Exception {
         var principal = principal();
         var exports = exports();
@@ -90,7 +254,7 @@ class WorkerSocketTests {
                     principal,
                     WORKSPACE,
                     "before-idle",
-                    "new",
+                    new RepositoryExecutor.CopyRequest("new", null, false),
                     Optional.empty(),
                     "pwd",
                     Duration.ofSeconds(2),
@@ -101,7 +265,7 @@ class WorkerSocketTests {
                             principal,
                             WORKSPACE,
                             "after-idle",
-                            first.copyId(),
+                            new RepositoryExecutor.CopyRequest(first.copyId(), null, false),
                             Optional.empty(),
                             "write-sentinel",
                             Duration.ofSeconds(2),
@@ -116,7 +280,7 @@ class WorkerSocketTests {
                     principal,
                     WORKSPACE,
                     "after-idle",
-                    "new",
+                    new RepositoryExecutor.CopyRequest("new", null, false),
                     Optional.empty(),
                     "pwd",
                     Duration.ofSeconds(2),
@@ -128,7 +292,7 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "after-idle",
-                                expected,
+                                new RepositoryExecutor.CopyRequest(expected, null, false),
                                 Optional.empty(),
                                 "write-sentinel",
                                 Duration.ofSeconds(2),
@@ -184,6 +348,7 @@ class WorkerSocketTests {
                 .recover(eq(actor), eq(WORKSPACE), any());
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         saves,
@@ -199,7 +364,7 @@ class WorkerSocketTests {
                                     actor,
                                     WORKSPACE,
                                     "publisher-recover",
-                                    "new",
+                                    new RepositoryExecutor.CopyRequest("new", null, false),
                                     Optional.empty(),
                                     "poketto recover",
                                     Duration.ofSeconds(3),
@@ -228,7 +393,7 @@ class WorkerSocketTests {
                     principal,
                     WORKSPACE,
                     "left",
-                    "new",
+                    new RepositoryExecutor.CopyRequest("new", null, false),
                     Optional.empty(),
                     "pwd",
                     Duration.ofSeconds(2),
@@ -237,7 +402,7 @@ class WorkerSocketTests {
                     principal,
                     WORKSPACE,
                     "right",
-                    "new",
+                    new RepositoryExecutor.CopyRequest("new", null, false),
                     Optional.empty(),
                     "pwd",
                     Duration.ofSeconds(2),
@@ -247,7 +412,7 @@ class WorkerSocketTests {
                             principal,
                             WORKSPACE,
                             "right",
-                            left.copyId(),
+                            new RepositoryExecutor.CopyRequest(left.copyId(), null, false),
                             Optional.empty(),
                             "write-sentinel",
                             Duration.ofSeconds(2),
@@ -259,7 +424,7 @@ class WorkerSocketTests {
                             principal(),
                             WORKSPACE,
                             "right",
-                            right.copyId(),
+                            new RepositoryExecutor.CopyRequest(right.copyId(), null, false),
                             Optional.empty(),
                             "write-sentinel",
                             Duration.ofSeconds(2),
@@ -271,7 +436,7 @@ class WorkerSocketTests {
                             principal,
                             WorkspaceId.random(),
                             "right",
-                            right.copyId(),
+                            new RepositoryExecutor.CopyRequest(right.copyId(), null, false),
                             Optional.empty(),
                             "write-sentinel",
                             Duration.ofSeconds(2),
@@ -285,7 +450,7 @@ class WorkerSocketTests {
                             principal,
                             WORKSPACE,
                             "right",
-                            left.copyId(),
+                            new RepositoryExecutor.CopyRequest(left.copyId(), null, false),
                             Optional.empty(),
                             "write-sentinel",
                             Duration.ofSeconds(2),
@@ -368,6 +533,7 @@ class WorkerSocketTests {
         var actor = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         packages,
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -628,7 +794,7 @@ class WorkerSocketTests {
                             principal,
                             WORKSPACE,
                             "lost",
-                            UUID.randomUUID().toString(),
+                            new RepositoryExecutor.CopyRequest(UUID.randomUUID().toString(), null, false),
                             Optional.empty(),
                             "touch local.txt",
                             Duration.ofSeconds(1),
@@ -722,6 +888,7 @@ class WorkerSocketTests {
 
     private static IsolatedRepositoryExecutor executor(AuthService auth, RepositorySnapshotExports exports, Peer peer) {
         return new IsolatedRepositoryExecutor(
+                null,
                 mock(PortableContentExports.class),
                 mock(MediaFileService.class),
                 mock(SelectedFileSaves.class),
@@ -813,7 +980,7 @@ class WorkerSocketTests {
                     actor,
                     WORKSPACE,
                     "still-owned",
-                    "new",
+                    new RepositoryExecutor.CopyRequest("new", null, false),
                     Optional.empty(),
                     "sleep 10",
                     Duration.ofSeconds(2),
@@ -825,7 +992,7 @@ class WorkerSocketTests {
                                 actor,
                                 WORKSPACE,
                                 "still-owned",
-                                "new",
+                                new RepositoryExecutor.CopyRequest("new", null, false),
                                 Optional.empty(),
                                 "write-sentinel",
                                 Duration.ofSeconds(2),
@@ -897,6 +1064,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -933,7 +1101,7 @@ class WorkerSocketTests {
                                     principal,
                                     WORKSPACE,
                                     "closed-A",
-                                    "new",
+                                    new RepositoryExecutor.CopyRequest("new", null, false),
                                     Optional.empty(),
                                     "pwd",
                                     Duration.ofSeconds(1),
@@ -965,6 +1133,7 @@ class WorkerSocketTests {
                 .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1004,6 +1173,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1045,6 +1215,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1070,7 +1241,7 @@ class WorkerSocketTests {
                             principal,
                             WORKSPACE,
                             "unknown-A",
-                            "new",
+                            new RepositoryExecutor.CopyRequest("new", null, false),
                             Optional.empty(),
                             "write-sentinel",
                             Duration.ofSeconds(1),
@@ -1103,6 +1274,7 @@ class WorkerSocketTests {
         var auth = fullAuth();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1182,6 +1354,7 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
+                            null,
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
                             mock(SelectedFileSaves.class),
@@ -1249,7 +1422,8 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "old-A",
-                                UUID.randomUUID().toString(),
+                                new RepositoryExecutor.CopyRequest(
+                                        UUID.randomUUID().toString(), null, false),
                                 Optional.empty(),
                                 "pwd",
                                 Duration.ofSeconds(1),
@@ -1267,6 +1441,7 @@ class WorkerSocketTests {
             var principal = principal();
             try (var peer = new Peer();
                     var executor = new IsolatedRepositoryExecutor(
+                            null,
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
                             mock(SelectedFileSaves.class),
@@ -1280,7 +1455,7 @@ class WorkerSocketTests {
                         principal,
                         WORKSPACE,
                         "same",
-                        "new",
+                        new RepositoryExecutor.CopyRequest("new", null, false),
                         Optional.empty(),
                         "pwd",
                         Duration.ofSeconds(1),
@@ -1290,7 +1465,7 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "same",
-                                old.copyId(),
+                                new RepositoryExecutor.CopyRequest(old.copyId(), null, false),
                                 Optional.empty(),
                                 "pwd",
                                 Duration.ofSeconds(1),
@@ -1302,7 +1477,7 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "same",
-                                "new",
+                                new RepositoryExecutor.CopyRequest("new", null, false),
                                 Optional.empty(),
                                 "sentinel",
                                 Duration.ofSeconds(1),
@@ -1314,7 +1489,7 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "same",
-                                "new",
+                                new RepositoryExecutor.CopyRequest("new", null, false),
                                 Optional.empty(),
                                 "sentinel",
                                 Duration.ofSeconds(1),
@@ -1327,7 +1502,7 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "same",
-                                old.copyId(),
+                                new RepositoryExecutor.CopyRequest(old.copyId(), null, false),
                                 Optional.empty(),
                                 "sentinel",
                                 Duration.ofSeconds(1),
@@ -1340,7 +1515,7 @@ class WorkerSocketTests {
                         principal,
                         WORKSPACE,
                         "same",
-                        "new",
+                        new RepositoryExecutor.CopyRequest("new", null, false),
                         Optional.empty(),
                         "pwd",
                         Duration.ofSeconds(1),
@@ -1351,7 +1526,7 @@ class WorkerSocketTests {
                                 principal,
                                 WORKSPACE,
                                 "same",
-                                old.copyId(),
+                                new RepositoryExecutor.CopyRequest(old.copyId(), null, false),
                                 Optional.empty(),
                                 "sentinel",
                                 Duration.ofSeconds(1),
@@ -1368,6 +1543,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1440,6 +1616,7 @@ class WorkerSocketTests {
         var principal = principal();
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
+                        null,
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
                         mock(SelectedFileSaves.class),
@@ -1591,6 +1768,7 @@ class WorkerSocketTests {
         private volatile int artifactProtocol = 1;
         private volatile int moveProtocol = 1;
         private volatile int exportProtocol = 1;
+        private volatile int checkpointProtocol;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile String terminationReason = "normal";
@@ -1659,7 +1837,7 @@ class WorkerSocketTests {
                         output.flush();
                         return;
                     }
-                    response = Map.of(
+                    var hello = new LinkedHashMap<String, Object>(Map.of(
                             "ok",
                             true,
                             "version",
@@ -1679,7 +1857,9 @@ class WorkerSocketTests {
                             "leaseSeconds",
                             10,
                             "renewAfterSeconds",
-                            1);
+                            1));
+                    hello.put("checkpointProtocol", checkpointProtocol);
+                    response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()
                             .decode(envelope.path("payload").stringValue());
@@ -1813,6 +1993,19 @@ class WorkerSocketTests {
                                     "artifactErrors",
                                     Map.of()));
                 }
+                case "CHECKPOINT" ->
+                    response.put(
+                            "checkpoint",
+                            Map.of(
+                                    "checkpointId",
+                                    request.path("data").path("checkpointId").stringValue(),
+                                    "sha256",
+                                    "b".repeat(64),
+                                    "bytes",
+                                    4096,
+                                    "expiresAt",
+                                    request.path("data").path("expiresAt").longValue()));
+                case "CHECKPOINT_REMOVE" -> response.put("removed", true);
                 case "BRIDGE_COMPLETE" -> bridgeCompleted.countDown();
                 case "CLOSE" -> {
                     if (dropClose) {

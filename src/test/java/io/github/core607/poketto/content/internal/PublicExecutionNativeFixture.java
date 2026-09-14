@@ -28,12 +28,18 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.mockito.Mockito;
 
 /** Synthetic Git authority and real projection service for the native worker acceptance. */
@@ -48,6 +54,7 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
     private LocalPortableContentExports packages;
     private final AtomicBoolean offline = new AtomicBoolean();
     private final AtomicInteger pushes = new AtomicInteger();
+    private Consumer<String> afterSuccessfulPush = ignored -> {};
 
     public PublicExecutionNativeFixture(Path root, Path staging, AuthService auth, WorkspaceId workspace)
             throws Exception {
@@ -56,6 +63,18 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public PublicExecutionNativeFixture(
             Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply) throws Exception {
+        this(root, staging, auth, workspace, loseFirstReply, false);
+    }
+
+    /** Reopens an existing synthetic authority after process loss without creating another commit. */
+    public static PublicExecutionNativeFixture reopen(Path root, Path staging, AuthService auth, WorkspaceId workspace)
+            throws Exception {
+        return new PublicExecutionNativeFixture(root, staging, auth, workspace, false, true);
+    }
+
+    private PublicExecutionNativeFixture(
+            Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply, boolean existing)
+            throws Exception {
         this.workspace = workspace;
         this.fixtureRoot = root;
         var delegate = new JGitRemoteGitTransport();
@@ -72,6 +91,9 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
             public PushStatus pushMain(
                     Repository repo, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
                 var result = delegate.pushMain(repo, binding, expected, candidate);
+                if (result == PushStatus.UPDATED) {
+                    afterSuccessfulPush.accept(candidate.name());
+                }
                 if (pushes.incrementAndGet() == 1 && loseFirstReply) {
                     offline.set(true);
                     throw new RemoteGitTransportException("synthetic lost-response outage");
@@ -79,8 +101,28 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                 return result;
             }
         });
+        sourceCommit = existing ? existingHead() : seedRepository();
+        snapshots = new JGitPublicContentSnapshots(repository.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        exports = new JGitRepositorySnapshotExports(
+                repository.authority(), auth, staging, 1024 * 1024, Duration.ofSeconds(10), snapshots);
+    }
+
+    private String existingHead() throws Exception {
+        Path remote = fixtureRoot.resolve("remotes").resolve(workspace + ".git");
+        if (!Files.isDirectory(remote)) {
+            throw new IllegalStateException("Existing native authority is missing");
+        }
+        ObjectId head = repository.remoteHead(workspace);
+        if (ObjectId.zeroId().equals(head)) {
+            throw new IllegalStateException("Existing native authority has no main commit");
+        }
+        return head.name();
+    }
+
+    private String seedRepository() throws Exception {
         repository.commitRemote(workspace, Map.of("private/secret.md", text("historic-secret-needle")));
-        sourceCommit = repository
+        return repository
                 .commitRemote(
                         workspace,
                         Map.of(
@@ -94,14 +136,15 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
                                 "AGENTS.md",
                                 text("operator-secret-needle")))
                 .name();
-        snapshots = new JGitPublicContentSnapshots(repository.authority(), Clock.systemUTC(), Duration.ofHours(1));
-        snapshots.refresh(workspace);
-        exports = new JGitRepositorySnapshotExports(
-                repository.authority(), auth, staging, 1024 * 1024, Duration.ofSeconds(10), snapshots);
     }
 
     public RepositorySnapshotExports exports() {
         return exports;
+    }
+
+    /** Called after the real remote ref advances but before its reply reaches the host writer. */
+    public void afterSuccessfulPush(Consumer<String> observer) {
+        afterSuccessfulPush = Objects.requireNonNull(observer, "native push observer must be present");
     }
 
     public MediaFileService media(AuthService auth) {
@@ -261,6 +304,27 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public String sourceCommit() {
         return sourceCommit;
+    }
+
+    public String seedFile(String path, byte[] bytes) throws Exception {
+        var entries = new LinkedHashMap<String, byte[]>();
+        var modes = new LinkedHashMap<String, FileMode>();
+        try (Repository remote = repository.openRemote(workspace);
+                var revisions = new RevWalk(remote);
+                var tree = new TreeWalk(remote)) {
+            tree.addTree(revisions
+                    .parseCommit(remote.resolve(Constants.R_HEADS + "main"))
+                    .getTree());
+            tree.setRecursive(true);
+            while (tree.next()) {
+                entries.put(
+                        tree.getPathString(), remote.open(tree.getObjectId(0)).getBytes());
+                modes.put(tree.getPathString(), tree.getFileMode(0));
+            }
+        }
+        entries.put(path, bytes);
+        modes.put(path, FileMode.REGULAR_FILE);
+        return repository.commitRemote(workspace, entries, modes).name();
     }
 
     public void withdraw() throws Exception {

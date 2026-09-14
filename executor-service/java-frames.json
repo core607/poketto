@@ -5,6 +5,30 @@
     "bundleBytes" : 4096,
     "commit" : "cccccccccccccccccccccccccccccccccccccccc"
   },
+  "CHECKPOINT" : {
+    "checkpointId" : "33333333-3333-4333-8333-333333333333",
+    "expiresAt" : 1300000,
+    "scope" : "full"
+  },
+  "CHECKPOINT_ACTIVE" : {
+    "checkpointId" : "33333333-3333-4333-8333-333333333333",
+    "expiresAt" : 1300000,
+    "scope" : "full",
+    "executionId" : "22222222-2222-4222-8222-222222222222"
+  },
+  "CHECKPOINT_REMOVE" : {
+    "checkpointId" : "33333333-3333-4333-8333-333333333333",
+    "sha256" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "bytes" : 4096
+  },
+  "RESTORE" : {
+    "checkpointId" : "33333333-3333-4333-8333-333333333333",
+    "sha256" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "bytes" : 4096,
+    "commit" : "cccccccccccccccccccccccccccccccccccccccc",
+    "scope" : "full",
+    "previousLeaseId" : "44444444-4444-4444-8444-444444444444"
+  },
   "EXEC" : {
     "executionId" : "22222222-2222-4222-8222-222222222222",
     "commit" : "cccccccccccccccccccccccccccccccccccccccc",

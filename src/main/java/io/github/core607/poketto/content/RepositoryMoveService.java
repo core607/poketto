@@ -15,10 +15,29 @@ public interface RepositoryMoveService {
 
     RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request);
 
+    /** Requires the host checkpoint to complete before any remote pointer advance. */
+    default RepositoryPatchResult move(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteCheckpoint checkpoint) {
+        throw new UnsupportedOperationException("checkpointed repository moves are unavailable");
+    }
+
     /** Reconciles or retries the identical host-retained move commit under current authorization. */
     RepositoryPatchResult recover(
             AuthPrincipal principal,
             WorkspaceId workspace,
             RepositoryMoveRequest request,
             RepositoryWriteAttempt attempt);
+
+    /** Reconciliation is read-only when already committed; a retry passes through the checkpoint. */
+    default RepositoryPatchResult recover(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            RepositoryWriteAttempt attempt,
+            RepositoryWriteCheckpoint checkpoint) {
+        throw new UnsupportedOperationException("checkpointed repository move recovery is unavailable");
+    }
 }

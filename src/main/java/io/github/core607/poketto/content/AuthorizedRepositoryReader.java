@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /** Private repository queries share current workspace authorization across browser and MCP entry points. */
 public final class AuthorizedRepositoryReader {
@@ -53,6 +54,21 @@ public final class AuthorizedRepositoryReader {
 
     private boolean privateAccess(AuthPrincipal actor, WorkspaceId workspace) {
         return auth.authorize(actor, workspace).capabilities().contains(Capability.READ_PRIVATE);
+    }
+
+    /**
+     * Stages private baseline entries and rechecks the grant after traversal. The sink must not
+     * publish staged data before this method returns successfully, including on revoked access.
+     */
+    public void visitBaseline(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            String commit,
+            RepositoryBaselineLimits limits,
+            Consumer<RepositoryFile> sink) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        reader.visitBaseline(workspace, commit, limits, sink);
+        auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> null);
     }
 
     private <T> T recheck(AuthPrincipal actor, WorkspaceId workspace, boolean privateAccess, T result) {

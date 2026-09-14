@@ -5,6 +5,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.DocumentRevision;
+import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryMoveService;
@@ -22,8 +23,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /** Uses only authoritative revisions; sandbox Git refs and indexes never supply write preconditions. */
 final class SelectedFileSaves {
@@ -47,6 +50,15 @@ final class SelectedFileSaves {
         return moves;
     }
 
+    void visitOriginal(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            String commit,
+            RepositoryBaselineLimits limits,
+            Consumer<RepositoryFile> sink) {
+        reader.visitBaseline(actor, workspace, commit, limits, sink);
+    }
+
     BridgeReplies.Reply save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         auth.authorize(actor, workspace);
@@ -56,6 +68,32 @@ final class SelectedFileSaves {
         if (state.uncertain) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
+        RepositoryPatch patch = selectedPatch(actor, workspace, state, writes, deletes);
+        prepareRetainedWrite(state, patch);
+        RepositoryPatchResult result;
+        try {
+            result = state.tracked()
+                    ? patches.apply(actor, workspace, patch, attempt -> retainAttempt(state, attempt))
+                    : patches.apply(actor, workspace, patch);
+        } catch (RepositoryWriteAmbiguousException unknown) {
+            State proposed = state.copy();
+            proposed.pending = patch;
+            proposed.attempt = unknown.attempt().isPresent() ? unknown.attempt() : proposed.attempt;
+            proposed.uncertain = true;
+            return remember(
+                    state,
+                    proposed,
+                    BridgeReplies.failed(
+                            "WRITE_OUTCOME_UNKNOWN",
+                            "Run poketto recover to reconcile the retained commit before another save; local edits are retained."));
+        } catch (RepositoryConflictException conflict) {
+            return conflict(state, "Remote main changed; local edits and the host baseline are retained.");
+        }
+        return completed(state, result, patch, false);
+    }
+
+    private RepositoryPatch selectedPatch(
+            AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         var paths = new HashSet<>(writes.keySet());
         if (writes.size() + deletes.size() < 1
                 || writes.size() + deletes.size() > RepositoryPatch.MAX_CHANGES
@@ -66,34 +104,37 @@ final class SelectedFileSaves {
         state.requireTracking(paths);
         for (String path : paths) {
             String expectedCommit = state.baseline(path);
-            var baseline = reader.getFile(actor, workspace, Optional.of(expectedCommit), path);
-            if (!baseline.commit().equals(Optional.of(expectedCommit))
-                    || (!baseline.expectedAbsence() && baseline.revision().isEmpty())) {
+            var baseline = baselineFile(actor, workspace, state, path);
+            if (!writableBaseline(baseline, expectedCommit)) {
                 throw new InvalidSelectionException(InvalidSelectionException.Reason.NO_WRITABLE_BASELINE);
             }
             changes.add(new RepositoryTextChange(
                     path, baseline.expectedAbsence(), baseline.revision(), Optional.ofNullable(writes.get(path))));
         }
-        RepositoryPatch patch = new RepositoryPatch(Optional.of(state.baseCommit), changes);
-        BridgeReplies.Reply reply;
-        try {
-            var result = patches.apply(actor, workspace, patch);
-            // Only these selected files changed in the new authoritative tree. All other local
-            // edits retain their old authoritative contents as their next save preconditions.
-            reply = completed(state, result, List.copyOf(paths), false);
-        } catch (RepositoryWriteAmbiguousException unknown) {
-            state.pending = patch;
-            state.attempt = unknown.attempt();
-            state.uncertain = true;
-            reply = BridgeReplies.failed(
-                    "WRITE_OUTCOME_UNKNOWN",
-                    "Run poketto recover to reconcile the retained commit before another save; local edits are retained.");
-        } catch (RepositoryConflictException conflict) {
-            reply = BridgeReplies.failed(
-                    "REPOSITORY_CONFLICT", "Remote main changed; local edits and the host baseline are retained.");
+        return new RepositoryPatch(Optional.of(state.baseCommit), changes);
+    }
+
+    private static boolean writableBaseline(RepositoryFile baseline, String commit) {
+        return baseline.commit().equals(Optional.of(commit))
+                && (baseline.expectedAbsence()
+                        || (baseline.source().isPresent() && baseline.revision().isPresent()));
+    }
+
+    private static void prepareRetainedWrite(State state, RepositoryPatch patch) {
+        if (!state.tracked()) {
+            return;
         }
-        state.lastSave = reply;
-        return reply;
+        State proposed = state.copy();
+        proposed.pending = patch;
+        proposed.attempt = Optional.empty();
+        proposed.uncertain = true;
+        state.install(proposed);
+    }
+
+    private static void retainAttempt(State state, RepositoryWriteAttempt attempt) {
+        State proposed = state.copy();
+        proposed.attempt = Optional.of(attempt);
+        state.install(proposed);
     }
 
     BridgeReplies.Reply recover(AuthPrincipal actor, WorkspaceId workspace, State state) {
@@ -101,68 +142,189 @@ final class SelectedFileSaves {
         if (!state.uncertain) {
             return BridgeReplies.succeeded(new BridgeReplies.Recovery(false));
         }
+        if (state.tracked() && state.attempt.isEmpty()) {
+            // A tracked remote push cannot begin before its exact candidate was durably retained.
+            State proposed = state.copy();
+            proposed.uncertain = false;
+            proposed.pending = null;
+            return remember(state, proposed, BridgeReplies.succeeded(new BridgeReplies.Recovery(false)));
+        }
         if (state.pending == null || state.attempt.isEmpty()) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
         }
-        BridgeReplies.Reply reply;
+        RepositoryPatchResult result;
         try {
-            var result = patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
-            reply = completed(
-                    state,
-                    result,
-                    state.pending.changes().stream()
-                            .map(RepositoryTextChange::path)
-                            .toList(),
-                    true);
+            result = state.tracked()
+                    ? patches.recover(
+                            actor,
+                            workspace,
+                            state.pending,
+                            state.attempt.orElseThrow(),
+                            attempt -> retainAttempt(state, attempt))
+                    : patches.recover(actor, workspace, state.pending, state.attempt.orElseThrow());
         } catch (RepositoryWriteAmbiguousException unknown) {
             // Retain the same original patch and commit even if the recovery reply is also lost.
-            reply = BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+            return remember(state, state.copy(), BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN"));
         } catch (RepositoryConflictException conflict) {
-            state.uncertain = false;
-            state.pending = null;
-            state.attempt = Optional.empty();
-            reply = BridgeReplies.failed(
-                    "REPOSITORY_CONFLICT",
-                    "Remote main diverged from the retained attempt; local edits and baseline are retained.");
+            return conflict(
+                    state, "Remote main diverged from the retained attempt; local edits and baseline are retained.");
         }
-        state.lastSave = reply;
-        return reply;
+        return completed(state, result, state.pending, true);
     }
 
     private static BridgeReplies.Reply completed(
-            State state, RepositoryPatchResult result, List<String> paths, boolean recovered) {
-        state.baseCommit = result.commit();
-        paths.forEach(path -> state.baselines.put(path, result.commit()));
-        state.uncertain = false;
-        state.pending = null;
-        state.attempt = Optional.empty();
-        return BridgeReplies.succeeded(new BridgeReplies.SaveResult(
-                result.commit(), result.committed(), result.snapshotUpdated(), paths, recovered));
+            State state, RepositoryPatchResult result, RepositoryPatch patch, boolean recovered) {
+        List<String> paths =
+                patch.changes().stream().map(RepositoryTextChange::path).toList();
+        State proposed = state.copy();
+        proposed.baseCommit = result.commit();
+        // Only these paths adopt the new remote baseline; unselected local edits keep theirs.
+        paths.forEach(path -> proposed.baselines.put(path, result.commit()));
+        paths.forEach(proposed.fileBaselines::remove);
+        if (state.tracked()) {
+            patch.changes()
+                    .forEach(change -> proposed.fileBaselines.put(
+                            change.path(),
+                            RetainedFileBaseline.saved(
+                                    result.commit(), change.content().orElse(null))));
+        }
+        proposed.uncertain = false;
+        proposed.pending = null;
+        proposed.attempt = Optional.empty();
+        return remember(
+                state,
+                proposed,
+                BridgeReplies.succeeded(new BridgeReplies.SaveResult(
+                        result.commit(), result.committed(), result.snapshotUpdated(), paths, recovered)));
+    }
+
+    private static BridgeReplies.Reply conflict(State state, String message) {
+        State proposed = state.copy();
+        proposed.uncertain = false;
+        proposed.pending = null;
+        proposed.attempt = Optional.empty();
+        return remember(state, proposed, BridgeReplies.failed("REPOSITORY_CONFLICT", message));
+    }
+
+    private static BridgeReplies.Reply remember(State state, State proposed, BridgeReplies.Reply reply) {
+        proposed.lastSave = reply;
+        state.install(proposed);
+        return reply;
     }
 
     /** Confined to one session's admitted execute owner and its serial bridge loop; renewal never accesses it. */
     static final class State {
         private final String originalCommit;
+        private final SaveStateCheckpoint checkpoint;
+        private final RetainedOriginalLookup originals;
         private final Map<String, String> baselines = new HashMap<>();
+        private final Map<String, RetainedFileBaseline> fileBaselines = new HashMap<>();
         String baseCommit;
         boolean uncertain;
         RepositoryPatch pending;
         Optional<RepositoryWriteAttempt> attempt = Optional.empty();
         BridgeReplies.Recorded lastSave = new BridgeReplies.Absent();
+        BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         SessionMoves.Pending move;
 
         State(String baseCommit) {
+            this(baseCommit, SaveStateCheckpoint.UNTRACKED);
+        }
+
+        State(String baseCommit, SaveStateCheckpoint checkpoint) {
+            this(baseCommit, checkpoint, null);
+        }
+
+        private State(String baseCommit, SaveStateCheckpoint checkpoint, RetainedOriginalLookup originals) {
             this.originalCommit = baseCommit;
             this.baseCommit = baseCommit;
+            this.checkpoint = Objects.requireNonNull(checkpoint, "save checkpoint must be present");
+            this.originals = originals;
+        }
+
+        boolean tracked() {
+            return checkpoint != SaveStateCheckpoint.UNTRACKED;
+        }
+
+        State copy() {
+            return restore(snapshot(), checkpoint, originals);
+        }
+
+        void install(State proposed) {
+            ProtocolValues.require(
+                    originalCommit.equals(proposed.originalCommit), "save state", "must keep its original commit");
+            if (tracked()) {
+                checkpoint.retain(proposed.snapshot());
+            }
+            copyFields(proposed);
+        }
+
+        private void copyFields(State proposed) {
+            baseCommit = proposed.baseCommit;
+            baselines.clear();
+            baselines.putAll(proposed.baselines);
+            fileBaselines.clear();
+            fileBaselines.putAll(proposed.fileBaselines);
+            uncertain = proposed.uncertain;
+            pending = proposed.pending;
+            attempt = proposed.attempt;
+            lastSave = proposed.lastSave;
+            lastImport = proposed.lastImport;
+            move = proposed.move;
+        }
+
+        RetainedSaveState snapshot() {
+            return new RetainedSaveState(
+                    originalCommit,
+                    baseCommit,
+                    baselines,
+                    fileBaselines,
+                    uncertain,
+                    pending,
+                    attempt.orElse(null),
+                    RetainedSaveState.Move.capture(move),
+                    BridgeReplies.RestoredReceipt.capture(lastSave),
+                    BridgeReplies.RestoredReceipt.capture(lastImport));
+        }
+
+        static State restore(RetainedSaveState snapshot) {
+            return restore(snapshot, SaveStateCheckpoint.UNTRACKED);
+        }
+
+        static State restore(RetainedSaveState snapshot, SaveStateCheckpoint checkpoint) {
+            return restore(snapshot, checkpoint, null);
+        }
+
+        static State restore(
+                RetainedSaveState snapshot, SaveStateCheckpoint checkpoint, RetainedOriginalLookup originals) {
+            var state = new State(snapshot.originalCommit(), checkpoint, originals);
+            state.baseCommit = snapshot.baseCommit();
+            state.baselines.putAll(snapshot.baselines());
+            state.fileBaselines.putAll(snapshot.fileBaselines());
+            state.uncertain = snapshot.uncertain();
+            state.pending = snapshot.pending();
+            state.attempt = Optional.ofNullable(snapshot.attempt());
+            state.move = snapshot.move() == null ? null : snapshot.move().restore();
+            state.lastSave = snapshot.lastSave();
+            state.lastImport = snapshot.lastImport();
+            return state;
+        }
+
+        void acknowledgeImport(BridgeReplies.ImportReceipt receipt) {
+            State proposed = copy();
+            proposed.lastImport = Objects.requireNonNull(receipt, "import receipt must be present");
+            install(proposed);
         }
 
         String baseline(String path) {
             return baselines.getOrDefault(path, originalCommit);
         }
 
-        void acknowledgeMove(String commit, Set<String> paths) {
+        void acknowledgeMove(String commit, Set<String> paths, Map<String, RetainedFileBaseline> retainedFiles) {
             requireTracking(paths);
             paths.forEach(path -> baselines.put(path, commit));
+            paths.forEach(fileBaselines::remove);
+            fileBaselines.putAll(retainedFiles);
             baseCommit = commit;
             move = null;
         }
@@ -185,7 +347,7 @@ final class SelectedFileSaves {
         }
         state.requireTracking(List.of(path));
         String previous = state.baseline(path);
-        var original = reader.getFile(actor, workspace, Optional.of(previous), path);
+        var original = baselineFile(actor, workspace, state, path);
         var remote = reader.getFile(actor, workspace, Optional.empty(), path);
         if ((!original.expectedAbsence() && original.source().isEmpty())
                 || (!remote.expectedAbsence() && remote.source().isEmpty())
@@ -198,6 +360,7 @@ final class SelectedFileSaves {
                 state.baseCommit,
                 previous,
                 remote.commit().orElseThrow(),
+                remote.source(),
                 local.map(value -> DocumentRevision.sha256(value.getBytes(StandardCharsets.UTF_8))
                         .value()
                         .substring(7)),
@@ -206,6 +369,19 @@ final class SelectedFileSaves {
     }
 
     RepositoryFile baselineFile(AuthPrincipal actor, WorkspaceId workspace, State state, String path) {
+        RetainedFileBaseline retained = state.fileBaselines.get(path);
+        if (retained != null) {
+            return auth.withAuthorization(
+                    actor, workspace, Set.of(Capability.READ_PRIVATE), () -> retained.file(workspace, path));
+        }
+        if (state.originals != null) {
+            if (!state.baseline(path).equals(state.originalCommit)) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE);
+            }
+            auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+            RepositoryFile file = state.originals.file(actor, workspace, state.originalCommit, path);
+            return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> file);
+        }
         return reader.getFile(actor, workspace, Optional.of(state.baseline(path)), path);
     }
 
@@ -216,8 +392,17 @@ final class SelectedFileSaves {
             throw new IllegalStateException("session baseline changed during synchronization");
         }
         state.requireTracking(List.of(plan.path()));
-        state.baselines.put(plan.path(), plan.remoteCommit());
-        state.baseCommit = plan.remoteCommit();
+        State proposed = state.copy();
+        proposed.baselines.put(plan.path(), plan.remoteCommit());
+        proposed.fileBaselines.remove(plan.path());
+        if (state.tracked()) {
+            proposed.fileBaselines.put(
+                    plan.path(),
+                    RetainedFileBaseline.saved(
+                            plan.remoteCommit(), plan.remoteSource().orElse(null)));
+        }
+        proposed.baseCommit = plan.remoteCommit();
+        state.install(proposed);
     }
 
     record SyncPlan(
@@ -225,6 +410,7 @@ final class SelectedFileSaves {
             String previousCommit,
             String previousPathCommit,
             String remoteCommit,
+            Optional<String> remoteSource,
             Optional<String> expectedLocalSha256,
             Optional<String> content,
             boolean conflicted) {}

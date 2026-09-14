@@ -1,6 +1,5 @@
 package io.github.core607.poketto.mcp.internal;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.assets.AssetBytes;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
@@ -15,6 +14,8 @@ import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -123,6 +124,32 @@ final class RepositoryMcpTools {
         }
         if (executors.getIfAvailable() != null) {
             tools.add(tool(
+                    "repo_discard",
+                    "Permanently discard the exact retained working copy and its unsaved work. Supply its copyId as expectedCopyId and latest retention.generation as expectedGeneration. Busy or stale copies are refused. No command is executed and remote Git commits are not undone. DISCARDED or ABSENT confirms this owner has no recoverable copy at that ID; physical cleanup may finish later. After an unconfirmed response, retry only the same ID and generation. Requires current execution permission; no recovery or content-read permission is granted.",
+                    object(
+                            Map.of(
+                                    "expectedCopyId",
+                                            Map.of(
+                                                    "type",
+                                                    "string",
+                                                    "maxLength",
+                                                    36,
+                                                    "pattern",
+                                                    "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+                                    "expectedGeneration",
+                                            Map.of(
+                                                    "type",
+                                                    "integer",
+                                                    "minimum",
+                                                    1,
+                                                    "maximum",
+                                                    RepositoryExecutor.MAX_GENERATION)),
+                            List.of("expectedCopyId", "expectedGeneration")),
+                    false,
+                    true,
+                    true,
+                    this::discard));
+            tools.add(tool(
                     "get_artifact",
                     "Read an unexpired artifact created by this MCP execution session. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
                     object(
@@ -142,7 +169,7 @@ final class RepositoryMcpTools {
                     this::getArtifact));
             tools.add(tool(
                     "repo_exec",
-                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new only to explicitly start a fresh copy; otherwise pass the copyId from the previous result, including after reconnecting. SESSION_REPLACED means this command did not execute: do not retry writes blindly or assume earlier local edits survived. Every command starts at the repository root; /tmp is reset per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get only the current public projection. Omitted commit retains the pinned copy. Edits stay local until poketto save. CLI operations can store media and commit authorized selected changes. Use poketto artifact create FILE --type MIME with get_artifact for files; long-output handles expire and may be truncated.",
+                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new only to intentionally start fresh; otherwise retain copyId across calls. When results contain retention, pass retention.generation as expectedGeneration. Set resume=true to recover that exact copy and execute in one request after reconnecting. Use a read-only inspection command for recovery: retention.lastInterruptedCommand identifies earlier work that may have partially completed. SESSION_REPLACED or EXECUTION_REFUSED means this command did not execute. EXECUTION_UNCONFIRMED means a command was attempted; retain its copyId/currentGeneration and inspect through recovery before deciding whether to write again. Do not replay uncertain writes. Every command starts at the repository root; /tmp resets per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get the current public projection. Omitted commit retains the pinned copy. Edits stay local until poketto save. CLI operations can store media and commit authorized selections. Use poketto artifact create FILE --type MIME with get_artifact; long-output handles expire and may be truncated.",
                     object(
                             Map.of(
                                     "expectedCopyId",
@@ -153,6 +180,16 @@ final class RepositoryMcpTools {
                                             36,
                                             "pattern",
                                             "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
+                                    "expectedGeneration",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "minimum",
+                                            1,
+                                            "maximum",
+                                            RepositoryExecutor.MAX_GENERATION),
+                                    "resume",
+                                    Map.of("type", "boolean"),
                                     "command",
                                     text(16384),
                                     "commit",
@@ -204,7 +241,13 @@ final class RepositoryMcpTools {
             } catch (AuthException | SecurityException exception) {
                 return error("DENIED", "Current workspace capability is required.");
             } catch (SessionReplacedException exception) {
-                return copyReplaced(exception);
+                return McpCopyAdmission.copyReplaced(json, exception);
+            } catch (ExecutionUnconfirmedException exception) {
+                return McpCopyAdmission.executionUnconfirmed(json, exception);
+            } catch (ExecutionAdmissionException exception) {
+                return name.equals("repo_discard")
+                        ? McpCopyAdmission.discardRefused(json, exception)
+                        : McpCopyAdmission.admissionRefused(json, exception);
             } catch (RepositoryConflictException exception) {
                 return error("CONFLICT", "Read current files and base commit before retrying.");
             } catch (RepositoryWriteAmbiguousException exception) {
@@ -221,42 +264,6 @@ final class RepositoryMcpTools {
                         "Operation could not be completed; verify authoritative state before retrying writes.");
             }
         });
-    }
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record CopyReplacement(
-            String code,
-            String reason,
-            boolean executed,
-            boolean recoveryAvailable,
-            boolean newCopyAllowed,
-            String message,
-            String copyId) {}
-
-    private McpSchema.CallToolResult copyReplaced(SessionReplacedException exception) {
-        String message =
-                switch (exception.reason()) {
-                    case MISSING_COPY ->
-                        "Expected copy is unavailable in this MCP session; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
-                    case DIFFERENT_COPY ->
-                        "Expected copy ID does not match this MCP session; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
-                    case CLOSED_COPY ->
-                        exception.newCopyAllowed()
-                                ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
-                                : "This copy is closing or its lease release is unconfirmed; this command did not execute. New admission remains unavailable until command exit and lease release are confirmed. Do not replay an uncertain write.";
-                };
-        var body = new CopyReplacement(
-                "SESSION_REPLACED",
-                exception.reason().name(),
-                false,
-                false,
-                exception.newCopyAllowed(),
-                message,
-                exception.currentCopyId().orElse(null));
-        return McpSchema.CallToolResult.builder()
-                .addTextContent(json.writeValueAsString(body))
-                .isError(true)
-                .build();
     }
 
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
@@ -477,9 +484,23 @@ final class RepositoryMcpTools {
         return result;
     }
 
+    private McpSchema.CallToolResult discard(McpSyncServerExchange exchange, Map<String, Object> input) {
+        fields(input, Set.of("expectedCopyId", "expectedGeneration"));
+        RepositoryExecutor.CopyRequest copy = McpCopyAdmission.copyRequest(input);
+        if (copy.generation() == null) {
+            throw new IllegalArgumentException("Discard requires the expected generation");
+        }
+        var request = new RepositoryExecutor.DiscardRequest(copy.id(), copy.generation());
+        var identity = sessions.resolve(exchange);
+        auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
+        return textResult(executors
+                .getObject()
+                .discard(identity.principal(), identity.workspace(), request, cancellation(exchange)));
+    }
+
     private McpSchema.CallToolResult execute(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("expectedCopyId", "command", "commit", "timeoutSeconds"));
-        String copyId = RepositoryExecutor.requireCopyId(requiredText(input, "expectedCopyId", 36));
+        fields(input, Set.of("expectedCopyId", "expectedGeneration", "resume", "command", "commit", "timeoutSeconds"));
+        RepositoryExecutor.CopyRequest copy = McpCopyAdmission.copyRequest(input);
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
         int timeout = 30;
@@ -498,7 +519,7 @@ final class RepositoryMcpTools {
                         identity.principal(),
                         identity.workspace(),
                         exchange.sessionId(),
-                        copyId,
+                        copy,
                         optionalText(input, "commit", 40),
                         requiredText(input, "command", 16384),
                         Duration.ofSeconds(timeout),

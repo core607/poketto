@@ -55,8 +55,19 @@ final class WorkerClient {
     }
 
     Hello hello() {
+        return hello(false);
+    }
+
+    Hello retainedHello() {
+        return hello(true);
+    }
+
+    private Hello hello(boolean requireRetention) {
         JsonNode response = exchange(new WorkerRequests.Hello(), Duration.ofSeconds(3));
         try {
+            if (requireRetention) {
+                WorkerResponses.read(response, WorkerResponses.RetentionHandshake.class);
+            }
             var handshake = WorkerResponses.read(response, WorkerResponses.Handshake.class);
             return new Hello(handshake.bootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
         } catch (WorkerUnavailableException rejected) {
@@ -73,12 +84,26 @@ final class WorkerClient {
     }
 
     PreparedRequest prepare(Hello hello, Identity identity, String operation, WorkerRequests.Data data) {
+        return prepare(hello, identity, appBoot, operation, data);
+    }
+
+    UUID applicationBootId() {
+        return appBoot;
+    }
+
+    /** Only containment can use a retained application identity; new work uses this client's boot ID. */
+    JsonNode closeRetainedLease(Hello hello, Identity identity, UUID retainedAppBoot, String reason, Duration timeout) {
+        return send(prepare(hello, identity, retainedAppBoot, "CLOSE", new WorkerRequests.Close(reason)), timeout);
+    }
+
+    private PreparedRequest prepare(
+            Hello hello, Identity identity, UUID applicationBoot, String operation, WorkerRequests.Data data) {
         UUID requestId = UUID.randomUUID();
         long issued = clock.instant().getEpochSecond();
         var payload = new Payload(
                 1,
                 hello.workerBootId(),
-                appBoot,
+                applicationBoot,
                 operation,
                 requestId,
                 issued,

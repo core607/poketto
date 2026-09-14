@@ -41,6 +41,10 @@ class WorkerFrameContractTests {
     private static Map<String, WorkerRequests.Data> frames() {
         var frames = new LinkedHashMap<String, WorkerRequests.Data>();
         frames.put("OPEN", new WorkerRequests.Open(EXPORT, DIGEST, 4096, COMMIT));
+        frames.put("CHECKPOINT", new WorkerRequests.Checkpoint(CAPTURE, 1300000, "full"));
+        frames.put("CHECKPOINT_ACTIVE", new WorkerRequests.ActiveCheckpoint(CAPTURE, 1300000, "full", EXECUTION));
+        frames.put("CHECKPOINT_REMOVE", new WorkerRequests.CheckpointReference(CAPTURE, DIGEST, 4096));
+        frames.put("RESTORE", new WorkerRequests.Restore(CAPTURE, DIGEST, 4096, COMMIT, "full", TRANSFER));
         frames.put("EXEC", new WorkerRequests.Exec(EXECUTION, COMMIT, "git log", 1000));
         frames.put("RENEW", new WorkerRequests.Renew());
         frames.put("CLOSE", new WorkerRequests.Close("session_closed"));

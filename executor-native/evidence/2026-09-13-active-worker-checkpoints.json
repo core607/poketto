@@ -1,0 +1,126 @@
+{
+  "scope": "Active worker checkpoint and Java protocol support; the application command coordinator remains unwired",
+  "protocolTests": {
+    "skipped": 0,
+    "tests": 97,
+    "failures": 0
+  },
+  "nativeRecords": [
+    {
+      "test": "initial-signed-bundle-copy",
+      "result": "PASS",
+      "milliseconds": 966.33,
+      "bundleBytes": 324,
+      "supervisorUmask": "0077"
+    },
+    {
+      "test": "root-supervisor-and-command-share-finite-pool",
+      "result": "PASS",
+      "slice": "pokettoprobe0a0247a4.slice"
+    },
+    {
+      "test": "twenty-directory-reuses",
+      "result": "PASS",
+      "count": 20,
+      "meanMillis": 1115.22
+    },
+    {
+      "test": "checkpoint-fences-interrupted-restored-writer-before-reusing-last-complete-copy",
+      "result": "PASS"
+    },
+    {
+      "test": "active-checkpoint-freezes-real-command-and-retains-intermediate-work",
+      "result": "PASS"
+    },
+    {
+      "test": "checkpoint-restores-nonzero-command-work-and-fences-source",
+      "result": "PASS"
+    },
+    {
+      "test": "same-key-independent-client-directories",
+      "result": "PASS"
+    },
+    {
+      "test": "host-other-session-and-control-path-denied",
+      "result": "PASS"
+    },
+    {
+      "test": "network-and-host-proxy-denied",
+      "result": "PASS"
+    },
+    {
+      "test": "cpu-quota-enforced",
+      "result": "PASS",
+      "processCpuSeconds": 0.999150669
+    },
+    {
+      "test": "host-pid-and-proc-root-denied",
+      "result": "PASS"
+    },
+    {
+      "test": "untrusted-git-and-shell-config-reuse-stays-inside-srt",
+      "result": "PASS"
+    },
+    {
+      "test": "tmpfs-disk-limit",
+      "result": "PASS"
+    },
+    {
+      "test": "process-limit",
+      "result": "PASS"
+    },
+    {
+      "test": "source-object-and-content-immutability",
+      "result": "PASS"
+    },
+    {
+      "test": "timeout-kills-detached-descendants",
+      "result": "PASS"
+    },
+    {
+      "test": "memory-oom-limit",
+      "result": "PASS"
+    },
+    {
+      "test": "bounded-output-stops-command",
+      "result": "PASS"
+    },
+    {
+      "test": "close-interrupts-active-process-tree",
+      "result": "PASS"
+    },
+    {
+      "test": "revoke-interrupts-active-process-tree",
+      "result": "PASS"
+    },
+    {
+      "test": "abandoned-client-lease-expires",
+      "result": "PASS"
+    },
+    {
+      "test": "supervisor-sigkill-cleans-and-invalidates-leases",
+      "result": "PASS"
+    },
+    {
+      "test": "checkpoint-survives-supervisor-sigkill-and-restores-original-commit",
+      "result": "PASS"
+    },
+    {
+      "summary": "PASS",
+      "tests": 23,
+      "source": "synthetic-only",
+      "runtimeParent": "/run",
+      "supervisorUmask": "0077",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
+      "workerSha256": "fd659a565254c640e3e90650491de6071a9b50d968c7f04f44c9d09a9759c42c",
+      "checkpointsSha256": "1cbc2dbf2d349b65c3fb98463ac86fa595a3dc9aea131e25d2599b87b0ad7b0e",
+      "checkpointTreeSha256": "106ccf35c23c183f791a968b94ce158801a24c9de6bc2eff67a89457d6542d95",
+      "probeSha256": "a1834a39c9970736cc581f75a1114a7dd30d8ab8993ba8be5158c1cb7e8bc97a",
+      "launcherSha256": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff"
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ]
+}
