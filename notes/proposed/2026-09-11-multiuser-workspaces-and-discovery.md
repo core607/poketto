@@ -36,7 +36,7 @@ Account identity is available independently of workspace access. Private HTTP op
 
 The root site becomes cross-workspace public discovery. Space websites use `/s/{slug}`; existing published default-space article URLs redirect to their canonical new routes. Both logged-in and anonymous visitors see public discovery; accounts additionally have a My spaces entrance. Cards identify their author display name, space, and collection without exposing private account fields.
 
-The [public sitemap contract](2026-09-14-public-sitemaps.md) specifies complete
+The [public sitemap contract](../implemented/2026-09-14-public-sitemaps.md) specifies complete
 enumeration of canonical space URLs and robots.txt discovery independently of
 sampled browsing batches.
 

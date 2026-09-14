@@ -40,15 +40,17 @@ background refresh succeeds.
 
 The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md)
 continues to own withdrawal and image invalidation. The
-[multiuser plan](2026-09-11-multiuser-workspaces-and-discovery.md) and
-[daily-use plan](2026-09-05-phase-one-daily-use.md) retain their remaining scope.
-The [frontend boundary](2026-08-30-nextjs-frontend.md) retains Next.js ownership of
+[multiuser plan](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) and
+[daily-use plan](../proposed/2026-09-05-phase-one-daily-use.md) retain their remaining scope.
+The [frontend boundary](../proposed/2026-08-30-nextjs-frontend.md) retains Next.js ownership of
 presentation resources; this change supplies its multi-space sitemap contract.
 
-## Acceptance
+## Verification
 
-Exercise real Spring, PostgreSQL and Next.js through the serving gateway with two
-independent spaces. Follow the sitemap index, verify canonical URLs and XML
-escaping, withdraw public content, and disable a website. Confirm old child
-sitemaps stop exposing withdrawn routes and robots.txt references the configured
-origin. Record the tested revision and any deployment gap.
+Real local Spring, PostgreSQL, Next.js and Caddy with two independent spaces
+verify the index and child sitemaps, canonical Chinese and ampersand routes,
+private-content exclusion, withdrawal through a repository patch, website shutdown
+through the owner API, and robots.txt origin and directives. An application outage
+returns 503 without a cached partial list. Frontend checks, Java style and
+repository validation pass. These checks establish the local serving behavior;
+deployment requires a separate production readback.
