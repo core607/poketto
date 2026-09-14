@@ -48,6 +48,9 @@ final class AccountCommand implements AutoCloseable {
     }
 
     void requireLive() {
+        if (record() != null && record().phase() == AccountCopyRecord.Phase.DISCARDING) {
+            throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
+        }
         if (record() != null && store.expired(record())) {
             throw new RetainedCopyException(RetainedCopyException.Reason.EXPIRED);
         }
@@ -96,6 +99,7 @@ final class AccountCommand implements AutoCloseable {
 
     /** Called only after the previous lease is confirmed contained. */
     void bind(AccountCopyRecord.Writer writer) {
+        requireLive();
         var current = record();
         resumed |= !current.writer().equals(writer);
         boolean interrupted = current.phase() == AccountCopyRecord.Phase.RUNNING;
@@ -144,6 +148,12 @@ final class AccountCommand implements AutoCloseable {
         var current = record();
         return new CopyRetention(
                 current.revision() + 1, current.expiresAt(), resumed, current.lastInterruptedCommand());
+    }
+
+    void beginDiscard() {
+        if (record().phase() != AccountCopyRecord.Phase.DISCARDING) {
+            lease.write(record().discarding());
+        }
     }
 
     void remove() {

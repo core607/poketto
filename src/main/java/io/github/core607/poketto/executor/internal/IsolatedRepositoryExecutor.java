@@ -233,7 +233,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new ExecutionAdmissionException(
                         ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, record.revision() + 1, false);
             }
-            if (accounts.expired(record) || record.phase() == AccountCopyRecord.Phase.INITIALIZING) {
+            if (accounts.expired(record)
+                    || record.phase() == AccountCopyRecord.Phase.INITIALIZING
+                    || record.phase() == AccountCopyRecord.Phase.DISCARDING) {
+                held.beginDiscard();
                 discardDisk(principal, record, key, hello);
                 held.remove();
                 record = null;
@@ -437,7 +440,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (record == null || !record.copyId().toString().equals(request.id())) {
                     continue;
                 }
-                requireAccountRequest(record, new CopyRequest(request.id(), request.generation(), false));
+                if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
+                    requireAccountRequest(record, new CopyRequest(request.id(), request.generation(), false));
+                }
+                held.beginDiscard();
                 var key = new SessionKey(principal.accountId(), workspace, hash(full ? "full" : "public"));
                 var hello = worker.hello();
                 fenceAccount(principal, record, key, hello);

@@ -117,6 +117,7 @@ record AccountCopyStoreNativeProbe(Path root) {
             assertThat(store(10).expired(renewed)).isTrue();
             assertThat(renewed.lastInterruptedCommand()).isEqualTo(EXECUTION);
             assertOriginal(lease);
+            lease.write(renewed.discarding());
             lease.remove(COPY);
         }
         try (var removed = store.acquire(OWNER)) {

@@ -39,9 +39,28 @@ record AccountCopyRecord(
                 state.originalCommit());
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
-        } else if (phase != Phase.INITIALIZING) {
+        } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {
             Objects.requireNonNull(original, "a ready full copy requires its immutable original baseline");
         }
+    }
+
+    AccountCopyRecord discarding() {
+        if (phase == Phase.DISCARDING) {
+            return this;
+        }
+        return new AccountCopyRecord(
+                format,
+                owner,
+                copyId,
+                revision + 1,
+                expiresAt,
+                writer,
+                Phase.DISCARDING,
+                null,
+                executionId == null ? lastInterruptedCommand : executionId,
+                state,
+                publicExport,
+                original);
     }
 
     record Owner(UUID accountId, UUID workspaceId, boolean fullRead) {

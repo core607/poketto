@@ -227,6 +227,9 @@ final class AccountCopyStore {
             if (current == null) {
                 throw new RetainedCopyException(RetainedCopyException.Reason.MISSING);
             }
+            if (current.phase() == AccountCopyRecord.Phase.DISCARDING) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
+            }
             if (expired(current)) {
                 throw new RetainedCopyException(RetainedCopyException.Reason.EXPIRED);
             }
@@ -270,6 +273,11 @@ final class AccountCopyStore {
                     "must not replace existing work");
             if (current != null) {
                 ProtocolValues.require(
+                        current.phase() != AccountCopyRecord.Phase.DISCARDING
+                                || next.phase() == AccountCopyRecord.Phase.DISCARDING,
+                        "discarded copy",
+                        "must not become executable again");
+                ProtocolValues.require(
                         current.state().originalCommit().equals(next.state().originalCommit()),
                         "original commit",
                         "must remain pinned");
@@ -292,7 +300,9 @@ final class AccountCopyStore {
         void remove(UUID expectedCopyId) {
             requireUsable();
             ProtocolValues.require(
-                    current != null && current.copyId().equals(expectedCopyId),
+                    current != null
+                            && current.copyId().equals(expectedCopyId)
+                            && current.phase() == AccountCopyRecord.Phase.DISCARDING,
                     "discard identity",
                     "must match the held copy");
             try (var index = index()) {

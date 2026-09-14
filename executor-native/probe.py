@@ -183,7 +183,7 @@ with socket.socket(socket.AF_UNIX) as connection:
                 if request['operation'] == 'kill-application':
                     assert mode in ('retained-produce-acknowledged', 'retained-produce-interrupted',
                                     'retained-produce-uncertain', 'retained-produce-beforepublish',
-                                    'retained-produce-afterpublish')
+                                    'retained-produce-afterpublish', 'retained-produce-discarding')
                     assert killed_pid is None
                     killed_pid = int(run(['systemctl', 'show', '--value', '-p', 'MainPID', app_unit]))
                     assert killed_pid > 1 and Path(f'/proc/{killed_pid}/exe').resolve(strict=True) == java
@@ -273,7 +273,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
             'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
             'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
-        if args.scenario in ('ephemeral-lifecycle', 'account-state'):
+        if args.scenario in ('ephemeral-lifecycle', 'account-state', 'retained-process'):
             assert args.fixture_parent == '/var/lib', 'Disk fixture must not allocate its image in tmpfs'
             disk_pool.mkdir()
             disk_image = root / 'copies.img'
@@ -309,7 +309,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         if args.scenario == 'retained-process':
-            for case in ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish'):
+            for case in ('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding'):
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:
