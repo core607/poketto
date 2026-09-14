@@ -179,4 +179,23 @@ Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转
 
 决定权限归属的变更另有一套记录，统一使用 `poketto.audit` 这个日志名，每条写明动作（例如 `member.access.granted`、`key.revoked`）、做出决定的操作者、被操作的对象，以及变更后实际生效的权限。停用或降级记为 `member.access.revoked`，不会写成授予。记录在变更提交之后才写。认证结果也记在这里，因此凭证无效和授权不足可以区分开。登录名、密码、令牌和邀请码都不会出现；拒绝只写本服务自己的固定原因，不写提交上来的值。
 
-在应用上设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`，每条记录输出为一行 JSON，字段可直接寻址，异常堆栈收在记录内部而不是散成许多行。不设置则保留便于开发阅读的控制台格式。尚未覆盖的部分见[诊断记录](../notes/implemented/2026-09-14-service-diagnostics.md)。
+在应用上设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`，每条记录输出为一行 JSON，字段可直接寻址，异常堆栈收在记录内部而不是散成许多行。不设置则保留便于开发阅读的控制台格式。
+
+各服务统一写入宿主机的 journal。容器日志随容器一同消失，而本部署在每个通过验证的提交上都会替换容器，出事前那段记录本来会一起没掉；journal 里也已经有执行服务自己的记录，应用与沙箱因此落在同一条时间线上。journald 的默认上限是文件系统的一个比例而不是选定的大小，所以要明确给出预算：
+
+```sh
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]
+Storage=persistent
+SystemMaxUse=1G
+MaxRetentionSec=30day
+RateLimitIntervalSec=0
+'   | sudo tee /etc/systemd/journald.conf.d/poketto.conf
+sudo systemctl restart systemd-journald
+```
+
+关闭限流是有意为之：记录被静默丢弃会让阅读者得出"什么都没发生"的结论，比查得慢危险。查看单个服务用 `journalctl CONTAINER_NAME=<容器名> -o cat`，得到的就是记录本身；启用结构化输出后再接 `| jq`。筛安全历史用 `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`。
+
+运维自行维护的 Compose 实例不会通过镜像交付收到这些文件。要在那里生效，需要修改该实例自己的 Compose 配置和网关文件：把各服务的日志驱动改为 `journald`、加上网关访问日志、并为应用设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE`。在此之前服务照常运行、照常记录，只是格式仍是便于阅读的那种，且日志会在重新部署时被丢弃。
+
+尚未覆盖的部分见[诊断记录](../notes/implemented/2026-09-14-service-diagnostics.md)。

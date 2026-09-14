@@ -38,6 +38,16 @@ An image URL carries its authorization in the path. `/api/public/assets/{token}`
 
 Recording a path digest instead of a path, so that repeated failures on one file can still be recognised, is accepted but not implemented here. It belongs with the per-file operations in content and execution.
 
+## Retention and delivery
+
+Every service writes to the host journal instead of a per-container log. A container log is discarded with its container, and this deployment replaces containers on each verified commit, so the account of whatever failed just before was routinely destroyed within minutes. The journal already holds the executor's records, so the application and its sandbox land on one timeline, and it rotates itself rather than needing a second rotation mechanism. `docker logs` continues to work. The documented operator configuration gives journald an explicit size and retention budget, because its default is a share of the filesystem rather than a chosen size, and disables its rate limit: a silently dropped record makes a reader conclude that nothing happened, which is worse than a slow query.
+
+The gateway had no access log, so a request it refused or served itself left no trace anywhere. It now writes JSON to standard error, which the same driver carries to the same journal.
+
+None of this reaches an operator-owned Compose installation through image delivery, which updates only the application and frontend images and verifies that the rendered Compose configuration is unchanged. Applying it there is an operator edit of that installation's own files, documented in the usage reference. Nothing depends on it: an installation that does not apply it keeps running and keeps recording, in the readable format, into logs a redeployment discards.
+
+A log shipper or a hosted collector would add a component and a store to a host that has about five gigabytes of memory free and one user. The journal plus `jq` answers every question this service has actually raised.
+
 ## Alternatives
 
 Returning an event identifier to the caller is the usual way to make a reported error addressable. It was rejected: the MCP caller is an external product user rather than an operator, no support path exists for redeeming an identifier, and adding an opaque token to a stable protocol surface invites misuse by a model. Logging paths verbatim would make media, move and save failures directly diagnosable at the cost of putting a member's private file names in an operator log; a uniform digest recovers most of that without the names, and applying it uniformly avoids a classifier mistake leaking one.
@@ -48,10 +58,12 @@ Silencing the MCP client-initialize records was considered and rejected. They do
 
 Log volume rises by roughly one line per request and per tool call. Structured output is opt-in, so an existing installation is unaffected until it sets the variable.
 
-Not covered here, in the order they matter: retention and delivery, meaning the journald log driver, journald limits and a gateway access log, none of which reach an operator-owned Compose installation through image delivery; workspace creation, repository credential rotation and the website switch, which live in `spaces` and `workspace` and would need the audit helper to become public API; OAuth consent and disconnection, which issue and withdraw their own keys through this service; path digests for per-file operations; the worker's own records, which today amount to two statements.
+Not covered here, in the order they matter: workspace creation, repository credential rotation and the website switch, which live in `spaces` and `workspace` and would need the audit helper to become public API; OAuth consent and disconnection, which issue and withdraw their own keys through this service; path digests for per-file operations; the worker's own records, which today amount to two statements.
 
 ## Verification
 
 `RequestDiagnosticsFilterTests` covers the recorded route, status, caller and workspace, an authenticated caller taken from the request rather than a cleared context, public and private image grants absent from the record, a long public slug surviving uncollapsed, a server failure recorded at warning, an excluded health probe, a malformed admin route, and that a query string carrying a private path reaches no record. `McpToolOutcomeTests` covers a refusal recorded with the code the caller received, a success recorded without its output, a refusal without a code, unreadable content, and that the result is returned unchanged. `RequestCallerTests` covers an account and an API key surviving the security context, an absent identity, and a request that reached no identity. `AuditRecordTests` covers a refusal naming only this service's own reason, a permission change naming actor, subject and resulting capabilities, a withdrawal that is not recorded as a grant, sorted capabilities, an authentication naming only the resolved identity, and an unauthenticated actor named rather than left blank.
 
-These are unit checks on the record's shape. They do not establish behaviour under a real transport, and no deployed installation emits structured records until an operator sets the variable.
+The deployment script suite asserts that no service keeps a container-scoped driver and that the gateway declares its access log, so a later edit cannot quietly return to logs that vanish with a redeployment.
+
+These are unit and configuration checks on the record's shape. They do not establish behaviour under a real transport, no deployed installation emits structured records until an operator sets the variable, and the journald budget has not been exercised against a full disk.

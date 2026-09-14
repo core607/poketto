@@ -3,6 +3,14 @@
 }
 
 {$POKETTO_PUBLIC_DOMAIN} {
+    # Spring records what reaches it; without this, a request refused or served by the gateway
+    # itself left no trace at all. Caddy writes JSON to stderr, which the container log driver
+    # carries to the same journal as everything else.
+    log {
+        output stderr
+        format json
+    }
+
     @management path /actuator /actuator/*
     handle @management {
         respond 404
