@@ -10,7 +10,7 @@ Relative folder links resolve either landing using the same rules as collection 
 
 The gallery opens its existing authorized image URLs in a modal dialog. Previous/next buttons and arrow keys follow gallery order, with explicit bounds. Escape and Close restore focus to the opener, and the native modal contains keyboard focus. An unavailable image reports its failure without hiding navigation. Public and authenticated preview URLs retain their existing authorization checks.
 
-This slice does not implement thumbnail delivery or classify album cards across discovery. Original gallery bytes remain in use. Bounded derivative caching, image-decoder admission, recognizable homepage thumbnails, author metadata and search-return state remain required by the parent contract.
+The [thumbnail delivery record](2026-09-14-album-thumbnails.md) owns the public grid's derivative cache and image-decoder bounds; the lightbox retains exact originals. [Public author names](2026-09-14-public-author-names.md) owns card and article signatures. Album classification, recognizable homepage covers and search-return state remain required by the parent contract.
 
 ## Alternatives and verification
 
