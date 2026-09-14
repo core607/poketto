@@ -60,6 +60,8 @@ New note and New folder actions operate in the selected directory. New notes and
 
 Management tabs, selected space, folder, and document have restorable URLs. Unsaved changes are handled before changing space or document. The editor distinguishes saved Git state from public-page availability, labels visibility, offers View public page, and updates image previews automatically. Publishing reuses repository public/private roots and coordinated moves and references; it does not add a second per-document visibility authority outside files.
 
+The [content navigation decision](../implemented/2026-09-14-admin-content-navigation.md) implements independent folder/document URLs, guarded history traversal, and private note/folder draft creation. Repository-wide filename search and explicit public-page availability remain outstanding administration requirements.
+
 ## Alternatives and boundaries
 
 A default-space blog cannot represent several independent accounts. Account-owned storage would lose the shared-space authorization boundary. Open registration and provider-side private-repository creation add provisioning and abuse mechanisms beyond connecting an existing repository, so registration remains invitation-gated and remote creation is excluded.
