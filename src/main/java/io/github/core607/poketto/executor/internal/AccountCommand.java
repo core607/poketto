@@ -137,6 +137,17 @@ final class AccountCommand implements AutoCloseable {
                 current.expiresAt());
     }
 
+    void refused() {
+        var current = record();
+        write(
+                current.state(),
+                current.writer(),
+                AccountCopyRecord.Phase.READY,
+                null,
+                current.lastInterruptedCommand(),
+                current.expiresAt());
+    }
+
     void complete(RetainedSaveState state) {
         var current = record();
         write(

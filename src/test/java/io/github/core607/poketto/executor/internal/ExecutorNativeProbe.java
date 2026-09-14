@@ -28,7 +28,6 @@ import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
-import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -102,6 +101,11 @@ public final class ExecutorNativeProbe {
             @Override
             public PublicExport createPublic(AuthPrincipal actor, WorkspaceId selected) {
                 throw new UnsupportedOperationException("native fixture provides full repository exports only");
+            }
+
+            @Override
+            public Export update(AuthPrincipal actor, WorkspaceId selected, String baseline, String commit) {
+                return create(actor, selected, Optional.of(commit));
             }
 
             @Override
@@ -299,8 +303,6 @@ public final class ExecutorNativeProbe {
             assertThat(Files.readAllBytes(path("bundle"))).isEqualTo(originalBundle);
             control("assert-source-unchanged");
             passed("command-mutations-preserve-authority-bundle-and-source");
-            close(executor, "first");
-            close(executor, "second");
 
             var cancel = new Cancellation();
             var cancelled = CompletableFuture.supplyAsync(() -> execute(executor, "cancel", descendant(), cancel));
@@ -336,7 +338,6 @@ public final class ExecutorNativeProbe {
             assertThat(restarted.copyId()).isNotEqualTo(ended.copyId());
             assertThat(restarted.commit()).isEqualTo(ended.commit());
             passed("explicit-new-after-confirmed-close-reuses-transport-with-different-copy");
-            close(executor, "cancel");
 
             var revoked =
                     CompletableFuture.supplyAsync(() -> execute(executor, "revoke", descendant(), new Cancellation()));
@@ -347,7 +348,6 @@ public final class ExecutorNativeProbe {
                     .isIn(RepositoryExecutor.TerminationReason.REVOKED, RepositoryExecutor.TerminationReason.CANCELLED);
             control("assert-no-processes");
             passed("revocation-closes-active-process-tree", "reason", reason);
-            close(executor, "revoke");
         }
 
         // A different synthetic key avoids reusing the deliberately revoked key's worker tombstone.
@@ -488,8 +488,6 @@ public final class ExecutorNativeProbe {
                                     new Cancellation())
                             .stdout())
                     .isEqualTo("left");
-            executor.closed(new McpSessionClosed(
-                    workspace, principal.subjectId(), "guard-left", McpSessionClosed.Reason.IDLE_EXPIRY));
             int beforeRejected = released.get();
             assertThatThrownBy(() -> executor.execute(
                             principal,
@@ -733,7 +731,6 @@ public final class ExecutorNativeProbe {
                                     .getFile(principal, workspace, Optional.empty(), "public/article.md")
                                     .commit())
                             .contains(before);
-                    close(executor, session);
                     assertThat(fixture.retainedPackages()).isZero();
                     passed(
                             full
@@ -1178,7 +1175,6 @@ public final class ExecutorNativeProbe {
                                     new Cancellation())
                             .stdout())
                     .contains("INDEX_MISSING");
-            close(executor, "media-link");
             privateRead.set(false);
             try {
                 assertThat(execute(
@@ -2041,11 +2037,6 @@ public final class ExecutorNativeProbe {
                 command,
                 Duration.ofSeconds(25),
                 cancellation);
-    }
-
-    private void close(IsolatedRepositoryExecutor executor, String session) {
-        executor.closed(
-                new McpSessionClosed(workspace, principal.subjectId(), session, McpSessionClosed.Reason.CLIENT_DELETE));
     }
 
     private static String descendant() {

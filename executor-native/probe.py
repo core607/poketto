@@ -31,7 +31,7 @@ def main():
     parser.add_argument('--worker-source', type=Path, required=True)
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
-    parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
+    parser.add_argument('--fixture-parent', choices=('/var/lib',), default='/var/lib')
     parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state', 'public-scope', 'admission'), default='all')
     parser.add_argument('--process-case', choices=('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired'))
     args = parser.parse_args()
@@ -65,7 +65,7 @@ def main():
     disk_mounted = False
     disk_pool = root / 'copy-pool'
     evidence = []
-    for name in ('worker.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py', 'checkpoints.py', 'checkpoint_tree.py'):
+    for name in ('worker.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -280,21 +280,15 @@ with socket.socket(socket.AF_UNIX) as connection:
             'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
-            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000,
-            'checkpointRoot': str(root / 'checkpoints'), 'maxCheckpoints': 128,
-            'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 67108864,
-            'maxRetainedBytes': 536870912, 'minimumFreeBytes': 0, 'retentionSeconds': 3600}
-        if args.scenario in ('ephemeral-lifecycle', 'account-state', 'retained-process', 'public-scope', 'admission'):
-            assert args.fixture_parent == '/var/lib', 'Disk fixture must not allocate its image in tmpfs'
-            disk_pool.mkdir()
-            disk_image = root / 'copies.img'
-            run(['fallocate', '-l', '512M', str(disk_image)])
-            run(['mkfs.xfs', '-f', str(disk_image)])
-            run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(disk_image), str(disk_pool)])
-            disk_mounted = True
-            worker_config.pop('checkpointRoot')
-            worker_config.update(copyRoot=str(disk_pool), poolBytes=512*1024*1024)
-            run(['install', '-d', '-m', '700', '-o', app_user, '-g', app_user, str(disk_pool / 'metadata')])
+            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
+        disk_pool.mkdir()
+        disk_image = root / 'copies.img'
+        run(['fallocate', '-l', '512M', str(disk_image)])
+        run(['mkfs.xfs', '-f', str(disk_image)])
+        run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(disk_image), str(disk_pool)])
+        disk_mounted = True
+        worker_config.update(copyRoot=str(disk_pool), poolBytes=512*1024*1024)
+        run(['install', '-d', '-m', '700', '-o', app_user, '-g', app_user, str(disk_pool / 'metadata')])
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'
@@ -331,10 +325,6 @@ with socket.socket(socket.AF_UNIX) as connection:
             if args.scenario != 'account-state':
                 execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
-            expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
-            assert str(uuid.UUID(expired)) == expired
-            assert not list(Path(worker_config['checkpointRoot']).glob('*_' + expired + '.checkpoint'))
-            passed('expired-checkpoint-reclaimed-by-worker-without-client-removal')
             execute_java('abandon')
         no_processes(wait=22)
         if args.scenario == 'retained-process':
@@ -353,8 +343,6 @@ with socket.socket(socket.AF_UNIX) as connection:
             'materializeSha256': digest(root / 'materialize.py'),
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'artifactsSha256': digest(root / 'artifacts.py'),
-            'checkpointsSha256': digest(root / 'checkpoints.py'),
-            'checkpointTreeSha256': digest(root / 'checkpoint_tree.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'source': 'synthetic-only', 'scenario': args.scenario, 'processCase': args.process_case}), flush=True)
     finally:

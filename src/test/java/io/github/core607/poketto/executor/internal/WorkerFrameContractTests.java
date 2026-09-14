@@ -41,6 +41,7 @@ class WorkerFrameContractTests {
     private static Map<String, WorkerRequests.Data> frames() {
         var frames = new LinkedHashMap<String, WorkerRequests.Data>();
         frames.put("OPEN", new WorkerRequests.Open(EXPORT, "full", EXPORT, DIGEST, 4096, COMMIT));
+        frames.put("BASELINE", new WorkerRequests.Baseline(EXECUTION, EXPORT, DIGEST, 4096, COMMIT));
         frames.put("ATTACH", new WorkerRequests.DiskCopy(EXPORT, "full", COMMIT));
         frames.put("DISCARD", new WorkerRequests.DiskCopy(EXPORT, "full", COMMIT));
         frames.put("EXEC", new WorkerRequests.Exec(EXECUTION, COMMIT, "git log", 1000));

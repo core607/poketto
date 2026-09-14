@@ -7,7 +7,6 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
-import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -133,9 +132,6 @@ record EphemeralLifecycleNativeProbe(
     }
 
     private void verifyReconnection(RepositoryExecutor.ExecutionResult first) {
-        ((IsolatedRepositoryExecutor) executor)
-                .closed(new McpSessionClosed(
-                        workspace, actor.subjectId(), "previous-transport", McpSessionClosed.Reason.IDLE_EXPIRY));
         assertThat(execute(first.copyId(), "test \"$(cat draft.txt)\" = before", 30)
                         .exitCode())
                 .isZero();

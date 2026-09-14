@@ -37,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--tools', type=Path)
+    parser.add_argument('--baseline-only', action='store_true')
     args = parser.parse_args()
     assert os.geteuid() == 0
     root = args.root.resolve(strict=True)
@@ -51,6 +52,10 @@ def main():
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     heartbeat_stops = []
     created_user = False
+    disk_pool = root / 'copy-pool'
+    disk_image = root / 'copy-pool.img'
+    disk_mounted = False
+    copy_ids = {}
     source = root / 'synthetic-source'
     exports = root / 'exports'
     exports.mkdir(mode=0o700)
@@ -67,9 +72,7 @@ def main():
         'diskBytes': 33554432, 'diskInodes': 8192, 'memoryBytes': 201326592,
         'temporaryBytes': 8388608, 'temporaryInodes': 1024,
         'tasksMax': 48, 'cpuQuotaPercent': 50, 'maxTimeoutMillis': 30000,
-        'initTimeoutMillis': 15000, 'checkpointRoot': str(root / 'retained'),
-        'maxCheckpoints': 16, 'maxCheckpointEntries': 8192, 'maxCheckpointBytes': 33554432,
-        'maxRetainedBytes': 134217728, 'minimumFreeBytes': 16777216, 'retentionSeconds': 3600}
+        'initTimeoutMillis': 15000, 'copyRoot': str(disk_pool), 'poolBytes': 512 * 1024 * 1024}
     (root / 'config.json').write_text(json.dumps(config))
     config_path = str(root / 'config.json')
     def start():
@@ -116,8 +119,9 @@ def main():
                 except OSError:
                     return
         threading.Thread(target=renew, daemon=True).start()
+        copy_ids[identity['leaseId']] = str(uuid.uuid4())
         answer = send(identity, 'OPEN', {'exportId': export_id, 'bundleSha256': bundle_sha,
-                    'bundleBytes': bundle.stat().st_size, 'commit': commit, 'copyId': str(uuid.uuid4()), 'scope': 'full'})
+                    'bundleBytes': bundle.stat().st_size, 'commit': commit, 'copyId': copy_ids[identity['leaseId']], 'scope': 'full'})
         assert answer.get('ok') and answer['state'] == 'READY', answer
         return identity, stop
     def execute(identity, command, timeout=10000, execution_id=None):
@@ -125,18 +129,16 @@ def main():
                                       'command': command, 'timeoutMillis': timeout})
         assert answer.get('ok') and 'result' in answer, answer
         return answer['result']
-    def checkpoint(identity):
-        answer = send(identity, 'CHECKPOINT', {'checkpointId': str(uuid.uuid4()),
-            'scope': 'full', 'expiresAt': int((time.time() + 900) * 1000)})
-        assert answer.get('ok') and answer['state'] == 'READY', answer
-        return {key: answer['checkpoint'][key] for key in ('checkpointId', 'sha256', 'bytes')}
-    def restore(identity, reference):
-        restored = {**identity, 'leaseId': str(uuid.uuid4()), 'appBootId': str(uuid.uuid4()),
+    def attach(identity):
+        closed = send(identity, 'CLOSE')
+        assert closed.get('ok') and closed['state'] == 'CLOSED', closed
+        attached = {**identity, 'leaseId': str(uuid.uuid4()), 'appBootId': str(uuid.uuid4()),
                     'serverSessionHash': uuid.uuid4().hex * 2}
-        answer = send(restored, 'RESTORE', {**reference, 'scope': 'full', 'commit': commit,
-                      'previousLeaseId': identity['leaseId']})
+        copy_ids[attached['leaseId']] = copy_ids[identity['leaseId']]
+        answer = send(attached, 'ATTACH', {'copyId': copy_ids[attached['leaseId']],
+                      'scope': 'full', 'commit': commit})
         assert answer.get('ok') and answer['state'] == 'READY', answer
-        return restored
+        return attached
     def python(code):
         return '/usr/bin/python3 -c ' + shlex.quote(code)
     evidence = []
@@ -144,7 +146,94 @@ def main():
         record = {'test': name, 'result': 'PASS', **data}
         evidence.append(record)
         print(json.dumps(record), flush=True)
+    def baseline_checks(resumed):
+        nonlocal boot
+        authority = root / 'baseline-source'
+        run(['git', 'clone', '--no-local', '--quiet', str(source), str(authority)])
+        (authority / 'article.md').write_text('saved through authority')
+        run(['git', '-C', str(authority), 'add', 'article.md'])
+        run(['git', '-C', str(authority), '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
+             'commit', '-qm', 'Acknowledged save'])
+        updated = run(['git', '-C', str(authority), 'rev-parse', 'HEAD'])
+        run(['git', '-C', str(authority), 'bundle', 'create', str(exports / 'updated.bundle'), 'HEAD'])
+        export = str(uuid.uuid4())
+        updated_bundle = exports / (export + '.bundle')
+        (exports / 'updated.bundle').rename(updated_bundle)
+        assert execute(resumed, 'printf "saved through authority" > article.md; printf unsaved > unselected.md')['exitCode'] == 0
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 4; git rev-parse HEAD; git status --porcelain; cat unselected.md', 15000, execution)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
+            if units:
+                break
+            time.sleep(.05)
+        updated_reply = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                            'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                            'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        assert updated_reply.get('ok') and updated_reply['gitCommit'] == updated, updated_reply
+        result = future.result(timeout=20)
+        assert result['exitCode'] == 0 and updated in result['stdout'] and 'unsaved' in result['stdout'], result
+        assert 'article.md' not in result['stdout'], result
+        resumed = attach(resumed)
+        assert updated in execute(resumed, 'git rev-parse HEAD')['stdout']
+        passed('authoritative-git-baseline-advances-inside-active-command-preserves-drafts-and-survives-reattach')
+        run(['systemctl', 'stop', supervisor])
+        config['initTimeoutMillis'] = 100
+        (root / 'config.json').write_text(json.dumps(config))
+        boot = start()['workerBootId']
+        resumed = attach(resumed)
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 3; printf parent-survived', 10000, execution)
+        wait_units(1)
+        refused = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                       'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                       'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        assert refused.get('code') == 'BASELINE_UNAVAILABLE', refused
+        result = future.result(timeout=15)
+        assert result['exitCode'] == 0 and result['stdout'] == 'parent-survived', result
+        lease_root = runtime / 'sessions' / resumed['leaseId']
+        assert not (lease_root / 'baseline.bundle').exists()
+        assert not (lease_root / '.git-baseline.pending').exists()
+        assert execute(resumed, 'cat unselected.md')['stdout'] == 'unsaved'
+        passed('baseline-helper-timeout-cleans-staging-and-preserves-the-parent-command-and-lease')
+        run(['systemctl', 'stop', supervisor])
+        config['initTimeoutMillis'] = 15000
+        (root / 'config.json').write_text(json.dumps(config))
+        boot = start()['workerBootId']
+        resumed = attach(resumed)
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 30', 30000, execution)
+        wait_units(1)
+        update = pool.submit(send, resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                             'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                             'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        wait_units(2)
+        assert send(resumed, 'CLOSE', {'reason': 'cancelled'}).get('ok')
+        future.result(timeout=15)
+        update.result(timeout=15)
+        closed = send(resumed, 'CLOSE')
+        assert closed.get('ok') and closed['state'] == 'CLOSED', closed
+        assert not (runtime / 'sessions' / resumed['leaseId']).exists()
+        passed('parent-cancellation-contains-the-active-baseline-helper-before-releasing-the-copy')
+        return resumed
+
+    def wait_units(count):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
+            if len(units.splitlines()) >= count:
+                return
+            time.sleep(.02)
+        raise AssertionError('Expected active command units were not observed')
+
     try:
+        assert run(['findmnt', '-n', '-o', 'FSTYPE', '-T', str(root)]) != 'tmpfs'
+        disk_pool.mkdir()
+        run(['fallocate', '-l', '512M', str(disk_image)])
+        run(['mkfs.xfs', '-f', str(disk_image)])
+        run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(disk_image), str(disk_pool)])
+        disk_mounted = True
         resource_pool.start()
         run(['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
         created_user = True
@@ -167,6 +256,12 @@ def main():
         assert supervisor_umask == '0077'
         started = time.monotonic()
         first, first_stop = new_session()
+        if args.baseline_only:
+            first_stop.set()
+            ended = baseline_checks(first)
+            assert send(ended, 'DISCARD', {'copyId': copy_ids[ended['leaseId']], 'scope': 'full', 'commit': commit}).get('ok')
+            print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'scenario': 'baseline-only', 'source': 'synthetic-only'}), flush=True)
+            return
         source_inodes = {(p.stat().st_dev, p.stat().st_ino) for p in (source / '.git/objects').rglob('*') if p.is_file()}
         copied_objects = runtime / 'sessions' / first['leaseId'] / 'work/repository/.git/objects'
         assert all((p.stat().st_dev, p.stat().st_ino) not in source_inodes for p in copied_objects.rglob('*') if p.is_file())
@@ -198,10 +293,9 @@ def main():
             'Path("draft.bin").write_bytes(bytes(range(256))); Path("unsaved.md").write_text("retained draft"); '
             'os.symlink("/etc/shadow", "opaque-link"); raise SystemExit(7)'))
         assert result['exitCode'] == 7 and result['terminationReason'] == 'normal', result
-        first_checkpoint = checkpoint(first)
         old_first = first
         first_stop.set()
-        first = restore(first, first_checkpoint)
+        first = attach(first)
         result = execute(first, python('from pathlib import Path; import os\n'
             'assert Path("draft.bin").read_bytes()==bytes(range(256)); '
             'assert Path("unsaved.md").read_text()=="retained draft"; '
@@ -211,49 +305,23 @@ def main():
                      'command': 'printf stale > stale-marker', 'timeoutMillis': 1000})
         assert not stale.get('ok'), stale
         assert not (runtime / 'sessions' / old_first['leaseId']).exists()
-        interrupted_lease = first
-        active_id = str(uuid.uuid4())
-        future = pool.submit(execute, first, 'printf interrupted > after-checkpoint; sleep 30', 30000, active_id)
-        marker = runtime / 'sessions' / first['leaseId'] / 'work/repository/after-checkpoint'
-        deadline = time.monotonic() + 5
-        while not marker.exists() and time.monotonic() < deadline:
-            time.sleep(.05)
-        assert marker.exists()
-        active_point = send(first, 'CHECKPOINT_ACTIVE', {'checkpointId': str(uuid.uuid4()), 'scope': 'full',
-                            'expiresAt': int((time.time() + 900) * 1000), 'executionId': active_id})
-        assert active_point.get('ok') and active_point['state'] == 'RUNNING', active_point
-        assert active_point['executionId'] == active_id and not future.done(), active_point
-        active_reference = {key: active_point['checkpoint'][key] for key in ('checkpointId', 'sha256', 'bytes')}
-        transfer = {**first, 'leaseId': str(uuid.uuid4()), 'appBootId': str(uuid.uuid4())}
-        refused = send(transfer, 'RESTORE', {**first_checkpoint, 'scope': 'full', 'commit': commit,
-                       'previousLeaseId': first['leaseId']})
-        assert refused.get('code') == 'SESSION_BUSY', refused
-        assert future.result(timeout=10)['terminationReason'] == 'session_closed'
-        first = restore(first, first_checkpoint)
-        assert execute(first, 'test ! -e after-checkpoint && test -f unsaved.md')['exitCode'] == 0
-        assert not (runtime / 'sessions' / interrupted_lease['leaseId']).exists()
-        passed('checkpoint-fences-interrupted-restored-writer-before-reusing-last-complete-copy')
-        first = restore(first, active_reference)
-        active_work = execute(first, 'cat after-checkpoint')
-        assert active_work['exitCode'] == 0 and active_work['stdout'] == 'interrupted', active_work
-        passed('active-checkpoint-freezes-real-command-and-retains-intermediate-work')
         # Keep the recovered lease alive for the remaining real isolation probes.
         first_stop = threading.Event()
         heartbeat_stops.append(first_stop)
-        def renew_restored():
+        def renew_attached():
             while not first_stop.wait(2):
                 try:
                     send(first, 'RENEW')
                 except OSError:
                     return
-        threading.Thread(target=renew_restored, daemon=True).start()
-        passed('checkpoint-restores-nonzero-command-work-and-fences-source')
+        threading.Thread(target=renew_attached, daemon=True).start()
+        passed('disk-attach-preserves-nonzero-command-work-and-fences-source')
         second, second_stop = new_session(first['principalId'])
         execute(first, 'printf isolated > only-first')
         result = execute(second, 'test ! -e only-first')
         assert result['exitCode'] == 0
         passed('same-key-independent-client-directories')
-        retained_file = next((root / 'retained').glob('*_' + first_checkpoint['checkpointId'] + '.checkpoint'))
+        retained_file = disk_pool / 'copies' / copy_ids[first['leaseId']] / 'snapshot.bundle'
         denied_paths = [str(host_canary), str(source / 'article.md'),
             str(runtime / 'control.sock'), str(runtime / 'sessions' / first['leaseId'] / 'work/repository/article.md'),
             str(runtime / 'sessions' / second['leaseId'] / 'snapshot.bundle'), str(retained_file), '/etc/shadow']
@@ -320,9 +388,9 @@ def main():
             result = execute(second, 'rm -f startup-marker startup-network-denied .srt-settings.json; git -c core.fsmonitor=false config --unset-all core.fsmonitor')
             assert result['exitCode'] == 0, result
         passed('untrusted-git-and-shell-config-reuse-stays-inside-srt')
-        result = execute(second, python('import errno\ntry:\n f=open("fill","wb")\n for i in range(64): f.write(b"x"*1048576)\nexcept OSError as e:\n assert e.errno==errno.ENOSPC\n print("disk denied")\nfinally:\n f.close()\n import os; os.unlink("fill")'))
+        result = execute(second, python('import errno\ntry:\n f=open("fill","wb")\n for i in range(64): f.write(b"x"*1048576)\nexcept OSError as e:\n assert e.errno in (errno.ENOSPC,errno.EDQUOT)\n print("disk denied")\nfinally:\n f.close()\n import os; os.unlink("fill")'))
         assert 'disk denied' in result['stdout'], result
-        passed('tmpfs-disk-limit')
+        passed('xfs-project-disk-limit')
         result = execute(second, python('import subprocess\nc=[]\ntry:\n for _ in range(100): c.append(subprocess.Popen(["sleep","2"]))\nexcept OSError:\n print("pids denied")\nfinally:\n for p in c: p.terminate()\n for p in c: p.wait()'))
         assert 'pids denied' in result['stdout'], result
         passed('process-limit')
@@ -368,8 +436,7 @@ def main():
         assert result['terminationReason'] == 'lease_expired', result
         passed('abandoned-client-lease-expires')
         identity, stop = new_session()
-        assert execute(identity, 'printf checkpoint-before-interruption > acknowledged-draft')['exitCode'] == 0
-        durable = checkpoint(identity)
+        assert execute(identity, 'printf disk-before-interruption > acknowledged-draft')['exitCode'] == 0
         future = pool.submit(execute, identity, descendant, 30000)
         time.sleep(1)
         run(['systemctl', 'kill', '--kill-who=main', '--signal=KILL', supervisor])
@@ -389,19 +456,19 @@ def main():
         boot = start()['workerBootId']
         assert boot != previous_boot
         passed('supervisor-sigkill-cleans-and-invalidates-leases')
-        resumed = restore(identity, durable)
+        resumed = attach(identity)
         result = execute(resumed, 'cat acknowledged-draft; git rev-parse HEAD')
-        assert result['exitCode'] == 0 and 'checkpoint-before-interruption' in result['stdout'] and commit in result['stdout'], result
+        assert result['exitCode'] == 0 and 'disk-before-interruption' in result['stdout'] and commit in result['stdout'], result
+        resumed = baseline_checks(resumed)
         assert send(resumed, 'CLOSE').get('ok')
-        assert send(resumed, 'CHECKPOINT_REMOVE', durable).get('ok')
-        passed('checkpoint-survives-supervisor-sigkill-and-restores-original-commit')
+        removed = send(resumed, 'DISCARD', {'copyId': copy_ids[resumed['leaseId']], 'scope': 'full', 'commit': commit})
+        assert removed.get('ok'), removed
+        passed('disk-copy-survives-supervisor-sigkill-and-retains-baseline')
         print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'source': 'synthetic-only',
             'runtimeParent': '/run', 'supervisorUmask': supervisor_umask,
             'resourcePoolSha256': hashlib.sha256((root / 'resource_pool.py').read_bytes()).hexdigest(),
             'nativePoolSha256': hashlib.sha256((root / 'native_pool.py').read_bytes()).hexdigest(),
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
-            'checkpointsSha256': hashlib.sha256((root / 'checkpoints.py').read_bytes()).hexdigest(),
-            'checkpointTreeSha256': hashlib.sha256((root / 'checkpoint_tree.py').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
     finally:
@@ -413,6 +480,9 @@ def main():
             subprocess.run([sys.executable, str(root / 'worker.py'), '--config', config_path, '--cleanup'], check=True, timeout=30)
             pool.shutdown(wait=True, cancel_futures=True)
             assert not list((runtime / 'sessions').iterdir())
+            if disk_mounted:
+                run(['umount', str(disk_pool)])
+                disk_mounted = False
             if created_user:
                 assert subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)], capture_output=True).returncode == 1
                 run(['userdel', user])

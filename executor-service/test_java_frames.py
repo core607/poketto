@@ -45,8 +45,7 @@ class JavaFrameTests(unittest.TestCase):
         self.service = Service(self.key.public_key(), self.backend,
                                {'leaseSeconds': 15, 'renewAfterSeconds': 5, 'maxRequests': 1000,
                                 'maxSessions': 4, 'maxBundleBytes': 1 << 20, 'maxTimeoutMillis': 60000,
-                                'maxExecutionsPerSession': 1000, 'checkpointRoot': '/configured',
-                                'maxCheckpointBytes': 1 << 20},
+                                'maxExecutionsPerSession': 1000},
                                lambda: self.now)
         self.identity = {'principalId': str(uuid.uuid4()), 'accountId': str(uuid.uuid4()),
                          'workspaceId': str(uuid.uuid4()), 'serverSessionHash': 'a' * 64,

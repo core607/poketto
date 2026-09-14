@@ -65,9 +65,9 @@ public interface RepositoryExecutor {
      * The transport ID comes from the server SDK after principal/workspace validation. The account
      * and workspace own the copy; transports do not own its lifetime. "new" opens the default copy,
      * creating it only when absent. An explicit ID must match before this command can execute.
-     * Reconnection restores the original baseline and local work automatically. Retention reports
+     * Reconnection restores local work and the acknowledged baseline automatically. Retention reports
      * renewed expiry and any earlier interrupted command; inspect uncertain writes before retrying.
-     * Omitted commits keep the pinned baseline. Implementations own process-tree, filesystem,
+     * Omitted commits use the current acknowledged baseline; results name the installed Git commit. Implementations own process-tree, filesystem,
      * network, cancellation, output and resource limits, and prevent process creation after cancellation.
      */
     ExecutionResult execute(

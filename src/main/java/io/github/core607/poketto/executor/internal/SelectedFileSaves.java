@@ -219,7 +219,7 @@ final class SelectedFileSaves {
     /** Confined to one session's admitted execute owner and its serial bridge loop; renewal never accesses it. */
     static final class State {
         private final String originalCommit;
-        private final SaveStateCheckpoint checkpoint;
+        private final SaveStateJournal journal;
         private final OriginalFileLookup originals;
         private final Map<String, String> baselines = new HashMap<>();
         private final Map<String, RetainedFileBaseline> fileBaselines = new HashMap<>();
@@ -232,33 +232,33 @@ final class SelectedFileSaves {
         SessionMoves.Pending move;
 
         State(String baseCommit) {
-            this(baseCommit, SaveStateCheckpoint.UNTRACKED);
+            this(baseCommit, SaveStateJournal.UNTRACKED);
         }
 
-        State(String baseCommit, SaveStateCheckpoint checkpoint) {
-            this(baseCommit, checkpoint, null);
+        State(String baseCommit, SaveStateJournal journal) {
+            this(baseCommit, journal, null);
         }
 
-        private State(String baseCommit, SaveStateCheckpoint checkpoint, OriginalFileLookup originals) {
+        private State(String baseCommit, SaveStateJournal journal, OriginalFileLookup originals) {
             this.originalCommit = baseCommit;
             this.baseCommit = baseCommit;
-            this.checkpoint = Objects.requireNonNull(checkpoint, "save checkpoint must be present");
+            this.journal = Objects.requireNonNull(journal, "save journal must be present");
             this.originals = originals;
         }
 
         boolean tracked() {
-            return checkpoint != SaveStateCheckpoint.UNTRACKED;
+            return journal != SaveStateJournal.UNTRACKED;
         }
 
         State copy() {
-            return restore(snapshot(), checkpoint, originals);
+            return restore(snapshot(), journal, originals);
         }
 
         void install(State proposed) {
             ProtocolValues.require(
                     originalCommit.equals(proposed.originalCommit), "save state", "must keep its original commit");
             if (tracked()) {
-                checkpoint.retain(proposed.snapshot());
+                journal.retain(proposed.snapshot());
             }
             copyFields(proposed);
         }
@@ -292,15 +292,15 @@ final class SelectedFileSaves {
         }
 
         static State restore(RetainedSaveState snapshot) {
-            return restore(snapshot, SaveStateCheckpoint.UNTRACKED);
+            return restore(snapshot, SaveStateJournal.UNTRACKED);
         }
 
-        static State restore(RetainedSaveState snapshot, SaveStateCheckpoint checkpoint) {
-            return restore(snapshot, checkpoint, null);
+        static State restore(RetainedSaveState snapshot, SaveStateJournal journal) {
+            return restore(snapshot, journal, null);
         }
 
-        static State restore(RetainedSaveState snapshot, SaveStateCheckpoint checkpoint, OriginalFileLookup originals) {
-            var state = new State(snapshot.originalCommit(), checkpoint, originals);
+        static State restore(RetainedSaveState snapshot, SaveStateJournal journal, OriginalFileLookup originals) {
+            var state = new State(snapshot.originalCommit(), journal, originals);
             state.baseCommit = snapshot.baseCommit();
             state.baselines.putAll(snapshot.baselines());
             state.fileBaselines.putAll(snapshot.fileBaselines());

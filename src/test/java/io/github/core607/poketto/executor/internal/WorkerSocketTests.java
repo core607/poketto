@@ -30,7 +30,6 @@ import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
-import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -76,6 +75,115 @@ class WorkerSocketTests {
     private final RememberingExecutorClient client = new RememberingExecutorClient();
     private static final String COMMIT = "a".repeat(40);
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
+
+    @Test
+    void failedGitInstallationLeavesInspectionAvailableWithoutRetryingOnEachCommand() throws Exception {
+        var actor = principal();
+        var saves = mock(SelectedFileSaves.class);
+        var exports = exports();
+        String target = "d".repeat(40);
+        when(exports.update(any(), any(), any(), any()))
+                .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), target, "e".repeat(64), 128));
+        doAnswer(call -> {
+                    SelectedFileSaves.State state = call.getArgument(2);
+                    state.baseCommit = target;
+                    return BridgeReplies.succeeded(new BridgeReplies.Recovery(true));
+                })
+                .when(saves)
+                .recover(any(), any(), any());
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        saves,
+                        fullAuth(),
+                        exports,
+                        peer.client(),
+                        8,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.baselineUnavailable = true;
+            peer.bridgeCommand =
+                    Map.of("requestId", UUID.randomUUID().toString(), "operation", "recover", "arguments", Map.of());
+            var client = new RememberingExecutorClient();
+            var first = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "poketto recover",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(peer.operations("BRIDGE_COMPLETE")
+                            .getFirst()
+                            .path("data")
+                            .path("response")
+                            .path("code")
+                            .asString())
+                    .isEqualTo("LOCAL_BASELINE_PENDING");
+            peer.bridgeCommand = null;
+            var inspected = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "cat draft.md",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(inspected.copyId()).isEqualTo(first.copyId());
+            assertThat(inspected.retention().lastInterruptedCommand()).isNull();
+            assertThat(peer.operations("BASELINE")).hasSize(1);
+            assertThat(peer.operations("CLOSE")).isEmpty();
+        }
+    }
+
+    @Test
+    void replayCapacityRefusesWithoutMarkingAnInterruptionAndNextLeaseKeepsTheCopy() throws Exception {
+        var actor = principal();
+        var client = new RememberingExecutorClient();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            peer.executionCapacity = true;
+            assertThatThrownBy(() -> client.execute(
+                            executor,
+                            actor,
+                            WORKSPACE,
+                            "one",
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(1),
+                            new Cancellation()))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.CAPACITY));
+            peer.executionCapacity = false;
+            var continued = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(1),
+                    new Cancellation());
+            assertThat(continued.copyId()).isEqualTo(first.copyId());
+            assertThat(continued.retention().lastInterruptedCommand()).isNull();
+            assertThat(peer.operations("ATTACH")).hasSize(1);
+        }
+    }
 
     @Test
     void unavailableRemoteDoesNotHideLocalStatus() throws Exception {
@@ -126,8 +234,6 @@ class WorkerSocketTests {
                     "pwd",
                     Duration.ofSeconds(2),
                     new Cancellation());
-            executor.closed(new McpSessionClosed(
-                    WORKSPACE, actor.subjectId(), "before-idle", McpSessionClosed.Reason.IDLE_EXPIRY));
             var next = executor.execute(
                     actor,
                     WORKSPACE,
@@ -397,8 +503,6 @@ class WorkerSocketTests {
                     "pwd",
                     Duration.ofSeconds(2),
                     new Cancellation());
-            executor.closed(
-                    new McpSessionClosed(WORKSPACE, actor.subjectId(), "one", McpSessionClosed.Reason.CLIENT_DELETE));
             assertThat(peer.operations("CLOSE")).isEmpty();
             verifyNoInteractions(packages);
             assertThat(client.execute(
@@ -587,7 +691,7 @@ class WorkerSocketTests {
                             Duration.ofSeconds(1),
                             new Cancellation()))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("pinned");
+                    .hasMessageContaining("working-copy baseline");
             verify(exports, times(1)).release(any());
             verify(auth, atLeast(3))
                     .authorize(principal, WORKSPACE, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
@@ -1105,8 +1209,6 @@ class WorkerSocketTests {
                 peer.dropClose = !peer.closeForever;
                 assertThatThrownBy(() -> executor.discard(actor, WORKSPACE, discard, new Cancellation()))
                         .isInstanceOf(ExecutionAdmissionException.class);
-                executor.closed(new McpSessionClosed(
-                        WORKSPACE, actor.subjectId(), "transport", McpSessionClosed.Reason.CLIENT_DELETE));
                 assertThatThrownBy(() -> command(executor, principal(), "new"))
                         .isInstanceOf(ExecutionAdmissionException.class);
                 assertThat(peer.operations("OPEN")).hasSize(1);
@@ -1268,6 +1370,8 @@ class WorkerSocketTests {
         private volatile int exportProtocol = 1;
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
+        private volatile boolean executionCapacity;
+        private volatile boolean baselineUnavailable;
         private volatile String terminationReason = "normal";
         private volatile String attachRefusal;
         private volatile String stdout = "fixture result";
@@ -1357,6 +1461,7 @@ class WorkerSocketTests {
                             "renewAfterSeconds",
                             1));
                     hello.put("diskCopyProtocol", 1);
+                    hello.put("gitBaselineProtocol", 1);
                     response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()
@@ -1425,8 +1530,18 @@ class WorkerSocketTests {
                             : request.path("requestId").stringValue());
             response.put("leaseId", lease);
             response.put("commit", COMMIT);
+            response.put("gitCommit", COMMIT);
             response.put("state", "READY");
             switch (operation) {
+                case "BASELINE" -> {
+                    response.put("ok", !baselineUnavailable);
+                    if (baselineUnavailable) {
+                        response.put("code", "BASELINE_UNAVAILABLE");
+                    } else {
+                        response.put(
+                                "gitCommit", request.path("data").path("commit").stringValue());
+                    }
+                }
                 case "DISCARD" -> {
                     response.put("state", "DISCARDED");
                     response.put("copyId", request.path("data").path("copyId").stringValue());
@@ -1462,6 +1577,11 @@ class WorkerSocketTests {
                     }
                 }
                 case "EXEC" -> {
+                    if (executionCapacity) {
+                        response.put("ok", false);
+                        response.put("code", "EXECUTION_CAPACITY");
+                        break;
+                    }
                     executionId = request.path("data").path("executionId").asString("");
                     execEntered.countDown();
                     if (holdExecReply && !execReplyRelease.await(5, TimeUnit.SECONDS)) {
