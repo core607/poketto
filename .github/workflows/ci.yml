@@ -315,7 +315,9 @@ jobs:
   # job with package-write authority.
   publish:
     needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto'
+    # Optional lanes can be skipped upstream. Use the completed verification gate,
+    # rather than the implicit success() condition over every ancestor job.
+    if: ${{ !cancelled() && needs.verify.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -401,7 +403,7 @@ jobs:
 
   mirror:
     needs: publish
-    if: vars.POKETTO_MIRROR_REPOSITORY != ''
+    if: ${{ !cancelled() && needs.publish.result == 'success' && vars.POKETTO_MIRROR_REPOSITORY != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     container:
