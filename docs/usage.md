@@ -213,6 +213,16 @@ Caddy owns public HTTPS, forwards `/api` and `/mcp` to Spring and other paths to
 Set `POKETTO_NETWORK_SUBNET` to an unused RFC1918 IPv4 CIDR with at least 16 addresses, and `POKETTO_NETWORK_DYNAMIC_RANGE` to a canonical strict subpool with at least eight addresses. Set `POKETTO_GATEWAY_INTERNAL_IP` to Caddy's fixed address outside that pool, excluding the subnet's network, first usable bridge and broadcast addresses. Deployment rejects invalid ranges before starting containers; Docker allocates the other services only from the dynamic pool. This deployment alone enables Tomcat forwarding and trusts only that gateway `/32`; Caddy rebuilds client address, protocol and host headers and removes `X-Forwarded-Port` before Spring. Other entry points explicitly default to `server.forward-headers-strategy=none`. `./gradlew proxyForwardingCheck` requires Docker and Python 3.10+ and verifies actual Compose address allocation plus real per-client and shared-account login limits; it is mandatory in `check` and CI.
 
 
+## Diagnostics
+
+Every request and every MCP tool call leaves one record. A request record names the method, route, status, duration, caller kind and subject, and the workspace when the route selects one. A tool record names the tool, its duration, and the same outcome code the caller received, so a reported `SESSION_REPLACED` or `EXECUTION_REFUSED` can be looked up rather than reconstructed. Refused requests additionally record the status and title the caller was told.
+
+Records carry a request identifier that stays on the server. It joins the several lines one request produces and is never returned to a caller: an identifier nobody outside can redeem adds no diagnostic value and invites a client to invent a use for it. Correlate a reported failure by workspace, caller and time instead.
+
+What never reaches a record: request bodies, which carry repository tokens and passwords; MCP tool arguments, which carry commands and content; query strings and repository file paths; and document content. An admin route is reduced to its stable shape with the workspace identifier moved to its own field. Container health probes are not recorded at all.
+
+Set `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` on the application to emit one JSON line per record, with each field addressable and stack traces inside the record rather than spread over many lines. Leaving it unset keeps the readable console format for development. See the [diagnostics record](../notes/implemented/2026-09-14-service-diagnostics.md) for what remains uncovered.
+
 ## OAuth connections
 
 Set `POKETTO_OAUTH_ISSUER=https://your-domain.example` on the application, with no trailing slash, to enable OAuth. Use the same public origin in `POKETTO_SECURITY_ALLOWED_ORIGINS`. Without an issuer, OAuth discovery and authorization stay disabled and static API keys remain usable. PostgreSQL retains connection and token-digest state. Use the current gateway configuration so the authorization-server and protected-resource discovery URLs reach Spring; existing-layout deployments must update their operator-owned gateway and environment explicitly.
