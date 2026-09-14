@@ -163,6 +163,8 @@ final class BridgeReplies {
 
     record SyncResult(String path, String baseCommit, boolean saved, boolean conflicted) {}
 
+    record LocalEditResult(String path, boolean saved) {}
+
     /** An original written into the worktree. The commit is absent for a listing of unsaved work. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record FetchResult(

@@ -67,6 +67,16 @@ final class BridgeArguments {
         return new Sync(string(exactly(arguments, Sync.class), "path"));
     }
 
+    static Edit edit(JsonNode arguments) {
+        var fields = exactly(arguments, Edit.class);
+        return new Edit(string(fields, "path"), string(fields, "oldText"), string(fields, "newText"));
+    }
+
+    static Create create(JsonNode arguments) {
+        var fields = exactly(arguments, Create.class);
+        return new Create(string(fields, "path"), string(fields, "text"));
+    }
+
     static Save save(JsonNode arguments) {
         var fields = exactly(arguments, Save.class);
         return new Save(selected(fields, "writes"), selected(fields, "deletes"));
@@ -128,6 +138,14 @@ final class BridgeArguments {
     record Move(String source, String destination) {}
 
     record Sync(String path) {}
+
+    record Edit(String path, String oldText, String newText) {
+        Edit {
+            require(!oldText.isEmpty(), "oldText", "must not be empty");
+        }
+    }
+
+    record Create(String path, String text) {}
 
     record Save(List<String> writes, List<String> deletes) {
         Save {

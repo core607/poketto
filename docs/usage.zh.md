@@ -118,6 +118,8 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 ## MCP 与隔离执行
 
+使用 `poketto edit PATH --old TEXT --new TEXT` 替换已有本地文本文件中唯一、完全匹配的一段原文。原文不存在或匹配多处时拒绝修改。`poketto create PATH --text TEXT` 仅在目标路径不存在时新建本地文本文件。这两个命令都不改变远端 Git 或发布状态，正式保存仍需通过授权的 `poketto save`。写入前会再次核对捕获的本地内容；普通 shell 写入仍可使用，但不具备这些编辑前置检查。
+
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
 `repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。确认旧命令已退出、租约已释放后，可以在同一 MCP 会话里显式传 `"new"` 开始不同的副本。管理员开启保留执行模式后（默认关闭），结果还会包含 `retention.generation` 和固定到期时间；后续调用须将该代次作为 `expectedGeneration` 传回。重连后，携带同一 ID 和代次，显式设置 `resume: true`，并使用只读命令检查恢复状态。`EXECUTION_REFUSED` 只表示本次请求未执行，先前中断的工作仍可能部分完成。重试写入前应核对拒绝原因、当前代次、`retention.lastInterruptedCommand` 和 `poketto status`。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则与尚未完成的验收范围。

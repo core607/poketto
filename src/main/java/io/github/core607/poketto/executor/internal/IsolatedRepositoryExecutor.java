@@ -10,6 +10,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.ContentExportException;
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PortableContentExports;
@@ -1262,6 +1263,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (operation.equals("export")) {
             return exportCommand(session, executionId, arguments);
         }
+        if (operation.equals("edit") || operation.equals("create")) {
+            return localTextCommand(session, executionId, operation, arguments);
+        }
         if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
             return artifactCommand(session, executionId, operation, arguments);
         }
@@ -1645,6 +1649,72 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } finally {
             requireOk(requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3)), session);
         }
+    }
+
+    private BridgeReplies.Reply localTextCommand(
+            Session session, String executionId, String operation, JsonNode arguments) {
+        try {
+            String path;
+            String replacement;
+            Optional<String> original;
+            if (operation.equals("edit")) {
+                var edit = BridgeArguments.edit(arguments);
+                path = edit.path();
+                original = captureOptional(session, executionId, path);
+                if (original.isEmpty()) {
+                    return BridgeReplies.failedBecause("EDIT_REJECTED", "NOT_FOUND");
+                }
+                String text = original.orElseThrow();
+                int start = text.indexOf(edit.oldText());
+                if (start < 0) {
+                    return BridgeReplies.failedBecause("EDIT_REJECTED", "OLD_TEXT_NOT_FOUND");
+                }
+                if (text.indexOf(edit.oldText(), start + 1) >= 0) {
+                    return BridgeReplies.failedBecause("EDIT_REJECTED", "AMBIGUOUS_MATCH");
+                }
+                replacement = text.substring(0, start)
+                        + edit.newText()
+                        + text.substring(start + edit.oldText().length());
+            } else {
+                var create = BridgeArguments.create(arguments);
+                path = create.path();
+                replacement = create.text();
+                original = captureOptional(session, executionId, path);
+                if (original.isPresent()) {
+                    return BridgeReplies.failedBecause("EDIT_REJECTED", "ALREADY_EXISTS");
+                }
+            }
+            if (replacement.indexOf('\0') >= 0
+                    || !StandardCharsets.UTF_8.newEncoder().canEncode(replacement)) {
+                return BridgeReplies.failedBecause("EDIT_REJECTED", "INVALID_TEXT");
+            }
+            return installLocalText(session, executionId, path, original, replacement);
+        } catch (InvalidSelectionException invalid) {
+            return BridgeReplies.failedBecause("EDIT_REJECTED", InvalidSelectionException.reason(invalid));
+        } catch (IllegalArgumentException invalid) {
+            return BridgeReplies.failedBecause("EDIT_REJECTED", "INVALID_INPUT");
+        }
+    }
+
+    private BridgeReplies.Reply installLocalText(
+            Session session, String executionId, String path, Optional<String> original, String replacement) {
+        byte[] content = replacement.getBytes(StandardCharsets.UTF_8);
+        if (content.length > ContentLimits.MAX_DOCUMENT_BYTES) {
+            return BridgeReplies.failedBecause("EDIT_REJECTED", "TOO_LARGE");
+        }
+        boolean installed = materialize(
+                session,
+                executionId,
+                path,
+                content.length,
+                hash(replacement),
+                original.map(IsolatedRepositoryExecutor::hash).orElse(null),
+                false,
+                false,
+                output -> output.write(content));
+        return installed
+                ? BridgeReplies.succeeded(new BridgeReplies.LocalEditResult(path, false))
+                : BridgeReplies.failedBecause("EDIT_REJECTED", "LOCAL_FILE_CHANGED");
     }
 
     private BridgeReplies.Reply synchronizeFile(Session session, String executionId, SelectedFileSaves.SyncPlan plan) {
