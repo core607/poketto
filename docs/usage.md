@@ -60,7 +60,18 @@ Public search highlights exact matches in titles and snippets. Opening a result 
 
 Authenticated `/api/admin/workspaces/{workspaceId}/repository` endpoints provide the Markdown index, paginated directory listing, file reads, search, preview, atomic patches and moves. The browser destination picker moves files or folders and repairs Markdown references in the same commit. Text changes carry revisions or explicit absence against the base commit; moves check the source and destination at that base. Conflicts or uncertain outcomes require a fresh read before retry. Image uploads under `/api/admin/workspaces/{workspaceId}/assets` require an `Idempotency-Key`, accept up to 16 MiB, return immutable references and do not write Git or publish.
 
-The new-path field starts at `private/`. In the move picker, the private/public
+The editor retains the selected folder and document in its URL, independently of
+each other. Refresh and Back/Forward restore saved repository content; cancelling
+the unsaved-change prompt preserves the current draft and its navigation history.
+Switching spaces clears the previous folder and document. **New note** and **New
+folder** use a single name and show their private destination, preserving the
+selected category beneath `private/` even when a public folder is selected. They
+prepare a local draft; **Save** writes the note or the folder's ordinary `index.md`.
+Existing exact paths are refused before preparation, and Save checks repository
+name collisions while retaining a rejected draft for correction. Full-path entry
+remains under **Advanced: full path**, starting at `private/`.
+
+In the move picker, the private/public
 directory buttons retain the category path while switching roots. Selecting a
 destination does not write until the move is submitted. Moving a directory includes
 its indexed media; moving one document does not move shared dependencies.

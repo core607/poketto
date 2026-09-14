@@ -8,9 +8,11 @@ import { message } from "./admin";
 type Props = {
   commit: string | null;
   selected?: string;
+  selectedFolder?: string;
   filter: string;
   busy: boolean;
   onOpen: (path: string) => void;
+  onSelectFolder: (path: string) => void;
   onMove?: (path: string, commit: string, trigger: HTMLElement) => void;
   onExport?: (path: string, trigger: HTMLElement) => void;
 };
@@ -24,15 +26,19 @@ function exportablePath(path: string) {
 export function FileTree(props: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    if (!props.selected) return;
     setExpanded((current) => {
       const next = new Set(current);
-      const segments = props.selected!.split("/");
-      for (let i = 1; i < segments.length; i++)
-        next.add(segments.slice(0, i).join("/"));
+      for (const target of [
+        props.selected,
+        props.selectedFolder ? props.selectedFolder + "/" : undefined,
+      ]) {
+        const segments = target?.split("/") ?? [];
+        for (let i = 1; i < segments.length; i++)
+          next.add(segments.slice(0, i).join("/"));
+      }
       return next;
     });
-  }, [props.selected]);
+  }, [props.selected, props.selectedFolder]);
   return (
     <DirectoryBranch
       key={props.commit ?? "empty"}
@@ -203,7 +209,16 @@ function DirectoryBranch({
       open={opened}
       onToggle={(event) => props.onExpanded(path, event.currentTarget.open)}
     >
-      <summary>{path.split("/").at(-1)}</summary>
+      <summary
+        aria-current={props.selectedFolder === path ? "location" : undefined}
+        aria-disabled={props.busy || undefined}
+        onClick={(event) => {
+          if (props.busy) event.preventDefault();
+          else props.onSelectFolder(path);
+        }}
+      >
+        {path.split("/").at(-1)}
+      </summary>
       {props.onMove && props.commit && movablePath(path) && (
         <button
           className="tree-move"
