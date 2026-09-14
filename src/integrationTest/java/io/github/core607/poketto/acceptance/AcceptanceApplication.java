@@ -91,6 +91,19 @@ public final class AcceptanceApplication {
             write(directory, "public/相册/README.md", "# 窗边的颜色\n\n两张颜色练习，留给慢慢看的时候。\n");
             write(directory, "private/日记.md", "# 私有验收样例\n\nPRIVATE_ACCEPTANCE_SENTINEL\n\n![私有图片](hidden.png)\n");
             write(directory, "public/drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
+            for (int number = 1; number <= 28; number++) {
+                String sequence = String.format("%02d", number);
+                write(directory, "public/检索/回链验收-" + sequence + ".md", """
+                        ---
+                        title: 回链验收 %s
+                        tags: [回链, 验收]
+                        created_at: 2026-09-12T08:00:00Z
+                        ---
+                        # 回链验收 %s
+
+                        这是同一查询的第 %s 条公开结果，用于验证分页、焦点和阅读回链。
+                        """.formatted(sequence, sequence, sequence));
+            }
             BufferedImage image = new BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB);
             for (int y = 0; y < image.getHeight(); y++) {
                 for (int x = 0; x < image.getWidth(); x++) {

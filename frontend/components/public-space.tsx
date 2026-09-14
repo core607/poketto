@@ -178,6 +178,7 @@ export async function PublicSpacePage({
             space={slug}
             base={listPath}
             parameters={view === "search" ? { query } : tag ? { tag } : {}}
+            searchQuery={view === "search" ? query : undefined}
           />
         </>
       )}

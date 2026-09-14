@@ -1,25 +1,53 @@
 import type { ArticlePage } from "../lib/types";
 import { articleHref, date, spaceHref } from "../lib/format";
+import {
+  searchArticleHref,
+  searchPath,
+  type SearchContext,
+} from "../lib/search-return";
+import { SearchHighlight } from "./search-highlight";
+import { SearchResults } from "./search-results";
 
 export function ArticleList({
   page,
   base = "/",
   parameters = {},
   space,
+  searchQuery,
 }: {
   page: ArticlePage;
   base?: string;
   parameters?: Record<string, string>;
   space?: string;
+  searchQuery?: string;
 }) {
+  const search: SearchContext | undefined =
+    searchQuery && searchQuery.length <= 200
+      ? { query: searchQuery, offset: page.offset, ...(space ? { space } : {}) }
+      : undefined;
+  const href = (route: string) =>
+    search
+      ? searchArticleHref(articleHref(route, space), search)
+      : articleHref(route, space);
   const pageHref = (offset: number) =>
     base + "?" + new URLSearchParams({ ...parameters, offset: String(offset) });
-  return (
+  const content = (
     <>
       <div className="article-list">
         {page.items.length ? (
           page.items.map((item) => (
-            <article key={item.route} className="article-card">
+            <article
+              key={item.route}
+              className="article-card"
+              id={
+                search
+                  ? "search-result-" +
+                    encodeURIComponent(space ?? "") +
+                    ":" +
+                    encodeURIComponent(item.route)
+                  : undefined
+              }
+            >
               <div className="article-meta">
                 <span className="author-name">{item.authorName}</span>
                 <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
@@ -36,10 +64,21 @@ export function ArticleList({
                 ))}
               </div>
               <h2>
-                <a href={articleHref(item.route, space)}>{item.title}</a>
+                <a
+                  href={href(item.route)}
+                  data-search-result={search ? "" : undefined}
+                >
+                  <SearchHighlight text={item.title} query={search?.query} />
+                </a>
               </h2>
-              <p>{item.snippet}</p>
-              <a className="read-link" href={articleHref(item.route, space)}>
+              <p>
+                <SearchHighlight text={item.snippet} query={search?.query} />
+              </p>
+              <a
+                className="read-link"
+                href={href(item.route)}
+                data-search-result={search ? "" : undefined}
+              >
                 继续阅读 <span aria-hidden>↗</span>
               </a>
             </article>
@@ -66,5 +105,10 @@ export function ArticleList({
         )}
       </nav>
     </>
+  );
+  return search ? (
+    <SearchResults path={searchPath(search)}>{content}</SearchResults>
+  ) : (
+    content
   );
 }
