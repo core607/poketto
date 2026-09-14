@@ -214,10 +214,19 @@ class IndexedMediaDeliveryTests {
         assertThat(assets.readPublicImage(workspace, imageUrl.substring("/api/public/assets/".length()))
                         .bytes())
                 .isEqualTo(image);
-        String galleryUrl = page.media().gallery().getFirst().src();
-        assertThat(assets.readPublicImage(workspace, galleryUrl.substring("/api/public/assets/".length()))
+        String galleryOriginalUrl = page.media().gallery().getFirst().original();
+        assertThat(assets.readPublicImage(workspace, galleryOriginalUrl.substring("/api/public/assets/".length()))
                         .bytes())
                 .isEqualTo(image);
+        String galleryThumbnailUrl = page.media().gallery().getFirst().src();
+        var thumbnail =
+                assets.readPublicImage(workspace, galleryThumbnailUrl.substring("/api/public/assets/".length()));
+        assertThat(thumbnail.mediaType()).isIn("image/jpeg", "image/png");
+        try (var thumbnailInput = new ByteArrayInputStream(thumbnail.bytes())) {
+            var decoded = ImageIO.read(thumbnailInput);
+            assertThat(decoded).isNotNull();
+            assertThat(Math.max(decoded.getWidth(), decoded.getHeight())).isLessThanOrEqualTo(640);
+        }
         var lease = admission.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
         try (var producer = lease.producer()) {
             assertThat(assets.readExact(
