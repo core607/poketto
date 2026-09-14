@@ -22,6 +22,11 @@ class WebConfiguration {
     }
 
     @Bean
+    PublicSitemaps publicSitemaps(PublicContentSnapshots snapshots, WorkspacePublications publications) {
+        return new PublicSitemaps(publications, new WebsiteContentSnapshots(snapshots, publications));
+    }
+
+    @Bean
     PublicDiscovery publicDiscovery(
             PublicContentSnapshots snapshots, WorkspacePublications publications, AssetService assets) {
         return new PublicDiscovery(

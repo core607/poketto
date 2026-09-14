@@ -61,7 +61,7 @@ record RetainedContentionNativeProbe(
                         new RepositoryExecutor.CopyRequest(
                                 interrupted.copyId().toString(), interrupted.generation(), true),
                         "set -eu; test \"$(cat private/contention.md)\" = 'after save'; "
-                                + "test ! -e private/timed-out.md",
+                                + "test \"$(cat private/timed-out.md)\" = partial",
                         Duration.ofSeconds(30));
             } finally {
                 field.set(executor, worker);
@@ -69,8 +69,7 @@ record RetainedContentionNativeProbe(
             assertThat(refused).hasValue(2);
             assertThat(restoreRequests).hasSize(3).doesNotHaveDuplicates();
             assertThat(restored.retention().generation()).isEqualTo(interrupted.generation() + 1);
-            assertThat(restored.retention().lastInterruptedCommand())
-                    .isEqualTo(interrupted.command().id());
+            assertThat(restored.retention().lastInterruptedCommand()).isNull();
             assertThat(restored.commit())
                     .isEqualTo(interrupted.acknowledged().state().originalCommit());
             unsupportedTreeRemainsRecoverable(executor, store);
@@ -195,20 +194,22 @@ record RetainedContentionNativeProbe(
 
     private RetainedCopyRecord timeout(
             IsolatedRepositoryExecutor executor, RetainedCopyStore store, RepositoryExecutor.CopyRequest copy) {
-        var failure = catchThrowableOfType(
-                ExecutionUnconfirmedException.class,
-                () -> execute(
-                        executor,
-                        copy,
-                        "printf 'unacknowledged' > private/timed-out.md; sleep 3",
-                        Duration.ofSeconds(1)));
-        assertThat(failure).isNotNull();
-        assertThat(failure.copyId()).isEqualTo(copy.id());
-        assertThat(failure.retention().generation()).isEqualTo(copy.generation());
-        assertThat(failure.recoveryAvailable()).isTrue();
+        var result = executor.execute(
+                actor,
+                workspace,
+                "contention",
+                copy,
+                Optional.empty(),
+                "printf partial > private/timed-out.md; sleep 3",
+                Duration.ofSeconds(1),
+                cancellation);
+        assertThat(result.exitCode()).isNotZero();
+        assertThat(result.timedOut()).isTrue();
+        assertThat(result.copyId()).isEqualTo(copy.id());
+        assertThat(result.retention().generation()).isEqualTo(copy.generation());
         var record = store.read(
                 new RetainedCopyRecord.Owner(actor.subjectId(), workspace.value()), UUID.fromString(copy.id()));
-        assertThat(record.command()).isNotNull();
+        assertThat(record.command()).isNull();
         assertThat(record.acknowledged()
                         .state()
                         .fileBaselines()

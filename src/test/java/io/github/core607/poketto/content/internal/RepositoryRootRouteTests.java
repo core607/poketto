@@ -25,4 +25,14 @@ class RepositoryRootRouteTests {
         assertThat(RepositoryPathRules.privatePath("private/article.md")).isTrue();
         assertThat(parser.parse("public/index.md", "# Home").route()).isEqualTo("/");
     }
+
+    @Test
+    void folderLandingRoutesIgnoreOverridesWhileOrdinaryArticlesKeepThem() {
+        var parser = new RepositoryMarkdownParser();
+        String source = "---\nroute: /stale-address\n---\n# Folder";
+
+        assertThat(parser.parse("public/guide/README.md", source).route()).isEqualTo("/guide");
+        assertThat(parser.parse("private/guide/index.md", source).route()).isEqualTo("/private/guide");
+        assertThat(parser.parse("public/article.md", source).route()).isEqualTo("/stale-address");
+    }
 }

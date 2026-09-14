@@ -2,6 +2,9 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
@@ -23,9 +26,11 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -33,6 +38,7 @@ import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers
 @SpringBootTest
+@AutoConfigureMockMvc
 @Import(RemoteRepositoryIntegrationConfiguration.class)
 class RepositoryPatchIntegrationIT {
     @TempDir
@@ -78,8 +84,11 @@ class RepositoryPatchIntegrationIT {
     @Autowired
     PublicContentSnapshots snapshots;
 
+    @Autowired
+    MockMvc mvc;
+
     @Test
-    void liveKeyPermissionsAndGitAcknowledgementControlThePublicSnapshot() {
+    void liveKeyPermissionsAndGitAcknowledgementControlThePublicSnapshot() throws Exception {
         var workspace = workspaces.defaultWorkspace().id();
         var owner = auth.initializeOwner("owner", UUID.randomUUID().toString());
         var issued = auth.createApiKey(owner, workspace, owner.accountId(), null);
@@ -150,6 +159,71 @@ class RepositoryPatchIntegrationIT {
         assertThat(files.getFile(workspace, Optional.empty(), "private/forbidden.md")
                         .expectedAbsence())
                 .isTrue();
+
+        String frontmatter = "---\nroute: /stale-source\ncustom: keep\n---\n";
+        String source = frontmatter + "# Source\n\n[Article](../moved-article.md)\n[Asset](asset.bin)\n";
+        var routeFixture = patches.apply(
+                owner,
+                workspace,
+                new RepositoryPatch(
+                        Optional.of(movedPublic.commit()),
+                        List.of(
+                                create("public/source/README.md", source),
+                                create("public/source/asset.bin", "git-media"),
+                                create("public/sibling/README.md", "---\nroute: /stale-sibling\n---\n# Sibling"),
+                                create("private/reader.md", "[Source](../public/source/README.md)\n"))));
+        snapshots.refresh(workspace);
+        mvc.perform(get("/api/public/document").param("route", "/source"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderPage").value(true));
+        mvc.perform(get("/api/public/document").param("route", "/stale-source")).andExpect(status().isNotFound());
+        assertThat(snapshots.current(workspace).articles())
+                .extracting(article -> article.route())
+                .contains("/source", "/sibling", "/moved-article")
+                .doesNotContain("/stale-source", "/stale-sibling");
+
+        var nested = moves.move(
+                owner,
+                workspace,
+                new RepositoryMoveRequest(routeFixture.commit(), "public/source", "public/archive/source"));
+        assertThat(files.getFile(workspace, Optional.empty(), "public/archive/source/README.md")
+                        .source())
+                .hasValueSatisfying(
+                        value -> assertThat(value).startsWith(frontmatter).contains("../../moved-article.md"));
+        assertThat(files.getFile(workspace, Optional.empty(), "public/archive/source/asset.bin")
+                        .source())
+                .contains("git-media");
+        assertThat(files.getFile(workspace, Optional.empty(), "private/reader.md")
+                        .source())
+                .hasValueSatisfying(value -> assertThat(value).contains("../public/archive/source/README.md"));
+        snapshots.refresh(workspace);
+        mvc.perform(get("/api/public/document").param("route", "/archive/source"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/public/document").param("route", "/stale-source")).andExpect(status().isNotFound());
+
+        var privateMove = moves.move(
+                owner,
+                workspace,
+                new RepositoryMoveRequest(nested.commit(), "public/archive/source", "private/relocated"));
+        assertThat(files.getFile(workspace, Optional.empty(), "private/relocated/README.md")
+                        .source())
+                .hasValueSatisfying(value -> assertThat(value).startsWith(frontmatter));
+        assertThat(files.getFile(workspace, Optional.empty(), "private/reader.md")
+                        .source())
+                .hasValueSatisfying(value -> assertThat(value).contains("relocated/README.md"));
+        snapshots.refresh(workspace);
+        mvc.perform(get("/api/public/document").param("route", "/archive/source"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/document").param("route", "/moved-article"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Public"));
+        assertThat(snapshots.current(workspace).articles())
+                .extracting(article -> article.route())
+                .doesNotContain("/archive/source", "/stale-source", "/stale-sibling")
+                .contains("/sibling", "/moved-article");
+        assertThatThrownBy(() -> new RepositoryMoveRequest(
+                        privateMove.commit(), "public/moved-article.md", "public/../unsafe.md"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static RepositoryTextChange create(String path, String content) {

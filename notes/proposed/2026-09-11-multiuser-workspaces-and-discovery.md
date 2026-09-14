@@ -36,6 +36,10 @@ Account identity is available independently of workspace access. Private HTTP op
 
 The root site becomes cross-workspace public discovery. Space websites use `/s/{slug}`; existing published default-space article URLs redirect to their canonical new routes. Both logged-in and anonymous visitors see public discovery; accounts additionally have a My spaces entrance. Cards identify their author display name, space, and collection without exposing private account fields.
 
+The [public sitemap contract](../implemented/2026-09-14-public-sitemaps.md) specifies complete
+enumeration of canonical space URLs and robots.txt discovery independently of
+sampled browsing batches.
+
 Discovery mixes public article, album, and collection cards. It does not turn every raw media file into a post. Random order is stable within a browsing batch, including pagination and return navigation; an explicit reshuffle starts a new batch. Publication withdrawal overrides old batches. Discovery uses bounded verified public data, not a synchronous repository fetch for every space on each request.
 
 Albums and collections have stable navigation entrances. Folder landing detection prefers `index.md`, with `README.md` when no index exists; two files in one folder must not produce duplicate landing cards. Existing authored text remains intact. Album thumbnails use a disposable cache keyed by workspace, immutable media version, and representation; originals remain authoritative. A lightbox supports previous/next, Escape, and focus restoration. Album and collection names are content-derived, never hard-coded to demonstration data.

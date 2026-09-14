@@ -58,8 +58,9 @@ class GitImageGrantRetentionTests {
     @TempDir
     Path directory;
 
-    private final WorkspaceId workspace = WorkspaceId.random();
-    private final WorkspaceId other = WorkspaceId.random();
+    // Deliberately share a UUID hash to exercise publication locking across a map bin.
+    private final WorkspaceId workspace = new WorkspaceId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+    private final WorkspaceId other = new WorkspaceId(UUID.fromString("00000000-0000-0000-0001-000000000000"));
     private final MutableClock clock = new MutableClock();
     private final AuthPrincipal actor = actor();
 

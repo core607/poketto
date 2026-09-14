@@ -1,5 +1,13 @@
 # Java and sandbox execution acceptance
 
+The [timeout and disposal run](evidence/2026-09-14-ephemeral-lifecycle.json)
+passes all 46 Java scenarios, process-loss expiry and cleanup. A timed-out command
+preserves prior text, binary files, partial work and its pinned commit; explicit
+non-retained disposal permits a fresh copy in the same transport. Retained timeout
+work also survives recovery at the original baseline. The separate
+[authenticated HTTP run](../acceptance/clients/evidence/2026-09-14-ephemeral-lifecycle.json)
+verifies generation-free disposal through the MCP schema and account boundary.
+
 The [content-root run](evidence/2026-09-10-content-roots.json) uses the explicit
 `public-root` publication format. All 30 Java scenarios, process-loss lease expiry
 and controller cleanup pass with real native worker/SRT execution. Full sessions
@@ -76,6 +84,9 @@ Temurin 26.0.2+10 archive and verifies its pinned SHA-256 without installing it
 globally. Runtime classes and JARs must be readable by the probe's temporary
 application account.
 
+`--scenario ephemeral-lifecycle` selects a real five-second command timeout,
+preservation of unsaved text and binary bytes, explicit disposal without a
+generation, repeated disposal and fresh admission in the same transport.
 `--scenario exports` selects the real private/public CLI ZIP flows. `--scenario media`
 selects original fetches, historical versions, local collision protection and member
 projection access while the anonymous website is disabled. The default `--scenario all`

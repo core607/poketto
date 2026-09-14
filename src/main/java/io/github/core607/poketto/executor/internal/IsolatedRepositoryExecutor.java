@@ -308,8 +308,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             DiscardRequest request,
             ExecutionCancellation cancellation) {
         authorize(principal, workspace);
-        if (retention == null || closed) {
+        if (closed) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, false);
+        }
+        if (retention == null) {
+            return discardLiveCopy(principal, workspace, request, cancellation);
+        }
+        if (request.generation() == null) {
+            throw new IllegalArgumentException("Retained discard requires the expected generation");
         }
         var owner = new RetainedCopyRecord.Owner(principal.subjectId(), workspace.value());
         RetainedDiscard held = null;
@@ -347,6 +353,47 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         authorize(principal, workspace);
         if (cancellation.isCancelled()) {
             throw new WorkerUnavailableException();
+        }
+    }
+
+    private DiscardResult discardLiveCopy(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            DiscardRequest request,
+            ExecutionCancellation cancellation) {
+        if (request.generation() != null) {
+            throw new IllegalArgumentException("Non-retained discard must omit the expected generation");
+        }
+        requireDiscardAuthorization(principal, workspace, cancellation);
+        Session selected;
+        synchronized (this) {
+            selected = sessions.values().stream()
+                    .filter(session -> session.key.principal().equals(principal.subjectId())
+                            && session.key.workspace().equals(workspace)
+                            && session.copyId.toString().equals(request.id()))
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (selected == null) {
+            return new DiscardResult(request.id(), DiscardStatus.ABSENT);
+        }
+        if (!selected.busy.compareAndSet(false, true)) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, null, false);
+        }
+        try {
+            if (!selected.capacityReleased) {
+                stopAndAwait(selected, "session_closed");
+            }
+            requireDiscardAuthorization(principal, workspace, cancellation);
+            synchronized (this) {
+                sessions.remove(selected.key, selected);
+            }
+            return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
+        } catch (WorkerUnavailableException failure) {
+            log.warn("Working-copy discard containment was not confirmed", failure);
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, false, failure);
+        } finally {
+            selected.busy.set(false);
         }
     }
 
@@ -2128,9 +2175,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     /**
-     * Frees the admission slot. The session leaves the table only once its MCP session has also
-     * ended: until then it must stay reachable by key, so a later command for the same key finds
-     * the stopping session instead of opening a second lease beside it.
+     * Frees the admission slot. Unless explicitly discarded, the session stays reachable by key
+     * until its MCP session ends. A later command then finds the stopping session instead of
+     * opening a second lease beside it.
      */
     private synchronized void releaseCapacity(Session session) {
         if (!session.capacityReleased && !session.auxiliary) {

@@ -15,9 +15,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -32,7 +31,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     private final Clock clock;
     private final Duration lifetime;
     private final PublicSnapshotMarker marker;
-    private final Map<WorkspaceId, PublicContentSnapshot> snapshots = new ConcurrentHashMap<>();
+    private final ConcurrentMap<WorkspaceId, Published> snapshots = new ConcurrentHashMap<>();
 
     JGitPublicContentSnapshots(RepositoryAuthority authority, Clock clock, Duration lifetime) {
         this(authority, clock, lifetime, new PublicSnapshotMarker());
@@ -76,33 +75,35 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     /** Caller holds the workspace authority lock after an acknowledged ref update. Never fetches. */
     PublicContentSnapshot installAcknowledged(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
         Instant verifiedAt = clock.instant();
-        PublicContentSnapshot previous = snapshots.get(workspaceId);
+        Published published = snapshots.get(workspaceId);
+        PublicContentSnapshot previous = published == null ? null : published.snapshot;
         if (previous != null && previous.commit().equals(snapshot.commitId())) {
             PublicContentSnapshot renewed = new PublicContentSnapshot(
                     workspaceId, snapshot.commitId(), verifiedAt, verifiedAt.plus(lifetime), previous.articles());
             writeMarker(workspaceId, snapshot, verifiedAt, true);
-            snapshots.put(workspaceId, renewed);
+            install(workspaceId, renewed);
             return renewed;
         }
         // Recording CLOSED precedes parsing. A crash or a bad policy cannot resurrect the earlier
         // publication decision. Offline restoration also requires the marker and cache main to match.
-        snapshots.remove(workspaceId);
+        remove(workspaceId);
         writeMarker(workspaceId, snapshot, verifiedAt, false);
         PublicContentSnapshot result = build(workspaceId, snapshot, verifiedAt);
         writeMarker(workspaceId, snapshot, verifiedAt, true);
-        snapshots.put(workspaceId, result);
+        install(workspaceId, result);
         return result;
     }
 
     /** Caller holds the workspace authority lock before submitting a publication-affecting write. */
     void closePublication(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
-        snapshots.remove(workspaceId);
+        remove(workspaceId);
         writeMarker(workspaceId, snapshot, clock.instant(), false);
     }
 
     @Override
     public PublicContentSnapshot current(WorkspaceId workspaceId) {
-        return requireCurrent(snapshots.get(workspaceId));
+        Published published = snapshots.get(workspaceId);
+        return requireCurrent(published == null ? null : published.snapshot);
     }
 
     private PublicContentSnapshot requireCurrent(PublicContentSnapshot snapshot) {
@@ -115,17 +116,48 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
 
     @Override
     public <T> T withCurrent(WorkspaceId workspaceId, Function<PublicContentSnapshot, T> action) {
-        var result = new AtomicReference<T>();
-        // The same-key put/remove operations install or close publication. Network fetches keep
-        // their authority mutex but never own this gate; callbacks must not enter that mutex.
-        var selected = snapshots.computeIfPresent(workspaceId, (ignored, snapshot) -> {
-            result.set(action.apply(requireCurrent(snapshot)));
-            return snapshot;
-        });
-        if (selected == null) {
-            throw unavailable();
+        // A map callback would lock a hash bin shared by unrelated workspaces. Publication
+        // callbacks own only their selected entry; they must not enter the authority mutex.
+        while (true) {
+            Published selected = snapshots.get(workspaceId);
+            if (selected == null) {
+                throw unavailable();
+            }
+            synchronized (selected) {
+                if (snapshots.get(workspaceId) == selected) {
+                    return action.apply(requireCurrent(selected.snapshot));
+                }
+            }
         }
-        return result.get();
+    }
+
+    private void install(WorkspaceId workspaceId, PublicContentSnapshot snapshot) {
+        var replacement = new Published(snapshot);
+        while (true) {
+            Published previous = snapshots.putIfAbsent(workspaceId, replacement);
+            if (previous == null) {
+                return;
+            }
+            synchronized (previous) {
+                if (snapshots.replace(workspaceId, previous, replacement)) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private void remove(WorkspaceId workspaceId) {
+        while (true) {
+            Published previous = snapshots.get(workspaceId);
+            if (previous == null) {
+                return;
+            }
+            synchronized (previous) {
+                if (snapshots.remove(workspaceId, previous)) {
+                    return;
+                }
+            }
+        }
     }
 
     private PublicContentSnapshot restore(WorkspaceId workspaceId, RepositoryAuthority.Snapshot cache) {
@@ -151,7 +183,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
                 throw unavailable();
             }
             PublicContentSnapshot restored = build(workspaceId, cache, verifiedAt);
-            snapshots.put(workspaceId, restored);
+            install(workspaceId, restored);
             return restored;
         } catch (IOException | IllegalArgumentException | DateTimeException exception) {
             throw new ContentRepositoryException("public snapshot cache cannot be restored", exception);
@@ -222,12 +254,20 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
             marker.write(repository.getDirectory().toPath(), snapshot.commitId().orElse("unborn"), at, open);
         } catch (IOException | UnsupportedOperationException exception) {
-            snapshots.remove(workspaceId);
+            remove(workspaceId);
             throw new ContentRepositoryException("public snapshot state cannot be recorded", exception);
         }
     }
 
     private static ContentRepositoryException unavailable() {
         return new ContentRepositoryException("public content snapshot is unavailable");
+    }
+
+    private static final class Published {
+        private final PublicContentSnapshot snapshot;
+
+        private Published(PublicContentSnapshot snapshot) {
+            this.snapshot = snapshot;
+        }
     }
 }

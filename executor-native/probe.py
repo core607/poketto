@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/run', '/var/lib'), default='/run')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process'), default='all')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle'), default='all')
     args = parser.parse_args()
     assert os.geteuid() == 0
     runtime, worker_source, tools, java = [value.resolve(strict=True) for value in
@@ -221,6 +221,9 @@ with socket.socket(socket.AF_UNIX) as connection:
                 'full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits',
                 'member-projection-fetch-survives-website-shutdown-without-source-history',
                 'public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal'}
+        elif mode == 'ephemeral-lifecycle':
+            assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
+                'timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy'}
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 

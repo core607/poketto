@@ -1058,7 +1058,7 @@ class SystemdBackend:
             if reason != 'normal':
                 if exit_code == 0:
                     exit_code = 124 if reason == 'timeout' else 137
-                if reason != 'output_limit':
+                if payload['mode'] != 'execute' or reason not in ('output_limit', 'timeout'):
                     s.reason = reason
                     s.cancelled.set()
             return {'commit': s.commit, 'exitCode': exit_code,
