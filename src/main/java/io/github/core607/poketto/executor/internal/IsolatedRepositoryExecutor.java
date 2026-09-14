@@ -287,9 +287,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return current;
     }
 
-    private static void requireAccountRequest(AccountCopyRecord record, CopyRequest expected) {
+    private void requireAccountRequest(AccountCopyRecord record, CopyRequest expected) {
         if (!NEW_COPY.equals(expected.id())
                 && (record == null || !record.copyId().toString().equals(expected.id()))) {
+            rejected.get("copy_mismatch").increment();
             throw new SessionReplacedException(
                     record == null
                             ? SessionReplacedException.Reason.MISSING_COPY
@@ -733,33 +734,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return WorkerResponses.read(value, ArtifactMetadata.class);
     }
 
-    private synchronized Session observedCopy(SessionKey key, String expectedCopyId) {
-        return sessions.get(key);
-    }
-
-    private void requireExpectedCopy(Session session, String expected, boolean createdHere) {
-        boolean fresh = RepositoryExecutor.NEW_COPY.equals(expected);
-        boolean mismatch =
-                session == null ? !fresh : !fresh && !session.copyId.toString().equals(expected);
-        if (!mismatch) {
-            return;
-        }
-        rejected.get("copy_mismatch").increment();
-        boolean closedCopy = session != null && session.stopping.get();
-        throw new SessionReplacedException(
-                session == null
-                        ? SessionReplacedException.Reason.MISSING_COPY
-                        : closedCopy
-                                ? SessionReplacedException.Reason.CLOSED_COPY
-                                : SessionReplacedException.Reason.DIFFERENT_COPY,
-                session == null || closedCopy ? Optional.empty() : Optional.of(session.copyId.toString()),
-                session == null || (closedCopy && replaceable(session)));
-    }
-
-    private static boolean replaceable(Session session) {
-        return session != null && session.stopping.get() && session.capacityReleased && !session.busy.get();
-    }
-
     private ExecutionAdmissionException rejected(String reason) {
         rejected.get(reason).increment();
         return new ExecutionAdmissionException(
@@ -786,44 +760,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return sessions.values().stream()
                 .filter(value -> !value.capacityReleased)
                 .count();
-    }
-
-    private void recoverRestartedLeases(SessionKey requested, boolean fresh) {
-        List<Session> candidates;
-        synchronized (this) {
-            if (closed) {
-                return;
-            }
-            Session existing = sessions.get(requested);
-            if (existing != null) {
-                if (!existing.stopping.get() || existing.capacityReleased || !existing.openAttempted) {
-                    return;
-                }
-                candidates = List.of(existing);
-            } else {
-                if (!fresh || activeSessions() < maxSessions) {
-                    return;
-                }
-                candidates = sessions.values().stream()
-                        .filter(value -> !value.capacityReleased && value.openAttempted)
-                        .toList();
-            }
-        }
-        if (candidates.isEmpty()) {
-            return;
-        }
-        WorkerClient.Hello current = worker.hello();
-        // The root worker serves HELLO only after exclusive startup cleanup has stopped all old units.
-        // Only candidates captured before this probe can be retired by its boot identity.
-        for (Session candidate : candidates) {
-            synchronized (candidate) {
-                if (!candidate.hello.workerBootId().equals(current.workerBootId())) {
-                    candidate.stopping.set(true);
-                    releaseCapacity(candidate);
-                    candidate.stopped.complete(null);
-                }
-            }
-        }
     }
 
     private void initializeCopy(Session session, Optional<String> requested, AccountCommand held) {
@@ -2164,12 +2100,21 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private void stopAndAwait(Session session, String reason) {
         try {
+            if (session.capacityReleased) {
+                return;
+            }
+            if (session.stopped.isCompletedExceptionally()) {
+                // A new caller retries only the idempotent CLOSE, never the failed command.
+                closeWorker(session, session.closeReason);
+                releaseCapacity(session);
+                return;
+            }
             stop(session, reason).get(closeTimeout.toMillis() + 1000, TimeUnit.MILLISECONDS);
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            throw new WorkerUnavailableException();
+            throw new WorkerUnavailableException(exception);
         }
     }
 
