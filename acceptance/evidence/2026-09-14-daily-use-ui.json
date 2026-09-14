@@ -1,0 +1,78 @@
+{
+  "result": "PASS",
+  "recordedAt": "2026-09-15T00:02:42.570869+08:00",
+  "sourceCommit": "577384c12a1c569bfbeb9cdb86ae016af5a7c9e5",
+  "fullCheckCommit": "a35137bdca5a3b4a221daf9c960572c8765b4daa",
+  "frontendChecksAfterFixes": "PASS",
+  "source": "real Spring, PostgreSQL, Next.js, Caddy and independent synthetic Git repositories",
+  "production": false,
+  "browsers": {
+    "Chrome": [
+      [
+        1440,
+        1000
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "Codex in-app browser": [
+      [
+        767,
+        911
+      ]
+    ]
+  },
+  "observations": [
+    "Filename search found a file inside an unopened folder; 79 paths paged as 50 and 29.",
+    "Searching preserved a dirty draft; cancelling result navigation preserved its exact body.",
+    "An available public article opened in a separate tab without the draft; after Save, public readback included only the saved text.",
+    "A file in another workspace retained its original body and separate website state.",
+    "Site search returned 158 results across two enabled spaces and 79 before the second site was enabled; mixed-page routes and anchors included their space.",
+    "Opening a result in the second space and returning restored the site query, offset 72 and focused result.",
+    "Public search returned zero for private body, excluded path and private author sentinels.",
+    "A scoped gateway 503 on metadata reads preserved successful Save, body and baseline; read-only retry restored the public link.",
+    "A scoped gateway 503 on filename reads preserved the draft and reported a read failure without an uncertain-write warning.",
+    "Editing after Save removed the previous success notice, including on mobile.",
+    "Private files and unsaved destinations had no public link; authenticated reads distinguished PRIVATE, UNSAVED, UNAVAILABLE, AVAILABLE and WEBSITE_DISABLED.",
+    "A historical file read after another commit reported UNAVAILABLE, while the current version reported AVAILABLE.",
+    "Website withdrawal returned 404 for a formerly public page; an unsaved draft and its target path remained unchanged.",
+    "Search and editor had no horizontal overflow at an observed 390 by 844 CSS viewport."
+  ],
+  "faultInjection": "Only the disposable Caddy gateway returned intentional 503 for GET file metadata and filename searches; actual application and Git writes remained live. The original gateway configuration and website switch were restored.",
+  "artifacts": {
+    "editor-mobile.jpg": {
+      "sha256": "7ffa7bc33c93660a5a9680c2fe71cfebb6e3eccd35db5564bd6340bd6d7700da",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    "editor-saved-read-failure.jpg": {
+      "sha256": "f5260c1aac916e0f6f9085ce4d0438b064d6d286fba67dc5948e5d586756a195",
+      "pixels": [
+        1425,
+        990
+      ]
+    },
+    "site-search-mobile.jpg": {
+      "sha256": "595c01d19906868e3de870947dac328d041a6a526ecb0f11c6cc7359e04f1554",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    "site-search-return.jpg": {
+      "sha256": "4a6638f41dafc2f6c53fa3dc8e54e6ddcbef1b4736f05b58fc49df892d29f7b6",
+      "pixels": [
+        752,
+        893
+      ]
+    }
+  },
+  "limitations": [
+    "Synthetic loopback corpus; not production HTTPS or external-provider acceptance.",
+    "In-app viewport overrides did not change its measured size; responsive evidence uses Chrome."
+  ]
+}

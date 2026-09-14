@@ -101,7 +101,7 @@ Resource and lease parameters are centralized and receive production values only
 | 2 | Identity lifecycle with PostgreSQL tests; managed uploads and Git-image delivery with real storage and permission tests |
 | 3 | Blog/admin and repository MCP tools over shared business contracts; pinned frontend dependencies and lockfile-based CI production build |
 | 4 | Prebuilt frontend, Spring, PostgreSQL, and executor integrated with Caddy same-origin HTTPS; health, failed deployment retry, fixed-version redeployment, and resource evidence |
-| 5 | The configured real content repository on a formal HTTPS domain; browser, Codex, and Claude Code workflows; final reviewed commit equals deployed revision |
+| 5 | The configured real content repository on a formal HTTPS domain; browser and currently callable MCP client workflows, supplemented by real service integration; final reviewed commit equals deployed revision |
 
 Independent work may proceed while a stage has a remaining gap, but that gap cannot be marked passed. The sandbox spike precedes dependent execution implementation. A missing domain or operator authorization does not prevent isolated development, but prevents final live acceptance.
 
@@ -114,7 +114,7 @@ Use bounded parallel implementation with independent review of critical contract
 - Browser and MCP creation, update, move, and deletion share atomic revision checks. Concurrent edits conflict; remote outages and lost replies do not fabricate success.
 - Pages retain exact authorized image versions across commits until grant expiry. Withdrawal prevents new grants; expired grants fail. Deleting derived caches rebuilds them without deleting originals.
 - Owner initialization and invitations cannot be reused. Concurrent owner removal is protected. Key revocation and suspension deny new requests and terminate active executions.
-- Both real Codex and Claude Code clients connect, discover tools, inspect directories and history, read private text and images, upload, write with revisions, and handle conflicts. Protocol probes alone do not satisfy client acceptance.
+- Currently callable MCP clients connect, discover tools, inspect directories and history, read authorized text and images, upload images, write with revision checks, save and read back content, and handle continuity and conflicts. Real authenticated HTTP/native-worker integration covers service boundaries that the available connector cannot expose. Protocol probes alone do not replace actual-client evidence. An external client that the operator cannot access is not a completion condition and is never reported as tested.
 - Real sandbox tests deny sensitive host paths, another workspace, direct network and proxy access; source objects remain unchanged. Timeout, resource exhaustion, cancellation, service restart, and abandoned sessions clean up correctly. Measure initial copy plus twenty reused executions and deployed-process resource peaks.
 - A real browser verifies JavaScript-disabled public reading, editor preview, conflicts, and mobile layouts. Screenshots or recordings correspond to the exact delivered tree.
 - Focused tests cover each slice. Final Gradle `check` covers PostgreSQL integration, module boundaries, deployment scripts, frontend checks, and production build; `repoCheck`, generated-file checks, and `git diff --check` pass. Missing required infrastructure is repaired or reported as incomplete, never replaced by a claimed manual pass.

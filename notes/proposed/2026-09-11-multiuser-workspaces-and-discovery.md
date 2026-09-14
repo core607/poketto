@@ -66,7 +66,7 @@ New note and New folder actions operate in the selected directory. New notes and
 
 Management tabs, selected space, folder, and document have restorable URLs. Unsaved changes are handled before changing space or document. The editor distinguishes saved Git state from public-page availability, labels visibility, offers View public page, and updates image previews automatically. Publishing reuses repository public/private roots and coordinated moves and references; it does not add a second per-document visibility authority outside files.
 
-The [content navigation decision](../implemented/2026-09-14-admin-content-navigation.md) implements independent folder/document URLs, guarded history traversal, and private note/folder draft creation. Repository-wide filename search and explicit public-page availability remain outstanding administration requirements.
+The [content navigation decision](../implemented/2026-09-14-admin-content-navigation.md) implements independent folder/document URLs, guarded history traversal, and private note/folder draft creation. [Repository-wide filename search](../implemented/2026-09-14-administration-filename-search.md) and [explicit public-page availability](../implemented/2026-09-14-editor-public-page-state.md) implement the remaining editor capabilities; final installation acceptance remains part of this delivery.
 
 ## Alternatives and boundaries
 
@@ -88,4 +88,4 @@ This delivery excludes cross-instance identities, automatic remote creation, per
 
 Implement cohesive changes in dependency order: account/registration foundation and installation; workspace provisioning and scoped entrances; member and machine authorization; discovery and reading; management interaction. Keep this record proposed until the complete behavior is demonstrated, while completed subsystem records describe their shipped contracts. Required database, storage, executor, UI, and deployment checks follow each changed surface; final HTTPS acceptance preserves existing managed originals and independently verifies public and private behavior.
 
-[Account working copies](../implemented/2026-09-14-account-working-copies.md) implements disk-backed, transport-independent execution with real authenticated HTTP evidence. Production connector acceptance and the search/editor requirements above remain part of this delivery.
+[Account working copies](../implemented/2026-09-14-account-working-copies.md) implements disk-backed, transport-independent execution with real authenticated HTTP evidence. The current production connector has demonstrated reconnection, timeout retention, save/readback and application-restart continuity. Final search/editor deployment and the complete delivery audit remain outstanding. External clients unavailable to the operator are not final completion conditions and must not be described as tested; current callable connectors and real service integration supply the execution evidence.

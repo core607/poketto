@@ -4,9 +4,9 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user administration contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires filename search across all authorized files, separately from body search. The editor currently filters only loaded directory branches. A matching file inside a collapsed directory is invisible, and the structured Markdown index cannot represent arbitrary files or indexed media.
+The [multi-user administration contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires filename search across all authorized files, separately from body search. The previous editor filtered only loaded directory branches. A matching file inside a collapsed directory was invisible, and the structured Markdown index cannot represent arbitrary files or indexed media.
 
-## Proposal
+## Decision
 
 `GET /api/admin/workspaces/{workspaceId}/repository/filenames` matches the query literally against complete repository-relative paths. It enumerates regular Git files and logical media-index paths without parsing document bodies, loading originals, following symlinks or entering submodules. Paths rejected by the existing path rules are not searchable files. Results include the resolved commit, matching paths in Java string order, total count, offset and limit. An unborn repository returns an empty result.
 
@@ -24,10 +24,10 @@ Expanding every browser directory would make a search depend on earlier navigati
 
 Filename results describe accessible paths, not a guarantee that every result can be edited as UTF-8 text. Binary and oversized files retain the existing diagnostic behavior. A repository change can require a public-only user to restart pagination; it cannot expose a withdrawn historical filename.
 
-## Acceptance
+## Verification
 
-- Real repository and authenticated HTTP queries find nested Markdown, ordinary files and indexed media without expanding the tree, exclude symlinks and submodules, preserve stable pinned pagination and reject invalid bounds or media collisions.
-- Two workspaces and public/private memberships have independent path results and counts. Revocation after traversal prevents delivery; public-only searches cannot select old commits or reveal excluded paths while website delivery is off.
-- A real Spring/PostgreSQL/Next/Caddy browser run finds a file in an unopened folder, opens it through the dirty guard, pages results, preserves a draft after search failure, and highlights literal filename/body matches safely on desktop and mobile.
+`RepositoryFilenameSearchTests` covers regular and indexed paths, pinned ordering, links, submodules, bounds and collisions. `RepositoryAdminIntegrationIT` exercises the authenticated HTTP endpoint, workspace and permission isolation, current-public restrictions and revocation checks.
 
-The same-topic audit retains [directory navigation](../implemented/2026-09-08-repository-directory-navigation.md), [logical media](../implemented/2026-09-09-logical-media-index.md), [member permissions](../implemented/2026-09-12-member-content-permissions.md), [authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md), [reading text](../implemented/2026-09-12-shared-checks.md), [search highlights](../implemented/2026-09-14-search-highlights-and-reading-return.md), and [content navigation](../implemented/2026-09-14-admin-content-navigation.md) as independent contracts. The parent proposal remains active for its outstanding work.
+A real Spring/PostgreSQL/Next/Caddy run with two independent sample spaces finds an unopened nested file, pages 79 paths as 50 plus 29 results, and preserves a dirty draft when switching is cancelled. A temporary gateway 503 on filename reads leaves the draft intact and reports a read failure without implying an uncertain write. The same run verifies literal highlights and 390-pixel mobile layouts. [Daily-use UI evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json) records revisions and scope; this loopback fixture does not claim production HTTPS acceptance.
+
+The same-topic audit retains [directory navigation](2026-09-08-repository-directory-navigation.md), [logical media](2026-09-09-logical-media-index.md), [member permissions](2026-09-12-member-content-permissions.md), [authoring foundations](2026-09-05-repository-authoring-foundations.md), [reading text](2026-09-12-shared-checks.md), [search highlights](2026-09-14-search-highlights-and-reading-return.md), and [content navigation](2026-09-14-admin-content-navigation.md) as independent contracts. The parent proposal remains active for its outstanding work.
