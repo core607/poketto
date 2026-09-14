@@ -46,6 +46,12 @@ final class WorkerResponses {
 
     private WorkerResponses() {}
 
+    static boolean refused(JsonNode response, String code) {
+        return response.path("ok").isBoolean()
+                && !response.path("ok").booleanValue()
+                && response.path("code").asString("").equals(code);
+    }
+
     /**
      * Decoding happens after parsing succeeded, so it is the one step where a broken worker could
      * still be reported as a caller mistake. It leaves the same way an unparseable frame does.
@@ -81,6 +87,7 @@ final class WorkerResponses {
             int moveProtocol,
             int exportProtocol,
             int diskCopyProtocol,
+            int gitBaselineProtocol,
             String workerBootId,
             int leaseSeconds,
             int renewAfterSeconds) {
@@ -94,6 +101,7 @@ final class WorkerResponses {
             require(moveProtocol == 1, "moveProtocol", "must be 1");
             require(exportProtocol == 1, "exportProtocol", "must be 1");
             require(diskCopyProtocol == 1, "diskCopyProtocol", "must be 1");
+            require(gitBaselineProtocol == 1, "gitBaselineProtocol", "must be 1");
             require(leaseSeconds >= 10 && leaseSeconds <= 3600, "leaseSeconds", "must be between 10 and 3600");
             // Renewing three times within one lease leaves room for two lost attempts.
             require(
@@ -105,6 +113,13 @@ final class WorkerResponses {
         /** Already checked on construction, so this only converts what the record accepted. */
         UUID bootId() {
             return UUID.fromString(workerBootId);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record GitBaseline(String gitCommit) {
+        GitBaseline {
+            gitCommit = ProtocolValues.hex(gitCommit, 40, "gitCommit");
         }
     }
 

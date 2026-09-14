@@ -20,7 +20,6 @@ import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
-import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -312,9 +311,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         boolean attempted = false;
         try (var registration = cancellation.onCancel(() -> stopAndAwait(session, "cancelled"))) {
             requireLive(session);
-            if (session.commit != null && requested.isPresent() && !session.commit.equals(requested.get())) {
+            if (held.record() != null
+                    && requested.isPresent()
+                    && !held.record().state().baseCommit().equals(requested.get())) {
                 throw new IllegalArgumentException(
-                        "The account copy remains pinned; synchronize or explicitly discard it");
+                        "The requested commit differs from the working-copy baseline; synchronize explicitly");
             }
             authorize(session);
             if (!session.ready) {
@@ -328,19 +329,26 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             held.bind(writer(session));
             session.saveState = held.state();
+            installGitBaseline(session, "");
             UUID execution = UUID.randomUUID();
             held.begin(execution);
             session.accountRecord = held.record();
             attempted = true;
             JsonNode response = executeWithBridge(session, execution.toString(), command, timeout);
+            if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
+                held.refused();
+                session.accountRecord = held.record();
+                attempted = false;
+                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, true);
+            }
             requireOk(response, session);
             authorize(session);
             // Decode before acknowledging the journal, so malformed completion stays unconfirmed.
-            result(response.path("result"), session.copyId.toString(), session.commit, held.view());
+            result(response.path("result"), session.copyId.toString(), session.commit, session.gitCommit, held.view());
             held.complete(session.saveState.snapshot());
             session.accountRecord = held.record();
-            ExecutionResult result =
-                    result(response.path("result"), session.copyId.toString(), session.commit, held.view());
+            ExecutionResult result = result(
+                    response.path("result"), session.copyId.toString(), session.commit, session.gitCommit, held.view());
             if (!response.path("state").asString("").equals("READY")) {
                 stopAndAwait(session, "cancelled");
             }
@@ -846,6 +854,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             requireLive(session);
             String state = response.path("state").asString("");
             if (state.equals("READY")) {
+                session.gitCommit = WorkerResponses.read(response, WorkerResponses.GitBaseline.class)
+                        .gitCommit();
                 session.ready = true;
                 return;
             }
@@ -921,6 +931,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!response.path("state").asString("").equals("READY")) {
             throw new WorkerUnavailableException();
         }
+        session.gitCommit = WorkerResponses.read(response, WorkerResponses.GitBaseline.class)
+                .gitCommit();
         session.ready = true;
     }
 
@@ -1165,6 +1177,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 session.copyId.toString(),
                 session.fullRead ? "full" : "public",
                 session.saveState.baseCommit,
+                session.gitCommit,
+                !session.saveState.baseCommit.equals(session.gitCommit),
                 remote,
                 session.saveState.uncertain
                         || (session.saveState.move != null && session.saveState.move.result == null),
@@ -1273,7 +1287,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             // Recovery is the one command allowed while a write is unresolved: it exists to resolve
             // one. The guards below would otherwise refuse it and leave the session stuck.
             if (operation.equals("recover")) {
-                return recoverCommand(session, executionId, arguments);
+                return finishBaseline(session, executionId, recoverCommand(session, executionId, arguments));
             }
             if (session.saveState.move != null) {
                 return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
@@ -1281,17 +1295,86 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             if (session.saveState.uncertain) {
                 return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
             }
-            return switch (operation) {
-                case "move" -> moveCommand(session, executionId, arguments);
-                case "sync" -> syncCommand(session, executionId, arguments);
-                default -> saveCommand(session, executionId, arguments);
-            };
+            installGitBaseline(session, executionId);
+            var reply =
+                    switch (operation) {
+                        case "move" -> moveCommand(session, executionId, arguments);
+                        case "sync" -> syncCommand(session, executionId, arguments);
+                        default -> saveCommand(session, executionId, arguments);
+                    };
+            return finishBaseline(session, executionId, reply);
         } catch (IllegalArgumentException invalid) {
             return BridgeReplies.failedBecause("INVALID_SELECTION", InvalidSelectionException.reason(invalid));
         } catch (AuthException denied) {
             return BridgeReplies.failed("ACCESS_DENIED");
         } catch (ContentRepositoryException unavailable) {
             return BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
+        }
+    }
+
+    private BridgeReplies.Reply finishBaseline(Session session, String executionId, BridgeReplies.Reply reply) {
+        if (!reply.ok()) {
+            return reply;
+        }
+        try {
+            installGitBaseline(session, executionId);
+            return reply;
+        } catch (WorkerUnavailableException | ContentRepositoryException pending) {
+            log.warn("Acknowledged repository write awaits local Git baseline installation", pending);
+            return BridgeReplies.failed(
+                    "LOCAL_BASELINE_PENDING",
+                    "The remote result is retained. Run poketto recover to finish the local Git update; do not repeat the save.");
+        }
+    }
+
+    private void installGitBaseline(Session session, String executionId) {
+        if (!session.fullRead || session.saveState.baseCommit.equals(session.gitCommit)) {
+            return;
+        }
+        authorize(session);
+        var export = exports.update(
+                session.principal, session.key.workspace(), session.gitCommit, session.saveState.baseCommit);
+        if (!installGitExport(session, executionId, export)) {
+            var complete = exports.create(
+                    session.principal, session.key.workspace(), Optional.of(session.saveState.baseCommit));
+            if (!installGitExport(session, executionId, complete)) {
+                throw new WorkerUnavailableException(
+                        new IllegalStateException("Working-copy Git metadata cannot accept the authoritative export"));
+            }
+        }
+    }
+
+    private boolean installGitExport(Session session, String executionId, RepositorySnapshotExports.Export export) {
+        try {
+            if (!export.commit().equals(session.saveState.baseCommit)) {
+                throw new WorkerUnavailableException(
+                        new IllegalStateException("Baseline export does not match the acknowledged commit"));
+            }
+            JsonNode answer = requestLive(
+                    session,
+                    "BASELINE",
+                    new WorkerRequests.Baseline(
+                            executionId,
+                            export.exportId(),
+                            export.bundleSha256(),
+                            export.bundleBytes(),
+                            export.commit()),
+                    openTimeout);
+            if (WorkerResponses.refused(answer, "BASELINE_MISSING_OBJECTS")) {
+                return false;
+            }
+            requireOk(answer, session);
+            String installed = WorkerResponses.read(answer, WorkerResponses.GitBaseline.class)
+                    .gitCommit();
+            if (!installed.equals(export.commit())) {
+                throw new WorkerUnavailableException(
+                        new IllegalStateException("Worker installed another Git baseline"));
+            }
+            authorize(session);
+            session.gitCommit = installed;
+            return true;
+        } finally {
+            exports.release(export.exportId());
         }
     }
 
@@ -2184,12 +2267,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         throw new WorkerUnavailableException();
     }
 
-    /** Transport closure does not release the account's working copy or execution authority. */
-    @EventListener
-    void closed(McpSessionClosed event) {
-        // Explicit cancellation, revocation, disposal and expiry own their separate lifecycle actions.
-    }
-
     @EventListener
     void revoked(AuthRevocation event) {
         List<Session> affected;
@@ -2288,7 +2365,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private static ExecutionResult result(JsonNode result, String copyId, String commit, CopyRetention retention) {
+    private static ExecutionResult result(
+            JsonNode result, String copyId, String commit, String gitCommit, CopyRetention retention) {
         try {
             var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
             // The commit is an echo of what this session pinned, so it is compared here.
@@ -2321,7 +2399,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             return new ExecutionResult(
                     copyId,
-                    commit,
+                    gitCommit,
                     finished.exitCode(),
                     finished.stdout(),
                     finished.stderr(),
@@ -2396,6 +2474,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         private final CompletableFuture<Void> contained = new CompletableFuture<>();
         private volatile WorkerClient.Hello hello;
         private volatile String commit;
+        private String gitCommit;
         private SelectedFileSaves.State saveState;
         private volatile AccountCopyRecord accountRecord;
         private volatile boolean openAttempted;

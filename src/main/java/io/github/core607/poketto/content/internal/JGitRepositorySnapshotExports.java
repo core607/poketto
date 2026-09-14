@@ -280,6 +280,19 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     @Override
     public Export create(AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested) {
+        return create(actor, workspace, requested, Optional.empty());
+    }
+
+    @Override
+    public Export update(AuthPrincipal actor, WorkspaceId workspace, String baseline, String commit) {
+        if (baseline == null || !baseline.matches("[0-9a-f]{40}")) {
+            throw new IllegalArgumentException("baseline must be an exact commit id");
+        }
+        return create(actor, workspace, Optional.of(commit), Optional.of(baseline));
+    }
+
+    private Export create(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, Optional<String> baseline) {
         return auth.withAuthorization(
                 actor,
                 workspace,
@@ -324,6 +337,11 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                         pack.setDeltaCompress(false);
                         bundle.setPackConfig(pack);
                         bundle.include("refs/heads/snapshot", ObjectId.fromString(commit));
+                        if (baseline.isPresent()) {
+                            try (var walk = new RevWalk(repository)) {
+                                bundle.assume(walk.parseCommit(ObjectId.fromString(baseline.orElseThrow())));
+                            }
+                        }
                         try (OutputStream output = Files.newOutputStream(
                                         pending,
                                         StandardOpenOption.CREATE_NEW,

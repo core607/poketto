@@ -133,6 +133,8 @@ final class BridgeReplies {
             String copyId,
             String scope,
             String baseCommit,
+            String gitCommit,
+            boolean localBaselinePending,
             RemoteStatus remote,
             boolean writeOutcomeUnknown,
             boolean movePending,

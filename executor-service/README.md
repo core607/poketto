@@ -9,7 +9,7 @@ owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime
 
-The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1` and `diskCopyProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves and ZIP materialization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py` and `disk_pool.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
+The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1` `diskCopyProtocol: 1` and `gitBaselineProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves and ZIP materialization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py` and `disk_pool.py`, and restart its service before deploying the application; existing leases end on restart. The outer signed envelope remains version 1.
 
 Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
 and the toolchain prepared by [the native spike](../executor-spike/README.md)
@@ -40,9 +40,13 @@ The initial storage limits are 4 GiB per copy and 32 GiB for the executor pool. 
 
 Set `poketto.executor.copies.metadata-root` to the application's private metadata directory within this pool. The remaining `poketto.executor.copies` defaults are `max-copies=128`, `max-record-bytes=16777216`, `pool-bytes=34359738368`, `idle-seconds=604800`, `original-bytes=268435456`, `original-expanded-bytes=1073741824` and `original-entries=100000`. Numeric examples require capacity validation for the actual host. Stored-copy count is separate from active worker leases and command concurrency.
 
+Acknowledged full-read saves and moves advance local HEAD and the index before CLI success, leaving unselected working files in place. The signed BASELINE operation imports an incremental authoritative bundle and runs Git inside SRT. A missing prerequisite retries local installation with a full bundle; it never repeats a remote write. Local commit objects remain available through Git history, and distinct staged content is retained in a stash before the index is reset. The original export commit remains the lease identity, while `gitCommit` is the current installed baseline. Public copies cannot invoke BASELINE.
+
+`LOCAL_BASELINE_PENDING` means the remote result was retained but local Git installation did not finish. `poketto status` reports the acknowledged `baseCommit`, installed `gitCommit` and `localBaselinePending`; `poketto recover` finishes installation without republishing. A reopened lease reads its protected baseline marker. The application still validates save preconditions from its own authoritative baseline, not sandbox Git refs or index entries.
+
 The private journal stores ownership, the pinned original commit, per-file baselines, pending remote-write receipts and the previous worker/application/grant/lease identity. Original text uses one immutable, checksummed archive bound to the copy; extending idle expiry does not rewrite it. Public copies retain their host-owned projection proof and cannot carry a private original archive. Journal publication requires file fsync, atomic rename and directory fsync. An unconfirmed publication cannot acknowledge a completed command.
 
-Each admitted command holds the account writer lock, records execution intent before EXEC and records host write state before acknowledging a save, sync, move or media operation. The worker flushes command changes before a successful response. Reconnection fences the previous writer and attaches the same disk files and original baseline. A previous incomplete command remains visible as potentially partial work; pending saves use the existing Git reconciliation path. No per-command working-tree archive is created.
+Each admitted command holds the account writer lock, records execution intent before EXEC and records host write state before acknowledging a save, sync, move or media operation. The worker flushes command changes before a successful response. Reconnection fences the previous writer and attaches the same disk files, original lease identity and installed Git baseline. A previous incomplete command remains visible as potentially partial work; pending saves use the existing Git reconciliation path. No per-command working-tree archive is created.
 
 Successful authorized copy operations renew a seven-day idle deadline. A separate collector scans at most eight journals per minute, rotates through the inventory and rechecks eligibility under the owner lock. Active writers defer collection. Expired copies, incomplete initializations and interrupted disposal are contained before deletion. Disposal intent is durable; a process loss between worker deletion and metadata removal resumes cleanup rather than making the copy executable again. Cleanup does not undo remote Git commits and does not provide an off-host backup.
 
@@ -101,7 +105,7 @@ helper or failed check stops deployment. Install matching worker/helper versions
 before redeploying an application that requires execution.
 
 `maxSessions`, `maxConnections`, `maxRequests`, and `maxExecutionsPerSession`
-bound admission and replay state. A full replay table can reject new work until
+bound admission and replay state. An EXECUTION_CAPACITY refusal is reported as not executed; the application closes that lease and the next call attaches the same copy with a fresh execution budget. A full replay table can reject new work until
 signed requests expire. Spring must treat failed renewal as loss of execution
 authority; it cannot assume an earlier successful request keeps a lease alive.
 
@@ -168,6 +172,7 @@ The application sends the following operations for account disk copies.
 | Operation | Exact `data` fields and behavior |
 |---|---|
 | `OPEN` | `copyId` UUID, `scope` full or public, `exportId` UUID, `bundleSha256` 64 lowercase hex, `bundleBytes` positive integer, `commit` 40 lowercase hex. Blocks until READY or failure. Initialization accepts concurrent RENEW, but has its own hard timeout. |
+| `BASELINE` | `executionId` (empty when idle), `exportId`, `bundleSha256`, `bundleBytes`, `commit` | Full-read copy only. Freeze an active command, install trusted Git metadata inside SRT, preserve working files, and return `gitCommit`. |
 | `ATTACH` | `copyId`, `scope`, original `commit`. Claims an existing disk copy under a new execution lease after checking the signed account/workspace, pinned baseline and exclusive copy lock. Does not clone or replace files. |
 | `DISCARD` | `copyId`, `scope`, original `commit`. Deletes an owner-matched disk copy only after all execution leases release its lock. Returns DISCARDED or ABSENT; an active copy returns COPY_BUSY. |
 | `EXEC` | `executionId` UUID, `commit`, `command` nonempty UTF-8 text up to 64 KiB without NUL, `timeoutMillis` within worker bounds. Requires READY and the pinned commit; blocks until the entire process tree terminates. |

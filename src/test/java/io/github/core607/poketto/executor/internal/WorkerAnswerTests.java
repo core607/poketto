@@ -90,7 +90,7 @@ class WorkerAnswerTests {
     @Test
     void aHandshakeThatAdvertisesAnotherProtocolIsRefused() {
         String good = "{\"ok\":true,\"version\":1,\"maxFrameBytes\":1048576,\"codeActProtocol\":1,"
-                + "\"artifactProtocol\":1,\"moveProtocol\":1,\"exportProtocol\":1,\"diskCopyProtocol\":1,\"workerBootId\":\""
+                + "\"artifactProtocol\":1,\"moveProtocol\":1,\"exportProtocol\":1,\"diskCopyProtocol\":1,\"gitBaselineProtocol\":1,\"workerBootId\":\""
                 + UUID
                 + "\",\"leaseSeconds\":60,\"renewAfterSeconds\":20}";
         assertThat(WorkerResponses.read(json(good), WorkerResponses.Handshake.class)

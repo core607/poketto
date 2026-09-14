@@ -33,8 +33,9 @@ def verify(browser, left, right, public):
         "set -eu; test \"$(cat private/draft.md)\" = beforepartial; test ! -e private/late.md; "
         "python3 -c \"from pathlib import Path; assert Path('private/draft.bin').read_bytes() == bytes([0,255])\""})
     assert checked['exitCode'] == 0 and checked['commit'] == first['commit']
-    saved = left.call('repo_exec', {'expectedCopyId': copy, 'command': 'poketto save private/draft.md'})
+    saved = left.call('repo_exec', {'expectedCopyId': copy, 'command': 'set -eu; git add private/draft.md; git -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm local-checkpoint; git rev-parse HEAD > private/local-checkpoint-id; poketto save private/draft.md'})
     assert saved['exitCode'] == 0 and json.loads(saved['stdout'])['ok']
+    verify_git_baseline(left, right, copy, saved)
     authoritative = browser.file('private/draft.md')
     assert authoritative['source'] == 'beforepartial'
     passed('account-http-timeout-preserves-work-and-save-is-visible-through-authoritative-readback')
@@ -69,6 +70,36 @@ def verify(browser, left, right, public):
     assert browser.file('private/draft.md')['source'] == authoritative['source']
     assert left.call('repo_discard', {'expectedCopyId': fresh['copyId']})['status'] == 'DISCARDED'
     passed('account-http-shared-disposal-clears-only-local-work-and-retains-saved-authority')
+
+
+def verify_git_baseline(left, right, copy, saved):
+    acknowledged = json.loads(saved['stdout'])['result']['commit']
+    assert saved['commit'] == acknowledged
+    continued = right.call('repo_exec', {'expectedCopyId': copy, 'command': 'set -eu; git cat-file -e "$(cat private/local-checkpoint-id)^{commit}"; git rev-parse HEAD; git status --porcelain'})
+    assert continued['exitCode'] == 0 and continued['stdout'].splitlines()[0] == acknowledged
+    assert 'private/draft.md' not in continued['stdout'] and 'private/draft.bin' in continued['stdout']
+    second = left.call('repo_exec', {'expectedCopyId': copy, 'command': """set -eu
+printf second > private/second-saved.md
+printf index-only > private/staged.md
+git add private/staged.md
+printf work-only > private/staged.md
+poketto save private/second-saved.md > /tmp/save-result
+python3 - <<'PY'
+import json, subprocess
+saved = json.load(open('/tmp/save-result'))
+assert saved['ok'], saved
+assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == saved['result']['commit']
+status = subprocess.check_output(['git', 'status', '--porcelain'], text=True)
+assert 'private/second-saved.md' not in status and 'private/draft.md' not in status
+assert 'private/draft.bin' in status
+assert subprocess.check_output(['git', 'show', 'stash@{0}^2:private/staged.md'], text=True) == 'index-only'
+assert open('private/staged.md').read() == 'work-only'
+print(json.dumps(saved))
+PY
+"""})
+    assert second['exitCode'] == 0, second
+    assert second['commit'] == json.loads(second['stdout'])['result']['commit'] != acknowledged
+    passed('account-http-consecutive-saves-advance-head-index-and-tool-commit-without-saving-binary-drafts')
 
 
 def verify_remote_status(browser, client, copy, saved):
@@ -115,7 +146,7 @@ def main():
         right = Mcp(browser.endpoint, browser.key(full)['token'])
         public = Mcp(browser.endpoint, browser.key(['EXECUTE_REPOSITORY'])['token'])
         verify(browser, left, right, public)
-        print(json.dumps({'accountHttp': 'PASS', 'tests': 6,
+        print(json.dumps({'accountHttp': 'PASS', 'tests': 7,
                           'source': 'real-auth-PG-HTTP-MCP-native-SRT', 'modelDriven': False}), flush=True)
     finally:
         (root / 'stop').touch()

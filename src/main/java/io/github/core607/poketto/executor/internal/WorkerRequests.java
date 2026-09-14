@@ -35,7 +35,8 @@ final class WorkerRequests {
      * capture operations carry only a path.
      */
     sealed interface Data
-            permits ArtifactCreate,
+            permits Baseline,
+                    ArtifactCreate,
                     ArtifactRead,
                     ArtifactRemove,
                     BridgeComplete,
@@ -80,6 +81,20 @@ final class WorkerRequests {
         Open {
             require(copyId != null, "copyId", "must be present");
             scope = retainedScope(scope);
+            require(exportId != null, "exportId", "must be present");
+            hex(bundleSha256, 64, "bundleSha256");
+            require(bundleBytes > 0, "bundleBytes", "must be positive");
+            hex(commit, 40, "commit");
+        }
+    }
+
+    record Baseline(String executionId, UUID exportId, String bundleSha256, long bundleBytes, String commit)
+            implements Data {
+        Baseline {
+            require(executionId != null, "executionId", "must be present; empty means no command is running");
+            if (!executionId.isEmpty()) {
+                executionId = execution(executionId);
+            }
             require(exportId != null, "exportId", "must be present");
             hex(bundleSha256, 64, "bundleSha256");
             require(bundleBytes > 0, "bundleBytes", "must be positive");

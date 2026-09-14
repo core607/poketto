@@ -371,6 +371,37 @@ def main():
         resumed = attach(identity)
         result = execute(resumed, 'cat acknowledged-draft; git rev-parse HEAD')
         assert result['exitCode'] == 0 and 'disk-before-interruption' in result['stdout'] and commit in result['stdout'], result
+        # Advance synthetic authority only after the immutable-source probes have completed.
+        authority = root / 'baseline-source'
+        run(['git', 'clone', '--no-local', '--quiet', str(source), str(authority)])
+        (authority / 'article.md').write_text('saved through authority')
+        run(['git', '-C', str(authority), 'add', 'article.md'])
+        run(['git', '-C', str(authority), '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid',
+             'commit', '-qm', 'Acknowledged save'])
+        updated = run(['git', '-C', str(authority), 'rev-parse', 'HEAD'])
+        run(['git', '-C', str(authority), 'bundle', 'create', str(exports / 'updated.bundle'), 'HEAD'])
+        export = str(uuid.uuid4())
+        updated_bundle = exports / (export + '.bundle')
+        (exports / 'updated.bundle').rename(updated_bundle)
+        assert execute(resumed, 'printf "saved through authority" > article.md; printf unsaved > unselected.md')['exitCode'] == 0
+        execution = str(uuid.uuid4())
+        future = pool.submit(execute, resumed, 'sleep 4; git rev-parse HEAD; git status --porcelain; cat unselected.md', 15000, execution)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
+            if units:
+                break
+            time.sleep(.05)
+        updated_reply = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
+                            'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
+                            'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
+        assert updated_reply.get('ok') and updated_reply['gitCommit'] == updated, updated_reply
+        result = future.result(timeout=20)
+        assert result['exitCode'] == 0 and updated in result['stdout'] and 'unsaved' in result['stdout'], result
+        assert 'article.md' not in result['stdout'], result
+        resumed = attach(resumed)
+        assert updated in execute(resumed, 'git rev-parse HEAD')['stdout']
+        passed('authoritative-git-baseline-advances-inside-active-command-preserves-drafts-and-survives-reattach')
         assert send(resumed, 'CLOSE').get('ok')
         removed = send(resumed, 'DISCARD', {'copyId': copy_ids[resumed['leaseId']], 'scope': 'full', 'commit': commit})
         assert removed.get('ok'), removed

@@ -8,6 +8,8 @@ Account-owned disk copies outlive their initial Git export. Selected saves advan
 
 ## Decision
 
+[Git baseline installation](../implemented/2026-09-15-executor-git-baseline-installation.md) implements acknowledged Git advancement and removes the archive worker. Whole-workspace synchronization and per-file baseline consolidation below remain pending.
+
 A full-read copy represents a mutable Git working tree. After an acknowledged save or move, install the confirmed authoritative commit as its local Git baseline while preserving unrelated local edits. Report the installed current commit to the caller. Keep the original commit only where provenance or pending-write reconciliation needs it. Sandbox Git state is untrusted and never authorizes a remote write.
 
 Synchronize the complete workspace explicitly. Use the current confirmed baseline, current local files and one authoritative remote revision to preserve local edits and report conflicts. Include newly added and removed remote paths. Do not pull in the background or reset dirty work to follow remote main. Exact-text editing and the final authoritative save conflict check remain required.

@@ -22,7 +22,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from resource_pool import ResourcePool
 from bridge import BridgeRejected, LeaseBridge
 from session_files import CaptureRejected, CaptureSnapshot, capture_text, capture_optional, selected_paths
@@ -107,6 +107,7 @@ class Session:
     attaching: bool = False
     copy_id: str = ''
     scope: str = 'full'
+    git_commit: str = ''
     disk_lock: int = -1
 
 
@@ -127,7 +128,7 @@ class Service:
 
     def hello(self):
         return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
-                'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0,
+                'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1,
                 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
@@ -156,7 +157,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'ATTACH', 'DISCARD',
+        if p['operation'] not in ('OPEN', 'ATTACH', 'DISCARD', 'BASELINE',
                                   'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
                                   'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
                                   'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
@@ -208,10 +209,13 @@ class Service:
             raise Rejected('AUTH_REVOKED')
 
     def response(self, s):
-        return {'ok': True, 'leaseId': s.id, 'state': s.state, 'commit': s.commit}
+        return {'ok': True, 'leaseId': s.id, 'state': s.state, 'commit': s.commit,
+                'gitCommit': s.git_commit or s.commit}
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op == 'BASELINE':
+            return self.baseline_dispatch(p)
         if op in ('MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT'):
             return self.move_dispatch(p)
         if op in ('ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE'):
@@ -359,6 +363,51 @@ class Service:
                 raise Rejected('COPY_UNAVAILABLE', 'NOT_CONFIGURED')
         hex_value(data['commit'], 40)
 
+
+    def baseline_dispatch(self, p):
+        data = p['data']
+        if set(data) != {'executionId', 'exportId', 'bundleSha256', 'bundleBytes', 'commit'}:
+            raise Rejected('INVALID_REQUEST')
+        identifier(data['exportId'])
+        hex_value(data['bundleSha256'], 64)
+        hex_value(data['commit'], 40)
+        integer(data['bundleBytes'], 1, self.config['maxBundleBytes'])
+        if not isinstance(data['executionId'], str):
+            raise Rejected('INVALID_REQUEST')
+        if data['executionId']:
+            identifier(data['executionId'])
+        with self.lock:
+            self.authorized(p)
+            s = self.sessions.get(p['leaseId'])
+            if not s or s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            if s.scope != 'full':
+                raise Rejected('READ_ONLY_SCOPE')
+            if s.cancelled.is_set() or s.deadline <= self.clock():
+                raise Rejected('LEASE_EXPIRED')
+            active = s.state == 'RUNNING' and s.unit and s.execution_id == data['executionId']
+            ready = s.state == 'READY' and not data['executionId']
+            if not (active or ready) or not s.files_lock.acquire(blocking=False):
+                raise Rejected('SESSION_BUSY')
+            if ready:
+                if not s.operation.acquire(blocking=False):
+                    s.files_lock.release()
+                    raise Rejected('SESSION_BUSY')
+                s.state = 'UPDATING'
+        try:
+            self.backend.baseline(s, data, active)
+            with self.lock:
+                self.authorized(p)
+                if s.cancelled.is_set() or s.deadline <= self.clock():
+                    raise Rejected('LEASE_EXPIRED')
+                return self.response(s)
+        finally:
+            with self.lock:
+                if ready:
+                    if not s.cancelled.is_set():
+                        s.state = 'READY'
+                    s.operation.release()
+            s.files_lock.release()
 
     def artifact_dispatch(self, p):
         op, data = p['operation'], p['data']
@@ -732,6 +781,15 @@ class SystemdBackend:
 
     def open(self, s, data):
         target = self.prepare(s)
+        self.copy_export(s, data, target / 'snapshot.bundle')
+        result = self.run(s, {'mode': 'initialize', 'commit': s.commit}, self.c['initTimeoutMillis'])
+        if result['exitCode'] != 0 or result['terminationReason'] != 'normal':
+            raise Rejected('INITIALIZATION_FAILED')
+        # This immutable supervisor-owned export survives independently of work/repository/.git.
+        # It is not granted to execute-mode sandboxes.
+
+
+    def copy_export(self, s, data, destination):
         exports = os.open(self.c['exportRoot'], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             fd = os.open(data['exportId'] + '.bundle', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=exports)
@@ -743,7 +801,7 @@ class SystemdBackend:
             info = os.fstat(fd)
             if not stat.S_ISREG(info.st_mode) or info.st_uid != self.c['appUid'] or info.st_size != data['bundleBytes']:
                 raise Rejected('INVALID_EXPORT')
-            with os.fdopen(fd, 'rb', closefd=False) as stream, (target / 'snapshot.bundle').open('xb') as out:
+            with os.fdopen(fd, 'rb', closefd=False) as stream, destination.open('xb') as out:
                 while True:
                     if s.cancelled.is_set():
                         raise Rejected('SESSION_CLOSED')
@@ -755,18 +813,40 @@ class SystemdBackend:
                         raise Rejected('INVALID_EXPORT')
                     digest.update(part)
                     out.write(part)
+                out.flush()
+                os.fsync(out.fileno())
         finally:
             os.close(fd)
         if total != data['bundleBytes'] or digest.hexdigest() != data['bundleSha256']:
             raise Rejected('INVALID_EXPORT')
-        os.chmod(target / 'snapshot.bundle', 0o440)
-        os.chown(target / 'snapshot.bundle', 0, self.user.pw_gid)
-        result = self.run(s, {'mode': 'initialize', 'commit': s.commit}, self.c['initTimeoutMillis'])
-        if result['exitCode'] != 0 or result['terminationReason'] != 'normal':
-            raise Rejected('INITIALIZATION_FAILED')
-        # This immutable supervisor-owned export survives independently of work/repository/.git.
-        # It is not granted to execute-mode sandboxes.
+        os.chmod(destination, 0o440)
+        os.chown(destination, 0, self.user.pw_gid)
 
+    def baseline(self, s, data, active):
+        target = self.mount_path(s)
+        with self.frozen(s) if active else nullcontext():
+            destination = target / 'baseline.bundle'
+            destination.unlink(missing_ok=True)
+            self.copy_export(s, data, destination)
+            helper = Session(s.id, s.identity, s.commit, s.deadline, cancelled=s.cancelled)
+            result = self.run(helper, {'mode': 'baseline', 'commit': data['commit']}, self.c['initTimeoutMillis'])
+            if result['exitCode'] == 10 and result['terminationReason'] == 'normal':
+                raise Rejected('BASELINE_MISSING_OBJECTS')
+            if result['exitCode'] != 0 or result['terminationReason'] != 'normal':
+                raise Rejected('BASELINE_UNAVAILABLE')
+            marker = target / '.git-baseline.pending'
+            with marker.open('w') as stream:
+                stream.write(data['commit'])
+                stream.flush()
+                os.fsync(stream.fileno())
+            marker.replace(target / '.git-baseline')
+            directory = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            s.git_commit = data['commit']
+            destination.unlink()
 
     def execute(self, s, data):
         result = self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
@@ -838,9 +918,12 @@ class SystemdBackend:
                       str(target / 'bridge/lock'), str(target / 'bridge/state'), str(target / 'bridge/responses')]
         if payload['mode'] == 'initialize':
             read_paths.append(str(target / 'snapshot.bundle'))
+        write_paths = [str(target / 'work'), str(target / 'home'), str(target / 'bridge/requests'), '/tmp']
+        if payload['mode'] == 'baseline':
+            read_paths.append(str(target / 'baseline.bundle'))
         settings.write_text(json.dumps({'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
             'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
-            'allowWrite': [str(target / 'work'), str(target / 'home'), str(target / 'bridge/requests'), '/tmp'], 'denyWrite': []},
+            'allowWrite': write_paths, 'denyWrite': []},
             'enableWeakerNestedSandbox': False}))
         record.write_text(json.dumps({**payload, 'root': str(target), 'tools': self.c['toolsRoot'], 'settings': str(settings)}))
         for file in (record, settings):
@@ -1023,6 +1106,9 @@ class DiskSystemdBackend(SystemdBackend):
         s.attaching = True
         self.prepare(s)
         target = self.mount_path(s)
+        marker = target / '.git-baseline'
+        if marker.exists():
+            s.git_commit = hex_value(marker.read_text(), 40)
         if not (target / '.initialized').is_file():
             raise Rejected('COPY_UNAVAILABLE', 'INITIALIZATION_INCOMPLETE')
 
