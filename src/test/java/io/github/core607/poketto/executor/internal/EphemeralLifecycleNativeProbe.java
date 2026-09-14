@@ -14,9 +14,14 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /** Runs account-copy reconnects, timeout and disposal through the real disk worker. */
-record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal actor, WorkspaceId workspace) {
+record EphemeralLifecycleNativeProbe(
+        IsolatedRepositoryExecutor executor,
+        AuthPrincipal actor,
+        WorkspaceId workspace,
+        Supplier<IsolatedRepositoryExecutor> reopen) {
     private static final ExecutionCancellation CANCELLATION = new ExecutionCancellation() {
         @Override
         public boolean isCancelled() {
@@ -33,7 +38,8 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
         RepositoryExecutor.ExecutionResult first = execute(
                 "new", "printf before > draft.txt; python3 -c \"open('scratch.bin','wb').write(bytes([0,255]))\"", 30);
         assertThat(first.exitCode()).isZero();
-        assertThat(first.retention()).isNull();
+        assertThat(first.retention()).isNotNull();
+        assertThat(first.retention().expiresAt()).isGreaterThan(System.currentTimeMillis());
         verifyLocalEditing(first);
         verifyReconnection(first);
         RepositoryExecutor.ExecutionResult timedOut =
@@ -48,7 +54,26 @@ record EphemeralLifecycleNativeProbe(RepositoryExecutor executor, AuthPrincipal 
                 30);
         assertThat(inspected.exitCode()).isZero();
         assertThat(inspected.commit()).isEqualTo(first.commit());
-        discardAndReopen(first);
+        verifyApplicationRestart(first);
+    }
+
+    private void verifyApplicationRestart(RepositoryExecutor.ExecutionResult first) {
+        executor.close();
+        try (var restored = reopen.get()) {
+            var probe = new EphemeralLifecycleNativeProbe(restored, actor, workspace, reopen);
+            var continued = probe.execute(
+                    first.copyId(),
+                    "set -eu; test \"$(cat draft.txt)\" = beforepartial; "
+                            + "python3 -c \"assert open('scratch.bin','rb').read() == bytes([0,255])\"; git rev-parse HEAD",
+                    30);
+            assertThat(continued.exitCode())
+                    .describedAs(continued.stdout() + continued.stderr())
+                    .isZero();
+            assertThat(continued.copyId()).isEqualTo(first.copyId());
+            assertThat(continued.commit()).isEqualTo(first.commit());
+            assertThat(continued.retention().resumed()).isTrue();
+            probe.discardAndReopen(first);
+        }
     }
 
     private void verifyLocalEditing(RepositoryExecutor.ExecutionResult first) {

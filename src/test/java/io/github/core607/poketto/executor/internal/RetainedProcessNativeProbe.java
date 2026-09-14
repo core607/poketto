@@ -114,7 +114,7 @@ public final class RetainedProcessNativeProbe {
     private IsolatedRepositoryExecutor adapter(PublicExecutionNativeFixture fixture) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.of(stores),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),

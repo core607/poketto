@@ -142,7 +142,7 @@ final class RetainedCommandNativeProbe {
             PublicExecutionNativeFixture fixture, RetainedCopyStore store, AuthorizedRepositoryReader reader) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.of(stores(store)),
+                        AccountCopyTestData.disk(root.resolve("account-metadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),

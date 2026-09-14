@@ -19,7 +19,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.Optional;
 import jdk.net.ExtendedSocketOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +40,7 @@ class ExecutorConfiguration {
 
     @Bean
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
-            Optional<RetainedWorkStores> retention,
+            AccountCopyStore accounts,
             AuthService auth,
             RepositorySnapshotExports exports,
             PortableContentExports packages,
@@ -85,7 +84,7 @@ class ExecutorConfiguration {
                 json,
                 Clock.systemUTC());
         return new IsolatedRepositoryExecutor(
-                retention.orElse(null),
+                accounts,
                 packages,
                 media,
                 new SelectedFileSaves(auth, reader, patches, moves),

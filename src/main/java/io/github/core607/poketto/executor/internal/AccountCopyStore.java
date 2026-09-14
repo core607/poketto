@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
@@ -45,6 +46,13 @@ final class AccountCopyStore {
         } catch (IOException failure) {
             throw unavailable(failure);
         }
+    }
+
+    RepositoryBaselineLimits traversalLimits() {
+        return new RepositoryBaselineLimits(
+                limits.originalFiles().entries(),
+                Math.min(limits.originalFiles().expandedBytes(), 1024L * 1024 * 1024),
+                Duration.ofMinutes(2));
     }
 
     long nextExpiry() {

@@ -179,8 +179,7 @@ public final class ExecutorNativeProbe {
             Optional<RetainedCopyStore> retention) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        retention.map(store -> RetainedBaselineTestData.stores(
-                                store, path("publicFixture").resolve("public-originals"))),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         selectedExports,
                         mock(PortableContentExports.class),
@@ -235,7 +234,7 @@ public final class ExecutorNativeProbe {
 
     private void ephemeralLifecycle() throws Exception {
         try (var executor = adapter(path("socket"))) {
-            new EphemeralLifecycleNativeProbe(executor, principal, workspace).run();
+            new EphemeralLifecycleNativeProbe(executor, principal, workspace, () -> adapter(path("socket"))).run();
         }
         control("assert-no-processes");
         passed("timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy");
@@ -638,7 +637,7 @@ public final class ExecutorNativeProbe {
                 String session = full ? "export-full" : "export-public";
                 try (var executor = new ExecutorConfiguration()
                         .isolatedRepositoryExecutor(
-                                Optional.empty(),
+                                AccountCopyTestData.disk(path("accountMetadata")),
                                 auth,
                                 fixture.exports(),
                                 fixture.packages(auth),
@@ -835,7 +834,7 @@ public final class ExecutorNativeProbe {
         }
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1082,7 +1081,7 @@ public final class ExecutorNativeProbe {
                 + other.reference().revision();
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1228,7 +1227,7 @@ public final class ExecutorNativeProbe {
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1303,7 +1302,7 @@ public final class ExecutorNativeProbe {
         privateRead.set(false);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1384,7 +1383,7 @@ public final class ExecutorNativeProbe {
     private IsolatedRepositoryExecutor moveAdapter(PublicExecutionNativeFixture fixture) {
         return new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1671,7 +1670,7 @@ public final class ExecutorNativeProbe {
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),
@@ -1738,7 +1737,7 @@ public final class ExecutorNativeProbe {
         var reader = fixture.reader(auth);
         try (var executor = new ExecutorConfiguration()
                 .isolatedRepositoryExecutor(
-                        Optional.empty(),
+                        AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
                         fixture.exports(),
                         mock(PortableContentExports.class),

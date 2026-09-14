@@ -22,7 +22,7 @@ record AccountCopyRecord(
         ProtocolValues.require(format == 1, "account copy format", "must be 1");
         Objects.requireNonNull(owner, "copy owner must be present");
         Objects.requireNonNull(copyId, "copy ID must be present");
-        ProtocolValues.inRange(revision, 0, RetainedCopyRecord.MAX_VERSION, "copy revision");
+        ProtocolValues.inRange(revision, 0, RetainedCopyRecord.MAX_VERSION - 1, "copy revision");
         ProtocolValues.inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "copy expiry");
         Objects.requireNonNull(writer, "writer identity must be present");
         Objects.requireNonNull(phase, "copy phase must be present");
