@@ -37,16 +37,19 @@ class RepositoryAdminController {
     private final RepositoryPatchService patches;
     private final RepositoryMoveService moves;
     private final BrowserWorkspace workspaces;
+    private final PublicFilePresentation presentation;
 
     RepositoryAdminController(
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             RepositoryMoveService moves,
-            BrowserWorkspace workspaces) {
+            BrowserWorkspace workspaces,
+            PublicFilePresentation presentation) {
         this.reader = reader;
         this.patches = patches;
         this.moves = moves;
         this.workspaces = workspaces;
+        this.presentation = presentation;
     }
 
     @GetMapping("/directory")
@@ -110,7 +113,8 @@ class RepositoryAdminController {
                 file.revision().map(DocumentRevision::value).orElse(null),
                 file.expectedAbsence(),
                 file.diagnostics(),
-                file.publicScope());
+                file.publicScope(),
+                presentation.page(file));
     }
 
     @GetMapping("/search")
@@ -173,7 +177,8 @@ class RepositoryAdminController {
             String revision,
             boolean expectedAbsence,
             List<RepositoryDiagnostic> diagnostics,
-            boolean publicScope) {}
+            boolean publicScope,
+            PublicFilePresentation.Page publicPage) {}
 
     record Change(String path, boolean expectedAbsence, String expectedRevision, String content) {}
 
