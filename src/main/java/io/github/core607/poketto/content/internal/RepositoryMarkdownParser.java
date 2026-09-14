@@ -118,7 +118,7 @@ final class RepositoryMarkdownParser {
         String route = RepositoryPathRules.validateRoute(
                 optionalText(metadata, "route").orElseGet(() -> RepositoryPathRules.route(path)));
         if (RepositoryPathRules.folderPage(path) && !route.equals(RepositoryPathRules.route(path))) {
-            throw new IllegalArgumentException("index.md must use its folder route");
+            throw new IllegalArgumentException("folder landings must use their folder route");
         }
         Optional<Instant> createdAt = date(metadata, "created_at");
         if (createdAt.isEmpty()) {

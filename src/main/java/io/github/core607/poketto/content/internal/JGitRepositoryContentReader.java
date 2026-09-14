@@ -383,6 +383,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                     RepositoryPathRules.folderPage(file.path()),
                     RepositoryPathRules.privatePath(file.path())));
         }
+        FolderLandings.preferIndex(documents, diagnostics);
         Set<String> excluded = collisions(paths, documents, diagnostics);
         documents.removeIf(document -> excluded.contains(document.file().path()));
         documents.sort(Comparator.comparing(document -> document.file().path()));

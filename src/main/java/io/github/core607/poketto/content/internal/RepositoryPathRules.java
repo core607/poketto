@@ -67,7 +67,10 @@ public final class RepositoryPathRules {
     }
 
     static boolean folderPage(String path) {
-        return path.equals("index.md") || path.endsWith("/index.md");
+        return path.equals("index.md")
+                || path.endsWith("/index.md")
+                || path.equals("README.md")
+                || path.endsWith("/README.md");
     }
 
     static String validateRoute(String route) {

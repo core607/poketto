@@ -8,6 +8,7 @@ import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Map;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
@@ -74,7 +75,7 @@ public final class AcceptanceApplication {
             write(
                     directory,
                     "public/index.md",
-                    "# 窗边的知识站\n\n这是一份隔离验收样例，用于检查真实的阅读、图片和编辑流程。\n\n[翻开第一篇](随记/雨后.md)\n\n[继续读写作](手册/写作.md)\n");
+                    "# 窗边的知识站\n\n这是一份隔离验收样例，用于检查真实的阅读、图片和编辑流程。\n\n[翻开第一篇](随记/雨后.md)\n\n[继续读写作](手册/写作.md)\n\n[打开相册](相册/)\n");
             write(
                     directory,
                     "public/随记/雨后.md",
@@ -87,6 +88,7 @@ public final class AcceptanceApplication {
                     directory,
                     "public/手册/写作.md",
                     "---\ntags: [手册]\ncreated_at: 2026-08-30T08:00:00Z\n---\n# 从一段 Markdown 开始\n\n正文无需补齐元数据即可读取。修改时保留未改动的内容。\n");
+            write(directory, "public/相册/README.md", "# 窗边的颜色\n\n两张颜色练习，留给慢慢看的时候。\n");
             write(directory, "private/日记.md", "# 私有验收样例\n\nPRIVATE_ACCEPTANCE_SENTINEL\n\n![私有图片](hidden.png)\n");
             write(directory, "public/drafts/草稿.md", "# 排除路径\n\nEXCLUDED_ACCEPTANCE_SENTINEL\n");
             BufferedImage image = new BufferedImage(320, 180, BufferedImage.TYPE_INT_RGB);
@@ -99,6 +101,19 @@ public final class AcceptanceApplication {
             ImageIO.write(
                     image, "png", directory.resolve("public/手册/gallery.png").toFile());
             ImageIO.write(image, "png", directory.resolve("private/hidden.png").toFile());
+            ImageIO.write(
+                    image, "png", directory.resolve("public/相册/01-morning.png").toFile());
+            for (int y = 0; y < image.getHeight(); y++) {
+                for (int x = 0; x < image.getWidth(); x++) {
+                    image.setRGB(x, y, ((190 + y / 4) << 16) | ((120 + x / 5) << 8) | 110);
+                }
+            }
+            ImageIO.write(
+                    image, "png", directory.resolve("public/相册/02-evening.png").toFile());
+            // A JPEG header without a pixel stream exercises the browser image error.
+            Files.write(
+                    directory.resolve("public/相册/03-unreadable.jpg"),
+                    Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
             git.add().addFilepattern(".").call();
             git.commit()
                     .setMessage("Create synthetic acceptance content")

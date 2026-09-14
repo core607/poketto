@@ -1515,3 +1515,58 @@ td select {
 .collection-reading li {
   margin-block: 0.5rem;
 }
+.gallery-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.gallery-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.image-lightbox {
+  width: min(94vw, 1100px);
+  max-height: 94dvh;
+  margin: auto;
+  padding: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+.image-lightbox::backdrop {
+  background: rgb(0 0 0 / 78%);
+}
+.lightbox-content header,
+.lightbox-content nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.lightbox-content > img {
+  display: block;
+  max-width: 100%;
+  max-height: 65dvh;
+  object-fit: contain;
+  margin: 1rem auto;
+}
+.lightbox-content > p {
+  overflow-wrap: anywhere;
+}
+.lightbox-content button {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+}
+.lightbox-content button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+body:has(.image-lightbox[open]) {
+  overflow: hidden;
+}
