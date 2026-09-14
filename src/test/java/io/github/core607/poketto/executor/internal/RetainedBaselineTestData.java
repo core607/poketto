@@ -7,9 +7,9 @@ import java.util.UUID;
 final class RetainedBaselineTestData {
     private RetainedBaselineTestData() {}
 
-    static RetainedBaseline.Reference reference(RetainedCopyRecord.Owner owner, UUID copy, String commit, long expiry) {
+    static RetainedBaseline.Reference reference(RetainedCopyRecord.Owner owner, UUID copy, String commit) {
         return new RetainedBaseline.Reference(
-                new RetainedBaseline.Identity(owner, copy, commit, expiry), "e".repeat(64), 128, 0);
+                new RetainedBaseline.Identity(owner, copy, commit), "e".repeat(64), 128, 0);
     }
 
     static RetainedWorkStores stores(RetainedCopyStore records, Path originals) {

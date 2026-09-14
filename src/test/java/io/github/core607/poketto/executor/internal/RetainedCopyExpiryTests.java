@@ -154,7 +154,7 @@ class RetainedCopyExpiryTests {
                 new RetainedCopyRecord.Checkpoint(UUID.randomUUID(), "b".repeat(64), 1, state.snapshot()),
                 null,
                 null,
-                RetainedBaselineTestData.reference(owner, copy, "1".repeat(40), CLOCK.millis() + lifetime));
+                RetainedBaselineTestData.reference(owner, copy, "1".repeat(40)));
     }
 
     private static void assertReason(Runnable operation, RetainedCopyException.Reason reason) {

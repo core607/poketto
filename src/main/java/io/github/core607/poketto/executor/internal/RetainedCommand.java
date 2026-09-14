@@ -106,7 +106,7 @@ final class RetainedCommand implements AutoCloseable {
         long expiresAt = store.newExpiry();
         RetainedBaseline.Reference original = fullRead
                 ? originals.capture(
-                        writer, new RetainedBaseline.Identity(owner, copyId, state.originalCommit(), expiresAt), source)
+                        writer, new RetainedBaseline.Identity(owner, copyId, state.originalCommit()), source)
                 : null;
         RetainedCopyRecord.Checkpoint checkpoint = capture(state, expiresAt, Optional.empty());
         var initial = new RetainedCopyRecord(

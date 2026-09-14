@@ -84,13 +84,6 @@ final class RetainedCopyStore {
             RetainedFileLocks.Held writer, RetainedBaseline.Identity identity, boolean creating) {
         requireBaselineWriter(writer, identity);
         return locked(() -> {
-            if (expired(identity.expiresAt())) {
-                throw new RetainedCopyException(EXPIRED);
-            }
-            require(
-                    identity.expiresAt() - clock.millis() <= limits.retention().toMillis(),
-                    "baseline expiry",
-                    "exceeds the configured lifetime");
             RetainedCopyRecord record = optionalRecord(identity);
             if (record == null) {
                 if (!creating) {
@@ -98,6 +91,8 @@ final class RetainedCopyStore {
                 }
             } else if (!baselineMatches(record, identity)) {
                 throw new RetainedCopyException(STALE);
+            } else {
+                requireLive(record);
             }
             return record;
         });
@@ -152,7 +147,6 @@ final class RetainedCopyStore {
 
     private static boolean baselineMatches(RetainedCopyRecord record, RetainedBaseline.Identity identity) {
         return record.fullRead()
-                && record.expiresAt() == identity.expiresAt()
                 && record.acknowledged().state().originalCommit().equals(identity.commit());
     }
 

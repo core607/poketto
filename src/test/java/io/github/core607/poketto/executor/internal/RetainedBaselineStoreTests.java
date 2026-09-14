@@ -45,8 +45,8 @@ class RetainedBaselineStoreTests {
     @Test
     void publishesAndReopensUnderTheMatchingWriterWithoutBlockingMetadataDuringTraversal() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var identity = identity(120000);
-        var unrelated = record(identity(120000));
+        var identity = identity();
+        var unrelated = record(identity());
         RetainedBaseline.Reference reference;
         try (var writer = stores.records().writer(identity.owner(), identity.copyId())) {
             reference = stores.baselines().capture(writer, identity, sink -> {
@@ -76,8 +76,8 @@ class RetainedBaselineStoreTests {
     @Test
     void wrongOrReleasedWritersCannotCaptureOrReadEvenAnAbsentPath() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var identity = identity(120000);
-        var wrong = identity(120000);
+        var identity = identity();
+        var wrong = identity();
         var writer = stores.records().writer(identity.owner(), identity.copyId());
         try (writer) {
             assertReason(
@@ -98,11 +98,11 @@ class RetainedBaselineStoreTests {
     @Test
     void collectsOrphansAndExpiredCopiesButPreservesLiveRecordsAndActiveWriters() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var expired = identity(60000);
-        var live = identity(120000);
-        capture(stores, expired, "old", true);
+        var expired = identity();
+        var live = identity();
+        capture(stores, expired, "old", true, 60000);
         var liveReference = capture(stores, live, "live", true);
-        var orphan = identity(120000);
+        var orphan = identity();
         try (var writer = stores.records().writer(orphan.owner(), orphan.copyId())) {
             stores.baselines().capture(writer, orphan, sink -> sink.accept(file(orphan, "unacknowledged")));
             assertThat(stores.baselines().collectUnused()).isZero();
@@ -123,9 +123,9 @@ class RetainedBaselineStoreTests {
     @Test
     void orphanCollectionStillWorksWhenAllOrdinaryMetadataWriterSlotsAreOccupied() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var orphan = identity(120000);
+        var orphan = identity();
         capture(stores, orphan, "orphan", false);
-        var live = identity(120000);
+        var live = identity();
         stores.records().create(record(live));
         try (var writer = stores.records().writer(live.owner(), live.copyId())) {
             writer.requireValid();
@@ -145,10 +145,10 @@ class RetainedBaselineStoreTests {
         byte[] bytes = new byte[4096];
         new Random(47).nextBytes(bytes);
         String source = Base64.getEncoder().encodeToString(bytes);
-        var live = identity(120000);
+        var live = identity();
         var reference = capture(stores, live, source, true);
         assertThat(reference.bytes()).isGreaterThan(4096);
-        var another = identity(120000);
+        var another = identity();
         try (var writer = stores.records().writer(another.owner(), another.copyId())) {
             assertReason(
                     () -> stores.baselines().capture(writer, another, sink -> {}), RetainedCopyException.Reason.LIMIT);
@@ -178,7 +178,7 @@ class RetainedBaselineStoreTests {
     @Test
     void refusesFilePermissionChangesHardLinksAndSymlinksWithoutDeletingTheirTargets() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var identity = identity(120000);
+        var identity = identity();
         var reference = capture(stores, identity, "private", true);
         Path archive = archive();
         try (var writer = stores.records().writer(identity.owner(), identity.copyId())) {
@@ -200,9 +200,9 @@ class RetainedBaselineStoreTests {
     @Test
     void otherMetadataAndOriginalReadsContinueWhileAnotherArchiveIsBeingCreated() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var live = identity(120000);
+        var live = identity();
         var reference = capture(stores, live, "live", true);
-        var creating = identity(120000);
+        var creating = identity();
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var capture = CompletableFuture.runAsync(() -> {
@@ -232,7 +232,7 @@ class RetainedBaselineStoreTests {
     @Test
     void collectionCannotRemoveAnOriginalWhileAnotherProcessOwnsItsCopyWriter() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var identity = identity(120000);
+        var identity = identity();
         capture(stores, identity, "orphan being admitted elsewhere", false);
         Path signal = root.resolve("writer-ready");
         Process child = new ProcessBuilder(
@@ -274,7 +274,7 @@ class RetainedBaselineStoreTests {
         Files.setPosixFilePermissions(abandoned, PosixFilePermissions.fromString("rw-------"));
         assertThat(stores.baselines().collectUnused()).isZero();
         assertThat(abandoned).doesNotExist();
-        var identity = identity(120000);
+        var identity = identity();
         capture(stores, identity, "orphan", false);
         Path archive = archive();
         byte[] bytes = Files.readAllBytes(archive);
@@ -288,8 +288,8 @@ class RetainedBaselineStoreTests {
     @Test
     void configuredCollectorRemovesExpiredOriginalsWithoutAnotherClientRequest() throws Exception {
         var stores = stores(CLOCK, METADATA, BASELINES);
-        var identity = identity(60000);
-        capture(stores, identity, "expired", true);
+        var identity = identity();
+        capture(stores, identity, "expired", true, 60000);
         Path archive = archive();
         var expired = stores(Clock.offset(CLOCK, Duration.ofMinutes(1)), METADATA, BASELINES);
         try (var maintenance = new ExecutorRetentionConfiguration().retainedBaselineMaintenance(expired.baselines())) {
@@ -330,21 +330,24 @@ class RetainedBaselineStoreTests {
 
     private static RetainedBaseline.Reference capture(
             Stores stores, RetainedBaseline.Identity identity, String source, boolean publishRecord) throws Exception {
+        return capture(stores, identity, source, publishRecord, 120000);
+    }
+
+    private static RetainedBaseline.Reference capture(
+            Stores stores, RetainedBaseline.Identity identity, String source, boolean publishRecord, long lifetime)
+            throws Exception {
         try (var writer = stores.records().writer(identity.owner(), identity.copyId())) {
             var reference = stores.baselines().capture(writer, identity, sink -> sink.accept(file(identity, source)));
             if (publishRecord) {
-                stores.records().create(record(reference));
+                stores.records().create(record(reference, CLOCK.millis() + lifetime));
             }
             return reference;
         }
     }
 
-    private static RetainedBaseline.Identity identity(long lifetime) {
+    private static RetainedBaseline.Identity identity() {
         return new RetainedBaseline.Identity(
-                new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID()),
-                UUID.randomUUID(),
-                "a".repeat(40),
-                CLOCK.millis() + lifetime);
+                new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID()), UUID.randomUUID(), "a".repeat(40));
     }
 
     private static RepositoryFile file(RetainedBaseline.Identity identity, String source) {
@@ -360,11 +363,14 @@ class RetainedBaselineStoreTests {
     }
 
     private static RetainedCopyRecord record(RetainedBaseline.Identity identity) {
-        return record(RetainedBaselineTestData.reference(
-                identity.owner(), identity.copyId(), identity.commit(), identity.expiresAt()));
+        return record(RetainedBaselineTestData.reference(identity.owner(), identity.copyId(), identity.commit()));
     }
 
     private static RetainedCopyRecord record(RetainedBaseline.Reference reference) {
+        return record(reference, CLOCK.millis() + 120000);
+    }
+
+    private static RetainedCopyRecord record(RetainedBaseline.Reference reference, long expiry) {
         var identity = reference.identity();
         return new RetainedCopyRecord(
                 1,
@@ -375,7 +381,7 @@ class RetainedBaselineStoreTests {
                 "b".repeat(64),
                 true,
                 null,
-                identity.expiresAt(),
+                expiry,
                 new RetainedCopyRecord.Writer(new UUID(0, 1), new UUID(0, 2), new UUID(0, 3)),
                 new RetainedCopyRecord.Checkpoint(
                         new UUID(0, 4), "c".repeat(64), 1, new SelectedFileSaves.State(identity.commit()).snapshot()),

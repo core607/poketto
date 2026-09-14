@@ -17,7 +17,7 @@ class RetainedBaselineBindingTests {
 
     @Test
     void referenceSurvivesSerializationAndRejectsEveryMismatchedIdentityDimension() {
-        var reference = RetainedBaselineTestData.reference(owner, copy, COMMIT, expiry);
+        var reference = RetainedBaselineTestData.reference(owner, copy, COMMIT);
         var record = record(reference);
         assertThat(JSON.readValue(JSON.writeValueAsBytes(record), RetainedCopyRecord.class)
                         .originalBaseline())
@@ -25,11 +25,11 @@ class RetainedBaselineBindingTests {
         var anotherSubject = new RetainedCopyRecord.Owner(UUID.randomUUID(), owner.workspaceId());
         var anotherWorkspace = new RetainedCopyRecord.Owner(owner.subjectId(), UUID.randomUUID());
         for (var wrong : List.of(
-                RetainedBaselineTestData.reference(anotherSubject, copy, COMMIT, expiry),
-                RetainedBaselineTestData.reference(anotherWorkspace, copy, COMMIT, expiry),
-                RetainedBaselineTestData.reference(owner, UUID.randomUUID(), COMMIT, expiry),
-                RetainedBaselineTestData.reference(owner, copy, "2".repeat(40), expiry),
-                RetainedBaselineTestData.reference(owner, copy, COMMIT, expiry + 1))) {
+                RetainedBaselineTestData.reference(anotherSubject, copy, COMMIT),
+                RetainedBaselineTestData.reference(anotherWorkspace, copy, COMMIT),
+                RetainedBaselineTestData.reference(owner, UUID.randomUUID(), COMMIT),
+                RetainedBaselineTestData.reference(owner, copy, "2".repeat(40)))) {
+
             assertThatThrownBy(() -> record(wrong))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("original baseline identity");
@@ -41,8 +41,8 @@ class RetainedBaselineBindingTests {
 
     @Test
     void publicScopeCannotCarryAPrivateBaselineReference() {
-        var reference = RetainedBaselineTestData.reference(owner, copy, COMMIT, expiry);
-        assertThatThrownBy(() -> RetainedBaseline.validateBinding(owner, copy, false, expiry, COMMIT, reference))
+        var reference = RetainedBaselineTestData.reference(owner, copy, COMMIT);
+        assertThatThrownBy(() -> RetainedBaseline.validateBinding(owner, copy, false, COMMIT, reference))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("private data");
     }

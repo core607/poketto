@@ -37,7 +37,7 @@ record RetainedCopyRecord(
         RetainedPublicProjection.validate(
                 owner, fullRead, publicExport, acknowledged.state().originalCommit());
         RetainedBaseline.validateBinding(
-                owner, copyId, fullRead, expiresAt, acknowledged.state().originalCommit(), originalBaseline);
+                owner, copyId, fullRead, acknowledged.state().originalCommit(), originalBaseline);
         if (fullRead) {
             acknowledged.state().requireRecoverable();
             if (command != null) {

@@ -52,7 +52,7 @@ class RetainedBaselineFilesTests {
     private final WorkspaceId workspace = WorkspaceId.random();
     private final RetainedCopyRecord.Owner owner = new RetainedCopyRecord.Owner(UUID.randomUUID(), workspace.value());
     private final RetainedBaseline.Identity identity =
-            new RetainedBaseline.Identity(owner, UUID.randomUUID(), "a".repeat(40), 1000);
+            new RetainedBaseline.Identity(owner, UUID.randomUUID(), "a".repeat(40));
     private static final RetainedBaseline.Limits LIMITS = new RetainedBaseline.Limits(1024 * 1024, 1024 * 1024, 100);
 
     @Test
@@ -70,7 +70,7 @@ class RetainedBaselineFilesTests {
         RetainedBaseline.Reference reference;
         try (var fixture = new PublicExecutionNativeFixture(
                 root.resolve("repository"), root.resolve("exports"), auth, workspace)) {
-            var selected = new RetainedBaseline.Identity(owner, identity.copyId(), fixture.sourceCommit(), 1000);
+            var selected = new RetainedBaseline.Identity(owner, identity.copyId(), fixture.sourceCommit());
             reference = RetainedBaselineFiles.write(
                     archive,
                     selected,
@@ -196,7 +196,7 @@ class RetainedBaselineFilesTests {
         Path path = root.resolve("verified.pending");
         var reference =
                 RetainedBaselineFiles.write(path, identity, LIMITS, sink -> sink.accept(text("one.md", "private")));
-        var changed = new RetainedBaseline.Identity(owner, UUID.randomUUID(), identity.commit(), identity.expiresAt());
+        var changed = new RetainedBaseline.Identity(owner, UUID.randomUUID(), identity.commit());
         var alias = new RetainedBaseline.Reference(changed, reference.sha256(), reference.bytes(), reference.entries());
         assertThatThrownBy(() -> RetainedBaselineFiles.open(path, alias, LIMITS))
                 .isInstanceOf(IOException.class)

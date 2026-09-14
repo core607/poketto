@@ -236,8 +236,7 @@ class WorkerSocketTests {
         var originals = mock(RetainedBaselineStore.class);
         when(originals.capture(any(), any(), any())).thenAnswer(call -> {
             RetainedBaseline.Identity identity = call.getArgument(1);
-            return RetainedBaselineTestData.reference(
-                    identity.owner(), identity.copyId(), identity.commit(), identity.expiresAt());
+            return RetainedBaselineTestData.reference(identity.owner(), identity.copyId(), identity.commit());
         });
         return new RetainedWorkStores(records, originals);
     }

@@ -468,7 +468,7 @@ class RetainedCopyStoreTests {
                 checkpoint,
                 null,
                 null,
-                RetainedBaselineTestData.reference(owner, copy, BASE, CLOCK.millis() + 60000));
+                RetainedBaselineTestData.reference(owner, copy, BASE));
     }
 
     private static RetainedCopyRecord changed(

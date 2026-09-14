@@ -61,8 +61,7 @@ class RetainedCommandTests {
                 sink.accept(file);
             });
             reference = command.record().originalBaseline();
-            assertThat(reference.identity().expiresAt())
-                    .isEqualTo(command.record().expiresAt());
+            assertThat(reference.identity().commit()).isEqualTo(state.snapshot().originalCommit());
             command.begin(UUID.randomUUID());
             command.complete(state.snapshot());
             assertThat(command.record().originalBaseline()).isEqualTo(reference);

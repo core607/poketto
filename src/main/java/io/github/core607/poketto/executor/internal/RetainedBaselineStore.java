@@ -253,10 +253,7 @@ final class RetainedBaselineStore {
         }
 
         private void requireLive() {
-            records.requireBaselineWriter(writer, identity);
-            if (records.expired(identity.expiresAt())) {
-                throw new RetainedCopyException(RetainedCopyException.Reason.EXPIRED);
-            }
+            records.requireBaseline(writer, identity, false);
         }
 
         @Override

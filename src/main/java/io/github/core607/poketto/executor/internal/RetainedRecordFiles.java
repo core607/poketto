@@ -49,7 +49,7 @@ final class RetainedRecordFiles {
                 .build();
     }
 
-    void write(Path temporary, RetainedCopyRecord record, long available) throws IOException {
+    void write(Path temporary, Object record, long available) throws IOException {
         long limit = Math.min(maximum, available) - OVERHEAD;
         if (limit < 1) {
             throw new SizeLimit();
@@ -86,7 +86,7 @@ final class RetainedRecordFiles {
         }
     }
 
-    private <T> T read(Path path, Class<T> type) throws IOException {
+    <T> T read(Path path, Class<T> type) throws IOException {
         try (FileChannel file = FileChannel.open(path, READ, NOFOLLOW_LINKS)) {
             long size = file.size();
             if (size < OVERHEAD || size > maximum) {

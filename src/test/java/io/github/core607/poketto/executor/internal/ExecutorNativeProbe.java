@@ -148,6 +148,12 @@ public final class ExecutorNativeProbe {
             probe.rejectNonRootPeer();
         } else if (args[1].equals("ephemeral-lifecycle")) {
             probe.ephemeralLifecycle();
+        } else if (args[1].equals("account-state-produce")) {
+            new AccountCopyStoreNativeProbe(probe.path("accountMetadata")).produce();
+            probe.passed("account-state-produce");
+        } else if (args[1].equals("account-state-consume")) {
+            new AccountCopyStoreNativeProbe(probe.path("accountMetadata")).consume();
+            probe.passed("account-state-consume");
         } else {
             throw new IllegalArgumentException();
         }

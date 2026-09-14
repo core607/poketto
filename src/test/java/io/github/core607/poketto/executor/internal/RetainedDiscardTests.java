@@ -132,6 +132,6 @@ class RetainedDiscardTests {
                 point,
                 null,
                 null,
-                RetainedBaselineTestData.reference(owner, copy, base, expiry));
+                RetainedBaselineTestData.reference(owner, copy, base));
     }
 }

@@ -226,6 +226,8 @@ with socket.socket(socket.AF_UNIX) as connection:
         elif mode == 'ephemeral-lifecycle':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy'}
+        elif mode in ('account-state-produce', 'account-state-consume'):
+            assert any(item.get('test') == mode and item.get('result') == 'PASS' for item in parsed)
         else:
             assert any(item.get('abandon') == 'READY' for item in parsed)
 
@@ -281,6 +283,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             disk_mounted = True
             worker_config.pop('checkpointRoot')
             worker_config.update(copyRoot=str(disk_pool), poolBytes=512*1024*1024)
+            run(['install', '-d', '-m', '700', '-o', app_user, '-g', app_user, str(disk_pool / 'metadata')])
         config_path.write_text(json.dumps(worker_config))
         start_worker()
         fake_source = root / 'fake-peer.py'
@@ -301,6 +304,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
             'publicFixture': str(root / 'public-fixture'),
+            'accountMetadata': str(disk_pool / 'metadata'),
             'commit': commit, 'control': str(root / 'control')}))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
@@ -309,6 +313,9 @@ with socket.socket(socket.AF_UNIX) as connection:
                 execute_java('retained-produce-' + case)
                 execute_java('retained-resume-' + case)
         else:
+            if args.scenario == 'ephemeral-lifecycle':
+                execute_java('account-state-produce')
+                execute_java('account-state-consume')
             execute_java('main' if args.scenario == 'all' else args.scenario)
         if args.scenario == 'all':
             expired = (root / 'public-fixture/retained/expired-checkpoint').read_text()
