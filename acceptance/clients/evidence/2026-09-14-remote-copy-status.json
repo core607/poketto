@@ -1,0 +1,36 @@
+{
+  "result": "PASS",
+  "applicationCommit": "a54d705db357b3c1018959443d0f86c710d1b7f3",
+  "source": "real-auth-PG-HTTP-MCP-native-SRT",
+  "modelDriven": false,
+  "production": false,
+  "runtimeManifestSha256": "d3761fd6286f108f85915c3d682e948650a2513aafc40d700abfa4bfae10ad1f",
+  "controllerSha256": "e4fcf2aa65b0d94a547206cf1a61d114d892c13e2fcea1277abfeb359d97ce6c",
+  "workerSources": {
+    "disk_pool.py": "a674b65203864ec7d43b03fe4f12f0633493030e0bb7fce8083bf1552f60c09a",
+    "worker.py": "c58406e55f63a32b509455245dae8af9b6c7e8b31aac806958b96ced18a7dc20",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "ca7b017f7c7d0c72406d75764579f6f8e8132537f9af862aebc5001608c57a67",
+    "cli.py": "db84524fd078a42084771628e8d54e948ddd9a4860f7982d5abba8ce5a3ef151",
+    "session_files.py": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+    "binary_capture.py": "6a11b936bc8a29da06788d33a9e7df7d0298b226b32c3229af62ea03cbec2d53",
+    "materialize.py": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd",
+    "checkpoints.py": "53bb378eb042325bae301742dc10910b04c2497149e5257e67530206953fe11e",
+    "checkpoint_tree.py": "106ccf35c23c183f791a968b94ce158801a24c9de6bc2eff67a89457d6542d95"
+  },
+  "clientSha256": "4b6be62c781c87486c2b99f9f08abcb6e4ec15a68040e5877e19db03169cbaad",
+  "httpSupportSha256": "7b2203192ec2cd9995a2ed87ea347df546a1074fc9a9ee280962ca80363efd9b",
+  "poolBytes": 536870912,
+  "copyBytes": 67108864,
+  "tests": [
+    "account-http-new-transports-and-grants-share-work-without-private-scope-escalation",
+    "account-http-timeout-preserves-work-and-save-is-visible-through-authoritative-readback",
+    "account-http-status-detects-browser-write-without-changing-local-work-or-save-base",
+    "account-http-public-copy-keeps-its-scope-when-accessed-by-a-full-grant",
+    "account-http-revocation-denies-the-grant-without-deleting-account-work",
+    "account-http-shared-disposal-clears-only-local-work-and-retains-saved-authority"
+  ],
+  "cleanup": "PASS"
+}
