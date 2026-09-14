@@ -133,11 +133,22 @@ final class BridgeReplies {
             String copyId,
             String scope,
             String baseCommit,
+            RemoteStatus remote,
             boolean writeOutcomeUnknown,
             boolean movePending,
             Object move,
             Recorded lastSave,
             Recorded lastImport) {}
+
+    enum RemoteState {
+        MATCHES_BASE,
+        DIFFERS_FROM_BASE,
+        PUBLIC_PROJECTION,
+        UNAVAILABLE
+    }
+
+    /** Compares remote main with the last confirmed save/sync base, not every file's local contents. */
+    record RemoteStatus(RemoteState state, String commit) {}
 
     record SaveResult(
             String commit, boolean committed, boolean snapshotUpdated, List<String> paths, boolean recovered) {}

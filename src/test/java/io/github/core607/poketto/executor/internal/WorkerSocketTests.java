@@ -24,6 +24,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.WorkspaceAccess;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
@@ -75,6 +76,38 @@ class WorkerSocketTests {
     private final RememberingExecutorClient client = new RememberingExecutorClient();
     private static final String COMMIT = "a".repeat(40);
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
+
+    @Test
+    void unavailableRemoteDoesNotHideLocalStatus() throws Exception {
+        var saves = mock(SelectedFileSaves.class);
+        when(saves.currentCommit(any(), any())).thenThrow(new ContentRepositoryException("Remote fetch unavailable"));
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        saves,
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        8,
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.bridgeCommand =
+                    Map.of("requestId", UUID.randomUUID().toString(), "operation", "status", "arguments", Map.of());
+            var result = command(executor, principal(), "new");
+            assertThat(result.exitCode()).isZero();
+            JsonNode reply =
+                    peer.operations("BRIDGE_COMPLETE").getFirst().path("data").path("response");
+            assertThat(reply.path("ok").asBoolean()).isTrue();
+            reply = reply.path("result");
+            assertThat(reply.path("baseCommit").asText()).isEqualTo(COMMIT);
+            assertThat(reply.path("remote").path("state").asText()).isEqualTo("UNAVAILABLE");
+            assertThat(reply.path("remote").path("commit").isNull()).isTrue();
+            assertThat(reply.has("lastSave")).isTrue();
+            assertThat(reply.path("copyId").asText()).isEqualTo(result.copyId());
+        }
+    }
 
     @Test
     void transportExpiryKeepsTheAccountCopyAndExactIdentityGuard() throws Exception {
