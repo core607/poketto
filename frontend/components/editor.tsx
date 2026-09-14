@@ -433,6 +433,7 @@ export function Editor({
   function insert(markdown: string) {
     const start = textarea.current?.selectionStart;
     const end = textarea.current?.selectionEnd;
+    setNotice("");
     setSource(
       (current) =>
         current.slice(0, start ?? current.length) +
@@ -710,7 +711,10 @@ export function Editor({
                 文件路径
                 <input
                   value={path}
-                  onChange={(event) => setPath(event.target.value)}
+                  onChange={(event) => {
+                    setNotice("");
+                    setPath(event.target.value);
+                  }}
                   disabled={!writable || busy || !file.expectedAbsence}
                   maxLength={255}
                 />
@@ -793,7 +797,10 @@ export function Editor({
                     <textarea
                       ref={textarea}
                       value={source}
-                      onChange={(event) => setSource(event.target.value)}
+                      onChange={(event) => {
+                        setNotice("");
+                        setSource(event.target.value);
+                      }}
                       onKeyDown={(event) => {
                         if (
                           (event.ctrlKey || event.metaKey) &&

@@ -144,6 +144,36 @@ test("uncertain browser mutation does not retry or claim success", async () => {
   }
 });
 
+test("unavailable reads do not imply an uncertain write, while failed mutations retain that warning", async () => {
+  const previous = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/csrf"))
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    requests++;
+    return new Response("upstream unavailable", { status: 503 });
+  };
+  try {
+    await assert.rejects(
+      api("/api/admin/repository/filenames?query=note"),
+      (error) =>
+        error instanceof ApiError &&
+        error.status === 503 &&
+        error.message === "服务暂时不可用，请稍后重试。",
+    );
+    await assert.rejects(
+      api("/api/admin/repository/patch", { method: "POST", body: {} }),
+      (error) =>
+        error instanceof ApiError &&
+        error.status === 503 &&
+        error.message.includes("写入结果可能尚未确认"),
+    );
+    assert.equal(requests, 2);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test("server public reads are uncached and never forward a browser identity", async () => {
   const previous = globalThis.fetch;
   globalThis.fetch = async (_input, options) => {
