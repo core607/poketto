@@ -22,7 +22,7 @@ final class PublicFilePresentation {
         if (!file.publicScope()) {
             return Page.state(State.PRIVATE);
         }
-        var publication = publications.settings(file.workspaceId());
+        WorkspacePublications.Publication publication = publications.settings(file.workspaceId());
         if (!publication.enabled()) {
             return Page.state(State.WEBSITE_DISABLED);
         }

@@ -70,8 +70,15 @@ export type TagPage = Snapshot & {
   offset: number;
   limit: number;
 };
+export type PublicPage = {
+  state: "UNSAVED" | "PRIVATE" | "WEBSITE_DISABLED" | "UNAVAILABLE" | "AVAILABLE";
+  space: string | null;
+  route: string | null;
+};
 export type RepositoryFile = {
   publicScope: boolean;
+  // Cleared locally after an acknowledged save until exact-revision metadata is read.
+  publicPage: PublicPage | null;
   commit: string | null;
   path: string;
   source: string | null;

@@ -67,6 +67,8 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 文件名接口为 `/api/admin/workspaces/{workspaceId}/repository/filenames`，参数是 `query`、可选 `commit`、`offset` 和 `limit`。查询长度为 1–200 个字符，每页允许 1–200 项，offset 为 0–100,000。后续页必须携带首页返回的 commit。单次扫描最多处理 100,000 个 Git 树与索引媒体条目，包括经过的目录；超限时明确失败，不返回部分计数。
 
+编辑器分别显示保存状态、公开范围和公开页面是否可用。“查看公开页面”会在新标签页打开已确认的正式地址；未保存的修改继续保留在编辑器中，不会改变公开页面。网站未开启和页面暂不可用分别显示。保存成功后，编辑器会单独读取该 commit 的元数据来刷新公开状态；读取失败时保留已确认的保存结果和正文，“重新查询状态”只重试读取。新草稿和修改后的目标路径在保存后再确认公开页面状态。
+
 托管原图保存在 `<data-dir>/managed-originals` 并持续保留；`<data-dir>/derived/repository-images` 可以删除重建。公开图片授权绑定精确页面快照，最长五分钟且不超过快照有效期。关闭网站或替换公开快照也会使已签发的图片地址失效；刷新页面可取得当前地址。私有预览重新验证当前身份。[网站交付边界](../notes/implemented/2026-09-14-workspace-public-delivery.md)记录这次授权变化，[创作基础记录](../notes/implemented/2026-09-05-repository-authoring-foundations.md)继续规定存储保证与限制。
 
 人类 owner 可在所选空间的“网站发布”面板，或通过 `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication` 读取和修改网站开关。修改须携带会话 CSRF token，并明确提交 `{ "enabled": true }` 或 `{ "enabled": false }`；省略字段会报错。面板会要求确认，回包不确定时须重新读取状态后再操作。关闭网站不影响成员读取获准访问的仓库文件。

@@ -91,6 +91,15 @@ characters; page limits are 1–200 and offsets 0–100,000. Continuations requi
 first page's commit. A scan refuses more than 100,000 combined Git tree and indexed
 media entries, including traversed directories; it does not return partial counts.
 
+The editor distinguishes saved content, publication scope and public-page
+availability. **View public page** opens the confirmed canonical page in a new
+tab; unsaved edits remain in the editor and do not change that page. Disabled
+websites and unavailable pages have separate labels. After a confirmed save, a
+separate exact-commit read refreshes this information. If that read fails, the
+confirmed save and body remain intact; **Check status again** retries only the
+read. New drafts and changed destination paths wait for Save before confirming
+their public-page state.
+
 Managed originals live under `<data-dir>/managed-originals` and are retained; `<data-dir>/derived/repository-images` is disposable. Public image grants bind the exact page snapshot for at most five minutes and never past its expiry. Disabling website delivery or replacing its public snapshot also invalidates previously issued image URLs; reload the page to obtain current URLs. Private previews recheck the current identity. The [website delivery boundary](../notes/implemented/2026-09-14-workspace-public-delivery.md) records this authorization change; the [foundations record](../notes/implemented/2026-09-05-repository-authoring-foundations.md) retains storage guarantees and bounds.
 
 Human owners manage the website switch from the selected workspace's **Website publication** panel, or `GET` / `PUT /api/auth/workspaces/{workspaceId}/publication`. A write requires the session CSRF token and `{ "enabled": true }` or `{ "enabled": false }`; omission is an error. The panel asks for confirmation and requires a fresh state read after an uncertain response. Website shutdown leaves member access to authorized repository files intact.

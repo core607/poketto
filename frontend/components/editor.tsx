@@ -3,6 +3,7 @@ import { useConfirmation } from "./confirmation";
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/browser-api";
 import { useWorkspaceApi } from "./workspace-context";
+import { EditorPublicPage } from "./editor-public-page";
 import type {
   GalleryStatus,
   RepositoryFile,
@@ -55,6 +56,8 @@ export function Editor({
   const [creation, setCreation] = useState<"note" | "folder" | null>(null);
   const creationTrigger = useRef<HTMLButtonElement | null>(null);
   const alive = useRef(false);
+  const pageRequest = useRef(0);
+  const [pagePending, setPagePending] = useState(false);
   const [search, setSearch] = useState<{
     query: string;
     items: { path: string; title: string; snippet: string }[];
@@ -166,6 +169,8 @@ export function Editor({
       }))
     )
       return;
+    pageRequest.current++;
+    setPagePending(false);
     setBusy(true);
     setError("");
     setNotice("");
@@ -233,6 +238,30 @@ export function Editor({
       setBusy(false);
     }
   }
+  async function refreshPublicPage(saved: RepositoryFile) {
+    if (!saved.commit || saved.expectedAbsence) return;
+    const request = ++pageRequest.current;
+    setPagePending(true);
+    try {
+      const result = await api<RepositoryFile>(
+        "/api/admin/repository/file?" +
+          new URLSearchParams({ path: saved.path, commit: saved.commit }),
+      );
+      if (!alive.current || request !== pageRequest.current) return;
+      setFile((current) =>
+        current?.path === saved.path &&
+        current.commit === saved.commit &&
+        current.revision === saved.revision
+          ? { ...current, publicScope: result.publicScope, publicPage: result.publicPage }
+          : current,
+      );
+    } catch {
+      // The write acknowledgement remains authoritative when this separate read fails.
+    } finally {
+      if (alive.current && request === pageRequest.current) setPagePending(false);
+    }
+  }
+
   async function save(target = file?.path, remove = false) {
     if (!file || !target) return;
     if (unreadable && !remove) {
@@ -252,21 +281,26 @@ export function Editor({
         remove,
       );
       if (remove) {
+        pageRequest.current++;
+        setPagePending(false);
         setFile(null);
         setSource("");
         setPath("");
         navigate("", folder);
       } else {
-        setFile({
+        const saved: RepositoryFile = {
           ...file,
           path: target,
           commit: result.commit,
           source,
           revision: result.revisions[target],
           expectedAbsence: false,
-        });
+          publicPage: null,
+        };
+        setFile(saved);
         setPath(target);
         navigate(target, folder, true);
+        void refreshPublicPage(saved);
       }
       setNotice(
         !result.committed
@@ -712,6 +746,13 @@ export function Editor({
                 </button>
               </div>
             </div>
+            <EditorPublicPage
+              file={file}
+              path={path}
+              dirty={dirty}
+              pending={busy || pagePending}
+              onRefresh={() => void refreshPublicPage(file)}
+            />
             {file.source === null && !file.expectedAbsence ? (
               <p className="notice danger">
                 这个文件无法作为 UTF-8 文本读取。请查看诊断，不要覆盖原文件。

@@ -415,6 +415,14 @@ img {
   gap: 8px;
   margin-top: 12px;
 }
+.editor-public-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 0;
+  font-size: 12px;
+}
 .reading-shell {
   max-width: 820px;
   margin: auto;
