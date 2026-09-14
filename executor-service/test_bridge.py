@@ -77,6 +77,10 @@ class LeaseBridgeTests(unittest.TestCase):
     def test_artifact_cli_operations_cross_the_actual_fifo_allowlist(self):
         identifier = str(uuid.uuid4())
         for command, operation, arguments in (
+                (['edit', 'private/article.md', '--old', 'old text', '--new', 'new text'],
+                 'edit', {'path': 'private/article.md', 'oldText': 'old text', 'newText': 'new text'}),
+                (['create', 'private/article.md', '--text', 'new text'],
+                 'create', {'path': 'private/article.md', 'text': 'new text'}),
                 (['media', 'link', 'private/cat.png', '--asset', identifier, '--revision', 'a' * 64],
                  'media_link', {'path': 'private/cat.png', 'assetId': identifier, 'revision': 'a' * 64, 'replace': False}),
                 (['media', 'link', 'private/cat.png', '--asset', identifier, '--revision', 'a' * 64, '--replace'],

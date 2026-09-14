@@ -55,7 +55,7 @@ class McpDiscardTests {
     }
 
     @Test
-    void destructiveToolRequiresAnExactCopyAndValidOptionalGeneration() {
+    void destructiveToolRequiresAnExactCopyAndRejectsLegacyOptions() {
         var schema = json.valueToTree(tool.tool().inputSchema());
         assertThat(schema.path("required").toString()).isEqualTo("[\"expectedCopyId\"]");
         assertThat(tool.tool().annotations().destructiveHint()).isTrue();
@@ -65,8 +65,7 @@ class McpDiscardTests {
                 Map.<String, Object>of("expectedCopyId", "new", "expectedGeneration", 1),
                 Map.<String, Object>of("expectedCopyId", id, "expectedGeneration", 1.5),
                 Map.<String, Object>of("expectedCopyId", id, "expectedGeneration", 0),
-                Map.<String, Object>of(
-                        "expectedCopyId", id, "expectedGeneration", RepositoryExecutor.MAX_GENERATION + 1),
+                Map.<String, Object>of("expectedCopyId", id, "expectedGeneration", 42L),
                 Map.<String, Object>of("expectedCopyId", id, "expectedGeneration", 1, "resume", true))) {
             assertThat(body(call(input)).path("code").asString()).isEqualTo("INVALID_INPUT");
         }
@@ -76,31 +75,31 @@ class McpDiscardTests {
     @Test
     void forwardsOnlyTheServerIdentityAndExactDeletionTarget() {
         String id = UUID.randomUUID().toString();
-        var request = new RepositoryExecutor.DiscardRequest(id, 3L);
+        var request = new RepositoryExecutor.DiscardRequest(id);
         when(executor.discard(eq(principal), eq(workspace), eq(request), any()))
                 .thenReturn(new RepositoryExecutor.DiscardResult(id, RepositoryExecutor.DiscardStatus.DISCARDED));
-        var result = call(Map.of("expectedCopyId", id, "expectedGeneration", 3));
+        var result = call(Map.of("expectedCopyId", id));
         assertThat(result.isError()).isFalse();
         assertThat(body(result).path("status").asString()).isEqualTo("DISCARDED");
         assertThat(body(result).path("copyId").asString()).isEqualTo(id);
     }
 
     @Test
-    void forwardsNonRetainedDiscardWithoutInventingAGeneration() {
+    void repeatedDiscardCanConfirmTheCopyIsAbsent() {
         String id = UUID.randomUUID().toString();
-        var request = new RepositoryExecutor.DiscardRequest(id, null);
+        var request = new RepositoryExecutor.DiscardRequest(id);
         when(executor.discard(eq(principal), eq(workspace), eq(request), any()))
-                .thenReturn(new RepositoryExecutor.DiscardResult(id, RepositoryExecutor.DiscardStatus.DISCARDED));
+                .thenReturn(new RepositoryExecutor.DiscardResult(id, RepositoryExecutor.DiscardStatus.ABSENT));
         var result = call(Map.of("expectedCopyId", id));
         assertThat(result.isError()).isFalse();
-        assertThat(body(result).path("status").asString()).isEqualTo("DISCARDED");
+        assertThat(body(result).path("status").asString()).isEqualTo("ABSENT");
     }
 
     @Test
     void revokedExecutionCapabilityNeverReachesDeletion() {
         when(auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY))
                 .thenThrow(new AuthException(AuthException.Code.DENIED));
-        var result = call(Map.of("expectedCopyId", UUID.randomUUID().toString(), "expectedGeneration", 1));
+        var result = call(Map.of("expectedCopyId", UUID.randomUUID().toString()));
         assertThat(body(result).path("code").asString()).isEqualTo("DENIED");
         verifyNoInteractions(executor);
     }
@@ -108,9 +107,8 @@ class McpDiscardTests {
     @Test
     void uncertainDeletionDoesNotClaimThatNoMutationExecuted() {
         when(executor.discard(any(), any(), any(), any()))
-                .thenThrow(
-                        new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, null, false));
-        var result = call(Map.of("expectedCopyId", UUID.randomUUID().toString(), "expectedGeneration", 1));
+                .thenThrow(new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, false));
+        var result = call(Map.of("expectedCopyId", UUID.randomUUID().toString()));
         assertThat(result.isError()).isTrue();
         assertThat(body(result).path("code").asString()).isEqualTo("DISCARD_UNCONFIRMED");
         assertThat(body(result).has("executed")).isFalse();

@@ -28,17 +28,12 @@ final class RememberingExecutorClient {
                 principal,
                 workspace,
                 session,
-                copies.getOrDefault(key, new RepositoryExecutor.CopyRequest(RepositoryExecutor.NEW_COPY, null, false)),
+                copies.getOrDefault(key, new RepositoryExecutor.CopyRequest(RepositoryExecutor.NEW_COPY)),
                 commit,
                 command,
                 timeout,
                 cancellation);
-        copies.put(
-                key,
-                new RepositoryExecutor.CopyRequest(
-                        result.copyId(),
-                        result.retention() == null ? null : result.retention().generation(),
-                        false));
+        copies.put(key, new RepositoryExecutor.CopyRequest(result.copyId()));
         return result;
     }
 

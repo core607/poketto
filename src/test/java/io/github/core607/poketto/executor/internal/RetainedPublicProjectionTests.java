@@ -13,18 +13,18 @@ import tools.jackson.databind.json.JsonMapper;
 class RetainedPublicProjectionTests {
     private static final String BASE = "1".repeat(40);
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private final RetainedCopyRecord.Owner owner = new RetainedCopyRecord.Owner(UUID.randomUUID(), UUID.randomUUID());
+    private final UUID workspace = UUID.randomUUID();
 
     @Test
     void publicCopyRetainsItsOriginalAuthorityAndHostOnlyMapping() {
-        RepositorySnapshotExports.PublicExport projection = projection(owner.workspaceId(), BASE);
-        RetainedCopyRecord record = record(false, projection);
+        RepositorySnapshotExports.PublicExport projection = projection(workspace, BASE);
+        AccountCopyRecord record = record(false, projection);
 
-        RetainedCopyRecord restored = JSON.readValue(JSON.writeValueAsBytes(record), RetainedCopyRecord.class);
+        AccountCopyRecord restored = JSON.readValue(JSON.writeValueAsBytes(record), AccountCopyRecord.class);
 
         assertThat(restored.publicExport()).isEqualTo(projection);
         assertThat(restored.publicExport().authorityCommit()).isEqualTo("2".repeat(40));
-        assertThat(restored.acknowledged().state().originalCommit()).isEqualTo(BASE);
+        assertThat(restored.state().originalCommit()).isEqualTo(BASE);
         assertThat(restored.publicExport().sourcePaths()).containsEntry("article.md", "public/notes/article.md");
     }
 
@@ -34,30 +34,28 @@ class RetainedPublicProjectionTests {
         assertThatThrownBy(() -> record(false, projection(UUID.randomUUID(), BASE)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("workspace");
-        assertThatThrownBy(() -> record(false, projection(owner.workspaceId(), "3".repeat(40))))
+        assertThatThrownBy(() -> record(false, projection(workspace, "3".repeat(40))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("pinned");
-        assertThatThrownBy(() -> record(true, projection(owner.workspaceId(), BASE)))
+        assertThatThrownBy(() -> record(true, projection(workspace, BASE)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("full copy");
     }
 
-    private RetainedCopyRecord record(boolean fullRead, RepositorySnapshotExports.PublicExport projection) {
-        return new RetainedCopyRecord(
+    private AccountCopyRecord record(boolean fullRead, RepositorySnapshotExports.PublicExport projection) {
+        return new AccountCopyRecord(
                 1,
-                owner,
+                new AccountCopyRecord.Owner(UUID.randomUUID(), workspace, fullRead),
                 UUID.randomUUID(),
                 0,
-                1,
-                "a".repeat(64),
-                fullRead,
-                projection,
                 1_800_000_000_000L,
-                new RetainedCopyRecord.Writer(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
-                new RetainedCopyRecord.Checkpoint(
-                        UUID.randomUUID(), "b".repeat(64), 100, new SelectedFileSaves.State(BASE).snapshot()),
+                new AccountCopyRecord.Writer(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
+                AccountCopyRecord.Phase.READY,
                 null,
                 null,
+                new SelectedFileSaves.State(BASE).snapshot(),
+                projection,
                 null);
     }
 

@@ -54,9 +54,11 @@ CONFIG_KEYS=(
     POKETTO_FRONTEND_MEMORY POKETTO_GATEWAY_MEMORY POKETTO_APP_CPUS POKETTO_DB_CPUS POKETTO_FRONTEND_CPUS POKETTO_GATEWAY_CPUS
     POKETTO_ASSETS_CACHE_MAX_BYTES POKETTO_ASSETS_MAX_GRANTS
     POKETTO_EXECUTOR_ENABLED POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST
+    POKETTO_EXECUTOR_METADATA_DIR_HOST
     POKETTO_EXECUTOR_MAX_SESSIONS POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS
     POKETTO_EXECUTOR_MAX_BUNDLE_BYTES POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
+    POKETTO_LOG_FORMAT
 )
 PIN_KEYS=(POKETTO_APP_IMAGE POKETTO_APP_REVISION POKETTO_DB_IMAGE POKETTO_FRONTEND_IMAGE POKETTO_GATEWAY_IMAGE)
 
@@ -389,6 +391,7 @@ load_configuration() {
     [ -f "$ROOT/Caddyfile" ] || fail "missing $ROOT/Caddyfile"
     check_proxy_network
     check_directories
+    check_journal
 
     HTTP_BIND=127.0.0.1
     HTTP_PORT="${POKETTO_HTTP_PORT:-8080}"
@@ -500,10 +503,21 @@ check_free_space() {
         || fail "only ${free_mb:-0} MB free below $path; at least $MIN_FREE_MB MB is required"
 }
 
+# Every service logs through the host journal. Without a journald socket the container runtime
+# refuses to start them, so this is a precondition of the deployment rather than of one service.
+check_journal() {
+    # Only a socket counts, and only where systemd runs at all: a check satisfied by any path
+    # that happens to exist would report a green light for a host that cannot start a single
+    # service. A host without systemd is not diagnosed here; it fails when the containers start,
+    # which is the honest limit of a check the entrance can make from outside.
+    [ -d /run/systemd ] || return 0
+    [ -S /run/systemd/journal/socket ]         || fail "systemd is running but /run/systemd/journal/socket is absent; every service logs through it"
+}
+
 check_executor() {
     [ "${POKETTO_EXECUTOR_ENABLED:-false}" = true ] || return 0
-    local key runtime staging signing mode
-    for key in POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST; do
+    local key runtime staging metadata signing mode
+    for key in POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_METADATA_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST; do
         [[ "${!key:-}" = /* ]] || fail "$key must be an absolute path to an installed host executor prerequisite"
     done
     systemctl is-active --quiet poketto-executor.service \
@@ -512,6 +526,7 @@ check_executor() {
         || fail "the installed executor requires a verified finite aggregate resource pool"
     runtime="$POKETTO_EXECUTOR_RUNTIME_DIR_HOST"
     staging="$POKETTO_EXECUTOR_STAGING_DIR_HOST"
+    metadata="$POKETTO_EXECUTOR_METADATA_DIR_HOST"
     signing="$POKETTO_EXECUTOR_SIGNING_KEY_HOST"
     [ -f "$ROOT/compose.executor.yaml" ] || fail "missing executor Compose overlay"
     [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ] \
@@ -524,6 +539,10 @@ check_executor() {
         || fail "executor socket must be root-owned mode 0660 with the application's group"
     [ -d "$staging" ] && [ ! -L "$staging" ] && [ "$(owner_uid "$staging")" = "$APP_UID" ] \
         || fail "executor staging directory must already exist and be owned by the application uid"
+    [ -d "$metadata" ] && [ ! -L "$metadata" ] && [ "$(owner_uid "$metadata")" = "$APP_UID" ] \
+        || fail "executor metadata directory must already exist and be owned by the application uid"
+    [ "$(stat -c %d "$metadata")" = "$(stat -c %d "$staging")" ] \
+        || fail "executor metadata and exports must share the bounded copy pool"
     [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ] \
         || fail "executor signing key must already exist and be owned by the application uid"
     [ "$(stat -c %a "$signing")" = 600 ] || fail "executor signing key must have mode 0600"

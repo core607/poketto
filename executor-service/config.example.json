@@ -1,6 +1,6 @@
 {
   "runtimeRoot": "/run/poketto-executor",
-  "exportRoot": "/var/lib/poketto/executor-exports",
+  "exportRoot": "/var/lib/poketto-executor/pool/exports",
   "socketPath": "/run/poketto-executor/control.sock",
   "publicKey": "/etc/poketto-executor/public.pem",
   "toolsRoot": "/opt/poketto-executor/tools",
@@ -16,9 +16,9 @@
   "maxRequests": 4096,
   "maxConnections": 32,
   "maxExecutionsPerSession": 1000,
-  "maxSessions": 2,
+  "maxSessions": 4,
   "maxBundleBytes": 134217728,
-  "diskBytes": 536870912,
+  "diskBytes": 4294967296,
   "diskInodes": 32768,
   "temporaryBytes": 8388608,
   "temporaryInodes": 1024,
@@ -27,11 +27,6 @@
   "cpuQuotaPercent": 100,
   "maxTimeoutMillis": 60000,
   "initTimeoutMillis": 60000,
-  "checkpointRoot": "/var/lib/poketto-executor/checkpoints",
-  "maxCheckpoints": 128,
-  "maxCheckpointEntries": 32768,
-  "maxCheckpointBytes": 1073741824,
-  "maxRetainedBytes": 8589934592,
-  "minimumFreeBytes": 1073741824,
-  "retentionSeconds": 86400
+  "copyRoot": "/var/lib/poketto-executor/pool",
+  "poolBytes": 34359738368
 }

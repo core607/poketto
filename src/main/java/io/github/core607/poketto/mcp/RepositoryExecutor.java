@@ -12,38 +12,25 @@ import java.util.UUID;
 /** Execution boundary supplied only by a verified isolated worker; no ordinary subprocess fallback. */
 public interface RepositoryExecutor {
     String NEW_COPY = "new";
-    long MAX_GENERATION = 9_007_199_254_740_991L;
 
-    record CopyRequest(String id, Long generation, boolean resume) {
+    record CopyRequest(String id) {
         public CopyRequest {
             id = requireCopyId(id);
-            if (generation != null && (generation < 1 || generation > MAX_GENERATION)) {
-                throw new IllegalArgumentException("Expected generation must be a positive safe integer");
-            }
-            if (NEW_COPY.equals(id) && (generation != null || resume)) {
-                throw new IllegalArgumentException("New copies cannot carry a generation or request recovery");
-            }
-            if (resume && generation == null) {
-                throw new IllegalArgumentException("Explicit recovery requires the expected generation");
-            }
         }
     }
 
-    record CopyRetention(long generation, long expiresAt, boolean resumed, UUID lastInterruptedCommand) {
+    record CopyRetention(long expiresAt, boolean resumed, UUID lastInterruptedCommand) {
         public CopyRetention {
-            if (generation < 1 || generation > MAX_GENERATION || expiresAt < 1) {
-                throw new IllegalArgumentException("Retained copy requires a bounded generation and expiry");
+            if (expiresAt < 1) {
+                throw new IllegalArgumentException("Copy expiry must be positive");
             }
         }
     }
 
-    record DiscardRequest(String id, Long generation) {
+    record DiscardRequest(String id) {
         public DiscardRequest {
             if (NEW_COPY.equals(requireCopyId(id))) {
                 throw new IllegalArgumentException("Discard requires an existing copy ID");
-            }
-            if (generation != null && (generation < 1 || generation > MAX_GENERATION)) {
-                throw new IllegalArgumentException("Discard requires a positive safe generation");
             }
         }
     }
@@ -56,12 +43,10 @@ public interface RepositoryExecutor {
     record DiscardResult(String copyId, DiscardStatus status) {}
 
     /**
-     * Discards only this subject's exact copy after containing its writer. Non-retained copies omit
-     * generation; retained copies require their last observed generation. Current execution
-     * permission is required, but no content is returned and private-read/publication grants need not
-     * survive. Expired records may be discarded. Busy or stale writers prevent deletion. ABSENT is
-     * idempotent and reveals no other owner's copy. Remote Git writes are never undone. Physical
-     * checkpoint cleanup may finish later; an unconfirmed response permits retrying this exact request.
+     * Discards the account's exact copy after containing its writer. Current execution permission is
+     * required; no content is returned and private-read/publication grants need not survive.
+     * Busy writers prevent deletion. ABSENT is idempotent and reveals no other account's copy.
+     * Remote Git writes are never undone. Retry an unconfirmed discard with the same copy ID.
      */
     DiscardResult discard(
             AuthPrincipal principal, WorkspaceId workspace, DiscardRequest request, ExecutionCancellation cancellation);
@@ -77,16 +62,13 @@ public interface RepositoryExecutor {
     }
 
     /**
-     * The session id comes from the server SDK, after principal/workspace binding validation.
-     * expectedCopy.id is "new" only for explicit initial admission; otherwise it must match the
-     * acknowledged working-copy ID. Retained copies also require their last observed generation.
-     * Explicit resume transfers that exact copy before running this command in the same request.
-     * A generation mismatch or admission refusal never executes this command; an earlier command
-     * may still have partially completed. Retention metadata reports fixed expiry and interruption.
-     * Omitted commits retain this execution session's pinned commit. Implementations own command,
-     * output, process-tree, filesystem, network, cancellation, and lease limits.
-     * Worker lifecycle synchronization must prevent process creation after cancellation and make
-     * every registered termination callback stop the complete command process tree.
+     * The transport ID comes from the server SDK after principal/workspace validation. The account
+     * and workspace own the copy; transports do not own its lifetime. "new" opens the default copy,
+     * creating it only when absent. An explicit ID must match before this command can execute.
+     * Reconnection restores the original baseline and local work automatically. Retention reports
+     * renewed expiry and any earlier interrupted command; inspect uncertain writes before retrying.
+     * Omitted commits keep the pinned baseline. Implementations own process-tree, filesystem,
+     * network, cancellation, output and resource limits, and prevent process creation after cancellation.
      */
     ExecutionResult execute(
             AuthPrincipal principal,

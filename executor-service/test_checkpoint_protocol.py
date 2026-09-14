@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+import uuid
 
 from checkpoints import CheckpointStore
 from worker import SystemdBackend
@@ -173,7 +174,7 @@ class CheckpointProtocolTests(unittest.TestCase):
         self.service.sweep()
         self.assertNotIn(self.identity['leaseId'], self.service.sessions)
         reopened = self.send(self.payload('OPEN', {'exportId': fixtures.uid(), 'bundleSha256': 'b' * 64,
-            'bundleBytes': 80, 'commit': 'c' * 40}))
+            'bundleBytes': 80, 'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full'}))
         self.assertEqual('SESSION_CLOSED', reopened['code'])
 
     def test_running_source_is_cancelled_but_no_new_writer_is_admitted_until_contained(self):

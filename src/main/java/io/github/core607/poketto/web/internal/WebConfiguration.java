@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
@@ -37,6 +38,18 @@ class WebConfiguration {
             PublicContentSnapshots snapshots, WorkspacePublications publications, AssetService assets) {
         return new PublicDiscovery(
                 publications, new WebsiteContentSnapshots(snapshots, publications), assets, Clock.systemUTC());
+    }
+
+    // Ordered ahead of every other filter so a request rejected by admission, origin, or
+    // authentication still leaves a record. Asynchronous support is required: the MCP transport
+    // completes on a dispatch thread.
+    @Bean
+    FilterRegistrationBean<RequestDiagnosticsFilter> requestDiagnosticsFilter() {
+        var registration = new FilterRegistrationBean<>(new RequestDiagnosticsFilter());
+        registration.setUrlPatterns(List.of("/*"));
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.setAsyncSupported(true);
+        return registration;
     }
 
     @Bean

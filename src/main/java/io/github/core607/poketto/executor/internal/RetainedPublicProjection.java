@@ -5,13 +5,14 @@ import static io.github.core607.poketto.executor.internal.ProtocolValues.require
 import io.github.core607.poketto.content.RepositoryPaths;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Host-owned publication proof must survive with the worker's public projection. */
 final class RetainedPublicProjection {
     private RetainedPublicProjection() {}
 
     static void validate(
-            RetainedCopyRecord.Owner owner,
+            UUID workspaceId,
             boolean fullRead,
             RepositorySnapshotExports.PublicExport projection,
             String originalCommit) {
@@ -20,10 +21,7 @@ final class RetainedPublicProjection {
             return;
         }
         Objects.requireNonNull(projection, "public copy requires its publication proof");
-        require(
-                owner.workspaceId().equals(projection.workspaceId().value()),
-                "public projection",
-                "must match workspace");
+        require(workspaceId.equals(projection.workspaceId().value()), "public projection", "must match workspace");
         var export = projection.export();
         Objects.requireNonNull(export.exportId(), "public export identity must be present");
         require(originalCommit.equals(export.commit()), "public projection", "must match the pinned worker commit");

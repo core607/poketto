@@ -1,0 +1,35 @@
+{
+  "result": "PASS",
+  "applicationCommit": "647b6426762b2d6bea4cd1a0946f288f90861ffe",
+  "source": "real-auth-PG-HTTP-MCP-native-SRT",
+  "modelDriven": false,
+  "production": false,
+  "runtimeManifestSha256": "00635ac5599529cf382be3010aecadeb8577e99c28b4109e08789249de00f0ff",
+  "controllerSha256": "b4809b9ccefa595d6a6f231f36d521063fa34a91fa2b230da8e9e9a750a16441",
+  "clientSha256": "b67c3f2556042c22cc01df8d077f6afb7b805cad8aba4db70c8966fde0861a05",
+  "httpSupportSha256": "0c32050c6278520f5e1f3c03adcdfcf5695e322dd63bb5879fd6b82808290e1f",
+  "workerSources": {
+    "disk_pool.py": "83b70fe7f24d0b94978a8fcb26d9cd59daf1fb6c5da9c2ceb349d731b78f01d9",
+    "worker.py": "1573cf54ace78aaa124ad48c181ebe93474ba03a6e85544cb0062ed242452282",
+    "launcher.py": "3d6c5cc7a20f9416aa37be35cc9a54e56d5a93fae52de5f1cab768c3f6f048ff",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "ca7b017f7c7d0c72406d75764579f6f8e8132537f9af862aebc5001608c57a67",
+    "cli.py": "561c3c8361d7b28d341c0a9ddbe167c96cd301d7d4838d23502fcb864e4af5b3",
+    "session_files.py": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+    "binary_capture.py": "6a11b936bc8a29da06788d33a9e7df7d0298b226b32c3229af62ea03cbec2d53",
+    "materialize.py": "77bdeaa284828f665d584e549b362ecc427d441f09f903316c2c7dcd64054ceb",
+    "artifacts.py": "2c95ed051189f500e40f834cf52f2de927ac13bb41acc4c827ab620d5da073bd",
+    "checkpoints.py": "53bb378eb042325bae301742dc10910b04c2497149e5257e67530206953fe11e",
+    "checkpoint_tree.py": "106ccf35c23c183f791a968b94ce158801a24c9de6bc2eff67a89457d6542d95"
+  },
+  "poolBytes": 536870912,
+  "copyBytes": 67108864,
+  "tests": [
+    "account-http-new-transports-and-grants-share-work-without-private-scope-escalation",
+    "account-http-timeout-preserves-work-and-save-is-visible-through-authoritative-readback",
+    "account-http-public-copy-keeps-its-scope-when-accessed-by-a-full-grant",
+    "account-http-revocation-denies-the-grant-without-deleting-account-work",
+    "account-http-shared-disposal-clears-only-local-work-and-retains-saved-authority"
+  ],
+  "cleanup": "PASS"
+}

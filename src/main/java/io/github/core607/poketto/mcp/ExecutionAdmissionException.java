@@ -6,7 +6,6 @@ import java.util.Objects;
 public final class ExecutionAdmissionException extends RuntimeException {
     public enum Reason {
         RECOVERY_REQUIRED,
-        GENERATION_MISMATCH,
         MISSING_COPY,
         EXPIRED,
         BUSY,
@@ -15,33 +14,22 @@ public final class ExecutionAdmissionException extends RuntimeException {
     }
 
     private final Reason reason;
-    private final Long currentGeneration;
     private final boolean recoveryAvailable;
 
-    public ExecutionAdmissionException(Reason reason, Long currentGeneration, boolean recoveryAvailable) {
-        this(reason, currentGeneration, recoveryAvailable, null);
+    public ExecutionAdmissionException(Reason reason, boolean recoveryAvailable) {
+        this(reason, recoveryAvailable, null);
     }
 
-    public ExecutionAdmissionException(
-            Reason reason, Long currentGeneration, boolean recoveryAvailable, Throwable cause) {
+    public ExecutionAdmissionException(Reason reason, boolean recoveryAvailable, Throwable cause) {
         super(
                 "Execution admission refused: " + Objects.requireNonNull(reason, "admission reason must be present"),
                 cause);
-        if (currentGeneration != null
-                && (currentGeneration < 1 || currentGeneration > RepositoryExecutor.MAX_GENERATION)) {
-            throw new IllegalArgumentException("Current generation must be a positive safe integer");
-        }
         this.reason = reason;
-        this.currentGeneration = currentGeneration;
         this.recoveryAvailable = recoveryAvailable;
     }
 
     public Reason reason() {
         return reason;
-    }
-
-    public Long currentGeneration() {
-        return currentGeneration;
     }
 
     public boolean recoveryAvailable() {

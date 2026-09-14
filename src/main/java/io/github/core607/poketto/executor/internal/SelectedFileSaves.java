@@ -216,7 +216,7 @@ final class SelectedFileSaves {
     static final class State {
         private final String originalCommit;
         private final SaveStateCheckpoint checkpoint;
-        private final RetainedOriginalLookup originals;
+        private final OriginalFileLookup originals;
         private final Map<String, String> baselines = new HashMap<>();
         private final Map<String, RetainedFileBaseline> fileBaselines = new HashMap<>();
         String baseCommit;
@@ -235,7 +235,7 @@ final class SelectedFileSaves {
             this(baseCommit, checkpoint, null);
         }
 
-        private State(String baseCommit, SaveStateCheckpoint checkpoint, RetainedOriginalLookup originals) {
+        private State(String baseCommit, SaveStateCheckpoint checkpoint, OriginalFileLookup originals) {
             this.originalCommit = baseCommit;
             this.baseCommit = baseCommit;
             this.checkpoint = Objects.requireNonNull(checkpoint, "save checkpoint must be present");
@@ -295,8 +295,7 @@ final class SelectedFileSaves {
             return restore(snapshot, checkpoint, null);
         }
 
-        static State restore(
-                RetainedSaveState snapshot, SaveStateCheckpoint checkpoint, RetainedOriginalLookup originals) {
+        static State restore(RetainedSaveState snapshot, SaveStateCheckpoint checkpoint, OriginalFileLookup originals) {
             var state = new State(snapshot.originalCommit(), checkpoint, originals);
             state.baseCommit = snapshot.baseCommit();
             state.baselines.putAll(snapshot.baselines());

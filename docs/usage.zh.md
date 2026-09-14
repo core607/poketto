@@ -126,13 +126,15 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 ## MCP 与隔离执行
 
+使用 `poketto edit PATH --old TEXT --new TEXT` 替换已有本地文本文件中唯一、完全匹配的一段原文。原文不存在或匹配多处时拒绝修改。`poketto create PATH --text TEXT` 仅在目标路径不存在时新建本地文本文件。这两个命令都不改变远端 Git 或发布状态，正式保存仍需通过授权的 `poketto save`。写入前会再次核对捕获的本地内容；普通 shell 写入仍可使用，但不具备这些编辑前置检查。
+
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
-`repo_exec` 必须携带 `expectedCopyId`：明确新建副本时使用 `"new"`，此后每次调用都传回结果中的 `copyId`，重连后也一样。`SESSION_REPLACED` 表示本次命令在执行前被拒绝；根据原因和 `newCopyAllowed` 字段处理，不要盲目重试写入。确认旧命令已退出、租约已释放后，可以在同一 MCP 会话里显式传 `"new"` 开始不同的副本。管理员开启保留执行模式后（默认关闭），结果还会包含 `retention.generation` 和固定到期时间；后续调用须将该代次作为 `expectedGeneration` 传回。重连后，携带同一 ID 和代次，显式设置 `resume: true`，并使用只读命令检查恢复状态。`EXECUTION_REFUSED` 只表示本次请求未执行，先前中断的工作仍可能部分完成。重试写入前应核对拒绝原因、当前代次、`retention.lastInterruptedCommand` 和 `poketto status`。[副本身份契约](../executor-service/README.md#working-copy-identity)定义完整规则与尚未完成的验收范围。
+`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回结果中的 `copyId`。重连会自动接回原副本和原始基线，无需代次或恢复标志。关闭 MCP 连接会保留副本。每次成功且获授权的副本操作都会将闲置期限延长为七天，期限由 `retention.expiresAt` 返回。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示本次命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入。不要重复执行结果不确定的写入：先用同一副本 ID 执行只读检查，核对 `retention.lastInterruptedCommand` 和 `poketto status`，远端保存待确认时再使用 `poketto recover`。[副本身份契约](../executor-service/README.md#working-copy-identity)说明执行边界。
 
 `EXECUTION_UNCONFIRMED` 表示已尝试执行保留命令，但未能确认完成。响应包含实际 `copyId`、`currentGeneration`、固定 `expiresAt`、`mayHaveExecuted: true` 和恢复资格。本地修改与远端写入都可能部分完成。保留这些身份信息，先显式恢复并检查状态，再决定是否重试写入；此结果绝不表示命令没有执行。
 
-要丢弃本地工作，调用 `repo_discard` 并传入准确的 `expectedCopyId`。未开启保留时省略 `expectedGeneration`；保留副本仍须传入最新代次。此操作要求当前执行权限和副本归属，内容读取权限收回不妨碍清理。忙碌副本会被拒绝；确认进程与租约已停止后才移除副本绑定，保留副本还会校验写入者并删除恢复元数据。`DISCARDED` 或 `ABSENT` 确认目标副本已不存在；当前传输没有其他活副本时，随后可用 `new` 重开。未确认的响应允许用同一 ID 和代次重试，但不能据此认定工作仍然存在。丢弃不会撤销远端 Git 提交。
+要丢弃本地工作，调用 `repo_discard` 并传入准确的 `expectedCopyId`。此操作要求当前执行权限和副本归属，内容读取权限收回不妨碍清理。忙碌副本会被拒绝。删除前会记录关闭意图，进程中断后可以继续收尾；确认工作进程已停止后才移除本地文件和宿主元数据。`DISCARDED` 或 `ABSENT` 确认目标副本已不存在，随后可用 `new` 创建另一份副本。未确认的关闭操作只能用同一 ID 重试。丢弃不会撤销远端 Git 提交。
 
 命令超时后，执行器确认完整进程树已停止，再保留当前副本。响应会报告超时；之前的修改和本条命令已完成的部分仍可通过同一 `copyId` 读取。下一条命令使用新的 `/tmp`。资源超限和生命周期取消仍会关闭副本。未开启保留时，这不保证副本能跨传输过期、应用部署或 worker 丢失而恢复。
 
@@ -142,7 +144,7 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
-完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。即使共用 key，每个客户端也有独立目录。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
+完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。同一账号的授权客户端在同一空间和读取范围内共享磁盘副本；完整源码和公开投影仍然隔离。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
 
 `poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。`poketto media link PATH --asset ID --revision REV` 将已经上传的原件接入该本地索引，不传输原件字节。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。
 
@@ -169,8 +171,39 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
 
-对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像。配置受保护的更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing` 与 transfer 模式；Compose 文件、环境配置和依赖服务继续由运维配置维护。
+对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像。配置受保护的更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境配置和依赖服务继续由运维配置维护。
 
 Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](../notes/implemented/2026-09-05-blog-stack-delivery.md)。
 
 把 `POKETTO_NETWORK_SUBNET` 设置为未被占用、至少含 16 个地址的 RFC1918 IPv4 CIDR，把 `POKETTO_NETWORK_DYNAMIC_RANGE` 设置为规范且严格包含于主网、至少含八个地址的动态子池。把 `POKETTO_GATEWAY_INTERNAL_IP` 设置为池外的 Caddy 固定地址，排除主网的网络地址、供网桥使用的首个可用地址和广播地址。部署会在启动容器前拒绝无效范围；Docker 只从动态池为其他服务分配地址。只有该部署启用 Tomcat 转发解析，且仅信任网关的 `/32`；Caddy 重建客户端地址、协议和主机头，并在转交 Spring 前移除 `X-Forwarded-Port`。其它入口显式默认为 `server.forward-headers-strategy=none`。`./gradlew proxyForwardingCheck` 需要 Docker 和 Python 3.10+，验证真实 Compose 地址分配、客户端独立登录限流与共享账号限流；`check` 和 CI 必须执行它。
+
+## 诊断
+
+每个请求和每次 MCP 工具调用都会留下一条记录。请求记录写明方法、路由、状态码、耗时、调用方类型与主体，路由指定了空间时还写明空间。工具记录写明工具名、耗时，以及调用方收到的同一个结果码，因此报上来的 `SESSION_REPLACED` 或 `EXECUTION_REFUSED` 可以直接查到，不必反推。被拒绝的请求另外记下告知调用方的状态码与标题。
+
+记录带有一个只存在于服务端的请求标识，用于把同一次请求产生的多条记录串起来，不会返回给调用方：外部无法兑换的标识没有诊断价值，反而会让客户端自行猜测它的用途。核对故障请改用空间、调用方和时间。
+
+不会进入记录的内容：请求体，因为其中带有仓库令牌和密码；MCP 工具参数，因为其中带有命令与正文；查询字符串与仓库文件路径；以及文档正文。管理路由会缩减为稳定形状，空间标识单独成字段，路由中不透明的路径段也会折叠：UUID 变成 `:id`，较长的 URL 安全字符串变成 `:opaque`。图片授权凭证正是走在路径上、拿到就能取该图，因此不会进入记录；公开站点的 slug 按原样保留。容器健康探测完全不记录。
+
+决定权限归属的变更另有一套记录，统一使用 `poketto.audit` 这个日志名，每条写明动作（例如 `member.access.granted`、`key.revoked`）、做出决定的操作者、被操作的对象，以及变更后实际生效的权限。停用或降级记为 `member.access.revoked`，不会写成授予。记录在变更提交之后才写。认证结果也记在这里，因此凭证无效和授权不足可以区分开。登录名、密码、令牌和邀请码都不会出现；拒绝只写本服务自己的固定原因，不写提交上来的值。
+
+随仓库提供的部署默认每条记录输出为一行 JSON，字段可直接寻址，异常堆栈收在记录内部而不是散成许多行。格式由 `POKETTO_LOG_FORMAT` 选择，默认 `ecs`。不经该部署的本地开发默认仍是可读格式。
+
+各服务统一写入宿主机的 journal。容器日志随容器一同消失，而本部署在每个通过验证的提交上都会替换容器，出事前那段记录本来会一起没掉；journal 里也已经有执行服务自己的记录，应用与沙箱因此落在同一条时间线上。journald 的默认上限是文件系统的一个比例而不是选定的大小，所以要明确给出预算：
+
+```sh
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]
+Storage=persistent
+SystemMaxUse=1G
+MaxRetentionSec=30day
+RateLimitIntervalSec=0
+'   | sudo tee /etc/systemd/journald.conf.d/poketto.conf
+sudo systemctl restart systemd-journald
+```
+
+网关只记录到不了应用的那部分请求，访问日志和承载反向代理故障的进程日志都记。查询字符串会从记录中删除，因为仓库路径走在那里；图片地址整条跳过，因为它本身就是取图凭证；凭证类请求头连同 Referer 一并删除，后者带着管理页面自身的路径；下载响应里指明文件名的 Content-Disposition 也一并删除。关闭限流是有意为之：记录被静默丢弃会让阅读者得出"什么都没发生"的结论，比查得慢危险。查看单个服务用 `journalctl CONTAINER_NAME=<容器名> -o cat`，得到的就是记录本身；启用结构化输出后再接 `| jq`。筛安全历史用 `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`。
+
+运维自行维护的 Compose 实例不会通过镜像交付收到这些文件。要在那里生效，需要修改该实例自己的 Compose 配置和网关文件：把各服务的日志驱动改为 `journald`、为应用设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`，并加上网关访问日志以及跳过图片地址的规则——那类地址本身就是取图凭证。在此之前服务照常运行、照常记录，只是格式仍是便于阅读的那种，且日志会在重新部署时被丢弃。
+
+尚未覆盖的部分见[诊断记录](../notes/implemented/2026-09-14-service-diagnostics.md)。

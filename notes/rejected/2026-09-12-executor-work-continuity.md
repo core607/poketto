@@ -2,6 +2,8 @@
 
 Date: 2026-09-12
 
+This archived-checkpoint design is superseded by [account working copies](../implemented/2026-09-14-account-working-copies.md). Its acknowledged-work, original-baseline and uncertain-write guarantees are retained in that implementation. Transport-owned generations and full-copy capture/restore are no longer the target. Earlier evidence below remains tied to the recorded versions.
+
 ## Contract and scope
 
 Work retained by a successfully acknowledged command must be recoverable. An interrupted command must explicitly report that it may have partially completed.
@@ -10,7 +12,7 @@ Acknowledgement is distinct from exit code zero or a successful remote save. A n
 
 This proposal changes the disposable-session lifecycle described by [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md) and the [worker reference](../../executor-service/README.md). It does not change remote Git authority: retained local edits are neither a save nor publication. Until the implementation and its failure tests land, expiry and restart can still discard unsaved work.
 
-The broader [CodeAct workspace proposal](2026-09-09-codeact-workspaces.md) retains its tooling and isolation scope. [Session artifacts](../implemented/2026-09-10-session-artifacts.md) retain their separate access, expiry and byte-delivery contract. Neither record is retired by this proposal. [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) retain membership, public authoring and discovery decisions.
+The broader [CodeAct workspace proposal](../proposed/2026-09-09-codeact-workspaces.md) retains its tooling and isolation scope. [Session artifacts](../implemented/2026-09-10-session-artifacts.md) retain their separate access, expiry and byte-delivery contract. Neither record is retired by this proposal. [Multi-user workspaces](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) retain membership, public authoring and discovery decisions.
 
 The [working-copy identity gate](../implemented/2026-09-12-executor-copy-identity.md) implements explicit admission and pre-execution rejection. Durable recovery and the remaining resource changes below remain proposed.
 

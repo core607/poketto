@@ -8,7 +8,7 @@ package io.github.core607.poketto.executor.internal;
  */
 final class WorkerUnavailableException extends IllegalStateException {
     private static final String ADVICE =
-            "Isolated worker unavailable; execution was not confirmed. Start a new MCP session before retrying.";
+            "Isolated worker unavailable; execution was not confirmed. Inspect the working copy before retrying writes.";
 
     WorkerUnavailableException() {
         super(ADVICE);

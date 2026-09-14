@@ -29,6 +29,10 @@ services:
       POKETTO_REPOSITORY_USERNAME: "${POKETTO_REPOSITORY_USERNAME:?POKETTO_REPOSITORY_USERNAME is required}"
       POKETTO_REPOSITORY_PASSWORD: "${POKETTO_REPOSITORY_PASSWORD:?POKETTO_REPOSITORY_PASSWORD is required}"
       POKETTO_REPOSITORY_CREDENTIAL_KEY: "${POKETTO_REPOSITORY_CREDENTIAL_KEY:-}"
+      # One JSON record per line is the point of collecting them; a reader filters fields rather
+      # than parsing a sentence. POKETTO_LOG_FORMAT selects the format for a deployment that wants
+      # a different one; whether an empty value falls back or refuses to start is untested.
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT-ecs}"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError"
     ports:
       - "127.0.0.1:${POKETTO_HTTP_PORT:-8080}:8080"
@@ -44,11 +48,15 @@ services:
     cap_drop:
       - ALL
     stop_grace_period: 30s
+    # The journal outlives a container, and this deployment replaces containers on every verified
+    # commit, so the default driver discarded the record of whatever went wrong just before. It is
+    # also where the host executor already writes, which puts the application and its sandbox on
+    # one timeline. Retention and rotation belong to journald; see the deployment documentation for
+    # the limits an operator sets.
     logging:
-      driver: json-file
+      driver: journald
       options:
-        max-size: 10m
-        max-file: "5"
+        tag: "poketto-{{.Name}}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 15s
@@ -73,10 +81,9 @@ services:
     shm_size: 128m
     stop_grace_period: 30s
     logging:
-      driver: json-file
+      driver: journald
       options:
-        max-size: 10m
-        max-file: "5"
+        tag: "poketto-{{.Name}}"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
@@ -107,10 +114,9 @@ services:
       - ALL
     stop_grace_period: 20s
     logging:
-      driver: json-file
+      driver: journald
       options:
-        max-size: 10m
-        max-file: "3"
+        tag: "poketto-{{.Name}}"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/admin', {signal: AbortSignal.timeout(10000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
@@ -152,10 +158,9 @@ services:
       - NET_BIND_SERVICE
     stop_grace_period: 20s
     logging:
-      driver: json-file
+      driver: journald
       options:
-        max-size: 10m
-        max-file: "3"
+        tag: "poketto-{{.Name}}"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
       interval: 15s

@@ -2,11 +2,13 @@
 
 Date: 2026-09-12
 
+[Account working copies](2026-09-14-account-working-copies.md) supersedes transport ownership and fresh-copy admission in this decision. Explicit copy identity, pre-execution replacement detection and authorization boundaries remain required.
+
 ## Decision
 
 Every `repo_exec` request includes `expectedCopyId`. The literal `new` explicitly admits a fresh copy when this MCP transport has no live or unconfirmed copy. Other values must match the opaque UUID returned as `copyId` by an earlier command result. `poketto status` returns the same ID. The ID is separate from the pinned Git commit, worker lease and transport session.
 
-This is the admission guard in [executor work continuity](../proposed/2026-09-12-executor-work-continuity.md), not its durable-recovery implementation. It extends the [CodeAct entrance](2026-09-10-codeact-mcp-entrance.md). Existing expiry, cancellation and worker-loss behavior can still discard unsaved work. A normal nonzero exit returns the copy ID, so the caller can continue using that copy; it does not acknowledge a remote save or promise recovery after closure.
+This is the admission guard in [executor work continuity](../rejected/2026-09-12-executor-work-continuity.md), not its durable-recovery implementation. It extends the [CodeAct entrance](2026-09-10-codeact-mcp-entrance.md). Existing expiry, cancellation and worker-loss behavior can still discard unsaved work. A normal nonzero exit returns the copy ID, so the caller can continue using that copy; it does not acknowledge a remote save or promise recovery after closure.
 
 ## Failure and authority boundaries
 

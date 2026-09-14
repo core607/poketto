@@ -46,53 +46,6 @@ final class WorkerResponses {
 
     private WorkerResponses() {}
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record RetentionHandshake(boolean ok, int checkpointProtocol) {
-        RetentionHandshake {
-            require(ok, "ok", "must be true for a handshake");
-            require(checkpointProtocol == 1, "checkpointProtocol", "must be 1 for retained execution");
-        }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record CheckpointDescriptor(String checkpointId, String sha256, long bytes, long expiresAt) {
-        CheckpointDescriptor {
-            checkpointId = ProtocolValues.uuid(checkpointId, "checkpointId");
-            sha256 = ProtocolValues.hex(sha256, 64, "sha256");
-            ProtocolValues.inRange(bytes, 1, 1024L * 1024 * 1024, "bytes");
-            ProtocolValues.inRange(expiresAt, 1, RetainedCopyRecord.MAX_VERSION, "expiresAt");
-        }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record CheckpointReply(
-            boolean ok,
-            String leaseId,
-            String commit,
-            String state,
-            String executionId,
-            CheckpointDescriptor checkpoint) {
-        CheckpointReply {
-            require(ok, "ok", "must be true for a checkpoint");
-            leaseId = ProtocolValues.uuid(leaseId, "leaseId");
-            commit = ProtocolValues.hex(commit, 40, "commit");
-            require("READY".equals(state) || "RUNNING".equals(state), "state", "must be READY or RUNNING");
-            require(checkpoint != null, "checkpoint", "must be present");
-            if (state.equals("RUNNING")) {
-                executionId = ProtocolValues.uuid(executionId, "executionId");
-            } else {
-                require(executionId == null, "executionId", "must be absent for a completed command checkpoint");
-            }
-        }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record CheckpointRemoved(boolean ok, boolean removed) {
-        CheckpointRemoved {
-            require(ok && removed, "checkpoint removal", "must be acknowledged");
-        }
-    }
-
     /**
      * Decoding happens after parsing succeeded, so it is the one step where a broken worker could
      * still be reported as a caller mistake. It leaves the same way an unparseable frame does.
@@ -127,6 +80,7 @@ final class WorkerResponses {
             int artifactProtocol,
             int moveProtocol,
             int exportProtocol,
+            int diskCopyProtocol,
             String workerBootId,
             int leaseSeconds,
             int renewAfterSeconds) {
@@ -139,6 +93,7 @@ final class WorkerResponses {
             require(artifactProtocol == 1, "artifactProtocol", "must be 1");
             require(moveProtocol == 1, "moveProtocol", "must be 1");
             require(exportProtocol == 1, "exportProtocol", "must be 1");
+            require(diskCopyProtocol == 1, "diskCopyProtocol", "must be 1");
             require(leaseSeconds >= 10 && leaseSeconds <= 3600, "leaseSeconds", "must be between 10 and 3600");
             // Renewing three times within one lease leaves room for two lost attempts.
             require(

@@ -96,6 +96,13 @@ def main():
                     'Use python3 for Python scripts.')
     commands = parser.add_subparsers(dest='operation', required=True)
     commands.add_parser('status', help='Read the working-copy ID, host-owned baseline and scope')
+    edit = commands.add_parser('edit', help='Replace one exact text match in a local file; does not save or publish')
+    edit.add_argument('path')
+    edit.add_argument('--old', required=True, help='Exact nonempty original text; ambiguous or stale matches fail')
+    edit.add_argument('--new', required=True, help='Replacement text; an empty value deletes the matched text')
+    create = commands.add_parser('create', help='Create a local text file only when its path is absent; does not save or publish')
+    create.add_argument('path')
+    create.add_argument('--text', required=True)
     recover = commands.add_parser('recover', help='Recover a pending save or move using its retained commit and local completion receipt')
     recover.add_argument('--skip-local', action='store_true', help='For a confirmed move, keep local files untouched and release pending installation; sync affected files before saving')
     sync = commands.add_parser('sync', help='Merge one current remote text file into local edits without saving it')
@@ -107,7 +114,7 @@ def main():
     exported.add_argument('paths', nargs='+', help='Selected files or folders; . selects the visible workspace')
     exported.add_argument('--output', required=True, help='Repository-relative ZIP destination; a different existing file is preserved')
     exported.add_argument('--public', action='store_true', dest='public_only', help='Use approved public content only; public-read sessions always use this scope')
-    artifacts = commands.add_parser('artifact', help='Create or remove an expiring artifact for this MCP session')
+    artifacts = commands.add_parser('artifact', help='Create or remove an expiring artifact for the current execution lease')
     artifact_commands = artifacts.add_subparsers(dest='artifact_operation', required=True)
     created = artifact_commands.add_parser('create', help='Capture a local file for get_artifact; does not save or publish')
     created.add_argument('path')
@@ -142,6 +149,10 @@ def main():
     save.add_argument('--delete', action='append', default=[])
     args = parser.parse_args()
     arguments = {'writes': args.paths, 'deletes': args.delete} if args.operation == 'save' else {}
+    if args.operation == 'edit':
+        arguments = {'path': args.path, 'oldText': args.old, 'newText': args.new}
+    if args.operation == 'create':
+        arguments = {'path': args.path, 'text': args.text}
     if args.operation == 'sync':
         arguments = {'path': args.path}
     if args.operation == 'recover' and args.skip_local:
