@@ -4,9 +4,9 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user administration contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires restorable space, tab, folder and document navigation with private creation defaults. The workspace dashboard already retains space and tab and confirms discarded edits, but the editor only consumes the initial document path. Opening or moving a document does not update that URL, and a directory can only be expanded rather than selected as a creation context.
+The [multi-user administration contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires restorable space, tab, folder and document navigation with private creation defaults. The workspace dashboard retained space and tab and confirmed discarded edits, but the editor only consumed the initial document path. Opening or moving a document did not update that URL, and a directory could only be expanded rather than selected as a creation context.
 
-## Proposal
+## Decision
 
 The dashboard owns updates to `workspace`, `tab`, `folder` and `path` in the administration URL. Opening a document or selecting a folder adds a navigation entry when the location changes. Initial restoration and a successful save or move normalize the current entry. Switching spaces clears the previous document and folder; tab changes preserve them. The dashboard confirms Back, Forward, tab and workspace changes. Its history entries retain an index so cancelling traversal returns to the accepted entry without overwriting the destination or losing Forward history. An editor that has unmounted cannot change the new workspace's URL when an old request finishes.
 
@@ -26,11 +26,10 @@ Repeating Unicode case folding in the browser would introduce a second collision
 
 This slice does not add repository-wide filename search or an authoritative public-page availability link. Those accepted requirements need their own bounded, authorized reads and remain part of the parent proposal.
 
-## Acceptance
+## Verification
 
-- Open documents and selected folders restore through refresh and Back/Forward; switching spaces clears old locations and never accepts a late response into the new space's URL.
-- Dirty confirmations protect document changes, new drafts, tabs, spaces and history traversal. Cancelling Back or Forward retains both history destinations; selecting a folder retains the existing draft.
-- Creation displays its private destination, refuses exact existing paths and invalid names, and writes only after Save. Save rejects case-fold or normalization collisions without losing the draft. New folder persists a normal `index.md`; authorized advanced paths remain usable.
-- A real Spring/PostgreSQL/Next/Caddy fixture demonstrates these flows across two workspaces, including failed operations, keyboard navigation and a mobile layout.
+Focused frontend tests cover independent folder/document selection, save and move updates, stale editor responses, dirty Back/Forward cancellation, and repeated traversal during one confirmation. Creation tests verify private destinations, exact duplicate refusal, a new folder's ordinary `index.md` appearing only after Save, and retention of a draft when the server rejects a name collision. The complete frontend check includes type checking, formatting and the production build.
+
+A real Spring/PostgreSQL/Next/Caddy fixture with two independent workspaces demonstrates directory/document navigation, cancelled Back/Forward without lost history, switching spaces, and a new note prepared below `private/` from a selected public category before its explicit save. Two browser tabs save case-fold-equivalent names and show the rejected tab retaining its body. The mobile run verifies the creation form's focus and no horizontal overflow. This evidence uses disposable local repositories; it does not establish production HTTPS or external MCP behavior.
 
 The same-topic audit retains the [browser interface](../implemented/2026-09-06-blog-browser-interface.md), [authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md), [workspace routing](../implemented/2026-09-11-workspace-browser-and-mcp-routing.md), [directory navigation](../implemented/2026-09-08-repository-directory-navigation.md), [atomic moves](../implemented/2026-09-09-atomic-content-moves.md), [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md), and [member permissions](../implemented/2026-09-12-member-content-permissions.md) as independent owners of rendering, reads, writes, defaults and authorization. The parent proposal remains active for its outstanding features; no note is superseded or archived by this slice.
