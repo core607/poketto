@@ -1,0 +1,45 @@
+{
+  "source": "real-auth-PG-HTTP-MCP-native-SRT",
+  "production": false,
+  "beforeApplicationCommit": "f7b62f2b71a2d0597e7e04b2fe0c52ed82b0a3c8",
+  "afterApplicationCommit": "0c16042ffa8ac86cc701ffab00f80f678731cbac",
+  "beforeRuntimeManifestSha256": "3c77db0b3754ed2ef3e666e0a0363de8d0895c21a7a86ba4b774b23f1f0eb6dd",
+  "afterRuntimeManifestSha256": "a0cc147e8f486512d0c1e9bbe9667c9ec079d9919386f3efafb94f615ca62efd",
+  "workload": {
+    "addedSeedFiles": 500,
+    "syncPaths": 611,
+    "textPerSeedFile": "One numbered heading followed by 70 lines of baseline text.",
+    "remoteChange": "One additional text file, written through the authenticated browser API after copy creation.",
+    "localChange": "One unsaved local-only draft, checked after synchronization.",
+    "poolBytes": 536870912,
+    "copyBytes": 67108864
+  },
+  "samples": [
+    {
+      "operation": "initialize-500-small-files",
+      "beforeSeconds": 3.891,
+      "afterSeconds": 4.185
+    },
+    {
+      "operation": "sync-one-addition-among-500-files",
+      "beforeSeconds": 32.152,
+      "afterSeconds": 5.595
+    },
+    {
+      "operation": "inspect-after-sync",
+      "beforeSeconds": 1.443,
+      "afterSeconds": 1.634
+    },
+    {
+      "operation": "sync-again-with-unchanged-remote",
+      "beforeSeconds": 33.63,
+      "afterSeconds": 4.327
+    }
+  ],
+  "result": "PASS",
+  "cleanup": "PASS",
+  "limitations": [
+    "One fresh synthetic fixture per version on the same host, not a latency guarantee.",
+    "Elapsed time includes HTTP authentication and MCP transport; no private production content was changed."
+  ]
+}

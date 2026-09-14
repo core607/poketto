@@ -1,10 +1,10 @@
 {
   "result": "PASS",
-  "applicationCommit": "f7b62f2b71a2d0597e7e04b2fe0c52ed82b0a3c8",
+  "applicationCommit": "0c16042ffa8ac86cc701ffab00f80f678731cbac",
   "source": "real-auth-PG-HTTP-MCP-native-SRT",
   "modelDriven": false,
   "production": false,
-  "runtimeManifestSha256": "3c77db0b3754ed2ef3e666e0a0363de8d0895c21a7a86ba4b774b23f1f0eb6dd",
+  "runtimeManifestSha256": "a0cc147e8f486512d0c1e9bbe9667c9ec079d9919386f3efafb94f615ca62efd",
   "controllerSha256": "3217859ba0cc34cd9c9079fad90755e768107bdf7239e1220f55da90e22e838a",
   "clientSha256": "359d01bb23b1418cdf0a5215bde92637c2d27b1ca951419727526932123bf2e4",
   "httpSupportSha256": "7b2203192ec2cd9995a2ed87ea347df546a1074fc9a9ee280962ca80363efd9b",
@@ -38,7 +38,7 @@
   "cleanup": "PASS",
   "faultInjection": "The test holds the shared journal index lock for 500 ms during initial original capture.",
   "separateChecks": [
-    "Full Gradle check passed",
+    "Full Gradle check passed at f7b62f2; affected sync, Linux storage and MCP gates repeated after optimization",
     "MCP protocol integration passed",
     "Linux storage replay: 259 passed, 0 skipped",
     "Worker suite: 76 passed"
