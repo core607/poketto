@@ -80,7 +80,7 @@ public final class OAuthService {
                 || redirects.size() > 8) {
             throw failure("invalid_client_metadata");
         }
-        redirects.forEach(OAuthService::validateRedirect);
+        redirects.forEach(OAuthRedirects::validate);
         return tx.execute(status -> {
             registryLock();
             cleanup("");
@@ -114,7 +114,7 @@ public final class OAuthService {
         if (client.unconnectedUntil() != null && !client.unconnectedUntil().isAfter(clock.instant())) {
             throw failure("invalid_client");
         }
-        if (!client.redirectUris().contains(redirect)) {
+        if (client.redirectUris().stream().noneMatch(uri -> OAuthRedirects.permits(uri, redirect))) {
             throw failure("invalid_request");
         }
         if (!"code".equals(responseType)) {
@@ -486,26 +486,6 @@ public final class OAuthService {
     private String callback(AuthorizationRequest r, String key, String value) {
         return r.redirectUri() + (r.redirectUri().contains("?") ? "&" : "?") + key + "=" + encode(value) + "&state="
                 + encode(r.state()) + "&iss=" + encode(issuer);
-    }
-
-    public static void validateRedirect(String value) {
-        if (value == null) {
-            throw failure("invalid_redirect_uri");
-        }
-        try {
-            URI uri = URI.create(value);
-            if (value.length() > 2048
-                    || !"https".equals(uri.getScheme())
-                    || uri.getHost() == null
-                    || uri.getRawUserInfo() != null
-                    || uri.getRawFragment() != null
-                    || value.indexOf('\\') >= 0
-                    || value.chars().anyMatch(Character::isISOControl)) {
-                throw failure("invalid_redirect_uri");
-            }
-        } catch (IllegalArgumentException invalid) {
-            throw failure("invalid_redirect_uri");
-        }
     }
 
     public static String challenge(String verifier) {
