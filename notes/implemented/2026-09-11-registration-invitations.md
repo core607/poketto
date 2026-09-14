@@ -4,7 +4,7 @@ Date: 2026-09-11
 
 ## Decision
 
-Registration invitations create account identities without adding workspace membership. The browser provides login and registration, while joining a space is a signed-in account-management action. [Multi-user spaces and discovery](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) still owns workspace creation and explicit multi-workspace selection; [operator administrator setup](2026-09-11-operator-administrator-setup.md) owns installation.
+Registration invitations create account identities without adding workspace membership. The browser provides login and registration, while joining a space is a signed-in account-management action. [Multi-user spaces and discovery](2026-09-11-multiuser-workspaces-and-discovery.md) still owns workspace creation and explicit multi-workspace selection; [operator administrator setup](2026-09-11-operator-administrator-setup.md) owns installation.
 
 `RegistrationInvitationPolicy` owns issuance eligibility and any future allowance rule. Its configured policy admits site administrators and, only when enabled, ordinary accounts. Workspace ownership does not imply site administration. `POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED` defaults to `false`; setting it to `true` permits authenticated ordinary accounts, including accounts without a space, to issue registration invitations. There is no fixed per-user invitation quota. Issuance takes the issuer's account-row lock so a future policy can count and reserve an allowance atomically.
 

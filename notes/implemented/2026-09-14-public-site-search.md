@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires site search across enabled public spaces. The site search page previously called the default workspace's document list, leaving other published spaces absent from search. Different spaces may also publish the same route, so a route alone cannot identify a search result or its return anchor.
+The [multi-user contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires site search across enabled public spaces. The site search page previously called the default workspace's document list, leaving other published spaces absent from search. Different spaces may also publish the same route, so a route alone cannot identify a search result or its return anchor.
 
 ## Decision
 
@@ -30,4 +30,4 @@ Focused search tests cover complete catalogue traversal beyond discovery's space
 
 A real Spring/PostgreSQL/Next/Caddy browser run searches two synthetic spaces with 79 matching articles each. A mixed results page retains each space's canonical article and tag links, public identity and independent result anchor. Literal title and snippet matches render as text marks, and a query containing SVG syntax remains text. Browser Back and the explicit return link restore the site query, page and selected result; direct space search remains scoped. The mobile page has no horizontal overflow at a 390-pixel CSS viewport. [Daily-use UI evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json) records the combined run. This local fixture does not establish production HTTPS, external MCP behavior or provider interoperability.
 
-The same-topic audit retains [website delivery](../implemented/2026-09-14-workspace-public-delivery.md), [discovery batches](../implemented/2026-09-14-public-discovery-batches.md), [reading text](../implemented/2026-09-12-shared-checks.md), [public authorship](../implemented/2026-09-14-public-author-names.md), and [search return](../implemented/2026-09-14-search-highlights-and-reading-return.md) as independent owners. The parent remains proposed for its remaining requirements.
+The same-topic audit retains [website delivery](../implemented/2026-09-14-workspace-public-delivery.md), [discovery batches](../implemented/2026-09-14-public-discovery-batches.md), [reading text](../implemented/2026-09-12-shared-checks.md), [public authorship](../implemented/2026-09-14-public-author-names.md), and [search return](../implemented/2026-09-14-search-highlights-and-reading-return.md) as independent owners. The parent delivery is verified by the [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md).

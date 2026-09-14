@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Decision
 
-The [multi-user discovery contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires stable random browsing across enabled spaces. A server-issued batch retains card metadata and immutable page identities, never document bodies or authority. The homepage redirects to a URL containing its batch ID; pagination preserves that ID. An explicit new-batch link selects and shuffles another bounded sample.
+The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires stable random browsing across enabled spaces. A server-issued batch retains card metadata and immutable page identities, never document bodies or authority. The homepage redirects to a URL containing its batch ID; pagination preserves that ID. An explicit new-batch link selects and shuffles another bounded sample.
 
 A batch samples up to four documents per space from up to 32 enabled spaces. A continuation batch advances the catalog keyset, returning to the beginning after its final page. Unavailable or expired repository snapshots contribute no cards; HTTP requests never fetch remote Git. This is a discovery sample, not an exhaustive site-search index.
 

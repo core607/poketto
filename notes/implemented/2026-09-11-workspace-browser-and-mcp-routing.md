@@ -24,7 +24,7 @@ The `/mcp` resource remains shared. Both its authentication filter and SDK sessi
 
 A session-wide current workspace would let one browser tab redirect another tab's pending write. Default-space fallback would conceal missing routing and prevent an account belonging only to another space from connecting. Explicit browser routes and credential-derived machine scope preserve the existing service-level `WorkspaceId` contract without introducing either behavior.
 
-The browser URL contains workspace identity and navigation only, never repository credentials. Authorization remains necessary after parsing a valid identifier. Public browsing still uses the default site's existing routes; [member permissions](2026-09-12-member-content-permissions.md) govern content and machine access. Cross-space discovery and public-delivery controls remain owned by the [multi-user proposal](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md).
+The browser URL contains workspace identity and navigation only, never repository credentials. Authorization remains necessary after parsing a valid identifier. Public browsing still uses the default site's existing routes; [member permissions](2026-09-12-member-content-permissions.md) govern content and machine access. Cross-space discovery and public-delivery controls remain owned by the [multi-user proposal](2026-09-11-multiuser-workspaces-and-discovery.md).
 
 ## Verification
 

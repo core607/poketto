@@ -2,15 +2,15 @@
 
 Date: 2026-08-25
 
-[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。[博客与浏览器管理界面](2026-09-06-blog-browser-interface.md)通过受限 Markdown 渲染呈现这些 HTTP API，并提供隔离浏览器验收入口。MCP API 与[本地 worker 适配器](../proposed/2026-09-05-local-execution-supervisor.md)提供仓库工具及显式启用的隔离执行。最终 HTTPS 安装与部署拓扑验收仍待完成。
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。[博客与浏览器管理界面](2026-09-06-blog-browser-interface.md)通过受限 Markdown 渲染呈现这些 HTTP API，并提供隔离浏览器验收入口。MCP API 与[本地 worker 适配器](../proposed/2026-09-05-local-execution-supervisor.md)提供仓库工具及显式启用的隔离执行。[交付验收](2026-09-15-multiuser-daily-use-acceptance.md)记录了 HTTPS 安装与部署拓扑验证。
 
-[第一阶段交付提案](../proposed/2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、C 端供应或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
+[第一阶段交付契约](2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、在托管平台上代建仓库或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
 
 ## 本文范围
 
 本文保留主要的单服务器基线及为其选定的产品边界。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)和[已验证内容快照](2026-09-04-validated-content-snapshot.md)记录最初实现。新的创作基础与第一阶段记录定义替代契约；下文的历史与后续设计章节不代表已交付行为。
 
-更广泛的[前端](../proposed/2026-08-30-nextjs-frontend.md)、[托管资产](../proposed/2026-09-01-repository-asset-blob-store.md)、[发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)及[检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)提案，在满足完整验收标准之前仍保留为 proposed。[C 端供应](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md)与[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍在第一阶段范围之外。这些选择均不改变工作空间租户边界。
+更广泛的[前端](../proposed/2026-08-30-nextjs-frontend.md)、[托管资产](../proposed/2026-09-01-repository-asset-blob-store.md)、[发布与图片](../proposed/2026-09-01-repository-native-publishing-and-assets.md)及[检索与沙箱执行](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)提案，在满足完整验收标准之前仍保留为 proposed。[基于邀请的多用户空间](2026-09-11-multiuser-workspaces-and-discovery.md)已纳入交付。在托管平台上代建仓库与[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍在第一阶段范围之外。这些选择均不改变工作空间租户边界。
 
 ## 定位
 
@@ -30,7 +30,7 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。管理端与 MCP 共用有界 UTF-8 补丁服务，保留未修改的源码，构建带调用者归属的候选提交，并且只从预期 base 推进远端 ref。竞争 push 返回冲突；回包丢失时须向远端 `main` 对账，绝不盲目重试。可选元数据错误与不安全文件产生文件级诊断；无效发布策略关闭公开服务。仓库确认与快照安装是独立状态。
 3. 仅保留历史选型：从未实现，现已废止，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：当时计划默认使用 agentic 检索，由服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY；AI key 默认不含后三项。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。[显式成员权限](2026-09-12-member-content-permissions.md)分别控制私密读取、私密修改和公开发布；普通成员与邀请默认仅能读取当前公开范围。连接不能超出持有人的权限，也不会随其权限增加而自动扩大。
-5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开推荐仍属于多用户提案。
+5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开发现由[多用户交付契约](2026-09-11-multiuser-workspaces-and-discovery.md)定义。
 
 从仓库路径派生或由可选元数据指定的[路由](2026-09-06-logical-repository-routes.md)保留原始名称，包括空格、`%`、`?` 和 `#`，不做 URI 编码、解码或首尾裁剪。原有路径安全与长度限制继续适用；调用方在 URI 边界编码逻辑路由。
 

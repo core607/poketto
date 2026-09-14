@@ -7,7 +7,7 @@ Date: 2026-09-03
 [Mirror registry delivery](2026-09-10-mirror-registry-delivery.md) adds an optional independent copy job after GHCR publication. `POKETTO_DEPLOY_MODE=mirror` pulls those same digests from the configured delivery registry in either layout; registry failure leaves canonical publication intact and does not silently fall back to archive transfer.
 Status: Implemented
 
-The [phase-one delivery boundary](../proposed/2026-09-05-phase-one-daily-use.md) explicitly excludes backup prerequisites. Its installation may enable deployment without the backup freshness gate described below; backup and recovery work remains a separate proposal.
+The [phase-one delivery boundary](2026-09-05-phase-one-daily-use.md) explicitly excludes backup prerequisites. Its installation may enable deployment without the backup freshness gate described below; backup and recovery work remains a separate proposal.
 
 The [blog stack delivery entrance](2026-09-05-blog-stack-delivery.md) extends this pipeline with matched application/frontend images, HTTPS routing and an independently installed executor. It owns the current stack and deployment prerequisites; the two-service topology below describes the original baseline.
 

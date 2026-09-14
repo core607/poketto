@@ -4,7 +4,7 @@ Date: 2026-09-11
 
 ## Decision
 
-The first site administrator is created through an interactive command in the deployed application container. This replaces token-based browser initialization from [workspace identity](2026-09-06-workspace-identity-http.md) and implements the installation boundary in [multi-user delivery](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md). Account registration and workspace invitations remain separate user flows.
+The first site administrator is created through an interactive command in the deployed application container. This replaces token-based browser initialization from [workspace identity](2026-09-06-workspace-identity-http.md) and implements the installation boundary in [multi-user delivery](2026-09-11-multiuser-workspaces-and-discovery.md). Account registration and workspace invitations remain separate user flows.
 
 `./deploy.sh --initialize-admin` reads the deployment's literal configuration under its normal deployment lock and executes `java -cp '/app/BOOT-INF/classes:/app/BOOT-INF/lib/*' io.github.core607.poketto.auth.AdministratorSetup admin init` in the running application container. The dedicated class entrance makes an older image fail before starting Spring, even if the deployment script was updated first. It requires an interactive terminal and rejects simultaneous image, sync, or stdin configuration changes. It does not pull images, replace containers, or rewrite configuration.
 

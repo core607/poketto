@@ -6,7 +6,7 @@ Date: 2026-09-12
 
 Workspace membership permits reading the current public scope. It does not imply private access or permission to change content. Owners assign `READ_PRIVATE`, `WRITE_PRIVATE` and `PUBLISH` independently, except that private writing requires private reading. Workspace invitations carry these initial grants and default to none. Owners retain all capabilities and exclusive membership and static-key administration. Site administration remains separate from workspace ownership.
 
-This implements the membership portion of the [multi-user proposal](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md). It replaces implicit ordinary-member private access in the [identity HTTP decision](2026-09-06-workspace-identity-http.md) while retaining its invitation digests, last-owner invariant and workspace locking. Installing the permission schema gives existing ordinary members empty content grants and revokes their keys with private, publication or management authority. Owners must explicitly grant any continuing private access.
+This implements the membership portion of the [multi-user proposal](2026-09-11-multiuser-workspaces-and-discovery.md). It replaces implicit ordinary-member private access in the [identity HTTP decision](2026-09-06-workspace-identity-http.md) while retaining its invitation digests, last-owner invariant and workspace locking. Installing the permission schema gives existing ordinary members empty content grants and revokes their keys with private, publication or management authority. Owners must explicitly grant any continuing private access.
 
 ## Content authorization
 

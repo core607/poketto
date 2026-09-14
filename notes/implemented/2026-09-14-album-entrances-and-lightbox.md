@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Decision
 
-The [multi-user reading contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires one folder landing and keyboard-accessible image reading. A folder uses `index.md`, or `README.md` when no eligible valid index is available. Both names use the folder route. When both valid files exist, only the index enters structured document results; the README remains available through the authorized raw-file entrance and is reported as a shadowed landing. No source file is rewritten or deleted. Private or excluded indexes cannot affect public landing selection.
+The [multi-user reading contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires one folder landing and keyboard-accessible image reading. A folder uses `index.md`, or `README.md` when no eligible valid index is available. Both names use the folder route. When both valid files exist, only the index enters structured document results; the README remains available through the authorized raw-file entrance and is reported as a shadowed landing. No source file is rewritten or deleted. Private or excluded indexes cannot affect public landing selection.
 
 Relative folder links resolve either landing using the same rules as collection navigation and rendered Markdown. Public execution copies preserve these links, and portable archives rewrite them when the target landing is included in the selection. A portable folder selection accepts the informational shadowed-landing diagnostic and includes only the selected structured landing, not the raw shadowed README. README-only folders participate in the existing sibling-image gallery and collection navigation.
 

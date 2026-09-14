@@ -3,7 +3,7 @@
 Date: 2026-09-01
 Status: Proposed
 
-This remains future work. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) excludes backups and restore drills and retains all acknowledged managed originals without claiming off-host recovery.
+This remains future work. [Phase-one delivery](../implemented/2026-09-05-phase-one-daily-use.md) excludes backups and restore drills and retains all acknowledged managed originals without claiming off-host recovery.
 
 ## Problem
 

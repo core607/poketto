@@ -3,7 +3,7 @@
 Date: 2026-08-27
 Status: Proposed
 
-This remains future work. [Phase-one delivery](2026-09-05-phase-one-daily-use.md) excludes backups and restore drills and does not require them as an implementation or deployment gate.
+This remains future work. [Phase-one delivery](../implemented/2026-09-05-phase-one-daily-use.md) excludes backups and restore drills and does not require them as an implementation or deployment gate.
 
 ## Problem
 

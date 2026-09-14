@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Problem
 
-The [development baseline](2026-08-26-development-baseline.md) built a custom PostgreSQL image with zhparser for planned content indexing. No projection schema or search implementation exists. [Repository-native retrieval](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) and the [phase-one boundary](../proposed/2026-09-05-phase-one-daily-use.md) select committed-tree retrieval instead, leaving native image compilation and two empty modules without an application consumer.
+The [development baseline](2026-08-26-development-baseline.md) built a custom PostgreSQL image with zhparser for planned content indexing. No projection schema or search implementation exists. [Repository-native retrieval](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) and the [phase-one boundary](2026-09-05-phase-one-daily-use.md) select committed-tree retrieval instead, leaving native image compilation and two empty modules without an application consumer.
 
 ## Decision
 

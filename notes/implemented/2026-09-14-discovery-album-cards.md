@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user discovery contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires recognizable album and collection entrances. The initial [discovery batches](2026-09-14-public-discovery-batches.md) treated folder landings alike. Full gallery preparation for every sampled document would issue unused short-lived image grants that expire before the browsing batch.
+The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires recognizable album and collection entrances. The initial [discovery batches](2026-09-14-public-discovery-batches.md) treated folder landings alike. Full gallery preparation for every sampled document would issue unused short-lived image grants that expire before the browsing batch.
 
 ## Decision
 

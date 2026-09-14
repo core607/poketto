@@ -3,7 +3,7 @@
 Date: 2026-08-27
 Status: Proposed
 
-[Phase-one delivery](2026-09-05-phase-one-daily-use.md) selects the self-hosted initialization, invitation, membership, and key lifecycle for the first daily-use installation. Consumer provisioning remains outside that delivery.
+[Phase-one delivery](../implemented/2026-09-05-phase-one-daily-use.md) selects the self-hosted initialization, invitation, membership, and key lifecycle for the first daily-use installation. Consumer provisioning remains outside that delivery.
 
 The [identity HTTP backend](../implemented/2026-09-06-workspace-identity-http.md) supplies the account, session, invitation, membership and key lifecycle. This proposal remains open for administration pages, durable audit attribution and the remaining end-to-end acceptance.
 
@@ -18,7 +18,7 @@ Sharing an owner account or long-lived API key obscures attribution and prevents
 ### Accounts and memberships
 
 - A human account is an instance-level identity. A membership connects an account to one workspace with the `OWNER` or `MEMBER` role. One account may join several workspaces and have an independent role in each.
-- A self-hosted instance may use a one-time initialization flow to create its first account, instance administrator, and default-workspace `OWNER`. The entry point closes permanently after initialization and leaves no default password. The consumer account and personal-workspace flow belongs to the [consumer accounts proposal](2026-09-11-multiuser-workspaces-and-discovery.md).
+- A self-hosted instance may use a one-time initialization flow to create its first account, instance administrator, and default-workspace `OWNER`. The entry point closes permanently after initialization and leaves no default password. The consumer account and personal-workspace flow belongs to the [consumer accounts proposal](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md).
 - A workspace always retains at least one active `OWNER`. Disabling a member, leaving a workspace, or transferring ownership cannot remove the last owner.
 - Human sessions, AI API keys, and system tasks are distinct principal types. Audit records preserve the acting principal and do not attribute a member's or AI's work to the owner.
 

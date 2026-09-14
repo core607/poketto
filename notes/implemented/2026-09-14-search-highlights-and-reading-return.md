@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user reading contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires visible matches and a return to the result that opened an article. Search pages preserved query and pagination in their URLs, but article links discarded that context. An explicit return link also needs the correct query, page and reading position.
+The [multi-user reading contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires visible matches and a return to the result that opened an article. Search pages preserved query and pagination in their URLs, but article links discarded that context. An explicit return link also needs the correct query, page and reading position.
 
 ## Decision
 

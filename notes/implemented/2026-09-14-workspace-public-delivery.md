@@ -6,7 +6,7 @@ Date: 2026-09-14
 
 The multi-user schema records a workspace website switch, but repository-public snapshots alone do not enforce it. Those snapshots also support members who may read repository-public files while the anonymous website is disabled. Treating the website switch as repository permission would remove that required member access.
 
-The [multi-user discovery contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) additionally requires withdrawal to invalidate cached public grants. This supersedes the issued-image survival rule in the [authoring foundations](2026-09-05-repository-authoring-foundations.md), whose storage, source-retention and byte bounds remain applicable.
+The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) additionally requires withdrawal to invalidate cached public grants. This supersedes the issued-image survival rule in the [authoring foundations](2026-09-05-repository-authoring-foundations.md), whose storage, source-retention and byte bounds remain applicable.
 
 ## Delivery boundary
 
