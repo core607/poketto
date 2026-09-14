@@ -24,6 +24,7 @@ executor_config() {
     printf '%s\n' 'POKETTO_EXECUTOR_ENABLED=true' \
         "POKETTO_EXECUTOR_RUNTIME_DIR_HOST=$ROOT/not-installed" \
         "POKETTO_EXECUTOR_STAGING_DIR_HOST=$ROOT/staging" \
+        "POKETTO_EXECUTOR_METADATA_DIR_HOST=$ROOT/metadata" \
         "POKETTO_EXECUTOR_SIGNING_KEY_HOST=$ROOT/signing.pem" >> "$ROOT/.env"
 }
 
