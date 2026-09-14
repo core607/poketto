@@ -17,63 +17,299 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    # Every run of this workflow verifies and reports under this fixed name. Branch protection
-    # requires the "verify" context and keeps expecting it from the newest run, so a run that
-    # renames or skips the job leaves the requirement unmet and the pull request unmergeable.
-    # Reporting success without verifying would be worse: a title edit would then hand a green
-    # required check to a commit whose verification failed. An edit therefore verifies again.
-    name: verify
+  # Markdown never reaches a compiler, a container or a deployment script, so a change confined to
+  # it runs the repository document checks alone. Anything else, and every push to main, runs the
+  # full matrix. Classification is conservative: one unrecognised path makes the whole change code.
+  changes:
+    name: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
 
-      - name: Verify complete AI review transport
-        run: python3 -m unittest discover -s .github/review -p "test_*.py" -v
+      - name: Classify the change
+        id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "not a pull request; running the full matrix"
+            exit 0
+          fi
+          files="$(git diff --name-only "$BASE_SHA"...HEAD)"
+          if [ -z "$files" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "no changed paths resolved; running the full matrix"
+            exit 0
+          fi
+          docs_only=true
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            case "$file" in
+              *.md | LICENSE) ;;
+              *) docs_only=false ;;
+            esac
+          done <<< "$files"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$docs_only over:"
+          echo "$files"
 
+  docs:
+    name: docs
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 2
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: "26"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           gradle-home-cache-cleanup: true
+      # repoCheck owns document structure, credential-ignore rules and the generated skill stubs,
+      # so a Markdown-only change is still checked for the drift it can actually cause.
+      - name: Check repository documents
+        run: ./gradlew repoCheck --no-daemon
+      - name: Check whitespace
+        run: git diff --check HEAD^ HEAD
 
+  java:
+    name: java
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Verify complete AI review transport
+        run: python3 -m unittest discover -s .github/review -p "test_*.py" -v
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
+      - name: Set up Python for executor tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.14"
+      - name: Unit tests, style and documents
+        run: ./gradlew test spotlessCheck checkstyleMain checkstyleTest checkstyleIntegrationTest repoCheck --no-daemon
+      - name: Upload verification reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reports-java-${{ github.run_id }}
+          path: |
+            build/reports/
+            build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  database:
+    name: database
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
+      - name: Database integration tests
+        run: ./gradlew integrationTest --no-daemon
+      - name: Upload verification reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reports-database-${{ github.run_id }}
+          path: |
+            build/reports/
+            build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  web:
+    name: web
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Pin npm
         run: npm install --global npm@12.0.2
-
-      - name: Set up Python for executor and proxy tests
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12.14"
-
-      - name: Verify
-        run: ./gradlew check --no-daemon
-
+      - name: Frontend checks and production build
+        run: ./gradlew frontendCheck --no-daemon
       - name: Upload verification reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: verification-reports-${{ github.run_id }}
+          name: reports-web-${{ github.run_id }}
+          path: build/reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  image:
+    name: image
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
+      - name: Set up Python for executor tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.14"
+      - name: Application image identity and executor service
+        run: ./gradlew appImageIdentityCheck executorServiceTests --no-daemon
+      - name: Upload verification reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reports-image-${{ github.run_id }}
           path: |
             build/reports/
-            build/test-results/
+            build/app-image-identity/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  stack:
+    name: stack
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
+      - name: Set up Python for deployment and proxy tests
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.14"
+      - name: Deployment scripts, gateway and forwarding
+        run: ./gradlew deployScriptTests existingDeploymentTests gatewayConfigCheck proxyForwardingCheck linuxStorageTest --no-daemon
+      - name: Upload verification reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reports-stack-${{ github.run_id }}
+          path: |
+            build/reports/
             build/proxy-forwarding/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Branch protection requires the "verify" context and keeps expecting it from the newest run, so
+  # this job always reports and never renames. Reporting success without verifying would be worse
+  # than a slow run: a title edit would then hand a green required check to a commit whose
+  # verification failed, which is why an edit verifies again instead of reusing an earlier result.
+  # A lane the change cannot affect is skipped, never assumed to have passed, so this job names the
+  # lanes each classification requires rather than tolerating any skipped lane.
+  verify:
+    name: verify
+    needs: [changes, docs, java, database, web, image, stack]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every lane the change needs
+        env:
+          CLASSIFICATION: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          DOCS: ${{ needs.docs.result }}
+          JAVA: ${{ needs.java.result }}
+          DATABASE: ${{ needs.database.result }}
+          WEB: ${{ needs.web.result }}
+          IMAGE: ${{ needs.image.result }}
+          STACK: ${{ needs.stack.result }}
+        run: |
+          if [ "$CLASSIFICATION" != success ]; then
+            echo "change classification reported $CLASSIFICATION"
+            exit 1
+          fi
+          if [ "$DOCS_ONLY" = true ]; then
+            required="docs=$DOCS"
+          else
+            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK"
+          fi
+          failed=0
+          for lane in $required; do
+            case "${lane#*=}" in
+              success) ;;
+              *)
+                echo "required lane $lane"
+                failed=1
+                ;;
+            esac
+          done
+          if [ "$failed" != 0 ]; then
+            exit 1
+          fi
+          echo "verified: $required"
 
   # Only a verified main commit of the canonical repository becomes an image. This is the only
   # job with package-write authority.
