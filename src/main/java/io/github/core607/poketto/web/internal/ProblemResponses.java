@@ -100,9 +100,21 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", "an unexpected error occurred");
     }
 
+    /**
+     * Every mapped failure leaves a record naming what the caller was told. The caller receives a
+     * fixed detail and no identifier, so this line and the request record it shares an identifier
+     * with are the only account of why a request failed.
+     */
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle(title);
+        log.atWarn()
+                .addKeyValue("status", status.value())
+                .addKeyValue("title", title)
+                .setMessage("request refused with {} {}")
+                .addArgument(status.value())
+                .addArgument(title)
+                .log();
         return problem;
     }
 

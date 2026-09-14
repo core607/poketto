@@ -168,3 +168,13 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](../notes/implemented/2026-09-05-blog-stack-delivery.md)。
 
 把 `POKETTO_NETWORK_SUBNET` 设置为未被占用、至少含 16 个地址的 RFC1918 IPv4 CIDR，把 `POKETTO_NETWORK_DYNAMIC_RANGE` 设置为规范且严格包含于主网、至少含八个地址的动态子池。把 `POKETTO_GATEWAY_INTERNAL_IP` 设置为池外的 Caddy 固定地址，排除主网的网络地址、供网桥使用的首个可用地址和广播地址。部署会在启动容器前拒绝无效范围；Docker 只从动态池为其他服务分配地址。只有该部署启用 Tomcat 转发解析，且仅信任网关的 `/32`；Caddy 重建客户端地址、协议和主机头，并在转交 Spring 前移除 `X-Forwarded-Port`。其它入口显式默认为 `server.forward-headers-strategy=none`。`./gradlew proxyForwardingCheck` 需要 Docker 和 Python 3.10+，验证真实 Compose 地址分配、客户端独立登录限流与共享账号限流；`check` 和 CI 必须执行它。
+
+## 诊断
+
+每个请求和每次 MCP 工具调用都会留下一条记录。请求记录写明方法、路由、状态码、耗时、调用方类型与主体，路由指定了空间时还写明空间。工具记录写明工具名、耗时，以及调用方收到的同一个结果码，因此报上来的 `SESSION_REPLACED` 或 `EXECUTION_REFUSED` 可以直接查到，不必反推。被拒绝的请求另外记下告知调用方的状态码与标题。
+
+记录带有一个只存在于服务端的请求标识，用于把同一次请求产生的多条记录串起来，不会返回给调用方：外部无法兑换的标识没有诊断价值，反而会让客户端自行猜测它的用途。核对故障请改用空间、调用方和时间。
+
+不会进入记录的内容：请求体，因为其中带有仓库令牌和密码；MCP 工具参数，因为其中带有命令与正文；查询字符串与仓库文件路径；以及文档正文。管理路由会缩减为稳定形状，空间标识单独成字段，路由中不透明的路径段也会折叠：UUID 变成 `:id`，较长的 URL 安全字符串变成 `:opaque`。图片授权凭证正是走在路径上、拿到就能取该图，因此不会进入记录；公开站点的 slug 按原样保留。容器健康探测完全不记录。
+
+在应用上设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`，每条记录输出为一行 JSON，字段可直接寻址，异常堆栈收在记录内部而不是散成许多行。不设置则保留便于开发阅读的控制台格式。尚未覆盖的部分见[诊断记录](../notes/implemented/2026-09-14-service-diagnostics.md)。

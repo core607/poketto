@@ -222,48 +222,51 @@ final class RepositoryMcpTools {
                         .openWorldHint(false)
                         .build())
                 .build();
-        return new McpServerFeatures.SyncToolSpecification(tool, (exchange, request) -> {
-            try {
-                sessions.resolve(exchange);
-                var arguments = request.arguments();
-                if (arguments == null) {
-                    throw new IllegalArgumentException();
-                }
-                if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
-                    try (var producer = scope.producer()) {
+        return new McpServerFeatures.SyncToolSpecification(
+                tool,
+                (exchange, request) -> McpToolOutcomes.recorded(json, name, () -> {
+                    try {
+                        sessions.resolve(exchange);
+                        var arguments = request.arguments();
+                        if (arguments == null) {
+                            throw new IllegalArgumentException();
+                        }
+                        if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE)
+                                instanceof ImageRequestScope scope) {
+                            try (var producer = scope.producer()) {
+                                return operation.apply(exchange, arguments);
+                            }
+                        }
+                        if (name.equals("get_asset") || name.equals("put_asset") || name.equals("get_artifact")) {
+                            return error("UNAVAILABLE", "Image memory admission is unavailable.");
+                        }
                         return operation.apply(exchange, arguments);
+                    } catch (AuthException | SecurityException exception) {
+                        return error("DENIED", "Current workspace capability is required.");
+                    } catch (SessionReplacedException exception) {
+                        return McpCopyAdmission.copyReplaced(json, exception);
+                    } catch (ExecutionUnconfirmedException exception) {
+                        return McpCopyAdmission.executionUnconfirmed(json, exception);
+                    } catch (ExecutionAdmissionException exception) {
+                        return name.equals("repo_discard")
+                                ? McpCopyAdmission.discardRefused(json, exception)
+                                : McpCopyAdmission.admissionRefused(json, exception);
+                    } catch (RepositoryConflictException exception) {
+                        return error("CONFLICT", "Read current files and base commit before retrying.");
+                    } catch (RepositoryWriteAmbiguousException exception) {
+                        return error("INDETERMINATE", "Re-read authoritative main; do not retry this write blindly.");
+                    } catch (AssetStorageException exception) {
+                        return error(exception.reason().name(), "Image operation could not be completed.");
+                    } catch (IllegalArgumentException exception) {
+                        return error("INVALID_INPUT", "Use the documented bounded fields.");
+                    } catch (ContentRepositoryException exception) {
+                        return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
+                    } catch (RuntimeException exception) {
+                        return error(
+                                "UNAVAILABLE",
+                                "Operation could not be completed; verify authoritative state before retrying writes.");
                     }
-                }
-                if (name.equals("get_asset") || name.equals("put_asset") || name.equals("get_artifact")) {
-                    return error("UNAVAILABLE", "Image memory admission is unavailable.");
-                }
-                return operation.apply(exchange, arguments);
-            } catch (AuthException | SecurityException exception) {
-                return error("DENIED", "Current workspace capability is required.");
-            } catch (SessionReplacedException exception) {
-                return McpCopyAdmission.copyReplaced(json, exception);
-            } catch (ExecutionUnconfirmedException exception) {
-                return McpCopyAdmission.executionUnconfirmed(json, exception);
-            } catch (ExecutionAdmissionException exception) {
-                return name.equals("repo_discard")
-                        ? McpCopyAdmission.discardRefused(json, exception)
-                        : McpCopyAdmission.admissionRefused(json, exception);
-            } catch (RepositoryConflictException exception) {
-                return error("CONFLICT", "Read current files and base commit before retrying.");
-            } catch (RepositoryWriteAmbiguousException exception) {
-                return error("INDETERMINATE", "Re-read authoritative main; do not retry this write blindly.");
-            } catch (AssetStorageException exception) {
-                return error(exception.reason().name(), "Image operation could not be completed.");
-            } catch (IllegalArgumentException exception) {
-                return error("INVALID_INPUT", "Use the documented bounded fields.");
-            } catch (ContentRepositoryException exception) {
-                return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
-            } catch (RuntimeException exception) {
-                return error(
-                        "UNAVAILABLE",
-                        "Operation could not be completed; verify authoritative state before retrying writes.");
-            }
-        });
+                }));
     }
 
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
