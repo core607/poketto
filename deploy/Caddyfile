@@ -48,6 +48,11 @@
     # whole, so the path removed from the request line arrives again in another field. The
     # referrer policy already keeps it from leaving this origin, which makes these records its
     # only exposure.
+    #
+    # The response side carries the same material back: a download names the file in its
+    # disposition header, so a member fetching their own media would leave that name behind even
+    # with the address and the referrer already gone. Removing it from the record does not change
+    # what the browser receives.
     @grant path /api/public/assets/* /api/admin/workspaces/*/assets/images/*
     log_skip @grant
 
@@ -62,6 +67,7 @@
                 request>headers>Set-Cookie delete
                 request>headers>Referer delete
                 resp_headers>Set-Cookie delete
+                resp_headers>Content-Disposition delete
             }
         }
     }
