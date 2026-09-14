@@ -21,6 +21,9 @@ export type DiscoveryPage = {
     tags: string[];
     createdAt: string;
     folderPage: boolean;
+    album: boolean;
+    collection: boolean;
+    cover: string | null;
   }[];
 };
 export type ArticleSummary = {

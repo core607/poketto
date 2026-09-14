@@ -8,7 +8,7 @@ The [multi-user reading contract](../proposed/2026-09-11-multiuser-workspaces-an
 
 An article response supplies its collection memberships and immediate neighbors in each collection. The browser selects context only from a matching membership identified by a `collection` query parameter. A direct entry lists memberships without choosing one. Landing-page article links and previous/next links carry that context. The final entry explicitly ends the sequence. Author text stays unchanged; only navigation is derived. A landing that exceeds Markdown traversal or reference bounds reports unavailable navigation without making unrelated articles unavailable. Its response still carries the original body; unresolved link, download, image and gallery mappings are empty, and gallery status is unavailable. Invalid or oversized document input remains rejected.
 
-Current public snapshots and website authorization own the index lifetime and visibility. No additional cache or remote fetch is introduced. Folder fallback to README, album previews, author metadata and search-return scroll state remain required by the parent contract and are outside this implementation slice.
+Current public snapshots and website authorization own the index lifetime and visibility. No additional cache or remote fetch is introduced. [Album entrances](2026-09-14-album-entrances-and-lightbox.md) owns folder fallback to README, [thumbnail delivery](2026-09-14-album-thumbnails.md) owns album previews, and [public signatures](2026-09-14-public-author-names.md) owns attribution. Search-return scroll state remains required by the parent contract.
 
 ## Alternatives and verification
 
