@@ -4,11 +4,11 @@ Date: 2026-09-14
 
 ## Problem
 
-The [multi-user reading contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires visible matches and a return to the result that opened an article. Existing search pages preserve query and pagination in their URLs, but article links discard that context. Browsers can restore a previous page on Back; an explicit return link also needs the correct query, page and reading position.
+The [multi-user reading contract](../proposed/2026-09-11-multiuser-workspaces-and-discovery.md) requires visible matches and a return to the result that opened an article. Search pages preserved query and pagination in their URLs, but article links discarded that context. An explicit return link also needs the correct query, page and reading position.
 
-## Proposal
+## Decision
 
-Highlight literal, case-sensitive query occurrences in result titles and visible-text snippets, matching `DocumentSearch`. Render every part as React text and matches as `mark`; never interpret query or result text as HTML or a regular expression. Article bodies and non-search listings retain their normal rendering.
+Result titles and visible-text snippets highlight literal, case-sensitive query occurrences, matching `DocumentSearch`. Every part renders as React text and matches use `mark`; neither query nor result text is interpreted as HTML or a regular expression. Article bodies and non-search listings retain their normal rendering.
 
 Search result article links carry the query, numeric page offset and a `site` or `space` scope marker. Article pages construct the return destination from those validated fields and the article's public space. They do not accept an arbitrary return URL or a different space slug. The existing default-article redirect preserves only these validated fields. Direct article visits retain their normal space and collection entrances.
 
@@ -24,11 +24,13 @@ Keeping only a fragment would restore an anchor but lose the reader's vertical p
 
 This change applies to existing public search entrances. It does not turn the legacy site-search corpus into cross-workspace search or implement management search highlighting. Those accepted requirements remain under the parent proposal.
 
-## Acceptance
+## Verification
 
-- Rendered titles and snippets highlight literal repeated, Unicode and markup-like queries without creating active markup; blank or invalid queries do not add marks.
-- Return fields retain query/page/scope through canonical and default article routes. Invalid fields cannot choose an external or unrelated-space destination.
-- Browser Back and explicit return restore the selected result and offset independently across different queries, pages and history entries. Storage unavailability and removed results leave ordinary navigation usable.
-- A real frontend/backend run demonstrates a non-first result page, result selection, both return paths, keyboard focus and mobile layout. Collection navigation remains independently usable.
+- Nine focused frontend cases cover escaped literal highlights, structured return fields, query/page binding, history and explicit resume, the 32-entry storage limit, unavailable storage and rejecting cross-origin result targets. The full frontend formatting, type checks, 76 tests and production build pass at the browser source revision.
+- A real Spring/PostgreSQL/Next.js/Caddy fixture supplies 28 matching documents. Page two shows results 13 through 24. Opening result 24 through the default article redirect and returning through Back or the explicit link restores its query, page, heading focus and vertical position. Space search retains its fixed scope; mismatched query/page state does not restore.
+- Deleting result 24 through the authorized fixture changes the result set to 27 documents; the old resume entry neither focuses a different result nor prevents ordinary browsing.
+- A fresh fixture at the same source revision verifies a 390-by-844 viewport, no horizontal overflow on search or article pages, and restored page-two focus and scroll after the mobile return. Original desktop and mobile screenshots are retained separately from product source. Storage-disabled behavior is covered by the focused frontend test, not browser mutation.
+
+These local checks do not establish production HTTPS rollout or complete the cross-workspace site-search corpus.
 
 The same-topic audit retains the parent proposal and [shared search rules](../implemented/2026-09-12-shared-checks.md) for corpus, matching and snippet bounds. The [browser interface](../implemented/2026-09-06-blog-browser-interface.md), [website delivery](../implemented/2026-09-14-workspace-public-delivery.md) and [logical routes](../implemented/2026-09-06-logical-repository-routes.md) retain their rendering, authorization and URI boundaries. [Collection reading](../implemented/2026-09-14-collection-reading.md) and [discovery batches](../implemented/2026-09-14-public-discovery-batches.md) retain independent authored-navigation and browsing-batch behavior. No record is archived or rejected; the parent proposal remains open for its other accepted requirements.
