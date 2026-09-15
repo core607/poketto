@@ -52,7 +52,8 @@ Remove the reason, then the mechanism.
    upload routes remain the only ways to store an image through MCP. This
    reverses the "remains available for programmatic callers" clause of the image
    transfer decision; programmatic callers use the raw upload URL like any other
-   client holding bytes.
+   client holding bytes. The Base64 encoding of image content in `get_asset` and
+   `get_artifact` responses is protocol output, not an upload route, and stays.
 2. Reduce `McpBodyLimitFilter` to two checks that need no memory budget: a
    declared or streamed body over 128 KiB receives 413 before dispatch, and the
    existing streaming envelope preflight (4,096 tokens, 32 nested containers,
@@ -65,16 +66,23 @@ Remove the reason, then the mechanism.
    the control-frame classification and the tool-name sniff. Concurrency is
    bounded where the work is: the servlet container's thread pool, the executor's
    own session admission (`poketto.executor.max-sessions`, default 4), and the
-   image memory budget below.
-4. Keep image memory admission, but at the layer that produces image bytes.
-   After step 1 the only MCP work that holds image bytes is a `get_asset` or
-   `get_artifact` response. The transport already propagates the reservation
-   into the tool exchange and releases it after the actual SSE write; that
-   ownership moves from the body filter to the MCP tool and session layer, with
-   the same lifetime contract: reserved before bytes are read, held through the
-   response write, released on timeout or disconnect, never released while the
-   producer is still writing. Raw upload collection and browser image work keep
-   their existing reservations unchanged.
+   image memory budget below. The executor bounds commands, the SDK's session
+   limits bound connections, and the image budget bounds bytes; each protects
+   one resource, and they are not folded into a single shared count.
+4. Whoever handles image bytes reserves the budget for them. The filter's
+   dispatch-time reservation is replaced by one reservation per owner, all from
+   the existing `ImageMemoryAdmission` pool; no second permit system is added.
+   - URL and platform-file import (`ImageTransfers.importUrl`): reserve before
+     the download starts, release after validation and storage finish.
+   - Raw upload: the collection and validation reservations already in
+     `ImageTransfers` are unchanged.
+   - Image responses (`get_asset`, `get_artifact`): reserve before the bytes are
+     read and release only after the SSE send has completed and the actual
+     producer has exited — never when the tool method returns, because the image
+     may still be in flight. The transport already carries the scope into the
+     tool exchange and the cancellable session; that hand-off becomes the owner
+     of the reservation's lifetime instead of the body filter.
+   Browser image work keeps its existing reservations.
 5. A remaining refusal names its bound. Executor admission and image-budget
    rejections state which bound refused in the request diagnostics record and
    send `Retry-After` when waiting can help, so a client that is refused can tell
@@ -83,8 +91,9 @@ Remove the reason, then the mechanism.
 ## Implementation scope and dependencies
 
 Application: `McpBodyLimitFilter`, `McpEnvelopeBounds`, `PutAssetInput`, the
-`put_asset` schema in `RepositoryMcpTools`, the reservation hand-off in
-`McpTransportConfiguration` and `CancellableMcpSession`. Tests: `McpBoundsTests`
+`put_asset` schema in `RepositoryMcpTools`, the import path in `ImageTransfers`,
+and the reservation hand-off in `McpTransportConfiguration` and
+`CancellableMcpSession`. Tests: `McpBoundsTests`
 keeps declared, chunked and repeated-stream-access coverage at the new bound;
 `McpImageMemoryTests` cases that exist only to prove slot release are deleted,
 and the cases that pin the image reservation through an SSE write, timeout and
@@ -112,6 +121,13 @@ AGENTS.md applies: no compatibility shim for the withdrawn input.
 - **Move admission to the reverse proxy.** Proxy rate limits are the right tool
   against anonymous abuse, which never reaches this filter. The failure here was
   heap budgeting for one body shape, not request rate.
+- **Plain JSON responses instead of SSE sessions.** The
+  [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+  allows a server to answer a request with a single JSON response, which would
+  remove the async lifecycle the permits are tied to. Cancellation and the
+  observed client connection behavior depend on the current SSE session
+  handling, so replacing the transport widens the change well beyond this
+  removal. It remains a separate decision.
 
 ## Acceptance
 
@@ -124,10 +140,15 @@ AGENTS.md applies: no compatibility shim for the withdrawn input.
 - `get_asset` and `get_artifact` still reserve the image budget before reading
   bytes and hold it through the SSE write; the retained memory tests pass against
   the new owner.
-- A soak with four concurrent clients, two of them opening a session per call,
-  runs at least one hundred tool calls each without a 429 from `/mcp` and with
-  heap returning to its idle level afterwards. The soak is evidence for this
-  instance's topology, not a sizing claim.
+- The real failure paths are exercised against the real transport: consecutive
+  tool calls on one session; a new connection and session for every call; a
+  `DELETE /mcp` or a dropped connection immediately after a call; and text tool
+  calls that proceed while a slow image transfer holds its reservation. None of
+  them produces a 429 from `/mcp`, and heap returns to its idle level afterwards.
+  This is evidence for the instance's topology, not a sizing claim.
+- Tests that exist only to prove the old gate returned its permits are deleted;
+  the image-budget and cancellation checks that pin reservation lifetime through
+  an SSE write, a timeout and a disconnect are retained against the new owners.
 - Java style, module boundary and repository document checks pass; the usage
   documents and the acceptance scripts do not mention Base64 input.
 
