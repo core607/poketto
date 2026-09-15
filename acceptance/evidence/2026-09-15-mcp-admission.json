@@ -105,5 +105,7 @@
   "restarts": 0,
   "cleanup": "PASS",
   "limits": "Synthetic isolated fixtures; this does not claim a production deployment or Claude/ChatGPT UI acceptance. Upload grant path is exercised over the local HTTP fixture, not its externally advertised HTTPS origin.",
-  "probeSha256": "7cbf9100bb0d27fa2681e69521bdabd333bf3c21f22e1a64f71f81a917506310"
+  "probeSha256": "f0abd07bd5e3f5e841e20ed5f6b70e7b800d6c4bc1c140719a683e985c91ea33",
+  "repositoryProbeSha256": "7cbf9100bb0d27fa2681e69521bdabd333bf3c21f22e1a64f71f81a917506310",
+  "probeLineEndings": "The executed probe used the identical Windows checkout bytes (CRLF); the repository normalizes this Python script to LF."
 }
