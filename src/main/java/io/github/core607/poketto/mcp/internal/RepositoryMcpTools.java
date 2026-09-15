@@ -218,8 +218,14 @@ final class RepositoryMcpTools {
                     } catch (RepositoryWriteAmbiguousException exception) {
                         return error("INDETERMINATE", "Re-read authoritative main; do not retry this write blindly.");
                     } catch (ImageTransferException exception) {
-                        return error(
-                                exception.reason().name(), "Image transfer did not complete; retain the operationKey.");
+                        String reason = exception.reason().name();
+                        return McpToolOutcomes.failure(
+                                json,
+                                exception.reason() == ImageTransferException.Reason.IMAGE_MEMORY_BUSY
+                                        ? "UNAVAILABLE"
+                                        : reason,
+                                reason,
+                                "Image transfer did not complete; retain the operationKey.");
                     } catch (AssetStorageException exception) {
                         return error(exception.reason().name(), "Image operation could not be completed.");
                     } catch (IllegalArgumentException exception) {

@@ -265,6 +265,9 @@ try:
     proof['checks'].append('two slow public/private HTTP responses fill one shared budget; excess HTTP/upload/MCP reject; text/preview/inventory and cancellation remain available')
     close_held()
     await_reserved(0)
+    def completed_mcp_posts():
+        return run(COMPOSE + ['logs', '--no-color', 'app']).count('http request POST /mcp status ')
+    before_slow = completed_mcp_posts()
     status, response = call('POST', '/mcp', get_payload, 'application/json', mcp_headers, False, slow=True)
     assert status == 200
     await_reserved(256 * MIB)
@@ -275,7 +278,11 @@ try:
            'application/json', mcp_headers, False)
     close_held()
     await_reserved(0)
-    proof['checks'].append('slow MCP SSE output holds shared budget through cancel notification; socket disconnect releases it')
+    deadline = time.monotonic() + 5
+    while completed_mcp_posts() < before_slow + 3 and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert completed_mcp_posts() >= before_slow + 3, 'disconnected MCP POST did not finish its servlet lifecycle'
+    proof['checks'].append('slow MCP SSE output holds shared budget through cancel notification; socket disconnect releases it and completes the servlet request')
     get_image['id'] = '图' * 128
     value, _ = expect('POST', '/mcp', 200, json.dumps(get_image).encode(), 'application/json', mcp_headers, False)
     result = json.loads(next(line[5:] for line in value.decode().splitlines() if line.startswith('data:')))['result']

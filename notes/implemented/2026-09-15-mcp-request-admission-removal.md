@@ -31,7 +31,13 @@ preflight: at most 4,096 tokens, 32 nested containers, bounded identifiers and t
 names, and fixed malformed-envelope errors. All tool envelopes share the same byte
 bound. A maximum command uses 16,384 Java UTF-16 code units; six-byte JSON escapes
 take 96 KiB, leaving space for the ordinary envelope. Extra metadata counts toward
-the same 128 KiB. The filter has no semaphore, image reservation or async listener.
+the same 128 KiB. The filter has no semaphore or image reservation.
+
+`McpStreamCompletion` retains only servlet error/timeout completion. Spring WebMVC's
+SSE builder ignores `complete` and `error` after a failed send; a disconnected
+response otherwise remains unfinished. This listener completes that servlet request
+without closing the MCP session or releasing image memory. Actual producers retain
+their independent memory lifetime.
 
 Image work uses the existing `ImageMemoryAdmission` pool at its actual owner:
 

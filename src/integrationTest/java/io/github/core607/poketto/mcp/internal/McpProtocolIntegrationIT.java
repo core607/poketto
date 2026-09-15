@@ -544,6 +544,24 @@ class McpProtocolIntegrationIT {
                             .path("reason")
                             .stringValue())
                     .isEqualTo("IMAGE_MEMORY_BUSY");
+            JsonNode importRefused = call(
+                    token,
+                    session,
+                    "put_asset",
+                    Map.of(
+                            "url",
+                            "https://example.com/image.png",
+                            "operationKey",
+                            UUID.randomUUID().toString()));
+            assertThat(error(importRefused)).isEqualTo("UNAVAILABLE");
+            assertThat(json.readTree(importRefused
+                                    .path("content")
+                                    .get(0)
+                                    .path("text")
+                                    .stringValue())
+                            .path("reason")
+                            .stringValue())
+                    .isEqualTo("IMAGE_MEMORY_BUSY");
             assertThat(response(post(token, session, rpc("tools/list", Map.of())))
                             .path("result")
                             .path("tools")
