@@ -37,7 +37,7 @@ override.write_text(json.dumps({'services': {'app': {
     'mem_limit': str(memory_mib) + 'm',
     'command': ['java', '-XX:MaxRAMPercentage=65' if memory_mib == 768 else '-Xmx500m', '-XX:+ExitOnOutOfMemoryError', '-Djava.awt.headless=true',
                 '-cp', '/runtime/classes:/runtime/jars/*', 'io.github.core607.poketto.acceptance.AcceptanceApplication',
-                '--management.endpoints.web.exposure.include=health,metrics'],
+                '--management.endpoints.web.exposure.include=health,metrics', '--poketto.oauth.issuer=http://127.0.0.1:38180'],
 }}}), encoding='utf-8')
 COMPOSE = ['docker', 'compose', '-p', PROJECT, '--env-file', str(env), '-f', str(ROOT / 'acceptance/compose.yaml'), '-f', str(override)]
 proof = {'project': PROJECT, 'commit': revision, 'checks': [], 'samples': [], 'sourceSha256': {}}
@@ -223,6 +223,22 @@ try:
     mcp_headers['Mcp-Session-Id'] = headers['mcp-session-id']
     mcp_headers['MCP-Protocol-Version'] = '2025-11-25'
     expect('POST', '/mcp', 202, b'{"jsonrpc":"2.0","method":"notifications/initialized"}', 'application/json', mcp_headers, False)
+    # Alternate persistent calls with short-lived sessions, as real clients do.
+    # A held image below also checks that text requests do not need image admission.
+    for attempt in range(100):
+        current = dict(mcp_headers)
+        if attempt % 2:
+            _, opened = expect('POST', '/mcp', 200, json.dumps(initialize).encode(),
+                               'application/json', {'Authorization': 'Bearer ' + key,
+                               'Accept': 'application/json, text/event-stream'}, False)
+            current['Mcp-Session-Id'] = opened['mcp-session-id']
+            expect('POST', '/mcp', 202, b'{"jsonrpc":"2.0","method":"notifications/initialized"}',
+                   'application/json', current, False)
+        query = {'jsonrpc': '2.0', 'id': 100 + attempt, 'method': 'tools/list'}
+        expect('POST', '/mcp', 200, json.dumps(query).encode(), 'application/json', current, False)
+        if attempt % 2:
+            expect('DELETE', '/mcp', 200, extra=current, browser=False)
+    proof['checks'].append('100 persistent/new-session calls and 50 immediate DELETEs complete without request-slot exhaustion')
     get_image = {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'get_asset', 'arguments': {'source': {'kind': 'managed', **reference}}}}
     get_payload = json.dumps(get_image).encode()
     for i in range(2):
@@ -231,7 +247,9 @@ try:
     await_reserved(256 * MIB)
     expect('GET', public_url, 429)
     expect('POST', '/api/admin/assets', 429, multipart, 'multipart/form-data; boundary=' + boundary, {'Idempotency-Key': operation})
-    expect('POST', '/mcp', 429, get_payload, 'application/json', mcp_headers, False)
+    rejected, _ = expect('POST', '/mcp', 200, get_payload, 'application/json', mcp_headers, False)
+    refusal = json.loads(next(line[5:] for line in rejected.decode().splitlines() if line.startswith('data:')))['result']
+    assert refusal['isError'] and json.loads(refusal['content'][0]['text'])['reason'] == 'IMAGE_MEMORY_BUSY'
     assert json_call('GET', '/api/public/document?route=/memory')['images'] == {}
     assert json_call('POST', '/api/admin/repository/preview', {'path': 'private/memory.md', 'body': body})['images'] == {}
     inventory = json_call('GET', '/api/admin/assets/repository')
@@ -246,6 +264,8 @@ try:
     expect('GET', public_url, 429)
     expect('POST', '/mcp', 202, b'{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2}}', 'application/json', mcp_headers, False)
     assert metric('poketto.images.admission.reserved.bytes') == 256 * MIB
+    expect('POST', '/mcp', 200, b'{"jsonrpc":"2.0","id":999,"method":"tools/list"}',
+           'application/json', mcp_headers, False)
     close_held()
     await_reserved(0)
     proof['checks'].append('slow MCP SSE output holds shared budget through cancel notification; socket disconnect releases it')
@@ -254,15 +274,18 @@ try:
     result = json.loads(next(line[5:] for line in value.decode().splitlines() if line.startswith('data:')))['result']
     image = next(item for item in result['content'] if item['type'] == 'image')
     assert hashlib.sha256(base64.b64decode(image['data'])).hexdigest() == digest
-    put_image = {'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {'name': 'put_asset', 'arguments': {'operationKey': operation, 'base64': base64.b64encode(png).decode()}}}
+    put_image = {'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {'name': 'put_asset', 'arguments': {'operationKey': operation, 'mode': 'upload'}}}
     value, _ = expect('POST', '/mcp', 200, json.dumps(put_image).encode(), 'application/json', mcp_headers, False)
     result = json.loads(next(line[5:] for line in value.decode().splitlines() if line.startswith('data:')))['result']
-    assert result.get('isError') is False, 'maximum MCP upload returned a tool error'
-    metadata = json.loads(next(item['text'] for item in result['content'] if item['type'] == 'text'))
+    assert result.get('isError') is False, 'upload grant returned a tool error'
+    grant = json.loads(result['content'][0]['text'])
+    upload_path = urllib.parse.urlsplit(grant['uploadUrl']).path
+    uploaded, _ = expect('PUT', upload_path, 200, png, 'application/octet-stream', browser=False)
+    metadata = json.loads(uploaded)
     assert metadata['assetId'] == reference['assetId'] and metadata['revision'] == digest
     assert json_call('GET', '/api/admin/assets')['total'] == 1
     await_reserved(0)
-    proof['checks'].append('maximum MCP image encoding has exact hash; maximum MCP upload reuses HTTP immutable upload idempotently')
+    proof['checks'].append('maximum MCP image encoding has exact hash; raw upload grant reuses HTTP immutable upload idempotently')
     run(['docker', 'exec', app_id, 'jcmd', '1', 'GC.run'])
     proof['heapAfterGc'] = metric('jvm.memory.used', '?tag=area:heap')
     proof['processStatus'] = run(['docker', 'exec', app_id, 'cat', '/proc/1/status'])

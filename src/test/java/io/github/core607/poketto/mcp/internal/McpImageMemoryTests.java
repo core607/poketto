@@ -22,8 +22,6 @@ import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import io.modelcontextprotocol.spec.McpStreamableServerTransport;
-import jakarta.servlet.AsyncEvent;
-import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -37,7 +35,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.mock.web.MockAsyncContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -50,10 +47,10 @@ class McpImageMemoryTests {
     void bodyFilterRejectsUnboundedIdsWithoutEchoingOrDispatchingAndAcceptsLegalIds() throws Exception {
         var memory = memory();
         var json = new ObjectMapper();
-        var filter = new McpBodyLimitFilter(json, memory);
-        for (Object id : new Object[] {
-            "图".repeat(129), "x".repeat(1024 * 1024), BigInteger.TEN.pow(128), Map.of("invalid", "value")
-        }) {
+        var filter = new McpBodyLimitFilter(json);
+        for (Object id :
+                new Object[] {"图".repeat(129), "x".repeat(16384), BigInteger.TEN.pow(128), Map.of("invalid", "value")
+                }) {
             var response = new MockHttpServletResponse();
             filter.doFilter(
                     post(json.writeValueAsString(Map.of("method", "tools/list", "id", id))),
@@ -79,7 +76,7 @@ class McpImageMemoryTests {
     @Test
     void envelopeDepthAndTokenLimitsBoundSdkNodeAllocationWithoutRejectingLargeText() throws Exception {
         var memory = memory();
-        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
+        var filter = new McpBodyLimitFilter(new ObjectMapper());
         for (String body : new String[] {"[".repeat(33) + "]".repeat(33), "[" + "[],".repeat(2050) + "[]]"}) {
             var response = new MockHttpServletResponse();
             filter.doFilter(post(body), response, (input, output) -> fail("unbounded tree reached SDK"));
@@ -88,7 +85,7 @@ class McpImageMemoryTests {
         }
         var response = new MockHttpServletResponse();
         filter.doFilter(
-                post("{\"id\":1,\"params\":{\"text\":\"" + "x".repeat(1024 * 1024) + "\"}}"),
+                post("{\"id\":1,\"params\":{\"text\":\"" + "x".repeat(16384) + "\"}}"),
                 response,
                 (input, output) -> output.getWriter().write("dispatched"));
         assertThat(response.getContentAsString()).isEqualTo("dispatched");
@@ -97,53 +94,15 @@ class McpImageMemoryTests {
 
     @ParameterizedTest
     @ValueSource(strings = {"get_asset", "get_artifact"})
-    void imageReadEnvelopeLimitAlsoAppliesWhenToolNameFollowsArguments(String toolName) throws Exception {
+    void smallImageEnvelopesReachTheSdkWithoutImageAllocation(String toolName) throws Exception {
         var memory = memory();
-        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
+        var filter = new McpBodyLimitFilter(new ObjectMapper());
         String body = "{\"method\":\"tools/call\",\"id\":1,\"params\":{\"arguments\":{\"ignored\":\""
                 + "x".repeat(16384) + "\"},\"name\":\"" + toolName + "\"}}";
         var output = new MockHttpServletResponse();
-        filter.doFilter(post(body), output, (input, response) -> fail("large get_asset envelope reached SDK"));
-        assertThat(output.getStatus()).isEqualTo(413);
-        assertThat(memory.reservedBytes()).isZero();
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void bothStartAsyncFormsInstallBeforeAnEarlyFailureAndDoNotReleaseTheRunningChain(boolean supplied)
-            throws Exception {
-        var memory = memory();
-        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
-        var request = post(imageCall("get_asset"));
-        var output = new MockHttpServletResponse();
-        filter.doFilter(request, output, (input, response) -> {
-            var async = (MockAsyncContext) (supplied ? input.startAsync(input, response) : input.startAsync());
-            assertThat(async.getListeners()).hasSize(1);
-            async.getListeners().getFirst().onError(new AsyncEvent(async, new IOException("early write failure")));
-            assertThat(output.getStatus()).isEqualTo(500);
-            assertThat(output.getContentAsString()).contains("MCP response unavailable");
-            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-        });
-        assertThat(memory.reservedBytes()).isZero();
-    }
-
-    @Test
-    void aSecondAsyncCycleReattachesAndTimeoutFinishesWithoutAnEmptySuccess() throws Exception {
-        var memory = memory();
-        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
-        var request = post(imageCall("get_asset"));
-        var output = new MockHttpServletResponse();
-        filter.doFilter(request, output, (input, response) -> input.startAsync());
-        var first = (MockAsyncContext) request.getAsyncContext();
-        var second = new MockAsyncContext(request, output);
-        first.getListeners().getFirst().onStartAsync(new AsyncEvent(second));
-        assertThat(second.getListeners()).hasSize(1);
-        second.getListeners().getFirst().onTimeout(new AsyncEvent(second));
-        assertThat(output.getStatus()).isEqualTo(503);
-        assertThat(output.getContentAsString()).contains("MCP response unavailable");
-        assertThat(memory.reservedBytes()).isZero();
-        first.complete();
-        second.complete();
+        filter.doFilter(
+                post(body), output, (input, response) -> response.getWriter().write("dispatched"));
+        assertThat(output.getContentAsString()).isEqualTo("dispatched");
         assertThat(memory.reservedBytes()).isZero();
     }
 
@@ -212,65 +171,6 @@ class McpImageMemoryTests {
     }
 
     @Test
-    void imageCallsAndLargeEnvelopesShareBrowserCapacityButSmallControlsDoNot() throws Exception {
-        var memory = memory();
-        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
-        var download = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
-        try {
-            for (String body : new String[] {
-                imageCall("get_asset"), imageCall("get_artifact"), imageCall("put_asset"), " ".repeat(16385)
-            }) {
-                var output = new MockHttpServletResponse();
-                filter.doFilter(post(body), output, (request, response) -> fail("image allocation reached"));
-                assertThat(output.getStatus()).isEqualTo(429);
-                assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.BROWSER_BYTES);
-            }
-            for (String body : new String[] {
-                "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}",
-                "{\"method\":\"tools/list\",\"id\":3}",
-                imageCall("repo_exec")
-            }) {
-                var output = new MockHttpServletResponse();
-                filter.doFilter(post(body), output, (request, response) -> {
-                    assertThat(request.getAttribute(ImageRequestScope.ATTRIBUTE))
-                            .isNull();
-                    response.getWriter().write("control available");
-                });
-                assertThat(output.getContentAsString()).isEqualTo("control available");
-            }
-        } finally {
-            download.responseComplete();
-        }
-        filter.doFilter(post(imageCall("get_asset")), new MockHttpServletResponse(), (request, response) -> {
-            assertThat(request.getAttribute(ImageRequestScope.ATTRIBUTE)).isInstanceOf(ImageRequestScope.class);
-            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-        });
-        assertThat(memory.reservedBytes()).isZero();
-    }
-
-    @Test
-    void asyncTimeoutAndDisconnectCannotReleaseWhileActualProducerContinues() throws Exception {
-        var memory = memory();
-        var filter = new McpBodyLimitFilter(new ObjectMapper(), memory);
-        var request = post(imageCall("get_asset"));
-        var actualProducer = new AtomicReference<ImageRequestScope.Producer>();
-        filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> {
-            actualProducer.set(((ImageRequestScope) input.getAttribute(ImageRequestScope.ATTRIBUTE)).producer());
-            input.startAsync();
-        });
-        var async = (MockAsyncContext) request.getAsyncContext();
-        for (var listener : async.getListeners()) {
-            listener.onTimeout(new AsyncEvent(async));
-            listener.onError(new AsyncEvent(async, new IOException("disconnected")));
-        }
-        assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-        async.complete();
-        assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-        actualProducer.get().close();
-        assertThat(memory.reservedBytes()).isZero();
-    }
-
-    @Test
     void cancelledBlockingSseWriteRetainsBudgetUntilTheActualWriteExits() throws Exception {
         var memory = memory();
         var scope = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
@@ -303,7 +203,6 @@ class McpImageMemoryTests {
     @Test
     void actualSdkResponseDetachesIncomingStreamAndCancellationCallbacks() throws Exception {
         var memory = memory();
-        var scope = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
         var seen = new AtomicReference<McpCancellation>();
         McpRequestHandler<Object> handler = (exchange, parameters) -> Mono.fromCallable(() -> {
             var current = (ImageRequestScope) exchange.transportContext().get(ImageRequestScope.ATTRIBUTE);
@@ -328,17 +227,14 @@ class McpImageMemoryTests {
                 Duration.ofSeconds(5),
                 Map.of("tools/call", handler),
                 Map.of());
-        var session = new CancellableMcpSession(sdk, initialize);
+        var session = new CancellableMcpSession(sdk, initialize, memory, new ObjectMapper());
         var output = mock(McpStreamableServerTransport.class);
         when(output.sendMessage(any()))
                 .thenAnswer(call -> Mono.fromRunnable(
                         () -> assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES)));
         when(output.closeGracefully()).thenReturn(Mono.empty());
         try {
-            session.responseStream(new McpSchema.JSONRPCRequest("tools/call", 1, Map.of()), output)
-                    .contextWrite(context -> context.put(
-                            McpTransportContext.KEY,
-                            McpTransportContext.create(Map.of(ImageRequestScope.ATTRIBUTE, scope))))
+            session.responseStream(new McpSchema.JSONRPCRequest("tools/call", 1, Map.of("name", "get_asset")), output)
                     .block(Duration.ofSeconds(5));
             assertThat((Map<?, ?>) ReflectionTestUtils.getField(sdk, "requestIdToStream"))
                     .isEmpty();
@@ -348,9 +244,8 @@ class McpImageMemoryTests {
                     .isEmpty();
             assertThat(session.replay("any").collectList().block()).isEmpty();
             verify(output).closeGracefully();
-            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
+            awaitReleased(memory);
         } finally {
-            scope.responseComplete();
             session.close();
         }
         assertThat(memory.reservedBytes()).isZero();

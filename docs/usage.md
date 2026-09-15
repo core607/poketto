@@ -199,7 +199,7 @@ MARKDOWN
 
 `/mcp` uses Spring AI 2.0.1 WebMVC Streamable HTTP and a workspace Bearer credential (API key or OAuth access token), independently of browser sessions. With the executor enabled, the catalog contains `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset`. The asset tools transfer exact image versions and accept idempotent uploads; upload acknowledgement never implies publication.
 
-`put_asset` accepts `operationKey` plus exactly one of `url`, `file`, or `base64`.
+`put_asset` accepts `operationKey` plus exactly one of `url` or `file`.
 `url` is a public HTTPS image download address on port 443. `file` is a platform
 file object with required `download_url` and `file_id`; optional `mime_type` and
 `file_name` are hints, never validation authority. The tool declares
@@ -239,8 +239,13 @@ retained per instance, with at most 64 total and 8 unfinished grants per account
 GET the same URL to recover a lost
 receipt (`UPLOAD_PENDING` if no upload has completed). After expiry, request a
 replacement with the same operation key and resend identical bytes; durable
-idempotency returns the same original, while different bytes conflict. Base64 is
-available for programmatic callers; models should not transcribe image bytes.
+idempotency returns the same original, while different bytes conflict.
+MCP request bodies are limited to 128 KiB. Image imports and responses reserve
+image memory at their own processing boundary; ordinary text calls do not take an
+image reservation. Refusals include `code` and `reason` in the tool result and logs;
+an image-budget refusal reports `IMAGE_MEMORY_BUSY`. Inspect uncertain writes
+before retrying, regardless of any wait hint.
+
 Both routes return `assetId`, `revision`, `reference`, `mediaType`, and `size`.
 Use `poketto media link PATH --asset ID --revision REV`, then explicitly save the
 text and `.poketto/assets.json`. Uploading alone does not save Git or publish.

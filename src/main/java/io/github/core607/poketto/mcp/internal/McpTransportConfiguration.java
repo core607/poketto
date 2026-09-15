@@ -2,7 +2,6 @@ package io.github.core607.poketto.mcp.internal;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
-import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -63,10 +62,6 @@ class McpTransportConfiguration {
                 .contextExtractor(request -> {
                     var context = new HashMap<String, Object>();
                     context.put(McpSessions.IDENTITY_CONTEXT, sessions.currentIdentity());
-                    Object scope = request.servletRequest().getAttribute(ImageRequestScope.ATTRIBUTE);
-                    if (scope instanceof ImageRequestScope) {
-                        context.put(ImageRequestScope.ATTRIBUTE, scope);
-                    }
                     return McpTransportContext.create(context);
                 })
                 .build();
@@ -75,8 +70,11 @@ class McpTransportConfiguration {
     @Bean
     @Primary
     McpStreamableServerTransportProvider boundMcpTransport(
-            WebMvcStreamableServerTransportProvider delegate, McpSessions sessions) {
-        return new BoundMcpTransport(delegate, sessions);
+            WebMvcStreamableServerTransportProvider delegate,
+            McpSessions sessions,
+            ImageMemoryAdmission memory,
+            ObjectMapper json) {
+        return new BoundMcpTransport(delegate, sessions, memory, json);
     }
 
     @Bean(name = "webMvcStreamableServerRouterFunction")
@@ -117,8 +115,8 @@ class McpTransportConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(ObjectMapper json, ImageMemoryAdmission memory) {
-        var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json, memory));
+    FilterRegistrationBean<McpBodyLimitFilter> mcpBodyLimitFilter(ObjectMapper json) {
+        var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json));
         registration.setUrlPatterns(List.of("/mcp"));
         registration.setOrder(-99);
         registration.setAsyncSupported(true);

@@ -7,7 +7,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -37,6 +36,26 @@ import tools.jackson.databind.ObjectMapper;
 
 class McpBoundsTests {
     @Test
+    void escapedMaximumCommandAndAsyncCallsDoNotConsumeGlobalSlots() throws Exception {
+        var filter = new McpBodyLimitFilter(new ObjectMapper());
+        String command = "\\u0061".repeat(16384);
+        String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"repo_exec\",\"arguments\":{\"expectedCopyId\":\"new\",\"command\":\""
+                + command + "\"}}}";
+        var held = new ArrayList<MockHttpServletRequest>();
+        try {
+            for (int i = 0; i < 12; i++) {
+                var request = post(body);
+                filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> input.startAsync());
+                assertThat(request.isAsyncStarted()).isTrue();
+                held.add(request);
+            }
+        } finally {
+            held.forEach(request -> request.getAsyncContext().complete());
+        }
+    }
+
+    @Test
     void onlyThrowableEntitiesAreNormalizedAndResponseMetadataSurvives() {
         var original = ServerResponse.badRequest()
                 .header("MCP-Protocol-Version", "2025-11-25")
@@ -63,8 +82,7 @@ class McpBoundsTests {
 
     @Test
     void fullBodyIsValidatedBeforeDispatchAndExactBytesAreConsumedOnlyOnce() throws Exception {
-        var filter = new McpBodyLimitFilter(
-                new ObjectMapper(), new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
+        var filter = new McpBodyLimitFilter(new ObjectMapper());
         byte[] oversized = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1];
         for (int attempt = 0; attempt < 5; attempt++) {
             var request = chunked(oversized);
@@ -134,10 +152,9 @@ class McpBoundsTests {
 
     @Test
     void bodyLimitEnforcesDeclaredAndChunkedBytesAndDoesNotResetOnRepeatedStreamAccess() throws Exception {
-        var filter = new McpBodyLimitFilter(
-                new ObjectMapper(), new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
+        var filter = new McpBodyLimitFilter(new ObjectMapper());
         var declared = new MockHttpServletRequest("POST", "/mcp");
-        declared.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
+        declared.setContent(new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1]);
         var response = new MockHttpServletResponse();
         filter.doFilter(declared, response, (request, output) -> fail("oversized initialization reached SDK"));
         assertThat(response.getStatus()).isEqualTo(413);
@@ -152,13 +169,13 @@ class McpBoundsTests {
                 return -1;
             }
         };
-        chunked.setContent(new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES + 1]);
+        chunked.setContent(new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES + 1]);
         var chunkedResponse = new MockHttpServletResponse();
         filter.doFilter(
                 chunked, chunkedResponse, (request, output) -> fail("oversized chunked initialization reached SDK"));
         assertThat(chunkedResponse.getStatus()).isEqualTo(413);
         var valid = new MockHttpServletRequest("POST", "/mcp");
-        byte[] validBytes = new byte[McpBodyLimitFilter.MAX_INITIALIZE_BYTES];
+        byte[] validBytes = new byte[McpBodyLimitFilter.MAX_REQUEST_BYTES];
         Arrays.fill(validBytes, (byte) ' ');
         validBytes[0] = '{';
         validBytes[1] = '}';
@@ -169,42 +186,6 @@ class McpBoundsTests {
                     new MockHttpServletResponse(),
                     (request, output) -> request.getInputStream().readAllBytes());
         }
-    }
-
-    @Test
-    void cancellationHasBoundedReservedAdmissionWhenAllDataPostsAreActive() throws Exception {
-        var filter = new McpBodyLimitFilter(
-                new ObjectMapper(), new ImageMemoryAdmission(256L * 1024 * 1024, 16, Duration.ZERO));
-        var held = new ArrayList<MockHttpServletRequest>();
-        try {
-            for (int i = 0; i < 4; i++) {
-                var request = post("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\"}");
-                filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> input.startAsync());
-                held.add(request);
-            }
-            var rejected = new MockHttpServletResponse();
-            filter.doFilter(post("{}"), rejected, (input, output) -> fail("fifth data POST reached SDK"));
-            assertThat(rejected.getStatus()).isEqualTo(429);
-            for (int i = 0; i < 4; i++) {
-                var request = post(
-                        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}");
-                filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> input.startAsync());
-                held.add(request);
-                assertThat(request.isAsyncStarted()).isTrue();
-            }
-            var excessControl = new MockHttpServletResponse();
-            filter.doFilter(
-                    post("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\"}"),
-                    excessControl,
-                    (input, output) -> fail("fifth control POST reached SDK"));
-            assertThat(excessControl.getStatus()).isEqualTo(429);
-        } finally {
-            held.forEach(request -> request.getAsyncContext().complete());
-        }
-        var admitted = new MockHttpServletResponse();
-        filter.doFilter(
-                post("{}"), admitted, (input, output) -> output.getWriter().write("released"));
-        assertThat(admitted.getContentAsString()).isEqualTo("released");
     }
 
     private static MockHttpServletRequest post(String body) {

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.mcp.internal;
 
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ImageRequestScope;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.TypeRef;
@@ -12,14 +13,21 @@ import java.util.HashMap;
 import java.util.Map;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.ObjectMapper;
 
 /** Adds cancellation to SDK 2.0 sessions, whose default notification table omits notifications/cancelled. */
 final class CancellableMcpSession extends McpStreamableServerSession {
     private final McpStreamableServerSession delegate;
+    private final ImageMemoryAdmission memory;
+    private final ObjectMapper json;
     private final Map<String, McpCancellation> active = new HashMap<>();
     private boolean closed;
 
-    CancellableMcpSession(McpStreamableServerSession delegate, McpSchema.InitializeRequest initialize) {
+    CancellableMcpSession(
+            McpStreamableServerSession delegate,
+            McpSchema.InitializeRequest initialize,
+            ImageMemoryAdmission memory,
+            ObjectMapper json) {
         super(
                 delegate.getId(),
                 initialize.capabilities(),
@@ -28,6 +36,8 @@ final class CancellableMcpSession extends McpStreamableServerSession {
                 Map.of(),
                 Map.of());
         this.delegate = delegate;
+        this.memory = memory;
+        this.json = json;
     }
 
     @Override
@@ -50,19 +60,65 @@ final class CancellableMcpSession extends McpStreamableServerSession {
                 active.put(key, cancellation);
             }
             McpTransportContext previous = context.getOrDefault(McpTransportContext.KEY, McpTransportContext.EMPTY);
-            McpTransportContext decorated =
-                    name -> name.equals(McpCancellation.CONTEXT_KEY) ? cancellation : previous.get(name);
-            var output = previous.get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope
-                    ? new ImageBudgetTransport(transport, scope)
-                    : transport;
-            return delegate.responseStream(request, output)
-                    .contextWrite(current -> current.put(McpTransportContext.KEY, decorated))
+            return Mono.defer(() -> respond(request, transport, previous, cancellation))
                     .doOnCancel(() -> {
                         cancellation.cancel();
                         finish(key, cancellation);
                     })
                     .doOnTerminate(() -> finish(key, cancellation));
         });
+    }
+
+    private Mono<Void> respond(
+            McpSchema.JSONRPCRequest request,
+            McpStreamableServerTransport transport,
+            McpTransportContext previous,
+            McpCancellation cancellation) {
+        String tool = imageTool(request);
+        ImageRequestScope scope = null;
+        if (tool != null) {
+            scope = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElse(null);
+            if (scope == null) {
+                McpSchema.CallToolResult refusal = McpToolOutcomes.recorded(
+                        json,
+                        tool,
+                        () -> McpToolOutcomes.failure(
+                                json,
+                                "UNAVAILABLE",
+                                "IMAGE_MEMORY_BUSY",
+                                "Image memory is busy; retry this read later."));
+                return transport
+                        .sendMessage(McpSchema.JSONRPCResponse.result(request.id(), refusal))
+                        .then(transport.closeGracefully());
+            }
+        }
+        ImageRequestScope reservation = scope;
+        McpTransportContext decorated = name -> {
+            if (name.equals(McpCancellation.CONTEXT_KEY)) {
+                return cancellation;
+            }
+            if (name.equals(ImageRequestScope.ATTRIBUTE)) {
+                return reservation;
+            }
+            return previous.get(name);
+        };
+        McpStreamableServerTransport output = scope == null ? transport : new ImageBudgetTransport(transport, scope);
+        return Mono.defer(() -> delegate.responseStream(request, output))
+                .contextWrite(current -> current.put(McpTransportContext.KEY, decorated))
+                .doFinally(signal -> {
+                    if (reservation != null) {
+                        reservation.responseComplete();
+                    }
+                });
+    }
+
+    private static String imageTool(McpSchema.JSONRPCRequest request) {
+        if (request.params() instanceof Map<?, ?> params && params.get("name") instanceof String tool) {
+            if (tool.equals("get_asset") || tool.equals("get_artifact")) {
+                return tool;
+            }
+        }
+        return null;
     }
 
     private static Mono<Void> reject(McpStreamableServerTransport transport, Object id) {

@@ -65,7 +65,7 @@ class ImageTransferController {
 
     static int transferStatus(ImageTransferException failure) {
         return switch (failure.reason()) {
-            case TRANSFER_BUSY -> 429;
+            case TRANSFER_BUSY, IMAGE_MEMORY_BUSY -> 429;
             case UPLOAD_EXPIRED -> 410;
             case UPLOAD_PENDING -> 409;
             case SOURCE_UNAVAILABLE -> 502;

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.modelcontextprotocol.server.McpRequestHandler;
 import io.modelcontextprotocol.server.McpServer;
@@ -25,8 +26,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.ObjectMapper;
 
 class McpCancellationTests {
+    private static ImageMemoryAdmission memory() {
+        return new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO);
+    }
+
     @Test
     void actualSdkToolReceivesNotificationCancellationAndReusesCompletedRequestId() throws Exception {
         var factory = new AtomicReference<McpStreamableServerSession.Factory>();
@@ -75,7 +81,7 @@ class McpCancellationTests {
                 new McpSchema.Implementation("test", "1"));
         var initialized = factory.get().startSession(initialize);
         initialized.initResult().block(Duration.ofSeconds(5));
-        var session = new CancellableMcpSession(initialized.session(), initialize);
+        var session = new CancellableMcpSession(initialized.session(), initialize, memory(), new ObjectMapper());
         var output = mock(McpStreamableServerTransport.class);
         when(output.sendMessage(any())).thenReturn(Mono.empty());
         when(output.closeGracefully()).thenReturn(Mono.empty());
@@ -158,6 +164,6 @@ class McpCancellationTests {
                 Duration.ofMinutes(1),
                 Map.of("tools/call", handler),
                 Map.of());
-        return new CancellableMcpSession(sdk, initialize);
+        return new CancellableMcpSession(sdk, initialize, memory(), new ObjectMapper());
     }
 }

@@ -22,9 +22,9 @@ when using the grant. Do not give the client a long-lived API key.
 
 Both routes use the existing bounded image validator and durable, workspace-scoped
 upload ledger. Return the same immutable asset receipt; `media link` and `save`
-remain separate. Base64 remains available for programmatic callers, not as the
-recommended model-generated input; [MCP request admission removal](../proposed/2026-09-15-mcp-request-admission-removal.md)
-proposes withdrawing it.
+remain separate. The original programmatic Base64 input is withdrawn by
+[MCP request admission removal](2026-09-15-mcp-request-admission-removal.md);
+callers holding bytes use a raw upload grant.
 
 ## Boundaries and alternatives
 

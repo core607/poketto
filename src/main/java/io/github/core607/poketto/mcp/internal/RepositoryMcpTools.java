@@ -23,7 +23,6 @@ import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
@@ -105,7 +104,7 @@ final class RepositoryMcpTools {
                     this::getAsset));
             tools.add(tool(
                     "put_asset",
-                    "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Never transcribe Base64; base64 is for programmatic callers only. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
+                    "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
                     putAssetSchema(),
                     false,
                     false,
@@ -203,16 +202,7 @@ final class RepositoryMcpTools {
                         if (arguments == null) {
                             throw new IllegalArgumentException();
                         }
-                        if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE)
-                                instanceof ImageRequestScope scope) {
-                            try (var producer = scope.producer()) {
-                                return operation.apply(exchange, arguments);
-                            }
-                        }
-                        if (McpBodyLimitFilter.imageWork(name, arguments)) {
-                            return error("UNAVAILABLE", "Image memory admission is unavailable.");
-                        }
-                        return operation.apply(exchange, arguments);
+                        return invoke(exchange, name, arguments, operation);
                     } catch (AuthException | SecurityException exception) {
                         return error("DENIED", "Current workspace capability is required.");
                     } catch (SessionReplacedException exception) {
@@ -242,6 +232,23 @@ final class RepositoryMcpTools {
                                 "Operation could not be completed; verify authoritative state before retrying writes.");
                     }
                 }));
+    }
+
+    private McpSchema.CallToolResult invoke(
+            McpSyncServerExchange exchange,
+            String name,
+            Map<String, Object> arguments,
+            BiFunction<McpSyncServerExchange, Map<String, Object>, McpSchema.CallToolResult> operation) {
+        if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
+            try (var producer = scope.producer()) {
+                return operation.apply(exchange, arguments);
+            }
+        }
+        if (name.equals("get_asset") || name.equals("get_artifact")) {
+            return McpToolOutcomes.failure(
+                    json, "UNAVAILABLE", "IMAGE_MEMORY_UNAVAILABLE", "Image response memory admission is unavailable.");
+        }
+        return operation.apply(exchange, arguments);
     }
 
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
@@ -308,7 +315,7 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult putAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("operationKey", "mode", "url", "file", "base64"));
+        fields(input, Set.of("operationKey", "mode", "url", "file"));
         PutAssetInput request = json.convertValue(input, PutAssetInput.class);
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
@@ -316,20 +323,9 @@ final class RepositoryMcpTools {
             return textResult(
                     transfers.getObject().prepare(identity.principal(), identity.workspace(), request.operationKey()));
         }
-        if (request.downloadUrl() != null) {
-            return textResult(transfers
-                    .getObject()
-                    .importUrl(
-                            identity.principal(), identity.workspace(), request.operationKey(), request.downloadUrl()));
-        }
-        byte[] bytes = Base64.getDecoder().decode(request.base64());
-        var result = assets.getObject()
-                .upload(
-                        identity.principal(),
-                        identity.workspace(),
-                        request.operationKey(),
-                        new ByteArrayInputStream(bytes));
-        return textResult(ImageTransfers.Receipt.of(result));
+        return textResult(transfers
+                .getObject()
+                .importUrl(identity.principal(), identity.workspace(), request.operationKey(), request.downloadUrl()));
     }
 
     private static Map<String, Object> putAssetSchema() {
@@ -358,8 +354,7 @@ final class RepositoryMcpTools {
                                                 text(255),
                                                 "file_name",
                                                 text(1024)),
-                                        List.of("download_url", "file_id")),
-                        "base64", text(MAX_BASE64_LENGTH)),
+                                        List.of("download_url", "file_id"))),
                 List.of("operationKey"));
     }
 
@@ -550,10 +545,7 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult error(String code, String message) {
-        return McpSchema.CallToolResult.builder()
-                .addTextContent(json.writeValueAsString(Map.of("code", code, "message", message)))
-                .isError(true)
-                .build();
+        return McpToolOutcomes.failure(json, code, code, message);
     }
 
     private static Map<String, Object> object(Map<String, Object> properties, List<String> required) {

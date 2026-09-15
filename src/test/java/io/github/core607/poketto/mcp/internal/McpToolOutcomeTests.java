@@ -27,7 +27,7 @@ class McpToolOutcomeTests {
 
         assertThat(result.isError()).isTrue();
         assertThat(output).contains("mcp tool");
-        assertThat(output).contains("SESSION_REPLACED");
+        assertThat(output).contains("SESSION_REPLACED", "reason=MISSING_COPY");
         assertThat(output).contains("repo_exec");
     }
 

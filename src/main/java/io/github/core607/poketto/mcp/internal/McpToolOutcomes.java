@@ -30,27 +30,39 @@ final class McpToolOutcomes {
         long started = System.nanoTime();
         McpSchema.CallToolResult result = call.get();
         long milliseconds = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-        String outcome = result.isError() ? code(json, result) : "OK";
+        String outcome = result.isError() ? field(json, result, "code") : "OK";
+        String reason = result.isError() ? field(json, result, "reason") : "NONE";
         var entry = result.isError() ? log.atWarn() : log.atInfo();
         // Values appear as key values for JSON records and in the message for the readable format,
         // because the console pattern renders the message alone.
         entry.addKeyValue("tool", tool)
                 .addKeyValue("outcome", outcome)
+                .addKeyValue("reason", reason)
                 .addKeyValue("durationMs", milliseconds)
-                .setMessage("mcp tool {} returned {} after {} ms")
+                .setMessage("mcp tool {} returned {} reason={} after {} ms")
                 .addArgument(tool)
                 .addArgument(outcome)
+                .addArgument(reason)
                 .addArgument(milliseconds)
                 .log();
         return result;
     }
+
+    static McpSchema.CallToolResult failure(ObjectMapper json, String code, String reason, String message) {
+        return McpSchema.CallToolResult.builder()
+                .addTextContent(json.writeValueAsString(new Failure(code, reason, message)))
+                .isError(true)
+                .build();
+    }
+
+    private record Failure(String code, String reason, String message) {}
 
     /**
      * Reads the {@code code} member of a refusal this service itself wrote. An absent or unreadable
      * code means the refusal was built without one, which is a defect in the producer rather than
      * caller input, so it is named instead of hidden.
      */
-    private static String code(ObjectMapper json, McpSchema.CallToolResult result) {
+    private static String field(ObjectMapper json, McpSchema.CallToolResult result, String name) {
         if (result.content().isEmpty()) {
             return "UNREPORTED";
         }
@@ -58,7 +70,7 @@ final class McpToolOutcomes {
             return "UNREPORTED";
         }
         try {
-            var code = json.readTree(text.text()).path("code");
+            var code = json.readTree(text.text()).path(name);
             return code.isString() ? code.stringValue() : "UNREPORTED";
         } catch (JacksonException unreadable) {
             return "UNREPORTED";
