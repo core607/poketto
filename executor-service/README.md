@@ -26,6 +26,21 @@ The prepared sandbox tool directory provides `python` as an alias for
 Existing installations can add that root-owned symlink at
 `TOOLS/extracted/usr/bin/python` without changing host-wide Python commands.
 
+Provision the [content toolkit](../notes/implemented/2026-09-15-sandbox-content-toolkit.md)
+on the Debian-compatible worker host after preparing its root-owned tools directory:
+
+```sh
+sudo bash executor-service/install-sandbox-tools.sh /opt/poketto-executor/tools
+```
+
+This installs shared distribution packages for Pillow, BeautifulSoup/lxml, pypdf,
+openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and
+Noto CJK fonts. Substitute the installation's actual tools path. Package dependencies
+are installed on the host, not copied into each worktree. The script does not run a
+system upgrade or restart services; inspect `apt-get --simulate install` with its
+package list first when updating an existing host. Validate through `repo_exec`,
+including native image/PDF operations, after installation.
+
 Package Linux worker sources from the selected commit with `git archive` or raw Git blobs, retaining LF line endings. Do not package a Windows checkout whose existing files may still contain CRLF: a Python launcher shebang with CRLF cannot execute on Linux. Record the source revision and hashes, then verify installed files and run `poketto --help` through the deployed connector after restart.
 
 [config.example.json](config.example.json) lists all configurable paths and
