@@ -23,6 +23,50 @@ import org.junit.jupiter.api.Test;
 
 class ImageTransfersTests {
     @Test
+    void completedGrantsCannotExhaustOtherAccountsAndExpiryRestoresCapacity() throws Exception {
+        AuthService auth = mock(AuthService.class);
+        AssetService assets = mock(AssetService.class);
+        AuthPrincipal actor = mock(AuthPrincipal.class);
+        when(actor.subjectId()).thenReturn(UUID.randomUUID());
+        when(actor.accountId()).thenReturn(UUID.randomUUID());
+        AuthPrincipal other = mock(AuthPrincipal.class);
+        when(other.subjectId()).thenReturn(UUID.randomUUID());
+        when(other.accountId()).thenReturn(UUID.randomUUID());
+        var workspace = WorkspaceId.random();
+        Clock clock = mock(Clock.class);
+        when(clock.instant()).thenReturn(Instant.EPOCH);
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
+        var transfers = new ImageTransfers(
+                auth, assets, memory, mock(PublicImageDownloader.class), clock, "https://example.com");
+        var asset = new ManagedAsset(new ManagedAssetReference(UUID.randomUUID(), "a".repeat(64)), "image/png", 3);
+        when(assets.upload(eq(actor), eq(workspace), any(), any())).thenReturn(asset);
+        String firstKey = UUID.randomUUID().toString();
+        var first = transfers.prepare(actor, workspace, firstKey);
+        for (int i = 0; i < 64; i++) {
+            var upload = i == 0
+                    ? first
+                    : transfers.prepare(actor, workspace, UUID.randomUUID().toString());
+            String token = upload.uploadUrl().substring(upload.uploadUrl().lastIndexOf('/') + 1);
+            var scope = transfers.reserve(token);
+            try (var producer = scope.producer()) {
+                assertThat(transfers.upload(token, new byte[] {1, 2, 3})).isEqualTo(ImageTransfers.Receipt.of(asset));
+            } finally {
+                scope.responseComplete();
+            }
+        }
+        assertThatThrownBy(() ->
+                        transfers.prepare(actor, workspace, UUID.randomUUID().toString()))
+                .isInstanceOf(ImageTransferException.class)
+                .hasMessage("TRANSFER_BUSY");
+        assertThat(transfers.prepare(actor, workspace, firstKey)).isEqualTo(first);
+        assertThat(transfers.prepare(other, workspace, UUID.randomUUID().toString()))
+                .isNotNull();
+        when(clock.instant()).thenReturn(Instant.EPOCH.plus(Duration.ofMinutes(15)));
+        assertThat(transfers.prepare(actor, workspace, firstKey)).isNotEqualTo(first);
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
     void grantSurvivesTransportChangesButExpiresAndRechecksOriginalAuthority() throws Exception {
         AuthService auth = mock(AuthService.class);
         AuthPrincipal actor = mock(AuthPrincipal.class);

@@ -33,6 +33,11 @@ time and concurrent work. Do not forward OAuth credentials or cookies to sources
 Temporary upload grants are bounded, expire after 15 minutes, and do not survive
 application restart; the durable upload ledger still allows identical retries
 with the same operation key after obtaining a new grant.
+The instance retains at most 512 grants. An account may retain at most 64,
+including completed receipts, with at most 8 unfinished uploads. Completed grants
+still support receipt recovery and identical retries; the account total prevents
+one account's completed uploads from exhausting the shared grant table. Expired,
+inactive grants are reclaimed before allocating another grant.
 
 Third-party staging storage adds an unnecessary copy and dependency. Requiring
 only local paths cannot cross client/server filesystems. Separate business CRUD
@@ -64,7 +69,8 @@ ChatGPT file forwarding or a Claude app upload.
 
 `McpProtocolIntegrationIT` verifies the real tool catalog/file metadata,
 HTTP security boundary, denial and revocation. Focused unit checks cover expiry,
-body bounds and private/special-use network destinations. Redirect destinations
+body bounds, per-account capacity after completed uploads, expiry reclamation and
+private/special-use network destinations. Redirect destinations
 use the same URI and connection-time DNS validation; a live redirect fixture is
 not part of this receipt. `executorServiceTests` passes 78 Linux checks, including
 large Chinese text with quotes, preserved final newlines and pre-send rejection

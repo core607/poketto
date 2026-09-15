@@ -73,11 +73,12 @@ public final class ImageTransfers {
                     return descriptor(entry.getKey(), grant);
                 }
             }
-            long count = grants.values().stream()
-                    .filter(grant ->
-                            grant.receipt == null && grant.actor.accountId().equals(actor.accountId()))
-                    .count();
-            if (grants.size() >= 512 || count >= 8) {
+            var owned = grants.values().stream()
+                    .filter(grant -> grant.actor.accountId().equals(actor.accountId()))
+                    .toList();
+            long unfinished =
+                    owned.stream().filter(grant -> grant.receipt == null).count();
+            if (grants.size() >= 512 || owned.size() >= 64 || unfinished >= 8) {
                 throw new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY);
             }
             byte[] bytes = new byte[32];

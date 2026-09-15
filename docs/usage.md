@@ -228,8 +228,9 @@ Upload body collection stops after 30 seconds and releases admission on timeout 
 The URL is a secret, narrow upload grant bound to the requesting principal,
 workspace and operation key. Current permissions are checked on every use. It
 expires after 15 minutes or application restart; MCP disconnection does not revoke
-it. The public base URL comes from `poketto.oauth.issuer`. Up to 512 grants and
-8 unfinished grants per account are admitted. GET the same URL to recover a lost
+it. The public base URL comes from `poketto.oauth.issuer`. Up to 512 grants are
+retained per instance, with at most 64 total and 8 unfinished grants per account.
+GET the same URL to recover a lost
 receipt (`UPLOAD_PENDING` if no upload has completed). After expiry, request a
 replacement with the same operation key and resend identical bytes; durable
 idempotency returns the same original, while different bytes conflict. Base64 is
