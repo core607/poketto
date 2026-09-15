@@ -7,6 +7,7 @@ source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 command -v node >/dev/null
 command -v npm >/dev/null
 command -v apt >/dev/null
+test -x /usr/bin/python3
 mkdir -- "$tools"
 tools=$(cd -- "$tools" && pwd)
 install -m 755 "$(command -v node)" "$tools/node"
@@ -20,6 +21,7 @@ cp -- "$source_dir/package.json" "$source_dir/package-lock.json" "$tools/"
     done
     # Avoid the host's /etc/alternatives indirection inside the sandbox.
     ln -sfn which.debianutils extracted/usr/bin/which
+    ln -sfn /usr/bin/python3 extracted/usr/bin/python
 )
 chmod -R a+rX -- "$tools"
 printf 'Prepared disposable tools; run probe.py --tools %q as root.\n' "$tools"

@@ -21,6 +21,11 @@ accounts. The application holds the Ed25519 private key; the worker receives onl
 its PEM public key. Never put the signing key or a real operator configuration
 in this repository.
 
+The prepared sandbox tool directory provides `python` as an alias for
+`/usr/bin/python3`, so both command names use the same interpreter and isolation.
+Existing installations can add that root-owned symlink at
+`TOOLS/extracted/usr/bin/python` without changing host-wide Python commands.
+
 Package Linux worker sources from the selected commit with `git archive` or raw Git blobs, retaining LF line endings. Do not package a Windows checkout whose existing files may still contain CRLF: a Python launcher shebang with CRLF cannot execute on Linux. Record the source revision and hashes, then verify installed files and run `poketto --help` through the deployed connector after restart.
 
 [config.example.json](config.example.json) lists all configurable paths and
