@@ -93,7 +93,7 @@ tool catalog, permissions, request bounds, repeated sessions and DELETE, and rea
 budget refusals while text and upload-grant calls remain available. The independent
 `acceptance/image-memory-smoke.py` probe exercises maximum-size images and slow
 socket writes, cancellation, disconnect recovery and raw upload receipts against
-the staged Linux application. These are isolated fixtures; production deployment
+the staged Linux application. The [Linux receipt](../../acceptance/evidence/2026-09-15-mcp-admission.json) records successful repeated calls, bounded refusals and cleanup. These are isolated fixtures; production deployment
 and external-client results must be reported separately.
 
 ## Related decisions

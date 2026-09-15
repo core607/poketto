@@ -37,7 +37,7 @@ override.write_text(json.dumps({'services': {'app': {
     'mem_limit': str(memory_mib) + 'm',
     'command': ['java', '-XX:MaxRAMPercentage=65' if memory_mib == 768 else '-Xmx500m', '-XX:+ExitOnOutOfMemoryError', '-Djava.awt.headless=true',
                 '-cp', '/runtime/classes:/runtime/jars/*', 'io.github.core607.poketto.acceptance.AcceptanceApplication',
-                '--management.endpoints.web.exposure.include=health,metrics', '--poketto.oauth.issuer=http://127.0.0.1:38180'],
+                '--management.endpoints.web.exposure.include=health,metrics', '--poketto.oauth.issuer=https://127.0.0.1:38180'],
 }}}), encoding='utf-8')
 COMPOSE = ['docker', 'compose', '-p', PROJECT, '--env-file', str(env), '-f', str(ROOT / 'acceptance/compose.yaml'), '-f', str(override)]
 proof = {'project': PROJECT, 'commit': revision, 'checks': [], 'samples': [], 'sourceSha256': {}}
@@ -74,7 +74,13 @@ def call(method, path, body=None, ctype=None, extra=None, browser=True, slow=Fal
         connection.connect()
         connection.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)
     try:
-        connection.request(method, path, body, headers)
+        try:
+            connection.request(method, path, body, headers)
+        except BrokenPipeError:
+            # A bounded endpoint can reject before consuming a large upload body.
+            # Read its actual HTTP response rather than treating an early refusal as a send failure.
+            if body is None:
+                raise
         response = connection.getresponse()
         if slow:
             held.append((connection, response))
@@ -172,10 +178,11 @@ png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 
 png = png[:-12] + chunk(b'tEXt', b'p\0' + b'x' * (16 * MIB - len(png) - 14)) + png[-12:]
 digest = hashlib.sha256(png).hexdigest()
 assert len(png) == 16 * MIB
-started, monitoring = False, None
+started, monitoring, app_id = False, None, None
 try:
     run(COMPOSE + ['up', '-d', 'db', 'app'])
     started = True
+    app_id = run(COMPOSE + ['ps', '-aq', 'app']).strip()
     binding = run(COMPOSE + ['port', 'app', '8080']).strip()
     assert binding.startswith('127.0.0.1:')
     port = int(binding.rsplit(':', 1)[1])
@@ -206,8 +213,8 @@ try:
     body = '# Memory fixture\n![exact original](' + managed + ')'
     preview = json_call('POST', '/api/admin/repository/preview', {'path': 'private/memory.md', 'body': body})
     private_url = preview['images'][managed]
-    absent = json_call('GET', '/api/admin/repository/file?path=memory.md')
-    json_call('POST', '/api/admin/repository/patch', {'baseCommit': absent['commit'], 'changes': [{'path': 'memory.md', 'expectedAbsence': True, 'content': body}]})
+    absent = json_call('GET', '/api/admin/repository/file?path=public/memory.md')
+    json_call('POST', '/api/admin/repository/patch', {'baseCommit': absent['commit'], 'changes': [{'path': 'public/memory.md', 'expectedAbsence': True, 'content': body}]})
     public = json_call('GET', '/api/public/document?route=/memory')
     public_url = public['images'][managed]
     for image_url in (public_url, private_url):
@@ -299,7 +306,8 @@ except BaseException as error:
     proof['error'] = type(error).__name__ + ': ' + str(error)
     if started:
         (EVIDENCE / 'app.log').write_text(run(COMPOSE + ['logs', '--no-color', 'app']), encoding='utf-8')
-        (EVIDENCE / 'threads.txt').write_text(run(['docker', 'exec', app_id, 'jcmd', '1', 'Thread.print']), encoding='utf-8')
+        if app_id and run(['docker', 'inspect', '--format', '{{.State.Running}}', app_id]).strip() == 'true':
+            (EVIDENCE / 'threads.txt').write_text(run(['docker', 'exec', app_id, 'jcmd', '1', 'Thread.print']), encoding='utf-8')
     raise
 finally:
     stop.set()
