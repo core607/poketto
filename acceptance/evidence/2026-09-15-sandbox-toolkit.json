@@ -28,5 +28,7 @@
   ],
   "sideEffects": "Only generated files under a temporary /tmp directory; removed on exit. No content save or publication.",
   "deployment": "38 new distribution packages including dependencies, zero existing package upgrades, 125 MB reported additional disk usage; no application or worker restart",
-  "limits": "Generated PDF contains an image, so this does not verify OCR, arbitrary PDF fonts, Office rendering or every supported image codec."
+  "limits": "Generated PDF contains an image, so this does not verify OCR, arbitrary PDF fonts, Office rendering or every supported image codec.",
+  "hardenedInstallerSha256": "1ce0c410b580abf20323b2f30cf424151d95d88b1b7c68803e5d36310a8475dd",
+  "installerRecheck": "Hardened installer rerun: zero package changes; existing directory chain root-owned 0755; executable alias targets confirmed. A writable directory was refused and an existing regular alias file was preserved; temporary fixtures removed."
 }
