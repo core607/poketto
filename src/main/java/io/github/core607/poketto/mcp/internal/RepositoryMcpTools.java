@@ -209,7 +209,7 @@ final class RepositoryMcpTools {
                                 return operation.apply(exchange, arguments);
                             }
                         }
-                        if (name.equals("get_asset") || name.equals("put_asset") || name.equals("get_artifact")) {
+                        if (McpBodyLimitFilter.imageWork(name, arguments)) {
                             return error("UNAVAILABLE", "Image memory admission is unavailable.");
                         }
                         return operation.apply(exchange, arguments);

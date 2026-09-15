@@ -20,9 +20,11 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /** Bounds request streams and reserves separate admission for small SDK lifecycle notifications. */
@@ -264,10 +266,23 @@ final class McpBodyLimitFilter implements Filter {
                 return false;
             }
             String tool = message.path("params").path("name").asString("");
-            return tool.equals("get_asset") || tool.equals("put_asset") || tool.equals("get_artifact");
+            Map<String, Object> arguments =
+                    json.convertValue(message.path("params").path("arguments"), new TypeReference<>() {});
+            return imageWork(tool, arguments);
         } catch (RuntimeException invalid) {
             return false;
         }
+    }
+
+    static boolean imageWork(String tool, Map<String, Object> arguments) {
+        if (tool.equals("put_asset")
+                && arguments != null
+                && arguments.size() == 2
+                && arguments.containsKey("operationKey")
+                && "upload".equals(arguments.get("mode"))) {
+            return false;
+        }
+        return tool.equals("get_asset") || tool.equals("put_asset") || tool.equals("get_artifact");
     }
 
     private boolean control(byte[] body) {

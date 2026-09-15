@@ -304,7 +304,7 @@ class McpProtocolIntegrationIT {
                 .build();
         assertThat(http.send(wrongType, HttpResponse.BodyHandlers.ofString()).statusCode())
                 .isEqualTo(415);
-        assertRawUploadLeavesPageBudget(target);
+        assertRawUploadLeavesPageBudget(target, owner, workspace);
         assertThat(error(call(reader, initialize(reader), "put_asset", request)))
                 .isEqualTo("DENIED");
         assertThat(error(call(
@@ -327,7 +327,19 @@ class McpProtocolIntegrationIT {
                 .isEqualTo(403);
     }
 
-    private void assertRawUploadLeavesPageBudget(URI target) throws Exception {
+    private void assertRawUploadLeavesPageBudget(URI target, AuthPrincipal owner, WorkspaceId workspace)
+            throws Exception {
+        var member = registration.register(
+                registration.issue(owner).token(),
+                "concurrent-uploader",
+                UUID.randomUUID().toString());
+        auth.acceptInvitation(
+                member,
+                auth.createInvitation(owner, workspace, Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE))
+                        .token());
+        var key = auth.createApiKey(
+                owner, workspace, member.accountId(), Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE));
+        String session = initialize(key.token());
         try (var slow = new Socket(target.getHost(), target.getPort())) {
             slow.setSoTimeout(5000);
             var output = slow.getOutputStream();
@@ -341,7 +353,7 @@ class McpProtocolIntegrationIT {
             while (imageMemory.reservedBytes() == 0 && System.nanoTime() < deadline) {
                 Thread.sleep(10);
             }
-            assertThat(imageMemory.reservedBytes()).isEqualTo(ImageMemoryAdmission.BROWSER_BYTES);
+            assertThat(imageMemory.reservedBytes()).isEqualTo(32L * 1024 * 1024);
             var competing = HttpRequest.newBuilder(target)
                     .timeout(Duration.ofSeconds(5))
                     .header("Content-Type", "application/octet-stream")
@@ -353,6 +365,21 @@ class McpProtocolIntegrationIT {
             var page =
                     imageMemory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
             page.responseComplete();
+            JsonNode other = result(call(
+                    key.token(),
+                    session,
+                    "put_asset",
+                    Map.of("mode", "upload", "operationKey", UUID.randomUUID().toString())));
+            URI otherTarget = endpoint()
+                    .resolve(URI.create(other.path("uploadUrl").asString()).getPath());
+            var otherUpload = HttpRequest.newBuilder(otherTarget)
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/octet-stream")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(PNG))
+                    .build();
+            assertThat(http.send(otherUpload, HttpResponse.BodyHandlers.ofString())
+                            .statusCode())
+                    .isEqualTo(200);
             output.write(PNG, 8, PNG.length - 8);
             output.flush();
             assertThat(new String(slow.getInputStream().readAllBytes(), StandardCharsets.UTF_8))

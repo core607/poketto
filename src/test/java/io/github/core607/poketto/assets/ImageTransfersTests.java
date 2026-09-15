@@ -42,8 +42,17 @@ class ImageTransfersTests {
         var producer = first.producer();
         try {
             assertThatThrownBy(() -> transfers.reserve(token)).hasMessage("TRANSFER_BUSY");
+            AuthPrincipal other = mock(AuthPrincipal.class);
+            when(other.subjectId()).thenReturn(UUID.randomUUID());
+            when(other.accountId()).thenReturn(UUID.randomUUID());
+            var otherGrant = transfers.prepare(
+                    other, WorkspaceId.random(), UUID.randomUUID().toString());
+            String otherToken =
+                    otherGrant.uploadUrl().substring(otherGrant.uploadUrl().lastIndexOf('/') + 1);
+            var otherUpload = transfers.reserve(otherToken);
             var page = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
             page.responseComplete();
+            otherUpload.responseComplete();
             first.responseComplete();
             assertThatThrownBy(() -> transfers.reserve(token)).hasMessage("TRANSFER_BUSY");
         } finally {

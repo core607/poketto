@@ -33,12 +33,14 @@
   },
   "sourceHashNormalization": "UTF-8 source bytes with LF line endings",
   "admissionFollowUp": {
-    "verification": "McpProtocolIntegrationIT on isolated Linux Spring/PostgreSQL; a real stalled HTTP upload refuses a competing upload while a page image reservation succeeds, then completes and exposes its receipt",
+    "verification": "McpProtocolIntegrationIT on isolated Linux Spring/PostgreSQL; while one account holds a real stalled HTTP upload, another account obtains a grant through MCP and uploads successfully. Same-account competition is refused, a page reservation succeeds, and the stalled request then completes with a readable receipt.",
     "tests": 1,
     "failures": 0,
     "normalizedSourceSha256": {
-      "src/main/java/io/github/core607/poketto/assets/ImageTransfers.java": "8ba8c9ee257b45f12e8fc8e8917a053c244173aed404ffcebd94277ac3c76ec2",
-      "src/integrationTest/java/io/github/core607/poketto/mcp/internal/McpProtocolIntegrationIT.java": "0e10aa01bbfe2f6321d69fe8ba50164c869c9a764cdb32a149bafc993e7a229e"
+      "src/main/java/io/github/core607/poketto/assets/ImageTransfers.java": "4d4e39890901869edbf7ea1ed339ee183ed83b1b4a6a1b3763847c0939a00fff",
+      "src/main/java/io/github/core607/poketto/mcp/internal/McpBodyLimitFilter.java": "dd702f350cbc0903986bb1baca3e181b3359f0ee8c1d4244ae8f3dcfe1fa46be",
+      "src/main/java/io/github/core607/poketto/mcp/internal/RepositoryMcpTools.java": "f4bf166d000c878c2674b53dcb0828921e00e641e74740aa8faf5fd9d818b8c2",
+      "src/integrationTest/java/io/github/core607/poketto/mcp/internal/McpProtocolIntegrationIT.java": "b85c8d94d72c5b4b49b755545ec6aea2bc16c8841da811a96d970f17800b7259"
     }
   }
 }

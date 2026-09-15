@@ -13,7 +13,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ImageTransfers {
     public static final String UPLOAD_PATH = "/api/image-transfers/";
     private static final Duration LIFETIME = Duration.ofMinutes(15);
+    private static final long COLLECTION_BYTES = 32L * 1024 * 1024;
     private final AuthService auth;
     private final AssetService assets;
     private final ImageMemoryAdmission memory;
@@ -29,7 +32,7 @@ public final class ImageTransfers {
     private final String baseUrl;
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Grant> grants = new HashMap<>();
-    private final AtomicBoolean collecting = new AtomicBoolean();
+    private final Set<UUID> collecting = new HashSet<>();
 
     public ImageTransfers(
             AuthService auth,
@@ -112,31 +115,45 @@ public final class ImageTransfers {
                 throw new AssetStorageException(AssetStorageException.Reason.TOO_LARGE);
             }
             resolve(token);
-            Receipt receipt = Receipt.of(
-                    assets.upload(grant.actor, grant.workspace, grant.operationKey, new ByteArrayInputStream(bytes)));
-            grant.receipt = receipt;
-            return receipt;
+            var validation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES)
+                    .orElseThrow(() -> new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY));
+            try (var producer = validation.producer()) {
+                Receipt receipt = Receipt.of(assets.upload(
+                        grant.actor, grant.workspace, grant.operationKey, new ByteArrayInputStream(bytes)));
+                grant.receipt = receipt;
+                return receipt;
+            } finally {
+                validation.responseComplete();
+            }
         } finally {
             grant.busy.set(false);
         }
     }
 
     public ImageRequestScope reserve(String token) {
-        resolve(token);
-        // A slow raw upload may hold one browser-sized share, never the entire default image pool.
-        if (!collecting.compareAndSet(false, true)) {
-            throw new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY);
+        UUID account = resolve(token).actor.accountId();
+        synchronized (collecting) {
+            if (collecting.size() >= 4 || !collecting.add(account)) {
+                throw new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY);
+            }
         }
         try {
-            var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES)
+            // At most four bounded buffers, leaving a page share available under the default budget.
+            var reservation = memory.tryAcquire(COLLECTION_BYTES)
                     .orElseThrow(() -> new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY));
             return new ImageRequestScope(() -> {
                 reservation.responseComplete();
-                collecting.set(false);
+                releaseCollection(account);
             });
         } catch (RuntimeException failure) {
-            collecting.set(false);
+            releaseCollection(account);
             throw failure;
+        }
+    }
+
+    private void releaseCollection(UUID account) {
+        synchronized (collecting) {
+            collecting.remove(account);
         }
     }
 
