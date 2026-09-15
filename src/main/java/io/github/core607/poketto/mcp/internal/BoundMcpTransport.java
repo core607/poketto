@@ -1,20 +1,30 @@
 package io.github.core607.poketto.mcp.internal;
 
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import java.util.List;
 import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.ObjectMapper;
 
 /** Retains the official transport and SDK factory while binding their actual generated session ids. */
 final class BoundMcpTransport implements McpStreamableServerTransportProvider {
     private final WebMvcStreamableServerTransportProvider delegate;
     private final McpSessions sessions;
+    private final ImageMemoryAdmission memory;
+    private final ObjectMapper json;
 
-    BoundMcpTransport(WebMvcStreamableServerTransportProvider delegate, McpSessions sessions) {
+    BoundMcpTransport(
+            WebMvcStreamableServerTransportProvider delegate,
+            McpSessions sessions,
+            ImageMemoryAdmission memory,
+            ObjectMapper json) {
         this.delegate = delegate;
         this.sessions = sessions;
+        this.memory = memory;
+        this.json = json;
     }
 
     @Override
@@ -22,7 +32,7 @@ final class BoundMcpTransport implements McpStreamableServerTransportProvider {
         delegate.setSessionFactory(request -> {
             var identity = sessions.currentIdentity();
             var initialized = factory.startSession(request);
-            var cancellable = new CancellableMcpSession(initialized.session(), request);
+            var cancellable = new CancellableMcpSession(initialized.session(), request, memory, json);
             sessions.bind(cancellable, identity);
             return new McpStreamableServerSession.McpStreamableServerSessionInit(
                     cancellable,

@@ -146,7 +146,7 @@ MARKDOWN
 
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
 
-`put_asset` 接受 `operationKey`，以及 `url`、`file`、`base64` 中恰好一种来源。
+`put_asset` 接受 `operationKey`，以及 `url`、`file` 中恰好一种来源。
 `url` 是使用 443 端口的公网 HTTPS 图片下载地址。`file` 是平台文件对象，必须包含
 `download_url` 和 `file_id`；可选的 `mime_type`、`file_name` 只作提示，不能替代校验。
 工具声明 `_meta["openai/fileParams"] = ["file"]`，附件是否自动转交取决于客户端支持。
@@ -175,10 +175,13 @@ receipt = response.json()
 当前权限；15 分钟后或应用重启时失效，MCP 断连不使其失效。公开基址来自
 `poketto.oauth.issuer`。实例最多保留 512 个凭据，每个账号最多保留 64 个凭据，其中未完成上传最多 8 个。
 回执丢失时可 GET 同一 URL 查询；尚未完成返回 `UPLOAD_PENDING`。过期后使用同一操作键
-重新申请，再上传相同字节，持久幂等记录会返回原资源；不同字节则冲突。Base64 保留给程序
-调用，模型不应转抄图片字节。两条路径统一返回 `assetId`、`revision`、`reference`、
+重新申请，再上传相同字节，持久幂等记录会返回原资源；不同字节则冲突。两条路径统一返回 `assetId`、`revision`、`reference`、
 `mediaType` 和 `size`。随后使用 `poketto media link PATH --asset ID --revision REV`，
 并显式保存文章及 `.poketto/assets.json`。仅上传不会保存 Git 或发布内容。
+
+MCP 请求体上限为 128 KiB。图片导入和图片响应在各自的处理入口申请图片内存；
+普通文本调用不占图片预算。工具拒绝结果与日志包含 `code` 和 `reason`；图片预算不足
+返回 `IMAGE_MEMORY_BUSY`。无论是否提供等待提示，结果不确定的写入都要先核对状态再决定是否重试。
 
 
 `repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回结果中的 `copyId`。重连会自动接回原副本和已确认的基线，无需代次或恢复标志。关闭 MCP 连接会保留副本。每次成功且获授权的副本操作都会将闲置期限延长为七天，期限由 `retention.expiresAt` 返回。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示本次命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入。不要重复执行结果不确定的写入：先用同一副本 ID 执行只读检查，核对 `retention.lastInterruptedCommand` 和 `poketto status`，远端保存待确认时再使用 `poketto recover`。[副本身份契约](../executor-service/README.md#working-copy-identity)说明执行边界。

@@ -6,6 +6,7 @@ public final class ImageTransferException extends RuntimeException {
         SOURCE_UNAVAILABLE,
         UPLOAD_EXPIRED,
         TRANSFER_BUSY,
+        IMAGE_MEMORY_BUSY,
         UPLOAD_PENDING
     }
 

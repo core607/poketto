@@ -52,11 +52,15 @@ public final class ImageTransfers {
     public Receipt importUrl(AuthPrincipal actor, WorkspaceId workspace, String operationKey, String url) {
         validateKey(operationKey);
         auth.authorize(actor, workspace, Capability.WRITE_PRIVATE);
-        try {
+        ImageRequestScope reservation = memory.acquire(ImageMemoryAdmission.MCP_BYTES)
+                .orElseThrow(() -> new ImageTransferException(ImageTransferException.Reason.IMAGE_MEMORY_BUSY));
+        try (var producer = reservation.producer()) {
             byte[] bytes = downloader.download(url);
             return Receipt.of(assets.upload(actor, workspace, operationKey, new ByteArrayInputStream(bytes)));
         } catch (IOException unavailable) {
             throw new ImageTransferException(ImageTransferException.Reason.SOURCE_UNAVAILABLE, unavailable);
+        } finally {
+            reservation.responseComplete();
         }
     }
 

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.internal.PublicImageDownloader;
@@ -22,6 +23,38 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class ImageTransfersTests {
+    @Test
+    void urlImportsReserveBeforeDownloadAndReleaseAfterStorageFailure() throws Exception {
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
+        var downloader = mock(PublicImageDownloader.class);
+        var assets = mock(AssetService.class);
+        var transfers = new ImageTransfers(
+                mock(AuthService.class), assets, memory, downloader, Clock.systemUTC(), "https://example.com");
+        var actor = mock(AuthPrincipal.class);
+        var workspace = WorkspaceId.random();
+        String key = UUID.randomUUID().toString();
+        String url = "https://example.com/image.png";
+        when(downloader.download(url)).thenAnswer(call -> {
+            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
+            return new byte[] {1};
+        });
+        when(assets.upload(eq(actor), eq(workspace), eq(key), any())).thenAnswer(call -> {
+            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
+            throw new IllegalArgumentException("invalid fixture image");
+        });
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        try {
+            assertThatThrownBy(() -> transfers.importUrl(actor, workspace, key, url))
+                    .hasMessage("IMAGE_MEMORY_BUSY");
+            verifyNoInteractions(downloader);
+        } finally {
+            held.responseComplete();
+        }
+        assertThatThrownBy(() -> transfers.importUrl(actor, workspace, key, url))
+                .hasMessage("invalid fixture image");
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
     @Test
     void rawUploadsLeaveOnePageShareAndReleaseTheirSlotAfterTheActualProducer() {
         AuthPrincipal actor = mock(AuthPrincipal.class);

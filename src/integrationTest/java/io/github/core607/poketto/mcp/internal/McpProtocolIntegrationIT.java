@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
-import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
@@ -15,9 +14,6 @@ import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
-import jakarta.servlet.Filter;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -38,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
@@ -49,11 +44,8 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -73,7 +65,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Testcontainers
 @RecordApplicationEvents
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import({RemoteRepositoryIntegrationConfiguration.class, McpProtocolIntegrationIT.ImageLifecycleProbe.class})
+@Import(RemoteRepositoryIntegrationConfiguration.class)
 class McpProtocolIntegrationIT {
     @TempDir
     static Path directory;
@@ -159,9 +151,6 @@ class McpProtocolIntegrationIT {
     @Autowired
     ImageMemoryAdmission imageMemory;
 
-    @Autowired
-    ImageLifecycleProbe imageProbe;
-
     @LocalServerPort
     int port;
 
@@ -246,7 +235,7 @@ class McpProtocolIntegrationIT {
                         other.token(),
                         initialize(other.token()),
                         "put_asset",
-                        Map.of("operationKey", UUID.randomUUID().toString(), "base64", "AA=="))))
+                        Map.of("operationKey", UUID.randomUUID().toString(), "mode", "upload"))))
                 .isEqualTo("DENIED");
         JsonNode malformed = call(key.token(), first, "put_asset", Map.of("base64", "AA=="));
         // SDK schema validation runs before the business callback and returns its own error text.
@@ -495,7 +484,7 @@ class McpProtocolIntegrationIT {
         var legal = Map.of("jsonrpc", "2.0", "id", "图".repeat(128), "method", "tools/list");
         assertThat(response(post(token, session, legal)).path("id").stringValue())
                 .isEqualTo("图".repeat(128));
-        for (Object id : List.of("图".repeat(129), "x".repeat(1024 * 1024), BigInteger.TEN.pow(128))) {
+        for (Object id : List.of("图".repeat(129), "x".repeat(16384), BigInteger.TEN.pow(128))) {
             var invalid = post(token, session, Map.of("jsonrpc", "2.0", "id", id, "method", "tools/list"));
             assertThat(invalid.statusCode()).isEqualTo(400);
             assertThat(invalid.body()).hasSizeLessThan(200);
@@ -513,7 +502,11 @@ class McpProtocolIntegrationIT {
                         .path("isError")
                         .booleanValue())
                 .isFalse();
-        assertThat(rawPost(token, session, padded(json.writeValueAsBytes(imageRequest), 16385), true)
+        assertThat(rawPost(
+                                token,
+                                session,
+                                padded(json.writeValueAsBytes(imageRequest), McpBodyLimitFilter.MAX_REQUEST_BYTES + 1),
+                                true)
                         .statusCode())
                 .isEqualTo(413);
         for (String body : List.of("[".repeat(33) + "]".repeat(33), "[" + "[],".repeat(2050) + "[]]")) {
@@ -539,83 +532,80 @@ class McpProtocolIntegrationIT {
     }
 
     private void assertActualImageResponseCompletion(String token, String session) throws Exception {
+        var held = imageMemory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
         try {
-            for (String mode : List.of("early", "supplied", "timeout")) {
-                var request = HttpRequest.newBuilder(endpoint())
-                        .timeout(Duration.ofSeconds(10))
-                        .header("Authorization", "Bearer " + token)
-                        .header("Mcp-Session-Id", session)
-                        .header("Content-Type", "application/json")
-                        .header("X-Image-Lifecycle-Probe", mode)
-                        .POST(
-                                HttpRequest.BodyPublishers.ofString(
-                                        "{\"method\":\"tools/call\",\"id\":1,\"params\":{\"name\":\"get_asset\",\"arguments\":{}}}"))
-                        .build();
-                var response = http.send(request, HttpResponse.BodyHandlers.ofString());
-                if (mode.equals("timeout")) {
-                    assertThat(response.statusCode()).isEqualTo(503);
-                    assertThat(response.body()).contains("MCP response unavailable");
-                    assertThat(imageMemory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-                    imageProbe.release.countDown();
-                } else {
-                    assertThat(response.statusCode()).isEqualTo(204);
-                }
-                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-                while (imageMemory.reservedBytes() != 0 && System.nanoTime() < deadline) {
-                    Thread.sleep(10);
-                }
-                assertThat(imageMemory.reservedBytes()).isZero();
-            }
+            JsonNode refused = call(
+                    token,
+                    session,
+                    "get_asset",
+                    Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png")));
+            assertThat(error(refused)).isEqualTo("UNAVAILABLE");
+            assertThat(json.readTree(refused.path("content").get(0).path("text").stringValue())
+                            .path("reason")
+                            .stringValue())
+                    .isEqualTo("IMAGE_MEMORY_BUSY");
+            JsonNode importRefused = call(
+                    token,
+                    session,
+                    "put_asset",
+                    Map.of(
+                            "url",
+                            "https://example.com/image.png",
+                            "operationKey",
+                            UUID.randomUUID().toString()));
+            assertThat(error(importRefused)).isEqualTo("UNAVAILABLE");
+            assertThat(json.readTree(importRefused
+                                    .path("content")
+                                    .get(0)
+                                    .path("text")
+                                    .stringValue())
+                            .path("reason")
+                            .stringValue())
+                    .isEqualTo("IMAGE_MEMORY_BUSY");
+            assertThat(response(post(token, session, rpc("tools/list", Map.of())))
+                            .path("result")
+                            .path("tools")
+                            .isArray())
+                    .isTrue();
+            assertThat(call(
+                                    token,
+                                    session,
+                                    "put_asset",
+                                    Map.of(
+                                            "mode",
+                                            "upload",
+                                            "operationKey",
+                                            UUID.randomUUID().toString()))
+                            .path("isError")
+                            .booleanValue())
+                    .isFalse();
         } finally {
-            imageProbe.release.countDown();
+            held.responseComplete();
         }
-    }
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class ImageLifecycleProbe {
-        final CountDownLatch release = new CountDownLatch(1);
-
-        @Bean
-        FilterRegistrationBean<Filter> imageLifecycleProbeFilter() {
-            var registration = new FilterRegistrationBean<Filter>((input, response, chain) -> {
-                var request = (HttpServletRequest) input;
-                String mode = request.getHeader("X-Image-Lifecycle-Probe");
-                if (mode == null) {
-                    chain.doFilter(input, response);
-                    return;
-                }
-                var async = mode.equals("early") ? input.startAsync() : input.startAsync(input, response);
-                if (!mode.equals("timeout")) {
-                    ((HttpServletResponse) response).setStatus(204);
-                    async.complete();
-                    return;
-                }
-                var entered = new CountDownLatch(1);
-                var scope = (ImageRequestScope) input.getAttribute(ImageRequestScope.ATTRIBUTE);
-                async.start(() -> {
-                    try (var producer = scope.producer()) {
-                        entered.countDown();
-                        if (!release.await(10, TimeUnit.SECONDS)) {
-                            throw new AssertionError("producer release timeout");
-                        }
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                    }
-                });
-                try {
-                    if (!entered.await(5, TimeUnit.SECONDS)) {
-                        throw new AssertionError("producer did not start");
-                    }
-                } catch (InterruptedException interrupted) {
-                    throw new IllegalStateException(interrupted);
-                }
-                async.setTimeout(50);
-            });
-            registration.setUrlPatterns(List.of("/mcp"));
-            registration.setOrder(-98);
-            registration.setAsyncSupported(true);
-            return registration;
+        for (int i = 0; i < 24; i++) {
+            String current = i % 2 == 0 ? initialize(token) : session;
+            JsonNode image = call(
+                    token,
+                    current,
+                    "get_asset",
+                    Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png")));
+            assertThat(image.path("isError").booleanValue()).isFalse();
+            if (i % 2 == 0) {
+                var delete = HttpRequest.newBuilder(endpoint())
+                        .header("Authorization", "Bearer " + token)
+                        .header("Mcp-Session-Id", current)
+                        .DELETE()
+                        .build();
+                assertThat(http.send(delete, HttpResponse.BodyHandlers.discarding())
+                                .statusCode())
+                        .isEqualTo(200);
+            }
         }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (imageMemory.reservedBytes() != 0 && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(imageMemory.reservedBytes()).isZero();
     }
 
     private HttpResponse<String> rawPost(String token, String session, byte[] body, boolean chunked) throws Exception {
