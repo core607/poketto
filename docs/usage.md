@@ -223,6 +223,10 @@ receipt = response.json()
 ```
 
 Upload body collection stops after 30 seconds and releases admission on timeout or disconnect. A proxy may delay the early error while the sender leaves its body unfinished; set a client timeout and GET the upload URL to inspect the result.
+Only one raw upload is admitted per instance at a time. It reserves 128 MiB from
+the shared image budget, leaving another 128 MiB available for page images under
+the default budget. Concurrent raw uploads receive `TRANSFER_BUSY` and can retry
+with the same grant after the active upload finishes.
 
 
 The URL is a secret, narrow upload grant bound to the requesting principal,

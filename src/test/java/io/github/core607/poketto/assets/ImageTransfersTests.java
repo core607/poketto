@@ -23,6 +23,41 @@ import org.junit.jupiter.api.Test;
 
 class ImageTransfersTests {
     @Test
+    void rawUploadsLeaveOnePageShareAndReleaseTheirSlotAfterTheActualProducer() {
+        AuthPrincipal actor = mock(AuthPrincipal.class);
+        when(actor.subjectId()).thenReturn(UUID.randomUUID());
+        when(actor.accountId()).thenReturn(UUID.randomUUID());
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
+        var transfers = new ImageTransfers(
+                mock(AuthService.class),
+                mock(AssetService.class),
+                memory,
+                mock(PublicImageDownloader.class),
+                Clock.systemUTC(),
+                "https://example.com");
+        var upload =
+                transfers.prepare(actor, WorkspaceId.random(), UUID.randomUUID().toString());
+        String token = upload.uploadUrl().substring(upload.uploadUrl().lastIndexOf('/') + 1);
+        var first = transfers.reserve(token);
+        var producer = first.producer();
+        try {
+            assertThatThrownBy(() -> transfers.reserve(token)).hasMessage("TRANSFER_BUSY");
+            var page = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
+            page.responseComplete();
+            first.responseComplete();
+            assertThatThrownBy(() -> transfers.reserve(token)).hasMessage("TRANSFER_BUSY");
+        } finally {
+            producer.close();
+            first.responseComplete();
+        }
+        var occupied = memory.tryAcquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        assertThatThrownBy(() -> transfers.reserve(token)).hasMessage("TRANSFER_BUSY");
+        occupied.responseComplete();
+        transfers.reserve(token).responseComplete();
+        assertThat(memory.reservedBytes()).isZero();
+    }
+
+    @Test
     void completedGrantsCannotExhaustOtherAccountsAndExpiryRestoresCapacity() throws Exception {
         AuthService auth = mock(AuthService.class);
         AssetService assets = mock(AssetService.class);

@@ -29,6 +29,7 @@ public final class ImageTransfers {
     private final String baseUrl;
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Grant> grants = new HashMap<>();
+    private final AtomicBoolean collecting = new AtomicBoolean();
 
     public ImageTransfers(
             AuthService auth,
@@ -122,8 +123,21 @@ public final class ImageTransfers {
 
     public ImageRequestScope reserve(String token) {
         resolve(token);
-        return memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES)
-                .orElseThrow(() -> new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY));
+        // A slow raw upload may hold one browser-sized share, never the entire default image pool.
+        if (!collecting.compareAndSet(false, true)) {
+            throw new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY);
+        }
+        try {
+            var reservation = memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES)
+                    .orElseThrow(() -> new ImageTransferException(ImageTransferException.Reason.TRANSFER_BUSY));
+            return new ImageRequestScope(() -> {
+                reservation.responseComplete();
+                collecting.set(false);
+            });
+        } catch (RuntimeException failure) {
+            collecting.set(false);
+            throw failure;
+        }
     }
 
     private Grant resolve(String token) {

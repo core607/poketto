@@ -38,6 +38,11 @@ including completed receipts, with at most 8 unfinished uploads. Completed grant
 still support receipt recovery and identical retries; the account total prevents
 one account's completed uploads from exhausting the shared grant table. Expired,
 inactive grants are reclaimed before allocating another grant.
+Raw upload collection admits one request per instance, reserving 128 MiB from
+the existing shared image budget. This bounds complete buffering and validation
+without letting slow uploads consume both browser shares of the default 256 MiB
+budget. Concurrent uploads fail promptly with `TRANSFER_BUSY`; the slot and
+memory reservation release together after response completion and producer exit.
 
 Third-party staging storage adds an unnecessary copy and dependency. Requiring
 only local paths cannot cross client/server filesystems. Separate business CRUD

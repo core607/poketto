@@ -23,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -303,6 +304,7 @@ class McpProtocolIntegrationIT {
                 .build();
         assertThat(http.send(wrongType, HttpResponse.BodyHandlers.ofString()).statusCode())
                 .isEqualTo(415);
+        assertRawUploadLeavesPageBudget(target);
         assertThat(error(call(reader, initialize(reader), "put_asset", request)))
                 .isEqualTo("DENIED");
         assertThat(error(call(
@@ -323,6 +325,42 @@ class McpProtocolIntegrationIT {
         assertThat(http.send(HttpRequest.newBuilder(revokedTarget).GET().build(), HttpResponse.BodyHandlers.ofString())
                         .statusCode())
                 .isEqualTo(403);
+    }
+
+    private void assertRawUploadLeavesPageBudget(URI target) throws Exception {
+        try (var slow = new Socket(target.getHost(), target.getPort())) {
+            slow.setSoTimeout(5000);
+            var output = slow.getOutputStream();
+            String headers = "PUT " + target.getRawPath() + " HTTP/1.1\r\nHost: " + target.getAuthority()
+                    + "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\nContent-Length: "
+                    + PNG.length + "\r\n\r\n";
+            output.write(headers.getBytes(StandardCharsets.US_ASCII));
+            output.write(PNG, 0, 8);
+            output.flush();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (imageMemory.reservedBytes() == 0 && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(imageMemory.reservedBytes()).isEqualTo(ImageMemoryAdmission.BROWSER_BYTES);
+            var competing = HttpRequest.newBuilder(target)
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/octet-stream")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(PNG))
+                    .build();
+            assertThat(http.send(competing, HttpResponse.BodyHandlers.ofString())
+                            .statusCode())
+                    .isEqualTo(429);
+            var page =
+                    imageMemory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
+            page.responseComplete();
+            output.write(PNG, 8, PNG.length - 8);
+            output.flush();
+            assertThat(new String(slow.getInputStream().readAllBytes(), StandardCharsets.UTF_8))
+                    .startsWith("HTTP/1.1 200");
+        }
+        assertThat(http.send(HttpRequest.newBuilder(target).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .statusCode())
+                .isEqualTo(200);
     }
 
     private void assertMemberScopeRevocation(AuthPrincipal owner, WorkspaceId workspace) throws Exception {

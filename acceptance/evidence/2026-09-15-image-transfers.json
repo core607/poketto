@@ -31,5 +31,14 @@
     "src/main/java/io/github/core607/poketto/mcp/internal/PutAssetInput.java": "818a26b1bb5847cea2adc93dd9fbca2190992b2df7684d87d6c80f9e1c5bc7ea",
     "executor-service/cli.py": "0413c285f5604b2d600e4fff971452d1ac058582ff3682e1cbde74361164b883"
   },
-  "sourceHashNormalization": "UTF-8 source bytes with LF line endings"
+  "sourceHashNormalization": "UTF-8 source bytes with LF line endings",
+  "admissionFollowUp": {
+    "verification": "McpProtocolIntegrationIT on isolated Linux Spring/PostgreSQL; a real stalled HTTP upload refuses a competing upload while a page image reservation succeeds, then completes and exposes its receipt",
+    "tests": 1,
+    "failures": 0,
+    "normalizedSourceSha256": {
+      "src/main/java/io/github/core607/poketto/assets/ImageTransfers.java": "8ba8c9ee257b45f12e8fc8e8917a053c244173aed404ffcebd94277ac3c76ec2",
+      "src/integrationTest/java/io/github/core607/poketto/mcp/internal/McpProtocolIntegrationIT.java": "0e10aa01bbfe2f6321d69fe8ba50164c869c9a764cdb32a149bafc993e7a229e"
+    }
+  }
 }
