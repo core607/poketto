@@ -23,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -128,6 +129,7 @@ class McpProtocolIntegrationIT {
         }
         registry.add("poketto.test.repository-path", remote::toString);
         registry.add("poketto.data-dir", directory::toString);
+        registry.add("poketto.oauth.issuer", () -> "https://transfer.example.com");
     }
 
     @Autowired
@@ -220,6 +222,7 @@ class McpProtocolIntegrationIT {
                 .containsExactlyInAnyOrder("get_asset", "put_asset");
         assertRemovedFileTools(key.token(), first);
         assertRequestErrorBoundary(key.token(), first);
+        assertImageTransferEntrance(owner, workspace, key.token(), first, other.token());
         String deniedSession = initialize(denied.token());
         assertThat(error(call(
                         denied.token(),
@@ -265,6 +268,126 @@ class McpProtocolIntegrationIT {
                         .map(McpSessionClosed::reason)
                         .toList())
                 .contains(McpSessionClosed.Reason.AUTH_REVOKED);
+    }
+
+    private void assertImageTransferEntrance(
+            AuthPrincipal owner, WorkspaceId workspace, String token, String session, String reader) throws Exception {
+        JsonNode catalog = response(post(token, session, rpc("tools/list", Map.of())))
+                .path("result")
+                .path("tools");
+        JsonNode tool = catalog.valueStream()
+                .filter(item -> item.path("name").asString().equals("put_asset"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(tool.path("_meta").path("openai/fileParams").get(0).asString())
+                .isEqualTo("file");
+        assertThat(tool.path("inputSchema")
+                        .path("properties")
+                        .path("file")
+                        .path("properties")
+                        .propertyNames())
+                .containsExactlyInAnyOrder("download_url", "file_id", "mime_type", "file_name");
+        var request = Map.of("mode", "upload", "operationKey", UUID.randomUUID().toString());
+        JsonNode grant = json.readTree(call(token, session, "put_asset", request)
+                .path("content")
+                .get(0)
+                .path("text")
+                .asString());
+        URI target = endpoint()
+                .resolve(URI.create(grant.path("uploadUrl").asString()).getPath());
+        assertThat(http.send(HttpRequest.newBuilder(target).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .statusCode())
+                .isEqualTo(409);
+        var wrongType = HttpRequest.newBuilder(target)
+                .header("Content-Type", "text/plain")
+                .PUT(HttpRequest.BodyPublishers.ofString("not an image"))
+                .build();
+        assertThat(http.send(wrongType, HttpResponse.BodyHandlers.ofString()).statusCode())
+                .isEqualTo(415);
+        assertRawUploadLeavesPageBudget(target, owner, workspace);
+        assertThat(error(call(reader, initialize(reader), "put_asset", request)))
+                .isEqualTo("DENIED");
+        assertThat(error(call(
+                        token,
+                        session,
+                        "put_asset",
+                        Map.of("operationKey", UUID.randomUUID().toString(), "url", "https://127.0.0.1/private"))))
+                .isEqualTo("SOURCE_UNAVAILABLE");
+        var temporary = auth.createApiKey(owner, workspace, owner.accountId(), null);
+        JsonNode revoked = json.readTree(call(temporary.token(), initialize(temporary.token()), "put_asset", request)
+                .path("content")
+                .get(0)
+                .path("text")
+                .asString());
+        URI revokedTarget = endpoint()
+                .resolve(URI.create(revoked.path("uploadUrl").asString()).getPath());
+        auth.revokeApiKey(owner, workspace, temporary.id());
+        assertThat(http.send(HttpRequest.newBuilder(revokedTarget).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .statusCode())
+                .isEqualTo(403);
+    }
+
+    private void assertRawUploadLeavesPageBudget(URI target, AuthPrincipal owner, WorkspaceId workspace)
+            throws Exception {
+        var member = registration.register(
+                registration.issue(owner).token(),
+                "concurrent-uploader",
+                UUID.randomUUID().toString());
+        auth.acceptInvitation(
+                member,
+                auth.createInvitation(owner, workspace, Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE))
+                        .token());
+        var key = auth.createApiKey(
+                owner, workspace, member.accountId(), Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE));
+        String session = initialize(key.token());
+        try (var slow = new Socket(target.getHost(), target.getPort())) {
+            slow.setSoTimeout(5000);
+            var output = slow.getOutputStream();
+            String headers = "PUT " + target.getRawPath() + " HTTP/1.1\r\nHost: " + target.getAuthority()
+                    + "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\nContent-Length: "
+                    + PNG.length + "\r\n\r\n";
+            output.write(headers.getBytes(StandardCharsets.US_ASCII));
+            output.write(PNG, 0, 8);
+            output.flush();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (imageMemory.reservedBytes() == 0 && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(imageMemory.reservedBytes()).isEqualTo(32L * 1024 * 1024);
+            var competing = HttpRequest.newBuilder(target)
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/octet-stream")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(PNG))
+                    .build();
+            assertThat(http.send(competing, HttpResponse.BodyHandlers.ofString())
+                            .statusCode())
+                    .isEqualTo(429);
+            var page =
+                    imageMemory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
+            page.responseComplete();
+            JsonNode other = result(call(
+                    key.token(),
+                    session,
+                    "put_asset",
+                    Map.of("mode", "upload", "operationKey", UUID.randomUUID().toString())));
+            URI otherTarget = endpoint()
+                    .resolve(URI.create(other.path("uploadUrl").asString()).getPath());
+            var otherUpload = HttpRequest.newBuilder(otherTarget)
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/octet-stream")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(PNG))
+                    .build();
+            assertThat(http.send(otherUpload, HttpResponse.BodyHandlers.ofString())
+                            .statusCode())
+                    .isEqualTo(200);
+            output.write(PNG, 8, PNG.length - 8);
+            output.flush();
+            assertThat(new String(slow.getInputStream().readAllBytes(), StandardCharsets.UTF_8))
+                    .startsWith("HTTP/1.1 200");
+        }
+        assertThat(http.send(HttpRequest.newBuilder(target).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .statusCode())
+                .isEqualTo(200);
     }
 
     private void assertMemberScopeRevocation(AuthPrincipal owner, WorkspaceId workspace) throws Exception {

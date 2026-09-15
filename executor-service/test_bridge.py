@@ -15,6 +15,46 @@ from cli import BridgeUnavailable, _send, call
 
 
 class LeaseBridgeTests(unittest.TestCase):
+    def test_stdin_and_files_preserve_large_utf8_text_through_the_real_bridge(self):
+        text = ('中文 "$HOME" `not a command` \'quoted\'\n' * 1500) + '\n'
+        source = Path(self.temporary.name) / 'article.txt'
+        source.write_text(text, encoding='utf-8')
+        for command, operation, arguments, supplied in (
+                (['create', 'private/article.md', '--stdin'], 'create',
+                 {'path': 'private/article.md', 'text': text}, text.encode('utf-8')),
+                (['create', 'private/article.md', '--text-file', str(source)], 'create',
+                 {'path': 'private/article.md', 'text': text}, b''),
+                (['edit', 'private/article.md', '--old-file', str(source), '--new-stdin'], 'edit',
+                 {'path': 'private/article.md', 'oldText': text, 'newText': ''}, b'')):
+            with self.subTest(command=command):
+                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')), *command],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        output = pool.submit(process.communicate, supplied, timeout=5)
+                        request = self.bridge.poll(timeout=3)
+                        self.assertEqual(operation, request['operation'])
+                        self.assertEqual(arguments, request['arguments'])
+                        self.bridge.complete(request['requestId'], {'ok': True})
+                        stdout, stderr = output.result(timeout=5)
+                    self.assertEqual(0, process.returncode, stderr)
+                    self.assertEqual({'ok': True}, json.loads(stdout))
+                    self.bridge.poll(timeout=0.05)
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=3)
+
+    def test_oversized_stdin_fails_before_a_host_write(self):
+        process = subprocess.run([sys.executable, str(Path(__file__).with_name('cli.py')),
+            'create', 'private/article.md', '--stdin'], input=b'x' * (MAX_FRAME + 1),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={**os.environ, 'POKETTO_BRIDGE': str(self.path)}, timeout=5)
+        self.assertNotEqual(0, process.returncode)
+        self.assertIn(b'512 KiB', process.stderr)
+        self.assertIsNone(self.bridge.poll(timeout=0.05))
+
     def test_finished_commands_release_replay_budget_but_not_within_command(self):
         for index in range(MAX_REQUESTS + 1):
             request = {'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}}

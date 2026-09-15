@@ -52,7 +52,8 @@ class McpCopyIdentityTests {
                         mock(AuthService.class),
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
-                        json)
+                        json,
+                        null)
                 .specifications().stream()
                         .filter(value -> value.tool().name().equals("repo_exec"))
                         .findFirst()
