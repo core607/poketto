@@ -2,6 +2,7 @@ package io.github.core607.poketto.assets.internal;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.assets.ImageTransfers;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.assets.ManagedOriginalTransfers;
@@ -31,6 +32,21 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AssetsConfiguration {
+    @Bean
+    PublicImageDownloader publicImageDownloader() {
+        return new PublicImageDownloader();
+    }
+
+    @Bean
+    ImageTransfers imageTransfers(
+            AuthService auth,
+            AssetService assets,
+            ImageMemoryAdmission memory,
+            PublicImageDownloader downloader,
+            @Value("${poketto.oauth.issuer:}") String issuer) {
+        return new ImageTransfers(auth, assets, memory, downloader, Clock.systemUTC(), issuer);
+    }
+
     @Bean
     RepositoryOriginalTransfers repositoryOriginalTransfers(
             @Qualifier("managedOriginals") Supplier<ManagedBlobStore> originals) {

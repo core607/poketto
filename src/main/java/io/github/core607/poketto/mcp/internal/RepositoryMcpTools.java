@@ -6,6 +6,8 @@ import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImagePreviewPolicy;
 import io.github.core607.poketto.assets.ImageRequestScope;
+import io.github.core607.poketto.assets.ImageTransferException;
+import io.github.core607.poketto.assets.ImageTransfers;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.auth.AuthException;
@@ -44,7 +46,6 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
-    /** Largest text result one tool may return before it is refused as an output-limit failure. */
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
@@ -53,18 +54,21 @@ final class RepositoryMcpTools {
     private final ObjectProvider<AssetService> assets;
     private final ObjectProvider<RepositoryExecutor> executors;
     private final ObjectMapper json;
+    private final ObjectProvider<ImageTransfers> transfers;
 
     RepositoryMcpTools(
             McpSessions sessions,
             AuthService auth,
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
-            ObjectMapper json) {
+            ObjectMapper json,
+            ObjectProvider<ImageTransfers> transfers) {
         this.sessions = sessions;
         this.auth = auth;
         this.assets = assets;
         this.executors = executors;
         this.json = json;
+        this.transfers = transfers;
     }
 
     List<McpServerFeatures.SyncToolSpecification> specifications() {
@@ -101,22 +105,8 @@ final class RepositoryMcpTools {
                     this::getAsset));
             tools.add(tool(
                     "put_asset",
-                    "Upload original image bytes as standard base64, at most 16 MiB decoded. Reuse the same operationKey for identical retries. Returns an immutable managed reference; does not write Git or publish.",
-                    object(
-                            Map.of(
-                                    "operationKey",
-                                    Map.of(
-                                            "type",
-                                            "string",
-                                            "minLength",
-                                            16,
-                                            "maxLength",
-                                            128,
-                                            "pattern",
-                                            "^[A-Za-z0-9_-]+$"),
-                                    "base64",
-                                    text(MAX_BASE64_LENGTH)),
-                            List.of("operationKey", "base64")),
+                    "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Never transcribe Base64; base64 is for programmatic callers only. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
+                    putAssetSchema(),
                     false,
                     false,
                     true,
@@ -195,17 +185,17 @@ final class RepositoryMcpTools {
             boolean destructive,
             boolean idempotent,
             BiFunction<McpSyncServerExchange, Map<String, Object>, McpSchema.CallToolResult> operation) {
-        var tool = McpSchema.Tool.builder(name, schema)
+        var builder = McpSchema.Tool.builder(name, schema)
                 .description(description)
                 .annotations(McpSchema.ToolAnnotations.builder()
                         .readOnlyHint(readOnly)
                         .destructiveHint(destructive)
                         .idempotentHint(idempotent)
-                        .openWorldHint(false)
+                        .openWorldHint(name.equals("put_asset"))
                         .build())
-                .build();
+                .meta(name.equals("put_asset") ? Map.of("openai/fileParams", List.of("file")) : Map.of());
         return new McpServerFeatures.SyncToolSpecification(
-                tool,
+                builder.build(),
                 (exchange, request) -> McpToolOutcomes.recorded(json, name, () -> {
                     try {
                         sessions.resolve(exchange);
@@ -237,6 +227,9 @@ final class RepositoryMcpTools {
                         return error("CONFLICT", "Read current files and base commit before retrying.");
                     } catch (RepositoryWriteAmbiguousException exception) {
                         return error("INDETERMINATE", "Re-read authoritative main; do not retry this write blindly.");
+                    } catch (ImageTransferException exception) {
+                        return error(
+                                exception.reason().name(), "Image transfer did not complete; retain the operationKey.");
                     } catch (AssetStorageException exception) {
                         return error(exception.reason().name(), "Image operation could not be completed.");
                     } catch (IllegalArgumentException exception) {
@@ -315,30 +308,59 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult putAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("operationKey", "base64"));
+        fields(input, Set.of("operationKey", "mode", "url", "file", "base64"));
+        PutAssetInput request = json.convertValue(input, PutAssetInput.class);
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
-        byte[] bytes = Base64.getDecoder().decode(requiredText(input, "base64", MAX_BASE64_LENGTH));
-        if (bytes.length > ManagedBlobStore.MAX_UPLOAD_BYTES) {
-            throw new IllegalArgumentException();
+        if (request.mode().equals("upload")) {
+            return textResult(
+                    transfers.getObject().prepare(identity.principal(), identity.workspace(), request.operationKey()));
         }
+        if (request.downloadUrl() != null) {
+            return textResult(transfers
+                    .getObject()
+                    .importUrl(
+                            identity.principal(), identity.workspace(), request.operationKey(), request.downloadUrl()));
+        }
+        byte[] bytes = Base64.getDecoder().decode(request.base64());
         var result = assets.getObject()
                 .upload(
                         identity.principal(),
                         identity.workspace(),
-                        requiredText(input, "operationKey", 128),
+                        request.operationKey(),
                         new ByteArrayInputStream(bytes));
-        return textResult(Map.of(
-                "assetId",
-                result.reference().assetId(),
-                "revision",
-                result.reference().revision(),
-                "reference",
-                result.reference().toString(),
-                "mediaType",
-                result.mediaType(),
-                "size",
-                result.size()));
+        return textResult(ImageTransfers.Receipt.of(result));
+    }
+
+    private static Map<String, Object> putAssetSchema() {
+        return object(
+                Map.of(
+                        "operationKey",
+                                Map.of(
+                                        "type",
+                                        "string",
+                                        "minLength",
+                                        16,
+                                        "maxLength",
+                                        128,
+                                        "pattern",
+                                        "^[A-Za-z0-9_-]+$"),
+                        "mode", Map.of("type", "string", "enum", List.of("import", "upload")),
+                        "url", text(16384),
+                        "file",
+                                object(
+                                        Map.of(
+                                                "download_url",
+                                                text(16384),
+                                                "file_id",
+                                                text(1024),
+                                                "mime_type",
+                                                text(255),
+                                                "file_name",
+                                                text(1024)),
+                                        List.of("download_url", "file_id")),
+                        "base64", text(MAX_BASE64_LENGTH)),
+                List.of("operationKey"));
     }
 
     private McpSchema.CallToolResult getArtifact(McpSyncServerExchange exchange, Map<String, Object> input) {

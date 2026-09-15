@@ -210,6 +210,27 @@ Bridge responses carry the same lease fields plus `executionId` and `bridgeReque
 
 `poketto edit PATH --old TEXT --new TEXT` changes one exact, unique match in an existing local UTF-8 text file. It refuses missing or ambiguous original text. `poketto create PATH --text TEXT` refuses existing paths. Both capture current local bytes and use the frozen compare-and-replace installation channel, so another local write between capture and installation is rejected. Neither changes the host save baseline or remote Git. Errors carry `EDIT_REJECTED` with a bounded reason, including `OLD_TEXT_NOT_FOUND`, `AMBIGUOUS_MATCH`, `ALREADY_EXISTS`, or `LOCAL_FILE_CHANGED`. The existing text bounds apply; arbitrary shell writes do not receive these edit preconditions.
 
+For long text, `poketto create PATH --stdin` reads UTF-8 from a quoted heredoc;
+`--text-file FILE` reads an existing UTF-8 file. `poketto edit` accepts `--old-file
+FILE` instead of `--old`, and `--new-stdin` or `--new-file FILE` instead of `--new`.
+Final newlines are preserved, including an empty replacement. Input-file paths
+follow the current shell directory; the target path remains repository-relative.
+These options retain absence/exact-match and compare-and-replace checks. They do
+not increase the 16,384-character `repo_exec` command bound or 512 KiB encoded bridge
+frame bound; use existing input files or smaller exact edits for larger content.
+
+```sh
+poketto create private/article.md --stdin <<'MARKDOWN'
+# Article
+
+Quotes, `$variables` and backticks remain ordinary Markdown.
+MARKDOWN
+```
+
+Client-side image transfer uses [MCP URL import or temporary raw upload](../docs/usage.md).
+The executor does not gain outbound networking or access to client-local paths.
+
+
 `poketto save PATH... --delete PATH` sends selections, not file contents. The application captures those files, checks authoritative revisions at its own baseline and uses the shared atomic Git writer. Success advances the host save baseline and installs the acknowledged Git commit as local HEAD and index while preserving unselected local edits. A failed local Git installation is reported as `LOCAL_BASELINE_PENDING` and recovered without repeating the remote write. Public-only sessions reject saves. Conflicts retain local files and the prior baseline; an ambiguous write blocks subsequent saves. `poketto status` exposes the host baseline and last save receipt. For full-read copies, it queries remote main and returns `remote: {state, commit}`: `MATCHES_BASE` or `DIFFERS_FROM_BASE` compares that head with the last confirmed save/sync base; `UNAVAILABLE` retains local status when the remote check fails. An empty remote has a null commit. This comparison does not imply every local file has the same baseline. Status changes neither local work nor baselines; synchronization remains explicit. Public copies instead report `PUBLIC_PROJECTION` and their synthetic commit, without querying the private head. The existing public-projection validity check still guards every command.
 
 `poketto recover` reconciles the exact host-retained commit against current remote history. An observed commit is acknowledged without another push; otherwise recovery retries that same commit only while the original remote base still matches. It revalidates the original patch and current authorization, retains newer local edits, and returns a conflict on divergence. A further lost reply retains the same attempt.

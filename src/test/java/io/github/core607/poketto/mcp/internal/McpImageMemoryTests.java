@@ -172,7 +172,7 @@ class McpImageMemoryTests {
                     "image/png",
                     new byte[] {1});
         });
-        var tool = new RepositoryMcpTools(sessions, null, assets, executors, new ObjectMapper())
+        var tool = new RepositoryMcpTools(sessions, null, assets, executors, new ObjectMapper(), null)
                 .specifications().stream()
                         .filter(candidate -> candidate.tool().name().equals("get_asset"))
                         .findFirst()

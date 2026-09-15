@@ -1,0 +1,35 @@
+{
+  "checks": [
+    "raw PUT, receipt GET, identical retry and grant reuse",
+    "changed bytes conflict; invalid image and content type are rejected",
+    "exact managed original readback via MCP",
+    "private URL is refused",
+    "public HTTPS download and file-object input return identical durable receipt",
+    "stalled raw upload releases admission after 30 seconds; subsequent MCP work and same-grant retry succeed",
+    "revoking the original key revokes outstanding upload grants"
+  ],
+  "imageSha256": "c6bf7a3e9e7242831c46a3e9a2b03c10a2d69521da62bd7692b64dd851a579cb",
+  "remoteImageSha256": "8f7f16bf66c09445686f1058637a336e6401e2ac3c58436b3bb3e3bb0ce499ba",
+  "client": "Python HTTP/MCP probe",
+  "notVerified": [
+    "ChatGPT automatic fileParams forwarding",
+    "Claude app file upload"
+  ],
+  "baseCommit": "63a7605c546381fe1a4a44c457d81fae3c415648",
+  "environment": "Isolated Linux Spring/PostgreSQL/Caddy services; fixture HTTPS certificate explicitly trusted; immutable original store; no production data",
+  "verification": [
+    "McpProtocolIntegrationIT with real Spring and PostgreSQL on Linux",
+    "executorServiceTests: 78 passed, zero skips",
+    "focused MCP/image unit tests, module verification, Java style checks, repoCheck"
+  ],
+  "transportNote": "A proxy may defer the early timeout response for an incomplete request body; admission release and retry were observed through independent requests.",
+  "normalizedSourceSha256": {
+    "src/main/java/io/github/core607/poketto/assets/ImageTransfers.java": "d043bc8554095d24fb0365067c40486b3bb61bc8d274df591f0daeba2ba48b46",
+    "src/main/java/io/github/core607/poketto/assets/internal/PublicImageDownloader.java": "6eda61476f179dc9260ae819cbcb601b2355084fb2050d274f51596cbe6eab65",
+    "src/main/java/io/github/core607/poketto/web/internal/ImageUploadBody.java": "c0afd2157a42b509987bfe647ec5d1bfd48f1a11b78b1bff6d858aab18da0301",
+    "src/main/java/io/github/core607/poketto/web/internal/ImageTransferController.java": "2595a9234f72bf71ccd59fbb31879590b8e1dd32c752616c0bda61293cf77aae",
+    "src/main/java/io/github/core607/poketto/mcp/internal/PutAssetInput.java": "818a26b1bb5847cea2adc93dd9fbca2190992b2df7684d87d6c80f9e1c5bc7ea",
+    "executor-service/cli.py": "0413c285f5604b2d600e4fff971452d1ac058582ff3682e1cbde74361164b883"
+  },
+  "sourceHashNormalization": "UTF-8 source bytes with LF line endings"
+}

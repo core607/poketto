@@ -32,6 +32,25 @@ import org.springframework.security.web.csrf.CsrfFilter;
 @EnableWebSecurity
 class BrowserSecurityConfiguration {
     @Bean
+    @Order(0)
+    SecurityFilterChain imageTransferSecurity(
+            HttpSecurity http, @Value("${poketto.security.allowed-origins:}") String origins) throws Exception {
+        // Only the image-transfer controller accepts the narrow, expiring grant in this URL.
+        http.securityMatcher("/api/image-transfers/**")
+                .csrf(csrf -> csrf.disable())
+                .requestCache(cache -> cache.disable())
+                .securityContext(context -> context.securityContextRepository(new NullSecurityContextRepository()))
+                .sessionManagement(sessions -> sessions.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
+                .headers(headers -> headers.addHeaderWriter((request, response) -> {
+                    response.setHeader("Cache-Control", "no-store");
+                    response.setHeader("Referrer-Policy", "no-referrer");
+                }))
+                .addFilterBefore(new OriginAndBodyFilter(origins(origins)), AnonymousAuthenticationFilter.class);
+        return http.build();
+    }
+
+    @Bean
     AuthenticationProvider accountAuthenticationProvider(ObjectProvider<AuthService> auth) {
         return new AuthenticationProvider() {
             @Override

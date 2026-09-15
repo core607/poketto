@@ -1,6 +1,7 @@
 package io.github.core607.poketto.mcp.internal;
 
 import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.ImageTransfers;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -23,7 +24,8 @@ class McpToolConfiguration {
             AuthService auth,
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
-            ObjectMapper json) {
-        return new RepositoryMcpTools(sessions, auth, assets, executors, json).specifications();
+            ObjectMapper json,
+            ObjectProvider<ImageTransfers> transfers) {
+        return new RepositoryMcpTools(sessions, auth, assets, executors, json, transfers).specifications();
     }
 }

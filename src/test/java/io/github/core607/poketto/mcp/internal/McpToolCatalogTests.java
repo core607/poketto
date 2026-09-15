@@ -20,7 +20,8 @@ class McpToolCatalogTests {
                         null,
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
-                        new ObjectMapper())
+                        new ObjectMapper(),
+                        null)
                 .specifications();
         assertThat(tools)
                 .extracting(specification -> specification.tool().name())
@@ -35,7 +36,8 @@ class McpToolCatalogTests {
                         null,
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
-                        new ObjectMapper())
+                        new ObjectMapper(),
+                        null)
                 .specifications();
         assertThat(tools)
                 .extracting(specification -> specification.tool().name())

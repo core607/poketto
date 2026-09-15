@@ -15,6 +15,20 @@ import uuid
 MAX_FRAME = 512 * 1024
 
 
+def read_text_input(text, filename=None, stdin=False):
+    """Preserve UTF-8 and final newlines; bound input before sending a host mutation."""
+    if text is not None:
+        return text
+    if stdin:
+        raw = sys.stdin.buffer.read(MAX_FRAME + 1)
+    else:
+        with open(filename, 'rb') as stream:
+            raw = stream.read(MAX_FRAME + 1)
+    if len(raw) > MAX_FRAME:
+        raise ValueError('text input exceeds 512 KiB; use smaller exact edits')
+    return raw.decode('utf-8', errors='strict')
+
+
 class BridgeUnavailable(Exception):
     pass
 
@@ -93,16 +107,44 @@ def main():
         prog='poketto',
         description='Host operations use repository-relative paths, independent of the shell working directory. '
                     'Create files in the repository to retain them between commands; /tmp is reset for every command. '
-                    'Use python3 for Python scripts.')
+                    'Use python3 for Python scripts.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Common workflow:
+  Text: poketto create private/article.md --stdin <<'MARKDOWN'
+        ... Markdown, quotes and final newlines are preserved ...
+        MARKDOWN
+  Edit: poketto edit PATH --old 'exact original' --new-stdin <<'REPLACEMENT'
+        ... replacement text ...
+        REPLACEMENT
+  Media here: poketto media import FILE --as private/PATH --type image/png --key KEY
+  Media elsewhere: use MCP put_asset with a download URL, or request its temporary
+        upload URL and PUT the file from the client that owns it. Do not transcribe Base64.
+  Link receipt: poketto media link private/PATH --asset ID --revision REV
+  Persist: poketto save private/article.md .poketto/assets.json
+  Confirm: poketto status; inspect saved text/media through the remote read path.
+  Remote changed: poketto sync preserves local edits; resolve reported conflicts.
+Uploads and local edits do not publish. Public paths require publication permission.
+stdin avoids shell quoting; it does not lift repo_exec's 16384-character command
+limit or the 512 KiB bridge frame limit. Use --text-file/--old-file/--new-file for
+UTF-8 files already in the execution environment, or split a long edit into exact matches.
+""")
     commands = parser.add_subparsers(dest='operation', required=True)
     commands.add_parser('status', help='Read the working-copy ID, host-owned baseline and scope')
     edit = commands.add_parser('edit', help='Replace one exact text match in a local file; does not save or publish')
     edit.add_argument('path')
-    edit.add_argument('--old', required=True, help='Exact nonempty original text; ambiguous or stale matches fail')
-    edit.add_argument('--new', required=True, help='Replacement text; an empty value deletes the matched text')
+    old = edit.add_mutually_exclusive_group(required=True)
+    old.add_argument('--old', help='Exact nonempty original text; ambiguous or stale matches fail')
+    old.add_argument('--old-file', help='Read exact original text from a UTF-8 file in the current shell directory')
+    replacement = edit.add_mutually_exclusive_group(required=True)
+    replacement.add_argument('--new', help='Replacement text; an empty value deletes the matched text')
+    replacement.add_argument('--new-file', help='Read replacement text from a UTF-8 file in the current shell directory')
+    replacement.add_argument('--new-stdin', action='store_true', help='Read replacement text from UTF-8 stdin, preserving final newlines')
     create = commands.add_parser('create', help='Create a local text file only when its path is absent; does not save or publish')
     create.add_argument('path')
-    create.add_argument('--text', required=True)
+    initial = create.add_mutually_exclusive_group(required=True)
+    initial.add_argument('--text', help='Initial text as a command argument')
+    initial.add_argument('--text-file', help='Read initial text from a UTF-8 file in the current shell directory')
+    initial.add_argument('--stdin', action='store_true', help='Read initial text from UTF-8 stdin; ideal for a quoted heredoc')
     recover = commands.add_parser('recover', help='Resume a pending sync or recover a save or move using its retained commit and local completion receipt')
     recover.add_argument('--skip-local', action='store_true', help='Keep local files untouched and release a pending sync or confirmed move; completed local updates remain')
     commands.add_parser('sync', help='Merge the current remote workspace into local edits without saving or publishing')
@@ -148,10 +190,14 @@ def main():
     save.add_argument('--delete', action='append', default=[])
     args = parser.parse_args()
     arguments = {'writes': args.paths, 'deletes': args.delete} if args.operation == 'save' else {}
-    if args.operation == 'edit':
-        arguments = {'path': args.path, 'oldText': args.old, 'newText': args.new}
-    if args.operation == 'create':
-        arguments = {'path': args.path, 'text': args.text}
+    try:
+        if args.operation == 'edit':
+            arguments = {'path': args.path, 'oldText': read_text_input(args.old, args.old_file),
+                         'newText': read_text_input(args.new, args.new_file, args.new_stdin)}
+        if args.operation == 'create':
+            arguments = {'path': args.path, 'text': read_text_input(args.text, args.text_file, args.stdin)}
+    except (OSError, ValueError) as error:
+        parser.error(f'cannot read text input: {error}')
     if args.operation == 'recover' and args.skip_local:
         arguments = {'skipLocal': True}
     if args.operation == 'move':
@@ -178,6 +224,9 @@ def main():
             arguments = {'file': args.file, 'path': args.logical_path, 'mediaType': args.media_type, 'key': args.key, 'replace': args.replace}
     if args.operation == 'save' and not args.paths and not args.delete:
         parser.error('save requires selected files or explicit --delete paths')
+    envelope = {'requestId': str(uuid.uuid4()), 'operation': operation, 'arguments': arguments}
+    if len(json.dumps(envelope, ensure_ascii=False, separators=(',', ':')).encode('utf-8')) > MAX_FRAME:
+        parser.error('encoded request exceeds 512 KiB; split the text into smaller exact edits')
     root = os.environ.get('POKETTO_BRIDGE')
     if not root:
         parser.error('this command requires an admitted Poketto execution session')

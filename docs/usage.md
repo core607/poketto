@@ -179,7 +179,65 @@ verifies the authenticated export and artifact path.
 
 Use `poketto edit PATH --old TEXT --new TEXT` to replace one exact occurrence in an existing local text file. Missing or ambiguous original text is refused without changing the file. `poketto create PATH --text TEXT` creates a local text file only when its path is absent. Both commands leave remote Git and publishing unchanged until an authorized `poketto save`. They recheck the captured local bytes before installation; ordinary shell writes remain available and do not acquire these edit preconditions.
 
+
+For long text, `poketto create PATH --stdin` reads UTF-8 from a quoted heredoc;
+`--text-file FILE` reads an existing UTF-8 file. `poketto edit` accepts `--old-file
+FILE` instead of `--old`, and `--new-stdin` or `--new-file FILE` instead of `--new`.
+Final newlines are preserved, including an empty replacement. Input-file paths
+follow the current shell directory; the target path remains repository-relative.
+These options retain absence/exact-match and compare-and-replace checks. They do
+not increase the 16,384-character `repo_exec` command bound or 512 KiB encoded bridge
+frame bound; use existing input files or smaller exact edits for larger content.
+
+```sh
+poketto create private/article.md --stdin <<'MARKDOWN'
+# Article
+
+Quotes, `$variables` and backticks remain ordinary Markdown.
+MARKDOWN
+```
+
 `/mcp` uses Spring AI 2.0.1 WebMVC Streamable HTTP and a workspace Bearer credential (API key or OAuth access token), independently of browser sessions. With the executor enabled, the catalog contains `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset`. The asset tools transfer exact image versions and accept idempotent uploads; upload acknowledgement never implies publication.
+
+`put_asset` accepts `operationKey` plus exactly one of `url`, `file`, or `base64`.
+`url` is a public HTTPS image download address on port 443. `file` is a platform
+file object with required `download_url` and `file_id`; optional `mime_type` and
+`file_name` are hints, never validation authority. The tool declares
+`_meta["openai/fileParams"] = ["file"]`; actual attachment forwarding depends on
+client support. Downloads use validated public DNS addresses, at most three
+redirects, a 30-second deadline and a 16 MiB byte bound. No cookies or authorization
+headers are forwarded. Original bytes undergo the existing image validation.
+
+If the client holds a file, call `put_asset` with `mode: "upload"` and
+`operationKey`, without an image source. The response supplies `uploadUrl`,
+`method: "PUT"`, `contentType: "application/octet-stream"`, `maxBytes`, and
+`expiresAt`. From that client's own execution environment, upload raw bytes:
+
+```python
+import requests
+with open(image_path, "rb") as image:
+    response = requests.put(upload_url, data=image,
+                            headers={"Content-Type": "application/octet-stream"}, timeout=30)
+response.raise_for_status()
+receipt = response.json()
+```
+
+Upload body collection stops after 30 seconds and releases admission on timeout or disconnect. A proxy may delay the early error while the sender leaves its body unfinished; set a client timeout and GET the upload URL to inspect the result.
+
+
+The URL is a secret, narrow upload grant bound to the requesting principal,
+workspace and operation key. Current permissions are checked on every use. It
+expires after 15 minutes or application restart; MCP disconnection does not revoke
+it. The public base URL comes from `poketto.oauth.issuer`. Up to 512 grants and
+8 unfinished grants per account are admitted. GET the same URL to recover a lost
+receipt (`UPLOAD_PENDING` if no upload has completed). After expiry, request a
+replacement with the same operation key and resend identical bytes; durable
+idempotency returns the same original, while different bytes conflict. Base64 is
+available for programmatic callers; models should not transcribe image bytes.
+Both routes return `assetId`, `revision`, `reference`, `mediaType`, and `size`.
+Use `poketto media link PATH --asset ID --revision REV`, then explicitly save the
+text and `.poketto/assets.json`. Uploading alone does not save Git or publish.
+
 
 `repo_exec` requires `expectedCopyId`: use `"new"` to open the account's default copy, creating it only when absent, then pass the returned `copyId` on subsequent calls. Reconnection automatically reattaches the original copy and baseline; no generation or resume flag is required. Closing an MCP transport preserves the copy. Each successful authorized copy operation renews its seven-day idle deadline, returned as `retention.expiresAt`. `SESSION_REPLACED` and `EXECUTION_REFUSED` mean this command did not execute. `EXECUTION_UNCONFIRMED` means it may have partially completed, including remote writes. Do not replay an uncertain write: inspect the same copy with a read-only command, `retention.lastInterruptedCommand` and `poketto status`, then use `poketto recover` when a remote save needs reconciliation. [Working-copy identity](../executor-service/README.md#working-copy-identity) describes the execution boundary.
 

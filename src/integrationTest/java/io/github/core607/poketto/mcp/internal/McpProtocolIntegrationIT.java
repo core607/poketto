@@ -128,6 +128,7 @@ class McpProtocolIntegrationIT {
         }
         registry.add("poketto.test.repository-path", remote::toString);
         registry.add("poketto.data-dir", directory::toString);
+        registry.add("poketto.oauth.issuer", () -> "https://transfer.example.com");
     }
 
     @Autowired
@@ -220,6 +221,7 @@ class McpProtocolIntegrationIT {
                 .containsExactlyInAnyOrder("get_asset", "put_asset");
         assertRemovedFileTools(key.token(), first);
         assertRequestErrorBoundary(key.token(), first);
+        assertImageTransferEntrance(owner, workspace, key.token(), first, other.token());
         String deniedSession = initialize(denied.token());
         assertThat(error(call(
                         denied.token(),
@@ -265,6 +267,62 @@ class McpProtocolIntegrationIT {
                         .map(McpSessionClosed::reason)
                         .toList())
                 .contains(McpSessionClosed.Reason.AUTH_REVOKED);
+    }
+
+    private void assertImageTransferEntrance(
+            AuthPrincipal owner, WorkspaceId workspace, String token, String session, String reader) throws Exception {
+        JsonNode catalog = response(post(token, session, rpc("tools/list", Map.of())))
+                .path("result")
+                .path("tools");
+        JsonNode tool = catalog.valueStream()
+                .filter(item -> item.path("name").asString().equals("put_asset"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(tool.path("_meta").path("openai/fileParams").get(0).asString())
+                .isEqualTo("file");
+        assertThat(tool.path("inputSchema")
+                        .path("properties")
+                        .path("file")
+                        .path("properties")
+                        .propertyNames())
+                .containsExactlyInAnyOrder("download_url", "file_id", "mime_type", "file_name");
+        var request = Map.of("mode", "upload", "operationKey", UUID.randomUUID().toString());
+        JsonNode grant = json.readTree(call(token, session, "put_asset", request)
+                .path("content")
+                .get(0)
+                .path("text")
+                .asString());
+        URI target = endpoint()
+                .resolve(URI.create(grant.path("uploadUrl").asString()).getPath());
+        assertThat(http.send(HttpRequest.newBuilder(target).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .statusCode())
+                .isEqualTo(409);
+        var wrongType = HttpRequest.newBuilder(target)
+                .header("Content-Type", "text/plain")
+                .PUT(HttpRequest.BodyPublishers.ofString("not an image"))
+                .build();
+        assertThat(http.send(wrongType, HttpResponse.BodyHandlers.ofString()).statusCode())
+                .isEqualTo(415);
+        assertThat(error(call(reader, initialize(reader), "put_asset", request)))
+                .isEqualTo("DENIED");
+        assertThat(error(call(
+                        token,
+                        session,
+                        "put_asset",
+                        Map.of("operationKey", UUID.randomUUID().toString(), "url", "https://127.0.0.1/private"))))
+                .isEqualTo("SOURCE_UNAVAILABLE");
+        var temporary = auth.createApiKey(owner, workspace, owner.accountId(), null);
+        JsonNode revoked = json.readTree(call(temporary.token(), initialize(temporary.token()), "put_asset", request)
+                .path("content")
+                .get(0)
+                .path("text")
+                .asString());
+        URI revokedTarget = endpoint()
+                .resolve(URI.create(revoked.path("uploadUrl").asString()).getPath());
+        auth.revokeApiKey(owner, workspace, temporary.id());
+        assertThat(http.send(HttpRequest.newBuilder(revokedTarget).GET().build(), HttpResponse.BodyHandlers.ofString())
+                        .statusCode())
+                .isEqualTo(403);
     }
 
     private void assertMemberScopeRevocation(AuthPrincipal owner, WorkspaceId workspace) throws Exception {

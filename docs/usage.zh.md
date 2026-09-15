@@ -128,7 +128,56 @@ ZIP 包含最新已保存的内容与原件，不包含本地编辑；输出位�
 
 使用 `poketto edit PATH --old TEXT --new TEXT` 替换已有本地文本文件中唯一、完全匹配的一段原文。原文不存在或匹配多处时拒绝修改。`poketto create PATH --text TEXT` 仅在目标路径不存在时新建本地文本文件。这两个命令都不改变远端 Git 或发布状态，正式保存仍需通过授权的 `poketto save`。写入前会再次核对捕获的本地内容；普通 shell 写入仍可使用，但不具备这些编辑前置检查。
 
+
+长文本可使用 `poketto create PATH --stdin`，通过带引号的 heredoc 输入 UTF-8；
+`--text-file FILE` 从已有 UTF-8 文件读取。`poketto edit` 可用 `--old-file FILE`
+代替 `--old`，用 `--new-stdin` 或 `--new-file FILE` 代替 `--new`。末尾换行会被保留，
+空替换内容表示删除原文。输入文件路径按当前 shell 目录解析，目标路径仍相对于仓库根。
+这些选项保留路径不存在、原文唯一匹配及写入前比较检查，不提高 `repo_exec` 的 16,384
+字符命令上限或编码后 512 KiB 的桥接帧上限；更大的内容可使用已有输入文件或拆为较小的精确编辑。
+
+```sh
+poketto create private/article.md --stdin <<'MARKDOWN'
+# 文章
+
+引号、`$variables` 和反引号都会保留为普通 Markdown。
+MARKDOWN
+```
+
 `/mcp` 使用 Spring AI 2.0.1 WebMVC Streamable HTTP，以工作空间 Bearer API key 认证，独立于浏览器会话。启用执行器后，工具目录包含 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。图片工具传输精确版本并支持幂等上传；上传确认不意味着发布。
+
+`put_asset` 接受 `operationKey`，以及 `url`、`file`、`base64` 中恰好一种来源。
+`url` 是使用 443 端口的公网 HTTPS 图片下载地址。`file` 是平台文件对象，必须包含
+`download_url` 和 `file_id`；可选的 `mime_type`、`file_name` 只作提示，不能替代校验。
+工具声明 `_meta["openai/fileParams"] = ["file"]`，附件是否自动转交取决于客户端支持。
+下载连接使用经过检查的公网 DNS 地址，最多跟随三次重定向，总时限 30 秒，文件上限
+16 MiB；不转发 Cookie 或授权头。下载后的原件仍经过现有图片校验。
+
+客户端持有文件时，调用 `put_asset`，传 `mode: "upload"` 和 `operationKey`，不传图片来源。
+返回值包含 `uploadUrl`、`method: "PUT"`、`contentType: "application/octet-stream"`、
+`maxBytes` 和 `expiresAt`。在持有文件的客户端执行环境中直接上传字节：
+
+```python
+import requests
+with open(image_path, "rb") as image:
+    response = requests.put(upload_url, data=image,
+                            headers={"Content-Type": "application/octet-stream"}, timeout=30)
+response.raise_for_status()
+receipt = response.json()
+```
+
+上传请求体的接收限时 30 秒，超时或断连会释放接收名额。发送端迟迟不结束请求体时，代理可能延迟转交错误；请设置客户端超时，并 GET 上传 URL 核对结果。
+
+
+这个 URL 是绑定申请者、空间和操作键的临时上传凭据，不应公开。每次使用都会重新检查
+当前权限；15 分钟后或应用重启时失效，MCP 断连不使其失效。公开基址来自
+`poketto.oauth.issuer`。实例最多保留 512 个凭据，每个账号最多有 8 个未完成上传。
+回执丢失时可 GET 同一 URL 查询；尚未完成返回 `UPLOAD_PENDING`。过期后使用同一操作键
+重新申请，再上传相同字节，持久幂等记录会返回原资源；不同字节则冲突。Base64 保留给程序
+调用，模型不应转抄图片字节。两条路径统一返回 `assetId`、`revision`、`reference`、
+`mediaType` 和 `size`。随后使用 `poketto media link PATH --asset ID --revision REV`，
+并显式保存文章及 `.poketto/assets.json`。仅上传不会保存 Git 或发布内容。
+
 
 `repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回结果中的 `copyId`。重连会自动接回原副本和已确认的基线，无需代次或恢复标志。关闭 MCP 连接会保留副本。每次成功且获授权的副本操作都会将闲置期限延长为七天，期限由 `retention.expiresAt` 返回。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示本次命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入。不要重复执行结果不确定的写入：先用同一副本 ID 执行只读检查，核对 `retention.lastInterruptedCommand` 和 `poketto status`，远端保存待确认时再使用 `poketto recover`。[副本身份契约](../executor-service/README.md#working-copy-identity)说明执行边界。
 
