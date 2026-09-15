@@ -1,0 +1,32 @@
+{
+  "result": "PASS",
+  "entry": "Production repo_exec through the connected Poketto MCP client",
+  "installerSha256": "559560b4d131925f7aae4f17a5bd6129bcc83c520b6626bde98dfd20d9740c62",
+  "python": "3.14.4",
+  "packages": {
+    "python3-pil": "12.1.1-2ubuntu1.3",
+    "python3-bs4": "4.14.3-2build1",
+    "python3-lxml": "6.0.2-1build1",
+    "python3-pypdf": "6.9.2-1",
+    "python3-openpyxl": "3.1.5+dfsg-3",
+    "python3-docx": "1.2.0+dfsg-3",
+    "mawk": "1.3.4.20260129-1",
+    "zip": "3.0-15ubuntu3",
+    "poppler-utils": "26.01.0-2ubuntu0.1",
+    "fonts-noto-cjk": "1:20240730+repack1-1build1"
+  },
+  "checks": [
+    "Pillow loads a Noto CJK font and draws Chinese text",
+    "640x480 RGB image resizes to 320x240 WebP and reopens at that size",
+    "BeautifulSoup with lxml extracts Chinese HTML text; lxml parses XML",
+    "DOCX paragraph and XLSX cell preserve Chinese text after save and reload",
+    "pypdf reads and copies a generated one-page PDF",
+    "pdfinfo and pdftotext execute without stderr",
+    "pdftoppm renders the PDF to a 200-pixel PNG without stderr",
+    "zip creates an archive; independent Python zipfile inspection confirms its entry",
+    "awk evaluates 6*7 and returns 42"
+  ],
+  "sideEffects": "Only generated files under a temporary /tmp directory; removed on exit. No content save or publication.",
+  "deployment": "38 new distribution packages including dependencies, zero existing package upgrades, 125 MB reported additional disk usage; no application or worker restart",
+  "limits": "Generated PDF contains an image, so this does not verify OCR, arbitrary PDF fonts, Office rendering or every supported image codec."
+}
