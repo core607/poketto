@@ -20,7 +20,7 @@ Registration invitations and workspace invitations are separate credentials and 
 
 ## Workspace lifecycle and access
 
-The account-level space list supports creation, joining, and switching. Creation asks for a display name, public slug, and an existing GitHub or CNB HTTPS repository with credentials. The creator receives the owner membership. Creation is durable and idempotent, records failure stages, and resumes without duplicate spaces or destructive writes to existing content. One remote repository cannot be bound to two spaces. There is no automatic provider-side repository creation.
+The account-level space list supports creation, joining, and switching. Creation asks for a display name, public slug, and an existing GitHub or CNB HTTPS repository with credentials. [Repository initialization on connection](../proposed/2026-09-16-repository-initialization-on-connection.md) proposes initializing an empty or unguided repository after verification. The creator receives the owner membership. Creation is durable and idempotent, records failure stages, and resumes without duplicate spaces or destructive writes to existing content. One remote repository cannot be bound to two spaces. There is no automatic provider-side repository creation.
 
 Credentials are encrypted using a deployment-provided key, scoped by workspace, excluded from response bodies and logs, and rotatable only by the space owner. Repository validation rejects unsupported origins, credentials in URLs, unsafe redirect targets, and private-network destinations. An established workspace cannot be rebound to another repository through this delivery's UI.
 
