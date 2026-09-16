@@ -170,7 +170,8 @@ class Installation:
             retired = 0
             for image in sorted(set(listed) - retained):
                 details = json.loads(self.command("docker", "image", "inspect", image))[0]
-                references = [tag for tag in details.get("RepoTags", []) if tag != "<none>:<none>"] + details.get("RepoDigests", [])
+                # Docker answers null, not an empty list, when an image has no tags or digests.
+                references = (details.get("RepoTags") or []) + (details.get("RepoDigests") or [])
                 for reference in references or [image]:
                     # Docker deletes an untagged image at its first digest reference.
                     if self.present(image) is None:
@@ -182,7 +183,7 @@ class Installation:
                 if self.present(image) is None:
                     retired += 1
             return retired
-        except (DeploymentError, KeyError, ValueError) as error:
+        except Exception as error:
             print("existing deployment: image retirement did not complete: " + str(error), file=sys.stderr)
             return None
 
