@@ -8,6 +8,8 @@ service contracts and outstanding delivery requirements remain applicable.
 The [account-copy decision](../implemented/2026-09-14-account-working-copies.md)
 owns disk quotas, shared copy identity, expiry and restart persistence. Runtime
 leases and command containment remain separate from stored-copy lifetime.
+[Per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) proposes
+one unit per lease in place of the per-command process tree described below.
 Status: Proposed
 
 ## Problem
