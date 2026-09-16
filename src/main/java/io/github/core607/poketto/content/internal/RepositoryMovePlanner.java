@@ -29,14 +29,7 @@ final class RepositoryMovePlanner {
         if (policy.state() == RepositoryPublishingPolicy.State.INVALID) {
             throw new IllegalArgumentException("repair the publication policy before moving content");
         }
-        Map<String, RepositoryCandidateChanges.ObjectEntry> files = new LinkedHashMap<>();
-        for (int i = 0; i < index.getEntryCount(); i++) {
-            var entry = index.getEntry(i);
-            files.put(
-                    entry.getPathString(),
-                    new RepositoryCandidateChanges.ObjectEntry(
-                            entry.getObjectId().copy(), entry.getFileMode()));
-        }
+        Map<String, RepositoryCandidateChanges.ObjectEntry> files = indexEntries(index);
         media.requireNoGitCollisions(files.keySet());
         Set<String> namespace = new HashSet<>(files.keySet());
         namespace.addAll(media.files().keySet());
@@ -60,14 +53,59 @@ final class RepositoryMovePlanner {
         if (!mappedMedia.equals(media.files())) {
             replacements.put(RepositoryMediaIndex.PATH, new RepositoryMediaIndex(mappedMedia).encode());
         }
+        var parser = new RepositoryMarkdownParser();
+        Documents documents = parseDocuments(repository, files, parser);
+        var links = new MovedLinks(files, namespace, documents.routes(), relocated, policy);
+        for (var document : documents.sources().entrySet()) {
+            String oldPath = document.getKey();
+            String newPath = relocated.getOrDefault(oldPath, oldPath);
+            String source = document.getValue();
+            String body = documents.parsed().get(oldPath).body();
+            String repaired = MarkdownLinkRewriter.rewrite(body, authored -> links.repair(oldPath, newPath, authored));
+            if (!repaired.equals(body)) {
+                String replacement = source.substring(0, source.length() - body.length()) + repaired;
+                byte[] bytes = replacement.getBytes(StandardCharsets.UTF_8);
+                if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES) {
+                    throw new IllegalArgumentException("repaired document exceeds its byte limit");
+                }
+                parser.parse(newPath, replacement);
+                replacements.put(newPath, bytes);
+            } else if (!newPath.equals(oldPath)) {
+                parser.parse(newPath, source);
+            }
+        }
+        return new RepositoryCandidateChanges(replacements, copies, deletions, true);
+    }
 
+    private static Map<String, RepositoryCandidateChanges.ObjectEntry> indexEntries(DirCache index) {
+        Map<String, RepositoryCandidateChanges.ObjectEntry> files = new LinkedHashMap<>();
+        for (int i = 0; i < index.getEntryCount(); i++) {
+            var entry = index.getEntry(i);
+            files.put(
+                    entry.getPathString(),
+                    new RepositoryCandidateChanges.ObjectEntry(
+                            entry.getObjectId().copy(), entry.getFileMode()));
+        }
+        return files;
+    }
+
+    /** Every Markdown document's source and metadata, and the routes that name exactly one document. */
+    private record Documents(
+            Map<String, String> sources,
+            Map<String, RepositoryMarkdownParser.Metadata> parsed,
+            Map<String, String> routes) {}
+
+    private static Documents parseDocuments(
+            Repository repository,
+            Map<String, RepositoryCandidateChanges.ObjectEntry> files,
+            RepositoryMarkdownParser parser)
+            throws IOException {
         long total = 0;
         int documents = 0;
         Map<String, String> sources = new LinkedHashMap<>();
         Map<String, RepositoryMarkdownParser.Metadata> parsed = new LinkedHashMap<>();
         Map<String, String> routes = new HashMap<>();
         Set<String> ambiguousRoutes = new HashSet<>();
-        var parser = new RepositoryMarkdownParser();
         for (var file : files.entrySet()) {
             String path = file.getKey();
             if (!RepositoryPathRules.markdown(path)
@@ -91,52 +129,42 @@ final class RepositoryMovePlanner {
             }
         }
         ambiguousRoutes.forEach(routes::remove);
-        for (var document : sources.entrySet()) {
-            String oldPath = document.getKey();
-            String newPath = relocated.getOrDefault(oldPath, oldPath);
-            String source = document.getValue();
-            String body = parsed.get(oldPath).body();
-            String repaired = MarkdownLinkRewriter.rewrite(body, authored -> {
-                var resolved = MarkdownDestinations.path(oldPath, authored);
-                if (resolved.isEmpty()) {
-                    return authored;
-                }
-                String target = resolved.orElseThrow();
-                if (!namespace.contains(target)) {
-                    target = routes.get("/" + target);
-                }
-                if (target == null) {
-                    return authored;
-                }
-                String newTarget = relocated.getOrDefault(target, target);
-                if (!newPath.equals(oldPath) || !newTarget.equals(target)) {
-                    boolean unsupportedTarget = files.containsKey(target)
-                            && !RepositoryBlobs.isFile(files.get(target).mode());
-                    boolean invalidBefore =
-                            policy.permitsPath(oldPath) && (!policy.permitsPath(target) || unsupportedTarget);
-                    boolean invalidAfter =
-                            policy.permitsPath(newPath) && (!policy.permitsPath(newTarget) || unsupportedTarget);
-                    if (invalidAfter && !invalidBefore) {
-                        throw new RepositoryMoveDependencyException();
-                    }
-                    String fragment = authored.contains("#") ? authored.substring(authored.indexOf('#')) : "";
-                    return RelativeLinks.from(newPath, newTarget) + fragment;
-                }
+        return new Documents(sources, parsed, routes);
+    }
+
+    /** Rewrites one authored destination after a move; a move may not make a public document depend on private content. */
+    private record MovedLinks(
+            Map<String, RepositoryCandidateChanges.ObjectEntry> files,
+            Set<String> namespace,
+            Map<String, String> routes,
+            Map<String, String> relocated,
+            RepositoryPublishingPolicy policy) {
+        String repair(String oldPath, String newPath, String authored) {
+            var resolved = MarkdownDestinations.path(oldPath, authored);
+            if (resolved.isEmpty()) {
                 return authored;
-            });
-            if (!repaired.equals(body)) {
-                String replacement = source.substring(0, source.length() - body.length()) + repaired;
-                byte[] bytes = replacement.getBytes(StandardCharsets.UTF_8);
-                if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES) {
-                    throw new IllegalArgumentException("repaired document exceeds its byte limit");
-                }
-                parser.parse(newPath, replacement);
-                replacements.put(newPath, bytes);
-            } else if (!newPath.equals(oldPath)) {
-                parser.parse(newPath, source);
             }
+            String target = resolved.orElseThrow();
+            if (!namespace.contains(target)) {
+                target = routes.get("/" + target);
+            }
+            if (target == null) {
+                return authored;
+            }
+            String newTarget = relocated.getOrDefault(target, target);
+            if (newPath.equals(oldPath) && newTarget.equals(target)) {
+                return authored;
+            }
+            boolean unsupportedTarget = files.containsKey(target)
+                    && !RepositoryBlobs.isFile(files.get(target).mode());
+            boolean invalidBefore = policy.permitsPath(oldPath) && (!policy.permitsPath(target) || unsupportedTarget);
+            boolean invalidAfter = policy.permitsPath(newPath) && (!policy.permitsPath(newTarget) || unsupportedTarget);
+            if (invalidAfter && !invalidBefore) {
+                throw new RepositoryMoveDependencyException();
+            }
+            String fragment = authored.contains("#") ? authored.substring(authored.indexOf('#')) : "";
+            return RelativeLinks.from(newPath, newTarget) + fragment;
         }
-        return new RepositoryCandidateChanges(replacements, copies, deletions, true);
     }
 
     static Map<String, String> relocate(Set<String> namespace, RepositoryMoveRequest request) {

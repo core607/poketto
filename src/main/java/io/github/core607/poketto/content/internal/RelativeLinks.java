@@ -22,6 +22,11 @@ final class RelativeLinks {
      * in the tree, root files included, not only in managed documents.
      */
     static String from(String document, String target) {
+        return encode(relative(document, target));
+    }
+
+    /** The same walk before percent-encoding, for a caller that encodes segments its own way. */
+    static String relative(String document, String target) {
         String[] source = document.split("/");
         String[] destination = target.split("/");
         int common = 0;
@@ -37,7 +42,7 @@ final class RelativeLinks {
         for (int i = common; i < destination.length; i++) {
             segments.add(destination[i]);
         }
-        return encode(String.join("/", segments));
+        return String.join("/", segments);
     }
 
     /**
