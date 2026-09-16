@@ -154,6 +154,12 @@ public final class OAuthService {
             return callback(request, "error", "access_denied");
         }
         requireMember(actor, workspace);
+        Set<Capability> capabilities = selectedCapabilities(request, selected);
+        return tx.execute(status -> issueCode(actor, workspace, request, selected, capabilities));
+    }
+
+    // Every selected scope must be one the request offered, and at least one must map to a capability.
+    private static Set<Capability> selectedCapabilities(AuthorizationRequest request, Set<String> selected) {
         if (selected == null
                 || selected.isEmpty()
                 || selected.stream().anyMatch(Objects::isNull)
@@ -165,49 +171,58 @@ public final class OAuthService {
         if (capabilities.isEmpty()) {
             throw failure("invalid_scope");
         }
-        return tx.execute(status -> {
-            // Final consent and registry cleanup cannot race a connection's client foreign key.
-            registryLock();
-            cleanup(request.client().id());
-            lock(workspace);
-            // Pin registration until the new connection commits; cleanup never deletes a live consent.
-            var registered = jdbc.query(
-                    "select client_id from oauth_clients where client_id=? for update",
-                    (rs, row) -> rs.getString(1),
-                    request.client().id());
-            if (registered.isEmpty() || !request.expiresAt().isAfter(clock.instant())) {
-                throw failure("invalid_request");
-            }
-            if (jdbc.queryForObject(
-                            "select count(*) from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=? and k.revoked_at is null and c.expires_at>? and c.resource=?",
-                            Integer.class,
-                            workspace.value(),
-                            now(),
-                            resource())
-                    >= 100) {
-                throw failure("temporarily_unavailable");
-            }
-            IssuedToken key = auth.createOAuthKey(actor, workspace, capabilities);
-            jdbc.update(
-                    "insert into oauth_connections(key_id,client_id,workspace_id,account_id,scopes,created_at,expires_at,resource) values (?,?,?,?,?,?,?,?)",
-                    key.id(),
-                    request.client().id(),
-                    workspace.value(),
-                    actor.accountId(),
-                    scopeString(selected),
-                    now(),
-                    after(Duration.ofDays(90)),
-                    resource());
-            String code = token("code_");
-            jdbc.update(
-                    "insert into oauth_codes(digest,key_id,redirect_uri,challenge,expires_at) values (?,?,?,?,?)",
-                    digest(code),
-                    key.id(),
-                    request.redirectUri(),
-                    request.challenge(),
-                    after(Duration.ofMinutes(5)));
-            return callback(request, "code", code);
-        });
+        return capabilities;
+    }
+
+    // Inside the consent transaction: the client stays registered until the connection commits, a
+    // workspace keeps at most 100 live connections, and the code is bound to the new key.
+    private String issueCode(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            AuthorizationRequest request,
+            Set<String> selected,
+            Set<Capability> capabilities) {
+        // Final consent and registry cleanup cannot race a connection's client foreign key.
+        registryLock();
+        cleanup(request.client().id());
+        lock(workspace);
+        // Pin registration until the new connection commits; cleanup never deletes a live consent.
+        var registered = jdbc.query(
+                "select client_id from oauth_clients where client_id=? for update",
+                (rs, row) -> rs.getString(1),
+                request.client().id());
+        if (registered.isEmpty() || !request.expiresAt().isAfter(clock.instant())) {
+            throw failure("invalid_request");
+        }
+        if (jdbc.queryForObject(
+                        "select count(*) from oauth_connections c join auth_api_keys k using(key_id) where c.workspace_id=? and k.revoked_at is null and c.expires_at>? and c.resource=?",
+                        Integer.class,
+                        workspace.value(),
+                        now(),
+                        resource())
+                >= 100) {
+            throw failure("temporarily_unavailable");
+        }
+        IssuedToken key = auth.createOAuthKey(actor, workspace, capabilities);
+        jdbc.update(
+                "insert into oauth_connections(key_id,client_id,workspace_id,account_id,scopes,created_at,expires_at,resource) values (?,?,?,?,?,?,?,?)",
+                key.id(),
+                request.client().id(),
+                workspace.value(),
+                actor.accountId(),
+                scopeString(selected),
+                now(),
+                after(Duration.ofDays(90)),
+                resource());
+        String code = token("code_");
+        jdbc.update(
+                "insert into oauth_codes(digest,key_id,redirect_uri,challenge,expires_at) values (?,?,?,?,?)",
+                digest(code),
+                key.id(),
+                request.redirectUri(),
+                request.challenge(),
+                after(Duration.ofMinutes(5)));
+        return callback(request, "code", code);
     }
 
     public Tokens exchange(String clientId, String code, String redirect, String verifier, String resource) {
