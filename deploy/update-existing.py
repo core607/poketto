@@ -201,10 +201,10 @@ class Installation:
             if state["revision"] != revision or state["imageIds"] != image_ids or state["configuration"] != digest(rendered):
                 raise DeploymentError("an unfinished deployment requires reconciliation with the same images and configuration")
         else:
-            # Rerunning the version that is already running keeps the previous version's images:
-            # they remain the local recovery path, so retirement must not treat them as unreferenced.
+            # Redeploying the revision that is already running, whatever reference delivers it, keeps
+            # the previous version's images: they are the local recovery path and must stay retained.
             previous = {name: containers[name]["Config"]["Image"] for name in image_refs}
-            if state and state.get("images") == image_refs and state.get("previousImages"):
+            if state and state.get("revision") == revision and state.get("previousImages"):
                 previous = state["previousImages"]
             state = {
                 "status": "pending", "revision": revision, "images": image_refs, "imageIds": image_ids,

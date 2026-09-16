@@ -184,6 +184,18 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertIn("id-old-app", self.docker.images)
         self.assertIn("id-old-frontend", self.docker.images)
 
+    def test_redeploying_the_same_revision_under_another_reference_keeps_the_previous_version(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["status"], "healthy")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "old-app", "frontend": "old-frontend"})
+        self.assertIn("id-old-app", self.docker.images)
+        self.assertNotIn("id-new-app", self.docker.images)
+        self.assertEqual(result["retiredImages"], 2)
+
     def test_preflight_does_not_change_containers_or_confirm_a_deployment(self):
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
         self.assertFalse(self.installation.overlay.exists())
