@@ -299,3 +299,9 @@ tasks.check {
     dependsOn(gatewayConfigCheck)
     dependsOn(appImageIdentityCheck)
 }
+
+// The content template ships inside the application, so repository initialization adds the same
+// files the documentation describes.
+tasks.processResources {
+    from("content-template") { into("content-template") }
+}

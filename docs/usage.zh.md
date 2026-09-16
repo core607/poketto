@@ -28,7 +28,7 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 ## 内容与图片
 
-管理页会列出当前账号的空间。选择空间后再编辑，URL 中的 `workspace` 参数让不同标签页保持独立。“账号与空间”支持连接已有的 GitHub/CNB 私有仓库、查询或重试中断的创建申请，以及接受空间邀请码。启用仓库连接前，将 `POKETTO_REPOSITORY_CREDENTIAL_KEY` 配置为 Base64 编码的 32 字节密钥。新空间默认关闭公开网站。仓库令牌需要读取元数据和 Git 写入权限，不会保存在浏览器草稿中。
+管理页会列出当前账号的空间。选择空间后再编辑，URL 中的 `workspace` 参数让不同标签页保持独立。“账号与空间”支持连接已有的 GitHub/CNB 私有仓库、查询或重试中断的创建申请，以及接受空间邀请码。启用仓库连接前，将 `POKETTO_REPOSITORY_CREDENTIAL_KEY` 配置为 Base64 编码的 32 字节密钥。新空间默认关闭公开网站。空仓库会在创建时写入内容模板作为第一个提交；已有内容的仓库保持不变，空间的“仓库连接”标签页会列出模板中缺少的指引与策略文件，并提供只添加这些文件的操作。仓库令牌需要读取元数据和 Git 写入权限，不会保存在浏览器草稿中。
 
 私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个已加入的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
 
@@ -38,7 +38,7 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 空间主人可在“仓库连接”标签页更新托管仓库的凭据。填写 Git 用户名和新令牌，服务端验证访问权限后才替换原凭据，不能借此更改仓库地址。表单提交后会清空令牌，也不会将它保存在浏览器草稿中。确认更新成功后，再到 Git 托管平台撤销旧令牌。由部署配置管理的仓库需由站点管理员修改配置。
 
-空内容仓可使用 [content-template](../content-template/AGENTS.md) 初始化。模板提供各自组织的 `private/` 和 `public/`，默认禁用发布。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
+[content-template](../content-template/AGENTS.md) 就是初始化写入的内容：根指引、各自组织的 `private/` 和 `public/` 及其指引，以及默认禁用的发布策略。初始化不修改、不移动任何已有文件，两个目录之外的内容保持私密。由部署配置管理的仓库同样可在其空间的“仓库连接”标签页初始化。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
 
 ```yaml
 enabled: true

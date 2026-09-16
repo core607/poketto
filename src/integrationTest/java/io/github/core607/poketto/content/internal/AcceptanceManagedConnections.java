@@ -43,7 +43,7 @@ final class AcceptanceManagedConnections implements RepositoryConnections, AutoC
         if (!matchesFixture(coordinates, credentials)) {
             throw new RepositoryConnectionException(RepositoryConnectionException.Code.PERMISSION_DENIED);
         }
-        return new Verified("github:acceptance-fixture", true);
+        return new Verified("github:acceptance-fixture", true, false);
     }
 
     private static boolean matchesFixture(

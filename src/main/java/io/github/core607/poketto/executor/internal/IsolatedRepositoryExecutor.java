@@ -12,6 +12,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
+import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
@@ -562,7 +563,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || failure instanceof SecurityException
                 || failure instanceof IllegalArgumentException
                 || failure instanceof SessionReplacedException
-                || failure instanceof ContentRepositoryException) {
+                || failure instanceof ContentRepositoryException
+                || failure instanceof RepositoryEmptyException) {
             return failure;
         }
         log.warn("Account copy admission failed", failure);

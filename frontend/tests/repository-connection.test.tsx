@@ -54,6 +54,7 @@ const managed = {
     updatedAt: "2026-09-11T00:00:00Z",
   },
 };
+const complete = { repositoryEmpty: false, missingFiles: [] };
 
 test("credential submission stays workspace-scoped, clears secrets and shows success only after acknowledgement", async (t) => {
   const f = await fixture(t);
@@ -65,6 +66,8 @@ test("credential submission stays workspace-scoped, clears secrets and shows suc
     paths.push(path);
     if (path === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (path.endsWith("/repository-initialization"))
+      return Response.json(complete);
     if (options?.method === "PUT") {
       assert.equal(
         path,
@@ -123,6 +126,8 @@ test("rejected credentials keep the existing binding visible and do not echo pro
   globalThis.fetch = async (input, options) => {
     if (String(input) === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (String(input).endsWith("/repository-initialization"))
+      return Response.json(complete);
     return options?.method === "PUT"
       ? Response.json(
           {
@@ -151,17 +156,26 @@ test("rejected credentials keep the existing binding visible and do not echo pro
 
 test("operator-managed repositories and missing encryption configuration expose no rotation form", async (t) => {
   const f = await fixture(t);
-  globalThis.fetch = async () =>
-    Response.json({ managed: false, rotationAvailable: true, binding: null });
+  globalThis.fetch = async (input) =>
+    String(input).endsWith("/repository-initialization")
+      ? Response.json(complete)
+      : Response.json({
+          managed: false,
+          rotationAvailable: true,
+          binding: null,
+        });
   await f.act(async () =>
     f.root.render(
       <f.RepositoryConnection key="operator" workspaceId="operator" />,
     ),
   );
   assert.match(f.container.textContent, /部署配置管理/);
+  assert.match(f.container.textContent, /不需要初始化/);
   assert.equal(f.container.querySelector("form"), null);
-  globalThis.fetch = async () =>
-    Response.json({ ...managed, rotationAvailable: false });
+  globalThis.fetch = async (input) =>
+    String(input).endsWith("/repository-initialization")
+      ? Response.json(complete)
+      : Response.json({ ...managed, rotationAvailable: false });
   await f.act(async () =>
     f.root.render(
       <f.RepositoryConnection key="managed" workspaceId="managed" />,
@@ -169,4 +183,46 @@ test("operator-managed repositories and missing encryption configuration expose 
   );
   assert.match(f.container.textContent, /加密密钥/);
   assert.equal(f.container.querySelector("form"), null);
+});
+
+test("an offered initialization lists the absent files, applies only on an explicit action and reports the commit", async (t) => {
+  const f = await fixture(t);
+  let status = {
+    repositoryEmpty: false,
+    missingFiles: ["AGENTS.md", "private/AGENTS.md"],
+  };
+  const posts: string[] = [];
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (path.endsWith("/repository-initialization")) {
+      if (options?.method === "POST") {
+        posts.push(path);
+        assert.equal(options.body, undefined);
+        status = { repositoryEmpty: false, missingFiles: [] };
+        return Response.json({
+          commit: "0123456789abcdef0123456789abcdef01234567",
+          addedFiles: ["AGENTS.md", "private/AGENTS.md"],
+        });
+      }
+      return Response.json(status);
+    }
+    return Response.json(managed);
+  };
+  await f.act(async () =>
+    f.root.render(<f.RepositoryConnection workspaceId="offered" />),
+  );
+  assert.match(f.container.textContent, /不修改、不移动任何已有内容/);
+  assert.match(f.container.textContent, /private\/AGENTS\.md/);
+  assert.equal(posts.length, 0);
+  const button = Array.from(f.container.querySelectorAll("button")).find(
+    (item) => item.textContent === "写入这些文件",
+  )!;
+  await f.act(async () => button.click());
+  assert.deepEqual(posts, [
+    "/api/auth/workspaces/offered/repository-initialization",
+  ]);
+  assert.match(f.container.textContent, /已写入 2 个文件，提交 0123456789ab/);
+  assert.match(f.container.textContent, /不需要初始化/);
 });

@@ -14,6 +14,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
@@ -42,6 +43,9 @@ final class RepositoryMcpTools {
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
     private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/gif", "image/webp");
+    private static final String REPOSITORY_EMPTY = "The repository has no commit yet. A space owner initializes it"
+            + " from the space's repository connection view; retry after that.";
+
     private final McpSessions sessions;
     private final AuthService auth;
     private final ObjectProvider<AssetService> assets;
@@ -240,6 +244,8 @@ final class RepositoryMcpTools {
                         return error(exception.reason().name(), "Image operation could not be completed.");
                     } catch (IllegalArgumentException exception) {
                         return error("INVALID_INPUT", "Use the documented bounded fields.");
+                    } catch (RepositoryEmptyException exception) {
+                        return error("REPOSITORY_EMPTY", REPOSITORY_EMPTY);
                     } catch (ContentRepositoryException exception) {
                         return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
                     } catch (RuntimeException exception) {

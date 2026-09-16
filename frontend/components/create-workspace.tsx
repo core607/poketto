@@ -169,7 +169,7 @@ export function CreateWorkspace({
       <h2>创建自己的空间</h2>
       <p className="muted">
         连接已有的 GitHub 或 CNB
-        私有仓库。创建后仅空间成员可以访问；公开网站默认关闭。
+        私有仓库。创建后仅空间成员可以访问；公开网站默认关闭。空仓库会在创建时写入内容模板作为第一个提交；已有内容的仓库不会被改动，可在空间的“仓库连接”标签页查看指引文件的初始化选项。
       </p>
       {available === false && <p>站点尚未启用仓库连接，请联系站点管理员。</p>}
       {available && result?.stage !== "READY" && (
