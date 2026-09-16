@@ -15,7 +15,9 @@ import urllib.request
 
 
 class DeploymentError(RuntimeError):
-    pass
+    def __init__(self, message, missing_image=False):
+        super().__init__(message)
+        self.missing_image = missing_image
 
 
 class NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -26,8 +28,9 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
 def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=240)
     if result.returncode:
-        # Compose configuration and logs can contain operator credentials.
-        raise DeploymentError("deployment command failed: " + args[0])
+        # Compose configuration and logs can contain operator credentials; only Docker's answer that an
+        # image does not exist is classified, never quoted.
+        raise DeploymentError("deployment command failed: " + args[0], "No such image" in result.stderr)
     return result.stdout
 
 
@@ -142,11 +145,15 @@ class Installation:
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
 
+    # None means Docker confirmed the image is absent; any other failure propagates, so an unanswered
+    # lookup never shrinks the retained set.
     def present(self, reference):
         try:
             return json.loads(self.command("docker", "image", "inspect", reference))[0]["Id"]
-        except DeploymentError:
-            return None
+        except DeploymentError as error:
+            if error.missing_image:
+                return None
+            raise
 
     # Runs only after the state is healthy. Retired images carry the deployed image's source label
     # and are referenced by no pin: the selected and previous app/frontend images, every image in

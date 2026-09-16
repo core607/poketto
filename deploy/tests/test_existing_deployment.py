@@ -21,6 +21,7 @@ class Docker:
         self.calls = []
         self.fail_up = False
         self.fail_listing = False
+        self.fail_inspect = set()
         self.changed_runtime = False
         self.changed_revision_environment = False
         self.image_revision = REVISION
@@ -58,10 +59,12 @@ class Docker:
         self.removed = []
 
     def find_image(self, key):
+        if key in self.fail_inspect:
+            raise updater.DeploymentError("deployment command failed: docker")
         for image_id, image in self.images.items():
             if key == image_id or key in image["refs"]:
                 return image_id, image
-        raise updater.DeploymentError("deployment command failed: docker")
+        raise updater.DeploymentError("deployment command failed: docker", missing_image=True)
 
     def __call__(self, *args):
         self.calls.append(args)
@@ -173,6 +176,17 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertIsNone(result["retiredImages"])
         self.assertIn("docker", result["retirementError"])
         self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "healthy")
+
+    def test_an_unanswered_pin_lookup_retires_nothing(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        self.docker.images["id-stale"] = {"refs": ["registry/poketto@sha256:stale-c"], "source": SOURCE}
+        self.docker.fail_inspect = {"old-app"}
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertIsNone(result["retiredImages"])
+        self.assertIn("docker", result["retirementError"])
+        self.assertIn("id-stale", self.docker.images)
+        self.assertIn("id-old-app", self.docker.images)
 
     def test_rerunning_the_running_version_keeps_the_previous_version_retained(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
