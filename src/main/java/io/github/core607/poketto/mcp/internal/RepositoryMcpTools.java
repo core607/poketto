@@ -4,7 +4,6 @@ import io.github.core607.poketto.assets.AssetBytes;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
-import io.github.core607.poketto.assets.ImagePreviewPolicy;
 import io.github.core607.poketto.assets.ImageRequestScope;
 import io.github.core607.poketto.assets.ImageTransferException;
 import io.github.core607.poketto.assets.ImageTransfers;
@@ -23,16 +22,10 @@ import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,12 +41,14 @@ final class RepositoryMcpTools {
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
+    private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/gif", "image/webp");
     private final McpSessions sessions;
     private final AuthService auth;
     private final ObjectProvider<AssetService> assets;
     private final ObjectProvider<RepositoryExecutor> executors;
     private final ObjectMapper json;
     private final ObjectProvider<ImageTransfers> transfers;
+    private final McpArtifactResults artifacts;
 
     RepositoryMcpTools(
             McpSessions sessions,
@@ -68,112 +63,127 @@ final class RepositoryMcpTools {
         this.executors = executors;
         this.json = json;
         this.transfers = transfers;
+        this.artifacts = new McpArtifactResults(json);
     }
 
     List<McpServerFeatures.SyncToolSpecification> specifications() {
         List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
         if (assets.getIfAvailable() != null) {
-            Map<String, Object> source = Map.of(
-                    "oneOf",
-                    List.of(
-                            object(
-                                    Map.of(
-                                            "kind",
-                                            Map.of("const", "repository"),
-                                            "commit",
-                                            nullableCommit(),
-                                            "path",
-                                            text(255)),
-                                    List.of("kind", "path")),
-                            object(
-                                    Map.of(
-                                            "kind",
-                                            Map.of("const", "managed"),
-                                            "assetId",
-                                            text(36),
-                                            "revision",
-                                            text(64)),
-                                    List.of("kind", "assetId", "revision"))));
-            tools.add(tool(
-                    "get_asset",
-                    "Read an authorized exact repository image or managed image revision as bounded MCP image content. Repository commit may be omitted to select main; the response returns the resolved source.",
-                    object(Map.of("source", source), List.of("source")),
-                    true,
-                    false,
-                    true,
-                    this::getAsset));
-            tools.add(tool(
-                    "put_asset",
-                    "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
-                    putAssetSchema(),
-                    false,
-                    false,
-                    true,
-                    this::putAsset));
+            tools.add(getAssetTool());
+            tools.add(putAssetTool());
         }
         if (executors.getIfAvailable() != null) {
-            tools.add(tool(
-                    "repo_discard",
-                    "Discard the exact working copy and its unsaved work. Supply its copyId as expectedCopyId. Busy copies are refused. DISCARDED or ABSENT confirms the target is gone. Use new after the account's copy has been discarded. No command executes and remote Git commits are not undone. After an unconfirmed response, retry only the same ID. Requires current execution permission and ownership of that copy.",
-                    object(
-                            Map.of(
-                                    "expectedCopyId",
-                                    Map.of(
-                                            "type",
-                                            "string",
-                                            "maxLength",
-                                            36,
-                                            "pattern",
-                                            "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")),
-                            List.of("expectedCopyId")),
-                    false,
-                    true,
-                    true,
-                    this::discard));
-            tools.add(tool(
-                    "get_artifact",
-                    "Read an unexpired artifact from the account's current execution lease. A grant change or process restart can invalidate the handle; recreate it from the retained copy. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
-                    object(
-                            Map.of(
-                                    "artifactId",
-                                    text(36),
-                                    "offset",
-                                    Map.of("type", "integer", "minimum", 0, "maximum", 134217728),
-                                    "limit",
-                                    Map.of("type", "integer", "minimum", 4, "maximum", 65536),
-                                    "format",
-                                    Map.of("type", "string", "enum", List.of("auto", "bytes"))),
-                            List.of("artifactId")),
-                    true,
-                    false,
-                    true,
-                    this::getArtifact));
-            tools.add(tool(
-                    "repo_exec",
-                    "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new to open your account's default copy, creating it only if absent; otherwise retain copyId across calls. Authorized clients of one account share the copy within the same workspace and reading scope. Transport closure does not discard it; use repo_discard for explicit removal. Reconnection is automatic; no generation or resume flag is required. Retention reports expiry. Use a read-only inspection command after an interrupted call: retention.lastInterruptedCommand identifies earlier work that may have partially completed. SESSION_REPLACED or EXECUTION_REFUSED means this command did not execute. EXECUTION_UNCONFIRMED means a command was attempted; retain its copyId and inspect the same copy before deciding whether to write again. Do not replay uncertain writes. Every command starts at the repository root; /tmp resets per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get the current public projection. Omit commit to use the current acknowledged baseline. Successful saves advance local HEAD and index; repo_exec.commit reports the installed Git baseline. Edits stay local until poketto save. CLI operations can store media and commit authorized selections. Use poketto artifact create FILE --type MIME with get_artifact; long-output handles expire and may be truncated.",
-                    object(
-                            Map.of(
-                                    "expectedCopyId",
-                                    Map.of(
-                                            "type",
-                                            "string",
-                                            "maxLength",
-                                            36,
-                                            "pattern",
-                                            "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
-                                    "command",
-                                    text(16384),
-                                    "commit",
-                                    nullableCommit(),
-                                    "timeoutSeconds",
-                                    Map.of("type", "integer", "minimum", 1, "maximum", 60)),
-                            List.of("expectedCopyId", "command")),
-                    false,
-                    true,
-                    false,
-                    this::execute));
+            tools.add(discardTool());
+            tools.add(getArtifactTool());
+            tools.add(executeTool());
         }
         return List.copyOf(tools);
+    }
+
+    private McpServerFeatures.SyncToolSpecification getAssetTool() {
+        Map<String, Object> source = Map.of(
+                "oneOf",
+                List.of(
+                        object(
+                                Map.of(
+                                        "kind",
+                                        Map.of("const", "repository"),
+                                        "commit",
+                                        nullableCommit(),
+                                        "path",
+                                        text(255)),
+                                List.of("kind", "path")),
+                        object(
+                                Map.of("kind", Map.of("const", "managed"), "assetId", text(36), "revision", text(64)),
+                                List.of("kind", "assetId", "revision"))));
+        return tool(
+                "get_asset",
+                "Read an authorized exact repository image or managed image revision as bounded MCP image content. Repository commit may be omitted to select main; the response returns the resolved source.",
+                object(Map.of("source", source), List.of("source")),
+                true,
+                false,
+                true,
+                this::getAsset);
+    }
+
+    private McpServerFeatures.SyncToolSpecification putAssetTool() {
+        return tool(
+                "put_asset",
+                "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
+                putAssetSchema(),
+                false,
+                false,
+                true,
+                this::putAsset);
+    }
+
+    private McpServerFeatures.SyncToolSpecification discardTool() {
+        return tool(
+                "repo_discard",
+                "Discard the exact working copy and its unsaved work. Supply its copyId as expectedCopyId. Busy copies are refused. DISCARDED or ABSENT confirms the target is gone. Use new after the account's copy has been discarded. No command executes and remote Git commits are not undone. After an unconfirmed response, retry only the same ID. Requires current execution permission and ownership of that copy.",
+                object(
+                        Map.of(
+                                "expectedCopyId",
+                                Map.of(
+                                        "type",
+                                        "string",
+                                        "maxLength",
+                                        36,
+                                        "pattern",
+                                        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")),
+                        List.of("expectedCopyId")),
+                false,
+                true,
+                true,
+                this::discard);
+    }
+
+    private McpServerFeatures.SyncToolSpecification getArtifactTool() {
+        return tool(
+                "get_artifact",
+                "Read an unexpired artifact from the account's current execution lease. A grant change or process restart can invalidate the handle; recreate it from the retained copy. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
+                object(
+                        Map.of(
+                                "artifactId",
+                                text(36),
+                                "offset",
+                                Map.of("type", "integer", "minimum", 0, "maximum", 134217728),
+                                "limit",
+                                Map.of("type", "integer", "minimum", 4, "maximum", 65536),
+                                "format",
+                                Map.of("type", "string", "enum", List.of("auto", "bytes"))),
+                        List.of("artifactId")),
+                true,
+                false,
+                true,
+                this::getArtifact);
+    }
+
+    private McpServerFeatures.SyncToolSpecification executeTool() {
+        return tool(
+                "repo_exec",
+                "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new to open your account's default copy, creating it only if absent; otherwise retain copyId across calls. Authorized clients of one account share the copy within the same workspace and reading scope. Transport closure does not discard it; use repo_discard for explicit removal. Reconnection is automatic; no generation or resume flag is required. Retention reports expiry. Use a read-only inspection command after an interrupted call: retention.lastInterruptedCommand identifies earlier work that may have partially completed. SESSION_REPLACED or EXECUTION_REFUSED means this command did not execute. EXECUTION_UNCONFIRMED means a command was attempted; retain its copyId and inspect the same copy before deciding whether to write again. Do not replay uncertain writes. Every command starts at the repository root; /tmp resets per command. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get the current public projection. Omit commit to use the current acknowledged baseline. Successful saves advance local HEAD and index; repo_exec.commit reports the installed Git baseline. Edits stay local until poketto save. CLI operations can store media and commit authorized selections. Use poketto artifact create FILE --type MIME with get_artifact; long-output handles expire and may be truncated.",
+                object(
+                        Map.of(
+                                "expectedCopyId",
+                                Map.of(
+                                        "type",
+                                        "string",
+                                        "maxLength",
+                                        36,
+                                        "pattern",
+                                        "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
+                                "command",
+                                text(16384),
+                                "commit",
+                                nullableCommit(),
+                                "timeoutSeconds",
+                                Map.of("type", "integer", "minimum", 1, "maximum", 60)),
+                        List.of("expectedCopyId", "command")),
+                false,
+                true,
+                false,
+                this::execute);
     }
 
     private McpServerFeatures.SyncToolSpecification tool(
@@ -376,120 +386,23 @@ final class RepositoryMcpTools {
         var identity = sessions.resolve(exchange);
         var cancellation = cancellation(exchange);
         var executor = executors.getObject();
-        var found = executor.readArtifact(
-                identity.principal(), identity.workspace(), exchange.sessionId(), id, offset, limit, cancellation);
+        McpArtifactResults.Pages pages = (at, size) -> executor.readArtifact(
+                identity.principal(), identity.workspace(), exchange.sessionId(), id, at, size, cancellation);
+        var found = pages.read(offset, limit);
         if (found.isEmpty()) {
             return error("ARTIFACT_UNAVAILABLE", "Artifact is unavailable in this execution session or has expired.");
         }
         var first = found.orElseThrow();
-        if (format.equals("auto")
-                && Set.of("image/png", "image/jpeg", "image/gif", "image/webp").contains(first.mediaType())) {
+        if (format.equals("auto") && IMAGE_TYPES.contains(first.mediaType())) {
             if (offset != 0 || first.size() > ManagedBlobStore.MAX_UPLOAD_BYTES) {
                 throw new IllegalArgumentException();
             }
-            byte[] content = new byte[Math.toIntExact(first.size())];
-            byte[] initial = first.bytes();
-            System.arraycopy(initial, 0, content, 0, initial.length);
-            int received = initial.length;
-            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
-            while (received < content.length) {
-                if (System.nanoTime() >= deadline) {
-                    throw new IllegalStateException("Artifact transfer deadline exceeded");
-                }
-                var next = executor.readArtifact(
-                                identity.principal(),
-                                identity.workspace(),
-                                exchange.sessionId(),
-                                id,
-                                received,
-                                Math.min(65536, content.length - received),
-                                cancellation)
-                        .orElseThrow(() -> new IllegalStateException("Artifact expired during transfer"));
-                if (!next.artifactId().equals(first.artifactId())
-                        || next.size() != first.size()
-                        || !next.sha256().equals(first.sha256())
-                        || !next.mediaType().equals(first.mediaType())
-                        || next.offset() != received) {
-                    throw new IllegalStateException("Artifact changed during transfer");
-                }
-                byte[] part = next.bytes();
-                if (part.length < 1 || part.length > content.length - received) {
-                    throw new IllegalStateException("Invalid artifact chunk");
-                }
-                System.arraycopy(part, 0, content, received, part.length);
-                received += part.length;
-            }
-            String digest;
-            try {
-                digest = HexFormat.of()
-                        .formatHex(MessageDigest.getInstance("SHA-256").digest(content));
-            } catch (NoSuchAlgorithmException unavailable) {
-                throw new IllegalStateException(unavailable);
-            }
-            if (!digest.equals(first.sha256())
-                    || !ImagePreviewPolicy.validate(content).equals(first.mediaType())) {
-                throw new IllegalStateException("Artifact image is invalid");
-            }
-            var confirmed = executor.readArtifact(
-                            identity.principal(),
-                            identity.workspace(),
-                            exchange.sessionId(),
-                            id,
-                            first.size(),
-                            1,
-                            cancellation)
-                    .orElseThrow(() -> new IllegalStateException("Artifact expired before delivery"));
-            if (!confirmed.sha256().equals(first.sha256()) || confirmed.size() != first.size()) {
-                throw new IllegalStateException("Artifact changed before delivery");
-            }
-            var metadata = artifactInfo(first, first.size());
-            metadata.put("expiresInSeconds", confirmed.expiresInSeconds());
-            return McpSchema.CallToolResult.builder()
-                    .addTextContent(json.writeValueAsString(metadata))
-                    .addContent(McpSchema.ImageContent.builder(
-                                    Base64.getEncoder().encodeToString(content), first.mediaType())
-                            .build())
-                    .isError(false)
-                    .build();
+            return artifacts.image(first, pages);
         }
-        byte[] bytes = first.bytes();
         if (format.equals("auto") && first.mediaType().startsWith("text/")) {
-            var source = ByteBuffer.wrap(bytes);
-            var target = CharBuffer.allocate(bytes.length);
-            var decoder = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPLACE)
-                    .onUnmappableCharacter(CodingErrorAction.REPLACE);
-            decoder.decode(source, target, offset + bytes.length == first.size());
-            return McpSchema.CallToolResult.builder()
-                    .addTextContent(json.writeValueAsString(artifactInfo(first, offset + source.position())))
-                    .addTextContent(target.flip().toString())
-                    .isError(false)
-                    .build();
+            return artifacts.text(first, offset);
         }
-        var resource = new McpSchema.BlobResourceContents(
-                "poketto-artifact:///" + id + "?offset=" + offset,
-                "application/octet-stream",
-                Base64.getEncoder().encodeToString(bytes));
-        return McpSchema.CallToolResult.builder()
-                .addTextContent(json.writeValueAsString(artifactInfo(first, offset + bytes.length)))
-                .addContent(McpSchema.EmbeddedResource.builder(resource).build())
-                .isError(false)
-                .build();
-    }
-
-    private static Map<String, Object> artifactInfo(RepositoryExecutor.ArtifactChunk chunk, long next) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("artifactId", chunk.artifactId());
-        result.put("name", chunk.name());
-        result.put("mediaType", chunk.mediaType());
-        result.put("size", chunk.size());
-        result.put("sha256", chunk.sha256());
-        result.put("truncated", chunk.truncated());
-        result.put("expiresInSeconds", chunk.expiresInSeconds());
-        result.put("offset", chunk.offset());
-        result.put("nextOffset", next < chunk.size() ? next : null);
-        return result;
+        return artifacts.binary(first, id, offset);
     }
 
     private McpSchema.CallToolResult discard(McpSyncServerExchange exchange, Map<String, Object> input) {
