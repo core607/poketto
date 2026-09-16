@@ -163,7 +163,7 @@ class Installation:
         labels = json.loads(self.command("docker", "image", "inspect", state["imageIds"]["app"]))[0]["Config"].get("Labels") or {}
         source = labels.get("org.opencontainers.image.source")
         if not source:
-            return 0
+            return []
         retained = set(state["imageIds"].values())
         pins = list(state["previousImages"].values()) + [service.get("image") for service in rendered["services"].values()]
         retained.update(filter(None, (self.present(pin) for pin in pins if pin)))
@@ -172,7 +172,7 @@ class Installation:
             retained.update(self.command("docker", "inspect", "--format", "{{.Image}}", *containers).split())
         listed = self.command("docker", "images", "--no-trunc", "--quiet", "--filter",
                               "label=org.opencontainers.image.source=" + source).split()
-        retired = 0
+        retired = []
         for image in sorted(set(listed) - retained):
             details = json.loads(self.command("docker", "image", "inspect", image))[0]
             # Docker answers null, not an empty list, when an image has no tags or digests.
@@ -186,7 +186,7 @@ class Installation:
                 except DeploymentError:
                     pass
             if self.present(image) is None:
-                retired += 1
+                retired.append(image)
         return retired
 
     def update(self, revision, app_image, frontend_image, check_only=False):
@@ -234,7 +234,10 @@ class Installation:
         write_json(self.state_file, state)
         result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
         try:
-            result["retiredImages"] = self.retire_images(state, rendered)
+            retired = self.retire_images(state, rendered)
+            state["retiredImages"] = retired
+            write_json(self.state_file, state)
+            result.update(retiredImages=len(retired), retiredImageIds=retired)
         except Exception as error:
             # The deployment is recorded and healthy; a cleanup problem is reported, never fatal.
             print("existing deployment: image retirement did not complete: " + str(error), file=sys.stderr)

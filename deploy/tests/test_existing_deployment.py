@@ -154,6 +154,8 @@ class ExistingDeploymentTests(unittest.TestCase):
     def test_healthy_update_retires_unreferenced_images_of_this_repository(self):
         result = self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(result["retiredImages"], 2)
+        self.assertEqual(result["retiredImageIds"], ["id-stale", "id-untagged"])
+        self.assertEqual(json.loads(self.installation.state_file.read_text())["retiredImages"], ["id-stale", "id-untagged"])
         self.assertNotIn("id-stale", self.docker.images)
         self.assertNotIn("id-untagged", self.docker.images)
         for retained in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend",
