@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.ObjectProvider;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DatabindException;
@@ -41,6 +42,11 @@ import tools.jackson.databind.ObjectMapper;
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
     private static final Set<String> PUT_ASSET_FIELDS = Set.of("operationKey", "mode", "url", "file");
+    private static final Set<String> FILE_FIELDS = Set.of("download_url", "file_id", "mime_type", "file_name");
+    private static final String FILE_GUIDANCE = "file must be the file reference this conversation holds (an"
+            + " object with download_url and file_id), passed with mode=import; a path in your own environment"
+            + " cannot be read here. Only an environment that can send HTTPS requests itself should use"
+            + " mode=upload and PUT the bytes.";
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
@@ -355,25 +361,25 @@ final class RepositoryMcpTools {
     }
 
     // Jackson reports the record constructor's IllegalArgumentException as a DatabindException whose
-    // cause carries the record's own message. A shape mismatch names the documented field it stopped
-    // at and never the value, because a file download URL is a capability; at the file field it says
-    // what a connector that passed a path from its own environment has to do instead.
+    // cause carries the record's own message. A shape mismatch names the documented field Jackson
+    // stopped at, outermost to innermost, and never the value, because a file download URL is a
+    // capability. Only a mismatch at the file field itself gets the guidance for a connector that
+    // passed a path from its own environment; a wrong member inside a file object is named as such.
     private static String inputProblem(DatabindException invalid) {
         if (invalid.getCause() instanceof IllegalArgumentException reason) {
             return reason.getMessage();
         }
-        String field = invalid.getPath().stream()
+        List<JacksonException.Reference> path = invalid.getPath() == null ? List.of() : invalid.getPath();
+        String field = path.stream()
                 .map(JacksonException.Reference::getPropertyName)
-                .filter(name -> name != null && PUT_ASSET_FIELDS.contains(name))
-                .findFirst()
-                .orElse("the input");
+                .filter(name -> name != null && (PUT_ASSET_FIELDS.contains(name) || FILE_FIELDS.contains(name)))
+                .collect(Collectors.joining("."));
         if (field.equals("file")) {
-            return "file must be the file reference this conversation holds (an object with download_url and"
-                    + " file_id), passed with mode=import; a path in your own environment cannot be read here. Only"
-                    + " an environment that can send HTTPS requests itself should use mode=upload and PUT the bytes.";
+            return FILE_GUIDANCE;
         }
-        return field + " does not have the documented shape: operationKey and url are strings, mode is import"
-                + " or upload, and file is an object with download_url and file_id.";
+        return (field.isEmpty() ? "the input" : field)
+                + " does not have the documented shape: operationKey and url are strings, mode is import or"
+                + " upload, and file is an object whose download_url and file_id are strings.";
     }
 
     private static Map<String, Object> putAssetSchema() {
