@@ -65,7 +65,21 @@ class ExecutorConfiguration {
                 || closeSeconds > 60) {
             throw new IllegalArgumentException("Invalid isolated executor bounds");
         }
-        WorkerClient client = new WorkerClient(
+        return new IsolatedRepositoryExecutor(
+                accounts,
+                packages,
+                media,
+                new SelectedFileSaves(auth, reader, patches, moves),
+                auth,
+                exports,
+                workerClient(json, socket, key),
+                maxSessions,
+                Duration.ofSeconds(openSeconds),
+                Duration.ofSeconds(closeSeconds));
+    }
+
+    WorkerClient workerClient(ObjectMapper json, Path socket, Path key) {
+        return new WorkerClient(
                 socket,
                 privateKey(key),
                 () -> socketPermissions(socket),
@@ -83,17 +97,6 @@ class ExecutorConfiguration {
                 },
                 json,
                 Clock.systemUTC());
-        return new IsolatedRepositoryExecutor(
-                accounts,
-                packages,
-                media,
-                new SelectedFileSaves(auth, reader, patches, moves),
-                auth,
-                exports,
-                client,
-                maxSessions,
-                Duration.ofSeconds(openSeconds),
-                Duration.ofSeconds(closeSeconds));
     }
 
     private static PrivateKey privateKey(Path path) {

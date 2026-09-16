@@ -156,6 +156,8 @@ public final class ExecutorNativeProbe {
             probe.rejectNonRootPeer();
         } else if (args[1].equals("ephemeral-lifecycle")) {
             probe.ephemeralLifecycle();
+        } else if (args[1].startsWith("cli-")) {
+            probe.cliOperation(args[1]);
         } else if (args[1].equals("account-state-produce")) {
             new AccountCopyStoreNativeProbe(probe.path("accountMetadata")).produce();
             probe.passed("account-state-produce");
@@ -203,7 +205,11 @@ public final class ExecutorNativeProbe {
     private void rejectNonRootPeer() throws Exception {
         try (var rejected = adapter(path("fakeSocket"))) {
             assertThatThrownBy(() -> execute(rejected, "wrong-peer", "pwd", new Cancellation()))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, failure -> {
+                        assertThat(failure.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
+                        assertThat(failure.recoveryAvailable()).isFalse();
+                        assertThat(failure.getCause()).isInstanceOf(WorkerUnavailableException.class);
+                    });
         }
         Path observation = path("fakeObservation");
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
@@ -224,6 +230,21 @@ public final class ExecutorNativeProbe {
         }
         control("assert-no-processes");
         passed("timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy");
+    }
+
+    private void cliOperation(String operation) throws Exception {
+        switch (operation) {
+            case "cli-save" -> selectedSaves();
+            case "cli-save-recovery" -> uncertainSaveRecovery();
+            case "cli-media-import" -> mediaImport();
+            case "cli-media-link" -> mediaLink();
+            case "cli-move" -> moves();
+            case "cli-move-installation" -> lostLocalMoveReply();
+            case "cli-move-recovery" -> uncertainMoveRecovery();
+            default -> throw new IllegalArgumentException("Unknown CLI acceptance operation: " + operation);
+        }
+        control("assert-no-processes");
+        passed(operation);
     }
 
     private void run() throws Exception {
@@ -1379,32 +1400,39 @@ public final class ExecutorNativeProbe {
     private void lostLocalMoveReply() throws Exception {
         var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("local-move-reply"), path("exports"), auth, workspace);
-        try (var executor = moveAdapter(fixture)) {
-            // Drop one confirmed real worker reply at the adapter boundary, after installation.
-            var field = IsolatedRepositoryExecutor.class.getDeclaredField("worker");
-            field.setAccessible(true);
-            var original = (WorkerClient) field.get(executor);
-            var intercepted = spy(original);
-            var dropped = new AtomicBoolean();
-            var refuseInstall = new AtomicBoolean();
-            doAnswer(call -> {
-                        WorkerClient.PreparedRequest request = call.getArgument(0);
-                        var payload = JSON.readTree(
-                                Base64.getUrlDecoder().decode(request.envelope().payload()));
-                        if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get()) {
-                            return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
-                        }
-                        var response = original.send(request, call.getArgument(1));
-                        if (payload.path("operation").asString("").equals("MOVE_COMMIT")
-                                && dropped.compareAndSet(false, true)) {
-                            assertThat(response.path("ok").asBoolean(false)).isTrue();
-                            throw new WorkerUnavailableException();
-                        }
-                        return response;
-                    })
-                    .when(intercepted)
-                    .send(any(), any());
-            field.set(executor, intercepted);
+        // Inject a dropped real reply before composing the adapter and its command handlers.
+        var original = new ExecutorConfiguration().workerClient(JSON, path("socket"), path("privateKey"));
+        var intercepted = spy(original);
+        var dropped = new AtomicBoolean();
+        var refuseInstall = new AtomicBoolean();
+        doAnswer(call -> {
+                    WorkerClient.PreparedRequest request = call.getArgument(0);
+                    var payload = JSON.readTree(
+                            Base64.getUrlDecoder().decode(request.envelope().payload()));
+                    if (payload.path("operation").asString("").equals("MOVE_COMMIT") && refuseInstall.get()) {
+                        return JSON.valueToTree(Map.of("ok", false, "code", "MOVE_REJECTED"));
+                    }
+                    var response = original.send(request, call.getArgument(1));
+                    if (payload.path("operation").asString("").equals("MOVE_COMMIT")
+                            && dropped.compareAndSet(false, true)) {
+                        assertThat(response.path("ok").asBoolean(false)).isTrue();
+                        throw new WorkerUnavailableException();
+                    }
+                    return response;
+                })
+                .when(intercepted)
+                .send(any(), any());
+        try (var executor = new IsolatedRepositoryExecutor(
+                AccountCopyTestData.disk(path("accountMetadata")),
+                mock(PortableContentExports.class),
+                fixture.media(auth),
+                new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth)),
+                auth,
+                fixture.exports(),
+                intercepted,
+                8,
+                Duration.ofSeconds(45),
+                Duration.ofSeconds(8))) {
             var moved = client.execute(
                     executor,
                     principal,
@@ -1746,7 +1774,7 @@ public final class ExecutorNativeProbe {
             JsonNode receipt = JSON.readTree(saved.stdout().strip());
             assertThat(receipt.path("ok").asBoolean()).isTrue();
             String firstCommit = receipt.path("result").path("commit").asString();
-            assertThat(firstCommit).isNotEqualTo(saved.commit());
+            assertThat(firstCommit).isEqualTo(saved.commit());
             assertThat(reader.getFile(principal, workspace, Optional.empty(), "private/secret.md")
                             .source())
                     .contains("猫\r\n".repeat(30000));

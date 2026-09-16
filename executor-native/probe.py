@@ -32,7 +32,10 @@ def main():
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
     parser.add_argument('--fixture-parent', choices=('/var/lib',), default='/var/lib')
-    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle', 'account-state', 'public-scope', 'admission'), default='all')
+    cli_scenarios = ('cli-save', 'cli-save-recovery', 'cli-media-import', 'cli-media-link',
+                     'cli-move', 'cli-move-installation', 'cli-move-recovery')
+    parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle',
+                                              'account-state', 'public-scope', 'admission', 'peer-only') + cli_scenarios, default='all')
     parser.add_argument('--process-case', choices=('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired'))
     args = parser.parse_args()
     assert args.process_case is None or args.scenario == 'retained-process'
@@ -237,6 +240,11 @@ with socket.socket(socket.AF_UNIX) as connection:
         elif mode == 'ephemeral-lifecycle':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy'}
+        elif mode in cli_scenarios:
+            assert any(item.get('test') == mode and item.get('result') == 'PASS' for item in parsed)
+        elif mode == 'peer-only':
+            assert any(item.get('test') == 'root-owned-socket-rejects-non-root-peer'
+                       and item.get('result') == 'PASS' for item in parsed)
         elif mode in ('account-state-produce', 'account-state-consume'):
             assert any(item.get('test') == mode and item.get('result') == 'PASS' for item in parsed)
         else:

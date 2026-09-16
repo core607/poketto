@@ -1,0 +1,206 @@
+{
+  "date": "2026-09-16",
+  "scope": "Executor command ownership; synthetic authorities and authentication for native execution",
+  "nativeRuns": [
+    {
+      "scenario": "peer-only",
+      "runtimeManifestSha256": "aec922eded136c58ff9dd137ef1834ec3aed5241270e34692ee6f512150f99b5",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "root-owned-socket-rejects-non-root-peer",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "ephemeral-lifecycle",
+      "runtimeManifestSha256": "aec922eded136c58ff9dd137ef1834ec3aed5241270e34692ee6f512150f99b5",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "account-state-produce",
+        "account-state-consume",
+        "timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-save",
+      "runtimeManifestSha256": "23a7521f586ecc6106ee458d54ddf4a7d696163cd603623abbf038325c1d10a2",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "selected-cli-saves-freeze-chunk-and-commit-real-git-with-host-baseline-and-retained-conflicts",
+        "workspace-cli-sync-merges-conflicts-and-keeps-unsaved-edits-and-local-deletions",
+        "cli-save",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-save-recovery",
+      "runtimeManifestSha256": "23a7521f586ecc6106ee458d54ddf4a7d696163cd603623abbf038325c1d10a2",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "uncertain-cli-save-recovers-original-commit-without-replaying-new-local-edits",
+        "cli-save-recovery",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "media",
+      "runtimeManifestSha256": "23a7521f586ecc6106ee458d54ddf4a7d696163cd603623abbf038325c1d10a2",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits",
+        "member-projection-fetch-survives-website-shutdown-without-source-history",
+        "public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-media-import",
+      "runtimeManifestSha256": "23a7521f586ecc6106ee458d54ddf4a7d696163cd603623abbf038325c1d10a2",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "media-list-sees-unsaved-imports-pages-current-index-and-retains-historical-catalogs",
+        "media-import-is-idempotent-preserves-local-index-and-saves-text-index-atomically",
+        "empty-media-import-is-rejected-without-losing-unsaved-session-files",
+        "binary-media-import-and-fetch-round-trip-exceeds-text-capture-budget",
+        "cli-media-import",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-media-link",
+      "runtimeManifestSha256": "23a7521f586ecc6106ee458d54ddf4a7d696163cd603623abbf038325c1d10a2",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "media-link-retains-unsaved-index-validates-workspace-preserves-originals-and-reports-selection-reasons",
+        "cli-media-link",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-move",
+      "runtimeManifestSha256": "23a7521f586ecc6106ee458d54ddf4a7d696163cd603623abbf038325c1d10a2",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "cli-move-repairs-references-preserves-unsaved-index-and-retains-optional-media",
+        "dirty-move-preflight-preserves-local-edits-and-remote-authority",
+        "cli-move",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-move-installation",
+      "runtimeManifestSha256": "0f36ccf5d63cbac54137abb931a50bf031ae4d6167c89432eea16aa38702b137",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "lost-worker-move-reply-retains-session-and-recovers-without-overwriting-new-edits",
+        "skip-confirmed-local-move-keeps-files-and-baselines-and-allows-explicit-sync",
+        "cli-move-installation",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "cli-move-recovery",
+      "runtimeManifestSha256": "0f36ccf5d63cbac54137abb931a50bf031ae4d6167c89432eea16aa38702b137",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "uncertain-cli-move-recovers-the-original-commit-and-installs-once",
+        "cli-move-recovery",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    },
+    {
+      "scenario": "exports",
+      "runtimeManifestSha256": "0f36ccf5d63cbac54137abb931a50bf031ae4d6167c89432eea16aa38702b137",
+      "nativeCombined": "PASS",
+      "cleanup": "PASS",
+      "tests": [
+        "private-cli-export-keeps-originals-and-unsaved-edits-without-changing-authority",
+        "public-cli-export-translates-only-host-owned-paths-and-preserves-existing-files",
+        "selected-scenario-closes-worker-leases"
+      ],
+      "workerSha256": "887b6552710155da91b52b698bec3229211f28c63a914a49c1b25d8b9257f07f",
+      "nativeScriptSha256": "919f9ae84cfb0d7a60dc694582b03b22c58b939f8081048d0614348a6aa51025"
+    }
+  ],
+  "latestJUnitResults": [
+    {
+      "task": "test",
+      "name": "io.github.core607.poketto.executor.internal.WorkerSocketTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "task": "test",
+      "name": "io.github.core607.poketto.mcp.internal.McpBoundsTests",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "task": "integrationTest",
+      "name": "io.github.core607.poketto.mcp.internal.McpProtocolIntegrationIT",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "limits": [
+    "Native probes do not authenticate through PostgreSQL or an external client.",
+    "HTTP protocol integration uses a separate PostgreSQL fixture.",
+    "The historical all-mode batch is not a claimed passing result.",
+    "Runtime manifests differ as test assertions and worker composition were updated; each run retains its own identity."
+  ],
+  "baseRevision": "96ead1d0ae81e015c2f327706ba59e2c5dafd2c1",
+  "sourceSha256": {
+    "src/main/java/io/github/core607/poketto/executor/internal/IsolatedRepositoryExecutor.java": "2da74c4f6842e80f144818ce75f9b7fe22f3e95a8a43a6f22a34e44ddb6e2e14",
+    "src/main/java/io/github/core607/poketto/executor/internal/ExecutionSession.java": "40897ef97e9e04cc4dad9051058a70c03de7599d8fa5538cecff870a7e2a6cd9",
+    "src/main/java/io/github/core607/poketto/executor/internal/ExecutorBridge.java": "c33e1d97da21ff7549949f0a59e4007551422b73b830bba59a647fa71106727e",
+    "src/main/java/io/github/core607/poketto/executor/internal/SessionWorker.java": "db9602abb3fc772ade8fa2a64fa2512cdfe63321e3128ec9dbd29065724fdfa8",
+    "src/main/java/io/github/core607/poketto/executor/internal/SessionFileTransfers.java": "c8596198137a095426a0219e4b595aaf5005cdcf687f1809b9e46fa11b6bdcb4",
+    "src/main/java/io/github/core607/poketto/executor/internal/SessionMediaCommands.java": "da728370b1b795f1430550258015e1e1ffb8cb4cb68c94c1ed0a07f52c3a6e7f",
+    "src/main/java/io/github/core607/poketto/executor/internal/SessionRepositoryCommands.java": "e56780e0031bc4fa9a672fdb527f90b35cacf2fe38dfa114f79ed7bd7efea075",
+    "src/main/java/io/github/core607/poketto/executor/internal/ExecutorConfiguration.java": "cd3c122d47a15b7346f6ba95950b1d564aa12e9abb14d342817380d3f596f8e7"
+  },
+  "selectedUnitRun": {
+    "tests": 108,
+    "initialPassed": 107,
+    "initialFailed": 1,
+    "repairedAndRechecked": "WorkerSocketTests.cancellingAQueuedRequestDoesNotCancelTheCurrentWriter"
+  },
+  "sourceDigestEncoding": "UTF-8 with LF line endings"
+}

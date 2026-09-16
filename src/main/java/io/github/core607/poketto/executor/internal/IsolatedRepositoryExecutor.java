@@ -1,21 +1,17 @@
 package io.github.core607.poketto.executor.internal;
 
-import io.github.core607.poketto.assets.AssetStorageException;
-import io.github.core607.poketto.assets.ManagedAsset;
+import static io.github.core607.poketto.executor.internal.SessionWorker.hash;
+import static io.github.core607.poketto.executor.internal.SessionWorker.requireLive;
+import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
+
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
-import io.github.core607.poketto.auth.WorkspaceAccess;
-import io.github.core607.poketto.content.ContentExportException;
-import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PortableContentExports;
-import io.github.core607.poketto.content.RepositoryFile;
-import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
@@ -25,21 +21,9 @@ import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,28 +40,28 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import tools.jackson.databind.JsonNode;
 
-/** Maintains trusted MCP execution leases; authority exports and worker directories have separate lifetimes. */
+/** Owns account-copy admission, command execution and lease containment; the bridge handles CLI operations. */
 final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
-    private final AuthService auth;
     private final RepositorySnapshotExports exports;
     private final PortableContentExports packages;
+    private final SessionWorker io;
+    private final SessionRepositoryCommands repository;
+    private final ExecutorBridge bridge;
     private final WorkerClient worker;
     private final SelectedFileSaves saves;
-    private final MediaFileService media;
     private final AccountCopyStore accounts;
     private final int maxSessions;
     private final Duration openTimeout;
     private final Duration closeTimeout;
-    private final Map<SessionKey, Session> sessions = new LinkedHashMap<>();
-    private final Map<UUID, Session> closingLeases = new LinkedHashMap<>();
+    private final Map<ExecutionSession.Key, ExecutionSession> sessions = new LinkedHashMap<>();
+    private final Map<UUID, ExecutionSession> closingLeases = new LinkedHashMap<>();
     private final Semaphore executions = new Semaphore(4, true);
     private final LongAdder createdCopies = new LongAdder();
     private final LongAdder releasedCopies = new LongAdder();
@@ -118,11 +102,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             Duration closeTimeout) {
         this.accounts = Objects.requireNonNull(accounts, "account disk journals are required");
         this.packages = packages;
-        this.media = media;
         this.saves = saves;
-        this.auth = auth;
         this.exports = exports;
         this.worker = worker;
+        this.io = new SessionWorker(auth, exports, worker);
+        var files = new SessionFileTransfers(io);
+        this.repository = new SessionRepositoryCommands(io, files, saves, exports, openTimeout);
+        var mediaCommands = new SessionMediaCommands(io, files, auth, media, saves);
+        this.bridge = new ExecutorBridge(io, files, repository, mediaCommands, saves, packages);
         this.maxSessions = maxSessions;
         this.openTimeout = openTimeout;
         this.closeTimeout = closeTimeout;
@@ -139,14 +126,14 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
-        var access = authorize(principal, workspace);
+        var access = io.authorize(principal, workspace);
         validateExecution(serverSessionId, expected, requested, command, timeout);
         var owner = new AccountCopyRecord.Owner(
                 principal.accountId(), workspace.value(), access.capabilities().contains(Capability.READ_PRIVATE));
         try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
             acquireExecution(cancellation);
             try {
-                Session session = accountSession(principal, workspace, expected, held, cancellation);
+                ExecutionSession session = accountSession(principal, workspace, expected, held, cancellation);
                 try {
                     return executeAccount(session, held, requested, command, timeout, cancellation);
                 } finally {
@@ -191,17 +178,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private Session accountSession(
+    private ExecutionSession accountSession(
             AuthPrincipal principal,
             WorkspaceId workspace,
             CopyRequest expected,
             AccountCommand held,
             ExecutionCancellation cancellation) {
-        SessionKey key = keyFor(held.owner());
+        ExecutionSession.Key key = keyFor(held.owner());
         var record = held.record();
         requireAccountRequest(record, expected);
         WorkerClient.Hello hello = worker.hello();
-        Session previous;
+        ExecutionSession previous;
         synchronized (this) {
             if (closed) {
                 throw new WorkerUnavailableException();
@@ -244,12 +231,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private void releaseIdleCapacity() {
-        Session idle = null;
+        ExecutionSession idle = null;
         synchronized (this) {
             if (activeSessions() < maxSessions) {
                 return;
             }
-            for (Session candidate : sessions.values()) {
+            for (ExecutionSession candidate : sessions.values()) {
                 if (!candidate.capacityReleased && candidate.busy.compareAndSet(false, true)) {
                     idle = candidate;
                     break;
@@ -265,13 +252,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private synchronized Session reserveAccount(
-            AuthPrincipal principal, SessionKey key, WorkerClient.Hello hello, AccountCopyRecord record) {
+    private synchronized ExecutionSession reserveAccount(
+            AuthPrincipal principal, ExecutionSession.Key key, WorkerClient.Hello hello, AccountCopyRecord record) {
         if (closed || activeSessions() >= maxSessions || sessions.size() >= 1024) {
             throw rejected("session_limit");
         }
         boolean full = key.scopeHash().equals(hash("full"));
-        var current = new Session(
+        var current = new ExecutionSession(
                 key, principal, full, record == null ? UUID.randomUUID() : record.copyId(), UUID.randomUUID());
         current.hello = hello;
         current.busy.set(true);
@@ -302,7 +289,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private ExecutionResult executeAccount(
-            Session session,
+            ExecutionSession session,
             AccountCommand held,
             Optional<String> requested,
             String command,
@@ -317,7 +304,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new IllegalArgumentException(
                         "The requested commit differs from the working-copy baseline; synchronize explicitly");
             }
-            authorize(session);
+            io.authorize(session);
             boolean opening = !session.ready;
             if (opening) {
                 if (session.attaching) {
@@ -331,7 +318,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             held.bind(writer(session));
             session.saveState = held.state();
             if (opening) {
-                refreshGitOnOpen(session);
+                repository.refreshGitOnOpen(session);
             }
             UUID execution = UUID.randomUUID();
             held.begin(execution);
@@ -345,7 +332,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, true);
             }
             requireOk(response, session);
-            authorize(session);
+            io.authorize(session);
             // Decode before acknowledging the journal, so malformed completion stays unconfirmed.
             result(response.path("result"), session.copyId.toString(), session.commit, session.gitCommit, held.view());
             held.complete(session.saveState.snapshot());
@@ -367,7 +354,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private static CopyRetention unconfirmedView(Session session, AccountCommand held) {
+    private static CopyRetention unconfirmedView(ExecutionSession session, AccountCommand held) {
         try {
             return held.view();
         } catch (RetainedCopyException unavailable) {
@@ -376,7 +363,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void containFailedCommand(Session session, RuntimeException failure) {
+    private void containFailedCommand(ExecutionSession session, RuntimeException failure) {
         try {
             stopAndAwait(session, "cancelled");
         } catch (RuntimeException closing) {
@@ -385,7 +372,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private AccountCopyRecord.Writer writer(Session session) {
+    private AccountCopyRecord.Writer writer(ExecutionSession session) {
         return new AccountCopyRecord.Writer(
                 session.principal.subjectId(),
                 session.hello.workerBootId(),
@@ -394,15 +381,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private void fenceAccount(
-            AuthPrincipal principal, AccountCopyRecord record, SessionKey key, WorkerClient.Hello hello) {
-        Session control;
+            AuthPrincipal principal, AccountCopyRecord record, ExecutionSession.Key key, WorkerClient.Hello hello) {
+        ExecutionSession control;
         synchronized (this) {
             control = sessions.get(key);
             if (control == null || !control.leaseId.equals(record.writer().leaseId())) {
                 control = closingLeases.get(record.writer().leaseId());
             }
             if (control == null) {
-                control = new Session(
+                control = new ExecutionSession(
                         key,
                         principal,
                         record.owner().fullRead(),
@@ -449,7 +436,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     requireAccountRequest(record, new CopyRequest(request.id()));
                 }
                 held.beginDiscard();
-                var key = new SessionKey(principal.accountId(), workspace, hash(full ? "full" : "public"));
+                var key = new ExecutionSession.Key(principal.accountId(), workspace, hash(full ? "full" : "public"));
                 var hello = worker.hello();
                 fenceAccount(principal, record, key, hello);
                 requireDiscardAuthorization(principal, workspace, cancellation);
@@ -463,7 +450,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return new DiscardResult(request.id(), DiscardStatus.ABSENT);
     }
 
-    private void discardDisk(UUID principalId, AccountCopyRecord record, SessionKey key, WorkerClient.Hello hello) {
+    private void discardDisk(
+            UUID principalId, AccountCopyRecord record, ExecutionSession.Key key, WorkerClient.Hello hello) {
         var identity = new WorkerClient.Identity(
                 principalId, key.account(), key.workspace().value(), key.scopeHash(), UUID.randomUUID());
         JsonNode response = worker.request(
@@ -499,7 +487,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
                     lease.write(record.discarding());
                 }
-                var key = new SessionKey(
+                var key = new ExecutionSession.Key(
                         owner.accountId(),
                         new WorkspaceId(owner.workspaceId()),
                         hash(owner.fullRead() ? "full" : "public"));
@@ -519,8 +507,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return removed;
     }
 
-    private void fenceCollectedAccount(AccountCopyRecord record, SessionKey key, WorkerClient.Hello hello) {
-        Session current;
+    private void fenceCollectedAccount(AccountCopyRecord record, ExecutionSession.Key key, WorkerClient.Hello hello) {
+        ExecutionSession current;
         synchronized (this) {
             current = sessions.get(key);
         }
@@ -561,7 +549,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     private void requireDiscardAuthorization(
             AuthPrincipal principal, WorkspaceId workspace, ExecutionCancellation cancellation) {
-        authorize(principal, workspace);
+        io.authorize(principal, workspace);
         if (closed || cancellation.isCancelled()) {
             throw new WorkerUnavailableException();
         }
@@ -601,7 +589,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             long offset,
             int limit,
             ExecutionCancellation cancellation) {
-        var access = authorize(principal, workspace);
+        var access = io.authorize(principal, workspace);
         validateArtifactRequest(serverSessionId, artifactId, offset, limit);
         List<Boolean> scopes =
                 access.capabilities().contains(Capability.READ_PRIVATE) ? List.of(true, false) : List.of(false);
@@ -633,9 +621,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             int limit,
             ExecutionCancellation cancellation,
             AccountCommand held) {
-        authorize(principal, workspace);
+        io.authorize(principal, workspace);
         validateArtifactRequest(serverSessionId, artifactId, offset, limit);
-        Session session;
+        ExecutionSession session;
         synchronized (this) {
             session = sessions.get(keyFor(held.owner()));
         }
@@ -657,10 +645,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             session = refreshLease(session, principal);
             held.bind(writer(session));
             session.accountRecord = held.record();
-            Session active = session;
+            ExecutionSession active = session;
             try (var registration = cancellation.onCancel(() -> stopAndAwait(active, "cancelled"))) {
                 requireLive(session);
-                authorize(session);
+                io.authorize(session);
                 if (!session.ready && session.attaching) {
                     attach(session);
                 }
@@ -701,14 +689,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private Optional<ArtifactChunk> readArtifactPage(Session session, String artifactId, long offset, int limit) {
-        JsonNode response = requestLive(
+    private Optional<ArtifactChunk> readArtifactPage(
+            ExecutionSession session, String artifactId, long offset, int limit) {
+        JsonNode response = io.request(
                 session,
                 "ARTIFACT_READ",
                 new WorkerRequests.ArtifactRead(artifactId, offset, limit),
                 Duration.ofSeconds(3));
         requireLive(session);
-        authorize(session);
+        io.authorize(session);
         String code = response.path("code").asString("");
         if (code.equals("ARTIFACT_UNAVAILABLE")) {
             return Optional.empty();
@@ -717,7 +706,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             throw new IllegalArgumentException("Invalid artifact range");
         }
         requireOk(response, session);
-        var metadata = artifactMetadata(response);
+        var metadata = ExecutorBridge.artifactMetadata(response);
         var page = WorkerResponses.read(response, WorkerResponses.ArtifactPage.class);
         long size = metadata.bytes();
         // The identifier and the offset are echoes of this request.
@@ -738,11 +727,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 metadata.expiresInSeconds(),
                 offset,
                 bytes));
-    }
-
-    /** The worker's own report about one artifact; its rules live in the record that carries it. */
-    private static ArtifactMetadata artifactMetadata(JsonNode value) {
-        return WorkerResponses.read(value, ArtifactMetadata.class);
     }
 
     private ExecutionAdmissionException rejected(String reason) {
@@ -773,7 +757,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 .count();
     }
 
-    private void initializeCopy(Session session, Optional<String> requested, AccountCommand held) {
+    private void initializeCopy(ExecutionSession session, Optional<String> requested, AccountCommand held) {
         if (!session.fullRead && requested.isPresent()) {
             throw new IllegalArgumentException("Public execution starts from current publication; omit commit");
         }
@@ -802,7 +786,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                             sink));
             session.accountRecord = held.record();
             requireLive(session);
-            authorize(session);
+            io.authorize(session);
             synchronized (session) {
                 requireLive(session);
                 session.openAttempted = true;
@@ -810,7 +794,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
             }
             long deadline = System.nanoTime() + openTimeout.toNanos();
-            JsonNode response = requestLive(
+            JsonNode response = io.request(
                     session,
                     "OPEN",
                     new WorkerRequests.Open(
@@ -850,7 +834,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void awaitInitialized(Session session, JsonNode response, long deadline) {
+    private void awaitInitialized(ExecutionSession session, JsonNode response, long deadline) {
         while (true) {
             requireInitializationAccepted(response, session.attaching);
             requireOk(response, session);
@@ -866,24 +850,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new WorkerUnavailableException();
             }
             pause();
-            authorize(session);
-            response = requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
+            io.authorize(session);
+            response = io.request(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
         }
     }
 
-    private WorkspaceAccess authorize(AuthPrincipal principal, WorkspaceId workspace) {
-        if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) {
-            throw new SecurityException("Execution requires an API key");
-        }
-        return auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
-    }
-
-    private static SessionKey keyFor(AccountCopyRecord.Owner owner) {
-        return new SessionKey(
+    private static ExecutionSession.Key keyFor(AccountCopyRecord.Owner owner) {
+        return new ExecutionSession.Key(
                 owner.accountId(), new WorkspaceId(owner.workspaceId()), hash(owner.fullRead() ? "full" : "public"));
     }
 
-    private Session refreshLease(Session previous, AuthPrincipal principal) {
+    private ExecutionSession refreshLease(ExecutionSession previous, AuthPrincipal principal) {
         if (!previous.stopping.get() && previous.principal.subjectId().equals(principal.subjectId())) {
             previous.principal = principal;
             return previous;
@@ -899,7 +876,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (previous.commit == null || previous.saveState == null) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, false);
         }
-        var current = new Session(previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID());
+        var current =
+                new ExecutionSession(previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID());
         current.busy.set(true);
         current.attaching = true;
         current.hello = hello;
@@ -916,15 +894,15 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return current;
     }
 
-    private void attach(Session session) {
-        authorize(session);
+    private void attach(ExecutionSession session) {
+        io.authorize(session);
         synchronized (session) {
             requireLive(session);
             session.openAttempted = true;
             session.nextRenew = System.nanoTime()
                     + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
         }
-        JsonNode response = requestLive(
+        JsonNode response = io.request(
                 session,
                 "ATTACH",
                 new WorkerRequests.DiskCopy(session.copyId, session.fullRead ? "full" : "public", session.commit),
@@ -939,24 +917,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         session.ready = true;
     }
 
-    private void authorize(Session session) {
-        if (session.fullRead) {
-            auth.authorize(
-                    session.principal, session.key.workspace(), Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
-        } else if (session.publicExport != null) {
-            exports.requireCurrentPublic(session.principal, session.key.workspace(), session.publicExport);
-        } else {
-            authorize(session.principal, session.key.workspace());
-        }
-    }
-
     private void renewDue() {
-        List<Session> current;
+        List<ExecutionSession> current;
         synchronized (this) {
             current = new ArrayList<>(sessions.values());
             current.addAll(closingLeases.values());
         }
-        for (Session session : current) {
+        for (ExecutionSession session : current) {
             if (session.stopping.get()) {
                 reconcileClose(session);
                 continue;
@@ -978,9 +945,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         if (session.stopping.get()) {
                             return;
                         }
-                        authorize(session);
+                        io.authorize(session);
                         JsonNode response =
-                                requestLive(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
+                                io.request(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
                         requireOk(response, session);
                         String state = response.path("state").asString("");
                         if (!List.of("INITIALIZING", "READY", "RUNNING").contains(state)) {
@@ -1003,7 +970,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void reconcileClose(Session session) {
+    private void reconcileClose(ExecutionSession session) {
         if (!session.openAttempted
                 || session.capacityReleased
                 || !session.stopped.isCompletedExceptionally()
@@ -1036,8 +1003,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private JsonNode executeWithBridge(Session session, String executionId, String command, Duration timeout) {
-        var running = commandIo.submit(() -> requestLive(
+    private JsonNode executeWithBridge(ExecutionSession session, String executionId, String command, Duration timeout) {
+        var running = commandIo.submit(() -> io.request(
                 session,
                 "EXEC",
                 new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
@@ -1048,14 +1015,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (session.stopping.get()) {
                     break;
                 }
-                authorize(session);
+                io.authorize(session);
                 if (System.nanoTime() >= deadline) {
                     throw new WorkerUnavailableException();
                 }
                 JsonNode polled;
                 try {
-                    polled =
-                            requestLive(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
+                    polled = io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
                 } catch (RuntimeException failed) {
                     if (session.stopping.get()) {
                         break;
@@ -1083,12 +1049,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     throw new WorkerUnavailableException();
                 }
                 requireLive(session);
-                authorize(session);
-                var reply = bridgeReply(session, executionId, request);
+                io.authorize(session);
+                var reply = bridge.bridgeReply(session, executionId, request);
                 requireLive(session);
-                authorize(session);
+                io.authorize(session);
                 requireOk(
-                        requestLive(
+                        io.request(
                                 session,
                                 "BRIDGE_COMPLETE",
                                 new WorkerRequests.BridgeComplete(executionId, requestId, reply),
@@ -1113,1170 +1079,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private BridgeReplies.Reply bridgeReply(Session session, String executionId, JsonNode request) {
-        try {
-            return bridgeOperation(session, executionId, request);
-        } catch (MaterializationCapacity failure) {
-            return BridgeReplies.failed(
-                    "MATERIALIZE_CAPACITY",
-                    "Insufficient session space. Free local space or export fewer files; existing files were preserved.");
-        }
-    }
-
-    /**
-     * Routes one command to the family that owns it. Each family translates the same exceptions
-     * into its own failure codes -- a rejected selection is INVALID_EXPORT_SELECTION, INVALID_ARTIFACT,
-     * INVALID_MEDIA_REQUEST or INVALID_SELECTION depending on who asked -- so the translation stays
-     * with the family rather than being shared, and the agent inside the sandbox is told which of
-     * its arguments was refused.
-     */
-    private BridgeReplies.Reply bridgeOperation(Session session, String executionId, JsonNode request) {
-        JsonNode arguments = request.path("arguments");
-        if (!arguments.isObject()) {
-            throw new WorkerUnavailableException();
-        }
-        String operation = request.path("operation").asString("");
-        // A status call takes no argument. One that carries any is not a status call at all, and
-        // falls through to the unknown-operation reply rather than being answered with a guess.
-        if (operation.equals("status") && arguments.isEmpty()) {
-            return status(session);
-        }
-        if (operation.equals("export")) {
-            return exportCommand(session, executionId, arguments);
-        }
-        if (operation.equals("edit") || operation.equals("create")) {
-            return localTextCommand(session, executionId, operation, arguments);
-        }
-        if (operation.equals("artifact_create") || operation.equals("artifact_remove")) {
-            return artifactCommand(session, executionId, operation, arguments);
-        }
-        if (operation.equals("media_fetch")
-                || operation.equals("media_import")
-                || operation.equals("media_link")
-                || operation.equals("media_list")) {
-            return mediaCommand(session, executionId, operation, arguments);
-        }
-        if (operation.equals("save")
-                || operation.equals("recover")
-                || operation.equals("sync")
-                || operation.equals("move")) {
-            return writeCommand(session, executionId, operation, arguments);
-        }
-        return BridgeReplies.failed("OPERATION_UNAVAILABLE");
-    }
-
-    /** Where this session's writes stand, as the agent needs to see them before deciding what to do. */
-    private BridgeReplies.Reply status(Session session) {
-        BridgeReplies.RemoteStatus remote;
-        try {
-            remote = remoteStatus(session);
-        } catch (ContentRepositoryException unavailable) {
-            log.warn("Remote head could not be checked; local copy status remains available", unavailable);
-            remote = new BridgeReplies.RemoteStatus(BridgeReplies.RemoteState.UNAVAILABLE, null);
-        } catch (AuthException denied) {
-            return BridgeReplies.failed("ACCESS_DENIED");
-        }
-        return BridgeReplies.succeeded(new BridgeReplies.Status(
-                session.copyId.toString(),
-                session.fullRead ? "full" : "public",
-                session.saveState.baseCommit,
-                session.gitCommit,
-                !session.saveState.baseCommit.equals(session.gitCommit),
-                remote,
-                session.saveState.uncertain
-                        || (session.saveState.move != null && session.saveState.move.result == null),
-                session.saveState.move != null,
-                session.saveState.move == null
-                        ? new BridgeReplies.Absent()
-                        : SessionMoves.movePending(session.saveState.move),
-                session.saveState.sync != null,
-                session.saveState.sync == null
-                        ? new BridgeReplies.Absent()
-                        : WorkspaceSynchronization.progress(session.saveState.sync),
-                session.saveState.lastSave,
-                session.saveState.lastImport));
-    }
-
-    private BridgeReplies.RemoteStatus remoteStatus(Session session) {
-        // Public copies use a synthetic commit. The existing public-proof check guards each command;
-        // do not reveal an authority commit or compare it with the unrelated projection commit.
-        if (!session.fullRead) {
-            return new BridgeReplies.RemoteStatus(BridgeReplies.RemoteState.PUBLIC_PROJECTION, session.commit);
-        }
-        Optional<String> commit = saves.currentCommit(session.principal, session.key.workspace());
-        return new BridgeReplies.RemoteStatus(
-                commit.filter(session.saveState.baseCommit::equals).isPresent()
-                        ? BridgeReplies.RemoteState.MATCHES_BASE
-                        : BridgeReplies.RemoteState.DIFFERS_FROM_BASE,
-                commit.orElse(null));
-    }
-
-    private BridgeReplies.Reply exportCommand(Session session, String executionId, JsonNode arguments) {
-        try {
-            return exportPackage(session, executionId, arguments);
-        } catch (AuthException denied) {
-            return BridgeReplies.failed("ACCESS_DENIED");
-        } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failed("INVALID_EXPORT_SELECTION");
-        } catch (ContentExportException unavailable) {
-            return BridgeReplies.failed("EXPORT_" + unavailable.reason().name());
-        } catch (ContentRepositoryException | AssetStorageException unavailable) {
-            return BridgeReplies.failed("EXPORT_UNAVAILABLE");
-        }
-    }
-
-    /**
-     * Creates or releases one retained artifact. The worker's own refusals pass through unchanged,
-     * because the agent distinguishes a missing artifact from a full store from a bad request.
-     */
-    private BridgeReplies.Reply artifactCommand(
-            Session session, String executionId, String operation, JsonNode arguments) {
-        boolean create = operation.equals("artifact_create");
-        try {
-            WorkerRequests.Data data;
-            if (create) {
-                var selected = BridgeArguments.artifactCreate(arguments);
-                data = new WorkerRequests.ArtifactCreate(executionId, selected.path(), selected.mediaType());
-            } else {
-                data = new WorkerRequests.ArtifactRemove(
-                        BridgeArguments.artifactRemove(arguments).artifactId());
-            }
-            authorize(session);
-            JsonNode result =
-                    requestLive(session, create ? "ARTIFACT_CREATE" : "ARTIFACT_REMOVE", data, Duration.ofSeconds(10));
-            authorize(session);
-            String code = result.path("code").asString("");
-            if (Set.of("ARTIFACT_UNAVAILABLE", "ARTIFACT_CAPACITY", "INVALID_ARTIFACT")
-                    .contains(code)) {
-                return BridgeReplies.failed(code);
-            }
-            requireOk(result, session);
-            return create ? BridgeReplies.artifact(artifactMetadata(result.path("artifact"))) : BridgeReplies.removed();
-        } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failed("INVALID_ARTIFACT");
-        }
-    }
-
-    private BridgeReplies.Reply mediaCommand(
-            Session session, String executionId, String operation, JsonNode arguments) {
-        try {
-            return switch (operation) {
-                case "media_list" -> listMedia(session, executionId, arguments);
-                case "media_link" -> linkMedia(session, executionId, arguments);
-                case "media_fetch" -> fetchMedia(session, executionId, arguments);
-                default -> importMedia(session, executionId, arguments);
-            };
-        } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failedBecause("INVALID_MEDIA_REQUEST", InvalidSelectionException.reason(invalid));
-        } catch (AuthException denied) {
-            return BridgeReplies.failed("ACCESS_DENIED");
-        } catch (AssetStorageException unavailable) {
-            return BridgeReplies.failedBecause(
-                    "MEDIA_UNAVAILABLE", unavailable.reason().name());
-        } catch (ContentRepositoryException unavailable) {
-            return BridgeReplies.failed("MEDIA_UNAVAILABLE");
-        }
-    }
-
-    /**
-     * The four commands that reconcile the sandbox with the repository. Three of them write to it;
-     * sync only reads, which is why the capability it needs is the lesser one. All four share the
-     * full-read scope check and the refusal to start while an earlier write is unresolved, so those
-     * stay here and only the command itself differs.
-     */
-    private BridgeReplies.Reply writeCommand(
-            Session session, String executionId, String operation, JsonNode arguments) {
-        if (!session.fullRead) {
-            return BridgeReplies.failed("READ_ONLY_SCOPE");
-        }
-        try {
-            authorize(session);
-            // Recovery is the one command allowed while a write is unresolved: it exists to resolve
-            // one. The guards below would otherwise refuse it and leave the session stuck.
-            if (operation.equals("recover")) {
-                return finishBaseline(session, executionId, recoverCommand(session, executionId, arguments));
-            }
-            if (session.saveState.move != null) {
-                return SessionMoves.pendingResult(session.saveState.move, "RECOVER_MOVE_FIRST");
-            }
-            if (session.saveState.uncertain) {
-                return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
-            }
-            if (session.saveState.sync != null && !operation.equals("sync")) {
-                return BridgeReplies.failed("RECOVER_SYNC_FIRST");
-            }
-            if (!installGitBaseline(session, executionId)) {
-                return baselinePending();
-            }
-            var reply =
-                    switch (operation) {
-                        case "move" -> moveCommand(session, executionId, arguments);
-                        case "sync" -> syncCommand(session, executionId, arguments);
-                        default -> saveCommand(session, executionId, arguments);
-                    };
-            return finishBaseline(session, executionId, reply);
-        } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failedBecause("INVALID_SELECTION", InvalidSelectionException.reason(invalid));
-        } catch (AuthException denied) {
-            return BridgeReplies.failed("ACCESS_DENIED");
-        } catch (ContentRepositoryException unavailable) {
-            return BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
-        }
-    }
-
-    private BridgeReplies.Reply finishBaseline(Session session, String executionId, BridgeReplies.Reply reply) {
-        if (!reply.ok() && !"MERGE_CONFLICT".equals(reply.code())) {
-            return reply;
-        }
-        try {
-            return installGitBaseline(session, executionId) ? reply : baselinePending();
-        } catch (WorkerUnavailableException | ContentRepositoryException pending) {
-            log.warn("Acknowledged repository write awaits local Git baseline installation", pending);
-            return baselinePending();
-        }
-    }
-
-    private static BridgeReplies.Reply baselinePending() {
-        return BridgeReplies.failed(
-                "LOCAL_BASELINE_PENDING",
-                "The remote result is retained. Run poketto recover to finish the local Git update; do not repeat the save.");
-    }
-
-    private void refreshGitOnOpen(Session session) {
-        try {
-            installGitBaseline(session, "");
-        } catch (ContentRepositoryException pending) {
-            log.warn("Retained Git baseline export is unavailable; local inspection remains available", pending);
-        }
-    }
-
-    private boolean installGitBaseline(Session session, String executionId) {
-        if (!session.fullRead || session.saveState.baseCommit.equals(session.gitCommit)) {
-            return true;
-        }
-        authorize(session);
-        var export = exports.update(
-                session.principal, session.key.workspace(), session.gitCommit, session.saveState.baseCommit);
-        GitInstallation installed = installGitExport(session, executionId, export);
-        if (installed == GitInstallation.MISSING_OBJECTS) {
-            var complete = exports.create(
-                    session.principal, session.key.workspace(), Optional.of(session.saveState.baseCommit));
-            installed = installGitExport(session, executionId, complete);
-        }
-        return installed == GitInstallation.INSTALLED;
-    }
-
-    private enum GitInstallation {
-        INSTALLED,
-        MISSING_OBJECTS,
-        UNAVAILABLE
-    }
-
-    private GitInstallation installGitExport(
-            Session session, String executionId, RepositorySnapshotExports.Export export) {
-        try {
-            if (!export.commit().equals(session.saveState.baseCommit)) {
-                throw new WorkerUnavailableException(
-                        new IllegalStateException("Baseline export does not match the acknowledged commit"));
-            }
-            JsonNode answer = requestLive(
-                    session,
-                    "BASELINE",
-                    new WorkerRequests.Baseline(
-                            executionId,
-                            export.exportId(),
-                            export.bundleSha256(),
-                            export.bundleBytes(),
-                            export.commit()),
-                    openTimeout);
-            if (WorkerResponses.refused(answer, "BASELINE_MISSING_OBJECTS")) {
-                return GitInstallation.MISSING_OBJECTS;
-            }
-            if (WorkerResponses.refused(answer, "BASELINE_UNAVAILABLE")) {
-                return GitInstallation.UNAVAILABLE;
-            }
-            requireOk(answer, session);
-            String installed = WorkerResponses.read(answer, WorkerResponses.GitBaseline.class)
-                    .gitCommit();
-            if (!installed.equals(export.commit())) {
-                throw new WorkerUnavailableException(
-                        new IllegalStateException("Worker installed another Git baseline"));
-            }
-            authorize(session);
-            session.gitCommit = installed;
-            return GitInstallation.INSTALLED;
-        } finally {
-            try {
-                exports.release(export.exportId());
-            } catch (ContentRepositoryException cleanup) {
-                log.warn("Git export cleanup failed; the installation outcome is unchanged", cleanup);
-            }
-        }
-    }
-
-    /**
-     * Resumes retained synchronization or reconciles an uncertain remote write. {@code --skip-local}
-     * releases an interrupted synchronization or a confirmed move's pending local installation.
-     */
-    private BridgeReplies.Reply recoverCommand(Session session, String executionId, JsonNode arguments) {
-        boolean skipLocal = BridgeArguments.recoverSkipsLocal(arguments);
-        if (session.saveState.sync != null) {
-            return skipLocal ? session.saveState.finishSync(true) : synchronizeWorkspace(session, executionId);
-        }
-        if (session.saveState.move != null) {
-            var recovered = saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
-            if (session.saveState.move == null || session.saveState.move.result == null) {
-                return recovered;
-            }
-            if (skipLocal) {
-                return saves.moves().skipLocal(session.saveState);
-            }
-            return moveFiles(session, executionId, session.saveState.move, true);
-        }
-        if (skipLocal) {
-            throw new IllegalArgumentException("no pending synchronization or confirmed move to skip");
-        }
-        return saves.recover(session.principal, session.key.workspace(), session.saveState);
-    }
-
-    private BridgeReplies.Reply moveCommand(Session session, String executionId, JsonNode arguments) {
-        var selected = BridgeArguments.move(arguments);
-        var pending = saves.moves()
-                .prepare(
-                        session.principal,
-                        session.key.workspace(),
-                        session.saveState,
-                        selected.source(),
-                        selected.destination(),
-                        captureOptional(session, executionId, RepositoryMediaIndex.PATH));
-        return moveFiles(session, executionId, pending, false);
-    }
-
-    private BridgeReplies.Reply syncCommand(Session session, String executionId, JsonNode arguments) {
-        BridgeArguments.sync(arguments);
-        return synchronizeWorkspace(session, executionId);
-    }
-
-    private BridgeReplies.Reply synchronizeWorkspace(Session session, String executionId) {
-        return new WorkspaceSynchronization(saves)
-                .run(
-                        session.principal,
-                        session.key.workspace(),
-                        session.saveState,
-                        new WorkspaceSynchronization.Files() {
-                            @Override
-                            public WorkspaceSynchronization.Local read(String path) {
-                                return captureSyncFile(session, executionId, path);
-                            }
-
-                            @Override
-                            public boolean install(PendingWorkspaceSync.File file) {
-                                return installSyncFile(session, executionId, file);
-                            }
-                        });
-    }
-
-    private boolean installSyncFile(Session session, String executionId, PendingWorkspaceSync.File file) {
-        byte[] bytes = file.text() == null ? new byte[0] : file.text().getBytes(StandardCharsets.UTF_8);
-        long size = file.blob() == null ? bytes.length : file.blob().bytes();
-        String digest = file.blob() == null
-                ? DocumentRevision.sha256(bytes).value().substring(7)
-                : file.blob().sha256();
-        return materialize(
-                session, executionId, file.path(), size, digest, file.expectedSha256(), file.delete(), true, output -> {
-                    if (file.blob() == null) {
-                        output.write(bytes);
-                    } else {
-                        saves.repository().copyBlob(session.principal, session.key.workspace(), file.blob(), output);
-                    }
-                });
-    }
-
-    private WorkspaceSynchronization.Local captureSyncFile(Session session, String executionId, String path) {
-        JsonNode manifest = requestLive(
-                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(8));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            String reason = manifest.path("reason").asString("");
-            if (reason.equals("NOT_FOUND")) {
-                return new WorkspaceSynchronization.Local(null, null, false);
-            }
-            if (reason.equals("NOT_REGULAR_FILE") || reason.equals("BINARY_LIMIT")) {
-                return new WorkspaceSynchronization.Local(null, null, true);
-            }
-            throw InvalidSelectionException.capture(reason);
-        }
-        requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
-        try {
-            var file = captured.writes().getFirst();
-            if (!file.path().equals(path)) {
-                throw new WorkerUnavailableException();
-            }
-            String text = file.bytes() <= ContentLimits.MAX_DOCUMENT_BYTES
-                    ? capturedSyncText(session, executionId, captured.captureId(), file)
-                    : null;
-            return new WorkspaceSynchronization.Local(file.sha256(), text, false);
-        } finally {
-            requireOk(
-                    requestLive(
-                            session,
-                            "CAPTURE_RELEASE",
-                            new WorkerRequests.CaptureRelease(executionId, captured.captureId()),
-                            Duration.ofSeconds(3)),
-                    session);
-        }
-    }
-
-    private String capturedSyncText(
-            Session session, String executionId, String captureId, WorkerResponses.CapturedFile file) {
-        if (file.bytes() == 0) {
-            if (!file.sha256().equals(hash(""))) {
-                throw new WorkerUnavailableException();
-            }
-            return "";
-        }
-        try (var input = new CapturedBinaryInput(file.bytes(), file.sha256(), (offset, limit) -> {
-            authorize(session);
-            JsonNode chunk = requestLive(
-                    session,
-                    "CAPTURE_READ",
-                    new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
-                    Duration.ofSeconds(3));
-            requireOk(chunk, session);
-            var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
-            if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
-                throw new WorkerUnavailableException();
-            }
-            return page.decoded();
-        })) {
-            byte[] bytes = input.readNBytes((int) file.bytes());
-            try {
-                String text = StandardCharsets.UTF_8
-                        .newDecoder()
-                        .onMalformedInput(CodingErrorAction.REPORT)
-                        .onUnmappableCharacter(CodingErrorAction.REPORT)
-                        .decode(ByteBuffer.wrap(bytes))
-                        .toString();
-                return text.indexOf('\0') < 0 ? text : null;
-            } catch (CharacterCodingException binary) {
-                return null;
-            }
-        } catch (IOException failure) {
-            throw new WorkerUnavailableException(failure);
-        }
-    }
-
-    private BridgeReplies.Reply saveCommand(Session session, String executionId, JsonNode arguments) {
-        var selection = BridgeArguments.save(arguments);
-        List<String> writes = selection.writes();
-        List<String> deletes = selection.deletes();
-        var captured = capture(session, executionId, writes, deletes);
-        requireLive(session);
-        authorize(session);
-        return saves.save(session.principal, session.key.workspace(), session.saveState, captured, deletes);
-    }
-
-    private BridgeReplies.Reply moveFiles(
-            Session session, String executionId, SessionMoves.Pending pending, boolean recovery) {
-        byte[] payload = pending.payload;
-        JsonNode begun = requestLive(
-                session,
-                "MOVE_BEGIN",
-                new WorkerRequests.MoveBegin(
-                        executionId,
-                        payload.length,
-                        DocumentRevision.sha256(payload).value().substring(7)),
-                Duration.ofSeconds(3));
-        if (begun.path("code").asString("").equals("MOVE_REJECTED")) {
-            if (recovery) {
-                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
-            }
-            return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
-        }
-        requireOk(begun, session);
-        String transfer =
-                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
-        var reference = new WorkerRequests.Transfer(executionId, transfer);
-        try {
-            for (int offset = 0; offset < payload.length; offset += 65536) {
-                authorize(session);
-                int end = Math.min(offset + 65536, payload.length);
-                JsonNode chunk = requestLive(
-                        session,
-                        "MOVE_CHUNK",
-                        new WorkerRequests.TransferChunk(
-                                executionId,
-                                transfer,
-                                offset,
-                                Base64.getEncoder().encodeToString(Arrays.copyOfRange(payload, offset, end))),
-                        Duration.ofSeconds(3));
-                if (chunk.path("code").asString("").equals("MOVE_REJECTED")) {
-                    if (recovery) {
-                        return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
-                    }
-                    return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
-                }
-                requireOk(chunk, session);
-                if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
-                                .receivedBytes()
-                        != end) {
-                    throw new WorkerUnavailableException();
-                }
-            }
-            if (!recovery) {
-                JsonNode checked = requestLive(session, "MOVE_CHECK", reference, Duration.ofSeconds(15));
-                if (checked.path("code").asString("").equals("MOVE_REJECTED")) {
-                    return BridgeReplies.failed("LOCAL_MOVE_REJECTED");
-                }
-                requireOk(checked, session);
-                if (!WorkerResponses.read(checked, WorkerResponses.MovePreflight.class)
-                        .ready()) {
-                    throw new WorkerUnavailableException();
-                }
-                authorize(session);
-                var committed =
-                        saves.moves().commit(session.principal, session.key.workspace(), session.saveState, pending);
-                pending = session.saveState.move;
-                if (pending == null || pending.result == null) {
-                    return committed;
-                }
-            }
-            authorize(session);
-            JsonNode installed;
-            try {
-                installed = requestLive(session, "MOVE_COMMIT", reference, Duration.ofSeconds(15));
-            } catch (WorkerUnavailableException uncertainInstallation) {
-                // Git is acknowledged. Keep the plan so a live worker can reconcile its receipt.
-                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_PENDING");
-            }
-            if (installed.path("code").asString("").equals("MOVE_REJECTED")) {
-                return SessionMoves.pendingResult(pending, "LOCAL_MOVE_CONFLICT");
-            }
-            requireOk(installed, session);
-            if (WorkerResponses.read(installed, WorkerResponses.MoveInstallation.class)
-                            .installed()
-                            .changedPaths()
-                    != pending.paths.size()) {
-                throw new WorkerUnavailableException();
-            }
-            return saves.moves().installed(session.saveState);
-        } finally {
-            try {
-                requestLive(session, "MOVE_ABORT", reference, Duration.ofSeconds(3));
-            } catch (RuntimeException cleanupFailure) {
-                log.warn(
-                        "Worker move staging cleanup was not acknowledged; command cleanup will release its slot",
-                        cleanupFailure);
-            }
-        }
-    }
-
-    private Map<String, String> capture(
-            Session session, String executionId, List<String> writes, List<String> deletes) {
-        JsonNode manifest = requestLive(
-                session,
-                "CAPTURE_BEGIN",
-                new WorkerRequests.CaptureBegin(executionId, writes, deletes),
-                Duration.ofSeconds(5));
-        return readCapture(session, executionId, manifest, writes, deletes);
-    }
-
-    private Map<String, String> readCapture(
-            Session session, String executionId, JsonNode manifest, List<String> writes, List<String> deletes) {
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
-        }
-        requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
-        String captureId = captured.captureId();
-        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
-        try {
-            // The manifest is well formed by construction; these compare it against this request.
-            if (captured.writes().size() != writes.size() || !captured.deletes().equals(deletes)) {
-                throw new WorkerUnavailableException();
-            }
-            var result = new LinkedHashMap<String, String>();
-            for (int index = 0; index < captured.writes().size(); index++) {
-                var file = captured.writes().get(index);
-                String path = file.path();
-                long size = file.bytes();
-                if (!path.equals(writes.get(index)) || result.containsKey(path)) {
-                    throw new WorkerUnavailableException();
-                }
-                var bytes = new ByteArrayOutputStream((int) size);
-                while (bytes.size() < size) {
-                    authorize(session);
-                    int limit = (int) Math.min(65536, size - bytes.size());
-                    JsonNode chunk = requestLive(
-                            session,
-                            "CAPTURE_READ",
-                            new WorkerRequests.CaptureRead(executionId, captureId, index, bytes.size(), limit),
-                            Duration.ofSeconds(3));
-                    requireOk(chunk, session);
-                    var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
-                    if (!captureId.equals(page.captureId()) || page.index() != index || page.offset() != bytes.size()) {
-                        throw new WorkerUnavailableException();
-                    }
-                    byte[] block = page.decoded();
-                    if (block.length != limit) {
-                        throw new WorkerUnavailableException();
-                    }
-                    bytes.writeBytes(block);
-                }
-                byte[] content = bytes.toByteArray();
-                try {
-                    if (!HexFormat.of()
-                            .formatHex(MessageDigest.getInstance("SHA-256").digest(content))
-                            .equals(file.sha256())) {
-                        throw new WorkerUnavailableException();
-                    }
-                    result.put(
-                            path,
-                            StandardCharsets.UTF_8
-                                    .newDecoder()
-                                    .onMalformedInput(CodingErrorAction.REPORT)
-                                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                                    .decode(ByteBuffer.wrap(content))
-                                    .toString());
-                } catch (NoSuchAlgorithmException | CharacterCodingException invalid) {
-                    throw new WorkerUnavailableException(invalid);
-                }
-            }
-            return result;
-        } finally {
-            requireOk(requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3)), session);
-        }
-    }
-
-    private BridgeReplies.Reply localTextCommand(
-            Session session, String executionId, String operation, JsonNode arguments) {
-        try {
-            String path;
-            String replacement;
-            Optional<String> original;
-            if (operation.equals("edit")) {
-                var edit = BridgeArguments.edit(arguments);
-                path = edit.path();
-                original = captureOptional(session, executionId, path);
-                if (original.isEmpty()) {
-                    return BridgeReplies.failedBecause("EDIT_REJECTED", "NOT_FOUND");
-                }
-                String text = original.orElseThrow();
-                int start = text.indexOf(edit.oldText());
-                if (start < 0) {
-                    return BridgeReplies.failedBecause("EDIT_REJECTED", "OLD_TEXT_NOT_FOUND");
-                }
-                if (text.indexOf(edit.oldText(), start + 1) >= 0) {
-                    return BridgeReplies.failedBecause("EDIT_REJECTED", "AMBIGUOUS_MATCH");
-                }
-                replacement = text.substring(0, start)
-                        + edit.newText()
-                        + text.substring(start + edit.oldText().length());
-            } else {
-                var create = BridgeArguments.create(arguments);
-                path = create.path();
-                replacement = create.text();
-                original = captureOptional(session, executionId, path);
-                if (original.isPresent()) {
-                    return BridgeReplies.failedBecause("EDIT_REJECTED", "ALREADY_EXISTS");
-                }
-            }
-            if (replacement.indexOf('\0') >= 0
-                    || !StandardCharsets.UTF_8.newEncoder().canEncode(replacement)) {
-                return BridgeReplies.failedBecause("EDIT_REJECTED", "INVALID_TEXT");
-            }
-            return installLocalText(session, executionId, path, original, replacement);
-        } catch (InvalidSelectionException invalid) {
-            return BridgeReplies.failedBecause("EDIT_REJECTED", InvalidSelectionException.reason(invalid));
-        } catch (IllegalArgumentException invalid) {
-            return BridgeReplies.failedBecause("EDIT_REJECTED", "INVALID_INPUT");
-        }
-    }
-
-    private BridgeReplies.Reply installLocalText(
-            Session session, String executionId, String path, Optional<String> original, String replacement) {
-        byte[] content = replacement.getBytes(StandardCharsets.UTF_8);
-        if (content.length > ContentLimits.MAX_DOCUMENT_BYTES) {
-            return BridgeReplies.failedBecause("EDIT_REJECTED", "TOO_LARGE");
-        }
-        boolean installed = materialize(
-                session,
-                executionId,
-                path,
-                content.length,
-                hash(replacement),
-                original.map(IsolatedRepositoryExecutor::hash).orElse(null),
-                false,
-                false,
-                output -> output.write(content));
-        return installed
-                ? BridgeReplies.succeeded(new BridgeReplies.LocalEditResult(path, false))
-                : BridgeReplies.failedBecause("EDIT_REJECTED", "LOCAL_FILE_CHANGED");
-    }
-
-    private BridgeReplies.Reply listMedia(Session session, String executionId, JsonNode arguments) {
-        var query = MediaListing.Query.parse(arguments);
-        Map<String, RepositoryMediaIndex.Media> files;
-        String version, source;
-        if (session.fullRead) {
-            if (query.commit() == null) {
-                var index = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
-                source = "worktree";
-                files = index.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                        .orElseGet(RepositoryMediaIndex::empty)
-                        .files();
-                version = hash(index.orElse(""));
-            } else {
-                var catalog =
-                        media.privateCatalog(session.principal, session.key.workspace(), Optional.of(query.commit()));
-                files = catalog.index().files();
-                source = "repository";
-                version = hash(catalog.commit());
-            }
-        } else {
-            if (query.commit() != null) {
-                throw new IllegalArgumentException("public media uses only its current projection");
-            }
-            files = new LinkedHashMap<>();
-            session.publicExport.media().forEach((path, media) -> files.put(path, media.original()));
-            source = "public-projection";
-            version = session.publicExport.projectionSha256();
-        }
-        authorize(session);
-        return MediaListing.page(files, query, version, source);
-    }
-
-    private BridgeReplies.Reply fetchMedia(Session session, String executionId, JsonNode arguments) {
-        var selected = BridgeArguments.mediaFetch(arguments);
-        String path = selected.path();
-        String destination = selected.output() == null ? path : selected.output();
-        Optional<String> requested = Optional.ofNullable(selected.commit());
-        MediaFileService.Download download;
-        String commit = null;
-        String indexSource;
-        if (session.fullRead) {
-            if (requested.isPresent()) {
-                commit = requested.orElseThrow();
-                if (!commit.matches("[0-9a-f]{40}")) {
-                    throw new IllegalArgumentException("a pinned commit must be 40 lowercase hex characters");
-                }
-                download = media.privateDownload(session.principal, session.key.workspace(), Optional.of(commit), path);
-                indexSource = "repository";
-            } else {
-                var source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
-                var index = source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                        .orElseGet(RepositoryMediaIndex::empty);
-                download = media.privateOriginal(
-                        session.principal,
-                        session.key.workspace(),
-                        path,
-                        index.files().get(path));
-                indexSource = "worktree";
-            }
-        } else {
-            if (requested.isPresent()) {
-                throw new IllegalArgumentException("public media uses only its current projection");
-            }
-            var approved = session.publicExport.media().get(path);
-            if (approved == null) {
-                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
-            }
-            download = media.memberProjectionDownload(
-                    session.principal,
-                    session.key.workspace(),
-                    approved.route(),
-                    session.publicExport.sourcePaths().get(path));
-            var expected = approved.original();
-            var asset = download.asset();
-            if (!asset.reference().assetId().equals(expected.assetId())
-                    || !asset.reference().revision().equals(expected.revision())
-                    || asset.size() != expected.size()
-                    || !asset.mediaType().equals(expected.mediaType())) {
-                return BridgeReplies.failed("MEDIA_UNAVAILABLE");
-            }
-            commit = session.commit;
-            indexSource = "public-projection";
-        }
-        var asset = download.asset();
-        boolean installed = materialize(
-                session,
-                executionId,
-                destination,
-                asset.size(),
-                asset.reference().revision(),
-                null,
-                false,
-                true,
-                download::writeTo);
-        if (!installed) {
-            return BridgeReplies.failed(
-                    "LOCAL_FILE_EXISTS", "A different local file exists; keep it or choose another --output path.");
-        }
-        return BridgeReplies.succeeded(new BridgeReplies.FetchResult(
-                destination, path, indexSource, commit, asset.reference().revision(), asset.mediaType(), asset.size()));
-    }
-
-    private Optional<String> captureOptional(Session session, String executionId, String path) {
-        JsonNode manifest = requestLive(
-                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
-        }
-        requireOk(manifest, session);
-        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
-                .absent();
-        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
-            throw new WorkerUnavailableException();
-        }
-        return Optional.ofNullable(
-                readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of())
-                        .get(path));
-    }
-
-    private BridgeReplies.Reply importMedia(Session session, String executionId, JsonNode arguments) {
-        if (!session.fullRead) {
-            return BridgeReplies.failed("READ_ONLY_SCOPE");
-        }
-        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        var selected = BridgeArguments.mediaImport(arguments);
-        String file = selected.file(), path = selected.path();
-        String mediaType = selected.mediaType(), key = selected.key();
-        boolean replace = selected.replace();
-        LocalMediaIndex local = localMediaIndex(session, executionId);
-        if (local == null) {
-            return missingMediaIndex();
-        }
-        RepositoryMediaIndex index = local.index();
-        if (!availableMediaPath(session, local, path, mediaType)) {
-            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
-        }
-        JsonNode manifest = requestLive(
-                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
-        }
-        requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
-        String captureId = captured.captureId();
-        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
-        ManagedAsset asset;
-        try {
-            // One file was selected, so exactly that file must come back.
-            if (captured.writes().size() != 1
-                    || !captured.writes().getFirst().path().equals(file)) {
-                throw new WorkerUnavailableException();
-            }
-            long size = captured.writes().getFirst().bytes();
-            String digest = captured.writes().getFirst().sha256();
-            var previous = index.files().get(path);
-            if (!replace
-                    && previous != null
-                    && (previous.size() != size
-                            || !previous.revision().equals(digest)
-                            || !previous.mediaType().equals(mediaType))) {
-                return BridgeReplies.failed("MEDIA_PATH_EXISTS");
-            }
-            try (var input = new CapturedBinaryInput(size, digest, (offset, limit) -> {
-                authorize(session);
-                JsonNode chunk = requestLive(
-                        session,
-                        "CAPTURE_READ",
-                        new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
-                        Duration.ofSeconds(3));
-                requireOk(chunk, session);
-                var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
-                if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
-                    throw new WorkerUnavailableException();
-                }
-                return page.decoded();
-            })) {
-                asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
-                session.saveState.acknowledgeImport(importReceipt(path, asset, false));
-                if (!input.verified()
-                        || asset.size() != size
-                        || !asset.reference().revision().equals(digest)
-                        || !asset.mediaType().equals(mediaType)) {
-                    throw new WorkerUnavailableException();
-                }
-            }
-        } finally {
-            try {
-                requestLive(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3));
-            } catch (RuntimeException cleanupFailure) {
-                log.warn(
-                        "Binary capture release was not acknowledged; command cleanup will release its staging file",
-                        cleanupFailure);
-            }
-        }
-        return indexMedia(session, executionId, path, asset, local, replace);
-    }
-
-    private BridgeReplies.Reply linkMedia(Session session, String executionId, JsonNode arguments) {
-        if (!session.fullRead) {
-            return BridgeReplies.failed("READ_ONLY_SCOPE");
-        }
-        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        BridgeArguments.MediaLink selected = BridgeArguments.mediaLink(arguments);
-        LocalMediaIndex local = localMediaIndex(session, executionId);
-        if (local == null) {
-            return missingMediaIndex();
-        }
-        ManagedAsset asset = media.describeOriginal(session.principal, session.key.workspace(), selected.reference());
-        if (!availableMediaPath(session, local, selected.path(), asset.mediaType())) {
-            return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
-        }
-        session.saveState.acknowledgeImport(importReceipt(selected.path(), asset, false));
-        return indexMedia(session, executionId, selected.path(), asset, local, selected.replace());
-    }
-
-    private record LocalMediaIndex(Optional<String> source, RepositoryMediaIndex index) {}
-
-    private LocalMediaIndex localMediaIndex(Session session, String executionId) {
-        Optional<String> source = captureOptional(session, executionId, RepositoryMediaIndex.PATH);
-        if (source.isEmpty()
-                && !saves.baselineFile(
-                                session.principal,
-                                session.key.workspace(),
-                                session.saveState,
-                                RepositoryMediaIndex.PATH)
-                        .expectedAbsence()) {
-            return null;
-        }
-        return new LocalMediaIndex(
-                source,
-                source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                        .orElseGet(RepositoryMediaIndex::empty));
-    }
-
-    private static BridgeReplies.Reply missingMediaIndex() {
-        return BridgeReplies.failed(
-                "INDEX_MISSING",
-                "Restore or intentionally recreate the local media index before importing or linking.");
-    }
-
-    private boolean availableMediaPath(Session session, LocalMediaIndex local, String path, String mediaType) {
-        var entries = new LinkedHashMap<>(local.index().files());
-        entries.put(path, new RepositoryMediaIndex.Media(new UUID(0, 0), "0".repeat(64), mediaType, 1));
-        new RepositoryMediaIndex(
-                entries); // Validate the entire logical namespace before changing originals or the index.
-        RepositoryFile existingGit =
-                saves.baselineFile(session.principal, session.key.workspace(), session.saveState, path);
-        return existingGit.expectedAbsence()
-                || existingGit.diagnostics().stream()
-                        .anyMatch(value -> value.code().equals("MANAGED_MEDIA"));
-    }
-
-    private BridgeReplies.Reply indexMedia(
-            Session session,
-            String executionId,
-            String path,
-            ManagedAsset asset,
-            LocalMediaIndex local,
-            boolean replace) {
-        auth.authorize(session.principal, session.key.workspace(), Capability.WRITE_PRIVATE);
-        Optional<String> source = local.source();
-        RepositoryMediaIndex index = local.index();
-        var entries = new LinkedHashMap<>(index.files());
-        var entry = new RepositoryMediaIndex.Media(
-                asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
-        var previous = index.files().get(path);
-        if (previous != null && !previous.equals(entry) && !replace) {
-            return BridgeReplies.failedWith("MEDIA_PATH_EXISTS", session.saveState.lastImport);
-        }
-        entries.put(path, entry);
-        byte[] changed = entry.equals(previous)
-                ? source.orElseThrow().getBytes(StandardCharsets.UTF_8)
-                : new RepositoryMediaIndex(entries).encode();
-        String text = new String(changed, StandardCharsets.UTF_8);
-        try {
-            if (!materialize(
-                    session,
-                    executionId,
-                    RepositoryMediaIndex.PATH,
-                    changed.length,
-                    hash(text),
-                    source.map(IsolatedRepositoryExecutor::hash).orElse(null),
-                    false,
-                    false,
-                    output -> output.write(changed))) {
-                return BridgeReplies.failedWith("INDEX_CHANGED", session.saveState.lastImport);
-            }
-        } catch (MaterializationCapacity capacity) {
-            return BridgeReplies.failedWith(
-                    "MATERIALIZE_CAPACITY",
-                    session.saveState.lastImport,
-                    "Original stored; local index was not updated. Free session space and retry the same import or link.");
-        }
-        session.saveState.acknowledgeImport(importReceipt(path, asset, true));
-        return BridgeReplies.succeeded(session.saveState.lastImport);
-    }
-
-    private static BridgeReplies.ImportReceipt importReceipt(String path, ManagedAsset asset, boolean indexed) {
-        return new BridgeReplies.ImportReceipt(
-                path,
-                asset.reference().assetId().toString(),
-                asset.reference().revision(),
-                asset.mediaType(),
-                asset.size(),
-                true,
-                indexed,
-                false);
-    }
-
-    @FunctionalInterface
-    private interface FileSource {
-        void writeTo(OutputStream output) throws IOException;
-    }
-
-    private BridgeReplies.Reply exportPackage(Session session, String executionId, JsonNode arguments) {
-        var requested = BridgeArguments.export(arguments);
-        List<String> selections = requested.paths();
-        String output = requested.output();
-        synchronized (session) {
-            requireLive(session);
-        }
-        authorize(session);
-        var selected = SessionExportSelection.resolve(selections, session.fullRead ? null : session.publicExport);
-        boolean publicOnly = !session.fullRead || requested.publicOnly();
-        var client = Optional.of(session.key.scopeHash());
-        try {
-            var receipt = packages.create(session.principal, session.key.workspace(), selected, publicOnly, client);
-            synchronized (session) {
-                requireLive(session);
-            }
-            authorize(session);
-            if (!materialize(
-                    session,
-                    executionId,
-                    output,
-                    receipt.bytes(),
-                    receipt.sha256(),
-                    null,
-                    false,
-                    true,
-                    sink -> packages.copyTo(
-                            session.principal, session.key.workspace(), receipt.handle(), client, sink))) {
-                return BridgeReplies.failed(
-                        "LOCAL_FILE_CHANGED",
-                        "The output path is unavailable or contains different local bytes. Keep it or choose another --output.");
-            }
-            return BridgeReplies.succeeded(new BridgeReplies.ExportResult(
-                    output, receipt.bytes(), receipt.sha256(), publicOnly ? "public" : "private", false));
-        } finally {
-            // Covers a close event that raced before create registered its build. No package handle
-            // is exposed to the sandbox; every command owns only its materialized local result.
-            packages.closeClient(session.principal, session.key.workspace(), session.key.scopeHash());
-        }
-    }
-
-    private boolean materialize(
-            Session session,
-            String executionId,
-            String path,
-            long size,
-            String digest,
-            String expected,
-            boolean delete,
-            boolean allowIdentical,
-            FileSource source) {
-        var metadata =
-                new WorkerRequests.MaterializeBegin(executionId, path, size, digest, expected, delete, allowIdentical);
-        JsonNode begun = requestLive(session, "MATERIALIZE_BEGIN", metadata, Duration.ofSeconds(3));
-        checkMaterialization(begun);
-        if (begun.path("code").asString("").equals("MATERIALIZE_REJECTED")) {
-            throw new IllegalArgumentException("the worker refused to stage the outgoing file");
-        }
-        requireOk(begun, session);
-        String transferId =
-                WorkerResponses.read(begun, WorkerResponses.Transfer.class).transferId();
-        var reference = new WorkerRequests.Transfer(executionId, transferId);
-        try {
-            var sink = new OutputStream() {
-                long sent;
-
-                @Override
-                public void write(int value) {
-                    write(new byte[] {(byte) value}, 0, 1);
-                }
-
-                @Override
-                public void write(byte[] bytes, int offset, int length) {
-                    Objects.checkFromIndexSize(offset, length, bytes.length);
-                    if (length > size - sent) {
-                        throw new IllegalArgumentException("media source exceeds its declared size");
-                    }
-                    while (length > 0) {
-                        authorize(session);
-                        int count = Math.min(65536, length);
-                        JsonNode chunk = requestLive(
-                                session,
-                                "MATERIALIZE_CHUNK",
-                                new WorkerRequests.TransferChunk(
-                                        executionId,
-                                        transferId,
-                                        sent,
-                                        Base64.getEncoder()
-                                                .encodeToString(Arrays.copyOfRange(bytes, offset, offset + count))),
-                                Duration.ofSeconds(3));
-                        checkMaterialization(chunk);
-                        requireOk(chunk, session);
-                        sent += count;
-                        if (WorkerResponses.read(chunk, WorkerResponses.TransferProgress.class)
-                                        .receivedBytes()
-                                != sent) {
-                            throw new WorkerUnavailableException();
-                        }
-                        offset += count;
-                        length -= count;
-                    }
-                }
-            };
-            var output = new BufferedOutputStream(sink, 65536);
-            // Flush only after the source succeeds. Closing on failure could replay a buffered chunk.
-            source.writeTo(output);
-            output.flush();
-            if (sink.sent != size) {
-                throw new IllegalArgumentException("media source is incomplete");
-            }
-            authorize(session);
-            JsonNode committed = requestLive(session, "MATERIALIZE_COMMIT", reference, Duration.ofSeconds(5));
-            if (committed.path("code").asString("").equals("MATERIALIZE_REJECTED")) {
-                return false;
-            }
-            checkMaterialization(committed);
-            requireOk(committed, session);
-            var installed = WorkerResponses.read(committed, WorkerResponses.Materialization.class)
-                    .installed();
-            // A deletion is acknowledged by an explicit null digest. An absent key is a malformed
-            // answer and must not be read as a file that was erased.
-            JsonNode reported = committed.path("installed").path("sha256");
-            if (!installed.path().equals(path) || (delete ? !reported.isNull() : !digest.equals(installed.sha256()))) {
-                throw new WorkerUnavailableException();
-            }
-            return true;
-        } catch (IOException failure) {
-            throw new WorkerUnavailableException(failure);
-        } finally {
-            try {
-                requestLive(session, "MATERIALIZE_ABORT", reference, Duration.ofSeconds(3));
-            } catch (RuntimeException cleanupFailure) {
-                log.warn(
-                        "Worker transfer cleanup was not acknowledged; command cleanup will release its slot",
-                        cleanupFailure);
-            }
-        }
-    }
-
-    private JsonNode requestLive(Session session, String operation, WorkerRequests.Data data, Duration timeout) {
-        WorkerClient.PreparedRequest request;
-        synchronized (session) {
-            requireLive(session);
-            request = worker.prepare(session.hello, session.identity(), operation, data);
-        }
-        return worker.send(request, timeout);
-    }
-
-    private CompletableFuture<Void> stop(Session session, String reason) {
+    private CompletableFuture<Void> stop(ExecutionSession session, String reason) {
         synchronized (session) {
             if (session.capacityReleased) {
                 return CompletableFuture.completedFuture(null);
@@ -2308,7 +1111,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return session.stopped;
     }
 
-    private void stopAndAwait(Session session, String reason) {
+    private void stopAndAwait(ExecutionSession session, String reason) {
         try {
             if (session.capacityReleased) {
                 return;
@@ -2332,7 +1135,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
      * Releases confirmed worker capacity while preserving the account binding. A later command
      * can attach the same disk files under a new lease; explicit disposal removes the binding.
      */
-    private synchronized void releaseCapacity(Session session) {
+    private synchronized void releaseCapacity(ExecutionSession session) {
         if (!session.capacityReleased && !session.auxiliary) {
             releasedCopies.increment();
         }
@@ -2344,7 +1147,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void closeWorker(Session session, String reason) {
+    private void closeWorker(ExecutionSession session, String reason) {
         long deadline = System.nanoTime() + closeTimeout.toNanos();
         while (System.nanoTime() < deadline) {
             JsonNode response = session.auxiliary
@@ -2371,7 +1174,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     @EventListener
     void revoked(AuthRevocation event) {
-        List<Session> affected;
+        List<ExecutionSession> affected;
         synchronized (this) {
             affected = sessions.values().stream()
                     .filter(session -> session.key.workspace().equals(event.workspaceId())
@@ -2405,7 +1208,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 pause();
             }
-            for (Session session : affected) {
+            for (ExecutionSession session : affected) {
                 stopAndAwait(session, "session_closed");
             }
         } catch (RuntimeException exception) {
@@ -2416,7 +1219,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     @Override
     public void close() {
-        List<Session> remaining;
+        List<ExecutionSession> remaining;
         synchronized (this) {
             closed = true;
             remaining = new ArrayList<>(sessions.values());
@@ -2426,7 +1229,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         heartbeat.shutdownNow();
         remaining.forEach(session -> stop(session, "client_shutdown"));
-        for (Session session : remaining) {
+        for (ExecutionSession session : remaining) {
             try {
                 stopAndAwait(session, "client_shutdown");
             } catch (RuntimeException exception) {
@@ -2435,36 +1238,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         controls.shutdownNow();
         commandIo.shutdownNow();
-    }
-
-    private static void requireLive(Session session) {
-        if (session.stopping.get()) {
-            throw new WorkerUnavailableException();
-        }
-    }
-
-    /**
-     * Accepts an answer only if it succeeded and belongs to this lease and commit. A refusal
-     * carries no detail to the caller, because a worker failure is not something the caller can
-     * act on and its text could name host paths or command bytes.
-     *
-     * <p>The rejection code does reach the log, which is where an operator diagnoses this. It is
-     * printed only when it matches the shape the protocol defines for a code, so a worker that
-     * puts something else in that field cannot write arbitrary text into the log.
-     */
-    private static void requireOk(JsonNode response, Session session) {
-        if (!response.path("ok").booleanValue()) {
-            String code = response.path("code").asString("INVALID_RESPONSE");
-            log.warn(
-                    "Isolated worker rejected an operation: {}",
-                    code.matches("[A-Z_]{1,64}") ? code : "INVALID_RESPONSE");
-        }
-        if (!response.path("ok").booleanValue()
-                || !response.path("leaseId").asString("").equals(session.leaseId.toString())
-                || (response.hasNonNull("commit")
-                        && !response.path("commit").asString("").equals(session.commit))) {
-            throw new WorkerUnavailableException();
-        }
     }
 
     private static ExecutionResult result(
@@ -2488,7 +1261,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (!Set.of("stdout", "stderr").contains(entry.getKey())) {
                     throw new WorkerUnavailableException();
                 }
-                artifacts.put(entry.getKey(), artifactMetadata(entry.getValue()));
+                artifacts.put(entry.getKey(), ExecutorBridge.artifactMetadata(entry.getValue()));
             }
             for (var entry : result.path("artifactErrors").properties()) {
                 if (!Set.of("stdout", "stderr").contains(entry.getKey())
@@ -2524,87 +1297,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private static String hash(String session) {
-        try {
-            return HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(session.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
-    }
-
     private static void pause() {
         try {
             Thread.sleep(100);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new WorkerUnavailableException();
-        }
-    }
-
-    private record SessionKey(UUID account, WorkspaceId workspace, String scopeHash) {}
-
-    private static void checkMaterialization(JsonNode response) {
-        String code = response.path("code").asString("");
-        if (code.equals("MATERIALIZE_CAPACITY")) {
-            throw new MaterializationCapacity();
-        }
-    }
-
-    private static final class MaterializationCapacity extends RuntimeException {}
-
-    /**
-     * An account copy's current execution lease. The busy claim serializes commands and principal
-     * refreshes; changing grants fences the old lease before attaching the same files. Worker
-     * requests remain bound to that lease's grant, while every host operation rechecks current
-     * authorization. Closing a transport does not release this binding.
-     *
-     * <p>Command, renewal and revocation threads share the lifecycle latches. Capacity is released
-     * only after confirmed containment, never merely because an RPC or a close request failed.
-     */
-    private static final class Session {
-        private final UUID copyId;
-        private final SessionKey key;
-        private volatile AuthPrincipal principal;
-        private final boolean fullRead;
-        private volatile RepositorySnapshotExports.PublicExport publicExport;
-        private final UUID leaseId;
-        private final AtomicBoolean busy = new AtomicBoolean();
-        private final AtomicBoolean stopping = new AtomicBoolean();
-        private final AtomicBoolean renewing = new AtomicBoolean();
-        private final CompletableFuture<Void> stopped = new CompletableFuture<>();
-        private final CompletableFuture<Void> contained = new CompletableFuture<>();
-        private volatile WorkerClient.Hello hello;
-        private volatile String commit;
-        private String gitCommit;
-        private SelectedFileSaves.State saveState;
-        private volatile AccountCopyRecord accountRecord;
-        private volatile boolean openAttempted;
-        private volatile boolean ready;
-        private boolean attaching;
-        private volatile boolean capacityReleased;
-        private volatile boolean detached;
-        private boolean auxiliary;
-        private UUID retainedAppBoot;
-        private UUID priorPrincipal;
-        private String closeReason;
-        private volatile long nextRenew;
-
-        private Session(SessionKey key, AuthPrincipal principal, boolean fullRead, UUID copyId, UUID leaseId) {
-            this.key = key;
-            this.principal = principal;
-            this.fullRead = fullRead;
-            this.copyId = copyId;
-            this.leaseId = leaseId;
-        }
-
-        private WorkerClient.Identity identity() {
-            return new WorkerClient.Identity(
-                    priorPrincipal == null ? principal.subjectId() : priorPrincipal,
-                    principal.accountId(),
-                    key.workspace().value(),
-                    key.scopeHash(),
-                    leaseId);
         }
     }
 }
