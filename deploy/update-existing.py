@@ -142,6 +142,50 @@ class Installation:
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
 
+    def present(self, reference):
+        try:
+            return json.loads(self.command("docker", "image", "inspect", reference))[0]["Id"]
+        except DeploymentError:
+            return None
+
+    # Runs only after the state is healthy. Retired images carry the deployed image's source label
+    # and are referenced by no pin: the selected and previous app/frontend images, every image in
+    # the rendered configuration and every image a container on this host uses stay. Removal goes
+    # through tags and digests, never --force; whatever Docker declines to delete stays, and a
+    # retirement problem never turns the recorded healthy deployment into a failure.
+    def retire_images(self, state, rendered):
+        try:
+            labels = json.loads(self.command("docker", "image", "inspect", state["imageIds"]["app"]))[0]["Config"].get("Labels") or {}
+            source = labels.get("org.opencontainers.image.source")
+            if not source:
+                return 0
+            retained = set(state["imageIds"].values())
+            pins = list(state["previousImages"].values()) + [service.get("image") for service in rendered["services"].values()]
+            retained.update(filter(None, (self.present(pin) for pin in pins if pin)))
+            containers = self.command("docker", "ps", "-aq").split()
+            if containers:
+                retained.update(self.command("docker", "inspect", "--format", "{{.Image}}", *containers).split())
+            listed = self.command("docker", "images", "--no-trunc", "--quiet", "--filter",
+                                  "label=org.opencontainers.image.source=" + source).split()
+            retired = 0
+            for image in sorted(set(listed) - retained):
+                details = json.loads(self.command("docker", "image", "inspect", image))[0]
+                references = [tag for tag in details.get("RepoTags", []) if tag != "<none>:<none>"] + details.get("RepoDigests", [])
+                for reference in references or [image]:
+                    # Docker deletes an untagged image at its first digest reference.
+                    if self.present(image) is None:
+                        break
+                    try:
+                        self.command("docker", "image", "rm", reference)
+                    except DeploymentError:
+                        pass
+                if self.present(image) is None:
+                    retired += 1
+            return retired
+        except (DeploymentError, KeyError, ValueError) as error:
+            print("existing deployment: image retirement did not complete: " + str(error), file=sys.stderr)
+            return None
+
     def update(self, revision, app_image, frontend_image, check_only=False):
         image_refs = {"app": app_image, "frontend": frontend_image}
         image_ids = {name: self.image(reference, revision) for name, reference in image_refs.items()}
@@ -179,7 +223,8 @@ class Installation:
         self.verify(state)
         state["status"] = "healthy"
         write_json(self.state_file, state)
-        return {"status": "healthy", "revision": revision, "imageIds": image_ids}
+        return {"status": "healthy", "revision": revision, "imageIds": image_ids,
+                "retiredImages": self.retire_images(state, rendered)}
 
 
 def load_config(root):

@@ -12,12 +12,14 @@ spec = importlib.util.spec_from_file_location("updater", Path(__file__).parents[
 updater = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updater)
 REVISION = "a" * 40
+SOURCE = "https://github.com/example/poketto"
 
 
 class Docker:
     def __init__(self):
         self.calls = []
         self.fail_up = False
+        self.fail_listing = False
         self.changed_runtime = False
         self.changed_revision_environment = False
         self.image_revision = REVISION
@@ -38,16 +40,59 @@ class Docker:
                 "HostConfig": {"Memory": 123, "NetworkMode": "example_default", "CapDrop": ["ALL"]},
                 "Mounts": [{"Type": "bind", "Source": "/data", "Destination": "/app/data", "RW": True}],
             }
+        # Local images: the fixture services' own, a stale build of this repository with two digest
+        # references, one used by a container outside the project and one from another repository.
+        self.images = {}
+        for reference in ("old-app", "old-frontend", "new-app", "new-frontend"):
+            self.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        for reference in ("other-app", "retained-db", "retained-gateway"):
+            self.images["id-" + reference] = {"refs": [reference], "source": None}
+        self.images["id-stale"] = {"refs": ["registry/poketto@sha256:stale-a", "registry/poketto@sha256:stale-b"], "source": SOURCE}
+        self.images["id-sidecar"] = {"refs": ["registry/poketto@sha256:sidecar"], "source": SOURCE}
+        self.images["id-foreign"] = {"refs": ["registry/other@sha256:1"], "source": "https://github.com/example/other"}
+        self.sidecar = {"Id": "sidecar-container", "Image": "id-sidecar",
+                        "Config": {"Image": "registry/poketto@sha256:sidecar", "Labels": {}}}
+        self.removed = []
+
+    def find_image(self, key):
+        for image_id, image in self.images.items():
+            if key == image_id or key in image["refs"]:
+                return image_id, image
+        raise updater.DeploymentError("deployment command failed: docker")
 
     def __call__(self, *args):
         self.calls.append(args)
         if args[1:3] == ("image", "inspect"):
-            return json.dumps([{"Id": "id-" + args[3], "Config": {"Labels": {
-                "org.opencontainers.image.revision": self.image_revision}}}])
+            result = []
+            for key in args[3:]:
+                image_id, image = self.find_image(key)
+                labels = {"org.opencontainers.image.revision": self.image_revision}
+                if image["source"]:
+                    labels["org.opencontainers.image.source"] = image["source"]
+                result.append({"Id": image_id, "RepoTags": [], "RepoDigests": list(image["refs"]),
+                               "Config": {"Labels": labels}})
+            return json.dumps(result)
+        if args[1:3] == ("image", "rm"):
+            image_id, _ = self.find_image(args[3])
+            self.removed.append(args[3])
+            # Docker deletes an untagged image at its first digest reference.
+            del self.images[image_id]
+            return ""
+        if args[1] == "images":
+            if self.fail_listing:
+                raise updater.DeploymentError("deployment command failed: docker")
+            wanted = args[args.index("--filter") + 1].split("=", 2)[2]
+            return "\n".join(image_id for image_id, image in self.images.items() if image["source"] == wanted)
         if args[1] == "ps":
-            return " ".join(item["Id"] for item in self.running.values())
+            ids = [item["Id"] for item in self.running.values()]
+            if "--filter" not in args:
+                ids.append(self.sidecar["Id"])
+            return " ".join(ids)
         if args[1] == "inspect":
-            return json.dumps(list(self.running.values()))
+            records = list(self.running.values()) + [self.sidecar]
+            if args[2] == "--format":
+                return "\n".join(record["Image"] for record in records if record["Id"] in args[4:])
+            return json.dumps([record for record in records if record["Id"] in args[2:]])
         if args[1] == "compose":
             config = copy.deepcopy(self.configuration)
             files = [Path(args[i + 1]) for i, value in enumerate(args) if value == "-f"]
@@ -99,17 +144,42 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertNotIn("retained-secret", state)
         self.assertEqual(json.loads(state)["status"], "healthy")
 
+    def test_healthy_update_retires_unreferenced_images_of_this_repository(self):
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["retiredImages"], 1)
+        self.assertNotIn("id-stale", self.docker.images)
+        for retained in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend",
+                         "id-retained-db", "id-retained-gateway", "id-sidecar", "id-foreign"):
+            self.assertIn(retained, self.docker.images)
+        self.assertEqual(self.docker.removed, ["registry/poketto@sha256:stale-a"])
+        self.assertFalse(any("--force" in call or "-f" in call for call in self.docker.calls if call[1:3] == ("image", "rm")))
+        healthy = self.docker.calls.index(next(call for call in self.docker.calls if call[1] == "images"))
+        self.assertLess(self.docker.calls.index(next(call for call in self.docker.calls if "up" in call)), healthy)
+
+    def test_retirement_needs_the_source_label_and_never_fails_a_healthy_deployment(self):
+        self.docker.images["id-new-app"]["source"] = None
+        self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["retiredImages"], 0)
+        self.assertIn("id-stale", self.docker.images)
+        self.docker.images["id-new-app"]["source"] = SOURCE
+        self.docker.fail_listing = True
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertIsNone(result["retiredImages"])
+        self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "healthy")
+
     def test_preflight_does_not_change_containers_or_confirm_a_deployment(self):
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
         self.assertFalse(self.installation.overlay.exists())
         self.assertFalse(self.installation.state_file.exists())
         self.assertFalse(any("up" in call for call in self.docker.calls))
+        self.assertEqual(self.docker.removed, [])
 
     def test_failed_update_keeps_pending_state_and_same_target_can_be_reconciled(self):
         self.docker.fail_up = True
         with self.assertRaises(updater.DeploymentError):
             self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+        self.assertEqual(self.docker.removed, [])
         self.docker.fail_up = False
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["status"], "healthy")
 
