@@ -33,15 +33,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
-    private static final Logger log = LoggerFactory.getLogger(RepositoryMcpTools.class);
+    private static final Set<String> PUT_ASSET_FIELDS = Set.of("operationKey", "mode", "url", "file");
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
@@ -245,10 +244,10 @@ final class RepositoryMcpTools {
                     } catch (IllegalArgumentException exception) {
                         return error("INVALID_INPUT", "Use the documented bounded fields.");
                     } catch (ContentRepositoryException exception) {
-                        log.warn("mcp tool {} could not use the repository authority", name, exception);
+                        McpToolOutcomes.failed(name, exception);
                         return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
                     } catch (RuntimeException exception) {
-                        log.warn("mcp tool {} failed", name, exception);
+                        McpToolOutcomes.failed(name, exception);
                         return error(
                                 "UNAVAILABLE",
                                 "Operation could not be completed; verify authoritative state before retrying writes.");
@@ -337,7 +336,7 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult putAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("operationKey", "mode", "url", "file"));
+        fields(input, PUT_ASSET_FIELDS);
         PutAssetInput request;
         try {
             request = json.convertValue(input, PutAssetInput.class);
@@ -356,15 +355,25 @@ final class RepositoryMcpTools {
     }
 
     // Jackson reports the record constructor's IllegalArgumentException as a DatabindException whose
-    // cause carries the record's own message; a shape mismatch is described without echoing the value,
-    // because a file download URL is a capability.
+    // cause carries the record's own message. A shape mismatch names the documented field it stopped
+    // at and never the value, because a file download URL is a capability; at the file field it says
+    // what a connector that passed a path from its own environment has to do instead.
     private static String inputProblem(DatabindException invalid) {
         if (invalid.getCause() instanceof IllegalArgumentException reason) {
             return reason.getMessage();
         }
-        return "file must be the file reference this conversation holds (an object with download_url and"
-                + " file_id), passed with mode=import; a path in your own environment cannot be read here. Only an"
-                + " environment that can send HTTPS requests itself should use mode=upload and PUT the bytes.";
+        String field = invalid.getPath().stream()
+                .map(JacksonException.Reference::getPropertyName)
+                .filter(name -> name != null && PUT_ASSET_FIELDS.contains(name))
+                .findFirst()
+                .orElse("the input");
+        if (field.equals("file")) {
+            return "file must be the file reference this conversation holds (an object with download_url and"
+                    + " file_id), passed with mode=import; a path in your own environment cannot be read here. Only"
+                    + " an environment that can send HTTPS requests itself should use mode=upload and PUT the bytes.";
+        }
+        return field + " does not have the documented shape: operationKey and url are strings, mode is import"
+                + " or upload, and file is an object with download_url and file_id.";
     }
 
     private static Map<String, Object> putAssetSchema() {

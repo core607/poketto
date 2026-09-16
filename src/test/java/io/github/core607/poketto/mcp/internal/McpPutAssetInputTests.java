@@ -15,6 +15,8 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +29,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Jackson 3 reports a rejected record as a DatabindException, not the IllegalArgumentException the
  * tool boundary maps to INVALID_INPUT, so a client that passed a file path was told the service was
- * unavailable. These pin the code and the message a model needs to correct itself.
+ * unavailable. These pin the code and the message a model needs to correct itself, and that the
+ * record of an unmapped failure carries its types but neither its message nor its stack.
  */
 @ExtendWith(OutputCaptureExtension.class)
 class McpPutAssetInputTests {
@@ -76,6 +79,20 @@ class McpPutAssetInputTests {
     }
 
     @Test
+    void aShapeMismatchNamesTheFieldItStoppedAtAndNotTheFile() {
+        JsonNode url = body(call(Map.of("operationKey", KEY, "mode", "import", "url", Map.of("href", "https://x/y"))));
+        JsonNode mode = body(call(Map.of("operationKey", KEY, "mode", List.of("import"))));
+
+        assertThat(url.path("code").asString()).isEqualTo("INVALID_INPUT");
+        assertThat(url.path("message").asString())
+                .startsWith("url does not have the documented shape")
+                .doesNotContain("file reference", "https://x/y");
+        assertThat(mode.path("code").asString()).isEqualTo("INVALID_INPUT");
+        assertThat(mode.path("message").asString()).startsWith("mode does not have the documented shape");
+        verifyNoInteractions(auth, transfers);
+    }
+
+    @Test
     void theRecordsOwnValidationMessageReachesTheCaller() {
         JsonNode missing = body(call(Map.of("operationKey", KEY, "mode", "import")));
         JsonNode both = body(call(Map.of(
@@ -89,13 +106,17 @@ class McpPutAssetInputTests {
     }
 
     @Test
-    void anUnexpectedFailureIsRecordedWithItsCause(CapturedOutput output) {
-        when(sessions.resolve(exchange)).thenThrow(new IllegalStateException("session registry offline"));
+    void anUnexpectedFailureIsRecordedByItsTypesAlone(CapturedOutput output) {
+        when(sessions.resolve(exchange))
+                .thenThrow(new IllegalStateException(
+                        "registry offline at /srv/private/notes", new IOException("/srv/private/notes/socket")));
 
         JsonNode body = body(call(Map.of("operationKey", KEY, "mode", "upload")));
 
         assertThat(body.path("code").asString()).isEqualTo("UNAVAILABLE");
-        assertThat(output).contains("mcp tool put_asset failed", "IllegalStateException", "session registry offline");
+        assertThat(output)
+                .contains("mcp tool put_asset failed: java.lang.IllegalStateException caused by java.io.IOException")
+                .doesNotContain("registry offline", "/srv/private");
     }
 
     private McpSchema.CallToolResult call(Map<String, Object> arguments) {
