@@ -63,61 +63,73 @@ public final class MarkdownDestinations {
             return Optional.empty();
         }
         try {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            for (int i = 0; i < raw.length(); ) {
-                char character = raw.charAt(i);
-                if (character == '%') {
-                    if (i + 2 >= raw.length()) {
-                        return Optional.empty();
-                    }
-                    int high = Character.digit(raw.charAt(i + 1), 16);
-                    int low = Character.digit(raw.charAt(i + 2), 16);
-                    if (high < 0 || low < 0) {
-                        return Optional.empty();
-                    }
-                    bytes.write((high << 4) | low);
-                    i += 3;
-                } else {
-                    int codePoint = raw.codePointAt(i);
-                    bytes.writeBytes(new String(Character.toChars(codePoint)).getBytes(StandardCharsets.UTF_8));
-                    i += Character.charCount(codePoint);
-                }
-            }
-            String decoded = StrictText.utf8(bytes.toByteArray());
-            if (decoded.startsWith("//")
-                    || decoded.indexOf('\\') >= 0
-                    || decoded.indexOf(':') >= 0
-                    || decoded.codePoints().anyMatch(Character::isISOControl)) {
-                return Optional.empty();
-            }
-            ArrayDeque<String> segments = new ArrayDeque<>();
-            if (!decoded.startsWith("/") && document.contains("/")) {
-                for (String segment :
-                        document.substring(0, document.lastIndexOf('/')).split("/")) {
-                    segments.addLast(segment);
-                }
-            }
-            for (String segment : decoded.split("/")) {
-                if (segment.isEmpty() || segment.equals(".")) {
-                    continue;
-                }
-                if (segment.equals("..")) {
-                    if (segments.isEmpty()) {
-                        return Optional.empty();
-                    }
-                    segments.removeLast();
-                } else {
-                    if (segment.equalsIgnoreCase(".git") || segment.equalsIgnoreCase(".poketto")) {
-                        return Optional.empty();
-                    }
-                    segments.addLast(segment);
-                }
-            }
-            String result = String.join("/", segments);
-            return result.length() > ContentLimits.MAX_PATH_LENGTH ? Optional.empty() : Optional.of(result);
+            return decode(raw).flatMap(decoded -> resolve(document, decoded));
         } catch (CharacterCodingException | IllegalArgumentException exception) {
             return Optional.empty();
         }
+    }
+
+    // Percent escapes decode to bytes and everything else is written as UTF-8; the result must be
+    // strict UTF-8 without a scheme, backslash or control character.
+    private static Optional<String> decode(String raw) throws CharacterCodingException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        for (int i = 0; i < raw.length(); ) {
+            char character = raw.charAt(i);
+            if (character == '%') {
+                if (i + 2 >= raw.length()) {
+                    return Optional.empty();
+                }
+                int high = Character.digit(raw.charAt(i + 1), 16);
+                int low = Character.digit(raw.charAt(i + 2), 16);
+                if (high < 0 || low < 0) {
+                    return Optional.empty();
+                }
+                bytes.write((high << 4) | low);
+                i += 3;
+            } else {
+                int codePoint = raw.codePointAt(i);
+                bytes.writeBytes(new String(Character.toChars(codePoint)).getBytes(StandardCharsets.UTF_8));
+                i += Character.charCount(codePoint);
+            }
+        }
+        String decoded = StrictText.utf8(bytes.toByteArray());
+        if (decoded.startsWith("//")
+                || decoded.indexOf('\\') >= 0
+                || decoded.indexOf(':') >= 0
+                || decoded.codePoints().anyMatch(Character::isISOControl)) {
+            return Optional.empty();
+        }
+        return Optional.of(decoded);
+    }
+
+    // A relative target starts in the document's folder; ".." never climbs above the repository root,
+    // and the reserved directories are never addressable.
+    private static Optional<String> resolve(String document, String decoded) {
+        ArrayDeque<String> segments = new ArrayDeque<>();
+        if (!decoded.startsWith("/") && document.contains("/")) {
+            for (String segment :
+                    document.substring(0, document.lastIndexOf('/')).split("/")) {
+                segments.addLast(segment);
+            }
+        }
+        for (String segment : decoded.split("/")) {
+            if (segment.isEmpty() || segment.equals(".")) {
+                continue;
+            }
+            if (segment.equals("..")) {
+                if (segments.isEmpty()) {
+                    return Optional.empty();
+                }
+                segments.removeLast();
+            } else {
+                if (segment.equalsIgnoreCase(".git") || segment.equalsIgnoreCase(".poketto")) {
+                    return Optional.empty();
+                }
+                segments.addLast(segment);
+            }
+        }
+        String result = String.join("/", segments);
+        return result.length() > ContentLimits.MAX_PATH_LENGTH ? Optional.empty() : Optional.of(result);
     }
 
     /** Resolves only known article routes; the authored fragment is intentionally excluded. */

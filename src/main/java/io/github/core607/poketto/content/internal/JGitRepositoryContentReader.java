@@ -150,44 +150,58 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                     return logicalDirectory(repository, workspaceId, resolved, tree, path, offset, limit, media);
                 }
                 if (!path.isEmpty()) {
-                    try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
-                        if (entry == null) {
-                            return new RepositoryDirectoryPage(workspaceId, resolved, path, true, List.of(), null);
-                        }
-                        if (!FileMode.TREE.equals(entry.getFileMode(0))) {
-                            throw new IllegalArgumentException("requested path is not a directory");
-                        }
-                        tree = entry.getObjectId(0);
+                    Optional<ObjectId> subtree = subtree(repository, tree, path);
+                    if (subtree.isEmpty()) {
+                        return new RepositoryDirectoryPage(workspaceId, resolved, path, true, List.of(), null);
                     }
+                    tree = subtree.orElseThrow();
                 }
                 children.addTree(tree);
-                List<RepositoryDirectoryPage.Entry> entries = new ArrayList<>();
-                int index = 0;
-                Integer nextOffset = null;
-                while (children.next()) {
-                    if (++index <= offset) {
-                        continue;
-                    }
-                    if (entries.size() == limit) {
-                        nextOffset = offset + entries.size();
-                        if (nextOffset > MAX_TREE_ENTRIES) {
-                            throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
-                        }
-                        break;
-                    }
-                    if (children.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4) {
-                        throw new ContentRepositoryException("directory entry exceeds the repository path bound");
-                    }
-                    String childPath =
-                            path.isEmpty() ? children.getPathString() : path + "/" + children.getPathString();
-                    if (childPath.length() > ContentLimits.MAX_PATH_LENGTH) {
-                        throw new ContentRepositoryException("directory entry exceeds the repository path bound");
-                    }
-                    entries.add(new RepositoryDirectoryPage.Entry(childPath, kind(children.getFileMode(0))));
-                }
-                return new RepositoryDirectoryPage(workspaceId, resolved, path, false, entries, nextOffset);
+                return childPage(workspaceId, resolved, path, children, offset, limit);
             }
         });
+    }
+
+    private static Optional<ObjectId> subtree(Repository repository, ObjectId tree, String path) throws IOException {
+        try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
+            if (entry == null) {
+                return Optional.empty();
+            }
+            if (!FileMode.TREE.equals(entry.getFileMode(0))) {
+                throw new IllegalArgumentException("requested path is not a directory");
+            }
+            return Optional.of(entry.getObjectId(0));
+        }
+    }
+
+    // One page of direct children; a continuation offset is returned only when more entries follow.
+    private static RepositoryDirectoryPage childPage(
+            WorkspaceId workspaceId, Optional<String> resolved, String path, TreeWalk children, int offset, int limit)
+            throws IOException {
+        List<RepositoryDirectoryPage.Entry> entries = new ArrayList<>();
+        int index = 0;
+        Integer nextOffset = null;
+        while (children.next()) {
+            if (++index <= offset) {
+                continue;
+            }
+            if (entries.size() == limit) {
+                nextOffset = offset + entries.size();
+                if (nextOffset > MAX_TREE_ENTRIES) {
+                    throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
+                }
+                break;
+            }
+            if (children.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4) {
+                throw new ContentRepositoryException("directory entry exceeds the repository path bound");
+            }
+            String childPath = path.isEmpty() ? children.getPathString() : path + "/" + children.getPathString();
+            if (childPath.length() > ContentLimits.MAX_PATH_LENGTH) {
+                throw new ContentRepositoryException("directory entry exceeds the repository path bound");
+            }
+            entries.add(new RepositoryDirectoryPage.Entry(childPath, kind(children.getFileMode(0))));
+        }
+        return new RepositoryDirectoryPage(workspaceId, resolved, path, false, entries, nextOffset);
     }
 
     private static RepositoryDirectoryPage.Kind kind(FileMode mode) {
@@ -337,8 +351,34 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         if (resolved.isEmpty()) {
             return new RepositoryTree(workspaceId, resolved, List.of(), List.of());
         }
-        var policy = PublicRepositoryDirectories.publicPolicy(repository, resolved);
+        Scan scan = scan(workspaceId, repository, resolved, eligible);
+        List<RepositoryDiagnostic> diagnostics = scan.diagnostics();
+        List<String> fallbackPaths = scan.parsed().stream()
+                .filter(document -> document.metadata().createdAt().isEmpty()
+                        || document.metadata().updatedAt().isEmpty())
+                .map(document -> document.file().path())
+                .toList();
+        var history = new RepositoryHistoryDates().read(repository, resolved.orElseThrow(), fallbackPaths);
         List<RepositoryDocument> documents = new ArrayList<>();
+        for (ParsedDocument parsed : scan.parsed()) {
+            documents.add(document(parsed, history.get(parsed.file().path()), diagnostics));
+        }
+        FolderLandings.preferIndex(documents, diagnostics);
+        Set<String> excluded = collisions(scan.paths(), documents, diagnostics);
+        documents.removeIf(document -> excluded.contains(document.file().path()));
+        documents.sort(Comparator.comparing(document -> document.file().path()));
+        diagnostics.sort(Comparator.comparing(RepositoryDiagnostic::path).thenComparing(RepositoryDiagnostic::code));
+        return new RepositoryTree(workspaceId, resolved, documents, diagnostics);
+    }
+
+    /** Every eligible Markdown path, the documents that parsed, and the diagnostics collected so far. */
+    private record Scan(List<String> paths, List<ParsedDocument> parsed, List<RepositoryDiagnostic> diagnostics) {}
+
+    // One recursive walk within the entry, document count and text byte bounds.
+    private Scan scan(
+            WorkspaceId workspaceId, Repository repository, Optional<String> resolved, Predicate<String> eligible)
+            throws IOException {
+        var policy = PublicRepositoryDirectories.publicPolicy(repository, resolved);
         List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
         List<String> paths = new ArrayList<>();
         long total = 0;
@@ -375,10 +415,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 RepositoryFile file = JGitRepositoryFileReader.read(
                         repository, workspaceId, resolved, path, policy.permitsPath(path));
                 diagnostics.addAll(file.diagnostics());
-                if (file.source().isEmpty()) {
-                    continue;
-                }
-                if (!file.diagnostics().isEmpty()) {
+                if (file.source().isEmpty() || !file.diagnostics().isEmpty()) {
                     continue;
                 }
                 try {
@@ -389,40 +426,30 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 }
             }
         }
-        List<String> fallbackPaths = parsed.stream()
-                .filter(document -> document.metadata().createdAt().isEmpty()
-                        || document.metadata().updatedAt().isEmpty())
-                .map(document -> document.file().path())
-                .toList();
-        var history = new RepositoryHistoryDates().read(repository, resolved.orElseThrow(), fallbackPaths);
-        for (ParsedDocument document : parsed) {
-            RepositoryFile file = document.file();
-            var metadata = document.metadata();
-            var dates = history.get(file.path());
-            Instant createdAt = metadata.createdAt().orElseGet(() -> dates.createdAt());
-            Instant updatedAt = metadata.updatedAt().orElseGet(() -> dates.updatedAt());
-            if (metadata.inferredMetadata()) {
-                diagnostics.add(
-                        diagnostic(file.path(), "INFERRED_METADATA", "title and dates use repository fallbacks"));
-            }
-            documents.add(new RepositoryDocument(
-                    file,
-                    metadata.title(),
-                    metadata.body(),
-                    metadata.tags(),
-                    createdAt,
-                    updatedAt,
-                    metadata.route(),
-                    RepositoryPathRules.folderPage(file.path()),
-                    RepositoryPathRules.privatePath(file.path()),
-                    metadata.publicAuthor()));
+        return new Scan(paths, parsed, diagnostics);
+    }
+
+    // Authored dates win; history dates fill the gaps and are reported as inferred metadata.
+    private static RepositoryDocument document(
+            ParsedDocument document, RepositoryHistoryDates.Dates dates, List<RepositoryDiagnostic> diagnostics) {
+        RepositoryFile file = document.file();
+        var metadata = document.metadata();
+        Instant createdAt = metadata.createdAt().orElseGet(() -> dates.createdAt());
+        Instant updatedAt = metadata.updatedAt().orElseGet(() -> dates.updatedAt());
+        if (metadata.inferredMetadata()) {
+            diagnostics.add(diagnostic(file.path(), "INFERRED_METADATA", "title and dates use repository fallbacks"));
         }
-        FolderLandings.preferIndex(documents, diagnostics);
-        Set<String> excluded = collisions(paths, documents, diagnostics);
-        documents.removeIf(document -> excluded.contains(document.file().path()));
-        documents.sort(Comparator.comparing(document -> document.file().path()));
-        diagnostics.sort(Comparator.comparing(RepositoryDiagnostic::path).thenComparing(RepositoryDiagnostic::code));
-        return new RepositoryTree(workspaceId, resolved, documents, diagnostics);
+        return new RepositoryDocument(
+                file,
+                metadata.title(),
+                metadata.body(),
+                metadata.tags(),
+                createdAt,
+                updatedAt,
+                metadata.route(),
+                RepositoryPathRules.folderPage(file.path()),
+                RepositoryPathRules.privatePath(file.path()),
+                metadata.publicAuthor());
     }
 
     @Override
