@@ -112,7 +112,7 @@ class Docker:
                 for name in ("app", "frontend"):
                     self.running[name]["Id"] = name + "-updated"
                     image = config["services"][name]["image"]
-                    self.running[name]["Image"] = "id-" + image
+                    self.running[name]["Image"] = self.find_image(image)[0]
                     self.running[name]["Config"]["Image"] = image
                 if self.changed_runtime:
                     self.running["app"]["HostConfig"]["Memory"] += 1
@@ -184,16 +184,28 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertIn("id-old-app", self.docker.images)
         self.assertIn("id-old-frontend", self.docker.images)
 
-    def test_redeploying_the_same_revision_under_another_reference_keeps_the_previous_version(self):
+    def test_redeploying_the_same_build_under_another_reference_keeps_the_previous_version(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        self.docker.images["id-new-app"]["refs"].append("registry/poketto:sha-" + REVISION)
+        self.docker.images["id-new-frontend"]["refs"].append("registry/poketto-frontend:sha-" + REVISION)
+        result = self.installation.update(
+                REVISION, "registry/poketto:sha-" + REVISION, "registry/poketto-frontend:sha-" + REVISION)
+        self.assertEqual(result["status"], "healthy")
+        self.assertEqual(result["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "old-app", "frontend": "old-frontend"})
+        self.assertIn("id-old-app", self.docker.images)
+
+    def test_a_rebuilt_revision_records_the_replaced_build_as_previous(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
         for reference in ("new-app-2", "new-frontend-2"):
             self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
         result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
         self.assertEqual(result["status"], "healthy")
         state = json.loads(self.installation.state_file.read_text())
-        self.assertEqual(state["previousImages"], {"app": "old-app", "frontend": "old-frontend"})
-        self.assertIn("id-old-app", self.docker.images)
-        self.assertNotIn("id-new-app", self.docker.images)
+        self.assertEqual(state["previousImages"], {"app": "new-app", "frontend": "new-frontend"})
+        self.assertIn("id-new-app", self.docker.images)
+        self.assertNotIn("id-old-app", self.docker.images)
         self.assertEqual(result["retiredImages"], 2)
 
     def test_preflight_does_not_change_containers_or_confirm_a_deployment(self):
