@@ -33,11 +33,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
+    private static final Logger log = LoggerFactory.getLogger(RepositoryMcpTools.class);
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
@@ -241,8 +245,10 @@ final class RepositoryMcpTools {
                     } catch (IllegalArgumentException exception) {
                         return error("INVALID_INPUT", "Use the documented bounded fields.");
                     } catch (ContentRepositoryException exception) {
+                        log.warn("mcp tool {} could not use the repository authority", name, exception);
                         return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
                     } catch (RuntimeException exception) {
+                        log.warn("mcp tool {} failed", name, exception);
                         return error(
                                 "UNAVAILABLE",
                                 "Operation could not be completed; verify authoritative state before retrying writes.");
@@ -332,7 +338,12 @@ final class RepositoryMcpTools {
 
     private McpSchema.CallToolResult putAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
         fields(input, Set.of("operationKey", "mode", "url", "file"));
-        PutAssetInput request = json.convertValue(input, PutAssetInput.class);
+        PutAssetInput request;
+        try {
+            request = json.convertValue(input, PutAssetInput.class);
+        } catch (DatabindException invalid) {
+            return error("INVALID_INPUT", inputProblem(invalid));
+        }
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
         if (request.mode().equals("upload")) {
@@ -342,6 +353,17 @@ final class RepositoryMcpTools {
         return textResult(transfers
                 .getObject()
                 .importUrl(identity.principal(), identity.workspace(), request.operationKey(), request.downloadUrl()));
+    }
+
+    // Jackson reports the record constructor's IllegalArgumentException as a DatabindException whose
+    // cause carries the record's own message; a shape mismatch is described without echoing the value,
+    // because a file download URL is a capability.
+    private static String inputProblem(DatabindException invalid) {
+        if (invalid.getCause() instanceof IllegalArgumentException reason) {
+            return reason.getMessage();
+        }
+        return "file must be an object with download_url and file_id; a path in your own environment cannot be"
+                + " read here. Use mode=upload with operationKey only, then PUT the bytes to uploadUrl.";
     }
 
     private static Map<String, Object> putAssetSchema() {
