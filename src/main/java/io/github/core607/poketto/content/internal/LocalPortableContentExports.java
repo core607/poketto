@@ -155,36 +155,14 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         long deadline = System.nanoTime() + limits.buildTime().toNanos();
         try {
             checkOpen();
-            synchronized (this) {
-                initialize();
-                reap();
-                if (retained.size() + orphans.size() >= limits.packages()
-                        || limits.zipBytes() > limits.retainedBytes() - bytes
-                        || limits.zipBytes() > limits.workspaceBytes() - workspaceBytes.getOrDefault(workspace, 0L)) {
-                    throw failure(ContentExportException.Reason.CAPACITY);
-                }
-                charge(workspace, limits.zipBytes());
-                reservation = true;
-                building = owner;
-                buildCancelled = false;
-                coordinated = true;
-            }
+            reserve(workspace, owner);
+            reservation = true;
+            coordinated = true;
             var plan = planner.prepare(actor, workspace, selections, publicOnly);
             if (!plan.workspace().equals(workspace)) {
                 throw failure(ContentExportException.Reason.UNAVAILABLE);
             }
-            Runnable check = () -> {
-                checkOpen();
-                synchronized (this) {
-                    if (buildCancelled) {
-                        throw failure(ContentExportException.Reason.NOT_FOUND);
-                    }
-                }
-                if (System.nanoTime() >= deadline || Thread.currentThread().isInterrupted()) {
-                    throw failure(ContentExportException.Reason.UNAVAILABLE);
-                }
-                plan.authorize().run();
-            };
+            Runnable check = buildCheck(plan, deadline);
             check.run();
             UUID id = UUID.randomUUID();
             Path directory = root.resolve(workspace.value().toString());
@@ -192,18 +170,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             pending = directory.resolve(id + ".pending");
             ready = directory.resolve(id + ".zip");
             MessageDigest digest = digest();
-            try (FileChannel file = FileChannel.open(
-                    pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
-                Files.setPosixFilePermissions(pending, PosixFilePermissions.fromString("rw-------"));
-                var output = new DigestOutputStream(Channels.newOutputStream(file), digest);
-                PortableArchiveWriter.write(
-                        output,
-                        plan.entries(),
-                        new PortableArchiveWriter.Limits(
-                                10_000, 768L * 1024 * 1024, limits.zipBytes(), limits.buildTime()),
-                        check);
-                file.force(true);
-            }
+            writeArchive(pending, plan, check, digest);
             check.run();
             long size = Files.size(pending);
             Files.move(pending, ready, StandardCopyOption.ATOMIC_MOVE);
@@ -214,47 +181,103 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     size,
                     HexFormat.of().formatHex(digest.digest()),
                     clock.instant().plus(limits.lifetime()));
-            synchronized (this) {
-                checkOpen();
-                if (buildCancelled) {
-                    throw failure(ContentExportException.Reason.NOT_FOUND);
-                }
-                retained.put(id, new Retained(owner, receipt, ready, plan.authorize()));
-                charge(workspace, size - limits.zipBytes());
-                reservation = false;
-                ready = null;
-            }
+            retain(id, owner, receipt, ready, plan, size);
+            reservation = false;
+            ready = null;
             return receipt;
         } catch (IOException | UnsupportedOperationException error) {
             throw failure(ContentExportException.Reason.UNAVAILABLE);
         } finally {
             try {
-                try {
-                    if (pending != null) {
-                        Files.deleteIfExists(pending);
-                    }
-                    if (ready != null) {
-                        Files.deleteIfExists(ready);
-                    }
-                } catch (IOException error) {
-                    // Retry removal before releasing this failed build's reserved capacity.
-                    synchronized (this) {
-                        orphans.put(pending != null ? pending : ready, workspace);
-                    }
-                    reservation = false;
-                }
-                synchronized (this) {
-                    if (reservation) {
-                        charge(workspace, -limits.zipBytes());
-                    }
-                    if (coordinated) {
-                        building = null;
-                        prune(workspace);
-                    }
-                }
+                settle(workspace, pending, ready, reservation, coordinated);
             } finally {
                 lifecycle.readLock().unlock();
                 builders.release();
+            }
+        }
+    }
+
+    // A finished archive is retained under its owner; the reservation is replaced by the real size.
+    private synchronized void retain(
+            UUID id, Owner owner, Export receipt, Path ready, PortableContentPlanner.Plan plan, long size) {
+        checkOpen();
+        if (buildCancelled) {
+            throw failure(ContentExportException.Reason.NOT_FOUND);
+        }
+        retained.put(id, new Retained(owner, receipt, ready, plan.authorize()));
+        charge(owner.workspace(), size - limits.zipBytes());
+    }
+
+    // Admits one build against the package, retained-byte and workspace-byte limits and charges its reservation.
+    private synchronized void reserve(WorkspaceId workspace, Owner owner) throws IOException {
+        initialize();
+        reap();
+        if (retained.size() + orphans.size() >= limits.packages()
+                || limits.zipBytes() > limits.retainedBytes() - bytes
+                || limits.zipBytes() > limits.workspaceBytes() - workspaceBytes.getOrDefault(workspace, 0L)) {
+            throw failure(ContentExportException.Reason.CAPACITY);
+        }
+        charge(workspace, limits.zipBytes());
+        building = owner;
+        buildCancelled = false;
+    }
+
+    // Every step of a build rechecks that the service is open, the build was not cancelled, its deadline
+    // and thread are intact, and the plan's authorization still holds.
+    private Runnable buildCheck(PortableContentPlanner.Plan plan, long deadline) {
+        return () -> {
+            checkOpen();
+            synchronized (this) {
+                if (buildCancelled) {
+                    throw failure(ContentExportException.Reason.NOT_FOUND);
+                }
+            }
+            if (System.nanoTime() >= deadline || Thread.currentThread().isInterrupted()) {
+                throw failure(ContentExportException.Reason.UNAVAILABLE);
+            }
+            plan.authorize().run();
+        };
+    }
+
+    private void writeArchive(Path pending, PortableContentPlanner.Plan plan, Runnable check, MessageDigest digest)
+            throws IOException {
+        try (FileChannel file = FileChannel.open(
+                pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
+            Files.setPosixFilePermissions(pending, PosixFilePermissions.fromString("rw-------"));
+            var output = new DigestOutputStream(Channels.newOutputStream(file), digest);
+            PortableArchiveWriter.write(
+                    output,
+                    plan.entries(),
+                    new PortableArchiveWriter.Limits(10_000, 768L * 1024 * 1024, limits.zipBytes(), limits.buildTime()),
+                    check);
+            file.force(true);
+        }
+    }
+
+    // Removes a failed build's files, or records them as orphans to retry, before returning its reservation.
+    private void settle(WorkspaceId workspace, Path pending, Path ready, boolean reservation, boolean coordinated) {
+        boolean charged = reservation;
+        try {
+            if (pending != null) {
+                Files.deleteIfExists(pending);
+            }
+            if (ready != null) {
+                Files.deleteIfExists(ready);
+            }
+        } catch (IOException error) {
+            // Retry removal before releasing this failed build's reserved capacity.
+            synchronized (this) {
+                orphans.put(pending != null ? pending : ready, workspace);
+            }
+            charged = false;
+        }
+        synchronized (this) {
+            if (charged) {
+                charge(workspace, -limits.zipBytes());
+            }
+            if (coordinated) {
+                building = null;
+                prune(workspace);
             }
         }
     }
@@ -483,18 +506,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         if (lock != null) {
             return;
         }
-        Path ancestor = root.getRoot();
-        for (Path segment : root) {
-            ancestor = ancestor.resolve(segment);
-            if (!Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
-                Files.createDirectory(ancestor);
-            }
-            if (!Files.isDirectory(ancestor, LinkOption.NOFOLLOW_LINKS)
-                    || !ancestor.toRealPath().equals(ancestor)) {
-                throw failure(ContentExportException.Reason.UNAVAILABLE);
-            }
-        }
-        protectedDirectory(root);
+        createRoot();
         FileChannel channel = FileChannel.open(
                 root.resolve(".owner.lock"),
                 StandardOpenOption.CREATE,
@@ -507,30 +519,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                 throw failure(ContentExportException.Reason.UNAVAILABLE);
             }
             Files.setPosixFilePermissions(root.resolve(".owner.lock"), PosixFilePermissions.fromString("rw-------"));
-            int count = 0;
-            try (var directories = Files.newDirectoryStream(root)) {
-                for (Path directory : directories) {
-                    if (directory.getFileName().toString().equals(".owner.lock")) {
-                        continue;
-                    }
-                    if (++count > 128
-                            || !uuid(directory.getFileName().toString())
-                            || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
-                        throw failure(ContentExportException.Reason.UNAVAILABLE);
-                    }
-                    try (var files = Files.newDirectoryStream(directory)) {
-                        for (Path file : files) {
-                            if (++count > 256
-                                    || !file.getFileName().toString().matches("[0-9a-f-]{36}\\.(zip|pending)")
-                                    || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-                                throw failure(ContentExportException.Reason.UNAVAILABLE);
-                            }
-                            Files.delete(file);
-                        }
-                    }
-                    Files.delete(directory);
-                }
-            }
+            clearStale();
             ownership = channel;
             lock = acquired;
         } catch (IOException | RuntimeException error) {
@@ -539,6 +528,51 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             }
             channel.close();
             throw error;
+        }
+    }
+
+    // Every ancestor of the staging root is a real directory, never a symlink.
+    private void createRoot() throws IOException {
+        Path ancestor = root.getRoot();
+        for (Path segment : root) {
+            ancestor = ancestor.resolve(segment);
+            if (!Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
+                Files.createDirectory(ancestor);
+            }
+            if (!Files.isDirectory(ancestor, LinkOption.NOFOLLOW_LINKS)
+                    || !ancestor.toRealPath().equals(ancestor)) {
+                throw failure(ContentExportException.Reason.UNAVAILABLE);
+            }
+        }
+        protectedDirectory(root);
+    }
+
+    // The root may hold only workspace directories of ZIP or pending files from an earlier owner; those
+    // are removed, and anything else refuses ownership.
+    private void clearStale() throws IOException {
+        int count = 0;
+        try (var directories = Files.newDirectoryStream(root)) {
+            for (Path directory : directories) {
+                if (directory.getFileName().toString().equals(".owner.lock")) {
+                    continue;
+                }
+                if (++count > 128
+                        || !uuid(directory.getFileName().toString())
+                        || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+                    throw failure(ContentExportException.Reason.UNAVAILABLE);
+                }
+                try (var files = Files.newDirectoryStream(directory)) {
+                    for (Path file : files) {
+                        if (++count > 256
+                                || !file.getFileName().toString().matches("[0-9a-f-]{36}\\.(zip|pending)")
+                                || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                            throw failure(ContentExportException.Reason.UNAVAILABLE);
+                        }
+                        Files.delete(file);
+                    }
+                }
+                Files.delete(directory);
+            }
         }
     }
 

@@ -87,17 +87,7 @@ final class PortableContentPlanner {
 
     Plan prepare(AuthPrincipal actor, WorkspaceId workspace, List<String> selections, boolean publicOnly) {
         selections = List.copyOf(selections);
-        if (selections.isEmpty() || selections.size() > 128 || new HashSet<>(selections).size() != selections.size()) {
-            throw unavailable();
-        }
-        for (String path : selections) {
-            if (!path.isEmpty()) {
-                RepositoryPathRules.validate(path);
-                if (internal(path)) {
-                    throw unavailable();
-                }
-            }
-        }
+        requireSelections(selections);
         Runnable identity = () -> auth.authorize(
                 actor, workspace, publicOnly ? new Capability[0] : new Capability[] {Capability.READ_PRIVATE});
         identity.run();
@@ -110,21 +100,74 @@ final class PortableContentPlanner {
         if (!media.workspaceId().equals(workspace) || !media.commit().equals(commit)) {
             throw unavailable();
         }
-        PublicContentSnapshot published = publicOnly ? snapshots.withCurrent(workspace, value -> value) : null;
-        if (publicOnly
-                && (!published.workspaceId().equals(workspace)
-                        || !published.commit().equals(Optional.of(commit)))) {
+        PublicScope scope = publicScope(workspace, commit, publicOnly);
+        Runnable check = planCheck(identity, workspace, scope.admitted());
+        Selection selection = select(tree, media, selections, workspace, commit, publicOnly, scope);
+        var builder = new Builder(
+                workspace, commit, publicOnly, media, scope.articles(), scope.references(), selection.documents());
+        for (var document : tree.documents()) {
+            if (!publicOnly || scope.articles().containsKey(document.file().path())) {
+                builder.articleRoutes.add(document.route());
+            }
+        }
+        for (String path : selection.media()) {
+            builder.indexed(path);
+        }
+        for (var entry : selection.documents().entrySet()) {
+            check.run();
+            String path = entry.getKey();
+            String archive = builder.documents.get(path);
+            byte[] bytes =
+                    documentText(entry, archive, builder, scope, publicOnly).getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES
+                    || bytes.length > ContentLimits.MAX_WORKSPACE_BYTES - builder.textBytes) {
+                throw unavailable();
+            }
+            builder.textBytes += bytes.length;
+            builder.entries.put(
+                    archive, new PortableArchiveWriter.Entry(archive, bytes.length, output -> output.write(bytes)));
+            builder.bound();
+        }
+        check.run();
+        return new Plan(workspace, List.copyOf(builder.entries.values()), check);
+    }
+
+    private static void requireSelections(List<String> selections) {
+        if (selections.isEmpty() || selections.size() > 128 || new HashSet<>(selections).size() != selections.size()) {
             throw unavailable();
         }
-        Map<String, PublicArticle> publicArticles = new HashMap<>();
-        if (publicOnly) {
-            published.articles().forEach(article -> publicArticles.put(article.repositoryPath(), article));
+        for (String path : selections) {
+            if (!path.isEmpty()) {
+                RepositoryPathRules.validate(path);
+                if (internal(path)) {
+                    throw unavailable();
+                }
+            }
         }
-        Set<String> publicReferences = publicOnly ? referencedPaths(published.articles()) : Set.of();
-        String admitted = publicOnly ? fingerprint(workspace, published) : null;
-        Runnable check = () -> {
+    }
+
+    /** The current public articles, their referenced media and admission fingerprint; empty for a private export. */
+    private record PublicScope(Map<String, PublicArticle> articles, Set<String> references, String admitted) {}
+
+    private PublicScope publicScope(WorkspaceId workspace, String commit, boolean publicOnly) {
+        if (!publicOnly) {
+            return new PublicScope(new HashMap<>(), Set.of(), null);
+        }
+        PublicContentSnapshot published = snapshots.withCurrent(workspace, value -> value);
+        if (!published.workspaceId().equals(workspace) || !published.commit().equals(Optional.of(commit))) {
+            throw unavailable();
+        }
+        Map<String, PublicArticle> articles = new HashMap<>();
+        published.articles().forEach(article -> articles.put(article.repositoryPath(), article));
+        return new PublicScope(articles, referencedPaths(published.articles()), fingerprint(workspace, published));
+    }
+
+    // A plan stays usable only while its caller is authorized and, for a public export, the admitted
+    // publication is still current.
+    private Runnable planCheck(Runnable identity, WorkspaceId workspace, String admitted) {
+        return () -> {
             identity.run();
-            if (publicOnly) {
+            if (admitted != null) {
                 snapshots.withCurrent(workspace, current -> {
                     if (!admitted.equals(fingerprint(workspace, current))) {
                         throw unavailable();
@@ -133,6 +176,19 @@ final class PortableContentPlanner {
                 });
             }
         };
+    }
+
+    /** The documents and indexed media every selection matched; each selection must match something. */
+    private record Selection(TreeMap<String, RepositoryDocument> documents, TreeSet<String> media) {}
+
+    private static Selection select(
+            RepositoryTree tree,
+            RepositoryMediaSnapshot media,
+            List<String> selections,
+            WorkspaceId workspace,
+            String commit,
+            boolean publicOnly,
+            PublicScope scope) {
         var selected = new TreeMap<String, RepositoryDocument>();
         var selectedMedia = new TreeSet<String>();
         for (String selection : selections) {
@@ -154,7 +210,7 @@ final class PortableContentPlanner {
                         || !document.file().commit().equals(Optional.of(commit))) {
                     throw unavailable();
                 }
-                if (publicOnly && !publicArticles.containsKey(path)) {
+                if (publicOnly && !scope.articles().containsKey(path)) {
                     throw unavailable();
                 }
                 selected.put(path, document);
@@ -162,7 +218,9 @@ final class PortableContentPlanner {
             }
             for (String path : media.index().files().keySet()) {
                 if (inside(path, selection)) {
-                    if (publicOnly && (!media.publicPaths().contains(path) || !publicReferences.contains(path))) {
+                    if (publicOnly
+                            && (!media.publicPaths().contains(path)
+                                    || !scope.references().contains(path))) {
                         throw unavailable();
                     }
                     selectedMedia.add(path);
@@ -173,47 +231,31 @@ final class PortableContentPlanner {
                 throw unavailable();
             }
         }
-        var builder = new Builder(workspace, commit, publicOnly, media, publicArticles, publicReferences, selected);
-        for (var document : tree.documents()) {
-            if (!publicOnly || publicArticles.containsKey(document.file().path())) {
-                builder.articleRoutes.add(document.route());
-            }
+        return new Selection(selected, selectedMedia);
+    }
+
+    // A public document is rebuilt from its approved fields; a private one keeps its source with links rewritten.
+    private static String documentText(
+            Map.Entry<String, RepositoryDocument> entry,
+            String archive,
+            Builder builder,
+            PublicScope scope,
+            boolean publicOnly) {
+        String path = entry.getKey();
+        if (publicOnly) {
+            var article = scope.articles().get(path);
+            return "---\ntitle: " + JSON.writeValueAsString(article.title()) + "\ntags: "
+                    + JSON.writeValueAsString(article.tags()) + "\npublic_author: "
+                    + JSON.writeValueAsString(article.publicAuthor()) + "\n---\n\n"
+                    + publicBody(article.body(), authored -> builder.destination(path, archive, authored));
         }
-        for (String path : selectedMedia) {
-            builder.indexed(path);
+        String source = entry.getValue().file().source().orElseThrow(PortableContentPlanner::unavailable);
+        String body = entry.getValue().body();
+        if (!source.endsWith(body)) {
+            throw unavailable();
         }
-        for (var entry : selected.entrySet()) {
-            check.run();
-            String path = entry.getKey();
-            String archive = builder.documents.get(path);
-            String text;
-            if (publicOnly) {
-                var article = publicArticles.get(path);
-                text = "---\ntitle: " + JSON.writeValueAsString(article.title()) + "\ntags: "
-                        + JSON.writeValueAsString(article.tags()) + "\npublic_author: "
-                        + JSON.writeValueAsString(article.publicAuthor()) + "\n---\n\n"
-                        + publicBody(article.body(), authored -> builder.destination(path, archive, authored));
-            } else {
-                String source = entry.getValue().file().source().orElseThrow(PortableContentPlanner::unavailable);
-                String body = entry.getValue().body();
-                if (!source.endsWith(body)) {
-                    throw unavailable();
-                }
-                text = source.substring(0, source.length() - body.length())
-                        + MarkdownLinkRewriter.rewrite(body, authored -> builder.destination(path, archive, authored));
-            }
-            byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-            if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES
-                    || bytes.length > ContentLimits.MAX_WORKSPACE_BYTES - builder.textBytes) {
-                throw unavailable();
-            }
-            builder.textBytes += bytes.length;
-            builder.entries.put(
-                    archive, new PortableArchiveWriter.Entry(archive, bytes.length, output -> output.write(bytes)));
-            builder.bound();
-        }
-        check.run();
-        return new Plan(workspace, List.copyOf(builder.entries.values()), check);
+        return source.substring(0, source.length() - body.length())
+                + MarkdownLinkRewriter.rewrite(body, authored -> builder.destination(path, archive, authored));
     }
 
     private final class Builder {

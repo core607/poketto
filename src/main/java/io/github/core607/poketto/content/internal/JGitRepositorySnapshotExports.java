@@ -44,6 +44,7 @@ import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Repository;
@@ -120,53 +121,10 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                             .setDirectory(repositoryPath.toFile())
                             .call();
                     var inserter = git.getRepository().newObjectInserter()) {
-                var index = DirCache.newInCore();
-                var builder = index.builder();
-                for (var file : projection.files().entrySet().stream()
-                        .sorted((a, b) -> Arrays.compareUnsigned(
-                                a.getKey().getBytes(StandardCharsets.UTF_8),
-                                b.getKey().getBytes(StandardCharsets.UTF_8)))
-                        .toList()) {
-                    checkDeadline(deadline);
-                    var entry = new DirCacheEntry(file.getKey());
-                    entry.setFileMode(FileMode.REGULAR_FILE);
-                    entry.setObjectId(inserter.insert(Constants.OBJ_BLOB, file.getValue()));
-                    builder.add(entry);
-                }
-                builder.finish();
-                var baseline = new CommitBuilder();
-                baseline.setTreeId(index.writeTree(inserter));
-                var author = new PersonIdent("Poketto", "poketto@invalid", Instant.EPOCH, ZoneOffset.UTC);
-                baseline.setAuthor(author);
-                baseline.setCommitter(author);
-                baseline.setMessage("Public reading projection\n");
-                ObjectId commit = inserter.insert(baseline);
-                inserter.flush();
+                ObjectId commit = projectionCommit(inserter, projection, deadline);
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                BundleWriter bundle = new BundleWriter(git.getRepository());
-                PackConfig pack = new PackConfig(git.getRepository());
-                pack.setThreads(1);
-                pack.setDeltaCompress(false);
-                bundle.setPackConfig(pack);
-                bundle.include("refs/heads/snapshot", commit);
-                try (OutputStream output = Files.newOutputStream(
-                                pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, NOFOLLOW_LINKS);
-                        var hashed = new DigestOutputStream(output, digest);
-                        var bounded = new BoundedOutput(hashed, maxBytes, deadline)) {
-                    privatePermissions(pending, false);
-                    bundle.writeBundle(new DeadlineMonitor(deadline), bounded);
-                }
-                try (FileChannel file = FileChannel.open(pending, StandardOpenOption.WRITE, NOFOLLOW_LINKS)) {
-                    file.force(true);
-                }
-                auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
-                snapshots.withCurrent(workspace, current -> {
-                    if (!current.commit().equals(snapshot.commit())
-                            || !current.articles().equals(snapshot.articles())) {
-                        throw unavailable();
-                    }
-                    return null;
-                });
+                writeSnapshotBundle(git.getRepository(), commit, Optional.empty(), pending, digest, deadline);
+                requireUnchanged(actor, workspace, snapshot);
                 long size = Files.size(pending);
                 Files.move(pending, published, StandardCopyOption.ATOMIC_MOVE);
                 exports.add(id);
@@ -201,6 +159,79 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 throw new ContentRepositoryException("public execution projection cleanup failed", exception);
             }
         }
+    }
+
+    // The projection becomes one root commit with a fixed author, so equal projections hash equally.
+    private static ObjectId projectionCommit(
+            ObjectInserter inserter, PublicExecutionProjection.Projection projection, long deadline)
+            throws IOException {
+        var index = DirCache.newInCore();
+        var builder = index.builder();
+        for (var file : projection.files().entrySet().stream()
+                .sorted((a, b) -> Arrays.compareUnsigned(
+                        a.getKey().getBytes(StandardCharsets.UTF_8), b.getKey().getBytes(StandardCharsets.UTF_8)))
+                .toList()) {
+            checkDeadline(deadline);
+            var entry = new DirCacheEntry(file.getKey());
+            entry.setFileMode(FileMode.REGULAR_FILE);
+            entry.setObjectId(inserter.insert(Constants.OBJ_BLOB, file.getValue()));
+            builder.add(entry);
+        }
+        builder.finish();
+        var baseline = new CommitBuilder();
+        baseline.setTreeId(index.writeTree(inserter));
+        var author = new PersonIdent("Poketto", "poketto@invalid", Instant.EPOCH, ZoneOffset.UTC);
+        baseline.setAuthor(author);
+        baseline.setCommitter(author);
+        baseline.setMessage("Public reading projection\n");
+        ObjectId commit = inserter.insert(baseline);
+        inserter.flush();
+        return commit;
+    }
+
+    // A bundle of refs/heads/snapshot, written through the digest within the byte and time bounds and
+    // forced to disk before the caller publishes it.
+    private void writeSnapshotBundle(
+            Repository repository,
+            ObjectId commit,
+            Optional<String> baseline,
+            Path pending,
+            MessageDigest digest,
+            long deadline)
+            throws IOException {
+        BundleWriter bundle = new BundleWriter(repository);
+        PackConfig pack = new PackConfig(repository);
+        pack.setThreads(1);
+        pack.setDeltaCompress(false);
+        bundle.setPackConfig(pack);
+        bundle.include("refs/heads/snapshot", commit);
+        if (baseline.isPresent()) {
+            try (var walk = new RevWalk(repository)) {
+                bundle.assume(walk.parseCommit(ObjectId.fromString(baseline.orElseThrow())));
+            }
+        }
+        try (OutputStream output = Files.newOutputStream(
+                        pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, NOFOLLOW_LINKS);
+                var hashed = new DigestOutputStream(output, digest);
+                var bounded = new BoundedOutput(hashed, maxBytes, deadline)) {
+            privatePermissions(pending, false);
+            bundle.writeBundle(new DeadlineMonitor(deadline), bounded);
+        }
+        try (FileChannel file = FileChannel.open(pending, StandardOpenOption.WRITE, NOFOLLOW_LINKS)) {
+            file.force(true);
+        }
+    }
+
+    // An export is acknowledged only while the caller stays authorized and the snapshot it saw is current.
+    private void requireUnchanged(AuthPrincipal actor, WorkspaceId workspace, PublicContentSnapshot snapshot) {
+        auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        snapshots.withCurrent(workspace, current -> {
+            if (!current.commit().equals(snapshot.commit())
+                    || !current.articles().equals(snapshot.articles())) {
+                throw unavailable();
+            }
+            return null;
+        });
     }
 
     private PublicExecutionProjection.Projection projection(
@@ -308,53 +339,13 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                                 || snapshot.commitId().isEmpty()) {
                             throw unavailable();
                         }
-                        try (RevWalk walk = new RevWalk(repository)) {
-                            walk.markStart(walk.parseCommit(
-                                    ObjectId.fromString(snapshot.commitId().orElseThrow())));
-                            boolean found = false;
-                            int count = 0;
-                            for (var item : walk) {
-                                checkDeadline(deadline);
-                                if (++count > 100_000) {
-                                    throw unavailable();
-                                }
-                                if (item.name().equals(commit)) {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if (!found) {
-                                throw unavailable();
-                            }
-                        }
+                        requireReachable(repository, snapshot.commitId().orElseThrow(), commit, deadline);
                         preflight(repository, commit, deadline);
                         safeStaging();
                         clearAbandoned();
                         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                        BundleWriter bundle = new BundleWriter(repository);
-                        PackConfig pack = new PackConfig(repository);
-                        pack.setThreads(1);
-                        pack.setDeltaCompress(false);
-                        bundle.setPackConfig(pack);
-                        bundle.include("refs/heads/snapshot", ObjectId.fromString(commit));
-                        if (baseline.isPresent()) {
-                            try (var walk = new RevWalk(repository)) {
-                                bundle.assume(walk.parseCommit(ObjectId.fromString(baseline.orElseThrow())));
-                            }
-                        }
-                        try (OutputStream output = Files.newOutputStream(
-                                        pending,
-                                        StandardOpenOption.CREATE_NEW,
-                                        StandardOpenOption.WRITE,
-                                        NOFOLLOW_LINKS);
-                                var hashed = new DigestOutputStream(output, digest);
-                                var bounded = new BoundedOutput(hashed, maxBytes, deadline)) {
-                            privatePermissions(pending, false);
-                            bundle.writeBundle(new DeadlineMonitor(deadline), bounded);
-                        }
-                        try (FileChannel file = FileChannel.open(pending, StandardOpenOption.WRITE, NOFOLLOW_LINKS)) {
-                            file.force(true);
-                        }
+                        writeSnapshotBundle(
+                                repository, ObjectId.fromString(commit), baseline, pending, digest, deadline);
                         long size = Files.size(pending);
                         Files.move(pending, staging.resolve(id + ".bundle"), StandardCopyOption.ATOMIC_MOVE);
                         exports.add(id);
@@ -369,6 +360,25 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                                 "repository execution snapshot could not be exported within its bounds", exception);
                     }
                 }));
+    }
+
+    // The requested commit must be reachable from the authority head within the walk bound.
+    private static void requireReachable(Repository repository, String head, String commit, long deadline)
+            throws IOException {
+        try (RevWalk walk = new RevWalk(repository)) {
+            walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
+            int count = 0;
+            for (var item : walk) {
+                checkDeadline(deadline);
+                if (++count > 100_000) {
+                    throw unavailable();
+                }
+                if (item.name().equals(commit)) {
+                    return;
+                }
+            }
+            throw unavailable();
+        }
     }
 
     private void preflight(Repository repository, String commit, long deadline) throws IOException {
