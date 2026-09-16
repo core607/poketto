@@ -93,11 +93,8 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
             WorkspaceId workspace, String operationKey, String declaredType, InputStream original) {
         Objects.requireNonNull(workspace, "workspace is required");
         Objects.requireNonNull(original, "original file stream is required");
+        requireOperationKey(operationKey);
         int limit = declaredType == null ? Math.min(MAX_UPLOAD_BYTES, maxFileBytes) : maxFileBytes;
-        if (operationKey == null || !operationKey.matches("[A-Za-z0-9_-]{16,128}")) {
-            throw new IllegalArgumentException(
-                    "upload operation key must contain 16 to 128 ASCII letters, digits, hyphens or underscores");
-        }
         Path space = root.resolve(workspace.toString());
         ReentrantLock mutex = LOCKS[Math.floorMod(space.hashCode(), LOCKS.length)];
         mutex.lock();
@@ -113,118 +110,152 @@ public final class LocalManagedBlobStore implements ManagedBlobStore {
                 temporary = directory(pending.resolve(UUID.randomUUID().toString()));
                 Path blob = temporary.resolve("bytes");
                 MessageDigest digest = sha256();
-                long size = 0;
-                try (FileChannel out = FileChannel.open(blob, CREATE_NEW, WRITE, NOFOLLOW_LINKS)) {
-                    byte[] buffer = new byte[8192];
-                    while (size <= limit) {
-                        int count = original.read(buffer, 0, (int) Math.min(buffer.length, limit + 1L - size));
-                        if (count < 0) {
-                            break;
-                        }
-                        if (count == 0) {
-                            int single = original.read();
-                            if (single < 0) {
-                                break;
-                            }
-                            buffer[0] = (byte) single;
-                            count = 1;
-                        }
-                        size += count;
-                        if (size > limit) {
-                            throw new AssetStorageException(TOO_LARGE);
-                        }
-                        digest.update(buffer, 0, count);
-                        ByteBuffer bytes = ByteBuffer.wrap(buffer, 0, count);
-                        while (bytes.hasRemaining()) {
-                            out.write(bytes);
-                        }
-                    }
-                    out.force(true);
-                }
+                long size = receive(original, blob, limit, digest);
                 String revision = HexFormat.of().formatHex(digest.digest());
-                if (size == 0) {
-                    throw new IllegalArgumentException("original file must not be empty");
-                }
-                String mediaType = declaredType;
-                if (mediaType == null) {
-                    mediaType = ImagePreviewPolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
-                }
+                String mediaType = mediaType(declaredType, blob, size);
                 Path operation = operations.resolve(hash(operationKey.getBytes(StandardCharsets.US_ASCII)));
                 if (Files.exists(operation, NOFOLLOW_LINKS)) {
-                    ManagedAsset existing = metadata(operation);
-                    if (!existing.reference().revision().equals(revision)
-                            || !existing.mediaType().equals(mediaType)) {
-                        throw new AssetStorageException(IDEMPOTENCY_CONFLICT);
-                    }
-                    if (!copyTo(workspace, existing.reference(), OutputStream.nullOutputStream())
-                            .equals(existing)) {
-                        throw unavailable();
-                    }
-                    syncDirectory(operations);
-                    return existing;
+                    return replay(workspace, operations, operation, revision, mediaType);
                 }
                 Path digestEntry = digests.resolve(revision);
                 if (Files.exists(digestEntry, NOFOLLOW_LINKS)) {
-                    ManagedAsset canonical = metadata(digestEntry);
-                    if (!canonical.reference().revision().equals(revision) || canonical.size() != size) {
-                        throw unavailable();
-                    }
-                    copyTo(workspace, canonical.reference(), OutputStream.nullOutputStream());
-                    Path canonicalBytes = objects.resolve(
-                                    canonical.reference().assetId().toString())
-                            .resolve("bytes");
-                    Files.delete(blob);
-                    Files.createLink(blob, canonicalBytes);
+                    shareCanonical(workspace, objects, digestEntry, blob, revision, size);
                 }
                 ManagedAsset asset =
                         new ManagedAsset(new ManagedAssetReference(UUID.randomUUID(), revision), mediaType, size);
                 byte[] manifest = encode(asset);
-                writeNew(temporary.resolve("metadata"), manifest);
-                syncDirectory(temporary);
-                Path published = objects.resolve(asset.reference().assetId().toString());
-                if (Files.exists(published, NOFOLLOW_LINKS)) {
-                    throw unavailable();
-                }
-                Files.move(temporary, published, StandardCopyOption.ATOMIC_MOVE);
+                publish(temporary, objects.resolve(asset.reference().assetId().toString()), manifest);
                 temporary = null;
                 syncDirectory(objects);
                 syncDirectory(pending);
                 if (!Files.exists(digestEntry, NOFOLLOW_LINKS)) {
-                    Path digestTemp = digests.resolve("pending-" + UUID.randomUUID());
-                    try {
-                        writeNew(digestTemp, manifest);
-                        Files.move(digestTemp, digestEntry, StandardCopyOption.ATOMIC_MOVE);
-                        syncDirectory(digests);
-                    } finally {
-                        Files.deleteIfExists(digestTemp);
-                    }
+                    publishEntry(digests, digestEntry, manifest);
                 }
-                Path ledgerTemp = operations.resolve("pending-" + UUID.randomUUID());
-                try {
-                    writeNew(ledgerTemp, manifest);
-                    Files.move(ledgerTemp, operation, StandardCopyOption.ATOMIC_MOVE);
-                    syncDirectory(operations);
-                } finally {
-                    Files.deleteIfExists(ledgerTemp);
-                }
+                publishEntry(operations, operation, manifest);
                 return asset;
             }
         } catch (IOException exception) {
             throw unavailable();
         } finally {
             try {
-                if (temporary != null) {
-                    checkDirectory(temporary);
-                    Files.deleteIfExists(temporary.resolve("bytes"));
-                    Files.deleteIfExists(temporary.resolve("metadata"));
-                    Files.delete(temporary);
-                }
+                discardStaging(temporary);
             } catch (IOException exception) {
                 // A cleanup failure cannot turn an unacknowledged upload into success.
                 throw unavailable();
             } finally {
                 mutex.unlock();
             }
+        }
+    }
+
+    private static void requireOperationKey(String operationKey) {
+        if (operationKey == null || !operationKey.matches("[A-Za-z0-9_-]{16,128}")) {
+            throw new IllegalArgumentException(
+                    "upload operation key must contain 16 to 128 ASCII letters, digits, hyphens or underscores");
+        }
+    }
+
+    // An undeclared type must prove to be a bounded image; a declared type was validated by the caller.
+    private static String mediaType(String declaredType, Path blob, long size) throws IOException {
+        if (size == 0) {
+            throw new IllegalArgumentException("original file must not be empty");
+        }
+        return declaredType != null ? declaredType : ImagePreviewPolicy.validate(readBounded(blob, MAX_UPLOAD_BYTES));
+    }
+
+    // Streams at most limit bytes into blob while hashing them; one byte more is TOO_LARGE.
+    private static long receive(InputStream original, Path blob, int limit, MessageDigest digest) throws IOException {
+        long size = 0;
+        try (FileChannel out = FileChannel.open(blob, CREATE_NEW, WRITE, NOFOLLOW_LINKS)) {
+            byte[] buffer = new byte[8192];
+            while (size <= limit) {
+                int count = original.read(buffer, 0, (int) Math.min(buffer.length, limit + 1L - size));
+                if (count < 0) {
+                    break;
+                }
+                if (count == 0) {
+                    int single = original.read();
+                    if (single < 0) {
+                        break;
+                    }
+                    buffer[0] = (byte) single;
+                    count = 1;
+                }
+                size += count;
+                if (size > limit) {
+                    throw new AssetStorageException(TOO_LARGE);
+                }
+                digest.update(buffer, 0, count);
+                ByteBuffer bytes = ByteBuffer.wrap(buffer, 0, count);
+                while (bytes.hasRemaining()) {
+                    out.write(bytes);
+                }
+            }
+            out.force(true);
+        }
+        return size;
+    }
+
+    // A repeated operation key must name the same bytes and type, and its stored object must still be readable.
+    private ManagedAsset replay(
+            WorkspaceId workspace, Path operations, Path operation, String revision, String mediaType)
+            throws IOException {
+        ManagedAsset existing = metadata(operation);
+        if (!existing.reference().revision().equals(revision)
+                || !existing.mediaType().equals(mediaType)) {
+            throw new AssetStorageException(IDEMPOTENCY_CONFLICT);
+        }
+        if (!copyTo(workspace, existing.reference(), OutputStream.nullOutputStream())
+                .equals(existing)) {
+            throw unavailable();
+        }
+        syncDirectory(operations);
+        return existing;
+    }
+
+    // Bytes already stored under another asset are hard-linked instead of kept twice.
+    private void shareCanonical(
+            WorkspaceId workspace, Path objects, Path digestEntry, Path blob, String revision, long size)
+            throws IOException {
+        ManagedAsset canonical = metadata(digestEntry);
+        if (!canonical.reference().revision().equals(revision) || canonical.size() != size) {
+            throw unavailable();
+        }
+        copyTo(workspace, canonical.reference(), OutputStream.nullOutputStream());
+        Path canonicalBytes =
+                objects.resolve(canonical.reference().assetId().toString()).resolve("bytes");
+        Files.delete(blob);
+        Files.createLink(blob, canonicalBytes);
+    }
+
+    // The staged object becomes visible only through the atomic rename; the caller syncs the parents afterwards.
+    private static void publish(Path temporary, Path published, byte[] manifest) throws IOException {
+        writeNew(temporary.resolve("metadata"), manifest);
+        syncDirectory(temporary);
+        if (Files.exists(published, NOFOLLOW_LINKS)) {
+            throw unavailable();
+        }
+        Files.move(temporary, published, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    // A ledger entry is durable before its rename and its directory is synced after it.
+    private static void publishEntry(Path directory, Path entry, byte[] manifest) throws IOException {
+        Path staged = directory.resolve("pending-" + UUID.randomUUID());
+        try {
+            writeNew(staged, manifest);
+            Files.move(staged, entry, StandardCopyOption.ATOMIC_MOVE);
+            syncDirectory(directory);
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    private static void discardStaging(Path temporary) throws IOException {
+        if (temporary != null) {
+            checkDirectory(temporary);
+            Files.deleteIfExists(temporary.resolve("bytes"));
+            Files.deleteIfExists(temporary.resolve("metadata"));
+            Files.delete(temporary);
         }
     }
 
