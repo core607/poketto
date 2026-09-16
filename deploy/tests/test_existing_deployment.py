@@ -171,7 +171,18 @@ class ExistingDeploymentTests(unittest.TestCase):
         result = self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(result["status"], "healthy")
         self.assertIsNone(result["retiredImages"])
+        self.assertIn("docker", result["retirementError"])
         self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "healthy")
+
+    def test_rerunning_the_running_version_keeps_the_previous_version_retained(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertEqual(result["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "old-app", "frontend": "old-frontend"})
+        self.assertIn("id-old-app", self.docker.images)
+        self.assertIn("id-old-frontend", self.docker.images)
 
     def test_preflight_does_not_change_containers_or_confirm_a_deployment(self):
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
