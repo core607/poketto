@@ -26,6 +26,11 @@ def _object(pairs):
     return result
 
 
+def _reject_constant(_):
+    # NaN and Infinity are not JSON; the standard parser would accept them without this hook.
+    raise BridgeRejected('Invalid JSON value')
+
+
 def encode(value):
     result = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8')
     if not 0 < len(result) <= MAX_FRAME:
@@ -124,8 +129,7 @@ class LeaseBridge:
                         raw = bytes(self.buffer[4:4 + size])
                         del self.buffer[:4 + size]
                         self.frame_started = now if self.buffer else None
-                        value = json.loads(raw, object_pairs_hook=_object,
-                            parse_constant=lambda _: (_ for _ in ()).throw(BridgeRejected('Invalid JSON value')))
+                        value = json.loads(raw, object_pairs_hook=_object, parse_constant=_reject_constant)
                         request = self._message(value)
                         if request is not None:
                             return request
