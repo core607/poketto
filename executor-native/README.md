@@ -88,6 +88,19 @@ includes both with the complete adapter lifecycle checks and process-loss expiry
 A focused result does not prove the omitted scenarios. Each mode uses a fresh native
 fixture and checks cleanup.
 
+For command-handler changes, `cli-save`, `cli-save-recovery`, `cli-media-import`,
+`cli-media-link`, `cli-move`, `cli-move-installation` and `cli-move-recovery` select
+the existing CLI scenarios independently. `cli-save` includes workspace sync and
+conflicts; the recovery modes exercise uncertain remote acknowledgement or local
+installation without repeating the original write. Each invocation starts with
+its own account-copy pool and synthetic authority. `peer-only` separately checks
+that a non-root peer is refused before receiving request bytes.
+
+The [command-ownership run](evidence/2026-09-16-command-ownership.json) records
+eleven focused modes, their runtime identities and successful cleanup. It also
+records the separate HTTP MCP protocol check; it does not claim that the
+historical `all` batch or external clients were accepted on that build.
+
 `--scenario retained-process` runs independent producer and recovery JVMs. The controller verifies the producer service's Java executable and sends SIGKILL after an acknowledged command, during a command with an acknowledged host save, after a successful remote push, around final journal publication, or during disposal. A new JVM opens the same authority without reseeding, automatically attaches the original copy, checks its local work and saves the recovered draft. The uncertain-write case reconciles the candidate without repeating the push. The expiry case advances only the fixture clock, checks that a held writer prevents deletion, then verifies scheduled cleanup and preservation of remote commits. Use `--process-case` to select one of `acknowledged`, `interrupted`, `uncertain`, `beforepublish`, `afterpublish`, `discarding` or `expired`. Output records that selection. The focused mode checks lease closure and fixture cleanup.
 
 The complete Java batch has a 360-second supervisor and harness deadline to cover its repeated cold opens and intentional worker restarts. Focused batches retain a 240-second deadline. These are whole-test budgets; each command and lease keeps its independently checked timeout, and cleanup still verifies that no execution processes remain.

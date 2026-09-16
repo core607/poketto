@@ -1,75 +1,83 @@
 # Poketto
 
-A personal knowledge workspace for you and your AI agents.
+**A Git-native workspace for humans and AI agents.**
 
-Keep notes, clippings, reading lists and project knowledge in files with Git history. Work on them in a browser or let an AI agent search, edit and organize them through MCP. Publish the content you choose as a blog.
+Give your agents a real repository workspace with shell, Python and Git. Edit the same knowledge base in your browser. Poketto isolates command execution, keeps repository credentials outside the sandbox, and checks permissions and revisions when saving or publishing.
 
-[中文说明](README.zh.md) · [Development and operations](docs/usage.md) · [Architecture](notes/implemented/2026-08-25-requirements-and-architecture.md) · [Live instance](https://poketto.top)
+Collect research, organize notes and images, maintain a reading list, or publish a blog and gallery. Your files and Git history remain inspectable with ordinary tools.
 
-## File as truth
-
-New content belongs in `private/`; selected content is published from `public/`.
-Each tree can use its own categories. Directory guides let agents discover where
-records belong without a fixed schema for playlists, reading lists or other subjects.
-
-Markdown, directory structure and media references live in a remote Git repository. Its `main` branch is authoritative; Poketto keeps a disposable local cache and serves public pages from verified snapshots. Browser edits and agent saves use the same atomic Git writer, with revision checks to preserve concurrent work.
-
-Uploaded images, audio, video, PDFs and other files live as immutable local originals. Git stores their logical paths and versions in `.poketto/assets.json`; documents use relative links. Originals are deduplicated within each workspace. Equal bytes in different workspaces retain separate storage and identities, and uploading a file does not publish it.
-
-Content stays inspectable with ordinary file and Git tools. PostgreSQL holds accounts, permissions and other relational application state.
-
-## CodeAct over MCP
-
-Connect an MCP client with a scoped API key or through OAuth consent: a member signs in, chooses a space and approves only permissions they already hold. The [OAuth setup](docs/usage.md#oauth-connections) supports a separate, revocable connection for each client; a connection never exceeds its holder's current permissions. File access requires an enabled executor and the `EXECUTE_REPOSITORY` capability. `repo_exec` provides an isolated workspace with shell, Python and Git. The agent can inspect the directory tree, follow repository-owned `AGENTS.md` files, search existing material and edit files in place.
-
-The host-mediated `poketto` CLI provides persistence and result delivery:
-
-| Command | Role |
-|---|---|
-| `poketto status` | Inspect the copy ID, session scope, save baseline and pending write outcome |
-| `poketto save` | Commit selected files and explicit deletions, retaining other local edits |
-| `poketto sync` | Reconcile one file against its own baseline and current remote content |
-| `poketto recover` | Reconcile a pending save or move using its original commit and completion receipt |
-| `poketto move` | Move saved files, folders and indexed media with Markdown reference repair |
-| `poketto media list` / `import` / `fetch` / `link` | Discover indexed media, store originals, materialize referenced files or link existing workspace originals |
-| `poketto export` | Package saved documents and required originals as a private or public ZIP |
-| `poketto artifact create` / `remove` | Retain a temporary result for image, text or binary delivery through MCP, or release it early |
-
-Repository credentials and original storage remain outside the sandbox. Ordinary edits stay in the execution session until saved. Conflicts retain local work; an uncertain acknowledgement must be reconciled before another save. Every execution copy has an ID that later calls must present; a replaced copy is refused rather than silently substituted. Unsaved session files can be discarded on expiry or restart unless the operator enables retained execution, which checkpoints acknowledged local work so that a reconnect resumes the same copy with its baseline and unsaved files; `repo_discard` removes such a copy explicitly.
-
-This supports tasks such as updating a listening list, maintaining research notes, or organizing an article with its images. The agent discovers the workspace's organization from its files and guidance. The external agent harness supplies the model and decides how to carry out the task; Poketto supplies authorized data, execution and persistence.
-
-## Spaces and views
-
-An installation starts with the operator-configured default workspace. An account can connect an existing private GitHub or CNB repository as another space, and its owner can rotate the repository credentials later. Registration and workspace joining use separate invitations. Ordinary membership grants public-scope reading; owners explicitly grant private reading, private writing and publication, and reducing a member's grants revokes keys and connections that would exceed them.
-
-The browser provides a Markdown editor, file and directory navigation, image previews, and a destination picker for moves. File and folder moves repair supported Markdown references in the same commit. The workspace dashboard manages members and their permissions, API keys, OAuth connections, workspace invitations, the repository connection and the website switch.
-
-The default workspace's website starts enabled; another space's website stays off until a human owner enables it, and an owner can switch either off. An enabled site lives at `/s/{slug}` with article routes, tags, archive, search and image galleries over the content allowed by publication policy; search matches the parsed Markdown reading text, and folder landing pages define a collection order that article reading keeps through previous and next links. The homepage samples cards from enabled public spaces into a stable batch.
-
-Execution receives the same permission boundary: full readers get authorized current files and original Git history; public-only readers get a fresh public projection with private metadata and original history excluded. Sessions are isolated even when clients share a key. Revocation and publication withdrawal invalidate affected execution sessions.
+[中文说明](README.zh.md) · [Live instance](https://poketto.top) · [Self-host](docs/usage.md) · [Architecture](notes/implemented/2026-08-25-requirements-and-architecture.md)
 
 ```mermaid
 flowchart LR
-    Browser[Browser editor] --> Service[Poketto]
-    Agent[AI agent via MCP] --> Service
-    Service <--> Sandbox[Isolated shell / Python / Git]
-    Service <--> Repository[Remote Git: text, index, history]
-    Service <--> Originals[Local originals per workspace]
-    Service --> Blog[Public blog]
+    Human[Browser editor] --> Host[Poketto: permissions and saves]
+    Agent[AI agent via MCP] --> Copy[Isolated shell / Python / Git]
+    Copy -->|poketto CLI| Host
+    Host <--> Git[Remote Git: text and history]
+    Host <--> Media[Workspace media originals]
+    Host --> Site[Selected public content]
 ```
 
-API capabilities govern reads, writes, publishing and execution. An agent granted both private-read and publish capabilities can publish private material; the external harness remains responsible for interpreting user intent and handling prompt injection.
+## Why Poketto?
 
-## Development status
+- A workspace agents can use directly. Agents follow repository-owned `AGENTS.md` files, search with ordinary commands, edit Markdown and process files. Five MCP tools provide execution, copy disposal, assets and artifacts; the `poketto` CLI handles saves, synchronization and media inside the workspace.
+- Git-backed authoring. Browser edits and agent saves use the same atomic Git writer. Saves select files and explicit deletions, check remote revisions, and preserve unselected local edits. Conflicts remain visible; an uncertain save has a receipt to reconcile before retrying.
+- Work survives reconnection. Authorized clients share a disk copy for the same account, space and reading scope. Commands run serially in isolated environments. Reconnects and ordinary service restarts retain the copy and its save state; command timeouts preserve files after the process tree stops. Copies have hard storage quotas and an explicit expiry.
+- Private work and public views. New content belongs in `private/`; selected content is published from `public/`. Publication requires its own permission. Public-only agents receive a separate projection without private files, metadata or original Git history.
 
-Poketto is under active development. Implemented: repository authoring, local media, browser moves, the CodeAct save/media workflow, invitation-based accounts with explicit member permissions, OAuth connections, additional spaces from existing repositories, per-space websites with cross-space discovery and collection reading, and retained execution across reconnects. [Client acceptance](acceptance/clients/README.md) records real Codex and Claude Code workflows in an isolated environment; [native executor verification](executor-native/README.md) exercises the Linux isolation boundary. The [delivery acceptance](notes/implemented/2026-09-15-multiuser-daily-use-acceptance.md) records the HTTPS installation, deployed topology and evidence limits.
+The external agent harness supplies the model and task planning. Poketto supplies authorized files, command execution and controlled access to remote Git and media storage.
 
-Content uses default-private `public/` and `private/` roots. The browser and CodeAct CLI support scope-aware moves and ZIP exports with actual originals and relative links. MCP file work uses the isolated workspace and host CLI. The [content contract](notes/implemented/2026-09-09-codeact-content-and-media.md) defines the format; existing repositories need a coordinated content/application conversion before upgrading. Current interfaces and limits are in the [usage reference](docs/usage.md).
+## From a draft to a website
 
-The [multi-user delivery](notes/implemented/2026-09-11-multiuser-workspaces-and-discovery.md) implements accounts, spaces and public discovery, including author and space attribution on cards, album thumbnails and a lightbox, README fallback for folder landings, site-wide search with highlighted matches and return to results, in-directory new note and folder actions with filename search, and restorable management URLs.
+Write and preview Markdown in the browser, or let an agent organize the files through MCP. Add images and other attachments, review changes, and save selected content. Move chosen material into `public/` to publish it on an enabled space's website; supported Markdown references are repaired with the move.
 
-The primary deployment is a self-hosted Linux server. Open self-registration, provider-side repository creation, backups, visitor Q&A and the [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) are outside the current delivery scope.
+The browser includes file and directory navigation, filename search, author attribution, album thumbnails and a lightbox. Each enabled space has a site at `/s/{slug}` with articles, tags, archives, search, galleries and ordered collections. The homepage discovers content across enabled public spaces, and site-wide search highlights matching text.
+
+An installation starts with a default space. Accounts can connect existing private GitHub or CNB repositories as additional spaces. Registration and joining a space use separate invitations. Owners manage member permissions, API keys, OAuth connections, repository credentials and the website switch. The default space's website starts enabled; additional sites require a human owner to enable them.
+
+## How agents work
+
+Connect an MCP client using a scoped API key or [OAuth consent](docs/usage.md#oauth-connections): sign in, select a space and approve permissions. A connection never exceeds its holder's current permissions. Repository access requires an enabled executor and `EXECUTE_REPOSITORY`.
+
+Call `repo_exec` with `expectedCopyId: "new"` to open the account's default copy, then reuse the returned `copyId`. Inside that copy, the agent reads `AGENTS.md` and `poketto --help`, uses shell/Python/Git for local work, and calls the host-mediated CLI:
+
+| Command | Role |
+|---|---|
+| `poketto create` / `edit` | Create without overwriting, or replace an exact old text; stdin supports long input |
+| `poketto status` | Inspect local state, save receipts and whether remote main matches the save/sync base |
+| `poketto save` | Save selected files and explicit deletions; advance local Git after remote acknowledgement |
+| `poketto sync` | Reconcile files with remote content while preserving local edits and surfacing conflicts |
+| `poketto recover` | Reconcile an interrupted operation or uncertain write without blindly repeating it |
+| `poketto move` | Move saved files, folders and indexed media, repairing supported Markdown references |
+| `poketto media list` / `import` / `fetch` / `link` | Discover media, store originals, retrieve bytes or link an existing original |
+| `poketto export` | Package saved documents and required originals into a private or public ZIP |
+| `poketto artifact create` / `remove` | Deliver temporary images, text or binary results through MCP |
+
+For files held by the client, `put_asset` supports a downloadable URL or a temporary raw-byte upload endpoint. The [file transfer guide](docs/usage.md#mcp-and-isolated-execution) describes client-specific handoff and linking the returned original into the workspace. Uploading alone does not save Git or publish content.
+
+Copy IDs guard against silent replacement. Each successful authorized use renews the default seven-day idle deadline, returned in `retention.expiresAt`; `repo_discard` explicitly removes local work without undoing remote saves. Full and public reading scopes stay separate even for the same account. Permission checks apply to every command and host operation; revocation stops affected access.
+
+These checks enforce granted capabilities. An agent with private-read and publish permissions can publish private material; interpreting user intent and handling prompt injection remain responsibilities of the external harness.
+
+## File as truth
+
+Markdown, directory structure and media references live in remote Git; its `main` branch is authoritative. Poketto serves public pages from verified snapshots. The application's repository cache is rebuildable; retained agent working copies separately hold unsaved work.
+
+Uploaded images, audio, video, PDFs and other files live as immutable local originals. Git stores logical paths and versions in `.poketto/assets.json`; documents use relative links. Originals are deduplicated within each workspace. Equal bytes in different spaces retain separate storage and identities. PostgreSQL holds accounts, permissions and other relational application state.
+
+Directory guides let agents discover existing organization without a fixed schema for every subject. The [content contract](notes/implemented/2026-09-09-codeact-content-and-media.md) defines the repository format; the [usage reference](docs/usage.md) owns interfaces and limits.
+
+## Status and evidence
+
+Poketto is in active development and has a deployed HTTPS installation. The records below identify what was exercised and where its evidence stops:
+
+- [Client acceptance](acceptance/clients/README.md): real Codex and Claude Code workflows in an isolated environment.
+- [Native executor verification](executor-native/README.md): production Java adapter, signed worker requests and Linux sandbox execution.
+- [Daily-use delivery acceptance](notes/implemented/2026-09-15-multiuser-daily-use-acceptance.md): deployed topology, browser workflows and evidence limits.
+
+The primary deployment is a self-hosted Linux server with a separately installed execution service and quota-enforced disk pool. Application, worker and content-format upgrades require coordination. Current releases do not promise interface or format compatibility.
+
+Open self-registration, provider-side repository creation, built-in backups, visitor Q&A and the [optional serverless profile](notes/proposed/2026-09-01-optional-serverless-deployment-profile.md) are outside the current delivery scope.
 
 ## Develop and self-host
 

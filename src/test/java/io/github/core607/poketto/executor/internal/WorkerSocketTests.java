@@ -1026,21 +1026,25 @@ class WorkerSocketTests {
     @Test
     void cancellingAQueuedRequestDoesNotCancelTheCurrentWriter() throws Exception {
         var actor = principal();
-        try (var peer = new Peer();
+        // Both calls must enter the adapter even when the common pool has only one worker.
+        try (var callers = Executors.newVirtualThreadPerTaskExecutor();
+                var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
             peer.holdExecReply = true;
-            var running = CompletableFuture.supplyAsync(() -> command(executor, actor, "new"));
+            var running = CompletableFuture.supplyAsync(() -> command(executor, actor, "new"), callers);
             assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
             var cancellation = new Cancellation();
-            var queued = CompletableFuture.supplyAsync(() -> executor.execute(
-                    actor,
-                    WORKSPACE,
-                    "queued",
-                    new RepositoryExecutor.CopyRequest("new"),
-                    Optional.empty(),
-                    "must-not-run",
-                    Duration.ofSeconds(2),
-                    cancellation));
+            var queued = CompletableFuture.supplyAsync(
+                    () -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            "queued",
+                            new RepositoryExecutor.CopyRequest("new"),
+                            Optional.empty(),
+                            "must-not-run",
+                            Duration.ofSeconds(2),
+                            cancellation),
+                    callers);
             cancellation.cancel();
             assertThatThrownBy(() -> queued.get(2, TimeUnit.SECONDS))
                     .hasCauseInstanceOf(ExecutionAdmissionException.class);
