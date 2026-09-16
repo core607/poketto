@@ -42,80 +42,11 @@ final class RepositoryMarkdownParser {
 
     Metadata parse(String path, String source) {
         String body = source.startsWith("\ufeff") ? source.substring(1) : source;
-        JsonNode metadata = null;
-        boolean hasMetadata = body.startsWith("---\n") || body.startsWith("---\r\n");
-        if (hasMetadata) {
-            int first = body.indexOf('\n') + 1;
-            int cursor = first;
-            int end = -1;
-            int next = -1;
-            while (cursor <= body.length()) {
-                int lineEnd = body.indexOf('\n', cursor);
-                if (lineEnd < 0) {
-                    lineEnd = body.length();
-                }
-                String line = body.substring(cursor, lineEnd).replace("\r", "");
-                if (line.equals("---")) {
-                    end = cursor;
-                    next = Math.min(lineEnd + 1, body.length());
-                    break;
-                }
-                cursor = lineEnd + 1;
-            }
-            if (end < 0) {
-                throw new IllegalArgumentException("frontmatter requires a closing delimiter");
-            }
-            String yaml = body.substring(first, end);
-            if (yaml.getBytes(StandardCharsets.UTF_8).length > ContentLimits.MAX_FRONTMATTER_BYTES) {
-                throw new IllegalArgumentException("frontmatter exceeds its byte limit");
-            }
-            try {
-                var scanner = new ScannerImpl(new StreamReader(yaml), new LoaderOptions());
-                while (scanner.peekToken() != null) {
-                    Token token = scanner.getToken();
-                    if (token.getTokenId() == Token.ID.Alias
-                            || token.getTokenId() == Token.ID.Anchor
-                            || token.getTokenId() == Token.ID.Tag) {
-                        throw new IllegalArgumentException("frontmatter aliases, anchors, and tags are not supported");
-                    }
-                    if (token.getTokenId() == Token.ID.StreamEnd) {
-                        break;
-                    }
-                }
-                metadata = YAML.readTree(yaml);
-                if (metadata == null || !metadata.isObject()) {
-                    throw new IllegalArgumentException("frontmatter must be a mapping");
-                }
-            } catch (RuntimeException exception) {
-                throw new IllegalArgumentException("frontmatter is not a valid bounded YAML mapping", exception);
-            }
-            body = body.substring(next);
-        }
-        String title = optionalText(metadata, "title")
-                .orElse(firstHeading(body).orElse(path.substring(path.lastIndexOf('/') + 1, path.length() - 3)));
-        title = title.strip();
-        if (title.isEmpty() || title.codePointCount(0, title.length()) > ContentLimits.MAX_TITLE_LENGTH) {
-            throw new IllegalArgumentException("title must be nonempty and within its length limit");
-        }
-        List<String> tags = new ArrayList<>();
-        if (metadata != null && metadata.has("tags")) {
-            JsonNode node = metadata.get("tags");
-            if (!node.isArray() || node.size() > ContentLimits.MAX_TAGS) {
-                throw new IllegalArgumentException("tags must be a bounded sequence");
-            }
-            for (JsonNode tag : node) {
-                if (!tag.isString()) {
-                    throw new IllegalArgumentException("tags must be strings");
-                }
-                String value = tag.stringValue().strip();
-                if (value.isEmpty() || value.codePointCount(0, value.length()) > ContentLimits.MAX_TAG_LENGTH) {
-                    throw new IllegalArgumentException("tag exceeds its length limit or is empty");
-                }
-                if (!tags.contains(value)) {
-                    tags.add(value);
-                }
-            }
-        }
+        Frontmatter frontmatter = frontmatter(body);
+        JsonNode metadata = frontmatter.metadata();
+        body = frontmatter.body();
+        String title = title(path, metadata, body);
+        List<String> tags = tags(metadata);
         // Folder identity follows its path, including after a move that preserves authored frontmatter.
         String route = RepositoryPathRules.folderPage(path)
                 ? RepositoryPathRules.route(path)
@@ -132,9 +63,103 @@ final class RepositoryMarkdownParser {
                 createdAt,
                 date(metadata, "updated_at"),
                 route,
-                !hasMetadata,
+                !frontmatter.present(),
                 PublicAuthorNames.normalize(
                         optionalText(metadata, "public_author").orElse("")));
+    }
+
+    /** The frontmatter mapping (null when absent) and the body that follows it. */
+    private record Frontmatter(JsonNode metadata, String body, boolean present) {}
+
+    // Frontmatter opens on the first line and closes on a line holding only the delimiter.
+    private static Frontmatter frontmatter(String body) {
+        if (!body.startsWith("---\n") && !body.startsWith("---\r\n")) {
+            return new Frontmatter(null, body, false);
+        }
+        int first = body.indexOf('\n') + 1;
+        int cursor = first;
+        int end = -1;
+        int next = -1;
+        while (cursor <= body.length()) {
+            int lineEnd = body.indexOf('\n', cursor);
+            if (lineEnd < 0) {
+                lineEnd = body.length();
+            }
+            String line = body.substring(cursor, lineEnd).replace("\r", "");
+            if (line.equals("---")) {
+                end = cursor;
+                next = Math.min(lineEnd + 1, body.length());
+                break;
+            }
+            cursor = lineEnd + 1;
+        }
+        if (end < 0) {
+            throw new IllegalArgumentException("frontmatter requires a closing delimiter");
+        }
+        String yaml = body.substring(first, end);
+        if (yaml.getBytes(StandardCharsets.UTF_8).length > ContentLimits.MAX_FRONTMATTER_BYTES) {
+            throw new IllegalArgumentException("frontmatter exceeds its byte limit");
+        }
+        return new Frontmatter(mapping(yaml), body.substring(next), true);
+    }
+
+    // Aliases, anchors and tags are refused by a token scan before the document is read.
+    private static JsonNode mapping(String yaml) {
+        try {
+            var scanner = new ScannerImpl(new StreamReader(yaml), new LoaderOptions());
+            while (scanner.peekToken() != null) {
+                Token token = scanner.getToken();
+                if (token.getTokenId() == Token.ID.Alias
+                        || token.getTokenId() == Token.ID.Anchor
+                        || token.getTokenId() == Token.ID.Tag) {
+                    throw new IllegalArgumentException("frontmatter aliases, anchors, and tags are not supported");
+                }
+                if (token.getTokenId() == Token.ID.StreamEnd) {
+                    break;
+                }
+            }
+            JsonNode metadata = YAML.readTree(yaml);
+            if (metadata == null || !metadata.isObject()) {
+                throw new IllegalArgumentException("frontmatter must be a mapping");
+            }
+            return metadata;
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("frontmatter is not a valid bounded YAML mapping", exception);
+        }
+    }
+
+    private static String title(String path, JsonNode metadata, String body) {
+        String title = optionalText(metadata, "title")
+                .orElse(firstHeading(body).orElse(path.substring(path.lastIndexOf('/') + 1, path.length() - 3)))
+                .strip();
+        if (title.isEmpty() || title.codePointCount(0, title.length()) > ContentLimits.MAX_TITLE_LENGTH) {
+            throw new IllegalArgumentException("title must be nonempty and within its length limit");
+        }
+        return title;
+    }
+
+    private static List<String> tags(JsonNode metadata) {
+        List<String> tags = new ArrayList<>();
+        if (metadata == null || !metadata.has("tags")) {
+            return tags;
+        }
+        JsonNode node = metadata.get("tags");
+        if (!node.isArray() || node.size() > ContentLimits.MAX_TAGS) {
+            throw new IllegalArgumentException("tags must be a bounded sequence");
+        }
+        for (JsonNode tag : node) {
+            if (!tag.isString()) {
+                throw new IllegalArgumentException("tags must be strings");
+            }
+            String value = tag.stringValue().strip();
+            if (value.isEmpty() || value.codePointCount(0, value.length()) > ContentLimits.MAX_TAG_LENGTH) {
+                throw new IllegalArgumentException("tag exceeds its length limit or is empty");
+            }
+            if (!tags.contains(value)) {
+                tags.add(value);
+            }
+        }
+        return tags;
     }
 
     private static Optional<String> firstHeading(String body) {
