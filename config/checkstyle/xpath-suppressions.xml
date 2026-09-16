@@ -12,10 +12,6 @@
 <suppressions>
     <suppress-xpath checks="MethodLength" files="[\\/]assets[\\/]AssetService\.java$"
                     query="//METHOD_DEF[./IDENT[@text='prepareMedia']]"/>
-    <suppress-xpath checks="MethodLength" files="[\\/]assets[\\/]ImagePreviewPolicy\.java$"
-                    query="//METHOD_DEF[./IDENT[@text='validate']]"/>
-    <suppress-xpath checks="MethodLength" files="[\\/]assets[\\/]internal[\\/]LocalManagedBlobStore\.java$"
-                    query="//METHOD_DEF[./IDENT[@text='uploadOriginal']]"/>
     <suppress-xpath checks="MethodLength" files="[\\/]auth[\\/]OAuthService\.java$"
                     query="//METHOD_DEF[./IDENT[@text='consent']]"/>
     <suppress-xpath checks="MethodLength" files="[\\/]content[\\/]internal[\\/]JGitRepositoryPatchService\.java$"
@@ -34,12 +30,6 @@
                     query="//METHOD_DEF[./IDENT[@text='executeWithBridge']]"/>
     <suppress-xpath checks="MethodLength" files="[\\/]executor[\\/]internal[\\/]SessionMoves\.java$"
                     query="//METHOD_DEF[./IDENT[@text='prepare']]"/>
-    <suppress-xpath checks="MethodLength" files="[\\/]mcp[\\/]internal[\\/]McpBodyLimitFilter\.java$"
-                    query="//METHOD_DEF[./IDENT[@text='doFilter']]"/>
-    <suppress-xpath checks="MethodLength" files="[\\/]mcp[\\/]internal[\\/]McpEnvelopeBounds\.java$"
-                    query="//METHOD_DEF[./IDENT[@text='inspect']]"/>
-    <suppress-xpath checks="MethodLength" files="[\\/]mcp[\\/]internal[\\/]RepositoryMcpTools\.java$"
-                    query="//METHOD_DEF[./IDENT[@text='getArtifact' or @text='specifications']]"/>
     <suppress-xpath checks="MethodLength" files="[\\/]spaces[\\/]SpaceCreationService\.java$"
                     query="//METHOD_DEF[./IDENT[@text='create']]"/>
 </suppressions>
