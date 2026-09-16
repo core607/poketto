@@ -149,54 +149,15 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
             try (RevWalk commits = new RevWalk(objects);
                     TreeWalk tree = new TreeWalk(objects)) {
                 var root = commits.parseCommit(ObjectId.fromString(commit)).getTree();
-                ObjectId folderTree = root;
-                if (!folder.isEmpty()) {
-                    try (TreeWalk entry = TreeWalk.forPath(objects, folder.substring(0, folder.length() - 1), root)) {
-                        if (entry == null || !FileMode.TREE.equals(entry.getFileMode(0))) {
-                            return new SiblingImages(List.of(), false);
-                        }
-                        folderTree = entry.getObjectId(0);
-                    }
+                Optional<ObjectId> folderTree = folderTree(objects, root, folder);
+                if (folderTree.isEmpty()) {
+                    return new SiblingImages(List.of(), false);
                 }
-                tree.addTree(folderTree);
+                tree.addTree(folderTree.orElseThrow());
                 RepositoryPublishingPolicy policy = JGitPublicContentSnapshots.policy(objects, commit);
                 var order = Comparator.comparing(ImageCandidate::path);
                 var candidates = new PriorityQueue<ImageCandidate>(limit, order.reversed());
-                boolean partial = false;
-                int visited = 0;
-                while (tree.next()) {
-                    if (++visited > 100_000) {
-                        throw unavailable();
-                    }
-                    String path = folder + tree.getPathString();
-                    if (!RepositoryBlobs.isFile(tree.getFileMode(0))
-                            || !imagePath(path)
-                            || inlinePaths.contains(path)) {
-                        continue;
-                    }
-                    try {
-                        RepositoryPathRules.validate(path);
-                    } catch (IllegalArgumentException invalid) {
-                        continue;
-                    }
-                    if (RepositoryPathRules.reserved(path)) {
-                        continue;
-                    }
-                    boolean publicPath = policy.permitsPath(path);
-                    if (publicOnly && !publicPath) {
-                        continue;
-                    }
-                    var candidate = new ImageCandidate(path, tree.getObjectId(0), publicPath);
-                    if (candidates.size() == limit) {
-                        partial = true;
-                        // Git byte order differs from Java filename order for non-BMP characters.
-                        if (order.compare(candidate, candidates.peek()) >= 0) {
-                            continue;
-                        }
-                        candidates.remove();
-                    }
-                    candidates.add(candidate);
-                }
+                boolean partial = collectCandidates(tree, folder, policy, publicOnly, inlinePaths, candidates, limit);
                 List<RepositoryBlob> result = new ArrayList<>();
                 for (var candidate : candidates.stream().sorted(order).toList()) {
                     long size = tree.getObjectReader().getObjectSize(candidate.objectId(), Constants.OBJ_BLOB);
@@ -217,6 +178,66 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
                 throw unavailable();
             }
         });
+    }
+
+    private static Optional<ObjectId> folderTree(ObjectReader objects, ObjectId root, String folder)
+            throws IOException {
+        if (folder.isEmpty()) {
+            return Optional.of(root);
+        }
+        try (TreeWalk entry = TreeWalk.forPath(objects, folder.substring(0, folder.length() - 1), root)) {
+            if (entry == null || !FileMode.TREE.equals(entry.getFileMode(0))) {
+                return Optional.empty();
+            }
+            return Optional.of(entry.getObjectId(0));
+        }
+    }
+
+    // Keeps the first limit image paths in name order; returns whether any candidate was left out.
+    private static boolean collectCandidates(
+            TreeWalk tree,
+            String folder,
+            RepositoryPublishingPolicy policy,
+            boolean publicOnly,
+            Set<String> inlinePaths,
+            PriorityQueue<ImageCandidate> candidates,
+            int limit)
+            throws IOException {
+        Comparator<ImageCandidate> order = Comparator.comparing(ImageCandidate::path);
+        boolean partial = false;
+        int visited = 0;
+        while (tree.next()) {
+            if (++visited > 100_000) {
+                throw unavailable();
+            }
+            String path = folder + tree.getPathString();
+            if (!RepositoryBlobs.isFile(tree.getFileMode(0)) || !imagePath(path) || inlinePaths.contains(path)) {
+                continue;
+            }
+            try {
+                RepositoryPathRules.validate(path);
+            } catch (IllegalArgumentException invalid) {
+                continue;
+            }
+            if (RepositoryPathRules.reserved(path)) {
+                continue;
+            }
+            boolean publicPath = policy.permitsPath(path);
+            if (publicOnly && !publicPath) {
+                continue;
+            }
+            var candidate = new ImageCandidate(path, tree.getObjectId(0), publicPath);
+            if (candidates.size() == limit) {
+                partial = true;
+                // Git byte order differs from Java filename order for non-BMP characters.
+                if (order.compare(candidate, candidates.peek()) >= 0) {
+                    continue;
+                }
+                candidates.remove();
+            }
+            candidates.add(candidate);
+        }
+        return partial;
     }
 
     private record ImageCandidate(String path, ObjectId objectId, boolean publicPath) {}
