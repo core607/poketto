@@ -70,7 +70,7 @@ class McpPutAssetInputTests {
 
         assertThat(body.path("code").asString()).isEqualTo("INVALID_INPUT");
         assertThat(body.path("message").asString())
-                .contains("mode=upload", "uploadUrl")
+                .contains("file reference", "mode=import", "cannot be read here")
                 .doesNotContain("/mnt/data");
         verifyNoInteractions(auth, transfers);
     }

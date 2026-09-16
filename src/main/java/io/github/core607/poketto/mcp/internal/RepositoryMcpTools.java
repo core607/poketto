@@ -113,7 +113,7 @@ final class RepositoryMcpTools {
     private McpServerFeatures.SyncToolSpecification putAssetTool() {
         return tool(
                 "put_asset",
-                "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
+                "Import an image from url or from a file attached to this conversation (file, a platform file reference), at most 16 MiB. A path in your own environment cannot be read here; attach the file instead. Only if your environment can send HTTPS requests itself: use mode=upload with operationKey only, then PUT the raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
                 putAssetSchema(),
                 false,
                 false,
@@ -362,8 +362,9 @@ final class RepositoryMcpTools {
         if (invalid.getCause() instanceof IllegalArgumentException reason) {
             return reason.getMessage();
         }
-        return "file must be an object with download_url and file_id; a path in your own environment cannot be"
-                + " read here. Use mode=upload with operationKey only, then PUT the bytes to uploadUrl.";
+        return "file must be the file reference this conversation holds (an object with download_url and"
+                + " file_id), passed with mode=import; a path in your own environment cannot be read here. Only an"
+                + " environment that can send HTTPS requests itself should use mode=upload and PUT the bytes.";
     }
 
     private static Map<String, Object> putAssetSchema() {
