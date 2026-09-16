@@ -20,7 +20,7 @@ class Docker:
     def __init__(self):
         self.calls = []
         self.fail_up = False
-        self.fail_listing = False
+        self.fail_containers = False
         self.fail_inspect = set()
         self.changed_runtime = False
         self.changed_revision_environment = False
@@ -85,12 +85,9 @@ class Docker:
             # Docker deletes an untagged image at its first digest reference.
             del self.images[image_id]
             return ""
-        if args[1] == "images":
-            if self.fail_listing:
-                raise subprocess.TimeoutExpired("docker", 240)
-            wanted = args[args.index("--filter") + 1].split("=", 2)[2]
-            return "\n".join(image_id for image_id, image in self.images.items() if image["source"] == wanted)
         if args[1] == "ps":
+            if self.fail_containers and "--filter" not in args:
+                raise subprocess.TimeoutExpired("docker", 240)
             ids = [item["Id"] for item in self.running.values()]
             if "--filter" not in args:
                 ids.append(self.sidecar["Id"])
@@ -151,44 +148,69 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertNotIn("retained-secret", state)
         self.assertEqual(json.loads(state)["status"], "healthy")
 
-    def test_healthy_update_retires_unreferenced_images_of_this_repository(self):
-        result = self.installation.update(REVISION, "new-app", "new-frontend")
+    def test_a_healthy_update_retires_only_the_generations_this_installation_recorded(self):
+        first = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(first["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["knownImages"], ["id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend"])
+        self.assertIsNone(state["retirementError"])
+        # The replaced generation is left with two digest references and with no reference at all.
+        self.docker.images["id-old-app"]["refs"] = ["registry/poketto@sha256:old-a", "registry/poketto@sha256:old-b"]
+        self.docker.images["id-old-frontend"]["refs"] = []
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
         self.assertEqual(result["retiredImages"], 2)
-        self.assertEqual(result["retiredImageIds"], ["id-stale", "id-untagged"])
-        self.assertEqual(json.loads(self.installation.state_file.read_text())["retiredImages"], ["id-stale", "id-untagged"])
-        self.assertNotIn("id-stale", self.docker.images)
-        self.assertNotIn("id-untagged", self.docker.images)
-        for retained in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend",
-                         "id-retained-db", "id-retained-gateway", "id-sidecar", "id-foreign"):
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["retiredImages"], ["id-old-app", "id-old-frontend"])
+        self.assertEqual(state["knownImages"], ["id-new-app", "id-new-app-2", "id-new-frontend", "id-new-frontend-2"])
+        # Images this installation never deployed stay, whatever label or reference they carry.
+        for retained in ("id-new-app", "id-new-frontend", "id-new-app-2", "id-new-frontend-2", "id-stale",
+                         "id-untagged", "id-retained-db", "id-retained-gateway", "id-sidecar", "id-foreign"):
             self.assertIn(retained, self.docker.images)
-        self.assertEqual(self.docker.removed, ["registry/poketto@sha256:stale-a", "id-untagged"])
+        self.assertEqual(self.docker.removed, ["registry/poketto@sha256:old-a", "id-old-frontend"])
         self.assertFalse(any("--force" in call or "-f" in call for call in self.docker.calls if call[1:3] == ("image", "rm")))
-        healthy = self.docker.calls.index(next(call for call in self.docker.calls if call[1] == "images"))
-        self.assertLess(self.docker.calls.index(next(call for call in self.docker.calls if "up" in call)), healthy)
+        removal = self.docker.calls.index(next(call for call in self.docker.calls if call[1:3] == ("image", "rm")))
+        self.assertLess(max(index for index, call in enumerate(self.docker.calls) if "up" in call), removal)
 
-    def test_retirement_needs_the_source_label_and_never_fails_a_healthy_deployment(self):
-        self.docker.images["id-new-app"]["source"] = None
-        self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["retiredImages"], 0)
-        self.assertIn("id-stale", self.docker.images)
-        self.assertIn("id-untagged", self.docker.images)
-        self.docker.images["id-new-app"]["source"] = SOURCE
-        self.docker.fail_listing = True
+    def test_a_retirement_failure_is_recorded_and_never_fails_a_healthy_deployment(self):
+        self.docker.fail_containers = True
         result = self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(result["status"], "healthy")
         self.assertIsNone(result["retiredImages"])
         self.assertIn("docker", result["retirementError"])
-        self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "healthy")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["status"], "healthy")
+        self.assertEqual(state["retirementError"], result["retirementError"])
+        self.assertIsNone(state["retiredImages"])
+        self.docker.fail_containers = False
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertIsNone(state["retirementError"])
+        self.assertEqual(state["retiredImages"], [])
 
     def test_an_unanswered_pin_lookup_retires_nothing(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
-        self.docker.images["id-stale"] = {"refs": ["registry/poketto@sha256:stale-c"], "source": SOURCE}
-        self.docker.fail_inspect = {"old-app"}
-        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        self.docker.fail_inspect = {"new-app"}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
         self.assertEqual(result["status"], "healthy")
         self.assertIsNone(result["retiredImages"])
         self.assertIn("docker", result["retirementError"])
-        self.assertIn("id-stale", self.docker.images)
-        self.assertIn("id-old-app", self.docker.images)
+        for known in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend"):
+            self.assertIn(known, self.docker.images)
+
+    def test_a_known_image_that_is_already_gone_leaves_the_record(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        del self.docker.images["id-old-frontend"]
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImageIds"], ["id-old-app"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertNotIn("id-old-frontend", state["knownImages"])
 
     def test_rerunning_the_running_version_keeps_the_previous_version_retained(self):
         self.installation.update(REVISION, "new-app", "new-frontend")

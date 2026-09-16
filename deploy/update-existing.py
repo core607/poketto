@@ -147,34 +147,39 @@ class Installation:
 
     # None means Docker confirmed the image is absent; any other failure propagates, so an unanswered
     # lookup never shrinks the retained set.
-    def present(self, reference):
+    def image_details(self, reference):
         try:
-            return json.loads(self.command("docker", "image", "inspect", reference))[0]["Id"]
+            return json.loads(self.command("docker", "image", "inspect", reference))[0]
         except DeploymentError as error:
             if error.missing_image:
                 return None
             raise
 
-    # Runs only after the state is healthy. Retired images carry the deployed image's source label
-    # and are referenced by no pin: the selected and previous app/frontend images, every image in
-    # the rendered configuration and every image a container on this host uses stay. Removal goes
-    # through tags and digests, never --force; whatever Docker declines to delete stays.
+    def present(self, reference):
+        details = self.image_details(reference)
+        return None if details is None else details["Id"]
+
+    # Runs only after the state is healthy. Candidates are the images this installation itself
+    # deployed, recorded in knownImages; an image that reached the host any other way is never
+    # touched. Of those, every image a pin references stays: the selected and previous app/frontend
+    # images, every image in the rendered configuration and every image a container on this host
+    # uses. Removal goes through tags and digests, never --force; whatever Docker declines to delete
+    # stays known, and an image that is already gone leaves the record.
     def retire_images(self, state, rendered):
-        labels = json.loads(self.command("docker", "image", "inspect", state["imageIds"]["app"]))[0]["Config"].get("Labels") or {}
-        source = labels.get("org.opencontainers.image.source")
-        if not source:
-            return []
-        retained = set(state["imageIds"].values())
-        pins = list(state["previousImages"].values()) + [service.get("image") for service in rendered["services"].values()]
-        retained.update(filter(None, (self.present(pin) for pin in pins if pin)))
+        previous = set(filter(None, (self.present(pin) for pin in state["previousImages"].values() if pin)))
+        retained = set(state["imageIds"].values()) | previous
+        rendered_images = [service.get("image") for service in rendered["services"].values()]
+        retained.update(filter(None, (self.present(pin) for pin in rendered_images if pin)))
         containers = self.command("docker", "ps", "-aq").split()
         if containers:
             retained.update(self.command("docker", "inspect", "--format", "{{.Image}}", *containers).split())
-        listed = self.command("docker", "images", "--no-trunc", "--quiet", "--filter",
-                              "label=org.opencontainers.image.source=" + source).split()
+        known = set(state["knownImages"]) | previous
         retired = []
-        for image in sorted(set(listed) - retained):
-            details = json.loads(self.command("docker", "image", "inspect", image))[0]
+        for image in sorted(known - retained):
+            details = self.image_details(image)
+            if details is None:
+                known.discard(image)
+                continue
             # Docker answers null, not an empty list, when an image has no tags or digests.
             references = (details.get("RepoTags") or []) + (details.get("RepoDigests") or [])
             for reference in references or [image]:
@@ -187,6 +192,8 @@ class Installation:
                     pass
             if self.present(image) is None:
                 retired.append(image)
+                known.discard(image)
+        state["knownImages"] = sorted(known)
         return retired
 
     def update(self, revision, app_image, frontend_image, check_only=False):
@@ -204,6 +211,8 @@ class Installation:
         if comparable != before:
             raise DeploymentError("candidate changes more than app/frontend images")
         state = json.loads(self.state_file.read_text()) if self.state_file.exists() else None
+        # Every image this installation deployed stays on record until it is retired or gone.
+        known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
             if state["revision"] != revision or state["imageIds"] != image_ids or state["configuration"] != digest(rendered):
                 raise DeploymentError("an unfinished deployment requires reconciliation with the same images and configuration")
@@ -221,6 +230,7 @@ class Installation:
                 "runtimeContracts": {name: digest(runtime_contract(containers[name])) for name in image_refs},
                 "otherContainers": {name: value["Id"] for name, value in containers.items() if name not in image_refs},
             }
+        state["knownImages"] = sorted(known | set(image_ids.values()))
         if check_only:
             candidate.unlink()
             return {"status": "validated", "revision": revision}
@@ -235,13 +245,15 @@ class Installation:
         result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
         try:
             retired = self.retire_images(state, rendered)
-            state["retiredImages"] = retired
-            write_json(self.state_file, state)
+            state.update(retiredImages=retired, retirementError=None)
             result.update(retiredImages=len(retired), retiredImageIds=retired)
         except Exception as error:
-            # The deployment is recorded and healthy; a cleanup problem is reported, never fatal.
+            # The deployment is recorded and healthy; a cleanup problem is reported and kept in the
+            # state until a later retirement completes, never fatal.
             print("existing deployment: image retirement did not complete: " + str(error), file=sys.stderr)
+            state.update(retiredImages=None, retirementError=str(error))
             result.update(retiredImages=None, retirementError=str(error))
+        write_json(self.state_file, state)
         return result
 
 
