@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 spec = importlib.util.spec_from_file_location("updater", Path(__file__).parents[1] / "update-existing.py")
@@ -183,7 +184,8 @@ class ExistingDeploymentTests(unittest.TestCase):
         state = json.loads(self.installation.state_file.read_text())
         self.assertEqual(state["status"], "healthy")
         self.assertEqual(state["retirementError"], result["retirementError"])
-        self.assertIsNone(state["retiredImages"])
+        self.assertEqual(state["retiredImages"], [])
+        self.assertEqual(result["retiredImageIds"], [])
         self.docker.fail_containers = False
         self.installation.update(REVISION, "new-app", "new-frontend")
         state = json.loads(self.installation.state_file.read_text())
@@ -201,6 +203,40 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertIn("docker", result["retirementError"])
         for known in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend"):
             self.assertIn(known, self.docker.images)
+
+    def test_an_interrupted_retirement_records_what_it_removed(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        self.docker.fail_inspect = {"id-old-frontend"}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["status"], "healthy")
+        self.assertIsNone(result["retiredImages"])
+        self.assertEqual(result["retiredImageIds"], ["id-old-app"])
+        self.assertIn("docker", result["retirementError"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["retiredImages"], ["id-old-app"])
+        self.assertEqual(state["retirementError"], result["retirementError"])
+        self.assertNotIn("id-old-app", state["knownImages"])
+        self.assertIn("id-old-frontend", state["knownImages"])
+        self.assertNotIn("id-old-app", self.docker.images)
+
+    def test_a_lost_retirement_record_never_fails_the_healthy_deployment(self):
+        original = updater.write_json
+
+        # Only the retirement record carries retirementError; the healthy state before it does not.
+        def failing(path, value):
+            if "retirementError" in value:
+                raise OSError("no space left on device")
+            original(path, value)
+
+        with mock.patch.object(updater, "write_json", failing):
+            result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertEqual(result["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["status"], "healthy")
+        self.assertNotIn("retirementError", state)
 
     def test_a_known_image_that_is_already_gone_leaves_the_record(self):
         self.installation.update(REVISION, "new-app", "new-frontend")

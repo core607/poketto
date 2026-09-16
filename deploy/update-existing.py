@@ -164,7 +164,8 @@ class Installation:
     # touched. Of those, every image a pin references stays: the selected and previous app/frontend
     # images, every image in the rendered configuration and every image a container on this host
     # uses. Removal goes through tags and digests, never --force; whatever Docker declines to delete
-    # stays known, and an image that is already gone leaves the record.
+    # stays known, and an image that is already gone leaves the record. Progress is written into the
+    # state as it happens, so an interrupted run still records what it removed.
     def retire_images(self, state, rendered):
         previous = set(filter(None, (self.present(pin) for pin in state["previousImages"].values() if pin)))
         retained = set(state["imageIds"].values()) | previous
@@ -174,11 +175,13 @@ class Installation:
         if containers:
             retained.update(self.command("docker", "inspect", "--format", "{{.Image}}", *containers).split())
         known = set(state["knownImages"]) | previous
-        retired = []
+        state["knownImages"] = sorted(known)
+        retired = state["retiredImages"]
         for image in sorted(known - retained):
             details = self.image_details(image)
             if details is None:
                 known.discard(image)
+                state["knownImages"] = sorted(known)
                 continue
             # Docker answers null, not an empty list, when an image has no tags or digests.
             references = (details.get("RepoTags") or []) + (details.get("RepoDigests") or [])
@@ -193,7 +196,7 @@ class Installation:
             if self.present(image) is None:
                 retired.append(image)
                 known.discard(image)
-        state["knownImages"] = sorted(known)
+                state["knownImages"] = sorted(known)
         return retired
 
     def update(self, revision, app_image, frontend_image, check_only=False):
@@ -243,17 +246,22 @@ class Installation:
         state["status"] = "healthy"
         write_json(self.state_file, state)
         result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
+        state.update(retiredImages=[], retirementError=None)
         try:
             retired = self.retire_images(state, rendered)
-            state.update(retiredImages=retired, retirementError=None)
             result.update(retiredImages=len(retired), retiredImageIds=retired)
         except Exception as error:
             # The deployment is recorded and healthy; a cleanup problem is reported and kept in the
-            # state until a later retirement completes, never fatal.
+            # state until a later retirement completes, never fatal. What was removed before the
+            # problem stays recorded.
             print("existing deployment: image retirement did not complete: " + str(error), file=sys.stderr)
-            state.update(retiredImages=None, retirementError=str(error))
-            result.update(retiredImages=None, retirementError=str(error))
-        write_json(self.state_file, state)
+            state["retirementError"] = str(error)
+            result.update(retiredImages=None, retiredImageIds=state["retiredImages"], retirementError=str(error))
+        try:
+            write_json(self.state_file, state)
+        except OSError as error:
+            # The healthy state is already on disk; only the retirement record is lost.
+            print("existing deployment: image retirement could not be recorded: " + str(error), file=sys.stderr)
         return result
 
 
