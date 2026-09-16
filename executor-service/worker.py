@@ -82,9 +82,13 @@ def no_duplicates(items):
     return result
 
 
+def reject_constant(_):
+    # NaN and Infinity are not JSON; the standard parser would accept them without this hook.
+    raise Rejected('INVALID_REQUEST')
+
+
 def json_read(value):
-    return json.loads(value, object_pairs_hook=no_duplicates,
-                      parse_constant=lambda _: (_ for _ in ()).throw(Rejected('INVALID_REQUEST')))
+    return json.loads(value, object_pairs_hook=no_duplicates, parse_constant=reject_constant)
 
 
 class CommandCancellation(threading.Event):
@@ -218,6 +222,24 @@ class Service:
     def authorized(self, p):
         if (p['workspaceId'], p['principalId']) in self.revoked_keys or (p['workspaceId'], p['accountId']) in self.revoked_accounts:
             raise Rejected('AUTH_REVOKED')
+
+    # Callers hold self.lock. A request naming a lease is checked for authorization, lease identity
+    # and expiry in this order; authorization and expiry are checked again before every reply.
+    def live_session(self, p):
+        self.authorized(p)
+        s = self.sessions.get(p['leaseId'])
+        if not s or s.identity != self.identity(p):
+            raise Rejected('SESSION_NOT_FOUND')
+        return self.unexpired(s)
+
+    def unexpired(self, s):
+        if s.cancelled.is_set() or s.deadline <= self.clock():
+            raise Rejected('LEASE_EXPIRED')
+        return s
+
+    def recheck(self, p, s):
+        self.authorized(p)
+        self.unexpired(s)
 
     def response(self, s):
         return {'ok': True, 'leaseId': s.id, 'state': s.state, 'commit': s.commit,
@@ -394,8 +416,7 @@ class Service:
                 raise Rejected('SESSION_NOT_FOUND')
             if s.scope != 'full':
                 raise Rejected('READ_ONLY_SCOPE')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            self.unexpired(s)
             active = s.state == 'RUNNING' and s.unit and s.execution_id == data['executionId']
             ready = s.state == 'READY' and not data['executionId']
             if not (active or ready) or not s.files_lock.acquire(blocking=False):
@@ -408,9 +429,7 @@ class Service:
         try:
             self.backend.baseline(s, data, active)
             with self.lock:
-                self.authorized(p)
-                if s.cancelled.is_set() or s.deadline <= self.clock():
-                    raise Rejected('LEASE_EXPIRED')
+                self.recheck(p, s)
                 return self.response(s)
         finally:
             with self.lock:
@@ -430,12 +449,7 @@ class Service:
         if op != 'ARTIFACT_CREATE':
             identifier(data['artifactId'])
         with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            s = self.live_session(p)
             if s.state not in ('READY', 'RUNNING') or s.artifacts is None:
                 raise Rejected('SESSION_NOT_READY')
         with s.files_lock:
@@ -456,9 +470,7 @@ class Service:
             except OSError:
                 raise Rejected('ARTIFACT_UNAVAILABLE') from None
         with self.lock:
-            self.authorized(p)
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            self.recheck(p, s)
             return {**self.response(s), **result}
 
     def materialize_dispatch(self, p):
@@ -469,12 +481,7 @@ class Service:
         if set(data) != keys:
             raise Rejected('INVALID_REQUEST')
         with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            s = self.live_session(p)
             if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
                 raise Rejected('EXECUTION_MISMATCH')
         with s.files_lock:
@@ -511,9 +518,7 @@ class Service:
             except (CaptureRejected, OSError):
                 raise Rejected('MATERIALIZE_REJECTED') from None
         with self.lock:
-            self.authorized(p)
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            self.recheck(p, s)
             if s.execution_id != data['executionId']:
                 raise Rejected('EXECUTION_MISMATCH')
             return {**self.response(s), **result}
@@ -526,12 +531,7 @@ class Service:
         if set(data) != keys:
             raise Rejected('INVALID_REQUEST')
         with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            s = self.live_session(p)
             if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
                 raise Rejected('EXECUTION_MISMATCH')
         with s.files_lock:
@@ -571,9 +571,7 @@ class Service:
                 s.cancelled.set()
                 raise Rejected('MOVE_INSTALL_FAILED') from None
         with self.lock:
-            self.authorized(p)
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            self.recheck(p, s)
             if s.execution_id != data['executionId']:
                 raise Rejected('EXECUTION_MISMATCH')
             return {**self.response(s), **result}
@@ -588,12 +586,7 @@ class Service:
         if set(data) != keys:
             raise Rejected('INVALID_REQUEST')
         with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            s = self.live_session(p)
             if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
                 raise Rejected('EXECUTION_MISMATCH')
         # Keep the mount and unit alive without blocking renewal or revocation.
@@ -629,21 +622,14 @@ class Service:
             except CaptureRejected as error:
                 raise Rejected('CAPTURE_REJECTED', error.reason) from None
         with self.lock:
-            self.authorized(p)
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            self.recheck(p, s)
             if s.execution_id != data['executionId']:
                 raise Rejected('EXECUTION_MISMATCH')
             return {**self.response(s), **result}
 
     def bridge_dispatch(self, p):
         with self.lock:
-            self.authorized(p)
-            s = self.sessions.get(p['leaseId'])
-            if not s or s.identity != self.identity(p):
-                raise Rejected('SESSION_NOT_FOUND')
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            s = self.live_session(p)
             if s.bridge is None or s.state not in ('READY', 'RUNNING'):
                 raise Rejected('SESSION_NOT_READY')
             data = p['data']
@@ -669,9 +655,7 @@ class Service:
                 self.cancel(s, 'sandbox_failed')
             raise Rejected('BRIDGE_UNAVAILABLE') from None
         with self.lock:
-            self.authorized(p)
-            if s.cancelled.is_set() or s.deadline <= self.clock():
-                raise Rejected('LEASE_EXPIRED')
+            self.recheck(p, s)
             if execution_id != s.execution_id:
                 request = None
             return {**self.response(s), 'executionId': execution_id, 'bridgeRequest': request}
@@ -695,15 +679,17 @@ class Service:
 
     def sweep(self):
         with self.lock:
+            now = self.clock()
             for s in self.sessions.values():
-                if s.deadline <= self.clock():
+                if s.deadline <= now:
                     self.cancel(s, 'lease_expired')
             # Expired signatures cannot execute again, so their replay entries can leave memory.
-            self.requests = {k: v for k, v in self.requests.items() if v[1] is None or v[2] + 2 > self.clock()}
-            self.sessions = {k: s for k, s in self.sessions.items() if s.state != 'CLOSED' or s.deadline + 2 > self.clock()}
+            self.requests = {k: v for k, v in self.requests.items() if v[1] is None or v[2] + 2 > now}
+            self.sessions = {k: s for k, s in self.sessions.items() if s.state != 'CLOSED' or s.deadline + 2 > now}
             self.executions = {key for key in self.executions if key[0] in self.sessions}
-            for name in ('revoked_keys', 'revoked_accounts', 'closed_leases'):
-                setattr(self, name, {k: deadline for k, deadline in getattr(self, name).items() if deadline > self.clock()})
+            for table in (self.revoked_keys, self.revoked_accounts, self.closed_leases):
+                for key in [k for k, deadline in table.items() if deadline <= now]:
+                    del table[key]
             retained = list(self.sessions.values())
         for s in retained:
             failed = False
