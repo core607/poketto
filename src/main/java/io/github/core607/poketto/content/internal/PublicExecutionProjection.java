@@ -100,8 +100,6 @@ final class PublicExecutionProjection {
         if (maxBytes < 1 || snapshot.articles().size() > ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) {
             throw invalid();
         }
-        Map<String, String> articlePaths = new HashMap<>();
-        Set<String> normalized = new HashSet<>();
         var articles = snapshot.articles().stream()
                 .filter(article -> {
                     String source = article.repositoryPath().toLowerCase(Locale.ROOT);
@@ -109,19 +107,45 @@ final class PublicExecutionProjection {
                 })
                 .sorted(Comparator.comparing(PublicArticle::route))
                 .toList();
+        Set<String> normalized = new HashSet<>();
+        Map<String, String> articlePaths = articlePaths(articles, normalized);
+        requireNoNesting(normalized);
+        String mediaRoot = mediaRoot(normalized);
+        ProjectedMedia media = projectMedia(articles, originals, policy, mediaRoot);
+        Map<String, byte[]> files = new TreeMap<>();
+        Map<String, String> sourcePaths = new HashMap<>();
+        long total = 0;
+        for (PublicArticle article : articles) {
+            String path = articlePaths.get(article.repositoryPath());
+            byte[] bytes = articleFile(article, path, articlePaths, media.paths());
+            if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES || bytes.length > maxBytes - total) {
+                throw invalid();
+            }
+            total += bytes.length;
+            files.put(path, bytes);
+            sourcePaths.put(path, article.repositoryPath());
+        }
+        byte[] index = new RepositoryMediaIndex(media.projected()).encode();
+        byte[] guide = GUIDE.getBytes(StandardCharsets.UTF_8);
+        if (index.length + guide.length > maxBytes - total) {
+            throw invalid();
+        }
+        files.put(RepositoryMediaIndex.PATH, index);
+        files.put("AGENTS.md", guide);
+        media.paths().forEach((source, projected) -> sourcePaths.put(projected, source));
+        return new Projection(files, sourcePaths, media.entries());
+    }
+
+    // Route folders that collide with index.md, AGENTS.md, .poketto or an existing ~ prefix gain a ~
+    // prefix; two articles may not share a normalized path.
+    private static Map<String, String> articlePaths(List<PublicArticle> articles, Set<String> normalized) {
+        Map<String, String> articlePaths = new HashMap<>();
         for (PublicArticle article : articles) {
             RepositoryPathRules.validateRoute(article.route());
             String path = article.route().equals("/")
                     ? "index.md"
                     : Arrays.stream(article.route().substring(1).split("/"))
-                                    .map(segment -> {
-                                        String key = DocumentPathRules.collisionKey(segment);
-                                        return segment.startsWith("~")
-                                                        || Set.of("index.md", "agents.md", ".poketto")
-                                                                .contains(key)
-                                                ? "~" + segment
-                                                : segment;
-                                    })
+                                    .map(PublicExecutionProjection::projectedSegment)
                                     .collect(Collectors.joining("/"))
                             + "/index.md";
             RepositoryPathRules.validate(path);
@@ -131,6 +155,19 @@ final class PublicExecutionProjection {
                 throw invalid();
             }
         }
+        return articlePaths;
+    }
+
+    private static String projectedSegment(String segment) {
+        String key = DocumentPathRules.collisionKey(segment);
+        return segment.startsWith("~")
+                        || Set.of("index.md", "agents.md", ".poketto").contains(key)
+                ? "~" + segment
+                : segment;
+    }
+
+    // No projected file may also be a directory of another projected file.
+    private static void requireNoNesting(Set<String> normalized) {
         Set<String> filePaths = new HashSet<>(normalized);
         filePaths.add("agents.md");
         for (String key : filePaths) {
@@ -140,12 +177,28 @@ final class PublicExecutionProjection {
                 }
             }
         }
+    }
+
+    private static String mediaRoot(Set<String> normalized) {
         int suffix = 0;
         String mediaPrefix = mediaRootPrefix(suffix);
         while (overlaps(normalized, mediaPrefix)) {
             mediaPrefix = mediaRootPrefix(++suffix);
         }
-        String mediaRoot = mediaPrefix.substring(0, mediaPrefix.length() - 1);
+        return mediaPrefix.substring(0, mediaPrefix.length() - 1);
+    }
+
+    /** Referenced media: source path to projected path, the projected index, and each entry with its first referrer. */
+    private record ProjectedMedia(
+            Map<String, String> paths,
+            Map<String, RepositoryMediaIndex.Media> projected,
+            Map<String, RepositorySnapshotExports.PublicMedia> entries) {}
+
+    private static ProjectedMedia projectMedia(
+            List<PublicArticle> articles,
+            RepositoryMediaIndex originals,
+            RepositoryPublishingPolicy policy,
+            String mediaRoot) {
         Map<String, RepositoryMediaIndex.Media> referenced = new TreeMap<>();
         Map<String, String> referrers = new HashMap<>();
         for (PublicArticle article : articles) {
@@ -172,43 +225,25 @@ final class PublicExecutionProjection {
             projectedMedia.put(path, entry.getValue());
             media.put(path, new RepositorySnapshotExports.PublicMedia(referrers.get(source), entry.getValue()));
         }
-        Map<String, byte[]> files = new TreeMap<>();
-        Map<String, String> sourcePaths = new HashMap<>();
-        long total = 0;
-        for (PublicArticle article : articles) {
-            String path = articlePaths.get(article.repositoryPath());
-            String body = sanitize(article, path, articlePaths, mediaPaths);
-            String text = "---\ntitle: " + JSON.writeValueAsString(article.title()) + "\ntags: "
-                    + JSON.writeValueAsString(article.tags()) + "\nroute: " + JSON.writeValueAsString(article.route())
-                    + "\npublic_author: " + JSON.writeValueAsString(article.publicAuthor())
-                    + (article.createdAt() == null
-                            ? ""
-                            : "\ndate: "
-                                    + JSON.writeValueAsString(
-                                            article.createdAt().toString()))
-                    + (article.updatedAt() == null
-                            ? ""
-                            : "\nupdated_at: "
-                                    + JSON.writeValueAsString(
-                                            article.updatedAt().toString()))
-                    + "\n---\n\n" + body;
-            byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-            if (bytes.length > ContentLimits.MAX_DOCUMENT_BYTES || bytes.length > maxBytes - total) {
-                throw invalid();
-            }
-            total += bytes.length;
-            files.put(path, bytes);
-            sourcePaths.put(path, article.repositoryPath());
-        }
-        byte[] index = new RepositoryMediaIndex(projectedMedia).encode();
-        byte[] guide = GUIDE.getBytes(StandardCharsets.UTF_8);
-        if (index.length + guide.length > maxBytes - total) {
-            throw invalid();
-        }
-        files.put(RepositoryMediaIndex.PATH, index);
-        files.put("AGENTS.md", guide);
-        mediaPaths.forEach((source, projected) -> sourcePaths.put(projected, source));
-        return new Projection(files, sourcePaths, media);
+        return new ProjectedMedia(mediaPaths, projectedMedia, media);
+    }
+
+    private static byte[] articleFile(
+            PublicArticle article, String path, Map<String, String> articlePaths, Map<String, String> mediaPaths) {
+        String body = sanitize(article, path, articlePaths, mediaPaths);
+        String text = "---\ntitle: " + JSON.writeValueAsString(article.title()) + "\ntags: "
+                + JSON.writeValueAsString(article.tags()) + "\nroute: " + JSON.writeValueAsString(article.route())
+                + "\npublic_author: " + JSON.writeValueAsString(article.publicAuthor())
+                + (article.createdAt() == null
+                        ? ""
+                        : "\ndate: "
+                                + JSON.writeValueAsString(article.createdAt().toString()))
+                + (article.updatedAt() == null
+                        ? ""
+                        : "\nupdated_at: "
+                                + JSON.writeValueAsString(article.updatedAt().toString()))
+                + "\n---\n\n" + body;
+        return text.getBytes(StandardCharsets.UTF_8);
     }
 
     private static String mediaRootPrefix(int suffix) {
@@ -280,68 +315,62 @@ final class PublicExecutionProjection {
             Map<String, String> articles,
             Map<String, String> media,
             boolean image) {
-        if (!image
-                && authored.startsWith("#")
-                && authored.length() <= 256
-                && authored.codePoints().noneMatch(Character::isISOControl)) {
-            return authored;
-        }
-        if (!image
-                && authored.matches("(?i)^(https?://|mailto:).*")
-                && authored.codePoints().noneMatch(Character::isISOControl)) {
+        if (!image && literal(authored)) {
             return authored;
         }
         var resolved = MarkdownDestinations.path(source, authored);
         if (resolved.isEmpty()) {
             return null;
         }
-        String original = resolved.orElseThrow();
-        String target = media.get(original);
-        if (target == null && !image) {
-            target = articles.get(original);
-            if (target == null) {
-                target = articles.get(original.isEmpty() ? "index.md" : original + "/index.md");
-            }
-            if (target == null) {
-                target = articles.get(original.isEmpty() ? "README.md" : original + "/README.md");
-            }
-            if (target == null) {
-                target = articles.get(original + ".md");
-            }
-        }
+        String target = target(resolved.orElseThrow(), articles, media, image);
         if (target == null) {
             return null;
         }
-        String[] parent = projected.contains("/")
-                ? projected.substring(0, projected.lastIndexOf('/')).split("/")
-                : new String[0];
-        String[] destination = target.split("/");
-        int common = 0;
-        while (common < parent.length && common < destination.length && parent[common].equals(destination[common])) {
-            common++;
+        return encode(RelativeLinks.relative(projected, target)) + fragment(authored);
+    }
+
+    // A link's own-page fragment or absolute web or mail destination is kept as authored.
+    private static boolean literal(String authored) {
+        return ((authored.startsWith("#") && authored.length() <= 256)
+                        || authored.matches("(?i)^(https?://|mailto:).*"))
+                && authored.codePoints().noneMatch(Character::isISOControl);
+    }
+
+    // Media resolves for links and images; an article resolves for links by path, folder landing or .md name.
+    private static String target(
+            String original, Map<String, String> articles, Map<String, String> media, boolean image) {
+        String target = media.get(original);
+        if (target != null || image) {
+            return target;
         }
-        List<String> parts = new ArrayList<>();
-        for (int i = common; i < parent.length; i++) {
-            parts.add("..");
+        for (String candidate : List.of(
+                original,
+                original.isEmpty() ? "index.md" : original + "/index.md",
+                original.isEmpty() ? "README.md" : original + "/README.md",
+                original + ".md")) {
+            target = articles.get(candidate);
+            if (target != null) {
+                return target;
+            }
         }
-        for (int i = common; i < destination.length; i++) {
-            parts.add(destination[i]);
-        }
-        String relative = String.join("/", parts);
-        String encoded = Arrays.stream(relative.split("/", -1))
-                .map(segment -> {
-                    if (segment.equals("..")) {
-                        return segment;
-                    }
-                    return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
-                })
+        return null;
+    }
+
+    private static String encode(String relative) {
+        return Arrays.stream(relative.split("/", -1))
+                .map(segment -> segment.equals("..")
+                        ? segment
+                        : URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20"))
                 .collect(Collectors.joining("/"));
+    }
+
+    private static String fragment(String authored) {
         int fragment = authored.indexOf('#');
         return fragment >= 0
                         && authored.length() - fragment <= 256
                         && authored.substring(fragment).codePoints().noneMatch(Character::isISOControl)
-                ? encoded + authored.substring(fragment)
-                : encoded;
+                ? authored.substring(fragment)
+                : "";
     }
 
     private static void flatten(Node node) {
