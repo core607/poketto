@@ -74,3 +74,11 @@ For image-memory admission, stage the current runtime and run `python acceptance
 The probe writes source hashes, resource samples and results to its `.gradle/image-memory-*` directory, then removes only its uniquely labelled containers and volumes. Failure diagnostics are kept there for inspection. A passing resource sample supports that fixture and pinned runtime; it does not establish safety for every repository workload or replace the final HTTPS and actual-client acceptance.
 
 For a container-headroom comparison, `--memory-mib 1024` keeps the maximum heap at 500 MiB while increasing only the sample container limit. The default 768 MiB sample uses the deployment heap percentage. This comparison does not change deployment configuration.
+
+The [repository initialization browser run](evidence/2026-09-17-repository-initialization.json)
+shows the creation form's wording, an existing space's repository connection tab listing the
+template files the seeded repository lacks, and the explicit action that adds them, with the
+receipt and the re-read status. Screenshots and provenance live in an
+[evidence commit](https://github.com/core607/poketto/blob/a460fe5d4f479374291d59b57b2ed966fec28088/README.md)
+outside the product history. The acceptance provider fixture reports a repository with content,
+so the empty-repository root commit at creation is integration-test evidence, not browser evidence.

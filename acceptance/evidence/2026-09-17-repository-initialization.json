@@ -1,0 +1,60 @@
+{
+  "result": "PASS",
+  "sourceCommit": "7c48f77b7c88351c9e86b8d06ca3a02d3c44c898",
+  "recordedDate": "2026-09-17",
+  "production": false,
+  "services": "real Spring acceptance entrance, PostgreSQL 17.11, production Next.js, Caddy; synthetic seeded Git remote",
+  "providerMocked": true,
+  "browser": "headless Chrome through playwright-core 1.58.2, viewport 1200x900, locale zh-CN",
+  "checks": [
+    {
+      "name": "creation-wording",
+      "artifact": "creation-wording.jpg",
+      "shown": "creation attempts the template as the first commit of an empty repository; the repository connection tab offers it otherwise; a repository with content is not changed"
+    },
+    {
+      "name": "initialization-offered",
+      "artifact": "initialization-offered.jpg",
+      "space": "deployment-managed default workspace of the fixture owner",
+      "statusBefore": {
+        "repositoryEmpty": false,
+        "missingFiles": [
+          "AGENTS.md",
+          "private/AGENTS.md",
+          "public/AGENTS.md"
+        ]
+      },
+      "listed": [
+        "AGENTS.md",
+        "private/AGENTS.md",
+        "public/AGENTS.md"
+      ]
+    },
+    {
+      "name": "initialization-applied",
+      "artifact": "initialization-applied.jpg",
+      "receipt": "已写入 3 个文件，提交 7654762ebd3a。",
+      "statusAfter": {
+        "repositoryEmpty": false,
+        "missingFiles": []
+      }
+    }
+  ],
+  "notShown": "the empty-repository root commit at creation (integration-test evidence: SpaceCreationHttpIntegrationIT) and the remote commit's content (ContentRepositoryInitializerTests)",
+  "evidenceCommit": "a460fe5d4f479374291d59b57b2ed966fec28088",
+  "artifacts": {
+    "creation-wording.jpg": {
+      "sha256": "c38da95dd0900871738b50e343ece659a93fc6191d30718ca32eee81aa6ee471",
+      "bytes": 57950
+    },
+    "initialization-offered.jpg": {
+      "sha256": "1881d84e54edcb4ef8532ccf6242b8361787b1c6d0d54ca950a5ecb89246af5a",
+      "bytes": 29940
+    },
+    "initialization-applied.jpg": {
+      "sha256": "6be592f5e2eed9a6bc0662e802fbc8daa78bec0cbc0e44802446a7ff1e5a1ea8",
+      "bytes": 25634
+    }
+  },
+  "cleanup": "PASS"
+}

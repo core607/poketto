@@ -8,6 +8,7 @@ import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
+import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.sql.Timestamp;
@@ -18,19 +19,28 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Account-level repository connections, durable across response loss and process restarts. No remote writes occur. */
+/**
+ * Account-level repository connections, durable across response loss and process restarts. The only
+ * remote write is the content template committed into an empty repository once its space exists.
+ */
 public final class SpaceCreationService {
+    private static final Logger log = LoggerFactory.getLogger(SpaceCreationService.class);
+
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final RegistrationService accounts;
     private final AuthService auth;
     private final WorkspaceRegistry workspaces;
     private final RepositoryConnections repositories;
+    private final RepositoryInitialization initialization;
     private final Clock clock;
     private final Semaphore admission = new Semaphore(2);
 
@@ -41,6 +51,7 @@ public final class SpaceCreationService {
             AuthService auth,
             WorkspaceRegistry workspaces,
             RepositoryConnections repositories,
+            RepositoryInitialization initialization,
             Clock clock) {
         this.jdbc = jdbc;
         this.transactions = new TransactionTemplate(transactionManager);
@@ -48,6 +59,7 @@ public final class SpaceCreationService {
         this.auth = auth;
         this.workspaces = workspaces;
         this.repositories = repositories;
+        this.initialization = initialization;
         this.clock = clock;
     }
 
@@ -79,6 +91,24 @@ public final class SpaceCreationService {
                 repositories.applyRotation(workspace, rotation);
                 return null;
             });
+        } finally {
+            admission.release();
+        }
+    }
+
+    public RepositoryInitialization.Status initializationStatus(AuthPrincipal actor, WorkspaceId workspace) {
+        accounts.account(actor);
+        return initialization.status(actor, workspace);
+    }
+
+    /** One owner action; creation's admission bound keeps remote work per instance small. */
+    public RepositoryInitialization.Outcome initialize(AuthPrincipal actor, WorkspaceId workspace) {
+        accounts.account(actor);
+        if (!admission.tryAcquire()) {
+            throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+        }
+        try {
+            return initialization.apply(actor, workspace);
         } finally {
             admission.release();
         }
@@ -177,10 +207,12 @@ public final class SpaceCreationService {
     }
 
     // The repository is verified outside the transaction; the workspace is created only while this lease still leads.
+    // An empty repository receives the content template after the transaction, once the owner exists.
     private Result complete(
             AuthPrincipal actor, UUID requestId, UUID lease, Attempt attempt, RepositoryCoordinates coordinates) {
         var verified = repositories.verify(attempt.workspace(), coordinates, attempt.sealed());
-        return transactions.execute(status -> {
+        var established = new AtomicBoolean();
+        Result ready = transactions.execute(status -> {
             Attempt current = find(actor, requestId, true);
             if (!current.lease().equals(lease)) {
                 return result(current);
@@ -195,8 +227,25 @@ public final class SpaceCreationService {
                     actor.accountId(),
                     requestId,
                     lease);
+            established.set(true);
             return result(find(actor, requestId, false));
         });
+        if (established.get() && verified.emptyRepository()) {
+            initializeEmptyRepository(actor, attempt.workspace());
+        }
+        return ready;
+    }
+
+    // A failure leaves the space ready and the repository empty; the repository connection view offers the same change.
+    private void initializeEmptyRepository(AuthPrincipal actor, WorkspaceId workspace) {
+        try {
+            initialization.apply(actor, workspace);
+        } catch (RuntimeException failure) {
+            log.warn(
+                    "workspace {} could not receive the content template as its first commit: {}",
+                    workspace,
+                    failure.getClass().getName());
+        }
     }
 
     // No exception text or token becomes a persisted diagnostic or HTTP result.

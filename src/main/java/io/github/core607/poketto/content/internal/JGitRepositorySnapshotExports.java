@@ -9,6 +9,7 @@ import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -102,7 +103,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     public PublicExport createPublic(AuthPrincipal actor, WorkspaceId workspace) {
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         var snapshot = snapshots.withCurrent(workspace, value -> value);
-        String authorityCommit = snapshot.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
+        String authorityCommit = snapshot.commit().orElseThrow(RepositoryEmptyException::new);
         long deadline = System.nanoTime() + timeout.toNanos();
         var projection = projection(workspace, snapshot, deadline);
         String fingerprint = PublicExecutionProjection.fingerprint(projection);
@@ -329,17 +330,17 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 workspace,
                 Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
                 () -> authority.readObjects(workspace, snapshot -> {
+                    // Named before the export's own failure handling: an unborn main is the owner's to initialize.
+                    String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
                     UUID id = UUID.randomUUID();
                     Path pending = staging.resolve(id + ".pending");
                     try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspace)) {
                         long deadline = System.nanoTime() + timeout.toNanos();
-                        String commit = requested.orElseGet(
-                                () -> snapshot.commitId().orElseThrow(JGitRepositorySnapshotExports::unavailable));
-                        if (!commit.matches("[0-9a-f]{40}")
-                                || snapshot.commitId().isEmpty()) {
+                        String commit = requested.orElse(head);
+                        if (!commit.matches("[0-9a-f]{40}")) {
                             throw unavailable();
                         }
-                        requireReachable(repository, snapshot.commitId().orElseThrow(), commit, deadline);
+                        requireReachable(repository, head, commit, deadline);
                         preflight(repository, commit, deadline);
                         safeStaging();
                         clearAbandoned();

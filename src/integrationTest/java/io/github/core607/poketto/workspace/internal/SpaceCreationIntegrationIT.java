@@ -10,14 +10,18 @@ import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
 import io.github.core607.poketto.auth.RegistrationService;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
+import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -53,6 +57,7 @@ class SpaceCreationIntegrationIT {
     private RegistrationService accounts;
     private JdbcWorkspaceCatalog catalog;
     private RepositoryFixture remote;
+    private InitializationFixture initialization;
     private final Instant now = Instant.parse("2026-09-11T00:00:00Z");
 
     @BeforeEach
@@ -80,6 +85,7 @@ class SpaceCreationIntegrationIT {
                 encoder.encode("fixture-password-123"));
         actor = auth.authenticatePassword("creator", "fixture-password-123");
         remote = new RepositoryFixture();
+        initialization = new InitializationFixture();
     }
 
     @Test
@@ -101,6 +107,7 @@ class SpaceCreationIntegrationIT {
                 .isTrue();
         var replay = create(service(now.plusSeconds(600)), request, "first-space", "first");
         assertThat(replay).isEqualTo(created);
+        assertThat(initialization.applied).containsExactly(workspace);
         assertThat(remote.verifications.get()).isEqualTo(1);
         assertThat(jdbc.queryForObject("select count(*) from workspaces where not is_default", Integer.class))
                 .isEqualTo(1);
@@ -181,9 +188,24 @@ class SpaceCreationIntegrationIT {
         assertThat(service(now).status(actor, abandoned).stage()).isEqualTo("READY");
     }
 
+    @Test
+    void anEmptyRepositoryIsInitializedOnceAfterCreationAndAFailureLeavesTheSpaceReady() {
+        initialization.fail = true;
+        var created = create(service(now), UUID.randomUUID(), "empty-space", "empty");
+        assertThat(created.stage()).isEqualTo("READY");
+        assertThat(initialization.applied).containsExactly(WorkspaceId.parse(created.workspaceId()));
+        initialization.fail = false;
+        remote.empty = false;
+        remote.identity = "github:456";
+        assertThat(create(service(now), UUID.randomUUID(), "filled-space", "filled")
+                        .stage())
+                .isEqualTo("READY");
+        assertThat(initialization.applied).hasSize(1);
+    }
+
     private SpaceCreationService service(Instant at) {
         return new SpaceCreationService(
-                jdbc, transactions, accounts, auth, catalog, remote, Clock.fixed(at, ZoneOffset.UTC));
+                jdbc, transactions, accounts, auth, catalog, remote, initialization, Clock.fixed(at, ZoneOffset.UTC));
     }
 
     @Test
@@ -236,6 +258,7 @@ class SpaceCreationIntegrationIT {
         }
 
         boolean fail;
+        boolean empty = true;
         String identity = "github:123";
         AtomicInteger verifications = new AtomicInteger();
         CountDownLatch entered;
@@ -268,7 +291,7 @@ class SpaceCreationIntegrationIT {
             if (fail) {
                 throw new RepositoryConnectionException(RepositoryConnectionException.Code.PERMISSION_DENIED);
             }
-            return new Verified(identity, true);
+            return new Verified(identity, true, empty);
         }
 
         public void install(
@@ -299,6 +322,27 @@ class SpaceCreationIntegrationIT {
 
         public void applyRotation(WorkspaceId workspace, CredentialRotation rotation) {
             appliedRotations.incrementAndGet();
+        }
+    }
+
+    /** Initialization is observed, never performed: it runs after the creation transaction, as the new owner. */
+    private final class InitializationFixture implements RepositoryInitialization {
+        final List<WorkspaceId> applied = new ArrayList<>();
+        boolean fail;
+
+        public Status status(AuthPrincipal actor, WorkspaceId workspace) {
+            return new Status(true, FILES);
+        }
+
+        public Outcome apply(AuthPrincipal actor, WorkspaceId workspace) {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .isFalse();
+            assertThat(auth.authorize(actor, workspace).role()).isEqualTo(MembershipRole.OWNER);
+            applied.add(workspace);
+            if (fail) {
+                throw new ContentRepositoryException("fixture initialization failure");
+            }
+            return new Outcome("a".repeat(40), FILES);
         }
     }
 }
