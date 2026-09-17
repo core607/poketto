@@ -7,9 +7,9 @@ This remains future work. [Phase-one delivery](../implemented/2026-09-05-phase-o
 
 ## Problem
 
-The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, images, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running a second `git push`, copying object-storage keys, or invoking `pg_dump` does not prove that data survives provider loss and may propagate a deletion into the supposed backup. [Source-encrypted backup recovery](2026-09-01-source-encrypted-backup-recovery.md) reverses this proposal's original target-access-only confidentiality choice and owns the encryption and key-custody decision.
+The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) require off-host copies of content history, images, and non-derived PostgreSQL tables but do not define confidentiality boundaries, retention, recovery points, failure visibility, or restore drills. Running a second `git push`, copying object-storage keys, or invoking `pg_dump` does not prove that data survives provider loss and may propagate a deletion into the supposed backup. This proposal originally left v1 payloads unencrypted behind private target access control; that choice was reversed on 2026-09-01, and the separate source-encrypted backup recovery proposal that carried the reversal was folded into this one on 2026-09-17, so encryption and key custody are decided here.
 
-[Remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) keeps Markdown and repository-managed images off the application host. Local and OSS [ManagedBlobStores](2026-09-01-repository-asset-blob-store.md) are authoritative for images uploaded through Poketto. Backup must protect the remote repository, managed objects, and non-derived PostgreSQL state in independent recovery boundaries; disposable repository-image caches add no recovery source.
+[Remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) keeps Markdown and repository-managed images off the application host. Local and OSS [ManagedBlobStores](../rejected/2026-09-01-repository-asset-blob-store.md) are authoritative for images uploaded through Poketto. Backup must protect the remote repository, managed objects, and non-derived PostgreSQL state in independent recovery boundaries; disposable repository-image caches add no recovery source.
 
 ## Proposal
 
@@ -17,6 +17,7 @@ The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) r
 
 - Production configuration names recovery targets independent from the authoritative Git provider, ManagedBlobStore, and PostgreSQL service. A target may be a self-hosted service or operator-selected third-party storage. Normal application operation does not require continuous backup-target availability.
 - Every backup is encrypted and authenticated before it leaves the source trust boundary. Encryption uses operator-controlled recovery material independent from target credentials. That material never enters the code repository, content repositories, backup bundles, logs, or metrics and must have a tested copy outside the application host; losing every copy makes the backup unrecoverable.
+- Recovery material is versioned: each artifact and manifest names the key version it needs, and rotation retains the material required by every recovery point still within retention. Restore fails explicitly when recovery material is missing, incorrect or cannot authenticate an artifact, and a freshness signal cannot report a backup as healthy until an isolated restore drill has decrypted, authenticated and verified the current format. This protects backup artifacts, not live authorities: it does not select a hosted key-management provider, require a hardware security module or automate recovery-material escrow.
 - Each medium records the last successful time, covered workspaces, source checkpoint, target identifier, byte count, and sanitized failure category. A new failure cannot erase the latest successful recovery point.
 - Backups retain versions for a defined period. The default flow does not immediately propagate a source deletion into every off-host copy; cleanup is a separate delayed and auditable retention task.
 - Documentation starts a restore from an empty data directory. Automated checks or scheduled drills for each medium prove that artifacts are readable, checksums match, and the application can reach the declared checkpoint.
@@ -36,7 +37,7 @@ The [requirements](../implemented/2026-08-25-requirements-and-architecture.md) r
 ### PostgreSQL
 
 - Accounts, memberships, invitations, API-key metadata, audits, budgets, workspace catalog, and the managed asset catalog are non-derived data that must be recoverable. Secrets retain their hashed or encrypted storage contract.
-- The implementation may create a whole-database dump, but PostgreSQL contains no document or content-search projection under [Repository-native retrieval and sandboxed agent execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). Disposable read caches and execution snapshots are rebuilt from the restored content repositories rather than backed up.
+- The implementation may create a whole-database dump, but PostgreSQL contains no document or content-search projection under [Repository-native retrieval and sandboxed agent execution](../implemented/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). Disposable read caches and execution snapshots are rebuilt from the restored content repositories rather than backed up.
 - A dump manifest records database schema version, creation time, and covered workspaces. Restore verifies schema, row-count invariants, and critical foreign keys in an isolated database before replacing production data.
 
 ## Implementation scope and dependencies
@@ -56,6 +57,8 @@ The first implementation provides backup commands, retention rules, machine-read
 **Rely only on a manual restore guide.** Documentation cannot prove that current commands still read current formats. Disposable restore tests expose drift in schemas, manifests, and paths.
 
 **Rely only on target access control or provider-side encryption.** This would let target credentials expose every retained private workspace and would couple confidentiality to provider configuration. Source-side encryption keeps backup contents outside that trust boundary; tested recovery material is an explicit operational prerequisite rather than an omitted one.
+
+**Encrypt only managed objects and PostgreSQL dumps.** Repository history can contain the same private content and repository-managed images; mixed confidentiality guarantees make target selection and incident response harder to reason about.
 
 ## Acceptance
 

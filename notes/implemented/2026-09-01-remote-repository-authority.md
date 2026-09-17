@@ -58,7 +58,7 @@ A remote ref update, including a force push or an unborn `main`, preserves alrea
 
 Unreachable fetched objects can accumulate until safe whole-cache eviction; the authority does not run concurrent Git garbage collection.
 
-SRT does not receive this cache or the authority binding. [Repository-native retrieval and sandboxed execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) owns full-copy, commit-pinned execution workspaces.
+SRT does not receive this cache or the authority binding. [Repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) owns full-copy, commit-pinned execution workspaces.
 
 ## Alternatives considered
 

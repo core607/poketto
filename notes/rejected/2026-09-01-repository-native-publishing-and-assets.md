@@ -2,10 +2,11 @@
 
 Date: 2026-09-01
 
+Rejected on 2026-09-17 as superseded. Its central decision, publication by default for every path outside `private/`, was reversed by [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md), whose public-root policy publishes nothing until the owner enables it; moving this record to implemented would mean rewriting that decision into its opposite. The parts that shipped are owned elsewhere: discovery, folder galleries and image grants by [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md), routes by [logical repository routes](../implemented/2026-09-06-logical-repository-routes.md), the media index by [logical media index](../implemented/2026-09-09-logical-media-index.md); the agent file tools it proposed, `get_file` and `repo_patch`, were removed by the [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md). The text is kept as the record of the public-by-default design that lost.
+
 The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
 standalone agent file-read, list and patch tool selections in this record. Shared
 service contracts and outstanding delivery requirements remain applicable.
-Status: Proposed
 
 The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
 

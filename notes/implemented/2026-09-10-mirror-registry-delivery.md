@@ -3,6 +3,8 @@
 Date: 2026-09-10
 Status: Implemented
 
+Since [PR #119](https://github.com/core607/poketto/pull/119) on 2026-09-14 the existing-layout updater pulls the canonical GHCR images by default; the mirror job and the mirror delivery mode below remain the optional route this record describes.
+
 ## Problem
 
 The [continuous-delivery baseline](../implemented/2026-09-03-continuous-delivery.md) streams a `docker save` archive of both images from the GitHub runner to the production host over SSH. The archive is about 265 MB and is resent in full on every deployment, including unchanged base layers. The host sits behind an international link whose throughput collapses during the local afternoon and evening. Deployments on 2026-09-10 measured the route as follows.

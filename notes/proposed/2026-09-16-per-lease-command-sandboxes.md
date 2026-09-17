@@ -49,4 +49,4 @@ One systemd unit per lease. The lease already is the session boundary: the appli
 
 ## Same-topic audit
 
-[Account working copies](../implemented/2026-09-14-account-working-copies.md) is retained; this note is the measurement it deferred. [Command timeout and explicit copy disposal](../implemented/2026-09-14-ephemeral-copy-lifecycle.md) is retained: a timeout still keeps the copy, and only its fresh-`/tmp` fact changes at implementation. The [local execution supervisor](2026-09-05-local-execution-supervisor.md) proposal keeps the privileged boundary this note builds on; its per-command process tree is what this note replaces.
+[Account working copies](../implemented/2026-09-14-account-working-copies.md) is retained; this note is the measurement it deferred. [Command timeout and explicit copy disposal](../implemented/2026-09-14-ephemeral-copy-lifecycle.md) is retained: a timeout still keeps the copy, and only its fresh-`/tmp` fact changes at implementation. The [local execution supervisor](../implemented/2026-09-05-local-execution-supervisor.md) proposal keeps the privileged boundary this note builds on; its per-command process tree is what this note replaces.

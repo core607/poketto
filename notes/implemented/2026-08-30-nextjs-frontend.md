@@ -1,0 +1,56 @@
+# Next.js Frontend Boundary
+
+Date: 2026-08-30
+Implemented: 2026-09-06
+
+## Problem
+
+The [requirements](2026-08-25-requirements-and-architecture.md) originally selected JTE, htmx and Tailwind for a server-rendered public blog and its administration pages, and the [development baseline](2026-08-26-development-baseline.md) therefore defined one Spring Boot artifact with a `web` application module before any user-facing route or template existed.
+
+Poketto needs two rendering modes. Public articles, tag and archive pages, RSS and the sitemap need complete server-rendered output; administration pages need longer-lived client state for editing, membership, keys and repository diagnostics. Implementing both through server templates and fragment response contracts would split one interface across Java templates, browser scripts and endpoint-specific HTML protocols. The frontend needs one typed component model for both modes without moving content authority, authorization or business operations out of Spring, and adding a JavaScript runtime must carry a measured cost rather than silently redefining deployment sizing.
+
+## Decision
+
+This record was consolidated on 2026-09-17 after the work shipped under the notes named below. Each of those notes owns the detail of its part; this summary does not restate or override them.
+
+**Presentation boundary.** The [frontend workspace](../../frontend/README.md) is a top-level Next.js App Router application in React, TypeScript and Tailwind. [package.json](../../frontend/package.json) pins Next.js 16.3.4, React 19.2.8 and Tailwind 4.3.3; its `engines` field and `.nvmrc` pin Node.js 24.19.0 and npm 12.0.2, and the lockfile is committed. Next.js renders public articles, tags, archive, search, RSS and the sitemap on each request and serves the Chinese administration interface. It has no Git, blob-store or database access, reads public Spring APIs without forwarding a browser identity, and sends browser mutations to same-origin Spring APIs with the current session and CSRF token. It defines no Server Actions; its only Route Handlers are the presentation resources `/robots.txt`, `/rss.xml` and `/sitemap.xml`, each over public Spring APIs. [Blog and browser administration](2026-09-06-blog-browser-interface.md) owns the restricted Markdown renderer shared by the public view and the authenticated preview, the editor's revision and conflict handling, the confirmation dialogs, `frontendCheck` and the browser acceptance entrance.
+
+**Backend ownership.** Spring remains the only business backend. Its `web` module owns HTTP API contracts and no templates ([development baseline](2026-08-26-development-baseline.md)). Errors cross the boundary as the problem responses of the [HTTP entrance baseline](2026-09-03-http-entrance-baseline.md); the read and execution boundary follows [repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md); managed images use the delivery path of [managed assets](../rejected/2026-09-01-repository-asset-blob-store.md). The [requirements](2026-08-25-requirements-and-architecture.md) name this stack and record that it replaces JTE and htmx.
+
+**Same-origin routing.** The [production Caddyfile](../../deploy/Caddyfile) sends `/api`, `/api/*`, `/mcp`, `/mcp/*` and the OAuth discovery paths under `/.well-known/` to Spring, answers `/actuator` and its descendants with 404, sends every other path to Next.js, and serves a loopback-only health entrance on port 8081. The [acceptance Caddyfile](../../acceptance/Caddyfile) applies the same matcher over plain HTTP. In the [Compose stack](../../deploy/compose.yaml) the frontend receives only the internal API base URL and the public origin, publishes no host port, and reports health through the administration page so that an invalid publication policy never hides the repair interface. [Blog stack delivery](2026-09-05-blog-stack-delivery.md) owns the stack, matched image revisions, credential separation and forwarded-header trust.
+
+**Freshness.** Public pages render from Spring's current public snapshot with no cross-request Next.js data or HTML cache; [proxy.ts](../../frontend/proxy.ts) sets `Cache-Control: no-store` and a per-request CSP nonce on page routes. Any revision-aware cache, on-demand revalidation or CDN layer still requires an explicit freshness contract that scopes keys by workspace and route, defines invalidation after commit, exposes invalidation failure and coordinates replicas; a write acknowledgement does not imply invalidation. The sitemap index, per-space sitemaps and robots.txt follow [canonical public sitemaps](2026-09-14-public-sitemaps.md).
+
+**Build and image.** [gradle/frontend.gradle.kts](../../gradle/frontend.gradle.kts) refuses any Node.js or npm version other than the pinned pair, installs with `npm ci --ignore-scripts`, and `frontendCheck` runs Prettier, `tsc`, the `tsx` test suite and `next build`; `check` requires it and [CI](../../.github/workflows/ci.yml) runs it on every pull request. The [Dockerfile](../../frontend/Dockerfile) builds on a digest-pinned `node:24.19.0-bookworm-slim` image and ships only the standalone output and static assets under the `node` user with an `org.opencontainers.image.revision` label; [next.config.ts](../../frontend/next.config.ts) selects `output: "standalone"` and disables runtime image optimization. CI publishes a separate `-frontend` image from the same verified commit as the application image. A production host never installs packages or builds.
+
+## Alternatives
+
+**Keep JTE and htmx.** One process and the smallest memory surface, but interactive administration state would span Java templates, fragment endpoints and browser conventions. It lost to a single component model; the second process was accepted on the condition of a resource exercise that remains outstanding (see Consequences).
+
+**Vue with Nuxt.** The same rendering modes on a portable Node runtime, but its single-file component model is template-centred. React and TSX give one TypeScript expression model without introducing a second backend.
+
+**React with Vite as a client-only SPA.** Almost no server memory, but public articles would need a second prerendering system to carry complete initial HTML, so it would violate the public rendering requirement.
+
+**Static Next.js export.** No Node.js runtime, but workspace content changes independently of the application build: every publish would rebuild the site or leave public pages stale. Request-time rendering keeps content publication independent of application deployment.
+
+**Next.js as a full-stack backend.** Server Actions and Route Handlers could carry sessions, writes and queries, but would duplicate Spring's module, security, transaction and audit boundaries.
+
+**Increase deployment resources before implementation.** Headroom without evidence that the frontend needs it. Build work stays outside the production runtime and each process receives explicit limits instead.
+
+## Consequences
+
+Two runtimes mean two images, two health checks and deployment coordination; the stack delivery record answers this with matched revision labels verified before any container is replaced. Server-side rendering adds an HTTP hop from Next.js to Spring, so a slow or unavailable backend affects pages through two processes; RSS and sitemap answer 503 rather than serving stale or partial content, and page errors map problem responses without duplicating authorization decisions.
+
+**The production resource profile is unmeasured.** The proposal required a production-like exercise that starts the prebuilt runtime under deployment limits, warms public and administration paths, performs reads and a content mutation, and records steady-state and peak use. No such evidence exists: `acceptance/evidence/` holds browser and backend receipts and one worker timing sample, none of which measures the frontend process. The Compose limits (384 MiB, 0.75 CPU and 128 processes by default) are bounded starting values, as the stack delivery record and the frontend README both state. Until the exercise runs, deployment sizing is not settled by this decision, and a later feature must keep its own memory and concurrency bounded rather than assume headroom.
+
+Framework upgrades change caching and rendering defaults, so they need contract and browser evidence rather than dependency-only validation. React's ease of rich interaction does not change the v1 exclusion of a rich-text editor, nor does it justify moving business state into browser stores or Next.js server code. Visitor-Q&A controls named in the original scope are not delivered; the administration interface covers raw Markdown, previews, images, members and keys.
+
+## Implementation and acceptance
+
+[Blog and browser administration](2026-09-06-blog-browser-interface.md) owns the frontend gate (behavioural tests with explicit API fixtures covering initial article HTML, URL and image restrictions, CSRF forwarding and uncertain writes) and the [isolated acceptance entrance](../../acceptance/README.md), whose [compose.yaml](../../acceptance/compose.yaml) builds the frontend from the production Dockerfile with the tested source revision and runs it read-only with dropped capabilities beside real Spring, PostgreSQL and Caddy. [Blog stack delivery](2026-09-05-blog-stack-delivery.md) owns Compose validation, the pinned gateway validation script and `proxyForwardingCheck`. [Canonical public sitemaps](2026-09-14-public-sitemaps.md) owns the local real-stack sitemap verification. [docs/usage.md](../../docs/usage.md) documents `./gradlew frontendCheck` and the `--frontend-image` deployment option.
+
+Evidence seen while consolidating: [2026-09-15-public-reading.json](../../acceptance/evidence/2026-09-15-public-reading.json) passes at source commit `9474a812` with a public article readable while page scripts are prohibited through CSP `script-src 'none'` (the receipt states this is not a global browser JavaScript preference), Next.js not bootstrapped and native search submission working; [2026-09-14-daily-use-ui.json](../../acceptance/evidence/2026-09-14-daily-use-ui.json) passes on real Spring, PostgreSQL, Next.js and Caddy over synthetic Git in Chrome at 1440x1000 and 390x844. Both receipts record `production: false` and a synthetic loopback corpus, not production HTTPS. The resource exercise has no receipt.
+
+## Same-topic audit
+
+Retained and cross-linked: [blog and browser administration](2026-09-06-blog-browser-interface.md) (the interface), [blog stack delivery](2026-09-05-blog-stack-delivery.md) (the stack), [canonical public sitemaps](2026-09-14-public-sitemaps.md) (sitemap contract), [requirements](2026-08-25-requirements-and-architecture.md) (stack selection), [development baseline](2026-08-26-development-baseline.md) (artifact and `web` module ownership), [continuous delivery](2026-09-03-continuous-delivery.md) (defers the frontend image to stack delivery), [HTTP entrance baseline](2026-09-03-http-entrance-baseline.md) (problem responses), [logical repository routes](2026-09-06-logical-repository-routes.md) (frontend decoding acceptance) and [phase-one daily use](2026-09-05-phase-one-daily-use.md) (delivery table).

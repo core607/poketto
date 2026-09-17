@@ -15,7 +15,7 @@ Status: Implemented
 
 The [identity HTTP backend](2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) consolidates installation and daily-use evidence.
 
-The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](../proposed/2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor. Integrated installation evidence is recorded in the acceptance record.
+The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor. Integrated installation evidence is recorded in the acceptance record.
 
 ## Problem
 
@@ -129,13 +129,13 @@ The scoped same-topic audit retains these records; none is archived or rejected 
 |---|---|
 | [Remote repository authority](2026-09-01-remote-repository-authority.md) | Retain exact-ref authority, conflict, and lost-response semantics |
 | [Validated content snapshot](2026-09-04-validated-content-snapshot.md) | Retain snapshot and resource ownership; this proposal replaces whole-tree document rejection and indefinite stale public service |
-| [Repository publishing](../proposed/2026-09-01-repository-native-publishing-and-assets.md) | Retain discovery, policy, gallery, and patch contracts; bound delivery grants explicitly here |
-| [Repository retrieval and execution](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain composable exploration and isolation; exclude Q&A and selective cold transfer from this delivery |
-| [Asset storage](../proposed/2026-09-01-repository-asset-blob-store.md) | Deliver local storage and Git-image cache; retain OSS and physical reclamation as unimplemented scope |
-| [Invitation-only membership](../proposed/2026-08-27-invitation-only-membership.md) | Deliver self-hosted identity lifecycle and member administration |
-| [Next.js frontend](../proposed/2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |
+| [Repository publishing](../rejected/2026-09-01-repository-native-publishing-and-assets.md) | Retain discovery, policy, gallery, and patch contracts; bound delivery grants explicitly here |
+| [Repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain composable exploration and isolation; exclude Q&A and selective cold transfer from this delivery |
+| [Asset storage](../rejected/2026-09-01-repository-asset-blob-store.md) | Deliver local storage and Git-image cache; retain OSS and physical reclamation as unimplemented scope |
+| [Invitation-only membership](2026-08-27-invitation-only-membership.md) | Deliver self-hosted identity lifecycle and member administration |
+| [Next.js frontend](2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |
 | [Continuous delivery](2026-09-03-continuous-delivery.md) | Retain immutable artifacts and deployment verification; this delivery does not require a backup gate |
-| [Off-host backup](../proposed/2026-08-27-off-host-backup-and-restore.md) and [source-encrypted recovery](../proposed/2026-09-01-source-encrypted-backup-recovery.md) | Retain as future work, excluded from phase-one completion |
+| [Off-host backup and source-encrypted recovery](../proposed/2026-08-27-off-host-backup-and-restore.md) | Retain as future work, excluded from phase-one completion |
 | [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) | Deliver invitation-gated accounts, existing-repository spaces, scoped access and public discovery |
 | [Serverless](../proposed/2026-09-01-optional-serverless-deployment-profile.md) | Retain as an independent future profile |
 

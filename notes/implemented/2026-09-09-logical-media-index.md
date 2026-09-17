@@ -23,7 +23,7 @@ selection rather than silently skip or repeat entries. A different selection sta
 at offset zero. Discovery does not fetch original bytes and does not assert their
 availability. Current authorization is checked before delivery, and withdrawal
 invalidates the public session. The [worker reference](../../executor-service/README.md)
-owns CLI arguments and limits; the [CodeAct plan](../proposed/2026-09-09-codeact-workspaces.md)
+owns CLI arguments and limits; the [CodeAct plan](2026-09-09-codeact-workspaces.md)
 retains session admission and remaining agent-tool cutover work.
 
 ## Writes and authorization

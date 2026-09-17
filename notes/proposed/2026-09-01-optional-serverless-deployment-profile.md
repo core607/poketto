@@ -18,7 +18,7 @@ The serverless request environment, object storage, shared relational service, r
 ### Profile boundary
 
 - Both profiles use [remote Git repository authority](../implemented/2026-09-01-remote-repository-authority.md). There is no local Git authority profile.
-- The primary single-server profile uses a local filesystem [ManagedBlobStore and disposable repository-image cache](2026-09-01-repository-asset-blob-store.md) plus a local SRT executor service under a dedicated low-privilege identity.
+- The primary single-server profile uses a local filesystem [ManagedBlobStore and disposable repository-image cache](../rejected/2026-09-01-repository-asset-blob-store.md) plus a local SRT executor service under a dedicated low-privilege identity.
 - The optional serverless profile runs Spring and the frontend without required persistent application volumes. It uses OSS-compatible authoritative managed storage and derived repository-image caching, shared PostgreSQL, and remote SRT workers outside replaceable request instances.
 - Both profiles use the same application artifacts, domain modules, workspace model, authorization rules, content format, publishing policy, write preconditions, repository acknowledgement, and image-ownership semantics. Startup configuration selects explicit adapters; missing or invalid external configuration fails closed and never falls back to container disk, local Git authority, or direct command execution.
 - Business modules depend on Poketto-owned ports and contain no provider API, repository URL, bucket name, filesystem path, transport credential, or deployment-specific retry rule.
@@ -27,11 +27,11 @@ The serverless request environment, object storage, shared relational service, r
 
 Request instances may keep bounded commit-keyed repository caches, but deleting an instance and its disk loses no acknowledged Markdown, publishing policy, repository history, or managed image because those authorities remain in remote Git, shared PostgreSQL, and authoritative OSS rather than ephemeral disk.
 
-The serverless OSS-compatible [ManagedBlobStore](2026-09-01-repository-asset-blob-store.md) is the byte authority only for images uploaded through Poketto. Repository images remain exact remote Git files and use a separately identifiable derived OSS cache on demand. Source Markdown is never rewritten to a provider URL. Losing authoritative managed objects requires encrypted backup restoration; losing the repository-image cache causes rematerialization rather than data recovery.
+The serverless OSS-compatible [ManagedBlobStore](../rejected/2026-09-01-repository-asset-blob-store.md) is the byte authority only for images uploaded through Poketto. Repository images remain exact remote Git files and use a separately identifiable derived OSS cache on demand. Source Markdown is never rewritten to a provider URL. Losing authoritative managed objects requires encrypted backup restoration; losing the repository-image cache causes rematerialization rather than data recovery.
 
 ### Sandbox execution
 
-Both profiles use Anthropic Sandbox Runtime behind the `SandboxExecutor` contract from [repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). The single-server profile calls a local executor service. The serverless profile sends authenticated bounded jobs to a remote SRT worker running on ordinary Linux compute that supports the required sandbox primitives.
+Both profiles use Anthropic Sandbox Runtime behind the `SandboxExecutor` contract from [repository-native retrieval and sandboxed execution](../implemented/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md). The single-server profile calls a local executor service. The serverless profile sends authenticated bounded jobs to a remote SRT worker running on ordinary Linux compute that supports the required sandbox primitives.
 
 The remote worker receives only an authorized immutable repository snapshot, executable job metadata, and resource limits. It receives no repository-authority credential, object-store credential, PostgreSQL access, application secret, or caller-selected host path. Session files are disposable and never become content writes. `get_asset` remains an application-mediated multimodal read; SRT does not gain authority access or unrestricted network access to obtain images.
 
