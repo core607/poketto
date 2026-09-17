@@ -131,6 +131,14 @@ class ContentRepositoryInitializerTests {
         var initializer = new ContentRepositoryInitializer(
                 auth, mock(RepositoryContentReader.class), mock(RepositoryPatchService.class));
         assertThat(RepositoryInitialization.FILES).contains(RepositoryPublishingPolicy.PATH);
+        // The build packages whatever the directory holds; the code's list must be exactly that.
+        Path template = Path.of("content-template");
+        try (var paths = Files.walk(template)) {
+            assertThat(paths.filter(Files::isRegularFile)
+                            .map(file -> template.relativize(file).toString().replace('\\', '/'))
+                            .toList())
+                    .containsExactlyInAnyOrderElementsOf(RepositoryInitialization.FILES);
+        }
         for (String path : RepositoryInitialization.FILES) {
             assertThat(initializer.template().get(path)).isEqualTo(Files.readString(Path.of("content-template", path)));
         }

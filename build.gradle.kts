@@ -304,10 +304,16 @@ tasks.check {
 // files the documentation describes.
 tasks.processResources {
     from("content-template") { into("content-template") }
-    // The initializer loads these four files at startup; a build that lost them fails here, not there.
+    // The initializer loads the template at startup; a build that lost any of its files fails here, not
+    // there. The list is the directory itself; ContentRepositoryInitializerTests pins that the code's
+    // list of files equals it.
     doLast {
-        listOf("AGENTS.md", "private/AGENTS.md", "public/AGENTS.md", ".poketto/publishing.yaml").forEach { path ->
-            check(destinationDir.resolve("content-template").resolve(path).isFile) { "content template is missing $path" }
+        val template = layout.projectDirectory.dir("content-template").asFile
+        val files = template.walkTopDown().filter { it.isFile }.toList()
+        check(files.isNotEmpty()) { "content template is empty" }
+        files.forEach { source ->
+            val relative = source.relativeTo(template)
+            check(destinationDir.resolve("content-template").resolve(relative).isFile) { "content template is missing $relative" }
         }
     }
 }
