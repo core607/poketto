@@ -86,8 +86,8 @@ public final class AssetService {
         this.clock = clock;
         this.grants = new ImageGrants(blobs, clock, maxGrants);
         this.media = new MediaPreparations(blobs, managed, memory, this.cache);
-        this.reads = new PublicReads(this, media, blobs, grants, snapshots, thumbnails, markdown, clock);
         this.memory = Objects.requireNonNull(memory);
+        this.reads = new PublicReads(this, media, blobs, grants, snapshots, thumbnails, clock);
     }
 
     public ManagedAsset upload(AuthPrincipal actor, WorkspaceId workspace, String operationKey, InputStream original) {

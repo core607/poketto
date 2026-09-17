@@ -15,7 +15,6 @@ import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlob;
 import io.github.core607.poketto.content.RepositoryBlobReader;
-import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import io.github.core607.poketto.content.RepositoryMediaSnapshot;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
@@ -46,7 +45,6 @@ final class PublicReads {
     private final ImageGrants grants;
     private final PublicContentSnapshots snapshots;
     private final PublicThumbnailCache thumbnails;
-    private final RepositoryMarkdownInspector markdown;
     private final Clock clock;
 
     PublicReads(
@@ -56,7 +54,6 @@ final class PublicReads {
             ImageGrants grants,
             PublicContentSnapshots snapshots,
             PublicThumbnailCache thumbnails,
-            RepositoryMarkdownInspector markdown,
             Clock clock) {
         this.assets = assets;
         this.media = media;
@@ -64,7 +61,6 @@ final class PublicReads {
         this.grants = grants;
         this.snapshots = snapshots;
         this.thumbnails = thumbnails;
-        this.markdown = markdown;
         this.clock = clock;
     }
 
