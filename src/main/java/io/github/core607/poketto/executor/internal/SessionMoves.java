@@ -52,18 +52,48 @@ final class SessionMoves {
         }
         var originals = new LinkedHashMap<>(plan.originals());
         var replacements = new LinkedHashMap<>(plan.replacements());
-        var beforeFile = reader.getFile(actor, workspace, Optional.of(request.baseCommit()), RepositoryMediaIndex.PATH);
-        if (!beforeFile.commit().equals(Optional.of(request.baseCommit()))
-                || (!beforeFile.expectedAbsence() && beforeFile.source().isEmpty())) {
+        RepositoryMediaIndex before = baseline(actor, workspace, request.baseCommit());
+        RepositoryMediaIndex local = parse(localIndex);
+        requireSelectionUnchanged(before, local, source, destination);
+        Set<String> gitTargets = gitTargets(plan);
+        if (replacements.containsKey(RepositoryMediaIndex.PATH)) {
+            var merged = merge(before, local, RepositoryMediaIndex.parse(replacements.get(RepositoryMediaIndex.PATH)));
+            merged.requireNoGitCollisions(gitTargets);
+            byte[] localBytes = localIndex.orElseThrow().getBytes(StandardCharsets.UTF_8);
+            originals.put(
+                    RepositoryMediaIndex.PATH,
+                    new RepositoryMovePlan.Original(hash(localBytes), localBytes.length, false));
+            replacements.put(RepositoryMediaIndex.PATH, merged.encode());
+        } else {
+            local.requireNoGitCollisions(gitTargets);
+        }
+        var affected = new HashSet<>(originals.keySet());
+        affected.addAll(plan.relocations().values());
+        affected.addAll(replacements.keySet());
+        state.requireTracking(affected);
+        byte[] payload = payload(source, destination, originals, plan.relocations(), replacements);
+        return new Pending(request, payload, Set.copyOf(affected));
+    }
+
+    // The media index baseline is the base commit's own; a read that answered another commit is refused.
+    private RepositoryMediaIndex baseline(AuthPrincipal actor, WorkspaceId workspace, String baseCommit) {
+        var file = reader.getFile(actor, workspace, Optional.of(baseCommit), RepositoryMediaIndex.PATH);
+        if (!file.commit().equals(Optional.of(baseCommit))
+                || (!file.expectedAbsence() && file.source().isEmpty())) {
             throw new IllegalArgumentException("move index baseline is unavailable");
         }
-        var before = beforeFile
-                .source()
-                .map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
+        return parse(file.source());
+    }
+
+    private static RepositoryMediaIndex parse(Optional<String> source) {
+        return source.map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
                 .orElseGet(RepositoryMediaIndex::empty);
-        var local = localIndex
-                .map(value -> RepositoryMediaIndex.parse(value.getBytes(StandardCharsets.UTF_8)))
-                .orElseGet(RepositoryMediaIndex::empty);
+    }
+
+    // A local media mapping under either side of the move must equal the saved baseline: the move
+    // would otherwise carry or drop an unsaved change silently.
+    private static void requireSelectionUnchanged(
+            RepositoryMediaIndex before, RepositoryMediaIndex local, String source, String destination) {
         var paths = new HashSet<>(before.files().keySet());
         paths.addAll(local.files().keySet());
         for (String path : paths) {
@@ -72,54 +102,57 @@ final class SessionMoves {
                 throw new IllegalArgumentException("selected local media mappings have unsaved changes");
             }
         }
-        var gitTargets = new HashSet<String>();
+    }
+
+    private static Set<String> gitTargets(RepositoryMovePlan plan) {
+        var targets = new HashSet<String>();
         plan.originals().forEach((path, original) -> {
             if (!original.optional()) {
-                gitTargets.add(plan.relocations().getOrDefault(path, path));
+                targets.add(plan.relocations().getOrDefault(path, path));
             }
         });
-        if (replacements.containsKey(RepositoryMediaIndex.PATH)) {
-            var after = RepositoryMediaIndex.parse(replacements.get(RepositoryMediaIndex.PATH));
-            var merged = new LinkedHashMap<>(local.files());
-            var changed = new HashSet<>(before.files().keySet());
-            changed.addAll(after.files().keySet());
-            for (String path : changed) {
-                if (!Objects.equals(before.files().get(path), after.files().get(path))) {
-                    if (!Objects.equals(before.files().get(path), local.files().get(path))) {
-                        throw new IllegalArgumentException("selected local media mapping changed");
-                    }
-                    if (after.files().containsKey(path)) {
-                        merged.put(path, after.files().get(path));
-                    } else {
-                        merged.remove(path);
-                    }
+        return targets;
+    }
+
+    // The plan's index changes are applied on top of the local index; a mapping the plan changes
+    // must still stand at its baseline locally.
+    private static RepositoryMediaIndex merge(
+            RepositoryMediaIndex before, RepositoryMediaIndex local, RepositoryMediaIndex after) {
+        var merged = new LinkedHashMap<>(local.files());
+        var changed = new HashSet<>(before.files().keySet());
+        changed.addAll(after.files().keySet());
+        for (String path : changed) {
+            if (!Objects.equals(before.files().get(path), after.files().get(path))) {
+                if (!Objects.equals(before.files().get(path), local.files().get(path))) {
+                    throw new IllegalArgumentException("selected local media mapping changed");
+                }
+                if (after.files().containsKey(path)) {
+                    merged.put(path, after.files().get(path));
+                } else {
+                    merged.remove(path);
                 }
             }
-            var mergedIndex = new RepositoryMediaIndex(merged);
-            mergedIndex.requireNoGitCollisions(gitTargets);
-            byte[] localBytes = localIndex.orElseThrow().getBytes(StandardCharsets.UTF_8);
-            originals.put(
-                    RepositoryMediaIndex.PATH,
-                    new RepositoryMovePlan.Original(hash(localBytes), localBytes.length, false));
-            replacements.put(RepositoryMediaIndex.PATH, mergedIndex.encode());
-        } else {
-            local.requireNoGitCollisions(gitTargets);
         }
-        var affected = new HashSet<>(originals.keySet());
-        affected.addAll(plan.relocations().values());
-        affected.addAll(replacements.keySet());
-        state.requireTracking(affected);
+        return new RepositoryMediaIndex(merged);
+    }
+
+    private static byte[] payload(
+            String source,
+            String destination,
+            Map<String, RepositoryMovePlan.Original> originals,
+            Map<String, String> relocations,
+            Map<String, byte[]> replacements) {
         byte[] payload = JSON.writeValueAsBytes(new TransferredPlan(
                 UUID.randomUUID().toString(),
                 source,
                 destination,
                 Map.copyOf(originals),
-                plan.relocations(),
+                relocations,
                 Map.copyOf(replacements)));
         if (payload.length > 64 * 1024 * 1024) {
             throw new IllegalArgumentException("move plan exceeds transfer capacity");
         }
-        return new Pending(request, payload, Set.copyOf(affected));
+        return payload;
     }
 
     private static boolean inside(String path, String parent) {
