@@ -53,21 +53,16 @@ fun skillFrontmatter(skillFile: Path): Map<String, String>? {
 }
 
 // Claude Code discovers project skills only below .claude/skills; Codex discovers .agents/skills.
-// The stubs mirror name, description, and invocation policy so both agents auto-load one source.
+// The stubs mirror name and description so both agents auto-load one source. No skill restricts
+// implicit invocation; a skill that needs to would add that policy together with its generator branch.
 fun claudeSkillStub(skillDirectory: Path): String? {
     val metadata = skillFrontmatter(skillDirectory.resolve("SKILL.md")) ?: return null
     val name = metadata["name"] ?: return null
     val description = metadata["description"] ?: return null
-    val policy = skillDirectory.resolve("agents/openai.yaml")
-    val userInvokedOnly = policy.isRegularFile() &&
-        Files.readString(policy, StandardCharsets.UTF_8).contains("allow_implicit_invocation: false")
     return buildString {
         appendLine("---")
         appendLine("name: $name")
         appendLine("description: $description")
-        if (userInvokedOnly) {
-            appendLine("disable-model-invocation: true")
-        }
         appendLine("---")
         appendLine()
         appendLine(
