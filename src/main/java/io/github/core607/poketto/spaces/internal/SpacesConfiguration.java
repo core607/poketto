@@ -3,6 +3,7 @@ package io.github.core607.poketto.spaces.internal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryConnections;
+import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.spaces.SpacePublicationService;
 import io.github.core607.poketto.workspace.WorkspacePublications;
@@ -29,8 +30,9 @@ class SpacesConfiguration {
             RegistrationService accounts,
             AuthService auth,
             WorkspaceRegistry workspaces,
-            RepositoryConnections repositories) {
+            RepositoryConnections repositories,
+            RepositoryInitialization initialization) {
         return new SpaceCreationService(
-                jdbc, transactions, accounts, auth, workspaces, repositories, Clock.systemUTC());
+                jdbc, transactions, accounts, auth, workspaces, repositories, initialization, Clock.systemUTC());
     }
 }

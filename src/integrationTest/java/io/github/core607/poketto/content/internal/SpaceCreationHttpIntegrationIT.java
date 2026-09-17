@@ -15,16 +15,22 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
+import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -139,6 +145,31 @@ class SpaceCreationHttpIntegrationIT {
         assertThat(response).doesNotContain("provider-fixture-secret", "git-user", "sealed");
         UUID workspace =
                 UUID.fromString(json.readTree(response).path("workspaceId").asText());
+        // The empty fixture remote received the content template as its root commit during creation.
+        try (var remote = new FileRepositoryBuilder()
+                        .setGitDir(directory.resolve("remote.git").toFile())
+                        .setBare()
+                        .build();
+                var walk = new RevWalk(remote);
+                var entries = new TreeWalk(remote)) {
+            var head = walk.parseCommit(remote.resolve("refs/heads/main"));
+            assertThat(head.getParentCount()).isZero();
+            entries.addTree(head.getTree());
+            entries.setRecursive(true);
+            List<String> paths = new ArrayList<>();
+            while (entries.next()) {
+                paths.add(entries.getPathString());
+            }
+            assertThat(paths).containsExactlyInAnyOrderElementsOf(RepositoryInitialization.FILES);
+        }
+        String initializationPath = "/api/auth/workspaces/" + workspace + "/repository-initialization";
+        mvc.perform(get(initializationPath).session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repositoryEmpty").value(false))
+                .andExpect(jsonPath("$.missingFiles").isEmpty());
+        mvc.perform(csrf(session, post(initializationPath)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.addedFiles").isEmpty());
         String connectionPath = "/api/auth/workspaces/" + workspace + "/repository-connection";
         var connectionInfo = mvc.perform(get(connectionPath).session(session))
                 .andExpect(status().isOk())
@@ -179,6 +210,7 @@ class SpaceCreationHttpIntegrationIT {
                 UUID.randomUUID());
         var outsider = login("outsider", "fixture-owner-password");
         mvc.perform(get(connectionPath).session(outsider)).andExpect(status().isForbidden());
+        mvc.perform(get(initializationPath).session(outsider)).andExpect(status().isForbidden());
         jdbc.update(
                 "insert into auth_memberships(workspace_id,account_id,role) select ?,account_id,'MEMBER' from auth_accounts where login_name='outsider'",
                 workspace);
@@ -277,7 +309,7 @@ class SpaceCreationHttpIntegrationIT {
 
         public Verified verify(WorkspaceId workspace, RepositoryCoordinates coordinates, byte[] sealed) {
             verifications.incrementAndGet();
-            return new Verified("cnb:123", true);
+            return new Verified("cnb:123", true, true);
         }
 
         public void install(

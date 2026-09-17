@@ -52,7 +52,8 @@ public interface RepositoryConnections {
         }
     }
 
-    record Verified(String providerIdentity, boolean privateRepository) {
+    /** An empty repository has no branch; creation commits the content template into it. */
+    record Verified(String providerIdentity, boolean privateRepository, boolean emptyRepository) {
         @Override
         public String toString() {
             return "VerifiedRepository[redacted]";

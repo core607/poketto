@@ -8,6 +8,10 @@ subject alone.
 - [private/](private/AGENTS.md): personal notes and new content by default.
 - [public/](public/AGENTS.md): content intentionally selected for publication.
 
+Content outside these two trees stays where it is and remains private. A
+repository that already had files when it was connected keeps its own layout;
+refine these guides only on the owner's request.
+
 Both trees may use their own categories. They need neither matching folders nor
 duplicate copies. When introducing a durable category, describe its purpose in
 the nearest `AGENTS.md` and link its guide from the parent. Keep guides short;

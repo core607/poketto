@@ -2,6 +2,8 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
@@ -17,6 +19,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
@@ -77,6 +80,26 @@ class RepositorySnapshotExportsTests {
         snapshots.refresh(workspace);
         assertThatThrownBy(() -> exports.requireCurrentPublic(actor, workspace, published))
                 .isInstanceOf(ContentRepositoryException.class);
+    }
+
+    @Test
+    void anEmptyRepositoryIsReportedAsEmptyBeforeAnyExport() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        var exports = new JGitRepositorySnapshotExports(
+                fixture.authority(),
+                auth,
+                directory.toRealPath().resolve("exports"),
+                1024 * 1024,
+                Duration.ofSeconds(5),
+                snapshots);
+        assertThatThrownBy(() -> exports.create(actor, workspace, Optional.empty()))
+                .isInstanceOf(RepositoryEmptyException.class);
+        snapshots.refresh(workspace);
+        assertThatThrownBy(() -> exports.createPublic(actor, workspace)).isInstanceOf(RepositoryEmptyException.class);
     }
 
     @Test

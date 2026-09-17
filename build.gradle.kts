@@ -224,7 +224,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
 tasks.named("check") { dependsOn(existingDeploymentTests) }
 
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
-val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
     group = "verification"
@@ -298,4 +298,22 @@ tasks.check {
     dependsOn(linuxStorageTest)
     dependsOn(gatewayConfigCheck)
     dependsOn(appImageIdentityCheck)
+}
+
+// The content template ships inside the application, so repository initialization adds the same
+// files the documentation describes.
+tasks.processResources {
+    from("content-template") { into("content-template") }
+    // The initializer loads the template at startup; a build that lost any of its files fails here, not
+    // there. The list is the directory itself; ContentRepositoryInitializerTests pins that the code's
+    // list of files equals it.
+    doLast {
+        val template = layout.projectDirectory.dir("content-template").asFile
+        val files = template.walkTopDown().filter { it.isFile }.toList()
+        check(files.isNotEmpty()) { "content template is empty" }
+        files.forEach { source ->
+            val relative = source.relativeTo(template)
+            check(destinationDir.resolve("content-template").resolve(relative).isFile) { "content template is missing $relative" }
+        }
+    }
 }
