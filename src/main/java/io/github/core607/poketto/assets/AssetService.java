@@ -25,12 +25,9 @@ import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.SecureRandom;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,15 +41,9 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /** Shared browser/MCP authorization, exact originals, and snapshot-bound rendering representations. */
 public final class AssetService {
-    private static final Logger log = LoggerFactory.getLogger(AssetService.class);
-    private static final Duration GRANT_LIFETIME = Duration.ofMinutes(5);
-    private static final Duration MINIMUM_REUSABLE_LIFETIME = Duration.ofMinutes(1);
-    private static final Duration CAPACITY_WARNING_INTERVAL = Duration.ofMinutes(1);
     // Neither of these reserves anything. Both cap the bytes one request may account for in
     // total, one for a page and one for an inventory listing. What actually reserves from the
     // shared admission pool is ImageMemoryAdmission.BROWSER_BYTES, and both paths take that same
@@ -71,13 +62,8 @@ public final class AssetService {
     private final RepositoryImageCache cache;
     private final PublicThumbnailCache thumbnails;
     private final Clock clock;
-    private final int maxGrants;
     private final ImageMemoryAdmission memory;
-    private final SecureRandom random = new SecureRandom();
-    private final Map<String, Grant> grants = new HashMap<>();
-    private final Map<GrantKey, String> reusable = new HashMap<>();
-    private Instant capacityWarningAt;
-    private long capacityOmissions;
+    private final ImageGrants grants;
 
     public AssetService(
             AuthService auth,
@@ -91,9 +77,6 @@ public final class AssetService {
             int maxGrants,
             Clock clock,
             ImageMemoryAdmission memory) {
-        if (maxGrants < 128 || maxGrants > 100_000) {
-            throw new IllegalArgumentException("image grant capacity must be 128 to 100000");
-        }
         this.auth = auth;
         this.content = content;
         this.blobs = blobs;
@@ -103,7 +86,7 @@ public final class AssetService {
         this.cache = new RepositoryImageCache(cacheDirectory, cacheBytes);
         this.thumbnails = new PublicThumbnailCache(cacheDirectory.resolveSibling("public-album-thumbnails"));
         this.clock = clock;
-        this.maxGrants = maxGrants;
+        this.grants = new ImageGrants(blobs, clock, maxGrants);
         this.memory = Objects.requireNonNull(memory);
     }
 
@@ -272,7 +255,12 @@ public final class AssetService {
                 workspace,
                 Set.of(Capability.READ_PRIVATE),
                 () -> finishMedia(
-                        workspace, path, actorKey(actor), clock.instant().plus(GRANT_LIFETIME), prepared, false));
+                        workspace,
+                        path,
+                        actorKey(actor),
+                        clock.instant().plus(ImageGrants.GRANT_LIFETIME),
+                        prepared,
+                        false));
     }
 
     private ResolvedMedia memberPublicPreview(
@@ -307,7 +295,12 @@ public final class AssetService {
                 workspace,
                 Set.of(),
                 () -> finishMedia(
-                        workspace, path, actorKey(actor), clock.instant().plus(GRANT_LIFETIME), prepared, true));
+                        workspace,
+                        path,
+                        actorKey(actor),
+                        clock.instant().plus(ImageGrants.GRANT_LIFETIME),
+                        prepared,
+                        true));
     }
 
     /**
@@ -408,7 +401,7 @@ public final class AssetService {
                                     cover.target(),
                                     new HashMap<>(),
                                     true,
-                                    Representation.ALBUM_THUMBNAIL_V1);
+                                    ImageGrants.Representation.ALBUM_THUMBNAIL_V1);
                     covers.put(expected.route(), new PublicAlbumCover(cover.album(), url));
                 }
             }
@@ -496,23 +489,23 @@ public final class AssetService {
 
     /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
     public AssetBytes readPublicImage(String token) {
-        Grant selected = grant(token, "");
+        ImageGrants.Grant selected = grants.grant(token, "");
         return readPublicImage(selected.key().workspace(), token);
     }
 
     public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
-        Grant grant = grant(workspace, token, "");
+        ImageGrants.Grant grant = grants.grant(workspace, token, "");
         requireCurrentPublication(grant);
         AssetBytes image = publicRepresentation(grant);
-        grant(workspace, token, "");
+        grants.grant(workspace, token, "");
         requireCurrentPublication(grant);
         return image;
     }
 
-    private AssetBytes publicRepresentation(Grant grant) {
+    private AssetBytes publicRepresentation(ImageGrants.Grant grant) {
         WorkspaceId workspace = grant.key().workspace();
         Target target = grant.key().target();
-        if (grant.key().representation() == Representation.ORIGINAL) {
+        if (grant.key().representation() == ImageGrants.Representation.ORIGINAL) {
             return bytes(workspace, target);
         }
         String version = thumbnailSource(target);
@@ -548,7 +541,7 @@ public final class AssetService {
         };
     }
 
-    private void requireCurrentPublication(Grant grant) {
+    private void requireCurrentPublication(ImageGrants.Grant grant) {
         if (grant.key().target() instanceof Indexed indexed && !indexed.publicPath()) {
             throw notFound();
         }
@@ -566,28 +559,28 @@ public final class AssetService {
     /** An opaque private URL never substitutes for the current identity or current workspace authority. */
     public AssetBytes readPrivateImage(AuthPrincipal actor, WorkspaceId workspace, String token) {
         auth.withAuthorization(actor, workspace, Set.of(), () -> null);
-        Grant selected = grant(workspace, token, actorKey(actor));
+        ImageGrants.Grant selected = grants.grant(workspace, token, actorKey(actor));
         if (selected.key().publicScope()) {
             auth.withAuthorization(actor, workspace, Set.of(), () -> null);
             requireCurrentMemberPage(selected);
             AssetBytes image = bytes(workspace, selected.key().target());
             requireCurrentMemberPage(selected);
             return auth.withAuthorization(actor, workspace, Set.of(), () -> {
-                grant(workspace, token, actorKey(actor));
+                grants.grant(workspace, token, actorKey(actor));
                 return image;
             });
         }
         AssetBytes image = preparePrivate(actor, workspace, () -> {
-            Grant grant = grant(workspace, token, actorKey(actor));
+            ImageGrants.Grant grant = grants.grant(workspace, token, actorKey(actor));
             return bytes(workspace, grant.key().target());
         });
         return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> {
-            grant(workspace, token, actorKey(actor));
+            grants.grant(workspace, token, actorKey(actor));
             return image;
         });
     }
 
-    private void requireCurrentMemberPage(Grant grant) {
+    private void requireCurrentMemberPage(ImageGrants.Grant grant) {
         content.getPublicFile(
                 grant.key().workspace(),
                 Optional.ofNullable(grant.key().commit()),
@@ -882,7 +875,7 @@ public final class AssetService {
                     image.getValue(),
                     resolved,
                     publicScope,
-                    Representation.ORIGINAL);
+                    ImageGrants.Representation.ORIGINAL);
             if (url != null) {
                 images.put(image.getKey(), url);
             }
@@ -899,7 +892,7 @@ public final class AssetService {
                     image.target(),
                     resolved,
                     publicScope,
-                    Representation.ORIGINAL);
+                    ImageGrants.Representation.ORIGINAL);
             String preview = actor.isEmpty() && original != null
                     ? imageUrl(
                             workspace,
@@ -910,7 +903,7 @@ public final class AssetService {
                             image.target(),
                             previews,
                             publicScope,
-                            Representation.ALBUM_THUMBNAIL_V1)
+                            ImageGrants.Representation.ALBUM_THUMBNAIL_V1)
                     : original;
             if (preview != null && original != null) {
                 gallery.add(new ResolvedMedia.GalleryImage(preview, original, image.alt()));
@@ -931,14 +924,14 @@ public final class AssetService {
             Target target,
             Map<Target, String> resolved,
             boolean publicScope,
-            Representation representation) {
+            ImageGrants.Representation representation) {
         if (resolved.containsKey(target)) {
             return resolved.get(target);
         }
         String url = null;
         try {
-            Optional<String> token =
-                    mint(new GrantKey(workspace, commit, page, target, actor, publicScope, representation), expires);
+            Optional<String> token = grants.mint(
+                    new ImageGrants.Key(workspace, commit, page, target, actor, publicScope, representation), expires);
             if (token.isPresent()) {
                 url = (actor.isEmpty()
                                 ? "/api/public/assets/"
@@ -1028,110 +1021,6 @@ public final class AssetService {
                 image.bytes());
     }
 
-    private Optional<String> mint(GrantKey key, Instant snapshotExpires) {
-        Instant preparedAt = clock.instant();
-        Instant expires = preparedAt.plus(GRANT_LIFETIME).isBefore(snapshotExpires)
-                ? preparedAt.plus(GRANT_LIFETIME)
-                : snapshotExpires;
-        if (!preparedAt.isBefore(expires)) {
-            throw notFound();
-        }
-        if (key.target() instanceof Git git) {
-            // Source retention and its workspace lock must never run under the global grant lock.
-            try {
-                blobs.protect(git.blob(), expires);
-            } catch (ContentRepositoryException unavailable) {
-                throw notFound();
-            }
-        }
-        CapacityWarning warning;
-        synchronized (this) {
-            Instant now = clock.instant();
-            purge(now);
-            if (now.isBefore(preparedAt) || !now.isBefore(expires)) {
-                throw notFound();
-            }
-            String token = reusable.get(key);
-            if (token != null) {
-                Instant previousExpires = grants.get(token).expires();
-                // A snapshot near expiry cannot give a replacement token a longer useful lifetime.
-                if (!previousExpires.isAfter(expires)
-                        && (previousExpires.equals(expires)
-                                || !previousExpires.isBefore(now.plus(MINIMUM_REUSABLE_LIFETIME)))) {
-                    return Optional.of(token);
-                }
-            }
-            if (grants.size() >= maxGrants) {
-                warning = capacityWarning(now);
-            } else {
-                byte[] entropy = new byte[32];
-                do {
-                    random.nextBytes(entropy);
-                    token = Base64.getUrlEncoder().withoutPadding().encodeToString(entropy);
-                } while (grants.containsKey(token));
-                grants.put(token, new Grant(key, now, expires));
-                reusable.put(key, token);
-                return Optional.of(token);
-            }
-        }
-        if (warning != null) {
-            log.warn(
-                    "Image grant capacity exhausted; omitted {} image authorization(s) since the previous warning (capacity {})",
-                    warning.omissions(),
-                    warning.capacity());
-        }
-        return Optional.empty();
-    }
-
-    /** Captures only counts under the grant lock; log output must happen after leaving it. */
-    private CapacityWarning capacityWarning(Instant now) {
-        if (capacityOmissions < Long.MAX_VALUE) {
-            capacityOmissions++;
-        }
-        if (capacityWarningAt == null
-                || now.isBefore(capacityWarningAt)
-                || !now.isBefore(capacityWarningAt.plus(CAPACITY_WARNING_INTERVAL))) {
-            var warning = new CapacityWarning(capacityOmissions, maxGrants);
-            capacityOmissions = 0;
-            capacityWarningAt = now;
-            return warning;
-        }
-        return null;
-    }
-
-    private synchronized Grant grant(WorkspaceId workspace, String token, String actor) {
-        Grant grant = grant(token, actor);
-        if (!grant.key().workspace().equals(workspace)) {
-            throw notFound();
-        }
-        return grant;
-    }
-
-    private synchronized Grant grant(String token, String actor) {
-        if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
-            throw notFound();
-        }
-        Instant now = clock.instant();
-        purge(now);
-        Grant grant = grants.get(token);
-        if (grant == null || !grant.key().actor().equals(actor)) {
-            throw notFound();
-        }
-        return grant;
-    }
-
-    private void purge(Instant now) {
-        var iterator = grants.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            Grant grant = entry.getValue();
-            if (now.isBefore(grant.issued()) || !now.isBefore(grant.expires())) {
-                reusable.remove(grant.key(), entry.getKey());
-                iterator.remove();
-            }
-        }
-    }
-
     private static String actorKey(AuthPrincipal actor) {
         return actor.kind() + ":" + actor.subjectId() + ":" + actor.accountId();
     }
@@ -1146,12 +1035,12 @@ public final class AssetService {
     }
 
     private static AssetStorageException notFound() {
-        return new AssetStorageException(AssetStorageException.Reason.NOT_FOUND);
+        return ImageGrants.notFound();
     }
 
-    private sealed interface Target permits Managed, Git, Indexed {}
+    sealed interface Target permits Managed, Git, Indexed {}
 
-    private record Indexed(String commit, String path, RepositoryMediaIndex.Media media, boolean publicPath)
+    record Indexed(String commit, String path, RepositoryMediaIndex.Media media, boolean publicPath)
             implements Target {}
 
     private static String downloadUrl(
@@ -1165,9 +1054,9 @@ public final class AssetService {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private record Managed(ManagedAssetReference reference) implements Target {}
+    record Managed(ManagedAssetReference reference) implements Target {}
 
-    private record Git(RepositoryBlob blob) implements Target {}
+    record Git(RepositoryBlob blob) implements Target {}
 
     /** Prepared pages retain descriptors and text only; all image working sets have been released. */
     private record PreparedMedia(
@@ -1182,22 +1071,4 @@ public final class AssetService {
     private record PreparedGallery(Target target, String alt) {}
 
     private record PageAttempt(boolean retry, Optional<ResolvedPublicDocument> page) {}
-
-    private record GrantKey(
-            WorkspaceId workspace,
-            String commit,
-            String page,
-            Target target,
-            String actor,
-            boolean publicScope,
-            Representation representation) {}
-
-    private enum Representation {
-        ORIGINAL,
-        ALBUM_THUMBNAIL_V1
-    }
-
-    private record Grant(GrantKey key, Instant issued, Instant expires) {}
-
-    private record CapacityWarning(long omissions, int capacity) {}
 }

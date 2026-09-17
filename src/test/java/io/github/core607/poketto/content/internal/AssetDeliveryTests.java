@@ -955,7 +955,8 @@ class AssetDeliveryTests {
                 }
             }
         };
-        var logger = (Logger) LoggerFactory.getLogger(AssetService.class);
+        // The grant registry is package-private to assets; its logger is reached by name.
+        var logger = (Logger) LoggerFactory.getLogger("io.github.core607.poketto.assets.ImageGrants");
         appender.setContext(logger.getLoggerContext());
         appender.start();
         logger.addAppender(appender);
