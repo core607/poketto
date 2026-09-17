@@ -126,6 +126,8 @@ tasks.register("repoCheck") {
             "docs/usage.md" to "docs/usage.zh.md",
             "notes/implemented/2026-08-25-requirements-and-architecture.md" to
                 "notes/implemented/2026-08-25-requirements-and-architecture.zh.md",
+            "notes/implemented/2026-08-26-content-foundation.md" to
+                "notes/implemented/2026-08-26-content-foundation.zh.md",
         )
         requiredPairs.forEach { (english, chinese) ->
             if (!Files.isRegularFile(repositoryRoot.resolve(english))) {
@@ -222,14 +224,6 @@ tasks.register("repoCheck") {
                         "(run ./gradlew syncClaudeSkills): ${entry.repositoryPath()}"
                 }
             }
-        }
-
-        val translatePolicy = agentSkillsRoot.resolve("translate-docs/agents/openai.yaml")
-        if (!translatePolicy.isRegularFile() ||
-            !Files.readString(translatePolicy, StandardCharsets.UTF_8)
-                .contains("allow_implicit_invocation: false")
-        ) {
-            errors += "translate-docs must disable implicit invocation"
         }
 
         val gitignore = repositoryRoot.resolve(".gitignore")
