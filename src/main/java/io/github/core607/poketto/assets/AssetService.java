@@ -621,88 +621,146 @@ public final class AssetService {
             boolean publicOnly,
             boolean anonymous,
             Predicate<String> managedAllowed) {
-        MarkdownDestinations.Destinations destinations;
-        try {
-            destinations = MarkdownDestinations.parse(body);
-        } catch (MarkdownResolutionLimitException limit) {
-            return new PreparedMedia(
-                    body, commit, Map.of(), Map.of(), Map.of(), List.of(), ResolvedMedia.GalleryStatus.UNAVAILABLE);
+        return new MediaPreparation(workspace, path, commit, routes, publicOnly, anonymous, managedAllowed)
+                .prepare(body, folder);
+    }
+
+    /**
+     * One document's media: authored links resolved to routes or downloads, inline images and the
+     * folder gallery prepared as grant targets. Every image shares one byte allowance and one
+     * resolution cache, and the media catalog is read once, only when something can need it.
+     */
+    private final class MediaPreparation {
+        private final WorkspaceId workspace;
+        private final String path;
+        private final String commit;
+        private final Map<String, String> routes;
+        private final boolean publicOnly;
+        private final boolean anonymous;
+        private final Predicate<String> managedAllowed;
+        private final Map<Target, Boolean> resolved = new HashMap<>();
+        private final long[] bytes = {0};
+        private RepositoryMediaSnapshot catalog;
+
+        MediaPreparation(
+                WorkspaceId workspace,
+                String path,
+                String commit,
+                Map<String, String> routes,
+                boolean publicOnly,
+                boolean anonymous,
+                Predicate<String> managedAllowed) {
+            this.workspace = workspace;
+            this.path = path;
+            this.commit = commit;
+            this.routes = routes;
+            this.publicOnly = publicOnly;
+            this.anonymous = anonymous;
+            this.managedAllowed = managedAllowed;
         }
-        RepositoryMediaSnapshot media = null;
-        if (commit != null
-                && (folder
-                        || destinations.links().stream()
-                                .anyMatch(authored -> MarkdownDestinations.path(path, authored)
-                                        .isPresent())
-                        || destinations.images().stream().anyMatch(authored -> !authored.startsWith("managed:")))) {
-            media = availableMedia(workspace, commit);
-        }
-        final RepositoryMediaSnapshot catalog = media;
-        Map<String, String> links = new LinkedHashMap<>();
-        Map<String, String> downloads = new LinkedHashMap<>();
-        Set<String> publicRoutes = publicOnly ? Set.copyOf(routes.values()) : Set.of();
-        for (String authored : destinations.links()) {
-            if (authored.startsWith("#")
-                    && authored.length() <= 256
-                    && authored.codePoints().noneMatch(Character::isISOControl)) {
-                links.put(authored, authored);
-                continue;
-            }
-            MarkdownDestinations.path(path, authored).ifPresent(target -> {
-                String selected = MarkdownDestinations.route(path, authored, routes, publicRoutes)
-                        .orElse(null);
-                if (selected == null
-                        && catalog != null
-                        && catalog.index().files().containsKey(target)
-                        && (!publicOnly || catalog.publicPaths().contains(target))) {
-                    downloads.put(
-                            authored,
-                            downloadUrl(workspace, anonymous, commit, routes.get(path), target) + fragment(authored));
-                }
-                if (selected != null) {
-                    links.put(authored, selected + fragment(authored));
-                }
-            });
-        }
-        Map<String, Target> images = new LinkedHashMap<>();
-        Map<Target, Boolean> resolved = new HashMap<>();
-        Set<String> inlinePaths = new HashSet<>();
-        for (String authored : destinations.images()) {
-            MarkdownDestinations.path(path, authored).ifPresent(inlinePaths::add);
-        }
-        long[] bytes = {0};
-        for (String authored : destinations.images()) {
+
+        PreparedMedia prepare(String body, boolean folder) {
+            MarkdownDestinations.Destinations destinations;
             try {
-                if (authored.startsWith("managed:") && !managedAllowed.test(authored)) {
+                destinations = MarkdownDestinations.parse(body);
+            } catch (MarkdownResolutionLimitException limit) {
+                return new PreparedMedia(
+                        body, commit, Map.of(), Map.of(), Map.of(), List.of(), ResolvedMedia.GalleryStatus.UNAVAILABLE);
+            }
+            if (commit != null
+                    && (folder
+                            || destinations.links().stream()
+                                    .anyMatch(authored -> MarkdownDestinations.path(path, authored)
+                                            .isPresent())
+                            || destinations.images().stream().anyMatch(authored -> !authored.startsWith("managed:")))) {
+                catalog = availableMedia(workspace, commit);
+            }
+            Map<String, String> links = new LinkedHashMap<>();
+            Map<String, String> downloads = new LinkedHashMap<>();
+            resolveLinks(destinations, links, downloads);
+            Set<String> inlinePaths = new HashSet<>();
+            for (String authored : destinations.images()) {
+                MarkdownDestinations.path(path, authored).ifPresent(inlinePaths::add);
+            }
+            Map<String, Target> images = inlineImages(destinations);
+            Gallery gallery = folder && commit != null
+                    ? gallery(inlinePaths)
+                    : new Gallery(List.of(), ResolvedMedia.GalleryStatus.COMPLETE);
+            return new PreparedMedia(body, commit, links, downloads, images, gallery.items(), gallery.status());
+        }
+
+        // A fragment stays as authored; a repository path becomes its route, or a download when it
+        // is indexed media without one.
+        private void resolveLinks(
+                MarkdownDestinations.Destinations destinations,
+                Map<String, String> links,
+                Map<String, String> downloads) {
+            Set<String> publicRoutes = publicOnly ? Set.copyOf(routes.values()) : Set.of();
+            for (String authored : destinations.links()) {
+                if (authored.startsWith("#")
+                        && authored.length() <= 256
+                        && authored.codePoints().noneMatch(Character::isISOControl)) {
+                    links.put(authored, authored);
                     continue;
                 }
-                Optional<Target> selected = target(workspace, commit, path, authored, catalog);
-                if (selected.isEmpty()) {
-                    continue;
-                }
-                Target target = selected.orElseThrow();
-                if (target instanceof Git git && publicOnly && !git.blob().publicPath()) {
-                    continue;
-                }
-                if (target instanceof Indexed indexed && publicOnly && !indexed.publicPath()) {
-                    continue;
-                }
-                if (prepareImage(workspace, target, resolved, bytes)) {
-                    images.put(authored, target);
-                }
-            } catch (AssetStorageException | ContentRepositoryException unavailable) {
-                // An unavailable image retains its Markdown placeholder, without an authored URL fallback.
+                MarkdownDestinations.path(path, authored).ifPresent(target -> {
+                    String selected = MarkdownDestinations.route(path, authored, routes, publicRoutes)
+                            .orElse(null);
+                    if (selected == null
+                            && catalog != null
+                            && catalog.index().files().containsKey(target)
+                            && (!publicOnly || catalog.publicPaths().contains(target))) {
+                        downloads.put(
+                                authored,
+                                downloadUrl(workspace, anonymous, commit, routes.get(path), target)
+                                        + fragment(authored));
+                    }
+                    if (selected != null) {
+                        links.put(authored, selected + fragment(authored));
+                    }
+                });
             }
         }
-        List<PreparedGallery> gallery = new ArrayList<>();
-        var galleryStatus = ResolvedMedia.GalleryStatus.COMPLETE;
-        int galleryCandidates = 0;
-        if (folder && commit != null) {
+
+        private Map<String, Target> inlineImages(MarkdownDestinations.Destinations destinations) {
+            Map<String, Target> images = new LinkedHashMap<>();
+            for (String authored : destinations.images()) {
+                try {
+                    if (authored.startsWith("managed:") && !managedAllowed.test(authored)) {
+                        continue;
+                    }
+                    Optional<Target> selected = target(workspace, commit, path, authored, catalog);
+                    if (selected.isEmpty()) {
+                        continue;
+                    }
+                    Target target = selected.orElseThrow();
+                    if (target instanceof Git git && publicOnly && !git.blob().publicPath()) {
+                        continue;
+                    }
+                    if (target instanceof Indexed indexed && publicOnly && !indexed.publicPath()) {
+                        continue;
+                    }
+                    if (prepareImage(workspace, target, resolved, bytes)) {
+                        images.put(authored, target);
+                    }
+                } catch (AssetStorageException | ContentRepositoryException unavailable) {
+                    // An unavailable image retains its Markdown placeholder, without an authored URL fallback.
+                }
+            }
+            return images;
+        }
+
+        // Git siblings first, then indexed media beside the document; an image that fails to
+        // prepare leaves the gallery partial, a sibling listing that fails leaves it unavailable.
+        private Gallery gallery(Set<String> inlinePaths) {
+            List<PreparedGallery> items = new ArrayList<>();
+            var status = ResolvedMedia.GalleryStatus.COMPLETE;
+            int candidates = 0;
             try {
                 var siblings = blobs.siblings(workspace, commit, path, 128, publicOnly, inlinePaths);
-                galleryCandidates = siblings.items().size();
+                candidates = siblings.items().size();
                 if (siblings.partial()) {
-                    galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                    status = ResolvedMedia.GalleryStatus.PARTIAL;
                 }
                 for (RepositoryBlob blob : siblings.items()) {
                     if (inlinePaths.contains(blob.path()) || (publicOnly && !blob.publicPath())) {
@@ -710,53 +768,59 @@ public final class AssetService {
                     }
                     Target target = new Git(blob);
                     if (prepareImage(workspace, target, resolved, bytes)) {
-                        gallery.add(new PreparedGallery(
+                        items.add(new PreparedGallery(
                                 target, blob.path().substring(blob.path().lastIndexOf('/') + 1)));
                     } else {
-                        galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+                        status = ResolvedMedia.GalleryStatus.PARTIAL;
                     }
                 }
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
-                galleryStatus = ResolvedMedia.GalleryStatus.UNAVAILABLE;
+                status = ResolvedMedia.GalleryStatus.UNAVAILABLE;
             }
-            if (catalog == null && galleryStatus != ResolvedMedia.GalleryStatus.UNAVAILABLE) {
-                galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
+            if (catalog == null && status != ResolvedMedia.GalleryStatus.UNAVAILABLE) {
+                status = ResolvedMedia.GalleryStatus.PARTIAL;
             }
             if (catalog != null) {
-                String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
-                int candidates = galleryCandidates;
-                for (var entry : catalog.index().files().entrySet()) {
-                    String name = entry.getKey();
-                    if (!name.startsWith(prefix)
-                            || name.substring(prefix.length()).contains("/")
-                            || inlinePaths.contains(name)
-                            || !entry.getValue().mediaType().startsWith("image/")
-                            || (publicOnly && !catalog.publicPaths().contains(name))) {
-                        continue;
+                status = indexedSiblings(inlinePaths, items, status, candidates);
+            }
+            return new Gallery(items, status);
+        }
+
+        private ResolvedMedia.GalleryStatus indexedSiblings(
+                Set<String> inlinePaths,
+                List<PreparedGallery> items,
+                ResolvedMedia.GalleryStatus status,
+                int candidates) {
+            String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
+            for (var entry : catalog.index().files().entrySet()) {
+                String name = entry.getKey();
+                if (!name.startsWith(prefix)
+                        || name.substring(prefix.length()).contains("/")
+                        || inlinePaths.contains(name)
+                        || !entry.getValue().mediaType().startsWith("image/")
+                        || (publicOnly && !catalog.publicPaths().contains(name))) {
+                    continue;
+                }
+                if (candidates++ >= 128) {
+                    return ResolvedMedia.GalleryStatus.PARTIAL;
+                }
+                Target target = new Indexed(
+                        commit, name, entry.getValue(), catalog.publicPaths().contains(name));
+                try {
+                    if (prepareImage(workspace, target, resolved, bytes)) {
+                        items.add(new PreparedGallery(target, name.substring(prefix.length())));
+                    } else {
+                        status = ResolvedMedia.GalleryStatus.PARTIAL;
                     }
-                    if (candidates++ >= 128) {
-                        galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
-                        break;
-                    }
-                    Target target = new Indexed(
-                            commit,
-                            name,
-                            entry.getValue(),
-                            catalog.publicPaths().contains(name));
-                    try {
-                        if (prepareImage(workspace, target, resolved, bytes)) {
-                            gallery.add(new PreparedGallery(target, name.substring(prefix.length())));
-                        } else {
-                            galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
-                        }
-                    } catch (AssetStorageException | ContentRepositoryException unavailable) {
-                        galleryStatus = ResolvedMedia.GalleryStatus.PARTIAL;
-                    }
+                } catch (AssetStorageException | ContentRepositoryException unavailable) {
+                    status = ResolvedMedia.GalleryStatus.PARTIAL;
                 }
             }
+            return status;
         }
-        return new PreparedMedia(body, commit, links, downloads, images, gallery, galleryStatus);
     }
+
+    private record Gallery(List<PreparedGallery> items, ResolvedMedia.GalleryStatus status) {}
 
     private boolean prepareImage(WorkspaceId workspace, Target target, Map<Target, Boolean> resolved, long[] total) {
         if (resolved.containsKey(target)) {
