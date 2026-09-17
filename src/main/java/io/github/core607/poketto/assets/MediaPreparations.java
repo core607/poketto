@@ -37,7 +37,7 @@ final class MediaPreparations {
     // shared admission pool is ImageMemoryAdmission.BROWSER_BYTES, and both paths take that same
     // per-image share. Raising a bound here therefore lets a request consider more images; it
     // does not give any of them more memory.
-    static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
+    private static final long PAGE_IMAGE_BYTES = 128L * 1024 * 1024;
 
     private final RepositoryBlobReader blobs;
     private final Supplier<ManagedBlobStore> managed;
@@ -386,7 +386,7 @@ final class MediaPreparations {
                 image.bytes());
     }
 
-    static String fragment(String href) {
+    private static String fragment(String href) {
         int start = href.indexOf('#');
         if (start < 0) {
             return "";
@@ -400,7 +400,8 @@ final class MediaPreparations {
     record Indexed(String commit, String path, RepositoryMediaIndex.Media media, boolean publicPath)
             implements Target {}
 
-    static String downloadUrl(WorkspaceId workspace, boolean publicOnly, String commit, String route, String path) {
+    private static String downloadUrl(
+            WorkspaceId workspace, boolean publicOnly, String commit, String route, String path) {
         String prefix = publicOnly ? "/api/public/media?" : WorkspaceHttpRoutes.admin(workspace) + "/media?";
         return prefix + "commit=" + commit + "&path=" + query(path)
                 + (publicOnly ? "&route=" + query(route) + "&workspace=" + workspace : "");

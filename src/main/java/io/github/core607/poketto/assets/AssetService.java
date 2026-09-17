@@ -148,9 +148,9 @@ public final class AssetService {
         if (!privateAccess) {
             var catalog = media.availableMedia(workspace, commit);
             for (String path : catalog == null ? Set.<String>of() : catalog.publicPaths()) {
-                var media = catalog.index().files().get(path);
-                if (path.startsWith(prefix) && media.mediaType().startsWith("image/")) {
-                    candidates.add(new Candidate(path, media.size(), new Indexed(commit, path, media, true)));
+                var entry = catalog.index().files().get(path);
+                if (path.startsWith(prefix) && entry.mediaType().startsWith("image/")) {
+                    candidates.add(new Candidate(path, entry.size(), new Indexed(commit, path, entry, true)));
                 }
             }
         }
