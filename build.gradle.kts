@@ -224,7 +224,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
 tasks.named("check") { dependsOn(existingDeploymentTests) }
 
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
-val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
     group = "verification"
