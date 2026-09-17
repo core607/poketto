@@ -48,5 +48,5 @@ Gradle permits arbitrary build logic. Repository checks stay in one small script
 - `./gradlew test` runs the application-context and Spring Modulith boundary tests.
 - `./gradlew integrationTestClasses` compiles the database integration suite without requiring Docker.
 - `./gradlew integrationTest` uses [pinned official PostgreSQL](2026-09-05-stock-postgresql.md) and verifies PostgreSQL 17, UTF-8 text support, workspace initialization, and application entry paths.
-- `./gradlew repoCheck` validates Markdown links, required bilingual pairs, English-only agent surfaces, skill metadata and inventory, the translate-docs invocation policy, and credential-ignore rules.
+- `./gradlew repoCheck` validates Markdown links, required bilingual pairs, English-only agent surfaces, skill metadata and inventory, and credential-ignore rules.
 - `./gradlew check` aggregates all required local and CI evidence.

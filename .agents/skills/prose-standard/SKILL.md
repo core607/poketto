@@ -7,7 +7,7 @@ description: Use for substantive repository prose writing, rewriting, or audits,
 
 Write enough to preserve the reader's contract, then remove repetition, narration, and decoration. The acceptance test is not merely that the text is short: a reader should understand every obligation and consequence in one pass.
 
-This skill owns editorial judgment. Use [doc-standards](../doc-standards/SKILL.md) when document placement or structure needs a decision, and [trim-cot-leakage](../trim-cot-leakage/SKILL.md) when prose depends on an authoring session.
+This skill owns editorial judgment. [AGENTS.md](../../../AGENTS.md) owns where content belongs.
 
 ## Preserve the complete proposition
 
@@ -25,7 +25,7 @@ Add prose when code and structure do not communicate a required fact. Do not wri
 - **Tests:** explain only why a fixture, real entry path, indirect observation, or platform accommodation is necessary. The test body already shows its steps.
 - **Decision records:** rationale, alternatives, consequences, current mechanism, verification evidence, and named gaps. Implemented notes describe shipped reality in the present tense.
 - **Prompts, diagnostics, and visible strings:** wording is behavior. Name the failing subject, violated rule, and correction when it is not obvious.
-- **Skills and agent rules:** preserve behavioral guardrails, authorization boundaries, stopping conditions, and the distinction between guidance and a fixed script.
+- **Skills and agent rules:** name the real failure each rule prevents. A rule that cannot name one is deleted, not reworded.
 
 ## Style and ownership
 
@@ -36,6 +36,7 @@ Add prose when code and structure do not communicate a required fact. Do not wri
 - Do not restate facts obvious from adjacent code, tables, or configuration.
 - Each fact has one authoritative home. Other surfaces retain their necessary local contract and link to that home for detail.
 - Every repository citation must resolve. Never cite a chat, uncommitted plan, review round, or private machine path as project authority.
+- Current-state documents state current behavior. Route change narration such as "used to", "no longer", or "this PR adds" to a decision record, keeping a regression fact as a present counterfactual: without the guard, X fails.
 - When an English/Chinese pair exists, update both sides in the same change. Make the smallest counterpart edit that preserves reviewed text outside the changed passage.
 
 ## Workflow

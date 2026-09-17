@@ -45,4 +45,4 @@ When the diff touches them, require direct evidence for these requirements rathe
 
 For each finding, state the defect, tightest location, impact, and evidence. Separate blockers from suggestions. Do not report an issue already guaranteed by a green, relevant gate unless the gate itself is incomplete or bypassed.
 
-If no substantive finding remains, say so and name residual risks or checks not run. Do not edit unless fixes are explicitly authorized; authorization already given for this scope remains valid.
+If no substantive finding remains, say so and name residual risks or checks not run.

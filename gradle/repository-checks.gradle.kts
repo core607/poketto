@@ -53,21 +53,16 @@ fun skillFrontmatter(skillFile: Path): Map<String, String>? {
 }
 
 // Claude Code discovers project skills only below .claude/skills; Codex discovers .agents/skills.
-// The stubs mirror name, description, and invocation policy so both agents auto-load one source.
+// The stubs mirror name and description so both agents auto-load one source. No skill restricts
+// implicit invocation; a skill that needs to would add that policy together with its generator branch.
 fun claudeSkillStub(skillDirectory: Path): String? {
     val metadata = skillFrontmatter(skillDirectory.resolve("SKILL.md")) ?: return null
     val name = metadata["name"] ?: return null
     val description = metadata["description"] ?: return null
-    val policy = skillDirectory.resolve("agents/openai.yaml")
-    val userInvokedOnly = policy.isRegularFile() &&
-        Files.readString(policy, StandardCharsets.UTF_8).contains("allow_implicit_invocation: false")
     return buildString {
         appendLine("---")
         appendLine("name: $name")
         appendLine("description: $description")
-        if (userInvokedOnly) {
-            appendLine("disable-model-invocation: true")
-        }
         appendLine("---")
         appendLine()
         appendLine(
@@ -126,6 +121,8 @@ tasks.register("repoCheck") {
             "docs/usage.md" to "docs/usage.zh.md",
             "notes/implemented/2026-08-25-requirements-and-architecture.md" to
                 "notes/implemented/2026-08-25-requirements-and-architecture.zh.md",
+            "notes/implemented/2026-08-26-content-foundation.md" to
+                "notes/implemented/2026-08-26-content-foundation.zh.md",
         )
         requiredPairs.forEach { (english, chinese) ->
             if (!Files.isRegularFile(repositoryRoot.resolve(english))) {
@@ -222,14 +219,6 @@ tasks.register("repoCheck") {
                         "(run ./gradlew syncClaudeSkills): ${entry.repositoryPath()}"
                 }
             }
-        }
-
-        val translatePolicy = agentSkillsRoot.resolve("translate-docs/agents/openai.yaml")
-        if (!translatePolicy.isRegularFile() ||
-            !Files.readString(translatePolicy, StandardCharsets.UTF_8)
-                .contains("allow_implicit_invocation: false")
-        ) {
-            errors += "translate-docs must disable implicit invocation"
         }
 
         val gitignore = repositoryRoot.resolve(".gitignore")
