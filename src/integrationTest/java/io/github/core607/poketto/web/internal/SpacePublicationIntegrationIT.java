@@ -528,7 +528,10 @@ class SpacePublicationIntegrationIT {
 
         // The real grant table is purged with a time beyond its five-minute lifetime; the
         // snapshot and batch remain current, so reopening must preserve order and mint a new URL.
-        ReflectionTestUtils.invokeMethod(assets, "purge", Instant.now().plus(Duration.ofMinutes(6)));
+        ReflectionTestUtils.invokeMethod(
+                ReflectionTestUtils.getField(assets, "grants"),
+                "purge",
+                Instant.now().plus(Duration.ofMinutes(6)));
         var renewed = discovery(batch);
         assertThat(routeList(renewed.get("items"))).containsExactlyElementsOf(routeList(first.get("items")));
         String renewedCover = item(renewed, "/album").get("cover").stringValue();
