@@ -50,7 +50,7 @@ final class ImageGrants {
             WorkspaceId workspace,
             String commit,
             String page,
-            AssetService.Target target,
+            MediaPreparations.Target target,
             String actor,
             boolean publicScope,
             Representation representation) {}
@@ -73,7 +73,7 @@ final class ImageGrants {
         if (!preparedAt.isBefore(expires)) {
             throw notFound();
         }
-        if (key.target() instanceof AssetService.Git git) {
+        if (key.target() instanceof MediaPreparations.Git git) {
             // Source retention and its workspace lock must never run under the registry lock.
             try {
                 blobs.protect(git.blob(), expires);
