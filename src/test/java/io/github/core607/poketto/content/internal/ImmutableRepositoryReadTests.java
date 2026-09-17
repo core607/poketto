@@ -43,7 +43,6 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.test.util.ReflectionTestUtils;
 
 class ImmutableRepositoryReadTests {
     @TempDir
@@ -382,8 +381,7 @@ class ImmutableRepositoryReadTests {
     }
 
     private static void removeMain(Repository repository) {
-        ReflectionTestUtils.invokeMethod(
-                JGitRemoteRepositoryAuthority.class, "updateObjectRef", repository, ObjectId.zeroId());
+        RepositoryCaches.updateObjectRef(repository, ObjectId.zeroId());
     }
 
     @Test
