@@ -15,7 +15,9 @@ import urllib.request
 
 
 class DeploymentError(RuntimeError):
-    pass
+    def __init__(self, message, missing=False):
+        super().__init__(message)
+        self.missing = missing
 
 
 class NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -26,8 +28,10 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
 def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=240)
     if result.returncode:
-        # Compose configuration and logs can contain operator credentials.
-        raise DeploymentError("deployment command failed: " + args[0])
+        # Compose configuration and logs can contain operator credentials; only Docker's answer that an
+        # image or container does not exist is classified, never quoted.
+        missing = any(answer in result.stderr for answer in ("No such image", "No such object", "No such container"))
+        raise DeploymentError("deployment command failed: " + args[0], missing)
     return result.stdout
 
 
@@ -142,6 +146,89 @@ class Installation:
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
 
+    # None means Docker confirmed the image is absent; any other failure propagates, so an unanswered
+    # lookup never shrinks the retained set.
+    def image_details(self, reference):
+        try:
+            return json.loads(self.command("docker", "image", "inspect", reference))[0]
+        except DeploymentError as error:
+            if error.missing:
+                return None
+            raise
+
+    def present(self, reference):
+        details = self.image_details(reference)
+        return None if details is None else details["Id"]
+
+    # None means Docker confirmed the container is gone since it was listed; its image is no longer in use.
+    def container_image(self, container):
+        try:
+            return self.command("docker", "inspect", "--format", "{{.Image}}", container).strip()
+        except DeploymentError as error:
+            if error.missing:
+                return None
+            raise
+
+    # Runs only after the state is healthy. Candidates are the images this installation itself
+    # deployed, recorded in knownImages; an image that reached the host any other way is never
+    # touched. Of those, every image a pin references stays: the selected and previous app/frontend
+    # images, every image in the rendered configuration and every image a container on this host
+    # uses. Removal goes through tags and digests, never --force; whatever Docker declines to delete
+    # stays known, and an image that is already gone leaves the record. Progress is written into the
+    # state as it happens, so an interrupted run still records what it removed. A retained image whose
+    # lookup goes unanswered ends the retirement, because the retained set must be complete before
+    # anything is removed; a candidate whose lookup goes unanswered only stays known for a later run.
+    def retire_images(self, state, rendered):
+        previous = set(filter(None, (self.present(pin) for pin in state["previousImages"].values() if pin)))
+        retained = set(state["imageIds"].values()) | previous
+        rendered_images = [service.get("image") for service in rendered["services"].values()]
+        retained.update(filter(None, (self.present(pin) for pin in rendered_images if pin)))
+        for container in self.command("docker", "ps", "-aq").split():
+            retained.add(self.container_image(container))
+        retained.discard(None)
+        known = set(state["knownImages"]) | previous
+        state["knownImages"] = sorted(known)
+        retired = state["retiredImages"]
+        # A removal an earlier run started but could not confirm counts as soon as the image is found
+        # absent; one that is still present is an ordinary candidate again.
+        for image in state.get("removing", []):
+            if image not in retained and self.image_details(image) is None:
+                retired.append(image)
+                known.discard(image)
+        state.update(removing=[], knownImages=sorted(known))
+        unreadable = []
+        for image in sorted(known - retained):
+            try:
+                details = self.image_details(image)
+            except DeploymentError:
+                unreadable.append(image)
+                continue
+            if details is None:
+                known.discard(image)
+                state["knownImages"] = sorted(known)
+                write_json(self.state_file, state)
+                continue
+            # Docker answers null, not an empty list, when an image has no tags or digests.
+            references = (details.get("RepoTags") or []) + (details.get("RepoDigests") or [])
+            state["removing"] = [image]
+            write_json(self.state_file, state)
+            for reference in references or [image]:
+                # Docker deletes an untagged image at its first digest reference.
+                if self.present(image) is None:
+                    break
+                try:
+                    self.command("docker", "image", "rm", reference)
+                except DeploymentError:
+                    pass
+            if self.present(image) is None:
+                retired.append(image)
+                known.discard(image)
+            state.update(removing=[], knownImages=sorted(known))
+            write_json(self.state_file, state)
+        if unreadable:
+            raise DeploymentError(str(len(unreadable)) + " candidate image(s) could not be inspected and stay known")
+        return retired
+
     def update(self, revision, app_image, frontend_image, check_only=False):
         image_refs = {"app": app_image, "frontend": frontend_image}
         image_ids = {name: self.image(reference, revision) for name, reference in image_refs.items()}
@@ -157,17 +244,31 @@ class Installation:
         if comparable != before:
             raise DeploymentError("candidate changes more than app/frontend images")
         state = json.loads(self.state_file.read_text()) if self.state_file.exists() else None
+        # Every image this installation deployed stays on record until it is retired or gone.
+        known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
             if state["revision"] != revision or state["imageIds"] != image_ids or state["configuration"] != digest(rendered):
                 raise DeploymentError("an unfinished deployment requires reconciliation with the same images and configuration")
         else:
+            # Redeploying the images that are already running, whatever reference delivers them, keeps
+            # the previous version's images: they are the local recovery path and must stay retained.
+            # A rebuilt image of the same revision is a new deployment whose previous is the build it
+            # replaces. The previous version is recorded by image ID, never by a tag a later delivery
+            # can point at another build.
+            previous = {name: containers[name]["Image"] for name in image_refs}
+            # An unconfirmed removal from the previous run is settled by this run before it retires anything.
+            removing = state.get("removing", []) if state else []
+            if state and state.get("imageIds") == image_ids and state.get("previousImages"):
+                previous = state["previousImages"]
             state = {
                 "status": "pending", "revision": revision, "images": image_refs, "imageIds": image_ids,
                 "configuration": digest(rendered),
-                "previousImages": {name: containers[name]["Config"]["Image"] for name in image_refs},
+                "previousImages": previous,
                 "runtimeContracts": {name: digest(runtime_contract(containers[name])) for name in image_refs},
                 "otherContainers": {name: value["Id"] for name, value in containers.items() if name not in image_refs},
+                "removing": removing,
             }
+        state["knownImages"] = sorted(known | set(image_ids.values()))
         if check_only:
             candidate.unlink()
             return {"status": "validated", "revision": revision}
@@ -179,7 +280,24 @@ class Installation:
         self.verify(state)
         state["status"] = "healthy"
         write_json(self.state_file, state)
-        return {"status": "healthy", "revision": revision, "imageIds": image_ids}
+        result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
+        state.update(retiredImages=[], retirementError=None)
+        try:
+            retired = self.retire_images(state, rendered)
+            result.update(retiredImages=len(retired), retiredImageIds=retired)
+        except Exception as error:
+            # The deployment is recorded and healthy; a cleanup problem is reported and kept in the
+            # state until a later retirement completes, never fatal. What was removed before the
+            # problem stays recorded.
+            print("existing deployment: image retirement did not complete: " + str(error), file=sys.stderr)
+            state["retirementError"] = str(error)
+            result.update(retiredImages=None, retiredImageIds=state["retiredImages"], retirementError=str(error))
+        try:
+            write_json(self.state_file, state)
+        except OSError as error:
+            # The healthy state is already on disk; only the retirement record is lost.
+            print("existing deployment: image retirement could not be recorded: " + str(error), file=sys.stderr)
+        return result
 
 
 def load_config(root):

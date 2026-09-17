@@ -3,21 +3,27 @@ import importlib.util
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 spec = importlib.util.spec_from_file_location("updater", Path(__file__).parents[1] / "update-existing.py")
 updater = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updater)
 REVISION = "a" * 40
+SOURCE = "https://github.com/example/poketto"
 
 
 class Docker:
     def __init__(self):
         self.calls = []
         self.fail_up = False
+        self.fail_containers = False
+        self.vanished_containers = set()
+        self.fail_inspect = set()
         self.changed_runtime = False
         self.changed_revision_environment = False
         self.image_revision = REVISION
@@ -38,16 +44,63 @@ class Docker:
                 "HostConfig": {"Memory": 123, "NetworkMode": "example_default", "CapDrop": ["ALL"]},
                 "Mounts": [{"Type": "bind", "Source": "/data", "Destination": "/app/data", "RW": True}],
             }
+        # Local images: the fixture services' own, a stale build of this repository with two digest
+        # references, an untagged one without any reference, one used by a container outside the
+        # project and one from another repository.
+        self.images = {}
+        for reference in ("old-app", "old-frontend", "new-app", "new-frontend"):
+            self.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        for reference in ("other-app", "retained-db", "retained-gateway"):
+            self.images["id-" + reference] = {"refs": [reference], "source": None}
+        self.images["id-stale"] = {"refs": ["registry/poketto@sha256:stale-a", "registry/poketto@sha256:stale-b"], "source": SOURCE}
+        self.images["id-untagged"] = {"refs": [], "source": SOURCE}
+        self.images["id-sidecar"] = {"refs": ["registry/poketto@sha256:sidecar"], "source": SOURCE}
+        self.images["id-foreign"] = {"refs": ["registry/other@sha256:1"], "source": "https://github.com/example/other"}
+        self.sidecar = {"Id": "sidecar-container", "Image": "id-sidecar",
+                        "Config": {"Image": "registry/poketto@sha256:sidecar", "Labels": {}}}
+        self.removed = []
+
+    def find_image(self, key):
+        if key in self.fail_inspect:
+            raise updater.DeploymentError("deployment command failed: docker")
+        for image_id, image in self.images.items():
+            if key == image_id or key in image["refs"]:
+                return image_id, image
+        raise updater.DeploymentError("deployment command failed: docker", missing=True)
 
     def __call__(self, *args):
         self.calls.append(args)
         if args[1:3] == ("image", "inspect"):
-            return json.dumps([{"Id": "id-" + args[3], "Config": {"Labels": {
-                "org.opencontainers.image.revision": self.image_revision}}}])
+            result = []
+            for key in args[3:]:
+                image_id, image = self.find_image(key)
+                labels = {"org.opencontainers.image.revision": self.image_revision}
+                if image["source"]:
+                    labels["org.opencontainers.image.source"] = image["source"]
+                # Like Docker, answer null rather than an empty list when there is nothing to list.
+                result.append({"Id": image_id, "RepoTags": None, "RepoDigests": list(image["refs"]) or None,
+                               "Config": {"Labels": labels}})
+            return json.dumps(result)
+        if args[1:3] == ("image", "rm"):
+            image_id, _ = self.find_image(args[3])
+            self.removed.append(args[3])
+            # Docker deletes an untagged image at its first digest reference.
+            del self.images[image_id]
+            return ""
         if args[1] == "ps":
-            return " ".join(item["Id"] for item in self.running.values())
+            if self.fail_containers and "--filter" not in args:
+                raise subprocess.TimeoutExpired("docker", 240)
+            ids = [item["Id"] for item in self.running.values()]
+            if "--filter" not in args:
+                ids.append(self.sidecar["Id"])
+            return " ".join(ids)
         if args[1] == "inspect":
-            return json.dumps(list(self.running.values()))
+            records = list(self.running.values()) + [self.sidecar]
+            if args[2] == "--format":
+                if set(args[4:]) & self.vanished_containers:
+                    raise updater.DeploymentError("deployment command failed: docker", missing=True)
+                return "\n".join(record["Image"] for record in records if record["Id"] in args[4:])
+            return json.dumps([record for record in records if record["Id"] in args[2:]])
         if args[1] == "compose":
             config = copy.deepcopy(self.configuration)
             files = [Path(args[i + 1]) for i, value in enumerate(args) if value == "-f"]
@@ -63,7 +116,7 @@ class Docker:
                 for name in ("app", "frontend"):
                     self.running[name]["Id"] = name + "-updated"
                     image = config["services"][name]["image"]
-                    self.running[name]["Image"] = "id-" + image
+                    self.running[name]["Image"] = self.find_image(image)[0]
                     self.running[name]["Config"]["Image"] = image
                 if self.changed_runtime:
                     self.running["app"]["HostConfig"]["Memory"] += 1
@@ -99,17 +152,191 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertNotIn("retained-secret", state)
         self.assertEqual(json.loads(state)["status"], "healthy")
 
+    def test_a_healthy_update_retires_only_the_generations_this_installation_recorded(self):
+        first = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(first["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["knownImages"], ["id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend"])
+        self.assertIsNone(state["retirementError"])
+        # The replaced generation is left with two digest references and with no reference at all.
+        self.docker.images["id-old-app"]["refs"] = ["registry/poketto@sha256:old-a", "registry/poketto@sha256:old-b"]
+        self.docker.images["id-old-frontend"]["refs"] = []
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImages"], 2)
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["retiredImages"], ["id-old-app", "id-old-frontend"])
+        self.assertEqual(state["knownImages"], ["id-new-app", "id-new-app-2", "id-new-frontend", "id-new-frontend-2"])
+        # Images this installation never deployed stay, whatever label or reference they carry.
+        for retained in ("id-new-app", "id-new-frontend", "id-new-app-2", "id-new-frontend-2", "id-stale",
+                         "id-untagged", "id-retained-db", "id-retained-gateway", "id-sidecar", "id-foreign"):
+            self.assertIn(retained, self.docker.images)
+        self.assertEqual(self.docker.removed, ["registry/poketto@sha256:old-a", "id-old-frontend"])
+        self.assertFalse(any("--force" in call or "-f" in call for call in self.docker.calls if call[1:3] == ("image", "rm")))
+        removal = self.docker.calls.index(next(call for call in self.docker.calls if call[1:3] == ("image", "rm")))
+        self.assertLess(max(index for index, call in enumerate(self.docker.calls) if "up" in call), removal)
+
+    def test_a_retirement_failure_is_recorded_and_never_fails_a_healthy_deployment(self):
+        self.docker.fail_containers = True
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertIsNone(result["retiredImages"])
+        self.assertIn("docker", result["retirementError"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["status"], "healthy")
+        self.assertEqual(state["retirementError"], result["retirementError"])
+        self.assertEqual(state["retiredImages"], [])
+        self.assertEqual(result["retiredImageIds"], [])
+        self.docker.fail_containers = False
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertIsNone(state["retirementError"])
+        self.assertEqual(state["retiredImages"], [])
+
+    def test_an_unanswered_pin_lookup_retires_nothing(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        # The previous version is pinned by image ID; its lookup is the one that goes unanswered.
+        self.docker.fail_inspect = {"id-new-app"}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["status"], "healthy")
+        self.assertIsNone(result["retiredImages"])
+        self.assertIn("docker", result["retirementError"])
+        for known in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend"):
+            self.assertIn(known, self.docker.images)
+
+    def test_an_unreadable_candidate_stays_known_while_the_others_go(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        self.docker.fail_inspect = {"id-old-frontend"}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["status"], "healthy")
+        self.assertIsNone(result["retiredImages"])
+        self.assertEqual(result["retiredImageIds"], ["id-old-app"])
+        self.assertIn("1 candidate image", result["retirementError"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["retiredImages"], ["id-old-app"])
+        self.assertEqual(state["retirementError"], result["retirementError"])
+        self.assertNotIn("id-old-app", state["knownImages"])
+        self.assertIn("id-old-frontend", state["knownImages"])
+        self.assertNotIn("id-old-app", self.docker.images)
+
+    def test_a_lost_retirement_record_never_fails_the_healthy_deployment(self):
+        original = updater.write_json
+
+        # Only the retirement record carries retirementError; the healthy state before it does not.
+        def failing(path, value):
+            if "retirementError" in value:
+                raise OSError("no space left on device")
+            original(path, value)
+
+        with mock.patch.object(updater, "write_json", failing):
+            result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertEqual(result["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["status"], "healthy")
+        self.assertNotIn("retirementError", state)
+
+    def test_a_repointed_tag_never_retires_the_image_that_was_running(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        # A redelivery of the same commit points both tags at rebuilt images.
+        for name in ("app", "frontend"):
+            self.docker.images["id-new-" + name]["refs"] = []
+            self.docker.images["id-rebuilt-" + name] = {"refs": ["new-" + name], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "id-new-app", "frontend": "id-new-frontend"})
+        self.assertIn("id-new-app", self.docker.images)
+        self.assertIn("id-new-frontend", self.docker.images)
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+
+    def test_a_container_gone_since_the_listing_does_not_stop_the_retirement(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        self.docker.vanished_containers = {"sidecar-container"}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+        self.assertIsNone(json.loads(self.installation.state_file.read_text())["retirementError"])
+
+    def test_a_removal_confirmed_only_by_the_next_run_is_still_counted(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        # The earlier run removed the image but was killed before it could confirm and record it.
+        state = json.loads(self.installation.state_file.read_text())
+        state["removing"] = ["id-old-app"]
+        self.installation.state_file.write_text(json.dumps(state))
+        del self.docker.images["id-old-app"]
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["removing"], [])
+        self.assertNotIn("id-old-app", state["knownImages"])
+
+    def test_a_known_image_that_is_already_gone_leaves_the_record(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        del self.docker.images["id-old-frontend"]
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImageIds"], ["id-old-app"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertNotIn("id-old-frontend", state["knownImages"])
+
+    def test_rerunning_the_running_version_keeps_the_previous_version_retained(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        self.assertEqual(result["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "id-old-app", "frontend": "id-old-frontend"})
+        self.assertIn("id-old-app", self.docker.images)
+        self.assertIn("id-old-frontend", self.docker.images)
+
+    def test_redeploying_the_same_build_under_another_reference_keeps_the_previous_version(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        self.docker.images["id-new-app"]["refs"].append("registry/poketto:sha-" + REVISION)
+        self.docker.images["id-new-frontend"]["refs"].append("registry/poketto-frontend:sha-" + REVISION)
+        result = self.installation.update(
+                REVISION, "registry/poketto:sha-" + REVISION, "registry/poketto-frontend:sha-" + REVISION)
+        self.assertEqual(result["status"], "healthy")
+        self.assertEqual(result["retiredImages"], 0)
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "id-old-app", "frontend": "id-old-frontend"})
+        self.assertIn("id-old-app", self.docker.images)
+
+    def test_a_rebuilt_revision_records_the_replaced_build_as_previous(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["status"], "healthy")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "id-new-app", "frontend": "id-new-frontend"})
+        self.assertIn("id-new-app", self.docker.images)
+        self.assertNotIn("id-old-app", self.docker.images)
+        self.assertEqual(result["retiredImages"], 2)
+
     def test_preflight_does_not_change_containers_or_confirm_a_deployment(self):
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
         self.assertFalse(self.installation.overlay.exists())
         self.assertFalse(self.installation.state_file.exists())
         self.assertFalse(any("up" in call for call in self.docker.calls))
+        self.assertEqual(self.docker.removed, [])
 
     def test_failed_update_keeps_pending_state_and_same_target_can_be_reconciled(self):
         self.docker.fail_up = True
         with self.assertRaises(updater.DeploymentError):
             self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+        self.assertEqual(self.docker.removed, [])
         self.docker.fail_up = False
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["status"], "healthy")
 
