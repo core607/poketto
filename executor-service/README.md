@@ -4,7 +4,7 @@ This worker supplies the Linux process boundary for repository execution. Spring
 authorizes the principal and exports a credential-free Git bundle; the worker
 accepts a signed lease and runs SRT 0.0.75 as a separate unprivileged account.
 It never opens an application repository or accepts a caller-specified host path.
-The [supervisor decision](../notes/proposed/2026-09-05-local-execution-supervisor.md)
+The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
 owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime

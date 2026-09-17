@@ -1,7 +1,8 @@
 # Managed Asset BlobStore and Repository Image Materialization
 
 Date: 2026-09-01
-Status: Proposed
+
+Rejected on 2026-09-17 as superseded. The subset that shipped, a local `ManagedBlobStore` with immutable revisions, idempotent uploads and read-only repository images, is owned by [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md), [logical media index](../implemented/2026-09-09-logical-media-index.md) and [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md), which chose a disk digest ledger and `.poketto/assets.json` over the PostgreSQL catalog proposed here and excluded physical reclamation: no acknowledged original is garbage-collected. The OSS adapter stays with the [optional serverless deployment profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md). The guardrails below, no image synchronization system, no uploads into Git history and no deletion of repository images, are restated in those implemented notes; the text is kept as the record of the catalog design that lost.
 
 The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
 
@@ -58,7 +59,7 @@ The optional serverless profile implements the same managed contract with durabl
 
 The first implementation depends on [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md). It adds the `ManagedBlobStore` port, local filesystem adapter, workspace-scoped managed catalog, immutable upload and delivery, retention-safe cleanup, and the repository-image materialization cache with focused storage, security, and isolation tests.
 
-[Repository-native publishing and images](2026-09-01-repository-native-publishing-and-assets.md) owns relative-link resolution, folder galleries, public reachability, structured reads, and document-reference writes. The authoritative OSS adapter and shared repository-image cache remain inside [the optional serverless deployment profile](2026-09-01-optional-serverless-deployment-profile.md), where real external infrastructure can prove the contracts.
+[Repository-native publishing and images](2026-09-01-repository-native-publishing-and-assets.md) owns relative-link resolution, folder galleries, public reachability, structured reads, and document-reference writes. The authoritative OSS adapter and shared repository-image cache remain inside [the optional serverless deployment profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md), where real external infrastructure can prove the contracts.
 
 The first implementation excludes image transformation, thumbnails, OCR, automatic captions, CDN configuration, Git LFS, cross-workspace physical deduplication, asset import or export, binary repository writes, and modification or deletion of repository images.
 

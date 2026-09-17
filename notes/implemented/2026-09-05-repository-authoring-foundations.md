@@ -7,7 +7,7 @@ Status: Implemented
 
 ## Scope
 
-This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages and Markdown rendering remain separate work. The [MCP and local execution record](../proposed/2026-09-05-local-execution-supervisor.md) owns the implemented transport and worker adapter, along with their remaining installation acceptance. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
+This record implements repository-native reads, public snapshots, atomic text patches, immutable image storage and snapshot-bound image delivery for the [phase-one delivery](2026-09-05-phase-one-daily-use.md). It builds on the [identity HTTP backend](2026-09-06-workspace-identity-http.md). Blog and administration pages and Markdown rendering remain separate work. The [MCP and local execution record](2026-09-05-local-execution-supervisor.md) owns the implemented transport and worker adapter, along with their remaining installation acceptance. The broader publishing, membership, asset, frontend, and retrieval proposals remain proposed until their complete acceptance criteria are met.
 
 ## Repository and publication
 
@@ -87,7 +87,7 @@ This record replaces the whole-commit rejection and indefinite stale public read
 
 The [remote authority decision](2026-09-01-remote-repository-authority.md) remains unchanged. Object-only patches avoid worktree mutation and cleanup as part of new writes. Legacy UUID write code remains an internal transitional implementation and has no new external compatibility endpoint; its removal follows migration of remaining callers and tests.
 
-The same-topic audit retains [publishing](../proposed/2026-09-01-repository-native-publishing-and-assets.md), [retrieval](../proposed/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), [membership](../proposed/2026-08-27-invitation-only-membership.md), and [assets](../proposed/2026-09-01-repository-asset-blob-store.md) as partially fulfilled proposals. [Stock PostgreSQL](2026-09-05-stock-postgresql.md) owns the database-image simplification. No note is archived or rejected by this slice.
+The same-topic audit retains [publishing](../rejected/2026-09-01-repository-native-publishing-and-assets.md), [retrieval](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md), [membership](2026-08-27-invitation-only-membership.md), and [assets](../rejected/2026-09-01-repository-asset-blob-store.md) as partially fulfilled proposals. [Stock PostgreSQL](2026-09-05-stock-postgresql.md) owns the database-image simplification. No note is archived or rejected by this slice.
 
 ## Verification and limits
 

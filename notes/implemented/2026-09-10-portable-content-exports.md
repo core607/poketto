@@ -123,7 +123,7 @@ export into publication. A shared deterministic service avoids those changes.
 
 The [logical index](2026-09-09-logical-media-index.md) retains media
 ownership, [indexed delivery](2026-09-09-indexed-media-delivery.md)
-retains exact-original transfer, and [CodeAct workspaces](../proposed/2026-09-09-codeact-workspaces.md)
+retains exact-original transfer, and [CodeAct workspaces](2026-09-09-codeact-workspaces.md)
 retains session and materialization boundaries. These decisions remain active;
 this record does not replace the separate public-root conversion.
 

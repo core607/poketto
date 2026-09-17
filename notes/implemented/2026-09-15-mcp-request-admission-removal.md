@@ -104,7 +104,7 @@ and external-client results must be reported separately.
 
 ## Related decisions
 
-- [Local execution supervisor](../proposed/2026-09-05-local-execution-supervisor.md):
+- [Local execution supervisor](2026-09-05-local-execution-supervisor.md):
   this record supersedes its MCP body sizes, global filter slots and filter-owned
   image reservation; executor admission remains independent.
 - [Image transfers](2026-09-15-mcp-image-transfers.md): this record withdraws its

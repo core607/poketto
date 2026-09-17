@@ -18,7 +18,7 @@ Poketto needs multiple workspaces in its core data model while retaining single-
 - A `workspace` is the tenant, security, and data-destruction boundary. Each workspace has an immutable canonical lowercase UUID as its `workspace_id`; its name, public domain, and display slug are not identifiers.
 - The application always uses the workspace model internally. A default deployment creates one workspace on the first successful database-backed start and exposes it through `WorkspaceCatalog`.
 - `WorkspaceCatalog` supports lookup of the default workspace and lookup by `WorkspaceId`. [Managed workspace connections](2026-09-11-managed-workspace-connections.md) add transactional creation through `WorkspaceRegistry` and account-level HTTP operations; catalog lookup remains separate from membership authorization.
-- An account may join multiple workspaces. A role belongs to the membership between an account and a workspace, not to the account globally. The [invitation-only membership proposal](../proposed/2026-08-27-invitation-only-membership.md) owns the joining flow and attaches the first owner to the existing default workspace.
+- An account may join multiple workspaces. A role belongs to the membership between an account and a workspace, not to the account globally. The [invitation-only membership proposal](2026-08-27-invitation-only-membership.md) owns the joining flow and attaches the first owner to the existing default workspace.
 
 ### Data isolation
 
@@ -56,7 +56,7 @@ The implemented [content repository foundation](2026-08-26-content-foundation.md
 
 This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
 
-The consumer-accounts proposal adds personal-workspace provisioning while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. [Remote repository authority](2026-09-01-remote-repository-authority.md) already keeps production repository truth off the request host. [Managed assets and repository image materialization](../proposed/2026-09-01-repository-asset-blob-store.md) will keep authoritative managed objects and disposable repository-image caches workspace-scoped. The optional serverless profile changes managed storage, derived caching, database, and SRT placement rather than workspace isolation.
+The consumer-accounts proposal adds personal-workspace provisioning while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. [Remote repository authority](2026-09-01-remote-repository-authority.md) already keeps production repository truth off the request host. [Managed assets and repository image materialization](../rejected/2026-09-01-repository-asset-blob-store.md) will keep authoritative managed objects and disposable repository-image caches workspace-scoped. The optional serverless profile changes managed storage, derived caching, database, and SRT placement rather than workspace isolation.
 
 ## Alternatives considered
 
