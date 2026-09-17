@@ -149,11 +149,11 @@ final class JGitRepositoryWrites {
                 Map<String, Optional<DocumentRevision>> revisions = edit(index, inserter, changes);
                 requireUntouched(index, untouched);
                 checkCandidate(index, changes.replacements(), repository, changes.paths());
-                boolean needsPublish = publication.complete(repository, index);
-                if (needsPublish) {
+                Publication.Decision decision = publication.complete(repository, index);
+                if (decision.publish()) {
                     auth.authorize(principal, workspace, Capability.PUBLISH);
                 }
-                publication.validateMedia(workspace);
+                publication.validateMedia(workspace, decision.media());
                 ObjectId tree = index.writeTree(inserter);
                 if (!base.equals(ObjectId.zeroId())
                         && tree.equals(walk.parseCommit(base).getTree().getId())) {
@@ -174,7 +174,7 @@ final class JGitRepositoryWrites {
                         return reconciled.orElseThrow();
                     }
                 }
-                return publish(snapshot, advancer, commit, commitBytes, needsPublish, revisions);
+                return publish(snapshot, advancer, commit, commitBytes, decision.publish(), revisions);
             } catch (IOException exception) {
                 throw new ContentRepositoryException("repository changes could not be prepared", exception);
             }
@@ -258,7 +258,8 @@ final class JGitRepositoryWrites {
                                 ? "workspace {} recovered commit {} but current snapshot installation failed"
                                 : "workspace {} acknowledged commit {} but public snapshot installation failed",
                         workspace,
-                        commit.name());
+                        commit.name(),
+                        unavailable);
                 return false;
             }
         }
@@ -289,7 +290,6 @@ final class JGitRepositoryWrites {
         private final boolean changesMedia;
         private final boolean preserveInvalidMedia;
         private boolean needed;
-        private RepositoryMediaIndex mediaAfter = RepositoryMediaIndex.empty();
 
         Publication(Repository repository, DirCache index, RepositoryCandidateChanges changes) throws IOException {
             this.changes = changes;
@@ -317,9 +317,13 @@ final class JGitRepositoryWrites {
             needed |= invalidMedia && changesMedia;
         }
 
-        boolean complete(Repository repository, DirCache index) throws IOException {
+        /** Whether the write needs publication authority, and the media index it leaves behind. */
+        record Decision(boolean publish, RepositoryMediaIndex media) {}
+
+        Decision complete(Repository repository, DirCache index) throws IOException {
             RepositoryPublishingPolicy after = policy(repository, index);
-            mediaAfter = preserveInvalidMedia ? RepositoryMediaIndex.empty() : mediaIndex(repository, index);
+            RepositoryMediaIndex mediaAfter =
+                    preserveInvalidMedia ? RepositoryMediaIndex.empty() : mediaIndex(repository, index);
             if (!mediaAfter.files().isEmpty()) {
                 mediaAfter.requireNoGitCollisions(IntStream.range(0, index.getEntryCount())
                         .mapToObj(i -> index.getEntry(i).getPathString())
@@ -334,10 +338,10 @@ final class JGitRepositoryWrites {
                 }
             }
             needed |= changes.paths().stream().anyMatch(after::permitsPath);
-            return needed;
+            return new Decision(needed, mediaAfter);
         }
 
-        void validateMedia(WorkspaceId workspace) {
+        void validateMedia(WorkspaceId workspace, RepositoryMediaIndex mediaAfter) {
             if (changesMedia) {
                 mediaValidator.validate(
                         workspace,
