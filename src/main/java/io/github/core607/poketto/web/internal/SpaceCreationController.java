@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.RepositoryConnectionException;
+import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.Map;
@@ -57,6 +58,18 @@ class SpaceCreationController {
     SpaceCreationService.ConnectionInfo connectionInfo(
             @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
         return creation.connectionInfo(actor, WorkspaceId.parse(workspaceId));
+    }
+
+    @GetMapping("/{workspaceId}/repository-initialization")
+    RepositoryInitialization.Status initializationStatus(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
+        return creation.initializationStatus(actor, WorkspaceId.parse(workspaceId));
+    }
+
+    @PostMapping("/{workspaceId}/repository-initialization")
+    RepositoryInitialization.Outcome initialize(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
+        return creation.initialize(actor, WorkspaceId.parse(workspaceId));
     }
 
     @PutMapping("/{workspaceId}/repository-credentials")

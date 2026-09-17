@@ -9,6 +9,8 @@ type ConnectionInfo = {
   rotationAvailable: boolean;
   binding: { repository: string; updatedAt: string } | null;
 };
+type Initialization = { repositoryEmpty: boolean; missingFiles: string[] };
+type InitializationOutcome = { commit: string; addedFiles: string[] };
 
 const rotationErrors: Record<string, string> = {
   PERMISSION_DENIED:
@@ -25,6 +27,11 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
   const [pending, setPending] = useState(false);
+  const [initialization, setInitialization] = useState<Initialization | null>(
+    null,
+  );
+  const [initializationError, setInitializationError] = useState("");
+  const [initializing, setInitializing] = useState(false);
   const active = useRef(false);
 
   async function load() {
@@ -38,13 +45,52 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
       if (active.current) setError(message(failure));
     }
   }
+  async function loadInitialization() {
+    try {
+      const result = await api<Initialization>(
+        base + "/repository-initialization",
+      );
+      if (active.current) {
+        setInitialization(result);
+        setInitializationError("");
+      }
+    } catch (failure) {
+      if (active.current) setInitializationError(message(failure));
+    }
+  }
   useEffect(() => {
     active.current = true;
     void load();
+    void loadInitialization();
     return () => {
       active.current = false;
     };
   }, []);
+
+  async function initialize() {
+    if (initializing) return;
+    setInitializing(true);
+    setInitializationError("");
+    setReceipt("");
+    try {
+      const outcome = await api<InitializationOutcome>(
+        base + "/repository-initialization",
+        { method: "POST", timeoutMs: 90000 },
+      );
+      if (active.current) {
+        setReceipt(
+          outcome.addedFiles.length
+            ? `已写入 ${outcome.addedFiles.length} 个文件，提交 ${outcome.commit.slice(0, 12)}。`
+            : "仓库已经包含全部指引文件，没有新的写入。",
+        );
+        await loadInitialization();
+      }
+    } catch (failure) {
+      if (active.current) setInitializationError(message(failure));
+    } finally {
+      if (active.current) setInitializing(false);
+    }
+  }
 
   async function rotate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -149,6 +195,50 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
             </form>
           )}
         </>
+      )}
+      {connection && (
+        <div aria-label="仓库指引文件">
+          <h3>仓库指引文件</h3>
+          {initializationError && (
+            <p className="notice danger" role="alert">
+              {initializationError}{" "}
+              <button
+                disabled={initializing}
+                onClick={() => void loadInitialization()}
+              >
+                重新检查
+              </button>
+            </p>
+          )}
+          {!initialization && !initializationError && (
+            <p role="status">正在检查仓库指引文件…</p>
+          )}
+          {initialization && initialization.missingFiles.length === 0 && (
+            <p>仓库已包含内容模板的指引文件和发布策略，不需要初始化。</p>
+          )}
+          {initialization && initialization.missingFiles.length > 0 && (
+            <>
+              <p>
+                {initialization.repositoryEmpty
+                  ? "仓库还没有任何提交。写入下面的文件会成为它的第一个提交，发布保持关闭："
+                  : "仓库缺少内容模板中的以下文件。写入只会添加这些文件，不修改、不移动任何已有内容，也不会开启发布："}
+              </p>
+              <ul>
+                {initialization.missingFiles.map((file) => (
+                  <li key={file}>
+                    <code>{file}</code>
+                  </li>
+                ))}
+              </ul>
+              <button
+                disabled={initializing || pending}
+                onClick={() => void initialize()}
+              >
+                {initializing ? "正在写入…" : "写入这些文件"}
+              </button>
+            </>
+          )}
+        </div>
       )}
     </section>
   );

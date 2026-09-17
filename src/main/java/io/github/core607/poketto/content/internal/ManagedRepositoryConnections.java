@@ -75,6 +75,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         if (creating) {
             rejectDefaultDuplicate(metadata);
         }
+        boolean empty;
         try (var repository = new InMemoryRepository(new DfsRepositoryDescription());
                 Transport transport = Transport.open(repository, new URIish(coordinates.transportUri()))) {
             transport.setCredentialsProvider(
@@ -87,6 +88,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
                 if (hasBranches && fetch.getRef("refs/heads/main") == null) {
                     throw new RepositoryConnectionException(INVALID_INPUT);
                 }
+                empty = !hasBranches;
             }
             // Receive-pack advertisement checks Git write access without changing any remote ref.
             try (var push = transport.openPush()) {
@@ -97,7 +99,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         } catch (Exception unavailable) {
             throw new RepositoryConnectionException(UNAVAILABLE);
         }
-        return new Verified(metadata.identity(), metadata.privateRepository());
+        return new Verified(metadata.identity(), metadata.privateRepository(), empty);
     }
 
     private void rejectDefaultDuplicate(RepositoryProviderClient.Metadata candidate) {

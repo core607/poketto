@@ -28,7 +28,7 @@ On Windows, `check` also runs `linuxStorageTest` in a pinned Linux container usi
 
 ## Content and images
 
-The management page lists the signed-in account's spaces. Select a space before editing; its `workspace` URL parameter keeps separate tabs independent. Account and space management also supports connecting an existing private GitHub/CNB repository, querying or retrying an interrupted creation, and accepting a workspace invitation. Configure `POKETTO_REPOSITORY_CREDENTIAL_KEY` as a Base64-encoded 32-byte secret before enabling repository connection. New spaces start with public delivery disabled. Provider tokens require metadata read and Git write access and are never retained in browser drafts.
+The management page lists the signed-in account's spaces. Select a space before editing; its `workspace` URL parameter keeps separate tabs independent. Account and space management also supports connecting an existing private GitHub/CNB repository, querying or retrying an interrupted creation, and accepting a workspace invitation. Configure `POKETTO_REPOSITORY_CREDENTIAL_KEY` as a Base64-encoded 32-byte secret before enabling repository connection. New spaces start with public delivery disabled. Creation commits the content template into an empty repository as its first commit; if that write does not complete, the space's Repository connection tab offers it. A repository that already holds content is left unchanged, and the same tab lists the template's absent guide and policy files with an action that adds only those. Provider tokens require metadata read and Git write access and are never retained in browser drafts.
 
 Private HTTP routes use `/api/admin/workspaces/{workspaceId}`. Read memberships from `GET /api/auth/workspaces` and current authorization from `GET /api/auth/workspaces/{workspaceId}/me`; unscoped administration routes do not select a fallback space. OAuth consent chooses one joined space, and the `/mcp` resource derives that space from its issued credential. See [workspace routing](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md).
 
@@ -36,9 +36,11 @@ Owners set private reading, private writing and public editing/publishing in mem
 
 Space owners can update managed repository credentials from the Repository connection tab. Supply a Git username and replacement token; the server validates access before replacing the existing credentials. This cannot change the repository address. The form clears submitted tokens and never stores them in browser drafts. After a confirmed update, revoke the old token at the Git provider. Deployment-managed repositories require an operator configuration update.
 
-Initialize an empty content repository from [content-template](../content-template/AGENTS.md).
-It contains independent `private/` and `public/` trees and keeps publication disabled.
-Create new content under `private/`. To publish selected content, move it and its
+The [content-template](../content-template/AGENTS.md) is what initialization adds: a root guide,
+independent `private/` and `public/` trees with their own guides, and a publication policy that
+starts disabled. Nothing existing is modified or moved, and content outside the two trees stays
+private. A deployment-managed repository is initialized the same way from its space's Repository
+connection tab. Create new content under `private/`. To publish selected content, move it and its
 required media into `public/`, then configure `.poketto/publishing.yaml`:
 
 ```yaml

@@ -8,6 +8,8 @@ COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle ./gradle
 RUN --mount=type=cache,target=/root/.gradle chmod +x gradlew && ./gradlew --no-daemon --version >/dev/null
 COPY src ./src
+# The content template is packaged into the application's resources by processResources.
+COPY content-template ./content-template
 RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon --quiet bootJar \
     && java -Djarmode=tools -jar build/libs/poketto-*.jar extract --layers --launcher --destination /app
 
