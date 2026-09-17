@@ -265,6 +265,21 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
         self.assertIsNone(json.loads(self.installation.state_file.read_text())["retirementError"])
 
+    def test_a_removal_confirmed_only_by_the_next_run_is_still_counted(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        # The earlier run removed the image but was killed before it could confirm and record it.
+        state = json.loads(self.installation.state_file.read_text())
+        state["removing"] = ["id-old-app"]
+        self.installation.state_file.write_text(json.dumps(state))
+        del self.docker.images["id-old-app"]
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["removing"], [])
+        self.assertNotIn("id-old-app", state["knownImages"])
+
     def test_a_known_image_that_is_already_gone_leaves_the_record(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
         del self.docker.images["id-old-frontend"]

@@ -189,6 +189,13 @@ class Installation:
         known = set(state["knownImages"]) | previous
         state["knownImages"] = sorted(known)
         retired = state["retiredImages"]
+        # A removal an earlier run started but could not confirm counts as soon as the image is found
+        # absent; one that is still present is an ordinary candidate again.
+        for image in state.get("removing", []):
+            if image not in retained and self.image_details(image) is None:
+                retired.append(image)
+                known.discard(image)
+        state.update(removing=[], knownImages=sorted(known))
         unreadable = []
         for image in sorted(known - retained):
             try:
@@ -203,6 +210,8 @@ class Installation:
                 continue
             # Docker answers null, not an empty list, when an image has no tags or digests.
             references = (details.get("RepoTags") or []) + (details.get("RepoDigests") or [])
+            state["removing"] = [image]
+            write_json(self.state_file, state)
             for reference in references or [image]:
                 # Docker deletes an untagged image at its first digest reference.
                 if self.present(image) is None:
@@ -214,8 +223,8 @@ class Installation:
             if self.present(image) is None:
                 retired.append(image)
                 known.discard(image)
-                state["knownImages"] = sorted(known)
-                write_json(self.state_file, state)
+            state.update(removing=[], knownImages=sorted(known))
+            write_json(self.state_file, state)
         if unreadable:
             raise DeploymentError(str(len(unreadable)) + " candidate image(s) could not be inspected and stay known")
         return retired
@@ -247,6 +256,8 @@ class Installation:
             # replaces. The previous version is recorded by image ID, never by a tag a later delivery
             # can point at another build.
             previous = {name: containers[name]["Image"] for name in image_refs}
+            # An unconfirmed removal from the previous run is settled by this run before it retires anything.
+            removing = state.get("removing", []) if state else []
             if state and state.get("imageIds") == image_ids and state.get("previousImages"):
                 previous = state["previousImages"]
             state = {
@@ -255,6 +266,7 @@ class Installation:
                 "previousImages": previous,
                 "runtimeContracts": {name: digest(runtime_contract(containers[name])) for name in image_refs},
                 "otherContainers": {name: value["Id"] for name, value in containers.items() if name not in image_refs},
+                "removing": removing,
             }
         state["knownImages"] = sorted(known | set(image_ids.values()))
         if check_only:
