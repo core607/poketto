@@ -182,6 +182,7 @@ class Installation:
             if details is None:
                 known.discard(image)
                 state["knownImages"] = sorted(known)
+                write_json(self.state_file, state)
                 continue
             # Docker answers null, not an empty list, when an image has no tags or digests.
             references = (details.get("RepoTags") or []) + (details.get("RepoDigests") or [])
@@ -197,6 +198,7 @@ class Installation:
                 retired.append(image)
                 known.discard(image)
                 state["knownImages"] = sorted(known)
+                write_json(self.state_file, state)
         return retired
 
     def update(self, revision, app_image, frontend_image, check_only=False):
@@ -222,8 +224,10 @@ class Installation:
         else:
             # Redeploying the images that are already running, whatever reference delivers them, keeps
             # the previous version's images: they are the local recovery path and must stay retained.
-            # A rebuilt image of the same revision is a new deployment whose previous is the build it replaces.
-            previous = {name: containers[name]["Config"]["Image"] for name in image_refs}
+            # A rebuilt image of the same revision is a new deployment whose previous is the build it
+            # replaces. The previous version is recorded by image ID, never by a tag a later delivery
+            # can point at another build.
+            previous = {name: containers[name]["Image"] for name in image_refs}
             if state and state.get("imageIds") == image_ids and state.get("previousImages"):
                 previous = state["previousImages"]
             state = {

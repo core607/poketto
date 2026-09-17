@@ -196,7 +196,8 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.installation.update(REVISION, "new-app", "new-frontend")
         for reference in ("new-app-2", "new-frontend-2"):
             self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
-        self.docker.fail_inspect = {"new-app"}
+        # The previous version is pinned by image ID; its lookup is the one that goes unanswered.
+        self.docker.fail_inspect = {"id-new-app"}
         result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
         self.assertEqual(result["status"], "healthy")
         self.assertIsNone(result["retiredImages"])
@@ -238,6 +239,20 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertEqual(state["status"], "healthy")
         self.assertNotIn("retirementError", state)
 
+    def test_a_repointed_tag_never_retires_the_image_that_was_running(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        # A redelivery of the same commit points both tags at rebuilt images.
+        for name in ("app", "frontend"):
+            self.docker.images["id-new-" + name]["refs"] = []
+            self.docker.images["id-rebuilt-" + name] = {"refs": ["new-" + name], "source": SOURCE}
+        result = self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(result["status"], "healthy")
+        state = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(state["previousImages"], {"app": "id-new-app", "frontend": "id-new-frontend"})
+        self.assertIn("id-new-app", self.docker.images)
+        self.assertIn("id-new-frontend", self.docker.images)
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+
     def test_a_known_image_that_is_already_gone_leaves_the_record(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
         del self.docker.images["id-old-frontend"]
@@ -254,7 +269,7 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertEqual(result["status"], "healthy")
         self.assertEqual(result["retiredImages"], 0)
         state = json.loads(self.installation.state_file.read_text())
-        self.assertEqual(state["previousImages"], {"app": "old-app", "frontend": "old-frontend"})
+        self.assertEqual(state["previousImages"], {"app": "id-old-app", "frontend": "id-old-frontend"})
         self.assertIn("id-old-app", self.docker.images)
         self.assertIn("id-old-frontend", self.docker.images)
 
@@ -267,7 +282,7 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertEqual(result["status"], "healthy")
         self.assertEqual(result["retiredImages"], 0)
         state = json.loads(self.installation.state_file.read_text())
-        self.assertEqual(state["previousImages"], {"app": "old-app", "frontend": "old-frontend"})
+        self.assertEqual(state["previousImages"], {"app": "id-old-app", "frontend": "id-old-frontend"})
         self.assertIn("id-old-app", self.docker.images)
 
     def test_a_rebuilt_revision_records_the_replaced_build_as_previous(self):
@@ -277,7 +292,7 @@ class ExistingDeploymentTests(unittest.TestCase):
         result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
         self.assertEqual(result["status"], "healthy")
         state = json.loads(self.installation.state_file.read_text())
-        self.assertEqual(state["previousImages"], {"app": "new-app", "frontend": "new-frontend"})
+        self.assertEqual(state["previousImages"], {"app": "id-new-app", "frontend": "id-new-frontend"})
         self.assertIn("id-new-app", self.docker.images)
         self.assertNotIn("id-old-app", self.docker.images)
         self.assertEqual(result["retiredImages"], 2)
