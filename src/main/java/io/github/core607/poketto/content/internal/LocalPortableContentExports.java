@@ -122,12 +122,10 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
 
     LocalPortableContentExports(
             AuthService auth, PortableContentPlanner planner, Path root, Clock clock, Limits limits) {
-        if (!root.isAbsolute() || !root.normalize().equals(root)) {
-            throw new IllegalArgumentException("export staging must be absolute and normalized");
-        }
         this.auth = auth;
         this.planner = planner;
         this.root = root;
+        // The staging collaborator owns the root's shape: absolute, normalized, no symlinked ancestor.
         this.staging = new ExportStaging(root);
         this.clock = clock;
         this.limits = limits;

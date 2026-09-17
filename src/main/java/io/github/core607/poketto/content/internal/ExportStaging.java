@@ -15,7 +15,8 @@ import java.util.UUID;
  * The export staging directory: one owner per root, proven by an exclusive lock on a protected
  * file, with every ancestor a real directory rather than a symlink. Acquiring ownership clears
  * what an earlier owner left behind, and refuses the root outright when it holds anything but
- * workspace directories of ZIP or pending files.
+ * workspace directories of ZIP or pending files. Acquisition and release are serialized here, so
+ * a caller needs no lock of its own to keep ownership consistent.
  */
 final class ExportStaging {
     private final Path root;
@@ -33,7 +34,7 @@ final class ExportStaging {
         return root;
     }
 
-    void acquire() throws IOException {
+    synchronized void acquire() throws IOException {
         if (lock != null) {
             return;
         }
@@ -126,14 +127,20 @@ final class ExportStaging {
         }
     }
 
-    void release() throws IOException {
-        if (lock != null) {
-            lock.release();
-            lock = null;
-        }
-        if (ownership != null) {
-            ownership.close();
-            ownership = null;
+    /** Releases the lock and its channel in that order; a failed release still closes the channel. */
+    synchronized void release() throws IOException {
+        FileLock held = lock;
+        FileChannel channel = ownership;
+        lock = null;
+        ownership = null;
+        try {
+            if (held != null) {
+                held.release();
+            }
+        } finally {
+            if (channel != null) {
+                channel.close();
+            }
         }
     }
 
