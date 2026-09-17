@@ -1,6 +1,7 @@
 package io.github.core607.poketto.mcp.internal;
 
 import io.modelcontextprotocol.spec.McpSchema;
+import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -18,7 +19,8 @@ import tools.jackson.databind.ObjectMapper;
  * <p>The code is read back from the result rather than passed in, because an operation can return
  * a refusal of its own without raising an exception; taking it from the body covers those too.
  * Arguments, commands and file paths are not recorded: a command line carries repository content
- * and a path names private material.
+ * and a path names private material. For the same reason a failure the boundary could not map to a
+ * specific code is recorded by its type chain alone, never by its message or stack.
  */
 final class McpToolOutcomes {
 
@@ -46,6 +48,22 @@ final class McpToolOutcomes {
                 .addArgument(milliseconds)
                 .log();
         return result;
+    }
+
+    /** Records where an unmapped failure came from: the exception types, outermost first. */
+    static void failed(String tool, Throwable failure) {
+        var types = new StringJoiner(" caused by ");
+        Throwable cause = failure;
+        for (int depth = 0; cause != null && depth < 8; depth++, cause = cause.getCause()) {
+            types.add(cause.getClass().getName());
+        }
+        log.atWarn()
+                .addKeyValue("tool", tool)
+                .addKeyValue("failure", types.toString())
+                .setMessage("mcp tool {} failed: {}")
+                .addArgument(tool)
+                .addArgument(types)
+                .log();
     }
 
     static McpSchema.CallToolResult failure(ObjectMapper json, String code, String reason, String message) {

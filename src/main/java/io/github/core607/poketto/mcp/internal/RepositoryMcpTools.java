@@ -34,11 +34,20 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.ObjectProvider;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 /** Protocol mapping only: all repository, image and execution operations call shared authorized services. */
 final class RepositoryMcpTools {
+    private static final Set<String> PUT_ASSET_FIELDS = Set.of("operationKey", "mode", "url", "file");
+    private static final Set<String> FILE_FIELDS = Set.of("download_url", "file_id", "mime_type", "file_name");
+    private static final String FILE_GUIDANCE = "file must be the file reference this conversation holds (an"
+            + " object with download_url and file_id), passed with mode=import; a path in your own environment"
+            + " cannot be read here. Only an environment that can send HTTPS requests itself should use"
+            + " mode=upload and PUT the bytes.";
     private static final int MAX_TEXT_RESULT_BYTES = 8 * 1024 * 1024;
 
     private static final int MAX_BASE64_LENGTH = ((ManagedBlobStore.MAX_UPLOAD_BYTES + 2) / 3) * 4;
@@ -113,7 +122,7 @@ final class RepositoryMcpTools {
     private McpServerFeatures.SyncToolSpecification putAssetTool() {
         return tool(
                 "put_asset",
-                "Import an image from url or a platform file reference (file), at most 16 MiB. If you hold a local file, use mode=upload with operationKey only; use your own Python/Shell to HTTP PUT raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
+                "Import an image from url or from a file attached to this conversation (file, a platform file reference), at most 16 MiB. A path in your own environment cannot be read here; attach the file instead. Only if your environment can send HTTPS requests itself: use mode=upload with operationKey only, then PUT the raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
                 putAssetSchema(),
                 false,
                 false,
@@ -247,8 +256,10 @@ final class RepositoryMcpTools {
                     } catch (RepositoryEmptyException exception) {
                         return error("REPOSITORY_EMPTY", REPOSITORY_EMPTY);
                     } catch (ContentRepositoryException exception) {
+                        McpToolOutcomes.failed(name, exception);
                         return error("UNAVAILABLE", "Repository authority is unavailable; no success is confirmed.");
                     } catch (RuntimeException exception) {
+                        McpToolOutcomes.failed(name, exception);
                         return error(
                                 "UNAVAILABLE",
                                 "Operation could not be completed; verify authoritative state before retrying writes.");
@@ -337,8 +348,13 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult putAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
-        fields(input, Set.of("operationKey", "mode", "url", "file"));
-        PutAssetInput request = json.convertValue(input, PutAssetInput.class);
+        fields(input, PUT_ASSET_FIELDS);
+        PutAssetInput request;
+        try {
+            request = json.convertValue(input, PutAssetInput.class);
+        } catch (DatabindException invalid) {
+            return error("INVALID_INPUT", inputProblem(input, invalid));
+        }
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
         if (request.mode().equals("upload")) {
@@ -348,6 +364,28 @@ final class RepositoryMcpTools {
         return textResult(transfers
                 .getObject()
                 .importUrl(identity.principal(), identity.workspace(), request.operationKey(), request.downloadUrl()));
+    }
+
+    // Jackson reports the record constructor's IllegalArgumentException as a DatabindException whose
+    // cause carries the record's own message. A file value that is not an object at all is the case
+    // of a connector that passed a path from its own environment, and gets that guidance; any other
+    // shape mismatch names the documented field Jackson stopped at, outermost to innermost, and
+    // never the value, because a file download URL is a capability.
+    private static String inputProblem(Map<String, Object> input, DatabindException invalid) {
+        if (invalid.getCause() instanceof IllegalArgumentException reason) {
+            return reason.getMessage();
+        }
+        if (input.containsKey("file") && !(input.get("file") instanceof Map)) {
+            return FILE_GUIDANCE;
+        }
+        List<JacksonException.Reference> path = invalid.getPath() == null ? List.of() : invalid.getPath();
+        String field = path.stream()
+                .map(JacksonException.Reference::getPropertyName)
+                .filter(name -> name != null && (PUT_ASSET_FIELDS.contains(name) || FILE_FIELDS.contains(name)))
+                .collect(Collectors.joining("."));
+        return (field.isEmpty() ? "the input" : field)
+                + " does not have the documented shape: operationKey and url are strings, mode is import or"
+                + " upload, and file is an object whose download_url, file_id, mime_type and file_name are strings.";
     }
 
     private static Map<String, Object> putAssetSchema() {
