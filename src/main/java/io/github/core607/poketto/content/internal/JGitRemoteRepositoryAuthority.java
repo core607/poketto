@@ -22,7 +22,6 @@ import org.eclipse.jgit.lib.Repository;
 
 final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
-    private static final String MAIN = RepositoryCaches.MAIN;
     private static final Duration MAX_PROTECTION = Duration.ofMinutes(5);
 
     private final WorkspacePaths paths;
@@ -86,7 +85,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                 cacheLifecycleLock.unlock();
             }
             try (Repository repository = opened) {
-                ObjectId commit = repository.resolve(MAIN);
+                ObjectId commit = repository.resolve(RepositoryCaches.MAIN);
                 RepositoryCaches.touch(cache);
                 return reader.read(snapshot(repository, commit == null ? ObjectId.zeroId() : commit));
             } catch (IOException exception) {

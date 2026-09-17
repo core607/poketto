@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand;
@@ -39,9 +40,9 @@ final class RepositoryCaches {
         if (maxCachedWorkspaces < 1) {
             throw new IllegalArgumentException("repository cache must allow at least one workspace");
         }
-        this.paths = paths;
+        this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
         this.maxCachedWorkspaces = maxCachedWorkspaces;
-        this.idle = idle;
+        this.idle = Objects.requireNonNull(idle, "cache idleness predicate must not be null");
     }
 
     static Repository openOrInitialize(Path cache, WorkspaceId workspaceId) {
@@ -214,7 +215,7 @@ final class RepositoryCaches {
         }
     }
 
-    static void clearIndex(Repository repository) throws IOException {
+    private static void clearIndex(Repository repository) throws IOException {
         DirCache index = repository.lockDirCache();
         try {
             index.clear();
@@ -291,7 +292,7 @@ final class RepositoryCaches {
         }
     }
 
-    static void deleteTree(Path root) {
+    private static void deleteTree(Path root) {
         if (Files.notExists(root)) {
             return;
         }
