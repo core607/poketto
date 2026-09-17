@@ -11,7 +11,6 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -119,17 +118,15 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
     private Owner building;
     private boolean buildCancelled;
     private final Map<Path, WorkspaceId> orphans = new HashMap<>();
-    private FileChannel ownership;
-    private FileLock lock;
+    private final ExportStaging staging;
 
     LocalPortableContentExports(
             AuthService auth, PortableContentPlanner planner, Path root, Clock clock, Limits limits) {
-        if (!root.isAbsolute() || !root.normalize().equals(root)) {
-            throw new IllegalArgumentException("export staging must be absolute and normalized");
-        }
         this.auth = auth;
         this.planner = planner;
         this.root = root;
+        // The staging collaborator owns the root's shape: absolute, normalized, no symlinked ancestor.
+        this.staging = new ExportStaging(root);
         this.clock = clock;
         this.limits = limits;
         cleanup.scheduleWithFixedDelay(this::reapQuietly, 30, 30, TimeUnit.SECONDS);
@@ -166,7 +163,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
             check.run();
             UUID id = UUID.randomUUID();
             Path directory = root.resolve(workspace.value().toString());
-            protectedDirectory(directory);
+            ExportStaging.protectedDirectory(directory);
             pending = directory.resolve(id + ".pending");
             ready = directory.resolve(id + ".zip");
             MessageDigest digest = digest();
@@ -210,7 +207,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
 
     // Admits one build against the package, retained-byte and workspace-byte limits and charges its reservation.
     private synchronized void reserve(WorkspaceId workspace, Owner owner) throws IOException {
-        initialize();
+        staging.acquire();
         reap();
         if (retained.size() + orphans.size() >= limits.packages()
                 || limits.zipBytes() > limits.retainedBytes() - bytes
@@ -502,99 +499,6 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
         }
     }
 
-    private void initialize() throws IOException {
-        if (lock != null) {
-            return;
-        }
-        createRoot();
-        FileChannel channel = FileChannel.open(
-                root.resolve(".owner.lock"),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-                LinkOption.NOFOLLOW_LINKS);
-        FileLock acquired = null;
-        try {
-            acquired = channel.tryLock();
-            if (acquired == null) {
-                throw failure(ContentExportException.Reason.UNAVAILABLE);
-            }
-            Files.setPosixFilePermissions(root.resolve(".owner.lock"), PosixFilePermissions.fromString("rw-------"));
-            clearStale();
-            ownership = channel;
-            lock = acquired;
-        } catch (IOException | RuntimeException error) {
-            if (acquired != null) {
-                acquired.release();
-            }
-            channel.close();
-            throw error;
-        }
-    }
-
-    // Every ancestor of the staging root is a real directory, never a symlink.
-    private void createRoot() throws IOException {
-        Path ancestor = root.getRoot();
-        for (Path segment : root) {
-            ancestor = ancestor.resolve(segment);
-            if (!Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
-                Files.createDirectory(ancestor);
-            }
-            if (!Files.isDirectory(ancestor, LinkOption.NOFOLLOW_LINKS)
-                    || !ancestor.toRealPath().equals(ancestor)) {
-                throw failure(ContentExportException.Reason.UNAVAILABLE);
-            }
-        }
-        protectedDirectory(root);
-    }
-
-    // The root may hold only workspace directories of ZIP or pending files from an earlier owner; those
-    // are removed, and anything else refuses ownership.
-    private void clearStale() throws IOException {
-        int count = 0;
-        try (var directories = Files.newDirectoryStream(root)) {
-            for (Path directory : directories) {
-                if (directory.getFileName().toString().equals(".owner.lock")) {
-                    continue;
-                }
-                if (++count > 128
-                        || !uuid(directory.getFileName().toString())
-                        || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
-                    throw failure(ContentExportException.Reason.UNAVAILABLE);
-                }
-                try (var files = Files.newDirectoryStream(directory)) {
-                    for (Path file : files) {
-                        if (++count > 256
-                                || !file.getFileName().toString().matches("[0-9a-f-]{36}\\.(zip|pending)")
-                                || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-                            throw failure(ContentExportException.Reason.UNAVAILABLE);
-                        }
-                        Files.delete(file);
-                    }
-                }
-                Files.delete(directory);
-            }
-        }
-    }
-
-    private static void protectedDirectory(Path directory) throws IOException {
-        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
-            Files.createDirectory(directory);
-        }
-        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
-                || !directory.toRealPath().equals(directory)) {
-            throw failure(ContentExportException.Reason.UNAVAILABLE);
-        }
-        Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
-    }
-
-    private static boolean uuid(String value) {
-        try {
-            return UUID.fromString(value).toString().equals(value);
-        } catch (IllegalArgumentException error) {
-            return false;
-        }
-    }
-
     private static MessageDigest digest() {
         try {
             return MessageDigest.getInstance("SHA-256");
@@ -623,15 +527,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     }
                     reap();
                 } finally {
-                    try {
-                        if (lock != null) {
-                            lock.release();
-                        }
-                    } finally {
-                        if (ownership != null) {
-                            ownership.close();
-                        }
-                    }
+                    staging.release();
                 }
             }
         } catch (IOException error) {
