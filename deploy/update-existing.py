@@ -15,9 +15,9 @@ import urllib.request
 
 
 class DeploymentError(RuntimeError):
-    def __init__(self, message, missing_image=False):
+    def __init__(self, message, missing=False):
         super().__init__(message)
-        self.missing_image = missing_image
+        self.missing = missing
 
 
 class NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -29,8 +29,9 @@ def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=240)
     if result.returncode:
         # Compose configuration and logs can contain operator credentials; only Docker's answer that an
-        # image does not exist is classified, never quoted.
-        raise DeploymentError("deployment command failed: " + args[0], "No such image" in result.stderr)
+        # image or container does not exist is classified, never quoted.
+        missing = any(answer in result.stderr for answer in ("No such image", "No such object", "No such container"))
+        raise DeploymentError("deployment command failed: " + args[0], missing)
     return result.stdout
 
 
@@ -151,7 +152,7 @@ class Installation:
         try:
             return json.loads(self.command("docker", "image", "inspect", reference))[0]
         except DeploymentError as error:
-            if error.missing_image:
+            if error.missing:
                 return None
             raise
 
@@ -159,26 +160,42 @@ class Installation:
         details = self.image_details(reference)
         return None if details is None else details["Id"]
 
+    # None means Docker confirmed the container is gone since it was listed; its image is no longer in use.
+    def container_image(self, container):
+        try:
+            return self.command("docker", "inspect", "--format", "{{.Image}}", container).strip()
+        except DeploymentError as error:
+            if error.missing:
+                return None
+            raise
+
     # Runs only after the state is healthy. Candidates are the images this installation itself
     # deployed, recorded in knownImages; an image that reached the host any other way is never
     # touched. Of those, every image a pin references stays: the selected and previous app/frontend
     # images, every image in the rendered configuration and every image a container on this host
     # uses. Removal goes through tags and digests, never --force; whatever Docker declines to delete
     # stays known, and an image that is already gone leaves the record. Progress is written into the
-    # state as it happens, so an interrupted run still records what it removed.
+    # state as it happens, so an interrupted run still records what it removed. A retained image whose
+    # lookup goes unanswered ends the retirement, because the retained set must be complete before
+    # anything is removed; a candidate whose lookup goes unanswered only stays known for a later run.
     def retire_images(self, state, rendered):
         previous = set(filter(None, (self.present(pin) for pin in state["previousImages"].values() if pin)))
         retained = set(state["imageIds"].values()) | previous
         rendered_images = [service.get("image") for service in rendered["services"].values()]
         retained.update(filter(None, (self.present(pin) for pin in rendered_images if pin)))
-        containers = self.command("docker", "ps", "-aq").split()
-        if containers:
-            retained.update(self.command("docker", "inspect", "--format", "{{.Image}}", *containers).split())
+        for container in self.command("docker", "ps", "-aq").split():
+            retained.add(self.container_image(container))
+        retained.discard(None)
         known = set(state["knownImages"]) | previous
         state["knownImages"] = sorted(known)
         retired = state["retiredImages"]
+        unreadable = []
         for image in sorted(known - retained):
-            details = self.image_details(image)
+            try:
+                details = self.image_details(image)
+            except DeploymentError:
+                unreadable.append(image)
+                continue
             if details is None:
                 known.discard(image)
                 state["knownImages"] = sorted(known)
@@ -199,6 +216,8 @@ class Installation:
                 known.discard(image)
                 state["knownImages"] = sorted(known)
                 write_json(self.state_file, state)
+        if unreadable:
+            raise DeploymentError(str(len(unreadable)) + " candidate image(s) could not be inspected and stay known")
         return retired
 
     def update(self, revision, app_image, frontend_image, check_only=False):

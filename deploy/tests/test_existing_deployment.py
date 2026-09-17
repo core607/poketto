@@ -22,6 +22,7 @@ class Docker:
         self.calls = []
         self.fail_up = False
         self.fail_containers = False
+        self.vanished_containers = set()
         self.fail_inspect = set()
         self.changed_runtime = False
         self.changed_revision_environment = False
@@ -65,7 +66,7 @@ class Docker:
         for image_id, image in self.images.items():
             if key == image_id or key in image["refs"]:
                 return image_id, image
-        raise updater.DeploymentError("deployment command failed: docker", missing_image=True)
+        raise updater.DeploymentError("deployment command failed: docker", missing=True)
 
     def __call__(self, *args):
         self.calls.append(args)
@@ -96,6 +97,8 @@ class Docker:
         if args[1] == "inspect":
             records = list(self.running.values()) + [self.sidecar]
             if args[2] == "--format":
+                if set(args[4:]) & self.vanished_containers:
+                    raise updater.DeploymentError("deployment command failed: docker", missing=True)
                 return "\n".join(record["Image"] for record in records if record["Id"] in args[4:])
             return json.dumps([record for record in records if record["Id"] in args[2:]])
         if args[1] == "compose":
@@ -205,7 +208,7 @@ class ExistingDeploymentTests(unittest.TestCase):
         for known in ("id-new-app", "id-new-frontend", "id-old-app", "id-old-frontend"):
             self.assertIn(known, self.docker.images)
 
-    def test_an_interrupted_retirement_records_what_it_removed(self):
+    def test_an_unreadable_candidate_stays_known_while_the_others_go(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
         for reference in ("new-app-2", "new-frontend-2"):
             self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
@@ -214,7 +217,7 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertEqual(result["status"], "healthy")
         self.assertIsNone(result["retiredImages"])
         self.assertEqual(result["retiredImageIds"], ["id-old-app"])
-        self.assertIn("docker", result["retirementError"])
+        self.assertIn("1 candidate image", result["retirementError"])
         state = json.loads(self.installation.state_file.read_text())
         self.assertEqual(state["retiredImages"], ["id-old-app"])
         self.assertEqual(state["retirementError"], result["retirementError"])
@@ -252,6 +255,15 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertIn("id-new-app", self.docker.images)
         self.assertIn("id-new-frontend", self.docker.images)
         self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+
+    def test_a_container_gone_since_the_listing_does_not_stop_the_retirement(self):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for reference in ("new-app-2", "new-frontend-2"):
+            self.docker.images["id-" + reference] = {"refs": [reference], "source": SOURCE}
+        self.docker.vanished_containers = {"sidecar-container"}
+        result = self.installation.update(REVISION, "new-app-2", "new-frontend-2")
+        self.assertEqual(result["retiredImageIds"], ["id-old-app", "id-old-frontend"])
+        self.assertIsNone(json.loads(self.installation.state_file.read_text())["retirementError"])
 
     def test_a_known_image_that_is_already_gone_leaves_the_record(self):
         self.installation.update(REVISION, "new-app", "new-frontend")
