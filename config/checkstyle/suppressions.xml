@@ -16,6 +16,5 @@
 
     <suppress checks="FileLength" files="[\\/]assets[\\/]AssetService\.java$"/>
     <suppress checks="FileLength" files="[\\/]content[\\/]internal[\\/]JGitRemoteRepositoryAuthority\.java$"/>
-    <suppress checks="FileLength" files="[\\/]content[\\/]internal[\\/]LocalPortableContentExports\.java$"/>
     <suppress checks="FileLength" files="[\\/]executor[\\/]internal[\\/]IsolatedRepositoryExecutor\.java$"/>
 </suppressions>
