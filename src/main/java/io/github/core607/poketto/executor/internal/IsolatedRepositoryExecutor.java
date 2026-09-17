@@ -1003,6 +1003,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    // The EXEC request runs on its own thread while this one serves the worker's bridge requests
+    // until the command finishes, the session stops, or the worker reports the lease closed.
     private JsonNode executeWithBridge(ExecutionSession session, String executionId, String command, Duration timeout) {
         var running = commandIo.submit(() -> io.request(
                 session,
@@ -1011,55 +1013,19 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 timeout.plusSeconds(5)));
         long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
         try {
-            while (!running.isDone()) {
-                if (session.stopping.get()) {
+            while (!running.isDone() && !session.stopping.get()) {
+                Optional<JsonNode> polled = pollBridge(session, deadline);
+                if (polled.isEmpty()
+                        || running.isDone()
+                        || session.stopping.get()
+                        || closedByWorker(polled.orElseThrow())) {
                     break;
                 }
-                io.authorize(session);
-                if (System.nanoTime() >= deadline) {
-                    throw new WorkerUnavailableException();
+                requireOk(polled.orElseThrow(), session);
+                JsonNode request = polled.orElseThrow().path("bridgeRequest");
+                if (!request.isMissingNode() && !request.isNull()) {
+                    answerBridgeRequest(session, executionId, polled.orElseThrow(), request);
                 }
-                JsonNode polled;
-                try {
-                    polled = io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
-                } catch (RuntimeException failed) {
-                    if (session.stopping.get()) {
-                        break;
-                    }
-                    throw failed;
-                }
-                if (running.isDone() || session.stopping.get()) {
-                    break;
-                }
-                if (!polled.path("ok").asBoolean(false)
-                        && Set.of("LEASE_EXPIRED", "BRIDGE_UNAVAILABLE", "AUTH_REVOKED")
-                                .contains(polled.path("code").asString(""))) {
-                    break;
-                }
-                requireOk(polled, session);
-                JsonNode request = polled.path("bridgeRequest");
-                if (request.isMissingNode() || request.isNull()) {
-                    continue;
-                }
-                if (!executionId.equals(polled.path("executionId").asString(""))) {
-                    throw new WorkerUnavailableException();
-                }
-                String requestId = request.path("requestId").stringValue();
-                if (!UUID.fromString(requestId).toString().equals(requestId)) {
-                    throw new WorkerUnavailableException();
-                }
-                requireLive(session);
-                io.authorize(session);
-                var reply = bridge.bridgeReply(session, executionId, request);
-                requireLive(session);
-                io.authorize(session);
-                requireOk(
-                        io.request(
-                                session,
-                                "BRIDGE_COMPLETE",
-                                new WorkerRequests.BridgeComplete(executionId, requestId, reply),
-                                Duration.ofSeconds(3)),
-                        session);
             }
             // The EXEC reply owns its terminal result; closing the mailbox during cancellation
             // must not turn a confirmed cancelled command into an unknown transport outcome.
@@ -1077,6 +1043,54 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         } finally {
             running.cancel(true);
         }
+    }
+
+    // One poll of the worker's bridge mailbox. A poll that fails while the session is stopping
+    // ends the loop and leaves the command's own reply to decide the outcome.
+    private Optional<JsonNode> pollBridge(ExecutionSession session, long deadline) {
+        io.authorize(session);
+        if (System.nanoTime() >= deadline) {
+            throw new WorkerUnavailableException();
+        }
+        try {
+            return Optional.of(
+                    io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3)));
+        } catch (RuntimeException failed) {
+            if (session.stopping.get()) {
+                return Optional.empty();
+            }
+            throw failed;
+        }
+    }
+
+    private static boolean closedByWorker(JsonNode polled) {
+        return !polled.path("ok").asBoolean(false)
+                && Set.of("LEASE_EXPIRED", "BRIDGE_UNAVAILABLE", "AUTH_REVOKED")
+                        .contains(polled.path("code").asString(""));
+    }
+
+    // A bridge request belongs to this execution and names a well-formed request id; the session
+    // must still be live and authorized both before and after the reply is computed.
+    private void answerBridgeRequest(ExecutionSession session, String executionId, JsonNode polled, JsonNode request) {
+        if (!executionId.equals(polled.path("executionId").asString(""))) {
+            throw new WorkerUnavailableException();
+        }
+        String requestId = request.path("requestId").stringValue();
+        if (!UUID.fromString(requestId).toString().equals(requestId)) {
+            throw new WorkerUnavailableException();
+        }
+        requireLive(session);
+        io.authorize(session);
+        var reply = bridge.bridgeReply(session, executionId, request);
+        requireLive(session);
+        io.authorize(session);
+        requireOk(
+                io.request(
+                        session,
+                        "BRIDGE_COMPLETE",
+                        new WorkerRequests.BridgeComplete(executionId, requestId, reply),
+                        Duration.ofSeconds(3)),
+                session);
     }
 
     private CompletableFuture<Void> stop(ExecutionSession session, String reason) {
