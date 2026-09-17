@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Decision
 
-The [Next.js frontend proposal](../proposed/2026-08-30-nextjs-frontend.md) separates presentation from Spring-owned content and authorization. The [frontend workspace](../../frontend/README.md) implements that boundary with server-rendered public articles, tags, archive, search, RSS and sitemap, plus a Chinese administration interface for raw Markdown, previews, images, members and keys.
+The [Next.js frontend record](2026-08-30-nextjs-frontend.md) separates presentation from Spring-owned content and authorization. The [frontend workspace](../../frontend/README.md) implements that boundary with server-rendered public articles, tags, archive, search, RSS and sitemap, plus a Chinese administration interface for raw Markdown, previews, images, members and keys.
 
 Next.js reads public Spring APIs without forwarding a browser identity or caching mutable content across requests. Browser mutations use same-origin Spring APIs with the current session and CSRF token. Git, database access, authorization, publication policy and image grants remain Spring responsibilities. The renderer discards raw HTML and accepts images only through Spring-resolved references; the public view and authenticated preview use the same restricted Markdown rules.
 

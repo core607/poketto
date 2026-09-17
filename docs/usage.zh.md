@@ -196,7 +196,7 @@ MCP 请求体上限为 128 KiB。图片导入和图片响应在各自的处理�
 
 通过 `repo_exec` 查看目录、搜索、读取和编辑文件，再使用 `poketto` CLI 持久化修改。按需逐层读取内容仓库自己的 `AGENTS.md`。独立的 `list_directory`、`get_file` 和 `repo_patch` 不再受支持，关闭 worker 时也不会恢复它们。[CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)定义这一边界；共享目录读取服务仍用于浏览器导航。
 
-超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](../notes/proposed/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
+超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](../notes/implemented/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
