@@ -304,4 +304,10 @@ tasks.check {
 // files the documentation describes.
 tasks.processResources {
     from("content-template") { into("content-template") }
+    // The initializer loads these four files at startup; a build that lost them fails here, not there.
+    doLast {
+        listOf("AGENTS.md", "private/AGENTS.md", "public/AGENTS.md", ".poketto/publishing.yaml").forEach { path ->
+            check(destinationDir.resolve("content-template").resolve(path).isFile) { "content template is missing $path" }
+        }
+    }
 }
