@@ -26,9 +26,10 @@ import java.util.function.Supplier;
  * operations, and the counters behind the executor's metrics.
  *
  * <p>Every read-then-write of the table happens under this object's monitor, so a reservation, a
- * lease refresh and a capacity release cannot interleave. Callers construct sessions outside the
- * monitor and hand them in, because construction touches no shared state; worker requests and disk
- * work stay outside it for the same reason they always did.
+ * lease refresh and a capacity release cannot interleave. A caller passes the new session as a
+ * factory the registry runs under that monitor, which is what the single class did before; the
+ * factory only constructs, so it must not take another lock or wait on the worker. Worker requests
+ * and disk work stay outside the monitor as they always did.
  */
 final class SessionRegistry {
     /** Concurrent operations across all sessions; the executor's gauge reports what is in use. */

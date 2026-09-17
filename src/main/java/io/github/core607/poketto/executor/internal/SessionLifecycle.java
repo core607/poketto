@@ -441,9 +441,16 @@ final class SessionLifecycle {
         }
     }
 
-    /** Stops the heartbeat and the control pool; the caller stops the sessions themselves first. */
-    void shutdown() {
+    /** Stops the heartbeat so no new renewal or reconciliation pass starts. */
+    void stopHeartbeat() {
         heartbeat.shutdownNow();
+    }
+
+    /**
+     * Stops the control pool. Closing a session runs on it, so this comes after the caller has
+     * stopped every session; discarding queued closes first would leave their leases to expire.
+     */
+    void shutdownControls() {
         controls.shutdownNow();
     }
 }

@@ -499,7 +499,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     public void close() {
         List<ExecutionSession> remaining;
         remaining = registry.drain();
-        lifecycle.shutdown();
+        lifecycle.stopHeartbeat();
         remaining.forEach(session -> lifecycle.stop(session, "client_shutdown"));
         for (ExecutionSession session : remaining) {
             try {
@@ -508,6 +508,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 log.warn("Worker shutdown termination not acknowledged; lease renewal stopped");
             }
         }
+        lifecycle.shutdownControls();
         commandIo.shutdownNow();
     }
 
