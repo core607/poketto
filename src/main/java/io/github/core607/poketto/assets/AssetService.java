@@ -5,7 +5,6 @@ import io.github.core607.poketto.assets.MediaPreparations.Indexed;
 import io.github.core607.poketto.assets.MediaPreparations.Managed;
 import io.github.core607.poketto.assets.MediaPreparations.PreparedMedia;
 import io.github.core607.poketto.assets.MediaPreparations.Target;
-import io.github.core607.poketto.assets.internal.AlbumThumbnailRenderer;
 import io.github.core607.poketto.assets.internal.PublicThumbnailCache;
 import io.github.core607.poketto.assets.internal.RepositoryImageCache;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -13,7 +12,6 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.MarkdownDestinations;
-import io.github.core607.poketto.content.MarkdownResolutionLimitException;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -41,7 +39,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.Supplier;
 
 /** Shared browser/MCP authorization, exact originals, and snapshot-bound rendering representations. */
@@ -52,8 +49,6 @@ public final class AssetService {
     // per-image share. Raising a bound here therefore lets a request consider more images; it
     // does not give any of them more memory.
     private static final long INVENTORY_IMAGE_BYTES = 256L * 1024 * 1024;
-    private static final int COVER_CANDIDATES = 8;
-    private static final long COVER_IMAGE_BYTES = 32L * 1024 * 1024;
     private final AuthService auth;
     private final RepositoryContentReader content;
     private final RepositoryBlobReader blobs;
@@ -66,6 +61,7 @@ public final class AssetService {
     private final ImageMemoryAdmission memory;
     private final ImageGrants grants;
     private final MediaPreparations media;
+    private final PublicReads reads;
 
     public AssetService(
             AuthService auth,
@@ -90,6 +86,7 @@ public final class AssetService {
         this.clock = clock;
         this.grants = new ImageGrants(blobs, clock, maxGrants);
         this.media = new MediaPreparations(blobs, managed, memory, this.cache);
+        this.reads = new PublicReads(this, media, blobs, grants, snapshots, thumbnails, markdown, clock);
         this.memory = Objects.requireNonNull(memory);
     }
 
@@ -310,256 +307,6 @@ public final class AssetService {
      * Prepares image bytes outside the installation lock, then revalidates publication before
      * signing. A changed commit can trigger one retry; grant capacity omits only affected images.
      */
-    public Optional<ResolvedPublicDocument> publicDocument(WorkspaceId workspace, String route) {
-        for (int attempt = 0; attempt < 2; attempt++) {
-            PublicContentSnapshot snapshot = snapshots.withCurrent(workspace, value -> value);
-            var article = article(snapshot, route);
-            if (article.isEmpty()) {
-                return Optional.empty();
-            }
-            Map<String, String> routes = new HashMap<>();
-            for (var item : snapshot.articles()) {
-                routes.put(item.repositoryPath(), item.route());
-            }
-            var value = article.orElseThrow();
-            PreparedMedia prepared = media.prepare(
-                    workspace,
-                    value.repositoryPath(),
-                    value.body(),
-                    snapshot.commit().orElse(null),
-                    value.folderPage(),
-                    routes,
-                    true,
-                    true,
-                    reference -> true);
-            PageAttempt completed = snapshots.withCurrent(workspace, current -> {
-                var currentArticle = article(current, route);
-                if (currentArticle.isEmpty()) {
-                    return new PageAttempt(false, Optional.empty());
-                }
-                if (!current.commit().equals(snapshot.commit())) {
-                    return new PageAttempt(true, Optional.empty());
-                }
-                if (!currentArticle.orElseThrow().equals(value)) {
-                    throw new ContentRepositoryException("public article differs within the selected commit");
-                }
-                ResolvedMedia media =
-                        finishMedia(workspace, value.repositoryPath(), "", current.expiresAt(), prepared, true);
-                Instant now = clock.instant();
-                if (now.isBefore(current.verifiedAt()) || !now.isBefore(current.expiresAt())) {
-                    throw new ContentRepositoryException("public snapshot expired during image resolution");
-                }
-                return new PageAttempt(false, Optional.of(new ResolvedPublicDocument(current, value, media)));
-            });
-            if (!completed.retry()) {
-                return completed.page();
-            }
-        }
-        throw new ContentRepositoryException("public snapshot changed during both image preparation attempts");
-    }
-
-    /**
-     * Prepares at most six visible folder covers, sharing one media inventory for the selected
-     * workspace and commit. Publication is checked before and after source preparation outside
-     * the snapshot lock. Missing routes are no longer current; a null URL only means no cover.
-     */
-    public Map<String, PublicAlbumCover> publicAlbumCovers(
-            PublicContentSnapshot selected, List<PublicArticle> requested) {
-        if (requested.size() > 6 || requested.stream().anyMatch(article -> !article.folderPage())) {
-            throw new IllegalArgumentException("cover preparation requires at most six folder landings");
-        }
-        if (requested.isEmpty() || selected.commit().isEmpty()) {
-            return Map.of();
-        }
-        WorkspaceId workspace = selected.workspaceId();
-        List<PublicArticle> current = snapshots.withCurrent(
-                workspace,
-                snapshot -> requested.stream()
-                        .filter(expected -> sameArticle(snapshot, selected, expected))
-                        .distinct()
-                        .toList());
-        if (current.isEmpty()) {
-            return Map.of();
-        }
-        String commit = selected.commit().orElseThrow();
-        RepositoryMediaSnapshot catalog = media.availableMedia(workspace, commit);
-        var prepared = new LinkedHashMap<PublicArticle, PreparedCover>();
-        for (PublicArticle article : current) {
-            prepared.put(article, prepareAlbumCover(workspace, commit, article, catalog));
-        }
-        return snapshots.withCurrent(workspace, snapshot -> {
-            var covers = new LinkedHashMap<String, PublicAlbumCover>();
-            for (var entry : prepared.entrySet()) {
-                PublicArticle expected = entry.getKey();
-                if (sameArticle(snapshot, selected, expected)) {
-                    PreparedCover cover = entry.getValue();
-                    String url = cover.target() == null
-                            ? null
-                            : imageUrl(
-                                    workspace,
-                                    expected.repositoryPath(),
-                                    commit,
-                                    "",
-                                    snapshot.expiresAt(),
-                                    cover.target(),
-                                    new HashMap<>(),
-                                    true,
-                                    ImageGrants.Representation.ALBUM_THUMBNAIL_V1);
-                    covers.put(expected.route(), new PublicAlbumCover(cover.album(), url));
-                }
-            }
-            Instant now = clock.instant();
-            if (now.isBefore(snapshot.verifiedAt()) || !now.isBefore(snapshot.expiresAt())) {
-                throw new ContentRepositoryException("public snapshot expired during cover preparation");
-            }
-            return Map.copyOf(covers);
-        });
-    }
-
-    private static boolean sameArticle(
-            PublicContentSnapshot current, PublicContentSnapshot selected, PublicArticle expected) {
-        return current.commit().equals(selected.commit())
-                && article(current, expected.route()).filter(expected::equals).isPresent();
-    }
-
-    private PreparedCover prepareAlbumCover(
-            WorkspaceId workspace, String commit, PublicArticle article, RepositoryMediaSnapshot catalog) {
-        var candidates = new TreeMap<String, Target>();
-        try {
-            Set<String> inline = new HashSet<>();
-            for (String authored : MarkdownDestinations.parse(article.body()).images()) {
-                MarkdownDestinations.path(article.repositoryPath(), authored).ifPresent(inline::add);
-            }
-            coverCandidates(workspace, commit, article.repositoryPath(), inline, catalog, candidates);
-        } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
-            // Card text remains readable when its optional image inventory is unavailable.
-        }
-        Map<Target, Boolean> resolved = new HashMap<>();
-        long[] total = {0};
-        for (Target target : candidates.values()) {
-            if (MediaPreparations.imageAllowance(target) > COVER_IMAGE_BYTES - total[0]) {
-                continue;
-            }
-            try {
-                if (media.prepareImage(workspace, target, resolved, total)) {
-                    return new PreparedCover(true, target);
-                }
-            } catch (AssetStorageException | ContentRepositoryException unavailable) {
-                // A later candidate may still have independently available original bytes.
-            }
-        }
-        return new PreparedCover(!candidates.isEmpty(), null);
-    }
-
-    private void coverCandidates(
-            WorkspaceId workspace,
-            String commit,
-            String path,
-            Set<String> inline,
-            RepositoryMediaSnapshot catalog,
-            TreeMap<String, Target> selected) {
-        try {
-            for (RepositoryBlob blob : blobs.siblings(workspace, commit, path, COVER_CANDIDATES, true, inline)
-                    .items()) {
-                if (blob.publicPath() && !inline.contains(blob.path())) {
-                    selected.put(blob.path(), new Git(blob));
-                }
-            }
-        } catch (ContentRepositoryException unavailable) {
-            // A previously validated media index can still supply an independent managed cover.
-        }
-        if (catalog == null) {
-            return;
-        }
-        String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
-        for (var entry : catalog.index().files().entrySet()) {
-            String name = entry.getKey();
-            boolean eligible = name.startsWith(prefix)
-                    && !name.substring(prefix.length()).contains("/")
-                    && !inline.contains(name)
-                    && entry.getValue().mediaType().startsWith("image/")
-                    && catalog.publicPaths().contains(name);
-            if (eligible) {
-                selected.putIfAbsent(name, new Indexed(commit, name, entry.getValue(), true));
-                if (selected.size() > COVER_CANDIDATES) {
-                    selected.pollLastEntry();
-                }
-            }
-        }
-    }
-
-    private record PreparedCover(boolean album, Target target) {}
-
-    /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
-    public AssetBytes readPublicImage(String token) {
-        ImageGrants.Grant selected = grants.grant(token, "");
-        return readPublicImage(selected.key().workspace(), token);
-    }
-
-    public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
-        ImageGrants.Grant grant = grants.grant(workspace, token, "");
-        requireCurrentPublication(grant);
-        AssetBytes image = publicRepresentation(grant);
-        grants.grant(workspace, token, "");
-        requireCurrentPublication(grant);
-        return image;
-    }
-
-    private AssetBytes publicRepresentation(ImageGrants.Grant grant) {
-        WorkspaceId workspace = grant.key().workspace();
-        Target target = grant.key().target();
-        if (grant.key().representation() == ImageGrants.Representation.ORIGINAL) {
-            return media.bytes(workspace, target);
-        }
-        String version = thumbnailSource(target);
-        byte[] image = thumbnails.get(workspace, version, () -> {
-            byte[] rendered =
-                    AlbumThumbnailRenderer.render(media.bytes(workspace, target).bytes());
-            requireCurrentPublication(grant);
-            return rendered;
-        });
-        AssetSource source =
-                switch (target) {
-                    case Git git ->
-                        new AssetSource.Repository(
-                                Optional.of(git.blob().commit()), git.blob().path());
-                    case Indexed indexed -> new AssetSource.Repository(Optional.of(indexed.commit()), indexed.path());
-                    case Managed value -> new AssetSource.Managed(value.reference());
-                };
-        return new AssetBytes(
-                source,
-                version + ":" + AlbumThumbnailRenderer.REPRESENTATION,
-                AlbumThumbnailRenderer.validateEncoded(image),
-                image);
-    }
-
-    private static String thumbnailSource(Target target) {
-        return switch (target) {
-            case Git git -> "git:" + git.blob().objectId();
-            case Indexed indexed ->
-                "managed:" + indexed.media().assetId() + ":" + indexed.media().revision();
-            case Managed value ->
-                "managed:" + value.reference().assetId() + ":"
-                        + value.reference().revision();
-        };
-    }
-
-    private void requireCurrentPublication(ImageGrants.Grant grant) {
-        if (grant.key().target() instanceof Indexed indexed && !indexed.publicPath()) {
-            throw notFound();
-        }
-        snapshots.withCurrent(grant.key().workspace(), snapshot -> {
-            if (!snapshot.commit().equals(Optional.of(grant.key().commit()))
-                    || snapshot.articles().stream()
-                            .noneMatch(article ->
-                                    article.repositoryPath().equals(grant.key().page()))) {
-                throw notFound();
-            }
-            return null;
-        });
-    }
-
-    /** An opaque private URL never substitutes for the current identity or current workspace authority. */
     public AssetBytes readPrivateImage(AuthPrincipal actor, WorkspaceId workspace, String token) {
         auth.withAuthorization(actor, workspace, Set.of(), () -> null);
         ImageGrants.Grant selected = grants.grant(workspace, token, actorKey(actor));
@@ -601,13 +348,26 @@ public final class AssetService {
         }
     }
 
-    private static Optional<PublicArticle> article(PublicContentSnapshot snapshot, String route) {
-        return snapshot.articles().stream()
-                .filter(value -> value.route().equals(route))
-                .findFirst();
+    /** Anonymous reading of published documents, album covers and image tokens. */
+    public Optional<ResolvedPublicDocument> publicDocument(WorkspaceId workspace, String route) {
+        return reads.document(workspace, route);
     }
 
-    private ResolvedMedia finishMedia(
+    public Map<String, PublicAlbumCover> publicAlbumCovers(
+            PublicContentSnapshot selected, List<PublicArticle> requested) {
+        return reads.albumCovers(selected, requested);
+    }
+
+    /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
+    public AssetBytes readPublicImage(String token) {
+        return reads.image(token);
+    }
+
+    public AssetBytes readPublicImage(WorkspaceId workspace, String token) {
+        return reads.image(workspace, token);
+    }
+
+    ResolvedMedia finishMedia(
             WorkspaceId workspace,
             String page,
             String actor,
@@ -667,7 +427,7 @@ public final class AssetService {
                 prepared.body(), prepared.commit(), prepared.links(), prepared.downloads(), images, gallery, status);
     }
 
-    private String imageUrl(
+    String imageUrl(
             WorkspaceId workspace,
             String page,
             String commit,
@@ -701,9 +461,7 @@ public final class AssetService {
         return actor.kind() + ":" + actor.subjectId() + ":" + actor.accountId();
     }
 
-    private static AssetStorageException notFound() {
+    static AssetStorageException notFound() {
         return ImageGrants.notFound();
     }
-
-    private record PageAttempt(boolean retry, Optional<ResolvedPublicDocument> page) {}
 }
