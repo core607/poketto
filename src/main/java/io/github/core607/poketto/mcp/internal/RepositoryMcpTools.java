@@ -347,7 +347,7 @@ final class RepositoryMcpTools {
         try {
             request = json.convertValue(input, PutAssetInput.class);
         } catch (DatabindException invalid) {
-            return error("INVALID_INPUT", inputProblem(invalid));
+            return error("INVALID_INPUT", inputProblem(input, invalid));
         }
         var identity = sessions.resolve(exchange);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
@@ -361,25 +361,25 @@ final class RepositoryMcpTools {
     }
 
     // Jackson reports the record constructor's IllegalArgumentException as a DatabindException whose
-    // cause carries the record's own message. A shape mismatch names the documented field Jackson
-    // stopped at, outermost to innermost, and never the value, because a file download URL is a
-    // capability. Only a mismatch at the file field itself gets the guidance for a connector that
-    // passed a path from its own environment; a wrong member inside a file object is named as such.
-    private static String inputProblem(DatabindException invalid) {
+    // cause carries the record's own message. A file value that is not an object at all is the case
+    // of a connector that passed a path from its own environment, and gets that guidance; any other
+    // shape mismatch names the documented field Jackson stopped at, outermost to innermost, and
+    // never the value, because a file download URL is a capability.
+    private static String inputProblem(Map<String, Object> input, DatabindException invalid) {
         if (invalid.getCause() instanceof IllegalArgumentException reason) {
             return reason.getMessage();
+        }
+        if (input.containsKey("file") && !(input.get("file") instanceof Map)) {
+            return FILE_GUIDANCE;
         }
         List<JacksonException.Reference> path = invalid.getPath() == null ? List.of() : invalid.getPath();
         String field = path.stream()
                 .map(JacksonException.Reference::getPropertyName)
                 .filter(name -> name != null && (PUT_ASSET_FIELDS.contains(name) || FILE_FIELDS.contains(name)))
                 .collect(Collectors.joining("."));
-        if (field.equals("file")) {
-            return FILE_GUIDANCE;
-        }
         return (field.isEmpty() ? "the input" : field)
                 + " does not have the documented shape: operationKey and url are strings, mode is import or"
-                + " upload, and file is an object whose download_url and file_id are strings.";
+                + " upload, and file is an object whose download_url, file_id, mime_type and file_name are strings.";
     }
 
     private static Map<String, Object> putAssetSchema() {

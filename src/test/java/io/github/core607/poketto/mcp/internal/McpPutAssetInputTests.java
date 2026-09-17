@@ -99,7 +99,14 @@ class McpPutAssetInputTests {
         assertThat(member.path("code").asString()).isEqualTo("INVALID_INPUT");
         assertThat(member.path("message").asString())
                 .startsWith("file.download_url does not have the documented shape")
+                .contains("mime_type and file_name are strings")
                 .doesNotContain("file reference", "https://x/y");
+        JsonNode list =
+                body(call(Map.of("operationKey", KEY, "mode", "import", "file", List.of("/mnt/data/poster.png"))));
+        assertThat(list.path("code").asString()).isEqualTo("INVALID_INPUT");
+        assertThat(list.path("message").asString())
+                .contains("file reference", "mode=import")
+                .doesNotContain("/mnt/data");
         verifyNoInteractions(auth, transfers);
     }
 
