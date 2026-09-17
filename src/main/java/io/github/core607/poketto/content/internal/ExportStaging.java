@@ -30,10 +30,6 @@ final class ExportStaging {
         this.root = root;
     }
 
-    Path root() {
-        return root;
-    }
-
     synchronized void acquire() throws IOException {
         if (lock != null) {
             return;
