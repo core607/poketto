@@ -1,6 +1,12 @@
 # Actual MCP client acceptance
 
-The [account-copy HTTP run](evidence/2026-09-14-account-copies.json) verifies shared copies across independently issued grants and a new MCP transport on every call. All five scenarios pass through real login, PostgreSQL and native SRT: restricted-scope refusal, timeout preservation, authoritative save readback, public-copy scope preservation, grant revocation without deleting account work, and idempotent account-owned disposal. The fixture uses synthetic credentials/content and scaled disk limits; production connector acceptance remains separate.
+This is where the real path is exercised: account login, normally issued API keys, PostgreSQL, the
+HTTP MCP entrance and native SRT running together. Each run below links the evidence file it
+produced, naming the scenarios, the tested revision and the observed result. The layered probe in
+[sandbox verification](../../executor-native/README.md) stubs authentication on purpose so that its
+result names the isolation layer alone; these runs are the authenticated counterpart.
+
+The [account-copy HTTP run](evidence/2026-09-14-account-copies.json) verifies shared copies across independently issued grants and a new MCP transport on every call. All five scenarios pass through real login, PostgreSQL and native SRT: restricted-scope refusal, timeout preservation, authoritative save readback, public-copy scope preservation, grant revocation without deleting account work, and idempotent account-owned disposal. The fixture uses scaled disk limits.
 
 The [four-tool entrance run](evidence/2026-09-10-codeact-mcp-entrance.json)
 uses an independent Python HTTP MCP client with real authentication, PostgreSQL
@@ -17,7 +23,7 @@ restored drafts save with authoritative HTTP readback. Discard is owner-bound an
 idempotent without undoing remote Git. Public projections recover without private
 files, and revoked credentials cannot initialize another session. All five checks
 and controller cleanup pass. This deterministic run supplements the model-driven
-retained-copy acceptance below; final HTTPS acceptance remains pending.
+retained-copy acceptance below.
 
 The [retained model-client run](evidence/2026-09-14-retained-models.json) uses actual
 Codex and Claude Code processes with real account authentication, PostgreSQL and
@@ -51,7 +57,7 @@ public projection isolation remains covered by the native executor probe.
 
 For CodeAct on a native systemd host, `native-host.py` holds the real synthetic Spring application, a pinned disposable PostgreSQL container and the real root worker for external clients. It takes `--runtime`, `--worker-source`, `--tools`, and `--java` paths plus an optional loopback `--port`. Stage `stageAcceptanceRuntime` with a `manifest.sha256` covering every runtime file, as in the native executor entrance. Run the controller as root with the worker's Python dependencies available. It prints a ready receipt with the generated fixture root; only root can read the disposable password from that root's `client.json`. Obtain client keys through normal HTTP administration. Forward only the loopback application port when the clients run elsewhere. Create `stop` in the reported fixture root when finished; the controller also enforces a bounded lifetime and removes its services, database, accounts, mounts and secrets. Require its `cleanup: PASS` result. A ready receipt is setup evidence, not a successful model-driven workflow.
 
-The controller uses a dedicated 512 MiB XFS fixture pool with enforced project quotas. Its application journal, worker copies and export staging share that pool. It has no separate archived-checkpoint mode. Run `account-http.py --fixture FIXTURE_ROOT` on the same host after the ready receipt. The client logs in through the real browser endpoints, issues two full grants and one restricted grant, and opens a new MCP transport for every call. It verifies journal-index contention during initialization, shared copy identity, restricted-scope refusal, timeout preservation, consecutive saves and authoritative readback, whole-workspace synchronization of new/deleted paths, text and binary conflict preservation, public-copy scope preservation, grant revocation and account-owned disposal. Require `accountHttp: PASS` and controller `cleanup: PASS`. The credentials and content are synthetic; this deterministic HTTP client does not establish model-driven or production connector acceptance.
+The controller uses a dedicated 512 MiB XFS fixture pool with enforced project quotas. Its application journal, worker copies and export staging share that pool. It has no separate archived-checkpoint mode. Run `account-http.py --fixture FIXTURE_ROOT` on the same host after the ready receipt. The client logs in through the real browser endpoints, issues two full grants and one restricted grant, and opens a new MCP transport for every call. It verifies journal-index contention during initialization, shared copy identity, restricted-scope refusal, timeout preservation, consecutive saves and authoritative readback, whole-workspace synchronization of new/deleted paths, text and binary conflict preservation, public-copy scope preservation, grant revocation and account-owned disposal. Require `accountHttp: PASS` and controller `cleanup: PASS`.
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
 
@@ -64,7 +70,7 @@ and resource bytes are independently compared with returned hashes. Claude Code
 writes binary resources to local files instead of exposing their base64 directly
 to the model; the verifier reads that file to confirm delivery. The synthetic
 remote remains at its initial commit and fixture cleanup completes. This workflow
-does not repeat the separate save/media acceptance or establish final HTTPS delivery.
+does not repeat the separate save/media acceptance.
 
 Codex supports Streamable HTTP with a bearer token read from an environment variable; its [official configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) documents connection and tool timeouts. The adjacent TOML fragment supplies the isolated endpoint. For a single CLI run, pass the same fields with `codex exec -c` overrides rather than changing global configuration.
 
@@ -74,4 +80,4 @@ For each client, use actual model-driven calls to discover directories, guidance
 
 Record the client version, tested application commit, actual discovered tools, each tool outcome, and final repository readback. Keep raw sample transcripts outside tracked source and redact credentials. The execution tool is absent while the isolated worker is disabled; that run cannot complete CodeAct acceptance. Repeat the agreed workflows against the final HTTPS installation before marking phase one complete. Protocol tests and HTTP probes supplement these runs; neither replaces them.
 
-The [recorded CodeAct run](evidence/2026-09-10-codeact.json) covers both actual clients with real authentication and native SRT. Independent Git inspection verifies same-commit index/text saves, resolved contents, final deletion and preservation of all pre-existing files. It does not establish dedicated CLI move/export, artifact returns, bootstrap-guide injection or final HTTPS deployment. Both clients recovered from filesystem/toolchain misunderstandings; CLI help now states repository-relative paths, per-command `/tmp` lifetime and `python3` explicitly.
+The [recorded CodeAct run](evidence/2026-09-10-codeact.json) covers both actual clients with real authentication and native SRT. Independent Git inspection verifies same-commit index/text saves, resolved contents, final deletion and preservation of all pre-existing files. It does not cover dedicated CLI move/export, artifact returns or bootstrap-guide injection. Both clients recovered from filesystem/toolchain misunderstandings; CLI help now states repository-relative paths, per-command `/tmp` lifetime and `python3` explicitly.
