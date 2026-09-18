@@ -1,8 +1,8 @@
 # Poketto
 
-**面向人与 Agent 的 Git 原生内容工作空间。**
+**已上线的开源 Git 原生内容工作空间：浏览器与 MCP 访问同一仓库，支持邀请注册与自建部署。**
 
-通过浏览器和 MCP 访问同一内容仓库。Agent 在隔离环境中使用 shell、Python 和 Git，Poketto 控制授权、持久化与发布。
+Agent 在隔离环境中使用 shell、Python 和 Git，Poketto 控制授权、持久化与发布。
 
 [English](README.md) · [线上实例](https://poketto.top) · [开始使用](docs/usage.zh.md) · [架构](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)
 
@@ -21,7 +21,7 @@
 
 ## 开始使用
 
-- 网站：[poketto.top](https://poketto.top)。创作与 Agent 访问需要账号和空间授权，当前采用邀请注册。
+- 网站：[poketto.top](https://poketto.top)。创作与 Agent 访问需要账号和空间授权，采用邀请注册。
 - MCP：`https://poketto.top/mcp`。在支持 OAuth 的 MCP 客户端中连接，选择空间并授权。
 - 使用与自托管：[安装、连接和命令参考](docs/usage.zh.md)。
 
