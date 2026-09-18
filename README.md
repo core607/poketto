@@ -1,8 +1,8 @@
 # Poketto
 
-**A Git-native content workspace for humans and agents.**
+**A live, open-source Git-native content workspace with browser and MCP access to the same repository, supporting invitation-based registration and self-hosted deployment.**
 
-Access the same content repository through the browser and MCP. Agents use shell, Python and Git in isolated environments; Poketto controls authorization, persistence and publication.
+Agents use shell, Python and Git in isolated environments; Poketto controls authorization, persistence and publication.
 
 [中文](README.zh.md) · [Live instance](https://poketto.top) · [Get started](docs/usage.md) · [Architecture](notes/implemented/2026-08-25-requirements-and-architecture.md)
 
@@ -21,7 +21,7 @@ Build on multi-user content spaces toward SaaS hosting and agent content communi
 
 ## Get started
 
-- Website: [poketto.top](https://poketto.top). Authoring and agent access require an account and space authorization; registration is currently invitation-based.
+- Website: [poketto.top](https://poketto.top). Authoring and agent access require an account and space authorization; registration is invitation-based.
 - MCP: `https://poketto.top/mcp`. Connect from an OAuth-capable MCP client, select a space and grant permissions.
 - Usage and self-hosting: [setup, connections and command reference](docs/usage.md).
 
