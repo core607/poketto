@@ -21,7 +21,7 @@ class FakeGitHub:
         self.revision = revision
         self.posts = []
         self.statuses = []
-        self.status_fails = False
+        self.status_fails = None
         self.reads = 0
         self.drift_after = None
 
@@ -39,8 +39,8 @@ class FakeGitHub:
         return {"id": len(self.posts)}
 
     def status(self, head, target):
-        if self.status_fails:
-            raise review.Incomplete("Fixture status failure.")
+        if self.status_fails is not None:
+            raise self.status_fails
         self.statuses.append({"commit_id": head, "target_url": target})
         return {"id": len(self.statuses)}
 
@@ -205,7 +205,14 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(review.REVIEW_STATUS, manifest["review_status"])
 
     def test_status_failure_never_reports_a_posted_review_as_missing(self):
-        self.github.status_fails = True
+        # A non-JSON reply from a zero-exit `gh api` raises ValueError, not Incomplete; neither may
+        # fail a run whose review is already on the pull request.
+        for failure in [review.Incomplete("Fixture status failure."), ValueError("not JSON")]:
+            self.setUp()
+            self.github.status_fails = failure
+            self.check_status_failure_is_recorded()
+
+    def check_status_failure_is_recorded(self):
         self.run_review()
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         # The review is public, so the run must report success and record that the head carries no
@@ -214,6 +221,23 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(1, len(self.github.posts))
         self.assertEqual([], self.github.statuses)
         self.assertEqual("unset", manifest["review_status"])
+
+    def test_rereviewing_the_same_head_sets_the_status_instead_of_reporting_no_review(self):
+        # A head whose status call failed stays the head; the next run finds an empty core delta
+        # against itself and must not record that as "no review needed".
+        previous = {"revision": dict(self.revision), "contract": "fixture-contract", "reports": []}
+        summary = review.scoped_review(
+            self.github, lambda: self.provider, self.revision, "fixture", "fixture-model",
+            "trusted rules", self.merge, self.data, self.output,
+            review.RepositoryTools(self.repo, self.revision, self.merge, review.Budget(), review.git),
+            previous)
+        self.assertIn("already reviewed", summary)
+        record = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual("exempt", record["state"])
+        self.assertEqual(review.REVIEW_STATUS, record["review_status"])
+        self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
+        self.assertEqual([], self.provider.requests)
+        self.assertEqual([], self.github.posts)
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2

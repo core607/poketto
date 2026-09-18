@@ -166,6 +166,19 @@ def run_url():
     return f"{server}/{repository}/actions/runs/{run}"
 
 
+def set_status(github, head):
+    """Best-effort marker on a reviewed head. The review is already public, and
+    review_session.restore resumes only a successful run, so a failure here must not fail the run:
+    a red run would invite a re-run that reviews from scratch and posts a second review. An absent
+    status keeps the head uncleared, which is what pre-push-checks reads before merging."""
+    try:
+        github.status(head, run_url())
+        return REVIEW_STATUS
+    except (Incomplete, ValueError):
+        print(f"AI review: posted, but the {REVIEW_STATUS} status could not be set on this head.")
+        return "unset"
+
+
 def identity(pr, repository):
     base, head = pr["base"], pr["head"]
     if (pr["state"] != "open" or pr["draft"] or pr["author_association"] != "OWNER"
@@ -627,16 +640,9 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                     cross_review_sha256=digest(cross.encode("utf-8")),
                     dropped_reports=json.loads(raw)["dropped_reports"])
     save_manifest(output, manifest)
-    # The completion record lands first, and a failed status call does not fail the run. The review
-    # is already visible on the pull request, while review_session.restore resumes only a successful
-    # run, so a red run here would invite a re-run that reviews from scratch and posts a second
-    # review. An absent status is itself the signal that the head is not cleared to merge.
-    try:
-        github.status(revision["head"], run_url())
-        manifest.update(review_status=REVIEW_STATUS)
-    except Incomplete:
-        print(f"AI review: posted, but the {REVIEW_STATUS} status could not be set on this head.")
-        manifest.update(review_status="unset")
+    # The completion record lands first; set_status explains why its failure does not fail the run.
+    save_manifest(output, manifest)
+    manifest.update(review_status=set_status(github, revision["head"]))
     save_manifest(output, manifest)
 
 
@@ -668,11 +674,20 @@ def scoped_review(github, provider_factory, revision, title, model, rules, merge
     if not data:
         if identity(github.current(), github.repository) != revision:
             raise Incomplete("The PR changed before the scope result was recorded.")
-        save_manifest(output, {**revision, "state": "exempt", "reason": "No core runtime changes require AI review.",
-                              "previous_review_head": previous["revision"]["head"] if previous else None})
+        reviewed = bool(previous) and previous["revision"]["head"] == revision["head"]
+        record = {**revision, "state": "exempt",
+                  "reason": "This head is already reviewed." if reviewed
+                  else "No core runtime changes require AI review.",
+                  "previous_review_head": previous["revision"]["head"] if previous else None}
+        # Setting the status is idempotent, so a head whose earlier status call failed regains one
+        # here instead of staying unmarked for as long as it remains the head.
+        if reviewed:
+            record["review_status"] = set_status(github, revision["head"])
+        save_manifest(output, record)
         if previous:
             (output / "session.json").write_bytes(encoded(previous))
-        return "AI review: no core runtime changes; previous findings are unchanged."
+        return ("AI review: this head is already reviewed; findings are unchanged." if reviewed
+                else "AI review: no core runtime changes; previous findings are unchanged.")
     try:
         data.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
