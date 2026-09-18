@@ -20,6 +20,7 @@ class FakeGitHub:
     def __init__(self, revision):
         self.revision = revision
         self.posts = []
+        self.statuses = []
         self.reads = 0
         self.drift_after = None
 
@@ -35,6 +36,10 @@ class FakeGitHub:
     def post(self, head, body):
         self.posts.append({"commit_id": head, "body": body})
         return {"id": len(self.posts)}
+
+    def status(self, head, target):
+        self.statuses.append({"commit_id": head, "target_url": target})
+        return {"id": len(self.statuses)}
 
 
 class FakeProvider:
@@ -191,6 +196,8 @@ class ReviewTests(unittest.TestCase):
             self.assertNotIn("@literal", post["body"])
         self.assertEqual((self.output / "cross-contract.md").read_text(encoding="utf-8").replace("@", "＠"),
                          self.github.posts[-1]["body"])
+        # The commit status is what a merge can read; it must name the same head the review named.
+        self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2
@@ -279,7 +286,7 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual("complete", manifest["state"])
         self.assertEqual("cross-contract", manifest["parts"][0]["review_stage"])
         self.assertEqual((self.output / "cross-contract.md").read_bytes(), (self.output / "part-01.md").read_bytes())
-        trace = [json.loads(line) for line in (self.output / "agent-trace.jsonl").read_text().split("\n") if line]
+        trace = [json.loads(line) for line in (self.output / "agent-trace.jsonl").read_text(encoding="utf-8").split("\n") if line]
         budgets = [event for event in trace if event["event"] == "round_budget"]
         self.assertEqual([3, 2, 1], [event["remaining_turns"] for event in budgets])
 
@@ -373,6 +380,8 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(review.Incomplete, "stale and incomplete"):
             self.run_review()
         self.assertEqual([], self.github.posts)
+        # A head that drifted was never reviewed, so it must not carry the status either.
+        self.assertEqual([], self.github.statuses)
         self.assertEqual(1, len(self.provider.requests))
         self.assertTrue((self.output / "part-01-operations.json").exists())
 
@@ -403,7 +412,7 @@ class ReviewTests(unittest.TestCase):
                 patch.object(review.review_session, "restore", return_value=None), \
                 patch.object(review, "verified_ci", return_value=True):
             self.assertEqual(1, review.main())
-        self.assertIn("INCOMPLETE", (self.output / "summary").read_text())
+        self.assertIn("INCOMPLETE", (self.output / "summary").read_text(encoding="utf-8"))
         self.assertEqual("incomplete", json.loads((self.output / "manifest.json").read_bytes())["state"])
 
     def test_manual_dispatch_cannot_run_feature_branch_code(self):
@@ -466,6 +475,8 @@ class ReviewTests(unittest.TestCase):
         workflow = (root / ".github/workflows/ai-review.yml").read_text(encoding="utf-8")
         self.assertIn("ref: main", workflow)
         self.assertIn("persist-credentials: false", workflow)
+        # Without this grant the review posts but the head carries no proof that it was reviewed.
+        self.assertIn("statuses: write", workflow)
         self.assertIn("workflows: [CI]", workflow)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
         concurrency = workflow.split("concurrency:", 1)[1].split("jobs:", 1)[0]
@@ -520,10 +531,13 @@ class ReviewTests(unittest.TestCase):
                      "linuxStorageTest"):
             self.assertIn(" " + task, ci, task + " is no longer run by any lane")
 
-    def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):
+    def test_identity_accepts_only_an_open_owner_pr_targeting_main(self):
         pr = self.github.current()
-        pr["base"]["ref"] = "codex/phase-one-assets"
-        self.assertEqual("codex/phase-one-assets", review.identity(pr, self.github.repository)["base_ref"])
+        self.assertEqual("main", review.identity(pr, self.github.repository)["base_ref"])
+        stacked = copy.deepcopy(pr)
+        stacked["base"]["ref"] = "codex/phase-one-assets"
+        with self.assertRaises(review.Incomplete):
+            review.identity(stacked, self.github.repository)
         for field, value in [("author_association", "CONTRIBUTOR"), ("draft", True), ("state", "closed")]:
             bad = copy.deepcopy(pr)
             bad[field] = value

@@ -8,8 +8,6 @@ The public README, [usage reference](docs/usage.md), requirements note and [cont
 
 Current phase: development. Implement product capabilities only from an assigned, settled task; do not infer work from the roadmap or implement ideas still under discussion.
 
-No human reads a change before it merges. The CI matrix and the AI Review workflow are the only gates, so write for the next agent and for that reviewer, not for a human approver.
-
 Read the owning code and documents needed for the task. Local wording and mechanical edits need only directly relevant context. Use these routes when their subject is affected:
 
 - Product behavior, permissions, or data ownership: the [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) and the owning decisions, including any record the change implements or supersedes.

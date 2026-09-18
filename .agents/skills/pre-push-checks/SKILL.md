@@ -43,7 +43,15 @@ An environment-specific failure needs evidence: exact command, failure, platform
 2. Commit on a short-lived branch and inspect any files changed by formatting or hooks.
 3. Push normally so repository hooks run.
 4. Verify the remote branch ref equals local `HEAD`, then open the PR and follow its live CI. Pending checks remain pending.
-5. After CI succeeds the AI Review workflow posts as a PR **review**, not a comment: read it with `gh pr view <n> --json reviews`. Fix every blocking item, take a cheap and clearly correct suggestion, and reply with the reason when declining one. Merge once it reports nothing blocking.
+5. After CI succeeds the AI Review workflow posts as a PR **review**, not a comment: read it with `gh pr view <n> --json reviews`. Fix every blocking item, take a cheap and clearly correct suggestion, and reply with the reason when declining one.
+6. A review belongs to the commit it was posted for, and the workflow marks that commit with the `ai-review` status. Before merging, confirm that status is present on the head you are about to merge:
+
+   ```sh
+   gh pr view <n> --json headRefOid --jq .headRefOid
+   gh api repos/{owner}/{repo}/commits/<head>/status --jq '.statuses[] | select(.context == "ai-review") | .state'
+   ```
+
+   Any new commit, including the merge `gh pr update-branch` creates, produces an unreviewed head. Wait for its review rather than merging under the run that is still producing it: a review posted after the merge is rejected as stale, so the model calls are spent and their findings never reach the pull request.
 
 Branch protection requires an up-to-date branch, so `gh pr update-branch` then wait for the rerun. Merging to main redeploys production.
 
