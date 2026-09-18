@@ -51,7 +51,7 @@ An environment-specific failure needs evidence: exact command, failure, platform
    gh api repos/{owner}/{repo}/commits/<head>/status --jq '.statuses[] | select(.context == "ai-review") | .state'
    ```
 
-   Any new commit, including the merge `gh pr update-branch` creates, produces an unreviewed head. Wait for its review rather than merging under the run that is still producing it: a review posted after the merge is rejected as stale, so the model calls are spent and their findings never reach the pull request.
+   A change with no core-runtime files is exempt from review and carries no status; the run says so and exits successfully. Any new commit, including the merge `gh pr update-branch` creates, produces an unreviewed head. Wait for its review rather than merging under the run that is still producing it: a review posted after the merge is rejected as stale, so the model calls are spent and their findings never reach the pull request.
 
 Branch protection requires an up-to-date branch, so `gh pr update-branch` then wait for the rerun. Merging to main redeploys production.
 

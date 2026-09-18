@@ -89,6 +89,12 @@ for and discarded.
 
 A head carries the status only while the review workflow can post it. If the provider is down or the
 budget is exhausted, there is no status and the merge decision becomes explicit rather than silent.
+A run that exits early also leaves none: a change with no core-runtime files is exempt from review,
+and so is a pull request the gate refuses. Those heads are unreviewed by design, not by failure, and
+anyone making this status a required check has to decide what such a head should report first.
+
+The status is set after the run's completion record is saved. The review is public the moment it is
+posted, so a failed status call must not leave the run reporting a review that nobody can see.
 
 ## Verification
 

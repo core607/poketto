@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   review:
-    # Only main supplies executable code and rules, including when a PR targets a stack branch.
+    # Only main supplies executable code and rules; the review gate accepts a main base alone.
     # A PR's verify job must finish successfully before any provider request.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||

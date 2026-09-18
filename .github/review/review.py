@@ -152,7 +152,7 @@ class GitHub:
     # exists only for a head whose review was actually posted.
     def status(self, head, target):
         body = {"state": "success", "context": REVIEW_STATUS,
-                "description": "Findings posted as a pull request review."}
+                "description": f"Reviewed in #{self.number}; findings posted as a pull request review."}
         if target:
             body["target_url"] = target
         return self.api(f"statuses/{head}", body)
@@ -623,10 +623,14 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     posted = github.post(revision["head"], cross.replace("@", "＠"))
     unchanged()
     pending.replace(output / "session.json")
-    github.status(revision["head"], run_url())
     manifest.update(state="complete", cross_review_id=posted["id"],
                     cross_review_sha256=digest(cross.encode("utf-8")),
                     dropped_reports=json.loads(raw)["dropped_reports"])
+    save_manifest(output, manifest)
+    # The completion record lands first. A review that is already visible on the pull request must
+    # never be recorded as missing because the advisory status call failed after it.
+    github.status(revision["head"], run_url())
+    manifest.update(review_status=REVIEW_STATUS)
     save_manifest(output, manifest)
 
 

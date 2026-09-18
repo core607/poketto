@@ -21,6 +21,7 @@ class FakeGitHub:
         self.revision = revision
         self.posts = []
         self.statuses = []
+        self.status_fails = False
         self.reads = 0
         self.drift_after = None
 
@@ -38,6 +39,8 @@ class FakeGitHub:
         return {"id": len(self.posts)}
 
     def status(self, head, target):
+        if self.status_fails:
+            raise review.Incomplete("Fixture status failure.")
         self.statuses.append({"commit_id": head, "target_url": target})
         return {"id": len(self.statuses)}
 
@@ -196,8 +199,20 @@ class ReviewTests(unittest.TestCase):
             self.assertNotIn("@literal", post["body"])
         self.assertEqual((self.output / "cross-contract.md").read_text(encoding="utf-8").replace("@", "＠"),
                          self.github.posts[-1]["body"])
-        # The commit status is what a merge can read; it must name the same head the review named.
+        # The commit status is what a merge can read; it must name the same head the review named,
+        # and it is recorded only after the completion record is durable.
         self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
+        self.assertEqual(review.REVIEW_STATUS, manifest["review_status"])
+
+    def test_status_failure_never_reports_a_posted_review_as_missing(self):
+        self.github.status_fails = True
+        with self.assertRaisesRegex(review.Incomplete, "Fixture status failure"):
+            self.run_review()
+        manifest = json.loads((self.output / "manifest.json").read_bytes())
+        # The review is public, so the run's own record must already say so.
+        self.assertEqual("complete", manifest["state"])
+        self.assertEqual(1, len(self.github.posts))
+        self.assertNotIn("review_status", manifest)
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2
