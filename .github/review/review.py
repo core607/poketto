@@ -627,10 +627,16 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
                     cross_review_sha256=digest(cross.encode("utf-8")),
                     dropped_reports=json.loads(raw)["dropped_reports"])
     save_manifest(output, manifest)
-    # The completion record lands first. A review that is already visible on the pull request must
-    # never be recorded as missing because the advisory status call failed after it.
-    github.status(revision["head"], run_url())
-    manifest.update(review_status=REVIEW_STATUS)
+    # The completion record lands first, and a failed status call does not fail the run. The review
+    # is already visible on the pull request, while review_session.restore resumes only a successful
+    # run, so a red run here would invite a re-run that reviews from scratch and posts a second
+    # review. An absent status is itself the signal that the head is not cleared to merge.
+    try:
+        github.status(revision["head"], run_url())
+        manifest.update(review_status=REVIEW_STATUS)
+    except Incomplete:
+        print(f"AI review: posted, but the {REVIEW_STATUS} status could not be set on this head.")
+        manifest.update(review_status="unset")
     save_manifest(output, manifest)
 
 

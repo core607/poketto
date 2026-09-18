@@ -206,13 +206,14 @@ class ReviewTests(unittest.TestCase):
 
     def test_status_failure_never_reports_a_posted_review_as_missing(self):
         self.github.status_fails = True
-        with self.assertRaisesRegex(review.Incomplete, "Fixture status failure"):
-            self.run_review()
+        self.run_review()
         manifest = json.loads((self.output / "manifest.json").read_bytes())
-        # The review is public, so the run's own record must already say so.
+        # The review is public, so the run must report success and record that the head carries no
+        # status. A failure here would invite a re-run, which cannot resume and would review again.
         self.assertEqual("complete", manifest["state"])
         self.assertEqual(1, len(self.github.posts))
-        self.assertNotIn("review_status", manifest)
+        self.assertEqual([], self.github.statuses)
+        self.assertEqual("unset", manifest["review_status"])
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2
