@@ -24,10 +24,13 @@ For #161 the unreviewed part was not only a merge commit: `e98710b3` removed an 
 
 ## Decision
 
-A review that is posted also sets a commit status named `ai-review` on the head it reviewed. The
-status is written after the review is posted and after the staleness check passes, so it exists only
-for a head whose findings actually reached the pull request. A head that drifted, a run that failed,
-and a pull request that was already merged all leave no status, which is the honest answer.
+Every head the workflow finishes carries a commit status named `ai-review`, and its description
+says which case it is: a reviewed head names the pull request its findings were posted to, and a head
+with no core-runtime change says there was nothing to review. A reviewed head's status is written
+after the review is posted and after the staleness check passes, so it never claims findings that did
+not reach the pull request. An absent status therefore means one thing: the workflow did not finish
+for that head. A head that drifted, a run that failed and a pull request that was already merged all
+leave none, which is the honest answer.
 
 [pre-push-checks](../../.agents/skills/pre-push-checks/SKILL.md) now ends with reading that status on
 the exact head being merged, and states that any new commit, including the merge `update-branch`
@@ -87,19 +90,29 @@ A pull request that falls behind `main` now costs one more review cycle before i
 the head created by `update-branch` is a head nobody has reviewed. That cycle was already being paid
 for and discarded.
 
-A head carries the status only while the review workflow can post it. If the provider is down or the
-budget is exhausted, there is no status and the merge decision becomes explicit rather than silent.
-A run that exits early also leaves none: a change with no core-runtime files is exempt from review,
-and so is a pull request the gate refuses. Those heads are unreviewed by design, not by failure, and
-anyone making this status a required check has to decide what such a head should report first.
+A head carries the status only while the review workflow can set it. If the provider is down or the
+budget is exhausted, there is none, and the merge decision becomes explicit rather than silent. The
+one case that still leaves a head unmarked after a completed run is a pull request the gate refuses,
+which is a refusal rather than a verdict.
 
-The status is set after the run's completion record is saved. The review is public the moment it is
-posted, so a failed status call must not leave the run reporting a review that nobody can see.
+Setting the status never fails the run. The review is public the moment it is posted, and
+`review_session.restore` resumes only a successful run, so a run turned red by a failed status call
+would invite a re-run that reviews from scratch and posts a second review. The failure is recorded as
+`review_status: unset` instead.
+
+That tolerance created a trap, since a successful run is restorable: the same head re-triggers a
+review with no new commit, the core diff of that head against itself is empty, and the empty delta
+reaches the no-core-change branch. Recording that as "no review needed" for a head whose review is
+already posted would have left it permanently unmarked, so the branch recognises an empty delta
+against the previous head as "already reviewed" and sets the status, which is idempotent.
 
 ## Verification
 
 - `.github/review/test_review.py` asserts that the status names the same head as the posted review,
-  that a drifted head receives neither, that the workflow grants `statuses: write`, and that the
-  identity gate accepts only an open owner pull request targeting `main`.
+  that a drifted head receives neither, that a head with nothing to review is still marked and says
+  so, that a head re-reviewed against itself regains the status rather than reporting no review,
+  that a failed status call leaves the run successful whether it raises `Incomplete` or `ValueError`,
+  that the workflow grants `statuses: write`, and that the identity gate accepts only an open owner
+  pull request targeting `main`.
 - `python -m unittest discover -s .github/review -p "test_*.py"` passes, which `check` runs as part
   of the `java` lane.

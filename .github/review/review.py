@@ -148,11 +148,10 @@ class GitHub:
                         {"event": "COMMENT", "commit_id": head, "body": body})
 
     # The posted review names its commit, but nothing on the commit says it was reviewed, so a
-    # merge cannot tell an unreviewed head from a reviewed one. This status is that fact, and it
-    # exists only for a head whose review was actually posted.
-    def status(self, head, target):
-        body = {"state": "success", "context": REVIEW_STATUS,
-                "description": f"Reviewed in #{self.number}; findings posted as a pull request review."}
+    # merge cannot tell an unreviewed head from a reviewed one. This status is that fact; its
+    # description says whether the head was reviewed or had nothing to review.
+    def status(self, head, target, description):
+        body = {"state": "success", "context": REVIEW_STATUS, "description": description}
         if target:
             body["target_url"] = target
         return self.api(f"statuses/{head}", body)
@@ -166,16 +165,21 @@ def run_url():
     return f"{server}/{repository}/actions/runs/{run}"
 
 
-def set_status(github, head):
-    """Best-effort marker on a reviewed head. The review is already public, and
-    review_session.restore resumes only a successful run, so a failure here must not fail the run:
-    a red run would invite a re-run that reviews from scratch and posts a second review. An absent
-    status keeps the head uncleared, which is what pre-push-checks reads before merging."""
+def reviewed_description(number):
+    return f"Reviewed in #{number}; findings posted as a pull request review."
+
+
+def set_status(github, head, description):
+    """Best-effort marker on every head this workflow finishes, so an absent status means one thing
+    only: the workflow did not complete for that head. The description separates a reviewed head
+    from one that had nothing to review. A failure here must not fail the run, because the review is
+    already public and review_session.restore resumes only a successful run, so a red run would
+    invite a re-run that reviews from scratch and posts a second review."""
     try:
-        github.status(head, run_url())
+        github.status(head, run_url(), description)
         return REVIEW_STATUS
     except (Incomplete, ValueError):
-        print(f"AI review: posted, but the {REVIEW_STATUS} status could not be set on this head.")
+        print(f"AI review: the {REVIEW_STATUS} status could not be set on this head.")
         return "unset"
 
 
@@ -639,10 +643,10 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     manifest.update(state="complete", cross_review_id=posted["id"],
                     cross_review_sha256=digest(cross.encode("utf-8")),
                     dropped_reports=json.loads(raw)["dropped_reports"])
-    save_manifest(output, manifest)
     # The completion record lands first; set_status explains why its failure does not fail the run.
     save_manifest(output, manifest)
-    manifest.update(review_status=set_status(github, revision["head"]))
+    manifest.update(review_status=set_status(github, revision["head"],
+                                             reviewed_description(github.number)))
     save_manifest(output, manifest)
 
 
@@ -679,10 +683,12 @@ def scoped_review(github, provider_factory, revision, title, model, rules, merge
                   "reason": "This head is already reviewed." if reviewed
                   else "No core runtime changes require AI review.",
                   "previous_review_head": previous["revision"]["head"] if previous else None}
-        # Setting the status is idempotent, so a head whose earlier status call failed regains one
-        # here instead of staying unmarked for as long as it remains the head.
-        if reviewed:
-            record["review_status"] = set_status(github, revision["head"])
+        # Both paths mark the head. Setting the status is idempotent, so a head whose earlier call
+        # failed regains one, and a head with nothing to review stops looking like an unreviewed one.
+        record["review_status"] = set_status(
+            github, revision["head"],
+            reviewed_description(github.number) if reviewed
+            else "No core-runtime change in this head; no review needed.")
         save_manifest(output, record)
         if previous:
             (output / "session.json").write_bytes(encoded(previous))
