@@ -20,6 +20,8 @@ class FakeGitHub:
     def __init__(self, revision):
         self.revision = revision
         self.posts = []
+        self.statuses = []
+        self.status_fails = None
         self.reads = 0
         self.drift_after = None
 
@@ -35,6 +37,12 @@ class FakeGitHub:
     def post(self, head, body):
         self.posts.append({"commit_id": head, "body": body})
         return {"id": len(self.posts)}
+
+    def status(self, head, target, description):
+        if self.status_fails is not None:
+            raise self.status_fails
+        self.statuses.append({"commit_id": head, "target_url": target, "description": description})
+        return {"id": len(self.statuses)}
 
 
 class FakeProvider:
@@ -191,6 +199,63 @@ class ReviewTests(unittest.TestCase):
             self.assertNotIn("@literal", post["body"])
         self.assertEqual((self.output / "cross-contract.md").read_text(encoding="utf-8").replace("@", "＠"),
                          self.github.posts[-1]["body"])
+        # The commit status is what a merge can read; it must name the same head the review named,
+        # and it is recorded only after the completion record is durable.
+        self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
+        self.assertIn("Reviewed in #", self.github.statuses[0]["description"])
+        self.assertEqual(review.REVIEW_STATUS, manifest["review_status"])
+
+    def test_status_failure_never_reports_a_posted_review_as_missing(self):
+        # A non-JSON reply from a zero-exit `gh api` raises ValueError, not Incomplete; neither may
+        # fail a run whose review is already on the pull request.
+        for failure in [review.Incomplete("Fixture status failure."), ValueError("not JSON")]:
+            self.setUp()
+            self.github.status_fails = failure
+            self.check_status_failure_is_recorded()
+
+    def check_status_failure_is_recorded(self):
+        self.run_review()
+        manifest = json.loads((self.output / "manifest.json").read_bytes())
+        # The review is public, so the run must report success and record that the head carries no
+        # status. A failure here would invite a re-run, which cannot resume and would review again.
+        self.assertEqual("complete", manifest["state"])
+        self.assertEqual(1, len(self.github.posts))
+        self.assertEqual([], self.github.statuses)
+        self.assertEqual("unset", manifest["review_status"])
+
+    def test_a_head_with_nothing_to_review_still_carries_a_status(self):
+        # Absence must mean one thing only: the workflow did not finish for this head. A docs-only
+        # change finishes with nothing to review, so it is marked and the description says why.
+        summary = review.scoped_review(
+            self.github, lambda: self.provider, self.revision, "fixture", "fixture-model",
+            "trusted rules", self.merge, b"", self.output,
+            review.RepositoryTools(self.repo, self.revision, self.merge, review.Budget(), review.git))
+        self.assertIn("no core runtime changes", summary)
+        record = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual("exempt", record["state"])
+        self.assertEqual(review.REVIEW_STATUS, record["review_status"])
+        self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
+        self.assertIn("no review needed", self.github.statuses[0]["description"])
+        self.assertEqual([], self.provider.requests)
+        self.assertEqual([], self.github.posts)
+
+    def test_rereviewing_the_same_head_sets_the_status_instead_of_reporting_no_review(self):
+        # A head whose status call failed stays the head; the next run finds an empty core delta
+        # against itself and must not record that as "no review needed".
+        previous = {"revision": dict(self.revision), "contract": "fixture-contract", "reports": []}
+        summary = review.scoped_review(
+            self.github, lambda: self.provider, self.revision, "fixture", "fixture-model",
+            "trusted rules", self.merge, self.data, self.output,
+            review.RepositoryTools(self.repo, self.revision, self.merge, review.Budget(), review.git),
+            previous)
+        self.assertIn("already reviewed", summary)
+        record = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertEqual("exempt", record["state"])
+        self.assertEqual(review.REVIEW_STATUS, record["review_status"])
+        self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
+        self.assertIn("Reviewed in #", self.github.statuses[0]["description"])
+        self.assertEqual([], self.provider.requests)
+        self.assertEqual([], self.github.posts)
 
     def test_missing_part_never_posts_completion_and_retains_prior_results(self):
         self.provider.fail_at = 2
@@ -279,7 +344,7 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual("complete", manifest["state"])
         self.assertEqual("cross-contract", manifest["parts"][0]["review_stage"])
         self.assertEqual((self.output / "cross-contract.md").read_bytes(), (self.output / "part-01.md").read_bytes())
-        trace = [json.loads(line) for line in (self.output / "agent-trace.jsonl").read_text().split("\n") if line]
+        trace = [json.loads(line) for line in (self.output / "agent-trace.jsonl").read_text(encoding="utf-8").split("\n") if line]
         budgets = [event for event in trace if event["event"] == "round_budget"]
         self.assertEqual([3, 2, 1], [event["remaining_turns"] for event in budgets])
 
@@ -373,6 +438,8 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(review.Incomplete, "stale and incomplete"):
             self.run_review()
         self.assertEqual([], self.github.posts)
+        # A head that drifted was never reviewed, so it must not carry the status either.
+        self.assertEqual([], self.github.statuses)
         self.assertEqual(1, len(self.provider.requests))
         self.assertTrue((self.output / "part-01-operations.json").exists())
 
@@ -403,7 +470,7 @@ class ReviewTests(unittest.TestCase):
                 patch.object(review.review_session, "restore", return_value=None), \
                 patch.object(review, "verified_ci", return_value=True):
             self.assertEqual(1, review.main())
-        self.assertIn("INCOMPLETE", (self.output / "summary").read_text())
+        self.assertIn("INCOMPLETE", (self.output / "summary").read_text(encoding="utf-8"))
         self.assertEqual("incomplete", json.loads((self.output / "manifest.json").read_bytes())["state"])
 
     def test_manual_dispatch_cannot_run_feature_branch_code(self):
@@ -466,6 +533,8 @@ class ReviewTests(unittest.TestCase):
         workflow = (root / ".github/workflows/ai-review.yml").read_text(encoding="utf-8")
         self.assertIn("ref: main", workflow)
         self.assertIn("persist-credentials: false", workflow)
+        # Without this grant the review posts but the head carries no proof that it was reviewed.
+        self.assertIn("statuses: write", workflow)
         self.assertIn("workflows: [CI]", workflow)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
         concurrency = workflow.split("concurrency:", 1)[1].split("jobs:", 1)[0]
@@ -520,10 +589,13 @@ class ReviewTests(unittest.TestCase):
                      "linuxStorageTest"):
             self.assertIn(" " + task, ci, task + " is no longer run by any lane")
 
-    def test_identity_rejects_non_owner_and_accepts_explicit_stack(self):
+    def test_identity_accepts_only_an_open_owner_pr_targeting_main(self):
         pr = self.github.current()
-        pr["base"]["ref"] = "codex/phase-one-assets"
-        self.assertEqual("codex/phase-one-assets", review.identity(pr, self.github.repository)["base_ref"])
+        self.assertEqual("main", review.identity(pr, self.github.repository)["base_ref"])
+        stacked = copy.deepcopy(pr)
+        stacked["base"]["ref"] = "codex/phase-one-assets"
+        with self.assertRaises(review.Incomplete):
+            review.identity(stacked, self.github.repository)
         for field, value in [("author_association", "CONTRIBUTOR"), ("draft", True), ("state", "closed")]:
             bad = copy.deepcopy(pr)
             bad[field] = value

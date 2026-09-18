@@ -143,7 +143,7 @@ An explicit copy ID retains its original reading scope when a grant gains privat
 
 `repo_discard` takes the exact copy ID. Current execution permission and account ownership are required; cleanup remains possible after content-read permission is withdrawn. A busy writer prevents deletion. `DISCARDED` and `ABSENT` confirm completion; retry an unconfirmed result only with the same ID. A later `new` can create another copy. Remote Git commits remain unchanged.
 
-The Micrometer registry exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released`, and `poketto.executor.admission.rejected` with bounded reason tags. Management HTTP exposure remains operator configured; these metrics do not measure memory or disk consumption. Real-account and available-connector acceptance remains separate from synthetic native fixtures.
+The Micrometer registry exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released`, and `poketto.executor.admission.rejected` with bounded reason tags. Management HTTP exposure remains operator configured; these metrics do not measure memory or disk consumption. Real-account and available-connector acceptance is recorded in [client acceptance](../acceptance/clients/README.md); the native fixtures here are synthetic by design.
 
 ## Wire version 1
 
