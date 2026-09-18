@@ -95,12 +95,12 @@ class AgentTests(unittest.TestCase):
         self.assertIn("本阶段剩余最多 2 轮", requests[0]["messages"][-1]["content"])
         self.assertEqual(requests[0]["messages"], requests[1]["messages"][:len(requests[0]["messages"])])
         self.assertEqual(requests[0]["tools"], requests[1]["tools"])
-        trace = (self.root / "probe-operations.json").read_text()
+        trace = (self.root / "probe-operations.json").read_text(encoding="utf-8")
         self.assertNotIn("PRIVATE_REASONING_FIXTURE", trace)
         self.assertNotIn("fixture-key", trace)
         self.assertNotIn("head implementation", trace)
         self.assertIn("consumer.py", trace)
-        full_trace = [json.loads(line) for line in (self.root / "agent-trace.jsonl").read_text().split("\n") if line]
+        full_trace = [json.loads(line) for line in (self.root / "agent-trace.jsonl").read_text(encoding="utf-8").split("\n") if line]
         model = next(item for item in full_trace if item["event"] == "model_response")
         self.assertEqual("PRIVATE_REASONING_FIXTURE", model["message"]["reasoning_content"])
         self.assertEqual("tool_calls", model["finish_reason"])
@@ -115,7 +115,7 @@ class AgentTests(unittest.TestCase):
                 "content": "partial " + self.provider.key, "reasoning_content": "diagnostic reasoning"}, finish="length")):
             with self.assertRaises(review.Incomplete):
                 review.AgentReview(self.provider, self.tools, lambda: None, self.root, "failed", 2).review(self.body)
-        trace = [json.loads(line) for line in (self.root / "agent-trace.jsonl").read_text().split("\n") if line]
+        trace = [json.loads(line) for line in (self.root / "agent-trace.jsonl").read_text(encoding="utf-8").split("\n") if line]
         response = next(item for item in trace if item["event"] == "model_response")
         self.assertEqual("partial [REDACTED]", response["message"]["content"])
         self.assertEqual("diagnostic reasoning", response["message"]["reasoning_content"])

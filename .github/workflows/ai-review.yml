@@ -16,6 +16,9 @@ permissions:
   contents: read
   actions: read
   pull-requests: write
+  # The posted review also marks its head commit with the ai-review status, so a merge can tell
+  # whether the commit it is about to merge was reviewed.
+  statuses: write
 
 concurrency:
   # Failed, skipped and superseded CI completions must not cancel a paid review. Workflow
@@ -25,7 +28,7 @@ concurrency:
 
 jobs:
   review:
-    # Only main supplies executable code and rules, including when a PR targets a stack branch.
+    # Only main supplies executable code and rules; the review gate accepts a main base alone.
     # A PR's verify job must finish successfully before any provider request.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
