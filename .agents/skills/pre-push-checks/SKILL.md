@@ -51,7 +51,7 @@ An environment-specific failure needs evidence: exact command, failure, platform
    gh api repos/{owner}/{repo}/commits/<head>/status --jq '.statuses[] | select(.context == "ai-review") | .state'
    ```
 
-   Every head the workflow finishes carries that status, and its description says whether the head was reviewed or had no core-runtime change to review. An absent status means the workflow did not finish for that head, so read the run before merging. Any new commit, including the merge `gh pr update-branch` creates, produces a head the workflow has not seen. Wait for its review rather than merging under the run that is still producing it: a review posted after the merge is rejected as stale, so the model calls are spent and their findings never reach the pull request.
+   A head the review reached a verdict on carries that status, and its description says whether the head was reviewed or had no core-runtime change to review. An absent status means no verdict for that head, either because the run did not finish or because the gate skipped the pull request, so read the run before merging. Any new commit, including the merge `gh pr update-branch` creates, produces a head the workflow has not seen. Wait for its review rather than merging under the run that is still producing it: a review posted after the merge is rejected as stale, so the model calls are spent and their findings never reach the pull request.
 
 Branch protection requires an up-to-date branch, so `gh pr update-branch` then wait for the rerun. Merging to main redeploys production.
 

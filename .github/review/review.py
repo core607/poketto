@@ -170,11 +170,14 @@ def reviewed_description(number):
 
 
 def set_status(github, head, description):
-    """Best-effort marker on every head this workflow finishes, so an absent status means one thing
-    only: the workflow did not complete for that head. The description separates a reviewed head
-    from one that had nothing to review. A failure here must not fail the run, because the review is
-    already public and review_session.restore resumes only a successful run, so a red run would
-    invite a re-run that reviews from scratch and posts a second review."""
+    """Best-effort marker on a head this review reached a verdict on, with a description separating
+    a reviewed head from one that had nothing to review. An absent status means no verdict for that
+    head: the run did not finish, or the gate skipped the pull request before reviewing it. A
+    skipped head is deliberately left unmarked, because a draft pull request keeps its head when it
+    becomes ready and a success there would survive as a claim nobody made. A failure here must not
+    fail the run, because the review is already public and review_session.restore resumes only a
+    successful run, so a red run would invite a re-run that reviews from scratch and posts a second
+    review."""
     try:
         github.status(head, run_url(), description)
         return REVIEW_STATUS

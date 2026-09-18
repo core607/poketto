@@ -24,13 +24,17 @@ For #161 the unreviewed part was not only a merge commit: `e98710b3` removed an 
 
 ## Decision
 
-Every head the workflow finishes carries a commit status named `ai-review`, and its description
-says which case it is: a reviewed head names the pull request its findings were posted to, and a head
-with no core-runtime change says there was nothing to review. A reviewed head's status is written
-after the review is posted and after the staleness check passes, so it never claims findings that did
-not reach the pull request. An absent status therefore means one thing: the workflow did not finish
-for that head. A head that drifted, a run that failed and a pull request that was already merged all
-leave none, which is the honest answer.
+A head this review reaches a verdict on carries a commit status named `ai-review`, and its
+description says which verdict it is: a reviewed head names the pull request its findings were posted
+to, and a head with no core-runtime change says there was nothing to review. A reviewed head's status
+is written after the review is posted and after the staleness check passes, so it never claims
+findings that did not reach the pull request. An absent status means no verdict for that head, which
+covers a drifted head, a failed run, a pull request that was already merged, and a pull request the
+gate skipped before reviewing it.
+
+A skipped head stays unmarked on purpose. A draft pull request keeps its head commit when it becomes
+ready, so marking it would leave a success that outlives the reason for it and claims a review nobody
+performed.
 
 [pre-push-checks](../../.agents/skills/pre-push-checks/SKILL.md) now ends with reading that status on
 the exact head being merged, and states that any new commit, including the merge `update-branch`
@@ -91,9 +95,9 @@ the head created by `update-branch` is a head nobody has reviewed. That cycle wa
 for and discarded.
 
 A head carries the status only while the review workflow can set it. If the provider is down or the
-budget is exhausted, there is none, and the merge decision becomes explicit rather than silent. The
-one case that still leaves a head unmarked after a completed run is a pull request the gate refuses,
-which is a refusal rather than a verdict.
+budget is exhausted, there is none, and the merge decision becomes explicit rather than silent. A run
+that finishes can still leave a head unmarked when the gate skipped the pull request, which is a
+refusal to review rather than a verdict.
 
 Setting the status never fails the run. The review is public the moment it is posted, and
 `review_session.restore` resumes only a successful run, so a run turned red by a failed status call
