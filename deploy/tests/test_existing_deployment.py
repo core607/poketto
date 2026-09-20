@@ -176,6 +176,12 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["status"], "healthy")
         self.assertIn("POKETTO_EMAIL_DAILY_LIMIT=80", self.docker.running["app"]["Config"]["Env"])
 
+    def test_public_contact_reaches_only_frontend_and_survives_an_image_update(self):
+        self.installation.update(REVISION, "new-app", "new-frontend", settings={"POKETTO_SUPPORT_EMAIL": "support@example.test"})
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertIn("POKETTO_SUPPORT_EMAIL=support@example.test", self.docker.running["frontend"]["Config"]["Env"])
+        self.assertFalse(any(value.startswith("POKETTO_SUPPORT_EMAIL=") for value in self.docker.running["app"]["Config"]["Env"]))
+
     def test_identity_changes_do_not_allow_resource_changes(self):
         self.docker.changed_runtime = True
         with self.assertRaisesRegex(updater.DeploymentError, "runtime configuration"):

@@ -27,7 +27,7 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
 
 IDENTITY_SETTINGS = frozenset((
     "POKETTO_RESEND_API_KEY", "POKETTO_EMAIL_FROM", "POKETTO_EMAIL_DAILY_LIMIT",
-    "POKETTO_GOOGLE_CLIENT_ID", "POKETTO_GOOGLE_CLIENT_SECRET",
+    "POKETTO_GOOGLE_CLIENT_ID", "POKETTO_GOOGLE_CLIENT_SECRET", "POKETTO_SUPPORT_EMAIL",
 ))
 
 
@@ -283,28 +283,34 @@ class Installation:
             self.check_declared_environment(before, containers)
         candidate = self.state_dir / "candidate.json"
         overrides = {name: {"image": ref} for name, ref in image_refs.items()}
-        retained = json.loads(self.overlay.read_text())["services"]["app"].get("environment", {}) if self.overlay.exists() else {}
-        environment = {**retained, **{key: value.replace("$", "$$") for key, value in settings.items()}}
-        if environment:
-            overrides["app"]["environment"] = environment
+        changes = {name: {key: value for key, value in settings.items()
+                          if (name == "frontend") == (key == "POKETTO_SUPPORT_EMAIL")} for name in image_refs}
+        retained = json.loads(self.overlay.read_text())["services"] if self.overlay.exists() else {}
+        for name in image_refs:
+            environment = {**retained.get(name, {}).get("environment", {}),
+                           **{key: value.replace("$", "$$") for key, value in changes[name].items()}}
+            if environment:
+                overrides[name]["environment"] = environment
         write_json(candidate, {"services": overrides})
         rendered = json.loads(self.compose("config", "--format", "json", overlay=candidate))
         actual_environment = declared_environment(rendered, "app")
-        if any(actual_environment.get(key) != value for key, value in settings.items()):
-            raise DeploymentError("candidate does not preserve literal identity settings")
+        for name in image_refs:
+            if any(declared_environment(rendered, name).get(key) != value for key, value in changes[name].items()):
+                raise DeploymentError("candidate does not preserve literal identity settings")
         if settings:
             validate_identity(actual_environment)
         comparable = json.loads(json.dumps(rendered))
         for name in image_refs:
             comparable["services"][name]["image"] = before["services"][name]["image"]
-        previous_environment = before["services"]["app"].get("environment", {})
-        for key in settings:
-            if key in previous_environment:
-                comparable["services"]["app"]["environment"][key] = previous_environment[key]
-            else:
-                comparable["services"]["app"]["environment"].pop(key, None)
-        if not comparable["services"]["app"].get("environment") and "environment" not in before["services"]["app"]:
-            comparable["services"]["app"].pop("environment", None)
+        for name in image_refs:
+            previous_environment = before["services"][name].get("environment", {})
+            for key in changes[name]:
+                if key in previous_environment:
+                    comparable["services"][name]["environment"][key] = previous_environment[key]
+                else:
+                    comparable["services"][name]["environment"].pop(key, None)
+            if not comparable["services"][name].get("environment") and "environment" not in before["services"][name]:
+                comparable["services"][name].pop("environment", None)
         if comparable != before:
             raise DeploymentError("candidate changes more than selected images and identity settings")
         # Every image this installation deployed stays on record until it is retired or gone.
@@ -324,9 +330,10 @@ class Installation:
             if state and state.get("imageIds") == image_ids and state.get("previousImages"):
                 previous = state["previousImages"]
             contracts = {name: runtime_contract(containers[name]) for name in image_refs}
-            expected_environment = dict(value.split("=", 1) for value in contracts["app"]["environment"])
-            expected_environment.update(settings)
-            contracts["app"]["environment"] = sorted(key + "=" + value for key, value in expected_environment.items())
+            for name in image_refs:
+                expected_environment = dict(value.split("=", 1) for value in contracts[name]["environment"])
+                expected_environment.update(changes[name])
+                contracts[name]["environment"] = sorted(key + "=" + value for key, value in expected_environment.items())
             state = {
                 "status": "pending", "revision": revision, "images": image_refs, "imageIds": image_ids,
                 "configuration": digest(rendered),

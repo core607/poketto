@@ -55,7 +55,7 @@ if [ "$EXISTING" = 1 ]; then
         case "$setting" in
             '') ;;
             REGISTRY_USERNAME=*|REGISTRY_PASSWORD=*) REGISTRY_SETTINGS+="$setting"$'\n' ;;
-            POKETTO_RESEND_API_KEY=*|POKETTO_EMAIL_FROM=*|POKETTO_EMAIL_DAILY_LIMIT=*|POKETTO_GOOGLE_CLIENT_ID=*|POKETTO_GOOGLE_CLIENT_SECRET=*)
+            POKETTO_RESEND_API_KEY=*|POKETTO_EMAIL_FROM=*|POKETTO_EMAIL_DAILY_LIMIT=*|POKETTO_GOOGLE_CLIENT_ID=*|POKETTO_GOOGLE_CLIENT_SECRET=*|POKETTO_SUPPORT_EMAIL=*)
                 IDENTITY_SETTINGS+="$setting"$'\n' ;;
             *) fail "existing updates accept only registry credentials and identity settings" ;;
         esac

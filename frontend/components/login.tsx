@@ -91,6 +91,17 @@ export function Login({
   return (
     <section className="login-card">
       <GoogleReturnNotice />
+      <p className="muted">
+        使用本站前，请阅读
+        <a href="/privacy" target="_blank" rel="noopener noreferrer">
+          隐私政策
+        </a>
+        和
+        <a href="/terms" target="_blank" rel="noopener noreferrer">
+          服务条款
+        </a>
+        。
+      </p>
       <p className="eyebrow">
         {mode === "login"
           ? "欢迎回来"

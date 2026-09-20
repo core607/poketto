@@ -106,6 +106,7 @@ services:
     environment:
       POKETTO_API_BASE_URL: http://app:8080
       POKETTO_PUBLIC_URL: "https://${POKETTO_PUBLIC_DOMAIN:?public domain is required}"
+      POKETTO_SUPPORT_EMAIL: "${POKETTO_SUPPORT_EMAIL:-}"
     mem_limit: "${POKETTO_FRONTEND_MEMORY:-384m}"
     cpus: "${POKETTO_FRONTEND_CPUS:-0.75}"
     pids_limit: 128

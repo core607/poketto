@@ -58,6 +58,7 @@ services:
     environment:
       POKETTO_API_BASE_URL: http://app:8080
       POKETTO_PUBLIC_URL: "${POKETTO_ACCEPTANCE_ORIGIN:-http://127.0.0.1:38180}"
+      POKETTO_SUPPORT_EMAIL: support@example.test
 
   gateway:
     image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
