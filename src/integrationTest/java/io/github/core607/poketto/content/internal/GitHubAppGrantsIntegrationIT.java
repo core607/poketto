@@ -9,6 +9,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -133,7 +134,7 @@ class GitHubAppGrantsIntegrationIT {
             }
             assertThatThrownBy(() -> pending.get(5, TimeUnit.SECONDS))
                     .isInstanceOf(ExecutionException.class)
-                    .hasCauseInstanceOf(GitHubAppFailure.class)
+                    .hasCauseInstanceOf(GitHubConnectionException.class)
                     .hasRootCauseMessage("GitHub App: AUTHORIZATION_CHANGED");
         }
         GitHubAppGrantStore.Grant saved = store.find(account).orElseThrow();
@@ -163,7 +164,8 @@ class GitHubAppGrantsIntegrationIT {
     @Test
     void ambiguousRefreshFailureRequiresNewConsentRatherThanRepeatingTheOldRefreshToken() {
         store.authorize(account, 0, OWNER, tokens("old", true));
-        when(oauth.refresh("ghr_old")).thenThrow(new GitHubAppFailure(GitHubAppFailure.Code.UNAVAILABLE));
+        when(oauth.refresh("ghr_old"))
+                .thenThrow(new GitHubConnectionException(GitHubConnectionException.Code.UNAVAILABLE));
         assertThatThrownBy(() -> grants().verifiedAccess(account)).hasMessage("GitHub App: UNAVAILABLE");
         assertThatThrownBy(() -> grants().verifiedAccess(account)).hasMessage("GitHub App: AUTHORIZATION_REQUIRED");
         verify(oauth, times(1)).refresh("ghr_old");
@@ -174,7 +176,7 @@ class GitHubAppGrantsIntegrationIT {
     void providerAdmissionRejectionPreservesTheUnconsumedRefreshToken() {
         store.authorize(account, 0, OWNER, tokens("old", true));
         when(oauth.refresh("ghr_old"))
-                .thenThrow(new GitHubAppFailure(GitHubAppFailure.Code.BUSY))
+                .thenThrow(new GitHubConnectionException(GitHubConnectionException.Code.BUSY))
                 .thenReturn(tokens("new", false));
         assertThatThrownBy(() -> grants().verifiedAccess(account)).hasMessage("GitHub App: BUSY");
         GitHubAppGrantStore.Grant preserved = store.find(account).orElseThrow();
@@ -201,10 +203,10 @@ class GitHubAppGrantsIntegrationIT {
         jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", account);
         assertThat(grants().verifiedAccess(account).token()).isEqualTo("ghu_existing");
         when(repositories.currentUser("ghu_existing"))
-                .thenThrow(new GitHubAppFailure(GitHubAppFailure.Code.UNAVAILABLE));
+                .thenThrow(new GitHubConnectionException(GitHubConnectionException.Code.UNAVAILABLE));
         assertThatThrownBy(() -> grants().verifiedAccess(account)).hasMessage("GitHub App: UNAVAILABLE");
         assertThat(store.find(account).orElseThrow().state()).isEqualTo(GitHubAppGrantStore.State.ACTIVE);
-        doThrow(new GitHubAppFailure(GitHubAppFailure.Code.AUTHORIZATION_REQUIRED))
+        doThrow(new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_REQUIRED))
                 .when(repositories)
                 .currentUser("ghu_existing");
         assertThatThrownBy(() -> grants().verifiedAccess(account)).hasMessage("GitHub App: AUTHORIZATION_REQUIRED");

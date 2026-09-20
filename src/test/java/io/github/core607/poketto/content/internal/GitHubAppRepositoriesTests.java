@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.UUID;
@@ -100,8 +101,8 @@ class GitHubAppRepositoriesTests {
             fixture.reply(201, body);
             var api = new GitHubAppRepositories(fixture.http);
             assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token"))
-                    .isInstanceOfSatisfying(GitHubAppFailure.class, failure -> {
-                        assertThat(failure.code()).isEqualTo(GitHubAppFailure.Code.CREATION_UNCERTAIN);
+                    .isInstanceOfSatisfying(GitHubConnectionException.class, failure -> {
+                        assertThat(failure.code()).isEqualTo(GitHubConnectionException.Code.CREATION_UNCERTAIN);
                         var trace = new StringWriter();
                         failure.printStackTrace(new PrintWriter(trace));
                         assertThat(trace.toString()).doesNotContain("fixture-secret");

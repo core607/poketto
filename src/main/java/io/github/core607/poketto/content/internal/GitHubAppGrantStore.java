@@ -1,7 +1,8 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.AUTHORIZATION_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.AUTHORIZATION_CHANGED;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -157,23 +158,27 @@ final class GitHubAppGrantStore {
                 where account_id=? and version=?
                 """, timestamp(clock.instant()), account, version);
         if (count != 1) {
-            throw new GitHubAppFailure(AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
     }
 
     GitHubAppOAuth.Tokens tokens(Grant grant) {
-        if (!clientId.equals(grant.clientId())) {
-            throw new GitHubAppFailure(GitHubAppFailure.Code.AUTHORIZATION_REQUIRED);
+        if (!matchesConfiguredApp(grant)) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_REQUIRED);
         }
         if (grant.sealedTokens() == null) {
-            throw new GitHubAppFailure(GitHubAppFailure.Code.AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_REQUIRED);
         }
         return cipher.open(grant.account(), grant.ownerId(), grant.version(), grant.sealedTokens());
     }
 
+    boolean matchesConfiguredApp(Grant grant) {
+        return clientId.equals(grant.clientId());
+    }
+
     private static Grant changed(List<Grant> rows) {
         if (rows.size() != 1) {
-            throw new GitHubAppFailure(AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
         return rows.getFirst();
     }

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
@@ -21,13 +22,13 @@ final class GitHubAppJson {
         try {
             T result = JSON.readValue(body, type);
             if (result == null) {
-                throw new GitHubAppFailure(GitHubAppFailure.Code.INVALID_RESPONSE);
+                throw new GitHubConnectionException(GitHubConnectionException.Code.INVALID_RESPONSE);
             }
             return result;
         } catch (JacksonException malformed) {
             // Jackson messages and their causes can quote tokens, even with source locations disabled.
             // Discard that diagnostic at this credential boundary rather than leaking it through logs.
-            throw new GitHubAppFailure(GitHubAppFailure.Code.INVALID_RESPONSE);
+            throw new GitHubConnectionException(GitHubConnectionException.Code.INVALID_RESPONSE);
         }
     }
 

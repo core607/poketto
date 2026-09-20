@@ -1,12 +1,13 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.INSTALLATION_REQUIRED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.INVALID_RESPONSE;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.REPOSITORY_CHANGED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.UNAVAILABLE;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.INSTALLATION_REQUIRED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.INVALID_RESPONSE;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.REPOSITORY_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.UNAVAILABLE;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
@@ -49,7 +50,7 @@ final class GitHubAppInstallations {
         requireStatus(metadata, 200);
         Installation installation = GitHubAppJson.read(metadata.body(), Installation.class);
         if (installation.id() != installationId) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         requireInstallation(installation, ownerId);
         var request = new TokenRequest(List.of(repositoryId), new Permissions("write", "read"));
@@ -61,7 +62,7 @@ final class GitHubAppInstallations {
                     signer.token(),
                     GitHubAppJson.write(request));
         } catch (IOException failure) {
-            throw new GitHubAppFailure(UNAVAILABLE, failure);
+            throw new GitHubConnectionException(UNAVAILABLE, failure);
         }
         requireStatus(reply, 201);
         TokenResponse response = GitHubAppJson.read(reply.body(), TokenResponse.class);
@@ -72,43 +73,43 @@ final class GitHubAppInstallations {
 
     private void requireScope(TokenResponse response, long ownerId, long repositoryId, Instant requestedAt) {
         if (!response.permissions().equals(Map.of("contents", "write", "metadata", "read"))) {
-            throw new GitHubAppFailure(INVALID_RESPONSE);
+            throw new GitHubConnectionException(INVALID_RESPONSE);
         }
         if (response.repositories().size() != 1) {
-            throw new GitHubAppFailure(INVALID_RESPONSE);
+            throw new GitHubConnectionException(INVALID_RESPONSE);
         }
         GitHubAppRepositories.Repository repository = response.repositories().getFirst();
         if (repository.id() != repositoryId) {
-            throw new GitHubAppFailure(REPOSITORY_CHANGED);
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
         }
         GitHubAppRepositories.requireOwnedPrivate(repository, ownerId);
         if (!response.expiresAt().isAfter(clock.instant().plusSeconds(30))) {
-            throw new GitHubAppFailure(INVALID_RESPONSE);
+            throw new GitHubConnectionException(INVALID_RESPONSE);
         }
         if (response.expiresAt().isAfter(requestedAt.plusSeconds(3700))) {
-            throw new GitHubAppFailure(INVALID_RESPONSE);
+            throw new GitHubConnectionException(INVALID_RESPONSE);
         }
     }
 
     private void requireInstallation(Installation installation, long ownerId) {
         if (installation.appId() != appId) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         if (installation.account().id() != ownerId || installation.targetId() != ownerId) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         if (!installation.account().type().equals("User")
                 || !installation.targetType().equals("User")) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         if (installation.suspendedAt() != null) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         if (!"write".equals(installation.permissions().get("contents"))) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         if (!"read".equals(installation.permissions().get("metadata"))) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
     }
 
@@ -116,16 +117,16 @@ final class GitHubAppInstallations {
         try {
             return http.getApi(path, signer.token());
         } catch (IOException failure) {
-            throw new GitHubAppFailure(UNAVAILABLE, failure);
+            throw new GitHubConnectionException(UNAVAILABLE, failure);
         }
     }
 
     private static void requireStatus(GitHubAppHttp.Reply reply, int expected) {
         if (reply.status() == 404 || reply.status() == 422) {
-            throw new GitHubAppFailure(INSTALLATION_REQUIRED);
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
         if (reply.status() != expected) {
-            throw new GitHubAppFailure(UNAVAILABLE);
+            throw new GitHubConnectionException(UNAVAILABLE);
         }
     }
 

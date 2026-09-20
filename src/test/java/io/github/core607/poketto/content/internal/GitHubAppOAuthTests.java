@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.URI;
@@ -147,8 +148,8 @@ class GitHubAppOAuthTests {
             fixture.reply(200, response);
             GitHubAppOAuth oauth = oauth(fixture);
             assertThatThrownBy(() -> oauth.refresh("ghr_oldRefresh"))
-                    .isInstanceOfSatisfying(GitHubAppFailure.class, failure -> {
-                        assertThat(failure.code()).isEqualTo(GitHubAppFailure.Code.INVALID_RESPONSE);
+                    .isInstanceOfSatisfying(GitHubConnectionException.class, failure -> {
+                        assertThat(failure.code()).isEqualTo(GitHubConnectionException.Code.INVALID_RESPONSE);
                         var trace = new StringWriter();
                         failure.printStackTrace(new PrintWriter(trace));
                         assertThat(trace.toString())

@@ -1,10 +1,11 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.AUTHORIZATION_CHANGED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.AUTHORIZATION_REQUIRED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.BUSY;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.IDENTITY_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.AUTHORIZATION_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.AUTHORIZATION_REQUIRED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.BUSY;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.IDENTITY_CHANGED;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -30,7 +31,7 @@ final class GitHubAppGrants {
         GitHubAppRepositories.Owner owner;
         try {
             owner = repositories.currentUser(access.token());
-        } catch (GitHubAppFailure failure) {
+        } catch (GitHubConnectionException failure) {
             if (failure.code() == AUTHORIZATION_REQUIRED || failure.code() == IDENTITY_CHANGED) {
                 store.revoke(account, access.version());
             }
@@ -38,7 +39,7 @@ final class GitHubAppGrants {
         }
         if (owner.id() != access.owner().id()) {
             store.revoke(account, access.version());
-            throw new GitHubAppFailure(IDENTITY_CHANGED);
+            throw new GitHubConnectionException(IDENTITY_CHANGED);
         }
         Access verified = new Access(account, access.version(), owner, access.token());
         requireCurrent(verified);
@@ -47,24 +48,24 @@ final class GitHubAppGrants {
 
     void requireCurrent(Access access) {
         GitHubAppGrantStore.Grant current =
-                store.find(access.account()).orElseThrow(() -> new GitHubAppFailure(AUTHORIZATION_CHANGED));
+                store.find(access.account()).orElseThrow(() -> new GitHubConnectionException(AUTHORIZATION_CHANGED));
         if (current.state() != GitHubAppGrantStore.State.ACTIVE || current.version() != access.version()) {
-            throw new GitHubAppFailure(AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
         if (current.ownerId() != access.owner().id()) {
-            throw new GitHubAppFailure(AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
     }
 
     private Access access(UUID account) {
         store.expireRefresh(account);
         GitHubAppGrantStore.Grant grant =
-                store.find(account).orElseThrow(() -> new GitHubAppFailure(AUTHORIZATION_REQUIRED));
+                store.find(account).orElseThrow(() -> new GitHubConnectionException(AUTHORIZATION_REQUIRED));
         if (grant.state() == GitHubAppGrantStore.State.REFRESHING) {
-            throw new GitHubAppFailure(BUSY);
+            throw new GitHubConnectionException(BUSY);
         }
         if (grant.state() != GitHubAppGrantStore.State.ACTIVE) {
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
         GitHubAppOAuth.Tokens tokens = store.tokens(grant);
         if (expiring(tokens.accessExpiresAt())) {
@@ -81,13 +82,14 @@ final class GitHubAppGrants {
     private GitHubAppGrantStore.Grant refresh(GitHubAppGrantStore.Grant grant, GitHubAppOAuth.Tokens tokens) {
         if (tokens.refreshToken() == null || !tokens.refreshExpiresAt().isAfter(clock.instant())) {
             store.revoke(grant.account(), grant.version());
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
-        GitHubAppGrantStore.Grant lease = store.claimRefresh(grant).orElseThrow(() -> new GitHubAppFailure(BUSY));
+        GitHubAppGrantStore.Grant lease =
+                store.claimRefresh(grant).orElseThrow(() -> new GitHubConnectionException(BUSY));
         GitHubAppOAuth.Tokens replacement;
         try {
             replacement = oauth.refresh(tokens.refreshToken());
-        } catch (GitHubAppFailure failure) {
+        } catch (GitHubConnectionException failure) {
             // Even an outage can hide a consumed refresh token. Never retry that token after losing the response.
             if (failure.code() == BUSY) {
                 store.releaseRefresh(lease);

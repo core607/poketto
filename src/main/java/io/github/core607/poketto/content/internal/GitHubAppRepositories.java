@@ -1,14 +1,15 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.AUTHORIZATION_REQUIRED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.CREATION_REJECTED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.CREATION_UNCERTAIN;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.IDENTITY_CHANGED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.REPOSITORY_CHANGED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.UNAVAILABLE;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.AUTHORIZATION_REQUIRED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.CREATION_REJECTED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.CREATION_UNCERTAIN;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.IDENTITY_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.REPOSITORY_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.UNAVAILABLE;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,26 +36,26 @@ final class GitHubAppRepositories {
         String description = creationDescription(marker);
         Owner owner = currentUser(userToken);
         if (owner.id() != expectedOwner) {
-            throw new GitHubAppFailure(IDENTITY_CHANGED);
+            throw new GitHubConnectionException(IDENTITY_CHANGED);
         }
         byte[] body = GitHubAppJson.write(new CreateRequest(name, true, false, description));
         GitHubAppHttp.Reply reply;
         try {
             reply = http.postApi("/user/repos", userToken, body);
         } catch (IOException failure) {
-            throw new GitHubAppFailure(CREATION_UNCERTAIN, failure);
+            throw new GitHubConnectionException(CREATION_UNCERTAIN, failure);
         }
         requireCreated(reply);
         try {
             Repository repository = GitHubAppJson.read(reply.body(), Repository.class);
             requireOwnedPrivate(repository, expectedOwner);
             if (!repository.name().equalsIgnoreCase(name)) {
-                throw new GitHubAppFailure(REPOSITORY_CHANGED);
+                throw new GitHubConnectionException(REPOSITORY_CHANGED);
             }
             return repository;
-        } catch (GitHubAppFailure failure) {
+        } catch (GitHubConnectionException failure) {
             // A successful mutation with an unusable answer must never become a retryable rejection.
-            throw new GitHubAppFailure(CREATION_UNCERTAIN, failure);
+            throw new GitHubConnectionException(CREATION_UNCERTAIN, failure);
         }
     }
 
@@ -64,7 +65,7 @@ final class GitHubAppRepositories {
         String expectedDescription = creationDescription(marker);
         Owner owner = currentUser(userToken);
         if (owner.id() != ownerId) {
-            throw new GitHubAppFailure(IDENTITY_CHANGED);
+            throw new GitHubConnectionException(IDENTITY_CHANGED);
         }
         GitHubAppHttp.Reply reply = get("/repos/" + owner.login() + "/" + name, userToken);
         if (reply.status() == 404) {
@@ -74,10 +75,10 @@ final class GitHubAppRepositories {
         Repository repository = GitHubAppJson.read(reply.body(), Repository.class);
         requireOwnedPrivate(repository, ownerId);
         if (!repository.name().equalsIgnoreCase(name)) {
-            throw new GitHubAppFailure(REPOSITORY_CHANGED);
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
         }
         if (!expectedDescription.equals(repository.description())) {
-            throw new GitHubAppFailure(REPOSITORY_CHANGED);
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
         }
         return Optional.of(repository);
     }
@@ -90,19 +91,19 @@ final class GitHubAppRepositories {
     static void requireOwnedPrivate(Repository repository, long ownerId) {
         requirePersonal(repository.owner());
         if (repository.owner().id() != ownerId) {
-            throw new GitHubAppFailure(REPOSITORY_CHANGED);
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
         }
         if (!repository.privateRepository()) {
-            throw new GitHubAppFailure(REPOSITORY_CHANGED);
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
         }
         if (repository.archived() || repository.disabled()) {
-            throw new GitHubAppFailure(UNAVAILABLE);
+            throw new GitHubConnectionException(UNAVAILABLE);
         }
     }
 
     static void requirePersonal(Owner owner) {
         if (!owner.type().equals("User")) {
-            throw new GitHubAppFailure(IDENTITY_CHANGED);
+            throw new GitHubConnectionException(IDENTITY_CHANGED);
         }
     }
 
@@ -120,16 +121,16 @@ final class GitHubAppRepositories {
         try {
             return http.getApi(path, userToken);
         } catch (IOException failure) {
-            throw new GitHubAppFailure(UNAVAILABLE, failure);
+            throw new GitHubConnectionException(UNAVAILABLE, failure);
         }
     }
 
     private static void requireReadable(GitHubAppHttp.Reply reply) {
         if (reply.status() == 401) {
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
         if (reply.status() != 200) {
-            throw new GitHubAppFailure(UNAVAILABLE);
+            throw new GitHubConnectionException(UNAVAILABLE);
         }
     }
 
@@ -138,13 +139,13 @@ final class GitHubAppRepositories {
             return;
         }
         if (reply.status() == 401) {
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
         if (reply.status() == 400 || reply.status() == 422) {
-            throw new GitHubAppFailure(CREATION_REJECTED);
+            throw new GitHubConnectionException(CREATION_REJECTED);
         }
         // Rate limits and redirects do not prove whether the mutation was applied.
-        throw new GitHubAppFailure(CREATION_UNCERTAIN);
+        throw new GitHubConnectionException(CREATION_UNCERTAIN);
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

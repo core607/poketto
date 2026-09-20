@@ -1,8 +1,8 @@
-package io.github.core607.poketto.content.internal;
+package io.github.core607.poketto.content;
 
 /** Provider failures expose fixed codes, never provider response bodies or credentials. */
-final class GitHubAppFailure extends RuntimeException {
-    enum Code {
+public final class GitHubConnectionException extends RuntimeException {
+    public enum Code {
         AUTHORIZATION_REQUIRED,
         AUTHORIZATION_CHANGED,
         BUSY,
@@ -17,17 +17,17 @@ final class GitHubAppFailure extends RuntimeException {
 
     private final Code code;
 
-    GitHubAppFailure(Code code) {
+    public GitHubConnectionException(Code code) {
         super("GitHub App: " + code.name());
         this.code = code;
     }
 
-    GitHubAppFailure(Code code, Throwable cause) {
+    public GitHubConnectionException(Code code, Throwable cause) {
         super("GitHub App: " + code.name(), cause);
         this.code = code;
     }
 
-    Code code() {
+    public Code code() {
         return code;
     }
 }

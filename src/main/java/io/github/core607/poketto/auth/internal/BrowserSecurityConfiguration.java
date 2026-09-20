@@ -120,6 +120,7 @@ class BrowserSecurityConfiguration {
                                 "/api/auth/identity/policy",
                                 "/api/auth/identity/google/start",
                                 "/api/auth/identity/google/callback",
+                                "/api/auth/workspaces/github/callback",
                                 "/api/auth/identity/signup",
                                 "/api/auth/identity/signup/challenge",
                                 "/api/auth/identity/recovery",

@@ -1,10 +1,11 @@
 package io.github.core607.poketto.content.internal;
 
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.AUTHORIZATION_REQUIRED;
-import static io.github.core607.poketto.content.internal.GitHubAppFailure.Code.UNAVAILABLE;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.AUTHORIZATION_REQUIRED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.UNAVAILABLE;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -30,9 +31,7 @@ final class GitHubAppOAuth {
         if (clientId == null || !clientId.matches("[A-Za-z0-9._-]{1,128}")) {
             throw new IllegalArgumentException("GitHub App client ID is invalid");
         }
-        if (!credential(clientSecret)) {
-            throw new IllegalArgumentException("GitHub App client secret is missing or invalid");
-        }
+        validateClientSecret(clientSecret);
         if (!validCallback(callback)) {
             throw new IllegalArgumentException(
                     "GitHub App callback must be HTTPS without query, fragment or user info");
@@ -58,10 +57,10 @@ final class GitHubAppOAuth {
 
     Tokens exchange(Flow flow, String returnedState, String code) {
         if (!validFlow(flow, returnedState)) {
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
         if (!credential(code)) {
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
         String form = clientForm() + "&code=" + encoded(code) + "&redirect_uri=" + encoded(callback.toString())
                 + "&code_verifier=" + encoded(flow.verifier());
@@ -71,7 +70,7 @@ final class GitHubAppOAuth {
     /** Refresh replaces both tokens; its durable caller serializes the exchange and versioned save. */
     Tokens refresh(String refreshToken) {
         if (!credential(refreshToken)) {
-            throw new GitHubAppFailure(AUTHORIZATION_REQUIRED);
+            throw new GitHubConnectionException(AUTHORIZATION_REQUIRED);
         }
         return tokens(clientForm() + "&grant_type=refresh_token&refresh_token=" + encoded(refreshToken));
     }
@@ -82,11 +81,11 @@ final class GitHubAppOAuth {
         try {
             reply = http.exchangeOAuth(form.getBytes(StandardCharsets.UTF_8));
         } catch (IOException failure) {
-            throw new GitHubAppFailure(UNAVAILABLE, failure);
+            throw new GitHubConnectionException(UNAVAILABLE, failure);
         }
         if (reply.status() != 200) {
             // A provider outage or client-configuration problem must not be persisted as user revocation.
-            throw new GitHubAppFailure(UNAVAILABLE);
+            throw new GitHubConnectionException(UNAVAILABLE);
         }
         TokenResponse response = GitHubAppJson.read(reply.body(), TokenResponse.class);
         if (response.error() != null) {
@@ -99,11 +98,11 @@ final class GitHubAppOAuth {
                 expiry(requestedAt, response.refreshExpiresIn()));
     }
 
-    private static GitHubAppFailure oauthError(String error) {
+    private static GitHubConnectionException oauthError(String error) {
         return switch (error) {
             case "bad_verification_code", "bad_refresh_token", "expired_token", "invalid_grant" ->
-                new GitHubAppFailure(AUTHORIZATION_REQUIRED);
-            default -> new GitHubAppFailure(UNAVAILABLE);
+                new GitHubConnectionException(AUTHORIZATION_REQUIRED);
+            default -> new GitHubConnectionException(UNAVAILABLE);
         };
     }
 
@@ -152,6 +151,12 @@ final class GitHubAppOAuth {
 
     private static boolean credential(String value) {
         return value != null && value.length() <= 2048 && value.matches("[A-Za-z0-9._~+/-]+={0,2}");
+    }
+
+    static void validateClientSecret(String value) {
+        if (!credential(value)) {
+            throw new IllegalArgumentException("GitHub App client secret is missing or invalid");
+        }
     }
 
     private static boolean validCallback(URI callback) {

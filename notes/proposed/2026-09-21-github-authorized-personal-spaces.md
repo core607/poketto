@@ -18,7 +18,7 @@ group, grant membership, or add a Poketto login method.
 
 ## User flow and provider boundary
 
-1. A signed-in eligible account authorizes the configured GitHub App. Bind the
+1. A signed-in eligible account starts its first authorization of the configured GitHub App. Bind the
    single-use callback to that browser session, account and credential version.
    Use GitHub's immutable user ID; reject organization identities and never infer
    identity from an email address or user-supplied login name.
@@ -122,6 +122,9 @@ does not revoke an existing repository connection or its member/MCP grants.
 Restoring a group cannot restore a revoked GitHub authorization. Reconnection
 must verify the same owner and immutable repository identity; a repository
 transfer or a different same-name repository cannot silently replace it.
+An account may reauthorize an existing grant after a group downgrade so its
+retained space permissions remain usable. Reauthorization does not restore
+creation eligibility, publish a space, or establish membership.
 
 ## Configuration and acceptance
 
@@ -137,6 +140,11 @@ read. Explain those requested permissions before redirecting to GitHub. Do not
 request organization permissions or account email access for this feature.
 Missing App configuration disables this entrance without disabling manual
 repository connections.
+The browser callback is `/api/auth/workspaces/github/callback` at the configured
+public HTTPS origin. Authorization initiation and disconnection require a current
+account session and CSRF protection. The callback consumes its matching browser
+state once and rechecks that session after provider exchange, before persisting
+credentials; it never signs the browser into a Poketto account.
 
 Tests must cover duplicate requests, concurrent attempts, lost creation responses,
 same-name conflicts, initialization interruption, token expiry/refresh races,
