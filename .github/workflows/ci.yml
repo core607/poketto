@@ -544,6 +544,7 @@ jobs:
         run: |
           settings=""
           for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            [ -n "${!key}" ] || printf 'Clearing identity setting: %s\n' "$key"
             settings+=$'\n'"$key=${!key}"
           done
           settings+=$'\n'"POKETTO_EMAIL_DAILY_LIMIT=${POKETTO_EMAIL_DAILY_LIMIT:-100}"
@@ -588,6 +589,7 @@ jobs:
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
           for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            [ -n "${!key}" ] || printf 'Clearing identity setting: %s\n' "$key"
             settings+=$'\n'"$key=${!key}"
           done
           settings+=$'\n'"POKETTO_EMAIL_DAILY_LIMIT=${POKETTO_EMAIL_DAILY_LIMIT:-100}"

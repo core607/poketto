@@ -78,11 +78,17 @@ for step in 'Update existing installation' 'Deploy'; do
                     cat > workflow-stdin
                 }
                 . ./workflow-step.sh
-            )
+            ) > workflow-output
+            assert_not_contains "$(cat workflow-output)" 'synthetic-'
             for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
                 expected="$key="
                 [ "$values" = empty ] || expected+='synthetic-$literal'
                 grep -qFx "$expected" workflow-stdin
+                if [ "$values" = empty ]; then
+                    grep -qFx "Clearing identity setting: $key" workflow-output
+                else
+                    assert_not_contains "$(cat workflow-output)" "Clearing identity setting: $key"
+                fi
             done
             limit=100
             [ "$values" = empty ] || limit=250
