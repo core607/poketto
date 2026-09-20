@@ -12,11 +12,13 @@ public final class AuthPrincipal {
     private final Kind kind;
     private final UUID subjectId;
     private final UUID accountId;
+    private final long credentialVersion;
 
-    AuthPrincipal(Kind kind, UUID subjectId, UUID accountId) {
+    AuthPrincipal(Kind kind, UUID subjectId, UUID accountId, long credentialVersion) {
         this.kind = kind;
         this.subjectId = subjectId;
         this.accountId = accountId;
+        this.credentialVersion = credentialVersion;
     }
 
     public Kind kind() {
@@ -29,6 +31,10 @@ public final class AuthPrincipal {
 
     public UUID accountId() {
         return accountId;
+    }
+
+    public long credentialVersion() {
+        return credentialVersion;
     }
 
     @Override

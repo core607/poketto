@@ -9,7 +9,9 @@ public final class AuthException extends RuntimeException {
         ALREADY_INITIALIZED,
         INVALID_INPUT,
         LAST_OWNER,
-        LAST_ADMINISTRATOR
+        LAST_ADMINISTRATOR,
+        EMAIL_IN_USE,
+        LAST_LOGIN_METHOD
     }
 
     private final Code code;

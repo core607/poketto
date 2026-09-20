@@ -113,6 +113,7 @@ final class WorkspaceInvitations {
         var admitted = new AtomicBoolean();
         WorkspaceId joined = transactions.execute(status -> {
             Invitation invitation = lockInvitation(token);
+            auth.validateAccount(account);
             requireUsableInvitation(invitation, account.accountId());
             admitted.set(join(invitation, account.accountId()));
             return invitation.workspace();

@@ -17,7 +17,7 @@ class RequestCallerTests {
         var request = new MockHttpServletRequest();
         UUID subject = UUID.randomUUID();
 
-        RequestCaller.remember(request, new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, subject, subject));
+        RequestCaller.remember(request, new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, subject, subject, 0));
 
         assertThat(RequestCaller.of(request)).isEqualTo("ACCOUNT:" + subject);
     }
@@ -27,7 +27,7 @@ class RequestCallerTests {
         var request = new MockHttpServletRequest();
         UUID key = UUID.randomUUID();
 
-        RequestCaller.remember(request, new AuthPrincipal(AuthPrincipal.Kind.API_KEY, key, UUID.randomUUID()));
+        RequestCaller.remember(request, new AuthPrincipal(AuthPrincipal.Kind.API_KEY, key, UUID.randomUUID(), 0));
 
         assertThat(RequestCaller.of(request)).startsWith("API_KEY:").contains(key.toString());
     }

@@ -43,7 +43,7 @@ class AuditRecordTests {
 
         AuditRecords.granted(
                 "member.permissions.changed",
-                new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, owner, owner),
+                new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, owner, owner, 0),
                 workspace,
                 subject,
                 Set.of(Capability.READ_PRIVATE, Capability.PUBLISH));
@@ -70,7 +70,7 @@ class AuditRecordTests {
         UUID key = UUID.randomUUID();
 
         AuditRecords.authenticated(
-                "key.authentication", new AuthPrincipal(AuthPrincipal.Kind.API_KEY, key, UUID.randomUUID()));
+                "key.authentication", new AuthPrincipal(AuthPrincipal.Kind.API_KEY, key, UUID.randomUUID(), 0));
 
         assertThat(output).contains("key.authentication");
         assertThat(output).contains("API_KEY:" + key);

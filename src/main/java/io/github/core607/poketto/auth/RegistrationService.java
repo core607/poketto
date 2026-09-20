@@ -53,11 +53,12 @@ public final class RegistrationService {
             throw new AuthException(DENIED);
         }
         var identities = jdbc.query(
-                "select account_id, login_name, site_group from auth_accounts where account_id=?"
+                "select account_id, login_name, site_group from auth_accounts where account_id=? and credential_version=?"
                         + (lock ? " for update" : ""),
                 (row, number) -> new AccountIdentity(
                         row.getObject(1, UUID.class), row.getString(2), SiteGroup.valueOf(row.getString(3))),
-                actor.accountId());
+                actor.accountId(),
+                actor.credentialVersion());
         if (identities.isEmpty()) {
             throw new AuthException(DENIED);
         }

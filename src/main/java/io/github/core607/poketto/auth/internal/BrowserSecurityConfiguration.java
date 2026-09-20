@@ -117,6 +117,13 @@ class BrowserSecurityConfiguration {
                 .authorizeHttpRequests(
                         requests -> requests.requestMatchers("/api/auth/csrf", "/api/auth/login", "/api/auth/register")
                                 .permitAll()
+                                .requestMatchers(
+                                        "/api/auth/identity/policy",
+                                        "/api/auth/identity/signup",
+                                        "/api/auth/identity/signup/challenge",
+                                        "/api/auth/identity/recovery",
+                                        "/api/auth/identity/recovery/challenge")
+                                .permitAll()
                                 .requestMatchers("/api/auth/oauth/**")
                                 .permitAll()
                                 .requestMatchers("/api/public/**")
