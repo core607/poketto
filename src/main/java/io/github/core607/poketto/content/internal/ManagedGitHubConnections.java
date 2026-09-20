@@ -10,11 +10,14 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubConnections;
 import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
+import io.github.core607.poketto.content.RepositoryCoordinates;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Account policy surrounds provider I/O; token persistence commits only with a current account. */
 final class ManagedGitHubConnections implements GitHubConnections, GitHubRepositoryProvisioning, AutoCloseable {
@@ -26,6 +29,8 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     private final Clock clock;
     private final GitHubAppInstallations installations;
     private final GitHubAppGrants grants;
+    private final JdbcTemplate jdbc;
+    private final ManagedRepositoryConnections manual;
 
     ManagedGitHubConnections(
             Accounts accounts,
@@ -34,7 +39,9 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
             GitHubAppRepositories repositories,
             GitHubAppHttp http,
             Clock clock,
-            GitHubAppInstallations installations) {
+            GitHubAppInstallations installations,
+            JdbcTemplate jdbc,
+            ManagedRepositoryConnections manual) {
         this.accounts = accounts;
         this.store = store;
         this.oauth = oauth;
@@ -43,18 +50,20 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
         this.clock = clock;
         this.installations = installations;
         this.grants = oauth == null ? null : new GitHubAppGrants(store, oauth, repositories, clock);
+        this.jdbc = jdbc;
+        this.manual = manual;
     }
 
     static ManagedGitHubConnections disabled(Accounts accounts) {
-        return new ManagedGitHubConnections(accounts, null, null, null, null, Clock.systemUTC(), null);
+        return new ManagedGitHubConnections(accounts, null, null, null, null, Clock.systemUTC(), null, null, null);
     }
 
     @Override
     public Owner verifiedOwner(AuthPrincipal actor) {
-        accounts.requireCreator(actor);
+        accounts.account(actor);
         requireAvailable();
         GitHubAppGrants.Access access = grants.verifiedAccess(actor.accountId());
-        accounts.requireCreator(actor);
+        accounts.account(actor);
         return new Owner(access.owner().id(), access.owner().login(), access.version());
     }
 
@@ -92,6 +101,53 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     private static Repository provisioned(GitHubAppRepositories.Repository repository) {
         return new Repository(
                 repository.id(), repository.owner().id(), repository.owner().login(), repository.name());
+    }
+
+    @Override
+    public PreparedBinding prepareBinding(AuthPrincipal actor, Owner owner, long repositoryId, String repositoryName) {
+        GitHubAppGrants.Access access = provisioningAccess(actor, owner);
+        // Missing selected-repository access can hide repository metadata from the user token.
+        long installation = installations.find(access.owner(), repositoryName);
+        repositories.known(owner.id(), repositoryId, repositoryName, access.token());
+        GitHubAppInstallations.Token token = installations.issue(installation, owner.id(), repositoryId);
+        Repository verified = provisioned(token.repository());
+        var coordinates = RepositoryCoordinates.parse(verified.canonicalUri() + ".git");
+        manual.rejectDefaultDuplicate(
+                new RepositoryProviderClient.Metadata(coordinates, "github:" + repositoryId, true));
+        grants.requireCurrent(access);
+        Instant preparedAt = clock.instant();
+        Instant expiry = token.expiresAt().minusSeconds(30);
+        if (!expiry.isAfter(preparedAt)) {
+            throw new GitHubConnectionException(UNAVAILABLE);
+        }
+        Instant validUntil = expiry.isBefore(preparedAt.plusSeconds(60)) ? expiry : preparedAt.plusSeconds(60);
+        return new PreparedBinding(actor.accountId(), owner, verified, installation, preparedAt, validUntil);
+    }
+
+    @Override
+    public void install(AuthPrincipal actor, WorkspaceId workspace, PreparedBinding binding) {
+        requireAvailable();
+        accounts.requireCreator(actor);
+        if (!actor.accountId().equals(binding.accountId())) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
+        Instant now = clock.instant();
+        if (now.isBefore(binding.preparedAt()) || !now.isBefore(binding.validUntil())) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
+        requireCurrent(actor, binding.owner());
+        jdbc.update(
+                """
+                insert into content_repository_bindings(workspace_id,canonical_uri,provider_identity,credential_kind,
+                    github_account_id,github_owner_id,github_installation_id)
+                values (?,?,?,'GITHUB_APP',?,?,?)
+                """,
+                workspace.value(),
+                binding.repository().canonicalUri(),
+                "github:" + binding.repository().id(),
+                actor.accountId(),
+                binding.owner().id(),
+                binding.installationId());
     }
 
     TokenLease repositoryToken(UUID account, long ownerId, long installationId, long repositoryId) {

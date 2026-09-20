@@ -151,6 +151,94 @@ final class GitHubCreationStore {
         return required(attempt.account(), attempt.request());
     }
 
+    Attempt claimCompletion(UUID account, UUID request, long grantVersion, UUID lease) {
+        requireTransaction();
+        Attempt previous = required(account, request);
+        if (previous.repositoryId() == null) {
+            throw new IllegalArgumentException("Repository creation must finish before installation verification");
+        }
+        if (previous.stage() == GitHubSpaceCreation.Stage.READY || previous.blocksClaim(clock.instant())) {
+            return previous;
+        }
+        Instant now = clock.instant();
+        jdbc.update(
+                """
+                update space_github_creation_attempts set stage=case when bound then 'INITIALIZING' else 'VALIDATING_INSTALLATION' end,
+                    grant_version=?,failure_code=null,lease_id=?,lease_started_at=?,lease_expires_at=?,updated_at=?
+                where account_id=? and request_id=?
+                """,
+                grantVersion,
+                lease,
+                timestamp(now),
+                timestamp(now.plusSeconds(300)),
+                timestamp(now),
+                account,
+                request);
+        return required(account, request);
+    }
+
+    Attempt requireLease(Attempt expected) {
+        requireTransaction();
+        Attempt current = required(expected.account(), expected.request());
+        Instant now = clock.instant();
+        boolean valid = expected.lease() != null
+                && expected.lease().equals(current.lease())
+                && !now.isBefore(current.leaseStarted())
+                && now.isBefore(current.leaseExpires());
+        if (!valid) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+        }
+        return current;
+    }
+
+    Attempt bound(Attempt attempt, String uri) {
+        requireLease(attempt);
+        jdbc.update("""
+                update space_github_creation_attempts set bound=true,stage='INITIALIZING',canonical_uri=?,updated_at=?
+                where account_id=? and request_id=? and lease_id=?
+                """, uri, timestamp(clock.instant()), attempt.account(), attempt.request(), attempt.lease());
+        return required(attempt.account(), attempt.request());
+    }
+
+    Attempt ready(Attempt attempt, String commit) {
+        requireLease(attempt);
+        if (commit == null || !commit.matches("[0-9a-f]{40}")) {
+            throw new IllegalArgumentException("Initialization must name the complete repository commit");
+        }
+        int changed = jdbc.update(
+                """
+                update space_github_creation_attempts set stage='READY',initialization_commit=?,failure_code=null,
+                    lease_id=null,lease_started_at=null,lease_expires_at=null,updated_at=?
+                where account_id=? and request_id=? and lease_id=? and bound
+                """, commit, timestamp(clock.instant()), attempt.account(), attempt.request(), attempt.lease());
+        if (changed != 1) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+        }
+        return required(attempt.account(), attempt.request());
+    }
+
+    Attempt completionFailed(Attempt attempt, String code, GitHubSpaceCreation.Stage stopped) {
+        Instant now = clock.instant();
+        jdbc.update(
+                """
+                update space_github_creation_attempts set stage=case when cast(? as text) is not null then cast(? as text)
+                    when bound then 'INITIALIZING' else 'AWAITING_INSTALLATION' end,
+                    failure_code=?,lease_id=null,lease_started_at=null,lease_expires_at=null,updated_at=?
+                where account_id=? and request_id=? and lease_id=? and repository_id is not null
+                    and lease_started_at<=? and lease_expires_at>?
+                """,
+                stopped == null ? null : stopped.name(),
+                stopped == null ? null : stopped.name(),
+                code,
+                timestamp(now),
+                attempt.account(),
+                attempt.request(),
+                attempt.lease(),
+                timestamp(now),
+                timestamp(now));
+        return required(attempt.account(), attempt.request());
+    }
+
     private Attempt required(UUID account, UUID request) {
         return find(account, request)
                 .orElseThrow(() -> new IllegalStateException("GitHub creation attempt is missing"));
@@ -186,6 +274,8 @@ final class GitHubCreationStore {
                 row.getBoolean("creation_requested"),
                 row.getObject("repository_id", Long.class),
                 row.getString("canonical_uri"),
+                row.getBoolean("bound"),
+                row.getString("initialization_commit"),
                 row.getString("failure_code"),
                 row.getObject("lease_id", UUID.class),
                 instant(row, "lease_started_at"),
@@ -206,6 +296,8 @@ final class GitHubCreationStore {
             boolean creationRequested,
             Long repositoryId,
             String canonicalUri,
+            boolean bound,
+            String initializationCommit,
             String failure,
             UUID lease,
             Instant leaseStarted,

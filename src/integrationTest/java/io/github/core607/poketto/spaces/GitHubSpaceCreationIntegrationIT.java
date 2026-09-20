@@ -2,6 +2,7 @@ package io.github.core607.poketto.spaces;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
@@ -9,6 +10,9 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
+import io.github.core607.poketto.content.RepositoryInitialization;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -276,7 +280,14 @@ class GitHubSpaceCreationIntegrationIT {
     }
 
     private GitHubSpaceCreation service() {
-        return new GitHubSpaceCreation(jdbc, accounts, provider, clock);
+        return new GitHubSpaceCreation(
+                jdbc,
+                accounts,
+                provider,
+                clock,
+                auth,
+                mock(WorkspaceRegistry.class),
+                mock(RepositoryInitialization.class));
     }
 
     private UUID marker() {
@@ -313,6 +324,17 @@ class GitHubSpaceCreationIntegrationIT {
         private Runnable afterDispatch = () -> {};
         private Runnable beforeReconcile = () -> {};
         private Optional<Repository> recovered = Optional.empty();
+
+        @Override
+        public PreparedBinding prepareBinding(
+                AuthPrincipal principal, Owner owner, long repositoryId, String repositoryName) {
+            throw new AssertionError("remote creation does not verify installation access");
+        }
+
+        @Override
+        public void install(AuthPrincipal principal, WorkspaceId workspace, PreparedBinding binding) {
+            throw new AssertionError("remote creation does not install workspace bindings");
+        }
 
         @Override
         public Owner verifiedOwner(AuthPrincipal principal) {

@@ -84,6 +84,25 @@ final class GitHubAppRepositories {
         return Optional.of(repository);
     }
 
+    Repository known(long ownerId, long repositoryId, String name, String userToken) {
+        requireName(name);
+        Owner owner = currentUser(userToken);
+        if (owner.id() != ownerId) {
+            throw new GitHubConnectionException(IDENTITY_CHANGED);
+        }
+        GitHubAppHttp.Reply reply = get("/repos/" + owner.login() + "/" + name, userToken);
+        if (reply.status() == 404 || reply.status() == 301 || reply.status() == 302) {
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
+        }
+        requireReadable(reply);
+        Repository repository = GitHubAppJson.read(reply.body(), Repository.class);
+        requireOwnedPrivate(repository, ownerId);
+        if (repository.id() != repositoryId || !repository.name().equalsIgnoreCase(name)) {
+            throw new GitHubConnectionException(REPOSITORY_CHANGED);
+        }
+        return repository;
+    }
+
     static String creationDescription(UUID marker) {
         return "Poketto personal space [creation:" + Objects.requireNonNull(marker, "Creation marker is required")
                 + "]";

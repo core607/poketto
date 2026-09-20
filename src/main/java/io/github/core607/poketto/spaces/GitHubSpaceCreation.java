@@ -3,20 +3,30 @@ package io.github.core607.poketto.spaces;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
+import io.github.core607.poketto.content.RepositoryConflictException;
+import io.github.core607.poketto.content.RepositoryConnectionException;
+import io.github.core607.poketto.content.RepositoryInitialization;
+import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
+import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** Records remote creation before the separate installation and workspace-initialization steps. */
+/** Durable remote creation, verified workspace binding, and resumable template initialization. */
 public final class GitHubSpaceCreation {
     private static final Logger log = LoggerFactory.getLogger(GitHubSpaceCreation.class);
     private final Accounts accounts;
@@ -24,13 +34,25 @@ public final class GitHubSpaceCreation {
     private final GitHubCreationStore store;
     private final Clock clock;
     private final Semaphore admission = new Semaphore(2);
+    private final AuthService auth;
+    private final WorkspaceRegistry workspaces;
+    private final RepositoryInitialization initialization;
 
     public GitHubSpaceCreation(
-            JdbcTemplate jdbc, Accounts accounts, GitHubRepositoryProvisioning provider, Clock clock) {
+            JdbcTemplate jdbc,
+            Accounts accounts,
+            GitHubRepositoryProvisioning provider,
+            Clock clock,
+            AuthService auth,
+            WorkspaceRegistry workspaces,
+            RepositoryInitialization initialization) {
         this.accounts = accounts;
         this.provider = provider;
         this.clock = clock;
         this.store = new GitHubCreationStore(jdbc, clock);
+        this.auth = auth;
+        this.workspaces = workspaces;
+        this.initialization = initialization;
     }
 
     public Result status(AuthPrincipal actor, UUID request) {
@@ -68,6 +90,102 @@ public final class GitHubSpaceCreation {
         } finally {
             admission.release();
         }
+    }
+
+    public Result resume(AuthPrincipal actor, UUID requestId) {
+        accounts.account(actor);
+        GitHubCreationStore.Attempt previous = store.find(actor.accountId(), requestId)
+                .orElseThrow(() -> new AuthException(AuthException.Code.DENIED));
+        if (previous.stage() == Stage.READY || previous.blocksClaim(clock.instant())) {
+            return result(previous);
+        }
+        requireCompletionAuthority(actor, previous);
+        if (!admission.tryAcquire()) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.BUSY);
+        }
+        try {
+            GitHubRepositoryProvisioning.Owner owner = provider.verifiedOwner(actor);
+            if (owner.id() != previous.owner()) {
+                throw new GitHubConnectionException(GitHubConnectionException.Code.IDENTITY_CHANGED);
+            }
+            UUID lease = UUID.randomUUID();
+            GitHubCreationStore.Attempt attempt = accounts.withAccount(actor, () -> {
+                requireCompletionAuthority(actor, previous);
+                provider.requireCurrent(actor, owner);
+                return store.claimCompletion(actor.accountId(), requestId, owner.grantVersion(), lease);
+            });
+            return Objects.equals(attempt.lease(), lease) ? complete(actor, owner, attempt) : result(attempt);
+        } finally {
+            admission.release();
+        }
+    }
+
+    private void requireCompletionAuthority(AuthPrincipal actor, GitHubCreationStore.Attempt attempt) {
+        if (attempt.bound()) {
+            auth.authorize(actor, attempt.workspace(), Capability.MANAGE_KEYS);
+        } else {
+            accounts.requireCreator(actor);
+        }
+    }
+
+    private Result complete(
+            AuthPrincipal actor, GitHubRepositoryProvisioning.Owner owner, GitHubCreationStore.Attempt attempt) {
+        try {
+            GitHubCreationStore.Attempt bound = attempt.bound() ? attempt : bind(actor, owner, attempt);
+            requireCompletionAuthority(actor, bound);
+            RepositoryInitialization.Outcome outcome =
+                    initialization.apply(actor, bound.workspace(), () -> store.requireLease(bound));
+            return accounts.withAccount(actor, () -> {
+                provider.requireCurrent(actor, owner);
+                return auth.withAuthorization(
+                        actor,
+                        bound.workspace(),
+                        Set.of(Capability.MANAGE_KEYS),
+                        () -> result(store.ready(bound, outcome.commit())));
+            });
+        } catch (GitHubConnectionException failure) {
+            Stage stopped =
+                    switch (failure.code()) {
+                        case AUTHORIZATION_REQUIRED, AUTHORIZATION_CHANGED, IDENTITY_CHANGED -> Stage.DISCONNECTED;
+                        default -> null;
+                    };
+            return result(store.completionFailed(attempt, failure.code().name(), stopped));
+        } catch (RepositoryConnectionException failure) {
+            return result(store.completionFailed(attempt, failure.code().name(), null));
+        } catch (DataIntegrityViolationException conflict) {
+            return result(store.completionFailed(attempt, "DUPLICATE", null));
+        } catch (ContentRepositoryException
+                | RepositoryConflictException
+                | RepositoryWriteAmbiguousException unavailable) {
+            return result(store.completionFailed(attempt, "INITIALIZATION_REQUIRED", null));
+        } catch (AuthException denied) {
+            store.completionFailed(attempt, "ACCOUNT_UNAVAILABLE", Stage.BLOCKED);
+            throw denied;
+        } catch (RuntimeException failure) {
+            log.warn("GitHub space completion interrupted", failure);
+            store.completionFailed(attempt, "UNAVAILABLE", null);
+            throw new GitHubConnectionException(GitHubConnectionException.Code.UNAVAILABLE, failure);
+        }
+    }
+
+    private GitHubCreationStore.Attempt bind(
+            AuthPrincipal actor, GitHubRepositoryProvisioning.Owner owner, GitHubCreationStore.Attempt attempt) {
+        GitHubRepositoryProvisioning.PreparedBinding prepared =
+                provider.prepareBinding(actor, owner, attempt.repositoryId(), attempt.repositoryName());
+        boolean matches = prepared.repository().id() == attempt.repositoryId()
+                && prepared.owner().id() == attempt.owner();
+        if (!matches) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED);
+        }
+        return accounts.withAccount(actor, () -> {
+            accounts.requireCreator(actor);
+            store.requireLease(attempt);
+            provider.requireCurrent(actor, owner);
+            workspaces.create(attempt.workspace(), attempt.name(), attempt.slug());
+            auth.establishWorkspaceOwner(actor, attempt.workspace());
+            provider.install(actor, attempt.workspace(), prepared);
+            return store.bound(attempt, prepared.repository().canonicalUri());
+        });
     }
 
     private Result run(
@@ -139,6 +257,8 @@ public final class GitHubSpaceCreation {
                 stage,
                 attempt.repositoryId(),
                 attempt.canonicalUri(),
+                attempt.bound(),
+                attempt.initializationCommit(),
                 attempt.failure(),
                 retry);
     }
@@ -148,6 +268,9 @@ public final class GitHubSpaceCreation {
         CREATING,
         UNCERTAIN,
         AWAITING_INSTALLATION,
+        VALIDATING_INSTALLATION,
+        INITIALIZING,
+        READY,
         DISCONNECTED,
         BLOCKED,
         REJECTED
@@ -160,6 +283,8 @@ public final class GitHubSpaceCreation {
             Stage stage,
             Long repositoryId,
             String repository,
+            boolean workspaceCreated,
+            String initializationCommit,
             String failureCode,
             int retryAfterSeconds) {}
 

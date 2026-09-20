@@ -7,6 +7,7 @@ import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPatchResult;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -18,7 +19,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * Initializes a connected repository from the content template this build ships on its classpath,
@@ -70,6 +73,20 @@ final class ContentRepositoryInitializer implements RepositoryInitialization {
 
     @Override
     public Outcome apply(AuthPrincipal actor, WorkspaceId workspace) {
+        return initialize(actor, workspace, patch -> patches.apply(actor, workspace, patch));
+    }
+
+    @Override
+    public Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Runnable beforeWrite) {
+        Objects.requireNonNull(beforeWrite, "Initialization ownership check is required");
+        // Initialization retries inspect missing template files; this checkpoint guards ownership,
+        // rather than claiming to retain a raw Git write for exact-commit recovery.
+        return initialize(
+                actor, workspace, patch -> patches.apply(actor, workspace, patch, attempt -> beforeWrite.run()));
+    }
+
+    private Outcome initialize(
+            AuthPrincipal actor, WorkspaceId workspace, Function<RepositoryPatch, RepositoryPatchResult> writer) {
         auth.authorize(actor, workspace, Capability.MANAGE_KEYS);
         Inspection current = inspect(workspace);
         if (current.missing().isEmpty()) {
@@ -78,7 +95,7 @@ final class ContentRepositoryInitializer implements RepositoryInitialization {
         List<RepositoryTextChange> changes = current.missing().stream()
                 .map(path -> new RepositoryTextChange(path, true, Optional.empty(), Optional.of(template.get(path))))
                 .toList();
-        var result = patches.apply(actor, workspace, new RepositoryPatch(current.commit(), changes));
+        RepositoryPatchResult result = writer.apply(new RepositoryPatch(current.commit(), changes));
         return new Outcome(result.commit(), current.missing());
     }
 

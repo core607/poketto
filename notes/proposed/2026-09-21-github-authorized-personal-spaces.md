@@ -55,9 +55,9 @@ operation; they do not create another repository or workspace.
 
 Stages distinguish awaiting authorization, creating the repository, awaiting
 installation access, initializing, ready, disconnected and uncertain creation.
-Provider I/O occurs outside relational locks. Recheck account identity, creator
-eligibility, connection version and attempt lease before each remote mutation
-and before committing the resulting binding. A downgrade during creation leaves
+Provider credential exchanges occur outside relational locks. Recheck account
+identity, creator eligibility, connection version and attempt lease before
+repository creation and before committing a new workspace binding. A downgrade during creation leaves
 the operation resumable without granting a new space or deleting its repository.
 
 A five-minute lease serializes each creation attempt. Preparation is resumable
@@ -88,6 +88,21 @@ must preserve unexpected user changes. Binding uniqueness covers immutable
 provider identity as well as canonical URI. A ready operation replays its result;
 it does not repeat creation or initialization. Failures never delete remote repos.
 The existing manual GitHub/CNB connection entrance remains available separately.
+
+Commit the workspace, owner membership, verified App binding and initialization
+stage together. Installation verification compares the recorded repository ID,
+personal owner and private visibility; edited descriptions do not invalidate a
+known repository. A prepared binding expires within sixty seconds and is
+rechecked with the current grant in the commit transaction. The operator's
+configured repository participates in duplicate-identity checks.
+
+Once that transaction commits, initialization acts on an existing owned space.
+It retains current owner permissions after a site-group downgrade and does not
+recreate the workspace or repository. Check the operation lease at the Git write
+checkpoint and current ownership before recording READY. Initialization failure
+keeps the binding and permits inspection of missing template files on retry;
+response loss cannot justify overwriting files. READY records the initialization
+commit only after all template files are present. Public delivery remains off.
 
 ## Credentials, synchronization and revocation
 

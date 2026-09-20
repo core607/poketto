@@ -32,13 +32,13 @@ final class GitHubAppInstallations {
         this.clock = Objects.requireNonNull(clock, "Installation token clock is required");
     }
 
-    long find(GitHubAppRepositories.Repository repository) {
-        GitHubAppRepositories.requireOwnedPrivate(repository, repository.owner().id());
-        GitHubAppHttp.Reply reply =
-                get("/repos/" + repository.owner().login() + "/" + repository.name() + "/installation");
+    long find(GitHubAppRepositories.Owner owner, String repositoryName) {
+        GitHubAppRepositories.requirePersonal(owner);
+        GitHubAppRepositories.requireName(repositoryName);
+        GitHubAppHttp.Reply reply = get("/repos/" + owner.login() + "/" + repositoryName + "/installation");
         requireStatus(reply, 200);
         Installation installation = GitHubAppJson.read(reply.body(), Installation.class);
-        requireInstallation(installation, repository.owner().id());
+        requireInstallation(installation, owner.id());
         return installation.id();
     }
 

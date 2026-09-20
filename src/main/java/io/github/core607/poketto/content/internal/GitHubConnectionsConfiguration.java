@@ -17,6 +17,7 @@ class GitHubConnectionsConfiguration {
     ManagedGitHubConnections githubConnections(
             Accounts accounts,
             JdbcTemplate jdbc,
+            ManagedRepositoryConnections manual,
             @Value("${poketto.github.app-id:}") String appId,
             @Value("${poketto.github.client-id:}") String clientId,
             @Value("${poketto.github.client-secret:}") String clientSecret,
@@ -51,7 +52,9 @@ class GitHubConnectionsConfiguration {
                 new GitHubAppRepositories(http),
                 http,
                 clock,
-                new GitHubAppInstallations(http, signer, Long.parseLong(appId), clock));
+                new GitHubAppInstallations(http, signer, Long.parseLong(appId), clock),
+                jdbc,
+                manual);
     }
 
     @Bean

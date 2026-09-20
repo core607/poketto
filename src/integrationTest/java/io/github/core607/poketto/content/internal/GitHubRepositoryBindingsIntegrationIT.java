@@ -2,16 +2,22 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.Accounts;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
+import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -28,8 +34,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -48,6 +56,9 @@ class GitHubRepositoryBindingsIntegrationIT {
     private RepositoryCredentialCipher cipher;
     private GitHubAppInstallations installations;
     private GitHubRepositoryBindings bindings;
+    private ManagedGitHubConnections github;
+    private ManagedRepositoryConnections manual;
+    private GitHubAppRepositories repositories;
     private MutableClock clock;
     private UUID account;
     private WorkspaceId workspace;
@@ -77,7 +88,7 @@ class GitHubRepositoryBindingsIntegrationIT {
                 OWNER,
                 new GitHubAppOAuth.Tokens(
                         "ghu_fixture", NOW.plusSeconds(28800), "ghr_fixture", NOW.plusSeconds(15897600)));
-        var repositories = mock(GitHubAppRepositories.class);
+        repositories = mock(GitHubAppRepositories.class);
         when(repositories.currentUser(anyString())).thenReturn(OWNER);
         installations = mock(GitHubAppInstallations.class);
         when(installations.issue(7, 42, 91)).thenAnswer(call -> {
@@ -85,14 +96,93 @@ class GitHubRepositoryBindingsIntegrationIT {
                     .isFalse();
             return token("notes");
         });
-        var github = new ManagedGitHubConnections(
-                mock(Accounts.class), store, mock(GitHubAppOAuth.class), repositories, null, clock, installations);
+        manual = mock(ManagedRepositoryConnections.class);
+        github = new ManagedGitHubConnections(
+                mock(Accounts.class),
+                store,
+                mock(GitHubAppOAuth.class),
+                repositories,
+                null,
+                clock,
+                installations,
+                jdbc,
+                manual);
         bindings = new GitHubRepositoryBindings(jdbc, github);
         jdbc.update("""
                 insert into content_repository_bindings(workspace_id,canonical_uri,provider_identity,credential_kind,
                     github_account_id,github_owner_id,github_installation_id)
                 values (?,'https://github.com/octocat/notes','github:91','GITHUB_APP',?,42,7)
                 """, workspace.value(), account);
+    }
+
+    @Test
+    void verifiedInstallationCommitsOnlyAReferenceToTheCurrentGrant() {
+        AuthPrincipal actor = preparingActor();
+        var prepared =
+                github.prepareBinding(actor, new GitHubRepositoryProvisioning.Owner(42, "octocat", 1), 91, "notes");
+        jdbc.update("delete from content_repository_bindings where workspace_id=?", workspace.value());
+        transaction().executeWithoutResult(status -> github.install(actor, workspace, prepared));
+        assertThat(jdbc.queryForObject("select credential_kind from content_repository_bindings", String.class))
+                .isEqualTo("GITHUB_APP");
+        assertThat(jdbc.queryForObject(
+                        "select sealed_credentials is null from content_repository_bindings", Boolean.class))
+                .isTrue();
+        assertThat(password(bindings.binding(workspace))).isEqualTo("ghs_fixture");
+        verify(manual).rejectDefaultDuplicate(any());
+    }
+
+    @Test
+    void expiredOrRevokedProofCannotInstallARepositoryBinding() {
+        AuthPrincipal actor = preparingActor();
+        var prepared =
+                github.prepareBinding(actor, new GitHubRepositoryProvisioning.Owner(42, "octocat", 1), 91, "notes");
+        jdbc.update("delete from content_repository_bindings where workspace_id=?", workspace.value());
+        clock.now = NOW.plusSeconds(60);
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> github.install(actor, workspace, prepared)))
+                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+        clock.now = NOW;
+        store.revoke(account, 1);
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> github.install(actor, workspace, prepared)))
+                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+        assertThat(jdbc.queryForObject("select count(*) from content_repository_bindings", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void operatorRepositoryIdentityCannotBeReboundThroughAppInstallation() {
+        AuthPrincipal actor = preparingActor();
+        doThrow(new RepositoryConnectionException(RepositoryConnectionException.Code.DUPLICATE))
+                .when(manual)
+                .rejectDefaultDuplicate(any());
+        assertThatThrownBy(() -> github.prepareBinding(
+                        actor, new GitHubRepositoryProvisioning.Owner(42, "octocat", 1), 91, "notes"))
+                .hasMessage("Repository connection: DUPLICATE");
+    }
+
+    private AuthPrincipal preparingActor() {
+        AuthPrincipal actor = mock(AuthPrincipal.class);
+        when(actor.accountId()).thenReturn(account);
+        when(repositories.known(42, 91, "notes", "ghu_fixture"))
+                .thenReturn(token("notes").repository());
+        when(installations.find(any(), anyString())).thenReturn(7L);
+        return actor;
+    }
+
+    @Test
+    void missingInstallationIsReportedBeforeReadingUnavailableRepositoryMetadata() {
+        AuthPrincipal actor = preparingActor();
+        when(installations.find(any(), anyString()))
+                .thenThrow(new GitHubConnectionException(GitHubConnectionException.Code.INSTALLATION_REQUIRED));
+        assertThatThrownBy(() -> github.prepareBinding(
+                        actor, new GitHubRepositoryProvisioning.Owner(42, "octocat", 1), 91, "notes"))
+                .hasMessage("GitHub App: INSTALLATION_REQUIRED");
+        verify(repositories, never()).known(42, 91, "notes", "ghu_fixture");
+    }
+
+    private TransactionTemplate transaction() {
+        return new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
     }
 
     @Test

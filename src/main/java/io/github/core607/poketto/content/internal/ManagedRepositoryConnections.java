@@ -103,7 +103,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         return new Verified(metadata.identity(), metadata.privateRepository(), empty);
     }
 
-    private void rejectDefaultDuplicate(RepositoryProviderClient.Metadata candidate) {
+    void rejectDefaultDuplicate(RepositoryProviderClient.Metadata candidate) {
         RepositoryCoordinates operator = comparableOperator(configured.remoteUri());
         if (operator == null) {
             return;

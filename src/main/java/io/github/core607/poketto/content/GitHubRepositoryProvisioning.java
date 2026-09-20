@@ -1,6 +1,8 @@
 package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,6 +25,44 @@ public interface GitHubRepositoryProvisioning {
 
     /** Exact marker recovery only; absence does not authorize another creation request. */
     Optional<Repository> reconcile(AuthPrincipal actor, Owner owner, String name, UUID marker);
+
+    /** Verifies repository identity and selected installation access outside a transaction; no token is returned. */
+    PreparedBinding prepareBinding(AuthPrincipal actor, Owner owner, long repositoryId, String repositoryName);
+
+    /** Installs the prepared binding in the caller's account/workspace transaction after rechecking its grant and expiry. */
+    void install(AuthPrincipal actor, WorkspaceId workspace, PreparedBinding binding);
+
+    record PreparedBinding(
+            UUID accountId,
+            Owner owner,
+            Repository repository,
+            long installationId,
+            Instant preparedAt,
+            Instant validUntil) {
+        public PreparedBinding {
+            if (accountId == null || owner == null || repository == null || installationId <= 0) {
+                throw new IllegalArgumentException("Verified GitHub installation is required");
+            }
+            if (repository.ownerId() != owner.id()) {
+                throw new IllegalArgumentException("Verified GitHub installation owner does not match");
+            }
+            if (!validLifetime(preparedAt, validUntil)) {
+                throw new IllegalArgumentException("GitHub binding validation must expire within sixty seconds");
+            }
+        }
+
+        private static boolean validLifetime(Instant preparedAt, Instant validUntil) {
+            return preparedAt != null
+                    && validUntil != null
+                    && validUntil.isAfter(preparedAt)
+                    && !validUntil.isAfter(preparedAt.plusSeconds(60));
+        }
+
+        @Override
+        public String toString() {
+            return "PreparedGitHubBinding[redacted]";
+        }
+    }
 
     record Owner(long id, String login, long grantVersion) {
         public Owner {

@@ -44,9 +44,19 @@ class GitHubConnectionsConfigurationTests {
 
     @Test
     void absentAndPartialConfigurationDisableOnlyTheGitHubEntrance() {
-        try (var absent = configuration.githubConnections(accounts, jdbc, "", "", "", "", "", "", "");
+        try (var absent = configuration.githubConnections(
+                        accounts, jdbc, mock(ManagedRepositoryConnections.class), "", "", "", "", "", "", "");
                 var partial = configuration.githubConnections(
-                        accounts, jdbc, "3", "Iv.fixture", "", "", "", CIPHER_KEY, "https://example.test")) {
+                        accounts,
+                        jdbc,
+                        mock(ManagedRepositoryConnections.class),
+                        "3",
+                        "Iv.fixture",
+                        "",
+                        "",
+                        "",
+                        CIPHER_KEY,
+                        "https://example.test")) {
             assertThat(absent.status(actor).state()).isEqualTo(GitHubConnections.State.DISABLED);
             assertThat(partial.status(actor).available()).isFalse();
             assertThat(partial.status(actor).eligibleToCreate()).isTrue();
@@ -59,6 +69,7 @@ class GitHubConnectionsConfigurationTests {
         try (var connections = configuration.githubConnections(
                 accounts,
                 jdbc,
+                mock(ManagedRepositoryConnections.class),
                 "3",
                 "Iv.fixture",
                 "fixture-secret",
@@ -80,6 +91,7 @@ class GitHubConnectionsConfigurationTests {
         assertThatThrownBy(() -> configuration.githubConnections(
                         accounts,
                         jdbc,
+                        mock(ManagedRepositoryConnections.class),
                         "3",
                         "Iv.fixture",
                         "fixture-secret",
@@ -93,6 +105,7 @@ class GitHubConnectionsConfigurationTests {
         assertThatThrownBy(() -> configuration.githubConnections(
                         accounts,
                         jdbc,
+                        mock(ManagedRepositoryConnections.class),
                         "3",
                         "Iv.fixture",
                         "secret\ninvalid",

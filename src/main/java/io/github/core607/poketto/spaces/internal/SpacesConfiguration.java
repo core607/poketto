@@ -22,8 +22,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 class SpacesConfiguration {
     @Bean
     GitHubSpaceCreation githubSpaceCreation(
-            JdbcTemplate jdbc, Accounts accounts, GitHubRepositoryProvisioning provider) {
-        return new GitHubSpaceCreation(jdbc, accounts, provider, Clock.systemUTC());
+            JdbcTemplate jdbc,
+            Accounts accounts,
+            GitHubRepositoryProvisioning provider,
+            AuthService auth,
+            WorkspaceRegistry workspaces,
+            RepositoryInitialization initialization) {
+        return new GitHubSpaceCreation(jdbc, accounts, provider, Clock.systemUTC(), auth, workspaces, initialization);
     }
 
     @Bean

@@ -18,7 +18,9 @@ import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.GitHubSpaceCreation;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import java.net.URI;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -99,6 +101,9 @@ class GitHubConnectionsHttpIntegrationIT {
     @Autowired
     GitHubSpaceCreation creations;
 
+    @Autowired
+    RepositoryInitialization initialization;
+
     private final JsonMapper json = JsonMapper.builder().build();
     private AuthPrincipal owner;
     private String ownerLogin;
@@ -106,6 +111,7 @@ class GitHubConnectionsHttpIntegrationIT {
     @BeforeEach
     void setup() {
         jdbc.execute("truncate auth_accounts cascade");
+        jdbc.execute("delete from workspaces where not is_default");
         jdbc.execute("update auth_initialization set initialized_at=null");
         // The shared HTTP context retains throttle buckets after database cleanup.
         ownerLogin = "owner-" + UUID.randomUUID();
@@ -328,6 +334,49 @@ class GitHubConnectionsHttpIntegrationIT {
                 .isOne();
     }
 
+    @Test
+    void verifiedInstallationBindsTheSpaceAndInitializesTheRealGitAuthority() throws Exception {
+        MockHttpSession session = login("owner");
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        var repository = new GitHubAppRepositories.Repository(
+                91,
+                "notes",
+                new GitHubAppRepositories.Owner(42, "octocat", "User"),
+                true,
+                false,
+                false,
+                "user description");
+        when(provider.repositories.create(anyLong(), anyString(), any(), anyString(), any()))
+                .thenAnswer(call -> {
+                    ((Runnable) call.getArgument(4)).run();
+                    return repository;
+                });
+        when(provider.repositories.known(42, 91, "notes", "ghu_fixture")).thenReturn(repository);
+        when(provider.installations.find(any(), anyString())).thenReturn(7L);
+        when(provider.installations.issue(7, 42, 91))
+                .thenReturn(new GitHubAppInstallations.Token(
+                        "ghs_fixture", ProviderFixture.NOW.plusSeconds(3600), repository));
+        var request = new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes");
+        creations.create(owner, request);
+        GitHubSpaceCreation.Result ready = creations.resume(owner, request.requestId());
+        assertThat(ready.stage()).isEqualTo(GitHubSpaceCreation.Stage.READY);
+        assertThat(ready.workspaceCreated()).isTrue();
+        assertThat(ready.initializationCommit()).matches("[0-9a-f]{40}");
+        var workspace = new WorkspaceId(ready.workspaceId());
+        assertThat(initialization.status(owner, workspace).missingFiles()).isEmpty();
+        assertThat(jdbc.queryForObject(
+                        "select public_delivery from workspaces where workspace_id=?",
+                        Boolean.class,
+                        ready.workspaceId()))
+                .isFalse();
+        assertThat(jdbc.queryForObject(
+                        "select github_installation_id from content_repository_bindings where workspace_id=?",
+                        Long.class,
+                        ready.workspaceId()))
+                .isEqualTo(7L);
+        assertThat(creations.resume(owner, request.requestId())).isEqualTo(ready);
+    }
+
     private String start(MockHttpSession session) throws Exception {
         String body = mvc.perform(csrf(session, post(ROOT + "/start")))
                 .andExpect(status().isOk())
@@ -385,6 +434,7 @@ class GitHubConnectionsHttpIntegrationIT {
         private static final Instant NOW = Instant.parse("2026-09-21T00:00:00Z");
         private final GitHubAppOAuth oauth = mock(GitHubAppOAuth.class);
         private final GitHubAppRepositories repositories = mock(GitHubAppRepositories.class);
+        private final GitHubAppInstallations installations = mock(GitHubAppInstallations.class);
         private final ManagedGitHubConnections connections;
         private Instant flowTime;
         private String state;
@@ -399,11 +449,20 @@ class GitHubConnectionsHttpIntegrationIT {
                     new RepositoryCredentialCipher(Base64.getEncoder().encodeToString(key)), "Iv.fixture");
             Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
             var store = new GitHubAppGrantStore(jdbc, cipher, "Iv.fixture", clock);
-            connections = new ManagedGitHubConnections(accounts, store, oauth, repositories, null, clock, null);
+            connections = new ManagedGitHubConnections(
+                    accounts,
+                    store,
+                    oauth,
+                    repositories,
+                    null,
+                    clock,
+                    installations,
+                    jdbc,
+                    mock(ManagedRepositoryConnections.class));
         }
 
         void resetProvider() {
-            reset(oauth, repositories);
+            reset(oauth, repositories, installations);
             exchanges = 0;
             flowTime = NOW;
             duringExchange = () -> {};

@@ -18,6 +18,32 @@ class GitHubAppRepositoriesTests {
     private static final String USER = "{\"id\":42,\"login\":\"octocat\",\"type\":\"User\"}";
 
     @Test
+    void knownRepositoryUsesImmutableIdentityWithoutRequiringTheCreationDescription() throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(200, USER);
+            fixture.reply(200, repository("User edited the description"));
+            var api = new GitHubAppRepositories(fixture.http);
+            assertThat(api.known(42, 91, "notes", "fixture-token").id()).isEqualTo(91);
+            fixture.reply(200, USER);
+            fixture.reply(200, repository("Other repository").replace("\"id\":91", "\"id\":92"));
+            assertThatThrownBy(() -> api.known(42, 91, "notes", "fixture-token"))
+                    .hasMessage("GitHub App: REPOSITORY_CHANGED");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 404})
+    void knownRepositoryCannotFollowARenameOrAdoptAMissingTarget(int status) throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(200, USER);
+            fixture.reply(status, "{}");
+            assertThatThrownBy(() -> new GitHubAppRepositories(fixture.http).known(42, 91, "notes", "fixture-token"))
+                    .hasMessage("GitHub App: REPOSITORY_CHANGED");
+            assertThat(fixture.requests).hasSize(2);
+        }
+    }
+
+    @Test
     void rejectedDurableIntentPreventsTheActualCreationRequest() throws Exception {
         try (var fixture = new GitHubAppFixture()) {
             fixture.reply(200, USER);

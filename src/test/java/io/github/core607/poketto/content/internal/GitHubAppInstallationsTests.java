@@ -46,7 +46,7 @@ class GitHubAppInstallationsTests {
             fixture.reply(200, INSTALLATION);
             fixture.reply(201, TOKEN);
             var api = api(fixture);
-            assertThat(api.find(GitHubAppJson.read(REPOSITORY.getBytes(), GitHubAppRepositories.Repository.class)))
+            assertThat(api.find(new GitHubAppRepositories.Owner(42, "octocat", "User"), "notes"))
                     .isEqualTo(7);
             GitHubAppInstallations.Token token = api.issue(7, 42, 91);
             assertThat(token.expiresAt()).isEqualTo(NOW.plusSeconds(3600));
@@ -138,8 +138,7 @@ class GitHubAppInstallationsTests {
         try (var fixture = new GitHubAppFixture()) {
             fixture.reply(404, "{}");
             var api = api(fixture);
-            assertThatThrownBy(() ->
-                            api.find(GitHubAppJson.read(REPOSITORY.getBytes(), GitHubAppRepositories.Repository.class)))
+            assertThatThrownBy(() -> api.find(new GitHubAppRepositories.Owner(42, "octocat", "User"), "notes"))
                     .hasMessage("GitHub App: INSTALLATION_REQUIRED");
             assertThat(fixture.requests).hasSize(1);
             assertThat(fixture.requests.getFirst().method()).isEqualTo("GET");
