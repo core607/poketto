@@ -1,10 +1,10 @@
 package io.github.core607.poketto.spaces;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
@@ -36,7 +36,7 @@ public final class SpaceCreationService {
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
-    private final RegistrationService accounts;
+    private final Accounts accounts;
     private final AuthService auth;
     private final WorkspaceRegistry workspaces;
     private final RepositoryConnections repositories;
@@ -47,7 +47,7 @@ public final class SpaceCreationService {
     public SpaceCreationService(
             JdbcTemplate jdbc,
             PlatformTransactionManager transactionManager,
-            RegistrationService accounts,
+            Accounts accounts,
             AuthService auth,
             WorkspaceRegistry workspaces,
             RepositoryConnections repositories,
@@ -64,8 +64,11 @@ public final class SpaceCreationService {
     }
 
     public boolean available(AuthPrincipal actor) {
-        accounts.account(actor);
-        return repositories.available();
+        return eligible(actor) && repositories.available();
+    }
+
+    public boolean eligible(AuthPrincipal actor) {
+        return accounts.account(actor).group().mayCreateSpace();
     }
 
     public ConnectionInfo connectionInfo(AuthPrincipal actor, WorkspaceId workspace) {
@@ -122,7 +125,7 @@ public final class SpaceCreationService {
             String repository,
             String username,
             String token) {
-        accounts.account(actor);
+        accounts.requireCreator(actor);
         requireDetails(requestId, displayName, slug);
         var coordinates = RepositoryCoordinates.parse(repository);
         if (!admission.tryAcquire()) {
@@ -168,6 +171,7 @@ public final class SpaceCreationService {
             String username,
             String token,
             UUID lease) {
+        accounts.requireCreator(actor);
         var previous = find(actor, requestId, true);
         if (previous != null) {
             if (!previous.name().equals(displayName.strip())
@@ -212,12 +216,12 @@ public final class SpaceCreationService {
             AuthPrincipal actor, UUID requestId, UUID lease, Attempt attempt, RepositoryCoordinates coordinates) {
         var verified = repositories.verify(attempt.workspace(), coordinates, attempt.sealed());
         var established = new AtomicBoolean();
-        Result ready = transactions.execute(status -> {
+        Result ready = accounts.withAccount(actor, () -> {
+            accounts.requireCreator(actor);
             Attempt current = find(actor, requestId, true);
             if (!current.lease().equals(lease)) {
                 return result(current);
             }
-            accounts.account(actor);
             workspaces.create(attempt.workspace(), attempt.name(), attempt.slug());
             auth.establishWorkspaceOwner(actor, attempt.workspace());
             repositories.install(attempt.workspace(), coordinates, attempt.sealed(), verified);

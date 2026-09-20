@@ -1,11 +1,10 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
-import io.github.core607.poketto.auth.RegistrationService;
+import io.github.core607.poketto.auth.SitePolicyService;
 import java.time.Clock;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
@@ -20,18 +19,14 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AuthConfiguration {
     @Bean
-    RegistrationInvitationPolicy registrationInvitationPolicy(
-            @Value("${poketto.registration.user-invitations-enabled:false}") boolean usersEnabled) {
-        return RegistrationInvitationPolicy.configured(usersEnabled);
+    SitePolicyService sitePolicyService(
+            JdbcTemplate jdbc, Accounts accounts, AuthService auth, PlatformTransactionManager transactions) {
+        return new SitePolicyService(jdbc, accounts, auth, transactions);
     }
 
     @Bean
-    RegistrationService registrationService(
-            JdbcTemplate jdbc,
-            PlatformTransactionManager transactionManager,
-            AuthService auth,
-            RegistrationInvitationPolicy policy) {
-        return new RegistrationService(jdbc, transactionManager, auth, policy, Clock.systemUTC());
+    Accounts accounts(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
+        return new Accounts(jdbc, transactionManager);
     }
 
     @Bean

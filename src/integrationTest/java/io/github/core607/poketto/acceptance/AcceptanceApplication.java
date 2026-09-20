@@ -36,12 +36,23 @@ public final class AcceptanceApplication {
 
         Path remote = root.resolve("remote.git");
         seed(remote, root.resolve("seed"));
-        SpringApplication app = new SpringApplication(PokettoApplication.class, AcceptanceRepositories.class);
+        SpringApplication app = new SpringApplication(
+                PokettoApplication.class, AcceptanceRepositories.class, AcceptanceMailConfiguration.class);
         app.setDefaultProperties(Map.of(
-                "poketto.data-dir", root.resolve("data").toString(),
-                "poketto.test.repository-path", remote.toString(),
-                "poketto.security.allowed-origins", required("POKETTO_ACCEPTANCE_ORIGIN"),
-                "POKETTO_SESSION_COOKIE_SECURE", false));
+                "poketto.data-dir",
+                root.resolve("data").toString(),
+                "poketto.test.repository-path",
+                remote.toString(),
+                "poketto.security.allowed-origins",
+                required("POKETTO_ACCEPTANCE_ORIGIN"),
+                "POKETTO_RESEND_API_KEY",
+                Boolean.parseBoolean(System.getenv("POKETTO_ACCEPTANCE_EMAIL"))
+                        ? "synthetic-acceptance-mail-secret"
+                        : "",
+                "POKETTO_EMAIL_FROM",
+                "Poketto <noreply@example.test>",
+                "POKETTO_SESSION_COOKIE_SECURE",
+                false));
         var context = app.run(args);
         var auth = context.getBean(AuthService.class);
         var owner = auth.initializeOwner("owner", password);

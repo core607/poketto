@@ -36,6 +36,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             Poketto<span className="footer-dot">·</span>给想法一个留下来的地方。
           </span>
           <a href="/rss.xml">RSS 订阅 ↗</a>
+          <a href="/privacy">隐私政策</a>
+          <a href="/terms">服务条款</a>
         </footer>
       </body>
     </html>

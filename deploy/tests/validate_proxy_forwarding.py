@@ -136,7 +136,9 @@ try:
         configuration = json.loads(docker("compose", "--env-file", empty, "-f", ROOT / "deploy/compose.yaml",
                                           "config", "--format", "json", env=environment).stdout)
     app_environment = configuration["services"]["app"]["environment"]
-    expect("registration invitations default to administrators", app_environment["POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED"], "false")
+    expect("email delivery defaults to disabled", app_environment["POKETTO_RESEND_API_KEY"], "")
+    expect("email budget defaults to one hundred sends", app_environment["POKETTO_EMAIL_DAILY_LIMIT"], "100")
+    expect("Google login defaults to disabled", app_environment["POKETTO_GOOGLE_CLIENT_SECRET"], "")
     expect("workspace credential encryption key reaches the application", app_environment["POKETTO_REPOSITORY_CREDENTIAL_KEY"], "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     actual_gateway = configuration["services"]["gateway"]["networks"]["default"]["ipv4_address"]
     expect("gateway static address", actual_gateway, gateway_ip)

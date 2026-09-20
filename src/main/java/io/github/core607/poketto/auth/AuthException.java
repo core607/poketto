@@ -8,13 +8,22 @@ public final class AuthException extends RuntimeException {
         INVALID_INVITATION,
         ALREADY_INITIALIZED,
         INVALID_INPUT,
-        LAST_OWNER
+        LAST_OWNER,
+        LAST_ADMINISTRATOR,
+        EMAIL_IN_USE,
+        IDENTITY_IN_USE,
+        LAST_LOGIN_METHOD
     }
 
     private final Code code;
 
     public AuthException(Code code) {
         super("Authentication operation failed: " + code);
+        this.code = code;
+    }
+
+    public AuthException(Code code, Throwable cause) {
+        super("Authentication operation failed: " + code, cause);
         this.code = code;
     }
 

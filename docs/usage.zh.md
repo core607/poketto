@@ -22,7 +22,15 @@ POKETTO_REPOSITORY_PASSWORD=... \
 
 先启动应用完成数据库结构初始化，再在部署主机的交互式终端运行 `./deploy.sh --initialize-admin`，输入用户名并两次输入隐藏的密码。命令只创建一次站点管理员和默认空间主人，不能替换已有账号；它使用正在运行的应用容器中的数据库配置，不提供网页安装入口。自定义容器安装方式见[管理员安装命令](../notes/implemented/2026-09-11-operator-administrator-setup.md)。将 `POKETTO_SECURITY_ALLOWED_ORIGINS` 配置为浏览器使用的精确 origin；本地 HTTP 还需设置 `POKETTO_SESSION_COOKIE_SECURE=false`，HTTPS 保留安全默认值。登录前获取 `/api/auth/csrf`，后续请求携带会话 cookie 和响应指定的 CSRF header。
 
-注册邀请码与空间邀请相互独立。`POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED` 默认 `false`，只允许站点管理员签发注册邀请码；设置为 `true` 后普通账号也能签发。目前不设置固定的每用户签发数量。关闭签发后，签发者仍可列出和撤销自己的邀请码。登录后，在“账号与空间”中创建并复制注册邀请码或注册链接，也可查看状态和撤销。访客点击“注册”，填写邀请码、用户名和密码；注册并登录后还没有空间权限，需要在管理页单独填写空间邀请码加入。接口与流程见[注册邀请码](../notes/implemented/2026-09-11-registration-invitations.md)。
+访客可以用验证后的邮箱、密码和昵称注册，也可以在启用后使用 Google 登录。注册不需要邀请码或额外用户名。已有账号保留用户名密码登录，可在账号安全中绑定经过验证的邮箱。空间邀请仍然独立：接受邀请授予其注明的空间权限，不提升策略组。没有空间的账号也能登录和管理登录方式。
+
+设置 `POKETTO_RESEND_API_KEY` 和 `POKETTO_EMAIL_FROM`，启用邮箱验证和密码找回；发件地址须使用已验证的发信域名。六位验证码十分钟有效，最多允许五次错误尝试，仅可使用一次；重发需间隔六十秒。`POKETTO_EMAIL_DAILY_LIMIT` 默认每天 UTC 零点起最多发送 100 封，另有邮箱和来源地址限制。发送失败不会报告成功。密码找回会使旧浏览器会话和机器凭证失效，但保留空间成员权限。更换 Resend 密钥会使尚未消费的邮箱验证失效。
+
+设置 `POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`，启用 Google 登录。在 Google 创建 Web 应用，将已授权重定向 URI 设置为 `<POKETTO_OAUTH_ISSUER>/api/auth/identity/google/callback`。`POKETTO_OAUTH_ISSUER` 须为不带路径的精确 HTTPS origin；本地开发也允许环回 HTTP。仅请求 `openid`、`email` 和 `profile`，Google 必须返回已验证邮箱。同邮箱不自动合并账号：先登录已有账号，再显式绑定 Google。账号安全不能解除最后一种登录方式。Google 与邮箱配置相互独立；未配置的登录方式不显示入口。
+
+所有新账号均为**浏览者**，包括通过 Google 注册的账号。管理员分配一个固定策略组：浏览者、社区成员、创作者或站点管理员。社区成员组预留后续互动资格；创作者和管理员可以连接仓库、展示符合条件的网站。站点管理员可以搜索账号、填写原因调整分组、查看变更记录及账号拥有的空间；审阅当前仓库公开范围内的文章和引用媒体不授予私密文件或原始历史访问权。最后一个管理员不能降级。
+
+空间的全部所有者都必须是创作者或管理员，其网站才可公开展示。任一所有者降级后，该空间的公开直链、发现、搜索、订阅和媒体同步下线，同时保留作者的网站开关和已有成员、MCP 权限。所有者可以看到限制原因并继续修改。恢复资格后，开关仍开启的网站自动恢复，作者主动关闭的网站保持关闭。账号仅作为普通成员加入的空间不受其分组变更影响。
 
 Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生磁盘卷运行 `linuxStorageTest`，包括公开标记持久化与快照恢复测试。Windows 开发模式只能在远端重新验证成功后建立内存公开快照；离线重启不会从磁盘恢复公开授权。Linux 上影响发布的写入必须先成功同步文件与目录才能推送；同步失败或不受支持时关闭公开服务。权威图片存储要求目录同步能力；不支持的宿主不能确认持久化上传。用 `$env:...` 设置同名变量，确保 `POKETTO_DATA_DIR` 是绝对路径，再使用 `.\gradlew.bat`。命令表与协作规则见 [AGENTS.md](../AGENTS.md#commands)。
 
@@ -227,7 +235,11 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
 
-对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像。配置受保护的更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境配置和依赖服务继续由运维配置维护。
+对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境文件、无关配置和依赖服务继续由运维配置维护。
+
+`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥和 Google 凭证配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这六项配置均以 GitHub 为准：CI 也转发空值，未设置或已删除的 GitHub 配置会清除主机上的值；未设置每日限额时恢复为 100。Google 两个字段须一起清空，两种部署布局都会拒绝不完整的配置对。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
+
+将 `POKETTO_SUPPORT_EMAIL` 设置为 `/privacy` 和 `/terms` 页面展示的公开联系方式，并按实际部署的数据处理方式核对页面说明。两种部署方式均接受此设置，现有安装更新仅将它传给前端；CI 从同名 repository variable 读取。Google 品牌配置可使用站点首页、`/privacy` 和 `/terms` 地址。
 
 Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](../notes/implemented/2026-09-05-blog-stack-delivery.md)。
 

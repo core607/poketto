@@ -13,12 +13,12 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlob;
@@ -73,9 +73,6 @@ class AssetAuthorizationConcurrencyIT {
     @TempDir
     static Path directory;
 
-    @Autowired
-    RegistrationService registration;
-
     private static final String PASSWORD = UUID.randomUUID().toString();
     private static final AtomicInteger CASE = new AtomicInteger();
 
@@ -124,7 +121,7 @@ class AssetAuthorizationConcurrencyIT {
     @Test
     void memberPublicPreviewCannotReadPrivateReferencesAndGrantsTrackCurrentScope() throws Exception {
         int index = CASE.incrementAndGet();
-        var member = registration.register(registration.issue(owner).token(), "public-member-" + index, PASSWORD);
+        var member = AccountFixtures.create(auth, "public-member-" + index, PASSWORD);
         auth.acceptInvitation(
                 member, auth.createInvitation(owner, workspace, Set.of()).token());
         var requestScope = memory.acquire(ImageMemoryAdmission.BROWSER_BYTES).orElseThrow();
@@ -209,8 +206,7 @@ class AssetAuthorizationConcurrencyIT {
             revoke = () -> auth.revokeApiKey(owner, workspace, issued.id());
         } else {
             var invitation = auth.createInvitation(owner, workspace, AuthService.CONTENT_PERMISSIONS);
-            principal =
-                    registration.register(registration.issue(owner).token(), "member-" + UUID.randomUUID(), PASSWORD);
+            principal = AccountFixtures.create(auth, "member-" + UUID.randomUUID(), PASSWORD);
             auth.acceptInvitation(principal, invitation.token());
             revoke = () -> auth.changeMembership(
                     owner, workspace, principal.accountId(), MembershipRole.MEMBER, false, Set.of());

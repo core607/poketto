@@ -20,7 +20,7 @@ The phase-one public face includes server-rendered articles, tags, archives, bou
 ## Design principles
 
 - Open source: code and project documents under Apache-2.0; artwork and published creative content under CC BY-NC-SA 4.0.
-- Single instance, no open registration. Users are workspace owners, people they trust, and their AI agents, each acting within an authorized workspace through an issued identity or API key.
+- Single instance with verified email registration and Google login. [Consumer identity and site policy](2026-09-20-consumer-identity-and-site-policy.md) separates account groups from workspace grants: new accounts are viewers, and existing member and machine access survives withdrawal of public visibility. Users and their AI agents act within an authorized workspace through an issued identity or API key.
 - Designed for a resource-constrained single machine; production capacity and resource limits require measurements on the selected host.
 - Used by cloning and self-hosting. The code repository and workspace content repositories are separate. The operator supplies a pre-provisioned private HTTPS repository through secrets for the default workspace; remote `main` is authoritative and local repository storage is disposable cache.
 
@@ -77,4 +77,4 @@ The MCP protocol version follows the pinned SDK. [MCP OAuth](2026-09-11-mcp-oaut
 
 ## Non-goals (v1)
 
-Open registration and automatic provider-side repository creation, social login, comments/likes/social features, microservices/K8s/message queues, knowledge graphs, heavy RAG pipelines (chunking + reranking + multi-path recall), rich-text editors, image CDN, mobile apps, UI internationalization, visitor conversation history, Redis (single-instance: budget counting in PostgreSQL, rate limiting in the JVM, caching in Caffeine).
+Automatic provider-side repository creation, comments/likes/social features, microservices/K8s/message queues, knowledge graphs, heavy RAG pipelines (chunking + reranking + multi-path recall), rich-text editors, image CDN, mobile apps, UI internationalization, visitor conversation history, Redis (single-instance: budget counting in PostgreSQL, rate limiting in the JVM, caching in Caffeine).

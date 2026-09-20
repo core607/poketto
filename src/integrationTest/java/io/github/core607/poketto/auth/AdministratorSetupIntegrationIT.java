@@ -47,7 +47,8 @@ class AdministratorSetupIntegrationIT {
         String password = UUID.randomUUID().toString();
         Input input = new Input("AdMiN", password, password);
         assertThat(AdministratorSetup.initialize(source, input)).isZero();
-        assertThat(jdbc.queryForObject("select count(*) from auth_accounts where instance_admin", Integer.class))
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from auth_accounts where site_group='ADMINISTRATOR'", Integer.class))
                 .isOne();
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships where role='OWNER'", Integer.class))
                 .isOne();

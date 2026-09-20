@@ -37,9 +37,7 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String path = AuthHttpErrors.path(request);
         if (request.getMethod().equals("POST")
-                && (path.equals("/api/auth/login")
-                        || path.equals("/api/auth/register")
-                        || path.equals("/api/auth/registration-invitations"))) {
+                && (path.equals("/api/auth/login") || path.startsWith("/api/auth/identity/"))) {
             String login = path.equals("/api/auth/login") ? request.getParameter("username") : null;
             if (!take(request.getRemoteAddr(), login)) {
                 response.setHeader("Retry-After", Long.toString(window.toSeconds()));
@@ -59,7 +57,7 @@ final class LoginThrottleFilter extends OncePerRequestFilter {
         attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt() <= now);
         String ipKey = "ip:" + (address == null || address.length() > 128 ? "unknown" : address);
         String accountKey =
-                login == null ? null : "account:" + (login.length() > 64 ? "invalid" : login.toLowerCase(Locale.ROOT));
+                login == null ? null : "account:" + (login.length() > 254 ? "invalid" : login.toLowerCase(Locale.ROOT));
         if (!canTake(ipKey, perAddress, now) || (accountKey != null && !canTake(accountKey, perAccount, now))) {
             return false;
         }

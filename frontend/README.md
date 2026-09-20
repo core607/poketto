@@ -10,6 +10,8 @@ For local HTTP development, Spring must explicitly allow the browser origin and 
 
 ## Routes and rendering
 
+`/privacy` and `/terms` are public service-information pages linked from the footer and login form. `POKETTO_SUPPORT_EMAIL` supplies their public contact address at frontend runtime. It is not a sending credential. Operators must set their own contact and review these pages against their installation's actual data handling before publishing them.
+
 Public articles use `/read/<encoded repository route>`; the logical root route `/` uses `/read`. This namespace permits repository routes such as `/admin` without shadowing application pages. A public root `index.md` also renders its body and folder gallery on the home page alongside the article stream. Application pages are `/`, `/tags`, `/archive`, `/search`, and `/admin`; `/rss.xml` and `/sitemap.xml` are presentation resources over public Spring APIs.
 
 Public and editor preview share one restricted Markdown component. Raw HTML is discarded. Links use allowed schemes or Spring-resolved routes. Images render only from Spring-provided same-origin asset mappings; authored external or unresolved image URLs never become browser requests. Private image entrances are accepted only in authenticated preview components. Spring parses the editor's full source and returns the preview body, link mappings, image mappings, and gallery.

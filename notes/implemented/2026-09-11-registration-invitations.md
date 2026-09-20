@@ -2,6 +2,11 @@
 
 Date: 2026-09-11
 
+[Consumer identity](2026-09-20-consumer-identity-and-site-policy.md)
+replaces registration invitations with verified email and Google identities.
+The workspace invitation boundary described here remains independent; retired
+registration endpoints do not define the current account interface.
+
 ## Decision
 
 Registration invitations create account identities without adding workspace membership. The browser provides login and registration, while joining a space is a signed-in account-management action. [Multi-user spaces and discovery](2026-09-11-multiuser-workspaces-and-discovery.md) still owns workspace creation and explicit multi-workspace selection; [operator administrator setup](2026-09-11-operator-administrator-setup.md) owns installation.

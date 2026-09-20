@@ -39,6 +39,7 @@ async function fixture(t: TestContext) {
   const member = {
     accountId: "member",
     loginName: "fixture-member",
+    displayName: "fixture-member",
     role: "MEMBER",
     active: true,
     permissions: ["READ_PRIVATE", "WRITE_PRIVATE"],
@@ -52,6 +53,8 @@ async function fixture(t: TestContext) {
   let rejectWrite = false;
   globalThis.fetch = async (input, options) => {
     const path = new URL(String(input), "http://localhost").pathname;
+    if (path === "/api/auth/identity/policy")
+      return Response.json({ emailAvailable: false });
     const method = options?.method ?? "GET";
     if (path === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
@@ -318,9 +321,10 @@ test("Admin logout completing while member confirmation is open cancels the unmo
         account: {
           accountId: "owner",
           loginName: "owner",
+          displayName: "owner",
           siteAdministrator: true,
+          group: "ADMINISTRATOR" as const,
         },
-        mayIssueRegistrationInvitations: true,
       });
     if (path === "/api/auth/workspaces/11111111-1111-4111-8111-111111111111/me")
       return Response.json({

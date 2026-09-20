@@ -3,13 +3,12 @@ package io.github.core607.poketto.workspace.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
@@ -54,7 +53,7 @@ class SpaceCreationIntegrationIT {
     private DataSourceTransactionManager transactions;
     private AuthService auth;
     private AuthPrincipal actor;
-    private RegistrationService accounts;
+    private Accounts accounts;
     private JdbcWorkspaceCatalog catalog;
     private RepositoryFixture remote;
     private InitializationFixture initialization;
@@ -72,15 +71,10 @@ class SpaceCreationIntegrationIT {
         var encoder = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8", Map.of("pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
         auth = new AuthService(jdbc, transactions, encoder, event -> {}, Clock.fixed(now, ZoneOffset.UTC));
-        accounts = new RegistrationService(
-                jdbc,
-                transactions,
-                auth,
-                RegistrationInvitationPolicy.configured(false),
-                Clock.fixed(now, ZoneOffset.UTC));
+        accounts = new Accounts(jdbc, transactions);
         UUID id = UUID.randomUUID();
         jdbc.update(
-                "insert into auth_accounts(account_id,login_name,password_hash) values (?,'creator',?)",
+                "insert into auth_accounts(account_id,login_name,password_hash,site_group) values (?,'creator',?,'CREATOR')",
                 id,
                 encoder.encode("fixture-password-123"));
         actor = auth.authenticatePassword("creator", "fixture-password-123");
@@ -206,6 +200,31 @@ class SpaceCreationIntegrationIT {
     private SpaceCreationService service(Instant at) {
         return new SpaceCreationService(
                 jdbc, transactions, accounts, auth, catalog, remote, initialization, Clock.fixed(at, ZoneOffset.UTC));
+    }
+
+    @Test
+    void losingCreatorEligibilityDuringRemoteVerificationCannotCommitANewSpace() throws Exception {
+        remote.entered = new CountDownLatch(1);
+        remote.release = new CountDownLatch(1);
+        var service = service(now);
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            var creation = pool.submit(() -> create(service, UUID.randomUUID(), "restricted-space", "first"));
+            assertThat(remote.entered.await(5, TimeUnit.SECONDS)).isTrue();
+            jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", actor.accountId());
+            remote.release.countDown();
+            assertThat(creation.get(10, TimeUnit.SECONDS).stage()).isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject("select count(*) from workspaces where not is_default", Integer.class))
+                    .isZero();
+            assertThat(jdbc.queryForObject(
+                            "select count(*) from auth_memberships where account_id=?",
+                            Integer.class,
+                            actor.accountId()))
+                    .isZero();
+            assertThatThrownBy(() -> create(service, UUID.randomUUID(), "another-space", "second"))
+                    .isInstanceOf(AuthException.class);
+        } finally {
+            remote.release.countDown();
+        }
     }
 
     @Test

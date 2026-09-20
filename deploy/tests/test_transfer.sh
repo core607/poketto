@@ -135,12 +135,43 @@ run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --fr
 assert_status 0
 assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "sudo -n /usr/local/sbin/poketto-update-existing --root '/srv/existing'"
 [ ! -e "$FAKE_STATE/sync.log" ]
-for incompatible in --sync --set-stdin; do
+for incompatible in --sync; do
     rm -f "$FAKE_STATE/ssh.log"
     run_transfer --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing "$incompatible"
     assert_status 1
     [ ! -e "$FAKE_STATE/ssh.log" ]
 done
+
+# Identity values reach only the privileged updater's stdin in both delivery modes.
+for mode in transfer pull; do
+    rm -f "$FAKE_STATE/deploy-calls" "$FAKE_STATE/ssh.log" "$FAKE_STATE/docker.log"
+    extra=()
+    [ "$mode" != pull ] || extra+=(--pull)
+    set +e
+    OUT="$(printf '%s\n' 'POKETTO_RESEND_API_KEY=identity-$literal' 'POKETTO_EMAIL_FROM=Example <noreply@example.test>' \
+        | bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --set-stdin "${extra[@]}" 2> "$PWD/stderr")"
+    STATUS=$?
+    set -e
+    ERR="$(cat "$PWD/stderr")"
+    assert_status 0
+    assert_contains "$(cat "$FAKE_STATE/deploy-calls")" '--set-stdin'
+    assert_contains "$(cat "$FAKE_STATE/deploy-stdin")" 'POKETTO_RESEND_API_KEY=identity-$literal'
+    assert_not_contains "$(ssh_log)$(docker_log)$OUT$ERR" 'identity-$literal'
+done
+
+# Archive delivery refuses unused registry credentials before touching either host.
+rm -f "$FAKE_STATE/docker.log" "$FAKE_STATE/ssh.log"
+set +e
+OUT="$(printf '%s\n' 'REGISTRY_USERNAME=synthetic' 'REGISTRY_PASSWORD=unused-token' \
+    | bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 1
+assert_contains "$ERR" 'require --pull for registry credentials'
+assert_not_contains "$OUT$ERR" 'unused-token'
+[ ! -e "$FAKE_STATE/docker.log" ]
+[ ! -e "$FAKE_STATE/ssh.log" ]
 
 # Existing registry delivery executes the actual pull helper before invoking the updater.
 rm -f "$FAKE_STATE/docker.log" "$FAKE_STATE/deploy-calls" "$FAKE_STATE/ssh.log"

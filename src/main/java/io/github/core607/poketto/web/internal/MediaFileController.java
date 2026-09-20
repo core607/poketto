@@ -64,7 +64,7 @@ class MediaFileController {
         send(media.publicDownload(WorkspaceId.parse(workspace), commit, route, path), response);
     }
 
-    private static void send(MediaFileService.Download download, HttpServletResponse response) {
+    static void send(MediaFileService.Download download, HttpServletResponse response) {
         download.writeTo(new DeferredDownload(response, () -> {
             response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
             response.setHeader(

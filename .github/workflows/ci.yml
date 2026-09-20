@@ -437,6 +437,11 @@ jobs:
   # behind one another; an in-progress deployment is never cancelled. The content-repository
   # credential travels to the host's .env over the entrance's standard input, never as an
   # argument.
+  # GitHub is authoritative for the six identity settings in both deployment layouts. Configure
+  # their secrets/variables before enabling this job: empty values clear the provider/contact,
+  # and an unset daily limit becomes 100. Host-only identity settings apply to manual deployment.
+  # Existing installations must install the identity-capable privileged updater before enabling
+  # this delivery version; transfer never replaces an operator's privileged executable.
   deploy:
     needs: [publish, mirror]
     if: ${{ !cancelled() && needs.publish.result == 'success' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
@@ -527,10 +532,22 @@ jobs:
           MIRROR_USERNAME: ${{ vars.POKETTO_MIRROR_USERNAME }}
           MIRROR_PULL_PASSWORD: ${{ secrets.POKETTO_MIRROR_PULL_PASSWORD }}
           REVISION: ${{ github.sha }}
+          POKETTO_RESEND_API_KEY: ${{ secrets.POKETTO_RESEND_API_KEY }}
+          POKETTO_EMAIL_FROM: ${{ vars.POKETTO_EMAIL_FROM }}
+          POKETTO_SUPPORT_EMAIL: ${{ vars.POKETTO_SUPPORT_EMAIL }}
+          POKETTO_EMAIL_DAILY_LIMIT: ${{ vars.POKETTO_EMAIL_DAILY_LIMIT }}
+          POKETTO_GOOGLE_CLIENT_ID: ${{ secrets.POKETTO_GOOGLE_CLIENT_ID }}
+          POKETTO_GOOGLE_CLIENT_SECRET: ${{ secrets.POKETTO_GOOGLE_CLIENT_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
+          settings=""
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            [ -n "${!key}" ] || printf 'Clearing identity setting: %s\n' "$key"
+            settings+=$'\n'"$key=${!key}"
+          done
+          settings+=$'\n'"POKETTO_EMAIL_DAILY_LIMIT=${POKETTO_EMAIL_DAILY_LIMIT:-100}"
           args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing)
           # Pull mode reaches the canonical registry from the host and needs no archive; mirror mode
@@ -538,12 +555,12 @@ jobs:
           # hosts that cannot reach either registry.
           case "${DEPLOY_MODE:-pull}" in
             mirror)
-              printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
+              printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
                 | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin ;;
             transfer)
-              bash deploy/transfer.sh "${args[@]}" ;;
+              printf '%s\n' "$settings" | bash deploy/transfer.sh "${args[@]}" --set-stdin ;;
             *)
-              printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
+              printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
                 | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin ;;
           esac
 
@@ -559,12 +576,23 @@ jobs:
           MIRROR_PULL_PASSWORD: ${{ secrets.POKETTO_MIRROR_PULL_PASSWORD }}
           REVISION: ${{ github.sha }}
           REPOSITORY_PASSWORD: ${{ secrets.POKETTO_REPOSITORY_PASSWORD }}
+          POKETTO_RESEND_API_KEY: ${{ secrets.POKETTO_RESEND_API_KEY }}
+          POKETTO_EMAIL_FROM: ${{ vars.POKETTO_EMAIL_FROM }}
+          POKETTO_SUPPORT_EMAIL: ${{ vars.POKETTO_SUPPORT_EMAIL }}
+          POKETTO_EMAIL_DAILY_LIMIT: ${{ vars.POKETTO_EMAIL_DAILY_LIMIT }}
+          POKETTO_GOOGLE_CLIENT_ID: ${{ secrets.POKETTO_GOOGLE_CLIENT_ID }}
+          POKETTO_GOOGLE_CLIENT_SECRET: ${{ secrets.POKETTO_GOOGLE_CLIENT_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            [ -n "${!key}" ] || printf 'Clearing identity setting: %s\n' "$key"
+            settings+=$'\n'"$key=${!key}"
+          done
+          settings+=$'\n'"POKETTO_EMAIL_DAILY_LIMIT=${POKETTO_EMAIL_DAILY_LIMIT:-100}"
           args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin)
           if [ "${DEPLOY_MODE:-pull}" = transfer ]; then

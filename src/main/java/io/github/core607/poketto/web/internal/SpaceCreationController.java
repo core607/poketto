@@ -5,7 +5,6 @@ import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -32,9 +31,11 @@ class SpaceCreationController {
     }
 
     @GetMapping("/creation-policy")
-    Map<String, Boolean> policy(@AuthenticationPrincipal AuthPrincipal actor) {
-        return Map.of("available", creation.available(actor));
+    CreationPolicy policy(@AuthenticationPrincipal AuthPrincipal actor) {
+        return new CreationPolicy(creation.available(actor), creation.eligible(actor));
     }
+
+    record CreationPolicy(boolean available, boolean eligible) {}
 
     @PostMapping("/creations")
     SpaceCreationService.Result create(

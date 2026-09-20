@@ -412,7 +412,7 @@ public final class OAuthService {
         }
         try {
             auth.authorize(
-                    new AuthPrincipal(AuthPrincipal.Kind.API_KEY, grant.key(), grant.account()), grant.workspace());
+                    new AuthPrincipal(AuthPrincipal.Kind.API_KEY, grant.key(), grant.account(), 0), grant.workspace());
         } catch (AuthException rejected) {
             throw failure("invalid_grant");
         }

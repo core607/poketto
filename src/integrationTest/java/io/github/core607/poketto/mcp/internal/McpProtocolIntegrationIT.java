@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -128,9 +128,6 @@ class McpProtocolIntegrationIT {
     AuthService auth;
 
     @Autowired
-    RegistrationService registration;
-
-    @Autowired
     WorkspaceRegistry registry;
 
     @Autowired
@@ -169,10 +166,8 @@ class McpProtocolIntegrationIT {
         String first = initialize(key.token());
         String second = initialize(key.token());
         assertMemberScopeRevocation(owner, workspace);
-        var separateOwner = registration.register(
-                registration.issue(owner).token(),
-                "separate-mcp-owner",
-                UUID.randomUUID().toString());
+        var separateOwner = AccountFixtures.create(
+                auth, "separate-mcp-owner", UUID.randomUUID().toString());
         var separateSpace = WorkspaceId.random();
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             registry.create(separateSpace, "Separate connector space", "separate-connector");
@@ -318,10 +313,8 @@ class McpProtocolIntegrationIT {
 
     private void assertRawUploadLeavesPageBudget(URI target, AuthPrincipal owner, WorkspaceId workspace)
             throws Exception {
-        var member = registration.register(
-                registration.issue(owner).token(),
-                "concurrent-uploader",
-                UUID.randomUUID().toString());
+        var member = AccountFixtures.create(
+                auth, "concurrent-uploader", UUID.randomUUID().toString());
         auth.acceptInvitation(
                 member,
                 auth.createInvitation(owner, workspace, Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE))
@@ -380,10 +373,8 @@ class McpProtocolIntegrationIT {
     }
 
     private void assertMemberScopeRevocation(AuthPrincipal owner, WorkspaceId workspace) throws Exception {
-        var member = registration.register(
-                registration.issue(owner).token(),
-                "scoped-mcp-member",
-                UUID.randomUUID().toString());
+        var member = AccountFixtures.create(
+                auth, "scoped-mcp-member", UUID.randomUUID().toString());
         auth.acceptInvitation(
                 member,
                 auth.createInvitation(owner, workspace, Set.of(Capability.READ_PRIVATE))

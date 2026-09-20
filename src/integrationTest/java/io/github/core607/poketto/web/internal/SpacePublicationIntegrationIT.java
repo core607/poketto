@@ -11,11 +11,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
-import io.github.core607.poketto.auth.RegistrationService;
+import io.github.core607.poketto.auth.SiteGroup;
+import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.internal.PublicationRepositories;
@@ -136,7 +138,7 @@ class SpacePublicationIntegrationIT {
     AuthService auth;
 
     @Autowired
-    RegistrationService registration;
+    SitePolicyService policies;
 
     @Autowired
     WorkspaceCatalog catalog;
@@ -197,10 +199,73 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get(publicImage())).andExpect(status().isOk());
         mvc.perform(get(publication(workspace))).andExpect(status().isUnauthorized());
         verifyAuthorNames(owner, workspace, ownerSession);
+        verifyPolicyWithdrawal(owner, workspace, ownerSession);
+    }
+
+    private void verifyPolicyWithdrawal(AuthPrincipal owner, WorkspaceId workspace, MockHttpSession ownerSession)
+            throws Exception {
+        String password = UUID.randomUUID().toString();
+        AuthPrincipal moderator = AccountFixtures.create(auth, "moderator", password);
+        policies.change(owner, moderator.accountId(), SiteGroup.ADMINISTRATOR, "Add moderator");
+        MockHttpSession session = login("moderator", password);
+        String image = publicImage();
+        String endpoint = "/api/auth/site/accounts/" + owner.accountId() + "/group";
+        mvc.perform(put(endpoint)
+                        .session(session)
+                        .contentType("application/json")
+                        .content("{\"group\":\"VIEWER\",\"reason\":\"Public content needs revision\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(csrf(session, put(endpoint))
+                        .contentType("application/json")
+                        .content("{\"group\":\"VIEWER\",\"reason\":\"Public content needs revision\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(publication(workspace)).session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.eligible").value(false))
+                .andExpect(jsonPath("$.effectiveEnabled").value(false));
+        mvc.perform(get(image)).andExpect(status().isServiceUnavailable());
+        for (String path : List.of(
+                "/api/public/spaces/home",
+                "/api/public/spaces/home/documents",
+                "/api/public/spaces/home/document?route=/note",
+                "/api/public/spaces/home/sitemap")) {
+            mvc.perform(get(path).session(ownerSession)).andExpect(status().isNotFound());
+        }
+        mvc.perform(get("/api/public/discovery"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        mvc.perform(get("/api/public/search").param("query", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+        String privateFile = "/api/admin/workspaces/" + workspace + "/repository/file?path=private/secret.md";
+        mvc.perform(get(privateFile).session(ownerSession)).andExpect(status().isOk());
+        mvc.perform(get(privateFile).session(session)).andExpect(status().isForbidden());
+        mvc.perform(get(publication(workspace) + "/restrictions").session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].reason").value("Public content needs revision"));
+        mvc.perform(get(publication(workspace) + "/restrictions").session(session))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/auth/site/accounts/" + owner.accountId() + "/workspaces")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get("/api/auth/site/accounts").session(ownerSession)).andExpect(status().isForbidden());
+        new ModerationAssertions(mvc, json, auth, policies)
+                .verify(moderator, session, ownerSession, workspace, directory.resolve("remote.git-seed"), snapshots);
+        mvc.perform(csrf(session, put(endpoint))
+                        .contentType("application/json")
+                        .content("{\"group\":\"CREATOR\",\"reason\":\"Revision accepted\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/public/spaces/home")).andExpect(status().isOk());
+        mvc.perform(get("/api/auth/site/accounts/" + owner.accountId() + "/group-history")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2));
     }
 
     private void verifyMember(AuthPrincipal owner, WorkspaceId workspace, String password) throws Exception {
-        AuthPrincipal member = registration.register(registration.issue(owner).token(), "reader", password);
+        AuthPrincipal member = AccountFixtures.create(auth, "reader", password);
         auth.acceptInvitation(
                 member,
                 auth.createInvitation(owner, workspace, Set.of(Capability.PUBLISH))

@@ -60,7 +60,7 @@ public final class AuthService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
-    private final String dummyPasswordHash;
+    private final AccountPasswords accountPasswords;
     private final WorkspaceInvitations invitations;
     private final ApiKeys keys;
 
@@ -75,7 +75,7 @@ public final class AuthService {
         this.passwords = passwords;
         this.events = events;
         this.clock = clock;
-        this.dummyPasswordHash = passwords.encode(randomToken("dummy_"));
+        this.accountPasswords = new AccountPasswords(this, jdbc, passwords);
         this.invitations = new WorkspaceInvitations(this, jdbc, transactions, clock);
         this.keys = new ApiKeys(this, jdbc, transactions);
     }
@@ -103,39 +103,8 @@ public final class AuthService {
         });
     }
 
-    /** Uniform credential rejection includes missing accounts; the HTTP caller must also throttle attempts. */
     public AuthPrincipal authenticatePassword(String login, String password) {
-        if (password == null || password.length() > 256) {
-            AuditRecords.refused("password.authentication", INVALID_CREDENTIALS.name());
-            throw failure(INVALID_CREDENTIALS);
-        }
-        String normalized;
-        try {
-            normalized = loginName(login);
-        } catch (AuthException exception) {
-            normalized = "";
-        }
-        List<AccountCredential> accounts = jdbc.query(
-                "select account_id, password_hash from auth_accounts where login_name = ?",
-                (rs, row) -> new AccountCredential(rs.getObject(1, UUID.class), rs.getString(2)),
-                normalized);
-        String encoded =
-                accounts.isEmpty() ? dummyPasswordHash : accounts.getFirst().hash();
-        if (!passwords.matches(password, encoded) || accounts.isEmpty()) {
-            AuditRecords.refused("password.authentication", INVALID_CREDENTIALS.name());
-            throw failure(INVALID_CREDENTIALS);
-        }
-        AccountCredential account = accounts.getFirst();
-        if (passwords.upgradeEncoding(encoded)) {
-            jdbc.update(
-                    "update auth_accounts set password_hash = ? where account_id = ? and password_hash = ?",
-                    passwords.encode(password),
-                    account.id(),
-                    encoded);
-        }
-        AuthPrincipal principal = accountPrincipal(account.id());
-        AuditRecords.authenticated("password.authentication", principal);
-        return principal;
+        return accountPasswords.authenticate(login, password);
     }
 
     public AuthPrincipal authenticateApiKey(String token) {
@@ -150,7 +119,7 @@ public final class AuthService {
                 and not exists (select 1 from oauth_connections c where c.key_id=k.key_id and (c.expires_at<=? or c.resource<>?))
                 """,
                 (rs, row) -> new AuthPrincipal(
-                        AuthPrincipal.Kind.API_KEY, rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)),
+                        AuthPrincipal.Kind.API_KEY, rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), 0),
                 digestCredential(token),
                 digestCredential(token),
                 timestamp(),
@@ -168,6 +137,9 @@ public final class AuthService {
     public WorkspaceAccess authorize(AuthPrincipal principal, WorkspaceId workspace, Capability... required) {
         if (principal == null || workspace == null) {
             throw failure(DENIED);
+        }
+        if (principal.kind() == AuthPrincipal.Kind.ACCOUNT) {
+            validateAccount(principal);
         }
         List<Membership> memberships = jdbc.query(
                 "select role, permissions from auth_memberships where workspace_id = ? and account_id = ? and suspended_at is null",
@@ -260,6 +232,7 @@ public final class AuthService {
         if (principal == null || principal.kind() != AuthPrincipal.Kind.ACCOUNT) {
             throw failure(DENIED);
         }
+        validateAccount(principal);
         validatePage(offset, limit);
         long total = jdbc.queryForObject(
                 "select count(*) from auth_memberships where account_id=? and suspended_at is null",
@@ -293,6 +266,7 @@ public final class AuthService {
             throw failure(DENIED);
         }
         lockWorkspace(workspace);
+        validateAccount(actor);
         if (!jdbc.queryForObject(
                         "select exists(select 1 from auth_accounts where account_id=?)",
                         Boolean.class,
@@ -477,11 +451,12 @@ public final class AuthService {
         UUID account = UUID.randomUUID();
         try {
             jdbc.update(
-                    "insert into auth_accounts (account_id, login_name, password_hash, instance_admin) values (?, ?, ?, ?)",
+                    "insert into auth_accounts (account_id, login_name, password_hash, site_group, display_name) values (?, ?, ?, ?, ?)",
                     account,
                     login,
                     encoded,
-                    administrator);
+                    administrator ? SiteGroup.ADMINISTRATOR.name() : SiteGroup.VIEWER.name(),
+                    login);
         } catch (DataIntegrityViolationException exception) {
             throw failure(INVALID_INPUT);
         }
@@ -543,10 +518,12 @@ public final class AuthService {
     }
 
     static AuthPrincipal accountPrincipal(UUID account) {
-        return new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, account, account);
+        return new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, account, account, 0);
     }
 
-    private record AccountCredential(UUID id, String hash) {}
+    public void validateAccount(AuthPrincipal actor) {
+        accountPasswords.validate(actor);
+    }
 
     static void validatePage(int offset, int limit) {
         if (offset < 0 || limit < 1 || limit > 100) {

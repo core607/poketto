@@ -78,7 +78,12 @@ export type TagPage = Snapshot & {
 };
 export type PublicPage = {
   state:
-    "UNSAVED" | "PRIVATE" | "WEBSITE_DISABLED" | "UNAVAILABLE" | "AVAILABLE";
+    | "UNSAVED"
+    | "PRIVATE"
+    | "WEBSITE_DISABLED"
+    | "WEBSITE_RESTRICTED"
+    | "UNAVAILABLE"
+    | "AVAILABLE";
   space: string | null;
   route: string | null;
 };

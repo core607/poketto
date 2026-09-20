@@ -65,13 +65,28 @@ export async function api<T>(
       typeof problem?.code === "string" && problem.code.length <= 80
         ? problem.code
         : undefined;
+    if (code === "LAST_ADMINISTRATOR")
+      throw new ApiError(
+        409,
+        "至少需要保留一位站点管理员。请先指定其他管理员。",
+        code,
+      );
+    const identityErrors: Record<string, string> = {
+      INVALID_CHALLENGE:
+        "验证码无效、已过期或已使用。请检查邮箱与验证码，必要时重新获取。",
+      EMAIL_IN_USE: "该邮箱已绑定账号。请登录原账号，或使用其他邮箱。",
+      IDENTITY_IN_USE:
+        "该 Google 身份已绑定其他账号，或当前账号已绑定另一 Google 身份。请先核对登录方式。",
+      DELIVERY_UNAVAILABLE: "验证码暂时无法发送，请稍后重试。",
+      LAST_LOGIN_METHOD: "至少需要保留一种登录方式。请先绑定其他登录方式。",
+    };
+    if (code && identityErrors[code])
+      throw new ApiError(response.status, identityErrors[code], code);
     if (response.status === 400) {
       if (problem?.code === "INVALID_INVITATION")
         throw new ApiError(
           400,
-          path === "/api/auth/register"
-            ? "注册邀请码无效、已过期或已使用。请向邀请人获取新的注册邀请码；加入空间的邀请码不能用于注册。"
-            : "空间邀请码无效、已过期或已使用。请向空间主人获取新的空间邀请码。",
+          "空间邀请码无效、已过期或已使用。请向空间主人获取新的空间邀请码。",
         );
       if (problem?.code === "MOVE_UNPUBLISHABLE_DEPENDENCY")
         throw new ApiError(

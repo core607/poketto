@@ -41,8 +41,13 @@ export function EditorPublicPage({
     <div className="editor-public-state" aria-label="公开页面状态">
       <span>{file.publicScope ? "公开范围" : "私有内容"}</span>
       {page.state === "WEBSITE_DISABLED" && <span>网站未开启</span>}
+      {page.state === "WEBSITE_RESTRICTED" && (
+        <span>公开展示已受限，仍可编辑整改。</span>
+      )}
       {page.state === "UNAVAILABLE" && <span>公开页面暂不可用</span>}
-      {(page.state === "UNAVAILABLE" || page.state === "WEBSITE_DISABLED") && (
+      {(page.state === "UNAVAILABLE" ||
+        page.state === "WEBSITE_DISABLED" ||
+        page.state === "WEBSITE_RESTRICTED") && (
         <button
           type="button"
           className="text-button"

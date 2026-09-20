@@ -17,6 +17,7 @@ DOCKER="${POKETTO_DOCKER:-docker}"
 SSH="${POKETTO_SSH:-ssh}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="" ROOT="" IMAGE="" FRONTEND_IMAGE="" REVISION="" SYNC=0 SET_STDIN=0 SETTINGS="" PULL=0 EXISTING=0
+REGISTRY_SETTINGS="" IDENTITY_SETTINGS=""
 
 fail() {
     echo "transfer: $*" >&2
@@ -44,15 +45,24 @@ done
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || fail "--revision must be a full lowercase commit id"
 [[ "$ROOT" = /* ]] || fail "--root must be absolute"
 [[ "$ROOT" != *"'"* && "$ROOT" != *$'\n'* && "$ROOT" != *$'\r'* ]] || fail "--root must not contain quotes or line breaks"
-if [ "$EXISTING" = 1 ] && { [ "$SYNC" = 1 ] || { [ "$SET_STDIN" = 1 ] && [ "$PULL" = 0 ]; }; }; then
-    fail "--existing refuses --sync and accepts --set-stdin only with --pull"
+if [ "$EXISTING" = 1 ] && [ "$SYNC" = 1 ]; then
+    fail "--existing refuses --sync"
 fi
 # Settings are read before any other command touches standard input.
 [ "$SET_STDIN" = 1 ] && SETTINGS="$(cat)"
 if [ "$EXISTING" = 1 ]; then
     while IFS= read -r setting; do
-        case "$setting" in ''|REGISTRY_USERNAME=*|REGISTRY_PASSWORD=*) ;; *) fail "existing pulls accept only registry credentials" ;; esac
+        case "$setting" in
+            '') ;;
+            REGISTRY_USERNAME=*|REGISTRY_PASSWORD=*) REGISTRY_SETTINGS+="$setting"$'\n' ;;
+            POKETTO_RESEND_API_KEY=*|POKETTO_EMAIL_FROM=*|POKETTO_EMAIL_DAILY_LIMIT=*|POKETTO_GOOGLE_CLIENT_ID=*|POKETTO_GOOGLE_CLIENT_SECRET=*|POKETTO_SUPPORT_EMAIL=*)
+                IDENTITY_SETTINGS+="$setting"$'\n' ;;
+            *) fail "existing updates accept only registry credentials and identity settings" ;;
+        esac
     done <<< "$SETTINGS"
+    if [ "$PULL" = 0 ] && [ -n "$REGISTRY_SETTINGS" ]; then
+        fail "existing updates require --pull for registry credentials"
+    fi
 fi
 
 remote() {
@@ -126,10 +136,13 @@ if [ "$EXISTING" = 1 ]; then
     if [ "$PULL" = 1 ]; then
         # Only the trusted helper is quoted into the command. Credentials remain on stdin.
         script="$(sed "s/'/'\\\\''/g" "$HERE/pull-existing.sh")"
-        printf '%s\n' "$SETTINGS" | remote "bash -c '$script' -- '$TAG' '$FRONTEND_TAG'" \
+        printf '%s' "$REGISTRY_SETTINGS" | remote "bash -c '$script' -- '$TAG' '$FRONTEND_TAG'" \
             || fail "existing-layout registry pull failed"
     fi
-    remote "sudo -n /usr/local/sbin/poketto-update-existing --root '$ROOT' --app-image '$TAG' --app-revision '$REVISION' --frontend-image '$FRONTEND_TAG'" < /dev/null \
+    identity_arg=""
+    [ -z "$IDENTITY_SETTINGS" ] || identity_arg=" --set-stdin"
+    printf '%s' "$IDENTITY_SETTINGS" \
+        | remote "sudo -n /usr/local/sbin/poketto-update-existing --root '$ROOT' --app-image '$TAG' --app-revision '$REVISION' --frontend-image '$FRONTEND_TAG'$identity_arg" \
         || status=$?
 elif [ "$SET_STDIN" = 1 ]; then
     printf '%s\n' "$SETTINGS" \

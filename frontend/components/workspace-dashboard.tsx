@@ -50,6 +50,7 @@ export function WorkspaceDashboard({
   const confirm = useConfirmation();
   const page = useAdminPage<SpaceSummary>("/api/auth/workspaces");
   const [identity, setIdentity] = useState<Identity | null>(null);
+  const [displayName, setDisplayName] = useState(account.account.displayName);
   const [selected, setSelected] = useState("");
   const [tab, setTab] = useState<Tab>("account");
   const [loading, setLoading] = useState(false);
@@ -261,6 +262,7 @@ export function WorkspaceDashboard({
       {activeTab === "account" && (
         <AccountPanel
           profile={account}
+          onDisplayName={setDisplayName}
           hasWorkspace={page.total > 0}
           workspaceUnavailable={!!page.error}
           onBeforeJoin={discard}
@@ -281,7 +283,7 @@ export function WorkspaceDashboard({
     <div className="admin-shell">
       <header className="admin-heading">
         <div>
-          <p className="eyebrow">{account.account.loginName} · 自己的工作台</p>
+          <p className="eyebrow">{displayName} · 自己的工作台</p>
           <h1>整理，续写。</h1>
         </div>
         <button

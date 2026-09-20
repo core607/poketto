@@ -20,7 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Workspace invitations: issued by a human owner under the workspace lock, stored only as a
  * digest, single-use with an idempotent repeat by the same account, and listed or revoked only by
- * a human owner. Registration invitations are a separate credential owned by RegistrationService.
+ * a human owner. Accepting an invitation requires an existing account.
  */
 final class WorkspaceInvitations {
     private final AuthService auth;
@@ -113,6 +113,7 @@ final class WorkspaceInvitations {
         var admitted = new AtomicBoolean();
         WorkspaceId joined = transactions.execute(status -> {
             Invitation invitation = lockInvitation(token);
+            auth.validateAccount(account);
             requireUsableInvitation(invitation, account.accountId());
             admitted.set(join(invitation, account.accountId()));
             return invitation.workspace();

@@ -7,7 +7,9 @@ import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.assets.ManagedOriginalTransfers;
 import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.assets.ModerationContent;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryBlobReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
@@ -32,6 +34,35 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AssetsConfiguration {
+    @Bean
+    ModerationContent moderationContent(
+            SitePolicyService policies,
+            AuthService auth,
+            RepositoryContentReader content,
+            RepositoryBlobReader blobs,
+            RepositoryMarkdownInspector markdown,
+            PublicContentSnapshots snapshots,
+            MediaFileService files,
+            @Value("${poketto.data-dir}") Path directory,
+            @Value("${poketto.assets.cache-max-bytes:134217728}") long cacheBytes,
+            @Qualifier("managedOriginals") Supplier<ManagedBlobStore> managed,
+            ImageMemoryAdmission memory) {
+        // This isolated registry is reachable only through administrator-checked review endpoints.
+        var reviewAssets = new AssetService(
+                auth,
+                content,
+                blobs,
+                markdown,
+                snapshots,
+                managed,
+                directory.resolve("derived/moderation-images"),
+                cacheBytes,
+                128,
+                Clock.systemUTC(),
+                memory);
+        return new ModerationContent(policies, snapshots, reviewAssets, files);
+    }
+
     @Bean
     PublicImageDownloader publicImageDownloader() {
         return new PublicImageDownloader();

@@ -25,6 +25,45 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
+IDENTITY_SETTINGS = frozenset((
+    "POKETTO_RESEND_API_KEY", "POKETTO_EMAIL_FROM", "POKETTO_EMAIL_DAILY_LIMIT",
+    "POKETTO_GOOGLE_CLIENT_ID", "POKETTO_GOOGLE_CLIENT_SECRET", "POKETTO_SUPPORT_EMAIL",
+))
+
+
+def read_settings(stream):
+    payload = stream.read(65537)
+    if len(payload) > 65536:
+        raise DeploymentError("identity settings exceed the input limit")
+    settings = {}
+    for line in payload.split("\n"):
+        if not line:
+            continue
+        key, separator, value = line.partition("=")
+        if separator != "=" or key not in IDENTITY_SETTINGS or key in settings:
+            raise DeploymentError("only distinct identity settings are accepted")
+        if any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise DeploymentError("identity settings must be single-line values")
+        settings[key] = value
+    return settings
+
+
+def validate_identity(environment):
+    if environment.get("POKETTO_RESEND_API_KEY") and not environment.get("POKETTO_EMAIL_FROM"):
+        raise DeploymentError("Resend requires an email from-address")
+    if bool(environment.get("POKETTO_GOOGLE_CLIENT_ID")) != bool(environment.get("POKETTO_GOOGLE_CLIENT_SECRET")):
+        raise DeploymentError("Google client ID and secret must be configured together")
+    limit = environment.get("POKETTO_EMAIL_DAILY_LIMIT")
+    if limit is not None and (not re.fullmatch(r"[1-9][0-9]{0,5}", str(limit)) or int(limit) > 100000):
+        raise DeploymentError("email daily limit must be between 1 and 100000")
+
+
+def declared_environment(rendered, service):
+    # Compose serializes literal dollars as $$ so its config output can be reused as input.
+    return {key: str(value).replace("$$", "$")
+            for key, value in rendered["services"][service].get("environment", {}).items()}
+
+
 def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=240)
     if result.returncode:
@@ -113,7 +152,7 @@ class Installation:
     def check_declared_environment(self, rendered, containers):
         for service in ("app", "frontend"):
             actual = dict(value.split("=", 1) for value in containers[service]["Config"].get("Env", []))
-            declared = rendered["services"][service].get("environment", {})
+            declared = declared_environment(rendered, service)
             if any(actual.get(key) != str(value) for key, value in declared.items()):
                 raise DeploymentError("declared environment differs from the running installation")
 
@@ -126,7 +165,7 @@ class Installation:
             if container["State"].get("Health", {}).get("Status") != "healthy":
                 raise DeploymentError("updated service is not healthy")
             if digest(runtime_contract(container)) != state["runtimeContracts"][service]:
-                raise DeploymentError("runtime configuration changed beyond the selected images")
+                raise DeploymentError("runtime configuration differs from the approved candidate")
         others = {name: value["Id"] for name, value in current.items() if name not in ("app", "frontend")}
         if others != state["otherContainers"]:
             raise DeploymentError("an unrelated Compose container changed")
@@ -229,21 +268,51 @@ class Installation:
             raise DeploymentError(str(len(unreadable)) + " candidate image(s) could not be inspected and stay known")
         return retired
 
-    def update(self, revision, app_image, frontend_image, check_only=False):
+    def update(self, revision, app_image, frontend_image, check_only=False, settings=None):
+        settings = settings or {}
+        if not settings.keys() <= IDENTITY_SETTINGS:
+            raise DeploymentError("only identity settings can be changed")
         image_refs = {"app": app_image, "frontend": frontend_image}
         image_ids = {name: self.image(reference, revision) for name, reference in image_refs.items()}
         containers = self.containers()
         before = json.loads(self.compose("config", "--format", "json"))
-        self.check_declared_environment(before, containers)
+        state = json.loads(self.state_file.read_text()) if self.state_file.exists() else None
+        # A pending update may have persisted its overlay before replacing the old container.
+        # Reconciliation below requires the original candidate and verifies its saved contracts.
+        if not state or state["status"] != "pending":
+            self.check_declared_environment(before, containers)
         candidate = self.state_dir / "candidate.json"
-        write_json(candidate, {"services": {name: {"image": ref} for name, ref in image_refs.items()}})
+        overrides = {name: {"image": ref} for name, ref in image_refs.items()}
+        changes = {name: {key: value for key, value in settings.items()
+                          if (name == "frontend") == (key == "POKETTO_SUPPORT_EMAIL")} for name in image_refs}
+        retained = json.loads(self.overlay.read_text())["services"] if self.overlay.exists() else {}
+        for name in image_refs:
+            environment = {**retained.get(name, {}).get("environment", {}),
+                           **{key: value.replace("$", "$$") for key, value in changes[name].items()}}
+            if environment:
+                overrides[name]["environment"] = environment
+        write_json(candidate, {"services": overrides})
         rendered = json.loads(self.compose("config", "--format", "json", overlay=candidate))
+        actual_environment = declared_environment(rendered, "app")
+        for name in image_refs:
+            if any(declared_environment(rendered, name).get(key) != value for key, value in changes[name].items()):
+                raise DeploymentError("candidate does not preserve literal identity settings")
+        if settings:
+            validate_identity(actual_environment)
         comparable = json.loads(json.dumps(rendered))
         for name in image_refs:
             comparable["services"][name]["image"] = before["services"][name]["image"]
+        for name in image_refs:
+            previous_environment = before["services"][name].get("environment", {})
+            for key in changes[name]:
+                if key in previous_environment:
+                    comparable["services"][name]["environment"][key] = previous_environment[key]
+                else:
+                    comparable["services"][name]["environment"].pop(key, None)
+            if not comparable["services"][name].get("environment") and "environment" not in before["services"][name]:
+                comparable["services"][name].pop("environment", None)
         if comparable != before:
-            raise DeploymentError("candidate changes more than app/frontend images")
-        state = json.loads(self.state_file.read_text()) if self.state_file.exists() else None
+            raise DeploymentError("candidate changes more than selected images and identity settings")
         # Every image this installation deployed stays on record until it is retired or gone.
         known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
@@ -260,11 +329,16 @@ class Installation:
             removing = state.get("removing", []) if state else []
             if state and state.get("imageIds") == image_ids and state.get("previousImages"):
                 previous = state["previousImages"]
+            contracts = {name: runtime_contract(containers[name]) for name in image_refs}
+            for name in image_refs:
+                expected_environment = dict(value.split("=", 1) for value in contracts[name]["environment"])
+                expected_environment.update(changes[name])
+                contracts[name]["environment"] = sorted(key + "=" + value for key, value in expected_environment.items())
             state = {
                 "status": "pending", "revision": revision, "images": image_refs, "imageIds": image_ids,
                 "configuration": digest(rendered),
                 "previousImages": previous,
-                "runtimeContracts": {name: digest(runtime_contract(containers[name])) for name in image_refs},
+                "runtimeContracts": {name: digest(contract) for name, contract in contracts.items()},
                 "otherContainers": {name: value["Id"] for name, value in containers.items() if name not in image_refs},
                 "removing": removing,
             }
@@ -346,6 +420,7 @@ def main():
     parser.add_argument("--frontend-image", required=True)
     parser.add_argument("--app-revision", required=True)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--set-stdin", action="store_true")
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise DeploymentError("the existing-installation updater requires its configured privileged entrance")
@@ -355,13 +430,14 @@ def main():
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}", image):
             raise DeploymentError("invalid image reference")
     config = load_config(args.root)
+    settings = read_settings(sys.stdin) if args.set_stdin else {}
     installation = Installation(args.root, config)
     with (installation.state_dir / "lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise DeploymentError("another deployment holds the installation lock") from error
-        print(json.dumps(installation.update(args.app_revision, args.app_image, args.frontend_image, args.check)))
+        print(json.dumps(installation.update(args.app_revision, args.app_image, args.frontend_image, args.check, settings)))
 
 
 if __name__ == "__main__":

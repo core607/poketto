@@ -114,17 +114,25 @@ class BrowserSecurityConfiguration {
         http.authenticationProvider(accountAuthenticationProvider)
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
                         "/api/auth/oauth/register", "/api/auth/oauth/token", "/api/auth/oauth/revoke"))
-                .authorizeHttpRequests(
-                        requests -> requests.requestMatchers("/api/auth/csrf", "/api/auth/login", "/api/auth/register")
-                                .permitAll()
-                                .requestMatchers("/api/auth/oauth/**")
-                                .permitAll()
-                                .requestMatchers("/api/public/**")
-                                .permitAll()
-                                .requestMatchers("/api/**")
-                                .authenticated()
-                                .anyRequest()
-                                .permitAll())
+                .authorizeHttpRequests(requests -> requests.requestMatchers("/api/auth/csrf", "/api/auth/login")
+                        .permitAll()
+                        .requestMatchers(
+                                "/api/auth/identity/policy",
+                                "/api/auth/identity/google/start",
+                                "/api/auth/identity/google/callback",
+                                "/api/auth/identity/signup",
+                                "/api/auth/identity/signup/challenge",
+                                "/api/auth/identity/recovery",
+                                "/api/auth/identity/recovery/challenge")
+                        .permitAll()
+                        .requestMatchers("/api/auth/oauth/**")
+                        .permitAll()
+                        .requestMatchers("/api/public/**")
+                        .permitAll()
+                        .requestMatchers("/api/**")
+                        .authenticated()
+                        .anyRequest()
+                        .permitAll())
                 .requestCache(cache -> cache.disable())
                 .sessionManagement(sessions -> sessions.sessionFixation(fixation -> fixation.changeSessionId()))
                 .formLogin(login -> login.loginPage("/login")

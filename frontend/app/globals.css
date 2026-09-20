@@ -1650,6 +1650,15 @@ td select {
   opacity: 0.45;
   cursor: default;
 }
+
+.policy-page section {
+  margin-block: 2rem;
+}
+.policy-page p {
+  margin-block: 1rem;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
 body:has(.image-lightbox[open]) {
   overflow: hidden;
 }

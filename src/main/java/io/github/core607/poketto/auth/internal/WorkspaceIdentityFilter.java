@@ -62,6 +62,7 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                 String path = AuthHttpErrors.path(request);
                 var authentication = SecurityContextHolder.getContext().getAuthentication();
                 if (authentication != null && authentication.getPrincipal() instanceof AuthPrincipal recognised) {
+                    auth.getObject().validateAccount(recognised);
                     RequestCaller.remember(request, recognised);
                 }
                 if (path.startsWith("/api/admin/")) {
@@ -84,12 +85,23 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
             return;
         } catch (AuthException exception) {
             SecurityContextHolder.clearContext();
+            invalidateExpiredSession(request, exception);
             if (bearer) {
                 response.setHeader("WWW-Authenticate", challenge);
             }
-            AuthHttpErrors.write(response, bearer ? 401 : 403);
+            AuthHttpErrors.write(
+                    response, bearer || exception.code() == AuthException.Code.INVALID_CREDENTIALS ? 401 : 403);
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    private void invalidateExpiredSession(HttpServletRequest request, AuthException exception) {
+        if (!bearer && exception.code() == AuthException.Code.INVALID_CREDENTIALS) {
+            var session = request.getSession(false);
+            if (session != null) {
+                session.invalidate();
+            }
+        }
     }
 }

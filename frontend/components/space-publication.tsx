@@ -5,12 +5,16 @@ import { api } from "../lib/browser-api";
 import { message } from "./admin";
 import { useConfirmation } from "./confirmation";
 
+import { PublicationRestrictions } from "./site-review";
+
 type Publication = {
   workspaceId: string;
   slug: string;
   displayName: string;
   publicAuthorName: string;
   enabled: boolean;
+  eligible: boolean;
+  effectiveEnabled: boolean;
 };
 
 export function SpacePublication({ workspaceId }: { workspaceId: string }) {
@@ -146,7 +150,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
       </p>
       {publication && (
         <p>
-          当前状态：<strong>{publication.enabled ? "已开启" : "已关闭"}</strong>
+          网站开关：<strong>{publication.enabled ? "已开启" : "已关闭"}</strong>
         </p>
       )}
       {receipt && (
@@ -161,7 +165,10 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
       )}
       {pending && <p role="status">正在处理网站状态…</p>}
       {publication ? (
-        <button disabled={pending} onClick={() => void change()}>
+        <button
+          disabled={pending || (!publication.enabled && !publication.eligible)}
+          onClick={() => void change()}
+        >
           {publication.enabled ? "关闭公开网站" : "开启公开网站"}
         </button>
       ) : (
@@ -169,7 +176,16 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           重新读取网站状态
         </button>
       )}
-      {publication?.enabled && (
+      {publication && !publication.eligible && (
+        <div className="notice" role="status">
+          <p>
+            公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
+            恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
+          </p>
+          <PublicationRestrictions key={workspaceId} base={base} />
+        </div>
+      )}
+      {publication?.effectiveEnabled && (
         <p>
           <a href={`/s/${encodeURIComponent(publication.slug)}`}>
             查看公开网站 ↗

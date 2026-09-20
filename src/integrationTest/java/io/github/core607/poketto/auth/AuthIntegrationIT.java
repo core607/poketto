@@ -84,7 +84,8 @@ class AuthIntegrationIT {
                         .map(AuthException.class::cast)
                         .map(AuthException::code))
                 .containsExactly(AuthException.Code.ALREADY_INITIALIZED);
-        assertThat(jdbc.queryForObject("select count(*) from auth_accounts where instance_admin", Integer.class))
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from auth_accounts where site_group='ADMINISTRATOR'", Integer.class))
                 .isOne();
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships where role = 'OWNER'", Integer.class))
                 .isOne();
@@ -471,13 +472,7 @@ class AuthIntegrationIT {
     }
 
     private AuthPrincipal account(AuthPrincipal owner, String login) {
-        RegistrationService registration = new RegistrationService(
-                jdbc,
-                transactionManager,
-                auth,
-                RegistrationInvitationPolicy.configured(false),
-                Clock.fixed(now, ZoneOffset.UTC));
-        return registration.register(registration.issue(owner).token(), login, secret());
+        return AccountFixtures.create(auth, login, secret());
     }
 
     private static String secret() {

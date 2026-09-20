@@ -15,7 +15,9 @@ printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
 printf '%s\n' "$1 ${DOCKER_CONFIG:-}" >> "$FAKE_STATE/docker-config.log"
 printf '%s\n' "$1 ${DOCKER_CONTEXT:-}" >> "$FAKE_STATE/docker-context.log"
 if [ "${POKETTO_CAPTURE_ENV:-0}" = 1 ]; then
-    printf '%s' "${POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED:-false}" > "$FAKE_STATE/registration-invitations"
+    for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_EMAIL_DAILY_LIMIT POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET; do
+        printf '%s' "${!key:-}" > "$FAKE_STATE/$key"
+    done
     printf '%s' "${POKETTO_REPOSITORY_REMOTE_URI:-}" > "$FAKE_STATE/repository-uri"
     printf '%s' "${POKETTO_REPOSITORY_PASSWORD:-}" > "$FAKE_STATE/repository-password"
     printf '%s' "${POKETTO_REPOSITORY_CREDENTIAL_KEY:-}" > "$FAKE_STATE/repository-credential-key"
