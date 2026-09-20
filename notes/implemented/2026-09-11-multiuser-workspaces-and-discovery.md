@@ -2,6 +2,11 @@
 
 Date: 2026-09-11
 
+[Consumer identity and site policy](2026-09-20-consumer-identity-and-site-policy.md)
+supersedes invitation-only registration and unrestricted account eligibility to
+connect repositories. New identities start as viewers; creator eligibility and
+all-owner website eligibility supplement this record's workspace boundaries.
+
 ## Problem
 
 The original account registration, workspace membership, and installation shared a browser entrance. Browser and MCP requests resolve the default workspace even though relational identity and storage already carry workspace identifiers. Public navigation treats directory indexes as ordinary articles, emits Markdown fragments as summaries, and loses collection and search context.

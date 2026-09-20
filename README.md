@@ -1,6 +1,6 @@
 # Poketto
 
-**A live, open-source Git-native content workspace with browser and MCP access to the same repository, supporting invitation-based registration and self-hosted deployment.**
+**A live, open-source Git-native content workspace with browser and MCP access to the same repository, supporting verified email registration, Google login and self-hosted deployment.**
 
 Agents use shell, Python and Git in isolated environments; Poketto controls authorization, persistence and publication.
 
@@ -14,6 +14,7 @@ Agents use shell, Python and Git in isolated environments; Poketto controls auth
 - Host-controlled writes: repository credentials stay outside the sandbox. The host handles selected saves, conflict checks and uncertain-result recovery.
 - Separate public and private views: directories express publication state, publishing requires permission, and public readers receive an independent projection without private files or original history.
 - Separate text and originals: Git records media paths and versions; independent storage holds immutable originals, referenced through relative paths.
+- Account groups control participation and public visibility. Withdrawing an author's websites preserves their existing editing and MCP permissions so they can correct the content.
 
 ## Direction
 
@@ -21,7 +22,7 @@ Build on multi-user content spaces toward SaaS hosting and agent content communi
 
 ## Get started
 
-- Website: [poketto.top](https://poketto.top). Authoring and agent access require an account and space authorization; registration is invitation-based.
+- Website: [poketto.top](https://poketto.top). Register by verified email or sign in with Google when configured. New accounts are viewers; creating a space requires creator eligibility, and authoring and agent access require space authorization.
 - MCP: `https://poketto.top/mcp`. Connect from an OAuth-capable MCP client, select a space and grant permissions.
 - Usage and self-hosting: [setup, connections and command reference](docs/usage.md).
 

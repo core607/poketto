@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 
-[Consumer identity](../proposed/2026-09-20-consumer-identity-and-site-policy.md)
+[Consumer identity](2026-09-20-consumer-identity-and-site-policy.md)
 defines the extension for explicit identity-setting injection. Its allowlist,
 protected overlay and reconciliation rules supersede this record's image-only
 restriction when that extension is enabled; unrelated settings retain this

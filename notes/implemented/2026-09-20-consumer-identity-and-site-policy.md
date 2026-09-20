@@ -1,21 +1,21 @@
 # Consumer Identity and Site Policy
 
 Date: 2026-09-20
-Status: Proposed
+Status: Implemented
 
 ## Problem
 
 [Multi-user spaces](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md)
-require a registration invitation but let every account connect a repository. This
-does not support open reader registration followed by an operator's decision to
+required a registration invitation but let every account connect a repository. This
+did not support open reader registration followed by an operator's decision to
 permit community participation or personal-space creation. Removing an author's
 publication eligibility must withdraw their websites without taking away the
 workspace access needed to correct their content.
 
 ## Accounts and login
 
-Replace registration invitations with verified email registration and Google
-OpenID Connect login. Workspace invitations remain separate and keep their current
+Verified email registration and Google login replace registration invitations.
+Google authenticates through OpenID Connect. Workspace invitations remain separate and keep their current
 membership semantics. An email registration supplies a verified email, password
 and display name; it does not require another login name. Existing account IDs,
 passwords, login names, memberships and content remain intact. Existing accounts
@@ -149,7 +149,9 @@ real mail delivery and Google login require separate live verification.
 
 The existing-installation updater accepts only `POKETTO_RESEND_API_KEY`,
 `POKETTO_EMAIL_FROM`, `POKETTO_EMAIL_DAILY_LIMIT`, `POKETTO_GOOGLE_CLIENT_ID` and
-`POKETTO_GOOGLE_CLIENT_SECRET` through `--set-stdin`. This extends the image-only
+`POKETTO_GOOGLE_CLIENT_SECRET` through `--set-stdin`. `POKETTO_SUPPORT_EMAIL`
+configures the frontend's public contact independently of backend credentials.
+This extends the image-only
 boundary of [existing-installation delivery](../implemented/2026-09-08-existing-installation-delivery.md)
 without admitting repository credentials or other runtime changes. Registry
 credentials reach only the pull helper. Install the current privileged updater
@@ -160,11 +162,16 @@ literal dollar signs escaped for Compose. Omitted values retain their effective
 settings; explicit empty values disable the corresponding provider, with both
 Google fields cleared together. Validate the combined configuration before
 restarting, and adjust runtime fingerprints only for supplied identity keys.
-Operator Compose and environment files, frontend environment, resources, mounts
+Operator Compose and environment files, other frontend settings, resources, mounts
 and dependency containers remain unchanged. The overlay is mode 0600; deployment
 state and command output contain fingerprints, not the credentials. A pending
 attempt accepts only the same images and candidate configuration, including the
 identity values. There is no automatic rollback.
+
+Public `/privacy` and `/terms` pages describe account data, basic Google identity,
+Resend delivery, workspace visibility, moderation, and content retention. The
+footer and login form link to both. The public contact is frontend runtime
+configuration so installations do not inherit another operator's email address.
 
 Update the English and Chinese README only where shipped capabilities or existing
 descriptions change. README is a product overview, not a progress or verification
@@ -208,8 +215,9 @@ necessary inspection without that authority.
 ## Same-topic decisions
 
 [Multi-user spaces](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md)
-remains authoritative until implementation, when its invitation-only registration
-and unrestricted account creation eligibility are superseded by this record.
+retains its workspace boundaries. This record supersedes its invitation-only
+registration and unrestricted account eligibility to create spaces, and the
+retired [registration invitation interface](../implemented/2026-09-11-registration-invitations.md).
 [Member permissions](../implemented/2026-09-12-member-content-permissions.md) and
 [MCP OAuth](../implemented/2026-09-11-mcp-oauth.md) retain their workspace boundaries.
 [Website delivery](../implemented/2026-09-14-workspace-public-delivery.md) gains the
