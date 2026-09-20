@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Instant;
 import java.util.Optional;
@@ -11,7 +12,11 @@ public interface RepositoryConnections {
     /** Owner-facing binding metadata only; never decrypts or returns provider credentials. */
     Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace);
 
-    record ConnectionInfo(String repository, Instant updatedAt) {}
+    /** The credential classification is server-only; HTTP exposes the derived rotation eligibility. */
+    record ConnectionInfo(
+            String repository,
+            Instant updatedAt,
+            @JsonIgnore boolean tokenBased) {}
 
     byte[] seal(WorkspaceId workspace, RepositoryCoordinates coordinates, String username, String token);
 

@@ -96,8 +96,11 @@ final class JGitRepositoryWrites {
         Objects.requireNonNull(checkpoint, "repository write checkpoint is required");
         var write = new Write(principal, workspace, baseCommit, recovery, checkpoint, preparer);
         try {
-            return auth.withAuthorization(
-                    principal, workspace, capabilities, () -> authority.writeObjects(workspace, write::run));
+            auth.authorize(principal, workspace, capabilities.toArray(Capability[]::new));
+            return authority.withPreparedCredentials(
+                    workspace,
+                    () -> auth.withAuthorization(
+                            principal, workspace, capabilities, () -> authority.writeObjects(workspace, write::run)));
         } catch (RuntimeException exception) {
             throw write.outcome(exception);
         }

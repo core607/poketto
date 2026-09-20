@@ -75,7 +75,12 @@ public final class SpaceCreationService {
         accounts.account(actor);
         return auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
             Optional<RepositoryConnections.ConnectionInfo> binding = repositories.connectionInfo(workspace);
-            return new ConnectionInfo(binding.isPresent(), repositories.available(), binding.orElse(null));
+            return new ConnectionInfo(
+                    binding.isPresent(),
+                    repositories.available()
+                            && binding.map(RepositoryConnections.ConnectionInfo::tokenBased)
+                                    .orElse(false),
+                    binding.orElse(null));
         });
     }
 

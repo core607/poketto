@@ -6,6 +6,7 @@ import static io.github.core607.poketto.content.RepositoryConnectionException.Co
 import static io.github.core607.poketto.content.RepositoryConnectionException.Code.REPOSITORY_CHANGED;
 import static io.github.core607.poketto.content.RepositoryConnectionException.Code.UNAVAILABLE;
 
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
@@ -48,9 +49,9 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
     public Optional<ConnectionInfo> connectionInfo(WorkspaceId workspace) {
         return jdbc
                 .query(
-                        "select canonical_uri,updated_at from content_repository_bindings where workspace_id=?",
+                        "select canonical_uri,updated_at,credential_kind='TOKEN' from content_repository_bindings where workspace_id=?",
                         (row, number) -> new ConnectionInfo(
-                                row.getString(1), row.getTimestamp(2).toInstant()),
+                                row.getString(1), row.getTimestamp(2).toInstant(), row.getBoolean(3)),
                         workspace.value())
                 .stream()
                 .findFirst();
@@ -155,7 +156,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
             throw new IllegalStateException("Credential validation must run outside a database transaction");
         }
         var rows = jdbc.query(
-                "select canonical_uri,provider_identity,sealed_credentials from content_repository_bindings where workspace_id=?",
+                "select canonical_uri,provider_identity,sealed_credentials from content_repository_bindings where workspace_id=? and credential_kind='TOKEN'",
                 (row, number) -> new CredentialRotation(
                         workspace, row.getString(1), row.getString(2), row.getBytes(3), row.getBytes(3)),
                 workspace.value());
@@ -180,7 +181,7 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
         }
         cipher.decrypt(workspace, rotation.canonicalUri(), rotation.replacementCredentials());
         int changed = jdbc.update(
-                "update content_repository_bindings set sealed_credentials=?,updated_at=current_timestamp where workspace_id=? and canonical_uri=? and provider_identity=? and sealed_credentials=?",
+                "update content_repository_bindings set sealed_credentials=?,updated_at=current_timestamp where workspace_id=? and canonical_uri=? and provider_identity=? and sealed_credentials=? and credential_kind='TOKEN'",
                 rotation.replacementCredentials(),
                 workspace.value(),
                 rotation.canonicalUri(),
@@ -193,21 +194,35 @@ final class ManagedRepositoryConnections implements RepositoryConnections, AutoC
 
     RepositoryBinding binding(WorkspaceId workspace) {
         var rows = jdbc.query(
-                "select canonical_uri,sealed_credentials from content_repository_bindings where workspace_id=?",
+                "select canonical_uri,sealed_credentials from content_repository_bindings where workspace_id=? and credential_kind='TOKEN'",
                 (row, number) -> {
                     var coordinates = RepositoryCoordinates.parse(row.getString(1));
-                    var credentials = cipher.decrypt(workspace, coordinates.canonicalUri(), row.getBytes(2));
+                    byte[] sealed = row.getBytes(2);
+                    var credentials = cipher.decrypt(workspace, coordinates.canonicalUri(), sealed);
                     try {
                         return new RepositoryBinding(
                                 new URIish(coordinates.transportUri()),
                                 new UsernamePasswordCredentialsProvider(credentials.username(), credentials.password()),
-                                true);
+                                true,
+                                () -> requireCurrent(workspace, coordinates.canonicalUri(), sealed));
                     } catch (URISyntaxException invalid) {
                         throw new RepositoryConnectionException(UNAVAILABLE);
                     }
                 },
                 workspace.value());
         return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    private void requireCurrent(WorkspaceId workspace, String uri, byte[] sealed) {
+        Integer count = jdbc.queryForObject(
+                "select count(*) from content_repository_bindings where workspace_id=? and canonical_uri=? and sealed_credentials=? and credential_kind='TOKEN'",
+                Integer.class,
+                workspace.value(),
+                uri,
+                sealed);
+        if (count == null || count != 1) {
+            throw new ContentRepositoryException("Repository credentials changed; prepare a new connection");
+        }
     }
 
     private static void requireTransaction() {

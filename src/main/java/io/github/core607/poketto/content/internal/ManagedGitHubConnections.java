@@ -12,6 +12,7 @@ import io.github.core607.poketto.content.GitHubConnections;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Account policy surrounds provider I/O; token persistence commits only with a current account. */
 final class ManagedGitHubConnections implements GitHubConnections, AutoCloseable {
@@ -21,6 +22,8 @@ final class ManagedGitHubConnections implements GitHubConnections, AutoCloseable
     private final GitHubAppRepositories repositories;
     private final GitHubAppHttp http;
     private final Clock clock;
+    private final GitHubAppInstallations installations;
+    private final GitHubAppGrants grants;
 
     ManagedGitHubConnections(
             Accounts accounts,
@@ -28,17 +31,55 @@ final class ManagedGitHubConnections implements GitHubConnections, AutoCloseable
             GitHubAppOAuth oauth,
             GitHubAppRepositories repositories,
             GitHubAppHttp http,
-            Clock clock) {
+            Clock clock,
+            GitHubAppInstallations installations) {
         this.accounts = accounts;
         this.store = store;
         this.oauth = oauth;
         this.repositories = repositories;
         this.http = http;
         this.clock = clock;
+        this.installations = installations;
+        this.grants = oauth == null ? null : new GitHubAppGrants(store, oauth, repositories, clock);
     }
 
     static ManagedGitHubConnections disabled(Accounts accounts) {
-        return new ManagedGitHubConnections(accounts, null, null, null, null, Clock.systemUTC());
+        return new ManagedGitHubConnections(accounts, null, null, null, null, Clock.systemUTC(), null);
+    }
+
+    TokenLease repositoryToken(UUID account, long ownerId, long installationId, long repositoryId) {
+        requireAvailable();
+        GitHubAppGrants.Access access = grants.verifiedAccess(account);
+        if (access.owner().id() != ownerId) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED);
+        }
+        GitHubAppInstallations.Token token = installations.issue(installationId, ownerId, repositoryId);
+        grants.requireCurrent(access);
+        Instant issuedAt = clock.instant();
+        return new TokenLease(account, access.version(), ownerId, token, issuedAt, issuedAt.plusSeconds(60));
+    }
+
+    void requireLease(TokenLease lease) {
+        grants.requireCurrent(lease.account(), lease.grantVersion(), lease.ownerId());
+        Instant now = clock.instant();
+        if (now.isBefore(lease.issuedAt())
+                || !now.isBefore(lease.validUntil())
+                || !now.plusSeconds(30).isBefore(lease.token().expiresAt())) {
+            throw new GitHubConnectionException(UNAVAILABLE);
+        }
+    }
+
+    record TokenLease(
+            UUID account,
+            long grantVersion,
+            long ownerId,
+            GitHubAppInstallations.Token token,
+            Instant issuedAt,
+            Instant validUntil) {
+        @Override
+        public String toString() {
+            return "GitHubRepositoryTokenLease[redacted]";
+        }
     }
 
     @Override

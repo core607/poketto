@@ -41,9 +41,15 @@ class ContentConfiguration {
     RepositoryBindingSource repositoryBindingSource(
             RepositoryProperties properties,
             ObjectProvider<WorkspaceCatalog> workspaces,
-            ObjectProvider<ManagedRepositoryConnections> managed) {
+            ObjectProvider<ManagedRepositoryConnections> managed,
+            ObjectProvider<GitHubRepositoryBindings> github) {
         var configured = new ConfiguredRepositoryBindingSource(properties, workspaces);
         return workspace -> {
+            var appBindings = github.getIfAvailable();
+            RepositoryBinding appBinding = appBindings == null ? null : appBindings.binding(workspace);
+            if (appBinding != null) {
+                return appBinding;
+            }
             var connections = managed.getIfAvailable();
             RepositoryBinding binding = connections == null ? null : connections.binding(workspace);
             return binding == null ? configured.bindingFor(workspace) : binding;

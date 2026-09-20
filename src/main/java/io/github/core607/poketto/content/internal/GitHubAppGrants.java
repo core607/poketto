@@ -47,12 +47,16 @@ final class GitHubAppGrants {
     }
 
     void requireCurrent(Access access) {
+        requireCurrent(access.account(), access.version(), access.owner().id());
+    }
+
+    void requireCurrent(UUID account, long version, long ownerId) {
         GitHubAppGrantStore.Grant current =
-                store.find(access.account()).orElseThrow(() -> new GitHubConnectionException(AUTHORIZATION_CHANGED));
-        if (current.state() != GitHubAppGrantStore.State.ACTIVE || current.version() != access.version()) {
+                store.find(account).orElseThrow(() -> new GitHubConnectionException(AUTHORIZATION_CHANGED));
+        if (current.state() != GitHubAppGrantStore.State.ACTIVE || current.version() != version) {
             throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
-        if (current.ownerId() != access.owner().id()) {
+        if (current.ownerId() != ownerId) {
             throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
     }

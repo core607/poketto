@@ -338,7 +338,7 @@ class GitHubConnectionsHttpIntegrationIT {
                     new RepositoryCredentialCipher(Base64.getEncoder().encodeToString(key)), "Iv.fixture");
             Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
             var store = new GitHubAppGrantStore(jdbc, cipher, "Iv.fixture", clock);
-            connections = new ManagedGitHubConnections(accounts, store, oauth, repositories, null, clock);
+            connections = new ManagedGitHubConnections(accounts, store, oauth, repositories, null, clock, null);
         }
 
         void resetProvider() {

@@ -10,15 +10,25 @@ final class RepositoryBinding {
     private final URIish location;
     private final CredentialsProvider credentials;
     private final boolean managed;
+    private final Runnable validation;
 
     RepositoryBinding(URIish location, CredentialsProvider credentials) {
         this(location, credentials, false);
     }
 
     RepositoryBinding(URIish location, CredentialsProvider credentials, boolean managed) {
+        this(location, credentials, managed, () -> {});
+    }
+
+    RepositoryBinding(URIish location, CredentialsProvider credentials, boolean managed, Runnable validation) {
         this.location = Objects.requireNonNull(location, "remote location must not be null");
         this.credentials = Objects.requireNonNull(credentials, "credentials must not be null");
         this.managed = managed;
+        this.validation = Objects.requireNonNull(validation, "binding validation is required");
+    }
+
+    void requireCurrent() {
+        validation.run();
     }
 
     boolean managed() {

@@ -358,7 +358,9 @@ class RepositorySnapshotExportsTests {
     @Test
     void deniedPrincipalNeverReadsRepositoryOrCreatesStagingFiles() {
         RepositoryAuthority authority = mock(RepositoryAuthority.class);
-        when(auth.withAuthorization(any(), any(), any(), any())).thenThrow(new SecurityException("denied"));
+        doThrow(new SecurityException("denied"))
+                .when(auth)
+                .authorize(actor, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
         var exports = new JGitRepositorySnapshotExports(
                 authority,
                 auth,
@@ -369,6 +371,20 @@ class RepositorySnapshotExportsTests {
         assertThatThrownBy(() -> exports.create(actor, workspace, Optional.empty()))
                 .isInstanceOf(SecurityException.class);
         verifyNoInteractions(authority);
+        assertThat(directory.resolve("exports")).doesNotExist();
+    }
+
+    @Test
+    void revokedPermissionAfterCredentialPreparationCannotReadGitOrCreateAnExport() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        fixture.commitRemote(workspace, Map.of("private/secret.md", text("Private source")));
+        var exports = exporter(fixture, 1024);
+        doThrow(new SecurityException("revoked")).when(auth).withAuthorization(any(), any(), any(), any());
+
+        assertThatThrownBy(() -> exports.create(actor, workspace, Optional.empty()))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("revoked");
+        assertThat(fixture.cache(workspace)).doesNotExist();
         assertThat(directory.resolve("exports")).doesNotExist();
     }
 

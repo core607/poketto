@@ -11,9 +11,15 @@ import org.eclipse.jgit.transport.http.JDKHttpConnection;
 /** User-connected remotes can contact only their fixed provider's smart Git endpoints. */
 final class ManagedGitHttp implements HttpConnectionFactory {
     private final URI repository;
+    private final Runnable validation;
 
     ManagedGitHttp(String repository) {
+        this(repository, () -> {});
+    }
+
+    ManagedGitHttp(String repository, Runnable validation) {
         this.repository = URI.create(repository);
+        this.validation = validation;
     }
 
     @Override
@@ -24,6 +30,7 @@ final class ManagedGitHttp implements HttpConnectionFactory {
     @Override
     public HttpConnection create(URL url, Proxy ignored) throws IOException {
         validate(repository, url);
+        validation.run();
         PublicNetworkDestination.requirePublic(url.getHost());
         return new Connection(url);
     }

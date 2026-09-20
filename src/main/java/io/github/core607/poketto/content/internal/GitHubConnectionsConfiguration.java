@@ -38,13 +38,25 @@ class GitHubConnectionsConfiguration {
                     "GitHub authorization requires the repository credential encryption key");
         }
         Clock clock = Clock.systemUTC();
-        new GitHubAppSigner(clientId, privateKey, clock);
+        var signer = new GitHubAppSigner(clientId, privateKey, clock);
         GitHubAppOAuth.validateClientSecret(clientSecret);
         URI callback = callback(origin);
         var http = new GitHubAppHttp();
         var oauth = new GitHubAppOAuth(http, clientId, clientSecret, callback, clock);
         var store = new GitHubAppGrantStore(jdbc, new GitHubAppGrantCipher(cipher, clientId), clientId, clock);
-        return new ManagedGitHubConnections(accounts, store, oauth, new GitHubAppRepositories(http), http, clock);
+        return new ManagedGitHubConnections(
+                accounts,
+                store,
+                oauth,
+                new GitHubAppRepositories(http),
+                http,
+                clock,
+                new GitHubAppInstallations(http, signer, Long.parseLong(appId), clock));
+    }
+
+    @Bean
+    GitHubRepositoryBindings githubRepositoryBindings(JdbcTemplate jdbc, ManagedGitHubConnections github) {
+        return new GitHubRepositoryBindings(jdbc, github);
     }
 
     private static void requireAppId(String id) {

@@ -325,6 +325,13 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     private Export create(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, Optional<String> baseline) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
+        return authority.withPreparedCredentials(
+                workspace, () -> createAuthorized(actor, workspace, requested, baseline));
+    }
+
+    private Export createAuthorized(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, Optional<String> baseline) {
         return auth.withAuthorization(
                 actor,
                 workspace,

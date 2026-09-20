@@ -124,6 +124,12 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
 
     @Override
     public RepositoryMovePlan plan(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
+        auth.authorize(principal, workspace);
+        return authority.withPreparedCredentials(workspace, () -> planAuthorized(principal, workspace, request));
+    }
+
+    private RepositoryMovePlan planAuthorized(
+            AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
         return auth.withAuthorization(
                 principal,
                 workspace,

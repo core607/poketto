@@ -103,6 +103,16 @@ tokens are short-lived runtime credentials, requested for exactly the recorded
 repository ID with only metadata/content permissions needed for Git operations;
 routine synchronization does not retain Administration write authority.
 
+Prepare Git credentials before acquiring workspace authorization locks, then
+recheck workspace permissions inside the operation. Keep the prepared credential
+scoped to that workspace and operation, with a sixty-second local lease bounded
+by provider expiry. Recheck the grant version, recorded binding and lease before
+opening Git transport and each HTTP exchange; disconnect or binding replacement
+invalidates a prepared credential. Already dispatched requests may still finish.
+An App binding failure never falls back to manual or operator credentials.
+Manual bindings retain their encrypted credentials and reject a prepared token
+after rotation. App bindings cannot enter manual token rotation.
+
 Provider exchanges use fixed GitHub HTTPS origins over direct public-network
 connections and refuse redirects. Bound concurrent exchanges, request and response
 bytes including error bodies, and the HTTP response deadline. Provider headers

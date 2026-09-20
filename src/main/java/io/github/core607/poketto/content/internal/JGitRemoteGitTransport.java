@@ -31,6 +31,7 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
 
     @Override
     public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+        binding.requireCurrent();
         // A direct connection transfers only the advertised objects. JGit's fetch process would
         // record the secret-backed source URI in FETCH_HEAD inside the disposable cache, and a
         // cleanup of that file could fail and misreport an operation that already succeeded.
@@ -57,6 +58,7 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
     @Override
     public PushStatus pushMain(
             Repository repository, RepositoryBinding binding, ObjectId expectedCommit, ObjectId candidateCommit) {
+        binding.requireCurrent();
         try {
             RemoteRefUpdate update =
                     new RemoteRefUpdate(repository, candidateCommit.name(), MAIN, false, null, expectedCommit);
@@ -85,7 +87,7 @@ final class JGitRemoteGitTransport implements RemoteGitTransport {
         if (binding.managed()) {
             ((TransportHttp) transport)
                     .setHttpConnectionFactory(
-                            new ManagedGitHttp(binding.location().toString()));
+                            new ManagedGitHttp(binding.location().toString(), binding::requireCurrent));
         }
     }
 }

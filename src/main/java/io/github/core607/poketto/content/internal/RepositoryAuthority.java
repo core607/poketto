@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.eclipse.jgit.lib.ObjectReader;
 
 /**
@@ -15,6 +16,11 @@ import org.eclipse.jgit.lib.ObjectReader;
 interface RepositoryAuthority {
 
     void ensureReady(WorkspaceId workspaceId);
+
+    /** Prepares remote credentials before the action acquires relational authorization locks. */
+    default <T> T withPreparedCredentials(WorkspaceId workspace, Supplier<T> action) {
+        return action.get();
+    }
 
     /** Resolves current remote {@code main}, materializes it in the cache, and reads it. */
     <T> T read(WorkspaceId workspaceId, SnapshotReader<T> reader);
