@@ -115,6 +115,11 @@ transfer or a different same-name repository cannot silently replace it.
 
 The operator supplies the App ID, client ID, client secret, private signing key
 and webhook secret through protected deployment configuration. Require the App's
+signing key as single-line Base64 PKCS#8 at the application boundary; deployment
+converts GitHub's downloaded PEM to preserve the line-oriented settings channel.
+Use the client ID as the issuer of short-lived RS256 App JWTs, following
+[GitHub's authentication contract](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app).
+Require the App's
 repository Administration write and Contents write permissions, plus metadata
 read. Explain those requested permissions before redirecting to GitHub. Do not
 request organization permissions or account email access for this feature.
