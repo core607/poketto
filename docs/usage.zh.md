@@ -26,7 +26,7 @@ POKETTO_REPOSITORY_PASSWORD=... \
 
 设置 `POKETTO_RESEND_API_KEY` 和 `POKETTO_EMAIL_FROM`，启用邮箱验证和密码找回；发件地址须使用已验证的发信域名。六位验证码十分钟有效，最多允许五次错误尝试，仅可使用一次；重发需间隔六十秒。`POKETTO_EMAIL_DAILY_LIMIT` 默认每天 UTC 零点起最多发送 100 封，另有邮箱和来源地址限制。发送失败不会报告成功。密码找回会使旧浏览器会话和机器凭证失效，但保留空间成员权限。更换 Resend 密钥会使尚未消费的邮箱验证失效。
 
-设置 `POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`，启用 Google 登录。在 Google 创建 Web 应用，将已授权重定向 URI 设置为 `<POKETTO_PUBLIC_BASE_URL>/api/auth/identity/google/callback`。公开基础地址须为不带路径的精确 HTTPS origin；本地开发也允许环回 HTTP。仅请求 `openid`、`email` 和 `profile`，Google 必须返回已验证邮箱。同邮箱不自动合并账号：先登录已有账号，再显式绑定 Google。账号安全不能解除最后一种登录方式。Google 与邮箱配置相互独立；未配置的登录方式不显示入口。
+设置 `POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`，启用 Google 登录。在 Google 创建 Web 应用，将已授权重定向 URI 设置为 `<POKETTO_OAUTH_ISSUER>/api/auth/identity/google/callback`。`POKETTO_OAUTH_ISSUER` 须为不带路径的精确 HTTPS origin；本地开发也允许环回 HTTP。仅请求 `openid`、`email` 和 `profile`，Google 必须返回已验证邮箱。同邮箱不自动合并账号：先登录已有账号，再显式绑定 Google。账号安全不能解除最后一种登录方式。Google 与邮箱配置相互独立；未配置的登录方式不显示入口。
 
 所有新账号均为**浏览者**，包括通过 Google 注册的账号。管理员分配一个固定策略组：浏览者、社区成员、创作者或站点管理员。社区成员组预留后续互动资格；创作者和管理员可以连接仓库、展示符合条件的网站。站点管理员可以搜索账号、填写原因调整分组、查看变更记录及账号拥有的空间；审阅当前仓库公开范围内的文章和引用媒体不授予私密文件或原始历史访问权。最后一个管理员不能降级。
 

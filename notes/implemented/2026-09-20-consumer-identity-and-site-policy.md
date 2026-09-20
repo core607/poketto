@@ -39,6 +39,11 @@ provider exchange. Retain the Google subject and verified email, not provider
 access or refresh tokens. Only the account and MCP connection pages are permitted
 return destinations.
 
+The token transport allows five seconds to connect and ten seconds per blocked
+read. It bounds success and error response bodies to 64 KiB before parsing, and
+does not follow token-endpoint POST redirects. Provider failure returns a local
+login failure without exposing token payloads.
+
 Email challenges are purpose-bound, six digits, expire after ten minutes, permit
 at most five failed attempts and are single-use. Resending has a sixty-second
 cooldown and replaces the previous code. Store only keyed challenge digests.

@@ -9,11 +9,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Base64;
 import org.springframework.security.config.oauth2.client.CommonOAuth2Provider;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
-import org.springframework.security.oauth2.client.endpoint.RestClientAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.client.oidc.authentication.OidcIdTokenDecoderFactory;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
@@ -34,7 +34,7 @@ final class GoogleOidcProvider implements GoogleIdentityProvider {
 
     GoogleOidcProvider(String id, String secret, String origin) {
         client = id.isBlank() || secret.isBlank() || origin.isBlank() ? null : registration(id, secret, origin);
-        tokens = new RestClientAuthorizationCodeTokenResponseClient();
+        tokens = GoogleTokenClient.create(Duration.ofSeconds(10));
         decoder = client == null ? null : new OidcIdTokenDecoderFactory().createDecoder(client);
     }
 
