@@ -16,6 +16,7 @@ import io.github.core607.poketto.workspace.WorkspaceRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -60,6 +61,30 @@ public final class GitHubSpaceCreation {
         return result(store.find(actor.accountId(), Objects.requireNonNull(request, "Request ID is required"))
                 .orElseThrow(() -> new AuthException(AuthException.Code.DENIED)));
     }
+
+    public History history(AuthPrincipal actor, int offset) {
+        accounts.account(actor);
+        if (offset < 0 || offset > 100_000) {
+            throw new IllegalArgumentException("Creation history offset must be between 0 and 100000");
+        }
+        List<GitHubCreationStore.Attempt> attempts = store.list(actor.accountId(), offset);
+        List<Entry> items = attempts.stream()
+                .limit(20)
+                .map(attempt -> new Entry(
+                        new Request(
+                                attempt.request(),
+                                attempt.name(),
+                                attempt.slug(),
+                                attempt.owner(),
+                                attempt.repositoryName()),
+                        result(attempt)))
+                .toList();
+        return new History(items, attempts.size() > 20 ? offset + 20 : null);
+    }
+
+    public record Entry(Request request, Result result) {}
+
+    public record History(List<Entry> items, Integer nextOffset) {}
 
     public Result create(AuthPrincipal actor, Request request) {
         accounts.requireCreator(actor);

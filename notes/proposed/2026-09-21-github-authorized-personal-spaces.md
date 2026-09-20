@@ -35,6 +35,13 @@ group, grant membership, or add a Poketto login method.
    its repository authority, owner membership and initialization are ready. The
    public website starts disabled.
 
+Resolve installation settings from the authenticated App and verified personal
+owner. An existing installation uses its verified numeric ID; a missing one uses
+the configured App's verified slug. Construct links on `github.com` rather than
+following provider-supplied URLs. Keep settings reachable for a suspended or
+under-permissioned installation, but do not treat opening settings as proof that
+access was restored. Recheck the account and grant after resolving the link.
+
 GitHub documents [personal repository creation](https://docs.github.com/en/rest/repos/repos#create-a-repository-for-the-authenticated-user)
 for App user access tokens with Administration write permission; installation
 tokens are not accepted for that endpoint. Set `private=true` explicitly.
@@ -52,6 +59,12 @@ prospective workspace ID, verified GitHub owner ID, requested name, immutable
 repository ID when known, current stage and bounded attempt lease. Reusing a
 request ID with different input fails. Overlapping requests observe the same
 operation; they do not create another repository or workspace.
+
+Expose account-scoped creation, result and continuation endpoints with session
+authentication and CSRF protection for writes. A bounded history returns the
+original non-secret request and result so losing browser storage does not lose
+the recovery entrance. Reading history does not require creator eligibility;
+continuing an operation still applies its current creation or ownership rules.
 
 Stages distinguish awaiting authorization, creating the repository, awaiting
 installation access, initializing, ready, disconnected and uncertain creation.

@@ -59,6 +59,17 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     }
 
     @Override
+    public String installationUrl(AuthPrincipal actor) {
+        accounts.account(actor);
+        requireAvailable();
+        GitHubAppGrants.Access access = grants.verifiedAccess(actor.accountId());
+        String destination = installations.settingsUrl(access.owner());
+        accounts.account(actor);
+        grants.requireCurrent(access);
+        return destination;
+    }
+
+    @Override
     public Owner verifiedOwner(AuthPrincipal actor) {
         accounts.account(actor);
         requireAvailable();

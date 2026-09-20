@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,6 +44,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -139,8 +142,8 @@ class GitHubConnectionsHttpIntegrationIT {
                             false,
                             null);
                 });
-        var result = creations.create(
-                owner, new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes"));
+        var request = new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes");
+        GitHubSpaceCreation.Result result = create(session, request);
         assertThat(result.stage()).isEqualTo(GitHubSpaceCreation.Stage.AWAITING_INSTALLATION);
         assertThat(result.repositoryId()).isEqualTo(91L);
         assertThat(json.writeValueAsString(result)).doesNotContain("ghu_", "ghr_", "sealed", "creation_marker");
@@ -148,6 +151,63 @@ class GitHubConnectionsHttpIntegrationIT {
                 .isOne();
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships", Integer.class))
                 .isOne();
+        assertThat(create(session, request)).isEqualTo(result);
+        mvc.perform(get(ROOT + "/creations/" + request.requestId()).session(session))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.repositoryId").value(91));
+        verify(provider.repositories, times(1)).create(anyLong(), anyString(), any(), anyString(), any());
+        mvc.perform(get(ROOT + "/creations").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].request.requestId")
+                        .value(request.requestId().toString()))
+                .andExpect(jsonPath("$.items[0].request.repositoryName").value("notes"))
+                .andExpect(jsonPath("$.items[0].result.repositoryId").value(91));
+    }
+
+    @Test
+    void creationEntrancesRequireSessionCsrfAndCurrentEligibility() throws Exception {
+        String body = json.writeValueAsString(
+                new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes"));
+        mvc.perform(csrf(new MockHttpSession(), post(ROOT + "/creations"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+        MockHttpSession session = login("owner");
+        mvc.perform(post(ROOT + "/creations")
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(ROOT + "/creations/" + UUID.randomUUID() + "/resume").session(session))
+                .andExpect(status().isForbidden());
+        callback(session, start(session));
+        jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", owner.accountId());
+        mvc.perform(csrf(session, post(ROOT + "/creations"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("select count(*) from space_github_creation_attempts", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void installationDestinationIsAuthenticatedAndCurrentGrantBound() throws Exception {
+        MockHttpSession session = login("owner");
+        mvc.perform(post(ROOT + "/installation").session(session)).andExpect(status().isForbidden());
+        mvc.perform(csrf(session, post(ROOT + "/installation"))).andExpect(status().isForbidden());
+        callback(session, start(session));
+        when(provider.installations.settingsUrl(any())).thenReturn("https://github.com/settings/installations/7");
+        mvc.perform(csrf(session, post(ROOT + "/installation")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").value("https://github.com/settings/installations/7"));
+        when(provider.installations.settingsUrl(any())).thenAnswer(call -> {
+            provider.connections.disconnect(owner, 1);
+            return "https://github.com/settings/installations/7";
+        });
+        mvc.perform(csrf(session, post(ROOT + "/installation")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AUTHORIZATION_CHANGED"));
     }
 
     @Test
@@ -357,8 +417,8 @@ class GitHubConnectionsHttpIntegrationIT {
                 .thenReturn(new GitHubAppInstallations.Token(
                         "ghs_fixture", ProviderFixture.NOW.plusSeconds(3600), repository));
         var request = new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes");
-        creations.create(owner, request);
-        GitHubSpaceCreation.Result ready = creations.resume(owner, request.requestId());
+        create(session, request);
+        GitHubSpaceCreation.Result ready = resume(session, request.requestId());
         assertThat(ready.stage()).isEqualTo(GitHubSpaceCreation.Stage.READY);
         assertThat(ready.workspaceCreated()).isTrue();
         assertThat(ready.initializationCommit()).matches("[0-9a-f]{40}");
@@ -374,7 +434,38 @@ class GitHubConnectionsHttpIntegrationIT {
                         Long.class,
                         ready.workspaceId()))
                 .isEqualTo(7L);
-        assertThat(creations.resume(owner, request.requestId())).isEqualTo(ready);
+        assertThat(resume(session, request.requestId())).isEqualTo(ready);
+        AccountFixtures.create(auth, "outsider", PASSWORD);
+        MockHttpSession other = login("outsider");
+        mvc.perform(get(ROOT + "/creations/" + request.requestId()).session(other))
+                .andExpect(status().isForbidden());
+        mvc.perform(csrf(other, post(ROOT + "/creations/" + request.requestId() + "/resume")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(ROOT + "/creations").session(other))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty());
+    }
+
+    private GitHubSpaceCreation.Result create(MockHttpSession session, GitHubSpaceCreation.Request request)
+            throws Exception {
+        String body = mvc.perform(csrf(session, post(ROOT + "/creations"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(body).doesNotContain("ghu_", "ghr_", "sealed", "creation_marker");
+        return json.readValue(body, GitHubSpaceCreation.Result.class);
+    }
+
+    private GitHubSpaceCreation.Result resume(MockHttpSession session, UUID request) throws Exception {
+        String body = mvc.perform(csrf(session, post(ROOT + "/creations/" + request + "/resume")))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return json.readValue(body, GitHubSpaceCreation.Result.class);
     }
 
     private String start(MockHttpSession session) throws Exception {

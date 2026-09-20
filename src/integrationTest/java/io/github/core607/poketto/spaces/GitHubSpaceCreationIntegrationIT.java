@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,6 +72,34 @@ class GitHubSpaceCreationIntegrationIT {
         actor = auth.authenticatePassword("creator", "fixture-password-123");
         provider = new Provider();
         request = new GitHubSpaceCreation.Request(UUID.randomUUID(), "Personal notes", "personal-notes", 42, "notes");
+    }
+
+    @Test
+    void creationHistorySurvivesBrowserLossAndIsBoundedWithoutRequiringCreatorEligibility() {
+        var requests = new HashSet<UUID>();
+        for (int index = 0; index < 21; index++) {
+            var item =
+                    new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes " + index, "notes-" + index, 42, "notes");
+            service().create(actor, item);
+            requests.add(item.requestId());
+        }
+        jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", actor.accountId());
+        GitHubSpaceCreation.History first = service().history(actor, 0);
+        assertThat(first.items()).hasSize(20);
+        assertThat(first.nextOffset()).isEqualTo(20);
+        GitHubSpaceCreation.History second = service().history(actor, first.nextOffset());
+        assertThat(second.items()).hasSize(1);
+        assertThat(second.nextOffset()).isNull();
+        var recovered = new HashSet<UUID>();
+        first.items().forEach(entry -> recovered.add(entry.request().requestId()));
+        second.items().forEach(entry -> recovered.add(entry.request().requestId()));
+        assertThat(recovered).isEqualTo(requests);
+        assertThat(first.items()).allSatisfy(entry -> {
+            assertThat(entry.request().githubOwnerId()).isEqualTo(42);
+            assertThat(entry.result().repositoryId()).isEqualTo(91);
+            assertThat(entry.result().stage()).isEqualTo(GitHubSpaceCreation.Stage.AWAITING_INSTALLATION);
+        });
+        assertThatThrownBy(() -> service().history(actor, -1)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -358,15 +387,25 @@ class GitHubSpaceCreationIntegrationIT {
                 AuthPrincipal principal, Owner owner, String name, UUID marker, Runnable beforeCreate) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
-            assertThat(GitHubSpaceCreationIntegrationIT.this.marker()).isEqualTo(marker);
+            assertThat(jdbc.queryForObject(
+                            "select count(*) from space_github_creation_attempts where account_id=? and creation_marker=?",
+                            Integer.class,
+                            principal.accountId(),
+                            marker))
+                    .isOne();
             beforeDispatch.run();
             beforeCreate.run();
             assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
-            assertThat(jdbc.queryForObject("select stage from space_github_creation_attempts", String.class))
+            assertThat(jdbc.queryForObject(
+                            "select stage from space_github_creation_attempts where creation_marker=?",
+                            String.class,
+                            marker))
                     .isEqualTo("CREATING");
             assertThat(jdbc.queryForObject(
-                            "select creation_requested from space_github_creation_attempts", Boolean.class))
+                            "select creation_requested from space_github_creation_attempts where creation_marker=?",
+                            Boolean.class,
+                            marker))
                     .isTrue();
             creates.incrementAndGet();
             afterDispatch.run();

@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +33,14 @@ final class GitHubCreationStore {
                         request)
                 .stream()
                 .findFirst();
+    }
+
+    List<Attempt> list(UUID account, int offset) {
+        return jdbc.query(
+                "select * from space_github_creation_attempts where account_id=? order by updated_at desc,request_id limit 21 offset ?",
+                GitHubCreationStore::row,
+                account,
+                offset);
     }
 
     Attempt claim(

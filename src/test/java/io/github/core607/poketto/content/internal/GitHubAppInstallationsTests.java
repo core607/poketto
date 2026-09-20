@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.GitHubConnectionException;
 import java.security.KeyPairGenerator;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,6 +38,55 @@ class GitHubAppInstallationsTests {
         String key = Base64.getEncoder()
                 .encodeToString(generator.generateKeyPair().getPrivate().getEncoded());
         signer = new GitHubAppSigner("Iv.fixture", key, CLOCK);
+    }
+
+    @Test
+    void installationSettingsUseVerifiedIdentityAndIgnoreProviderLinks() throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(
+                    200,
+                    INSTALLATION
+                            .replace("\"suspended_at\":null", "\"suspended_at\":\"2026-09-20T00:00:00Z\"")
+                            .replace("\"contents\":\"write\"", "\"contents\":\"read\""));
+            assertThat(api(fixture).settingsUrl(new GitHubAppRepositories.Owner(42, "octocat", "User")))
+                    .isEqualTo("https://github.com/settings/installations/7");
+            assertThat(fixture.requests.getFirst().path()).isEqualTo("/users/octocat/installation");
+            assertThat(fixture.requests).allMatch(request -> request.method().equals("GET"));
+        }
+    }
+
+    @Test
+    void uninstalledAccountReceivesOnlyTheConfiguredAppsInstallationLink() throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(404, "{}");
+            fixture.reply(200, "{\"id\":3,\"slug\":\"poketto-fixture\",\"html_url\":\"https://invalid.example\"}");
+            assertThat(api(fixture).settingsUrl(new GitHubAppRepositories.Owner(42, "octocat", "User")))
+                    .isEqualTo("https://github.com/apps/poketto-fixture/installations/new");
+            assertThat(fixture.requests)
+                    .extracting(GitHubAppFixture.Request::path)
+                    .containsExactly("/users/octocat/installation", "/app");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"wrong-app", "unsafe-slug", "wrong-owner", "unavailable"})
+    void neverReturnsUnverifiedInstallationDestinations(String variant) throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            if (variant.equals("wrong-owner")) {
+                fixture.reply(200, INSTALLATION.replace("\"id\":42", "\"id\":43"));
+            } else if (variant.equals("unavailable")) {
+                fixture.reply(503, "{}");
+            } else {
+                fixture.reply(404, "{}");
+                fixture.reply(
+                        200,
+                        variant.equals("wrong-app")
+                                ? "{\"id\":4,\"slug\":\"other\"}"
+                                : "{\"id\":3,\"slug\":\"../other?redirect=bad\"}");
+            }
+            assertThatThrownBy(() -> api(fixture).settingsUrl(new GitHubAppRepositories.Owner(42, "octocat", "User")))
+                    .isInstanceOf(GitHubConnectionException.class);
+        }
     }
 
     @Test

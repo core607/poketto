@@ -18,6 +18,9 @@ public interface GitHubConnections {
     /** Invalidates the specified grant version without deleting repositories or space membership. */
     Status disconnect(AuthPrincipal actor, long expectedVersion);
 
+    /** Returns the verified personal account's App installation or installation-settings entrance. */
+    String installationUrl(AuthPrincipal actor);
+
     enum State {
         DISABLED,
         NOT_CONNECTED,

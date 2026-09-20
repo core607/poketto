@@ -4,11 +4,13 @@ import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubConnections;
+import io.github.core607.poketto.spaces.GitHubSpaceCreation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -18,7 +20,9 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,14 +34,44 @@ class GitHubConnectionsController {
     private static final String FLOW = GitHubConnectionsController.class.getName() + ".flow";
     private static final String ATTEMPT = GitHubConnectionsController.class.getName() + ".attempt";
     private final GitHubConnections connections;
+    private final GitHubSpaceCreation creations;
 
-    GitHubConnectionsController(GitHubConnections connections) {
+    GitHubConnectionsController(GitHubConnections connections, GitHubSpaceCreation creations) {
         this.connections = connections;
+        this.creations = creations;
     }
 
     @GetMapping
     GitHubConnections.Status status(@AuthenticationPrincipal AuthPrincipal actor) {
         return connections.status(actor);
+    }
+
+    @PostMapping("/installation")
+    Destination installation(@AuthenticationPrincipal AuthPrincipal actor) {
+        return new Destination(connections.installationUrl(actor));
+    }
+
+    @PostMapping("/creations")
+    GitHubSpaceCreation.Result create(
+            @AuthenticationPrincipal AuthPrincipal actor, @RequestBody GitHubSpaceCreation.Request body) {
+        return creations.create(actor, body);
+    }
+
+    @GetMapping("/creations")
+    GitHubSpaceCreation.History history(
+            @AuthenticationPrincipal AuthPrincipal actor, @RequestParam(defaultValue = "0") int offset) {
+        return creations.history(actor, offset);
+    }
+
+    @GetMapping("/creations/{requestId}")
+    GitHubSpaceCreation.Result creationStatus(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID requestId) {
+        return creations.status(actor, requestId);
+    }
+
+    @PostMapping("/creations/{requestId}/resume")
+    GitHubSpaceCreation.Result resume(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID requestId) {
+        return creations.resume(actor, requestId);
     }
 
     @PostMapping("/start")

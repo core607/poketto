@@ -42,6 +42,25 @@ final class GitHubAppInstallations {
         return installation.id();
     }
 
+    String settingsUrl(GitHubAppRepositories.Owner owner) {
+        GitHubAppRepositories.requirePersonal(owner);
+        GitHubAppHttp.Reply reply = get("/users/" + owner.login() + "/installation");
+        if (reply.status() == 404) {
+            GitHubAppHttp.Reply metadata = get("/app");
+            requireStatus(metadata, 200);
+            App app = GitHubAppJson.read(metadata.body(), App.class);
+            if (app.id() != appId) {
+                throw new GitHubConnectionException(INVALID_RESPONSE);
+            }
+            return "https://github.com/apps/" + app.slug() + "/installations/new";
+        }
+        requireStatus(reply, 200);
+        Installation installation = GitHubAppJson.read(reply.body(), Installation.class);
+        requireInstallationOwner(installation, owner.id());
+        // Settings must remain reachable when the user needs to restore permissions or unsuspend the App.
+        return "https://github.com/settings/installations/" + installation.id();
+    }
+
     Token issue(long installationId, long ownerId, long repositoryId) {
         requireIdentifier(installationId);
         requireIdentifier(ownerId);
@@ -92,6 +111,19 @@ final class GitHubAppInstallations {
     }
 
     private void requireInstallation(Installation installation, long ownerId) {
+        requireInstallationOwner(installation, ownerId);
+        if (installation.suspendedAt() != null) {
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
+        }
+        if (!"write".equals(installation.permissions().get("contents"))) {
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
+        }
+        if (!"read".equals(installation.permissions().get("metadata"))) {
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
+        }
+    }
+
+    private void requireInstallationOwner(Installation installation, long ownerId) {
         if (installation.appId() != appId) {
             throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
@@ -100,15 +132,6 @@ final class GitHubAppInstallations {
         }
         if (!installation.account().type().equals("User")
                 || !installation.targetType().equals("User")) {
-            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
-        }
-        if (installation.suspendedAt() != null) {
-            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
-        }
-        if (!"write".equals(installation.permissions().get("contents"))) {
-            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
-        }
-        if (!"read".equals(installation.permissions().get("metadata"))) {
             throw new GitHubConnectionException(INSTALLATION_REQUIRED);
         }
     }
@@ -140,6 +163,14 @@ final class GitHubAppInstallations {
         @Override
         public String toString() {
             return "GitHubInstallationToken[redacted]";
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record App(long id, String slug) {
+        App {
+            GitHubAppJson.require(id > 0);
+            GitHubAppJson.require(slug != null && slug.matches("[A-Za-z0-9][A-Za-z0-9-]{0,99}"));
         }
     }
 
