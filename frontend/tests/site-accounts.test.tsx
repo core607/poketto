@@ -56,17 +56,20 @@ test("site policy editor describes withdrawal, requires a reason and handles las
       return Response.json({ code: "LAST_ADMINISTRATOR" }, { status: 409 });
     }
     return Response.json({
-      items: path.includes("group-history")
-        ? []
-        : [
-            {
-              accountId: "operator",
-              loginName: "operator",
-              group: "ADMINISTRATOR",
-              ownedSpaces: 2,
-            },
-          ],
-      total: path.includes("group-history") ? 0 : 1,
+      items:
+        path.includes("group-history") || path.includes("/workspaces")
+          ? []
+          : [
+              {
+                accountId: "operator",
+                loginName: "operator",
+                displayName: "operator",
+                group: "ADMINISTRATOR",
+                ownedSpaces: 2,
+              },
+            ],
+      total:
+        path.includes("group-history") || path.includes("/workspaces") ? 0 : 1,
       offset: 0,
       limit: 30,
     });

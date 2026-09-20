@@ -69,23 +69,27 @@ assert_contains "$(cat "$FAKE_STATE/repository-password")" '$(touch env-was-exec
 grep -qFx 'POKETTO_REPOSITORY_PASSWORD=$(touch env-was-executed)' "$ROOT/.env" \
     || { echo "the literal password was not recorded"; exit 1; }
 
-# The registration issuance switch is optional, literal, persisted and restricted to booleans.
+# Identity credentials are forwarded literally without printing them.
 setup_root
 have_image "$DIGEST_IMAGE"
 set +e
-OUT="$(printf '%s\n' 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED=true' \
-    | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+OUT="$(printf '%s\n' 'POKETTO_RESEND_API_KEY=re_synthetic$literal' 'POKETTO_EMAIL_FROM=Poketto <noreply@mail.example.test>' \
+    'POKETTO_GOOGLE_CLIENT_ID=synthetic-client.apps.googleusercontent.com' 'POKETTO_GOOGLE_CLIENT_SECRET=synthetic$(literal)' \
+    'POKETTO_EMAIL_DAILY_LIMIT=100' | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
 STATUS=$?
 set -e
 ERR="$(cat "$PWD/stderr")"
 assert_status 0
-assert_contains "$(cat "$FAKE_STATE/registration-invitations")" 'true'
-grep -qFx 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED=true' "$ROOT/.env"
+assert_contains "$(cat "$FAKE_STATE/POKETTO_RESEND_API_KEY")" 're_synthetic$literal'
+assert_contains "$(cat "$FAKE_STATE/POKETTO_GOOGLE_CLIENT_SECRET")" 'synthetic$(literal)'
+assert_not_contains "$OUT$ERR" 're_synthetic'
+assert_not_contains "$OUT$ERR" 'synthetic$(literal)'
+grep -qFx 'POKETTO_EMAIL_FROM=Poketto <noreply@mail.example.test>' "$ROOT/.env"
 setup_root
-printf '%s\n' 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED=yes' >> "$ROOT/.env"
+printf '%s\n' 'POKETTO_RESEND_API_KEY=re_synthetic' >> "$ROOT/.env"
 run_deploy
 assert_status 1
-assert_contains "$ERR" 'POKETTO_REGISTRATION_USER_INVITATIONS_ENABLED must be true or false'
+assert_contains "$ERR" 'requires POKETTO_EMAIL_FROM'
 [ "$(up_count)" = 0 ]
 
 # The deployment encryption key is forwarded literally without printing it.

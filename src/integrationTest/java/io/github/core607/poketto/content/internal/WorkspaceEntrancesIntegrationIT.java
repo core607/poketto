@@ -7,12 +7,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -96,9 +96,6 @@ class WorkspaceEntrancesIntegrationIT {
     AuthService auth;
 
     @Autowired
-    RegistrationService registration;
-
-    @Autowired
     WorkspaceCatalog catalog;
 
     @Autowired
@@ -125,8 +122,7 @@ class WorkspaceEntrancesIntegrationIT {
             registry.create(second, "Second notes", "second-notes");
             auth.establishWorkspaceOwner(owner, second);
         });
-        AuthPrincipal guest =
-                registration.register(registration.issue(owner).token(), "second-reader", "fixture-password-5678");
+        AuthPrincipal guest = AccountFixtures.create(auth, "second-reader", "fixture-password-5678");
         auth.acceptInvitation(
                 guest, auth.createInvitation(owner, second, Set.of()).token());
         var ownerSession = login("space-owner", "fixture-password-1234");

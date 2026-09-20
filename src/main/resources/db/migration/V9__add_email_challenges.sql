@@ -9,7 +9,9 @@ create table auth_email_challenges (
     consumed_at timestamptz,
     failed_attempts integer not null default 0 check (failed_attempts between 0 and 5),
     unique (email,purpose),
-    check ((purpose='BIND') = (account_id is not null))
+    check (purpose<>'BIND' or account_id is not null),
+    check (purpose<>'SIGNUP' or account_id is null),
+    check (purpose<>'RECOVERY' or delivered_at is null or account_id is not null)
 );
 create index auth_email_challenges_expiration on auth_email_challenges(expires_at);
 

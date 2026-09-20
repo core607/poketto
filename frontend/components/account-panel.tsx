@@ -1,11 +1,8 @@
 "use client";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api } from "../lib/browser-api";
-import { date } from "../lib/format";
 import { message } from "./admin";
-import { Secret } from "./secret";
-import { AdminPagination, useAdminPage } from "./admin-pagination";
-import { useConfirmation } from "./confirmation";
+import { AccountSecurity } from "./account-security";
 import { CreateWorkspace } from "./create-workspace";
 import { SiteAccounts, SiteGroup, siteGroups } from "./site-accounts";
 
@@ -13,16 +10,10 @@ export type AccountProfile = {
   account: {
     accountId: string;
     loginName: string;
+    displayName: string;
     siteAdministrator: boolean;
     group: SiteGroup;
   };
-  mayIssueRegistrationInvitations: boolean;
-};
-type Invitation = {
-  id: string;
-  expiresAt: string;
-  revoked: boolean;
-  used: boolean;
 };
 
 export function AccountPanel({
@@ -31,14 +22,28 @@ export function AccountPanel({
   workspaceUnavailable = false,
   onBeforeJoin,
   onJoined,
+  onDisplayName,
 }: {
   profile: AccountProfile;
   hasWorkspace: boolean;
   workspaceUnavailable?: boolean;
   onBeforeJoin: () => Promise<boolean>;
   onJoined: (workspaceId: string, created?: boolean) => Promise<void>;
+  onDisplayName?: (name: string) => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [security, setSecurity] = useState(false);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("security") !== "1") return;
+    setSecurity(true);
+    url.searchParams.delete("security");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      url.pathname + url.search + url.hash,
+    );
+  }, []);
   const [error, setError] = useState("");
   async function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,6 +71,10 @@ export function AccountPanel({
   return (
     <div className="management-panel">
       <p>当前策略组：{siteGroups[profile.account.group]}</p>
+      <button className="text-button" onClick={() => setSecurity(!security)}>
+        {security ? "收起登录与安全" : "登录与安全"}
+      </button>
+      {security && <AccountSecurity onDisplayName={onDisplayName} />}
       {profile.account.siteAdministrator && <SiteAccounts />}
       <CreateWorkspace
         accountId={profile.account.accountId}
@@ -96,161 +105,6 @@ export function AccountPanel({
           </p>
         )}
       </section>
-      <RegistrationInvitations
-        mayIssue={profile.mayIssueRegistrationInvitations}
-      />
     </div>
-  );
-}
-
-export function RegistrationInvitations({ mayIssue }: { mayIssue: boolean }) {
-  const page = useAdminPage<Invitation>("/api/auth/registration-invitations");
-  const confirm = useConfirmation();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const [secret, setSecret] = useState("");
-  const [shareLink, setShareLink] = useState(false);
-  async function issue() {
-    setPending(true);
-    setError("");
-    setSecret("");
-    setShareLink(false);
-    try {
-      const result = await api<{ token: string }>(
-        "/api/auth/registration-invitations",
-        { method: "POST" },
-      );
-      setSecret(result.token);
-      page.reload();
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setPending(false);
-    }
-  }
-  async function revoke(id: string) {
-    setPending(true);
-    setError("");
-    try {
-      if (
-        !(await confirm({
-          title: "撤销这个注册邀请码？",
-          description: "尚未注册的人将无法继续使用它。已经创建的账号不受影响。",
-          confirmLabel: "撤销邀请码",
-        }))
-      )
-        return;
-      await api(
-        "/api/auth/registration-invitations/" + encodeURIComponent(id),
-        { method: "DELETE" },
-      );
-      page.reload();
-    } catch (error) {
-      setError(message(error));
-    } finally {
-      setPending(false);
-    }
-  }
-  if (!mayIssue && !page.loading && !page.error && page.total === 0)
-    return null;
-  return (
-    <section className="sub-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>邀请注册</h2>
-          <p className="muted">
-            邀请码 7 天内有效，只能注册一个账号，不会让对方加入你的空间。
-          </p>
-        </div>
-        {mayIssue && (
-          <button onClick={issue} disabled={pending}>
-            创建注册邀请码
-          </button>
-        )}
-      </div>
-      {!mayIssue && (
-        <p className="muted">
-          当前账号没有发放注册邀请码的权限。你仍可查看和撤销自己此前发出的邀请。
-        </p>
-      )}
-      {(error || page.error) && (
-        <p role="alert" className="notice danger">
-          {error || page.error}
-        </p>
-      )}
-      {secret && (
-        <div>
-          <button
-            className="text-button"
-            onClick={() => setShareLink(!shareLink)}
-          >
-            {shareLink ? "改为邀请码" : "改为注册链接"}
-          </button>
-          <Secret
-            key={secret + String(shareLink)}
-            title={
-              shareLink ? "注册链接只显示这一次" : "注册邀请码只显示这一次"
-            }
-            value={
-              shareLink
-                ? window.location.origin +
-                  "/admin#register=" +
-                  encodeURIComponent(secret)
-                : secret
-            }
-            onClose={() => setSecret("")}
-          />
-        </div>
-      )}
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>到期时间</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {page.items.map((invitation) => {
-              const expired = Date.parse(invitation.expiresAt) <= Date.now();
-              const active =
-                !invitation.used && !invitation.revoked && !expired;
-              return (
-                <tr key={invitation.id}>
-                  <td>{date(invitation.expiresAt)}</td>
-                  <td>
-                    {invitation.used
-                      ? "已使用"
-                      : invitation.revoked
-                        ? "已撤销"
-                        : expired
-                          ? "已过期"
-                          : "待使用"}
-                  </td>
-                  <td>
-                    {active && (
-                      <button
-                        className="text-button"
-                        disabled={pending}
-                        onClick={() => void revoke(invitation.id)}
-                      >
-                        撤销
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {!page.loading && !page.error && page.total === 0 && (
-              <tr>
-                <td colSpan={3}>还没有发出注册邀请。</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <AdminPagination label="注册邀请" page={page} disabled={pending} />
-    </section>
   );
 }

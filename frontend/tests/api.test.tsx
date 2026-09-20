@@ -3,7 +3,7 @@ import test from "node:test";
 import { api, ApiError } from "../lib/browser-api";
 import { allArticles, articles, PublicApiError } from "../lib/public-api";
 
-test("invitation rejection identifies registration or workspace codes without rendering server diagnostics", async () => {
+test("workspace invitation rejection gives an actionable message without rendering server diagnostics", async () => {
   const previous = globalThis.fetch;
   globalThis.fetch = async () =>
     Response.json(
@@ -12,7 +12,6 @@ test("invitation rejection identifies registration or workspace codes without re
     );
   try {
     for (const [path, subject] of [
-      ["/api/auth/register", "注册邀请码"],
       ["/api/auth/invitations/accept", "空间邀请码"],
     ]) {
       await assert.rejects(

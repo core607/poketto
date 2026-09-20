@@ -79,6 +79,13 @@ test("restricted websites retain the owner's switch while preventing publication
   const f = await fixture(t);
   let enabled = true;
   globalThis.fetch = async (path, options) => {
+    if (String(path).includes("/publication/restrictions?"))
+      return Response.json({
+        items: [{ ownerName: "作者", reason: "请修订公开内容" }],
+        total: 1,
+        offset: 0,
+        limit: 30,
+      });
     if (String(path) === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
     if (options?.method === "PUT") {
@@ -93,6 +100,7 @@ test("restricted websites retain the owner's switch while preventing publication
   };
   await f.mount();
   assert.match(f.container.textContent, /公开展示已受限/);
+  assert.match(f.container.textContent, /请修订公开内容/);
   assert.equal(f.container.querySelector("a"), null);
   await f.click("关闭公开网站");
   await f.click("关闭公开网站", true);

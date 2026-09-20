@@ -53,6 +53,15 @@ class SitePolicyController {
         return policies.history(actor, accountId, offset, limit);
     }
 
+    @GetMapping("/{accountId}/workspaces")
+    AuthService.Page<SitePolicyService.OwnedSpace> workspaces(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable UUID accountId,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "30") int limit) {
+        return policies.ownedSpaces(actor, accountId, offset, limit);
+    }
+
     record GroupChange(SiteGroup group, String reason) {
         GroupChange {
             if (group == null) {

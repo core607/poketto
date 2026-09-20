@@ -173,6 +173,34 @@ class EmailAccountsHttpIntegrationIT {
     }
 
     @Test
+    void recoveryProofCannotFollowAnEmailToAnotherAccount() throws Exception {
+        AuthPrincipal original = auth.initializeOwner("original-owner", PASSWORD);
+        jdbc.update(
+                "update auth_accounts set verified_email='moving@example.test' where account_id=?",
+                original.accountId());
+        MockHttpSession session = new MockHttpSession();
+        challenge(session, "recovery", "moving@example.test");
+        Message sent = mail.messages.getLast();
+        jdbc.update(
+                "update auth_accounts set verified_email='replacement@example.test' where account_id=?",
+                original.accountId());
+        UUID replacement = auth.createAccount("replacement-owner", auth.encodePassword(PASSWORD), false);
+        jdbc.update("update auth_accounts set verified_email='moving@example.test' where account_id=?", replacement);
+        mvc.perform(csrf(session, post("/api/auth/identity/recovery"))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(
+                                Map.of("proof", sent.proof(), "password", "synthetic-new-password"))))
+                .andExpect(status().isBadRequest());
+        assertThat(auth.authenticatePassword("moving@example.test", PASSWORD).accountId())
+                .isEqualTo(replacement);
+        assertThat(auth.authenticatePassword("replacement@example.test", PASSWORD)
+                        .accountId())
+                .isEqualTo(original.accountId());
+        assertThat(jdbc.queryForObject("select count(*) from auth_accounts where credential_version<>0", Integer.class))
+                .isZero();
+    }
+
+    @Test
     void recoveryResponseDoesNotDistinguishUnknownEmailOrProviderFailure() throws Exception {
         auth.initializeOwner("legacy-owner", PASSWORD);
         jdbc.update("update auth_accounts set verified_email='known@example.test'");

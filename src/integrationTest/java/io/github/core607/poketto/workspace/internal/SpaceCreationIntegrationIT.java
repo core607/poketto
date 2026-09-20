@@ -3,13 +3,12 @@ package io.github.core607.poketto.workspace.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
@@ -54,7 +53,7 @@ class SpaceCreationIntegrationIT {
     private DataSourceTransactionManager transactions;
     private AuthService auth;
     private AuthPrincipal actor;
-    private RegistrationService accounts;
+    private Accounts accounts;
     private JdbcWorkspaceCatalog catalog;
     private RepositoryFixture remote;
     private InitializationFixture initialization;
@@ -72,12 +71,7 @@ class SpaceCreationIntegrationIT {
         var encoder = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8", Map.of("pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
         auth = new AuthService(jdbc, transactions, encoder, event -> {}, Clock.fixed(now, ZoneOffset.UTC));
-        accounts = new RegistrationService(
-                jdbc,
-                transactions,
-                auth,
-                RegistrationInvitationPolicy.configured(false),
-                Clock.fixed(now, ZoneOffset.UTC));
+        accounts = new Accounts(jdbc, transactions);
         UUID id = UUID.randomUUID();
         jdbc.update(
                 "insert into auth_accounts(account_id,login_name,password_hash,site_group) values (?,'creator',?,'CREATOR')",

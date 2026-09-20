@@ -1,10 +1,10 @@
 package io.github.core607.poketto.spaces;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
@@ -36,7 +36,7 @@ public final class SpaceCreationService {
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
-    private final RegistrationService accounts;
+    private final Accounts accounts;
     private final AuthService auth;
     private final WorkspaceRegistry workspaces;
     private final RepositoryConnections repositories;
@@ -47,7 +47,7 @@ public final class SpaceCreationService {
     public SpaceCreationService(
             JdbcTemplate jdbc,
             PlatformTransactionManager transactionManager,
-            RegistrationService accounts,
+            Accounts accounts,
             AuthService auth,
             WorkspaceRegistry workspaces,
             RepositoryConnections repositories,

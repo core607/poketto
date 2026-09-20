@@ -1,6 +1,8 @@
 package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.spaces.SpacePublicationService;
 import io.github.core607.poketto.workspace.PublicAuthorNames;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -21,9 +24,22 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class SpacePublicationController {
     private final SpacePublicationService publications;
+    private final SitePolicyService policies;
 
-    SpacePublicationController(SpacePublicationService publications) {
+    SpacePublicationController(SpacePublicationService publications, SitePolicyService policies) {
         this.publications = publications;
+        this.policies = policies;
+    }
+
+    @GetMapping("/restrictions")
+    ResponseEntity<AuthService.Page<SitePolicyService.Restriction>> restrictions(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "30") int limit) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(policies.restrictions(actor, WorkspaceId.parse(workspaceId), offset, limit));
     }
 
     @GetMapping

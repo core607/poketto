@@ -1,7 +1,7 @@
 package io.github.core607.poketto.spaces.internal;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.SpaceCreationService;
@@ -27,7 +27,7 @@ class SpacesConfiguration {
     SpaceCreationService spaceCreationService(
             JdbcTemplate jdbc,
             PlatformTransactionManager transactions,
-            RegistrationService accounts,
+            Accounts accounts,
             AuthService auth,
             WorkspaceRegistry workspaces,
             RepositoryConnections repositories,

@@ -14,3 +14,5 @@ create table auth_external_identities (
     primary key(provider,subject),
     unique(provider,account_id)
 );
+-- Email proofs replace the former registration invitation mechanism; existing accounts are retained.
+drop table auth_registration_invitations;

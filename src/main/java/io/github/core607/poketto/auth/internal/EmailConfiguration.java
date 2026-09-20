@@ -1,9 +1,9 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.EmailAccounts;
 import io.github.core607.poketto.auth.EmailChallenges;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.auth.VerificationMail;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,8 +17,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class EmailConfiguration {
     @Bean
-    EmailAccounts emailAccounts(
-            JdbcTemplate jdbc, AuthService auth, RegistrationService accounts, EmailChallenges challenges) {
+    EmailAccounts emailAccounts(JdbcTemplate jdbc, AuthService auth, Accounts accounts, EmailChallenges challenges) {
         return new EmailAccounts(jdbc, auth, accounts, challenges, Clock.systemUTC());
     }
 

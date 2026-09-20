@@ -1,9 +1,12 @@
 "use client";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { api } from "../lib/browser-api";
 import { date } from "../lib/format";
 import { message } from "./admin";
-import { AdminPage, AdminPagination } from "./admin-pagination";
+import { AdminPagination } from "./admin-pagination";
+
+import { useSitePage } from "./site-page";
+import { SiteAccountSpaces } from "./site-review";
 
 export const siteGroups = {
   VIEWER: "浏览者",
@@ -15,6 +18,7 @@ export type SiteGroup = keyof typeof siteGroups;
 type Account = {
   accountId: string;
   loginName: string;
+  displayName: string;
   group: SiteGroup;
   ownedSpaces: number;
 };
@@ -26,46 +30,6 @@ type Change = {
   reason: string;
   changedAt: string;
 };
-
-function useSitePage<T>(path: string) {
-  const [offset, setOffset] = useState(0);
-  const [version, setVersion] = useState(0);
-  const [page, setPage] = useState<AdminPage<T>>({
-    items: [],
-    total: 0,
-    offset: 0,
-    limit: 30,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError("");
-    api<AdminPage<T>>(
-      `${path}${path.includes("?") ? "&" : "?"}offset=${offset}&limit=30`,
-    )
-      .then((result) => {
-        if (active) setPage(result);
-      })
-      .catch((error) => {
-        if (active) setError(message(error));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [path, offset, version]);
-  return {
-    ...page,
-    loading,
-    error,
-    setOffset,
-    reload: () => setVersion((value) => value + 1),
-  };
-}
 
 export function SiteAccounts() {
   const [query, setQuery] = useState("");
@@ -81,8 +45,8 @@ export function SiteAccounts() {
         }}
       >
         <label>
-          搜索账号
-          <input name="query" maxLength={100} type="search" />
+          搜索账号、昵称或邮箱
+          <input name="query" maxLength={254} type="search" />
         </label>
         <button>搜索</button>
       </form>
@@ -114,12 +78,15 @@ function Accounts({ query }: { query: string }) {
               !page.error &&
               page.items.map((account) => (
                 <tr key={account.accountId}>
-                  <td>{account.loginName}</td>
+                  <td>
+                    {account.displayName}
+                    <small className="muted"> · {account.loginName}</small>
+                  </td>
                   <td>{siteGroups[account.group]}</td>
                   <td>{account.ownedSpaces}</td>
                   <td>
                     <button onClick={() => setSelected(account)}>
-                      管理 {account.loginName}
+                      管理 {account.displayName}
                     </button>
                   </td>
                 </tr>
@@ -178,8 +145,11 @@ function AccountGroup({
     }
   }
   return (
-    <section aria-label={`${account.loginName} 的策略组`} className="sub-panel">
-      <h3>{account.loginName}</h3>
+    <section
+      aria-label={`${account.displayName} 的策略组`}
+      className="sub-panel"
+    >
+      <h3>{account.displayName}</h3>
       <form onSubmit={save}>
         <label>
           策略组
@@ -217,6 +187,7 @@ function AccountGroup({
         </button>
       </form>
       {error && <p role="alert">{error}</p>}
+      <SiteAccountSpaces accountId={account.accountId} />
       <h4>变更记录</h4>
       {history.error && <p role="alert">{history.error}</p>}
       {!history.loading &&

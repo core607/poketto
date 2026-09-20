@@ -13,10 +13,10 @@ const account = {
   account: {
     accountId: "owner",
     loginName: "owner",
+    displayName: "owner",
     siteAdministrator: false,
     group: "VIEWER" as const,
   },
-  mayIssueRegistrationInvitations: false,
 };
 
 function json(value: unknown) {

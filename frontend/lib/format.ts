@@ -58,14 +58,16 @@ export function safeImage(
     !value.startsWith("/api/public/assets/") &&
     !(
       allowPrivate &&
-      /^\/api\/admin\/workspaces\/[0-9a-f-]{36}\/assets\/images\//.test(value)
+      /^\/api\/(?:admin\/workspaces\/[0-9a-f-]{36}\/assets\/images|auth\/site\/workspaces\/[0-9a-f-]{36}\/review\/images)\//.test(
+        value,
+      )
     )
   )
     return undefined;
   const parsed = new URL(value, "https://placeholder.invalid");
   return parsed.pathname.startsWith("/api/public/assets/") ||
     (allowPrivate &&
-      /^\/api\/admin\/workspaces\/[0-9a-f-]{36}\/assets\/images\//.test(
+      /^\/api\/(?:admin\/workspaces\/[0-9a-f-]{36}\/assets\/images|auth\/site\/workspaces\/[0-9a-f-]{36}\/review\/images)\//.test(
         parsed.pathname,
       ))
     ? value

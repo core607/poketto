@@ -30,6 +30,15 @@ and unlinking require an authenticated account and cannot remove its last login
 method. Missing Google configuration hides that entrance rather than disabling
 email login. Return to an approved local destination after login.
 
+Use Spring Security's authorization-code client and OIDC ID-token decoder for
+token exchange and cryptographic validation. Bind each ten-minute browser flow to
+its session, a random state and nonce, and an S256 PKCE verifier. Start flows by a
+CSRF-protected POST, consume callback state once, and rotate the local session on
+success. A linking flow must still belong to the same signed-in account after the
+provider exchange. Retain the Google subject and verified email, not provider
+access or refresh tokens. Only the account and MCP connection pages are permitted
+return destinations.
+
 Email challenges are purpose-bound, six digits, expire after ten minutes, permit
 at most five failed attempts and are single-use. Resending has a sixty-second
 cooldown and replaces the previous code. Store only keyed challenge digests.
@@ -49,6 +58,11 @@ reuse the same message ID and payload. Derive the challenge HMAC key from the
 Resend credential with a separate purpose label; rotating that credential expires
 outstanding proofs. Rate buckets store keyed address identifiers. Retire expired
 challenge and rate rows during later reservations.
+
+Binding proofs belong to the signed-in account. Recovery proofs belong to the
+account holding the email when the challenge is issued, and consumption checks
+that the same account still owns that email. Moving an email between accounts
+cannot transfer an outstanding recovery proof.
 
 ## Fixed account groups
 
@@ -101,6 +115,22 @@ documents and their referenced public media for moderation. This entrance does
 not disclose private files, original history, member credentials or arbitrary blob
 identities, and remains unavailable to ordinary members without the relevant
 workspace authorization.
+
+Expose moderation reads under `/api/auth/site/workspaces/{workspaceId}/review`.
+Use the verified repository-public snapshot independently of website delivery;
+do not accept source text, historical commits or arbitrary original identities.
+The administrator-only document response contains the selected article's rendered
+media mappings, not the entire snapshot. Review images use an isolated registry
+of at most 128 grants, so their tokens cannot be replayed through anonymous image
+routes. Original downloads must be referenced by the selected current article,
+and recheck site-administrator authority at the existing streaming checkpoints.
+Role revocation or snapshot replacement invalidates subsequent reads.
+
+Account administration lists the account's owned spaces and their desired and
+eligible website states. Workspace owners can read the current ineligible owners'
+latest group-change reasons; administrators without membership do not gain that
+owner endpoint. The author can continue correcting content and request a group
+change from the operator.
 
 ## Delivery and data
 

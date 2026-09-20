@@ -4,6 +4,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.EmailAccounts;
 import io.github.core607.poketto.auth.EmailAddress;
 import io.github.core607.poketto.auth.EmailChallenges;
+import io.github.core607.poketto.auth.GoogleIdentityProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;
 import java.util.UUID;
@@ -24,15 +25,17 @@ import org.springframework.web.bind.annotation.RestController;
 class EmailIdentityController {
     private final EmailAccounts accounts;
     private final EmailChallenges challenges;
+    private final GoogleIdentityProvider google;
 
-    EmailIdentityController(EmailAccounts accounts, EmailChallenges challenges) {
+    EmailIdentityController(EmailAccounts accounts, EmailChallenges challenges, GoogleIdentityProvider google) {
         this.accounts = accounts;
         this.challenges = challenges;
+        this.google = google;
     }
 
     @GetMapping("/policy")
     Policy policy() {
-        return new Policy(challenges.available());
+        return new Policy(challenges.available(), google.available());
     }
 
     @PostMapping("/signup/challenge")
@@ -79,7 +82,7 @@ class EmailIdentityController {
         return accounts.rename(actor, request.displayName());
     }
 
-    record Policy(boolean emailAvailable) {}
+    record Policy(boolean emailAvailable, boolean googleAvailable) {}
 
     record Created(UUID accountId) {}
 

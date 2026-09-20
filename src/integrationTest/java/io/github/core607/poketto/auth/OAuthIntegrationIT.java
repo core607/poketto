@@ -120,14 +120,7 @@ class OAuthIntegrationIT {
     }
 
     private AuthPrincipal member(String login) {
-        var registration = new RegistrationService(
-                jdbc,
-                new DataSourceTransactionManager(jdbc.getDataSource()),
-                auth,
-                RegistrationInvitationPolicy.configured(false),
-                Clock.systemUTC());
-        var member = registration.register(
-                registration.issue(owner).token(), login, UUID.randomUUID().toString());
+        var member = AccountFixtures.create(auth, login, UUID.randomUUID().toString());
         auth.acceptInvitation(
                 member, auth.createInvitation(owner, workspace, Set.of()).token());
         return member;

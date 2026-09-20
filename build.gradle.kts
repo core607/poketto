@@ -53,6 +53,8 @@ val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
 dependencies {
     implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc:2.0.1")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.security:spring-security-oauth2-client")
+    implementation("org.springframework.security:spring-security-oauth2-jose")
     implementation("org.apache.httpcomponents.client5:httpclient5")
     implementation("org.commonmark:commonmark:0.30.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.30.0")

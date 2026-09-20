@@ -11,6 +11,7 @@ public final class AuthException extends RuntimeException {
         LAST_OWNER,
         LAST_ADMINISTRATOR,
         EMAIL_IN_USE,
+        IDENTITY_IN_USE,
         LAST_LOGIN_METHOD
     }
 
@@ -18,6 +19,11 @@ public final class AuthException extends RuntimeException {
 
     public AuthException(Code code) {
         super("Authentication operation failed: " + code);
+        this.code = code;
+    }
+
+    public AuthException(Code code, Throwable cause) {
+        super("Authentication operation failed: " + code, cause);
         this.code = code;
     }
 

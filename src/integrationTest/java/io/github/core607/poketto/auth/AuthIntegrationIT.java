@@ -472,13 +472,7 @@ class AuthIntegrationIT {
     }
 
     private AuthPrincipal account(AuthPrincipal owner, String login) {
-        RegistrationService registration = new RegistrationService(
-                jdbc,
-                transactionManager,
-                auth,
-                RegistrationInvitationPolicy.configured(false),
-                Clock.fixed(now, ZoneOffset.UTC));
-        return registration.register(registration.issue(owner).token(), login, secret());
+        return AccountFixtures.create(auth, login, secret());
     }
 
     private static String secret() {

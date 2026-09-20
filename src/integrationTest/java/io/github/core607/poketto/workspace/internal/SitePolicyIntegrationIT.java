@@ -3,13 +3,13 @@ package io.github.core607.poketto.workspace.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.auth.AccountFixtures;
+import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
-import io.github.core607.poketto.auth.RegistrationInvitationPolicy;
-import io.github.core607.poketto.auth.RegistrationService;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.workspace.PublicationUnavailableException;
@@ -46,7 +46,7 @@ class SitePolicyIntegrationIT {
     private JdbcTemplate jdbc;
     private TransactionTemplate transactions;
     private AuthService auth;
-    private RegistrationService accounts;
+    private Accounts accounts;
     private SitePolicyService policies;
     private JdbcWorkspacePublications publications;
     private WorkspaceId workspace;
@@ -67,9 +67,8 @@ class SitePolicyIntegrationIT {
         var encoder = new DelegatingPasswordEncoder(
                 "pbkdf2-v5.8", Map.of("pbkdf2-v5.8", Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
         auth = new AuthService(jdbc, manager, encoder, event -> {}, Clock.systemUTC());
-        accounts = new RegistrationService(
-                jdbc, manager, auth, RegistrationInvitationPolicy.configured(false), Clock.systemUTC());
-        policies = new SitePolicyService(jdbc, accounts, manager);
+        accounts = new Accounts(jdbc, manager);
+        policies = new SitePolicyService(jdbc, accounts, auth, manager);
         publications = new JdbcWorkspacePublications(jdbc);
         administrator = auth.initializeOwner("administrator", UUID.randomUUID().toString());
     }
@@ -158,8 +157,7 @@ class SitePolicyIntegrationIT {
     }
 
     private AuthPrincipal account(String login) {
-        return accounts.register(
-                accounts.issue(administrator).token(), login, UUID.randomUUID().toString());
+        return AccountFixtures.create(auth, login, UUID.randomUUID().toString());
     }
 
     private WorkspaceId ownedSpace(AuthPrincipal owner) {

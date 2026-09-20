@@ -11,17 +11,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class EmailAccounts {
     private final JdbcTemplate jdbc;
     private final AuthService auth;
-    private final RegistrationService accounts;
+    private final Accounts accounts;
     private final EmailChallenges challenges;
     private final CredentialRevocations revocations;
     private final Clock clock;
 
     public EmailAccounts(
-            JdbcTemplate jdbc,
-            AuthService auth,
-            RegistrationService accounts,
-            EmailChallenges challenges,
-            Clock clock) {
+            JdbcTemplate jdbc, AuthService auth, Accounts accounts, EmailChallenges challenges, Clock clock) {
         this.jdbc = jdbc;
         this.auth = auth;
         this.accounts = accounts;
@@ -82,10 +78,13 @@ public final class EmailAccounts {
             throw new EmailChallengeException(EmailChallengeException.Code.DELIVERY_UNAVAILABLE);
         }
         String email = EmailAddress.normalize(input);
-        Boolean known = jdbc.queryForObject(
-                "select exists(select 1 from auth_accounts where verified_email=?)", Boolean.class, email);
+        List<UUID> ids = jdbc.query(
+                "select account_id from auth_accounts where verified_email=?",
+                (row, number) -> row.getObject(1, UUID.class),
+                email);
+        UUID account = ids.isEmpty() ? null : ids.getFirst();
         try {
-            return challenges.send(email, EmailPurpose.RECOVERY, null, address, Boolean.TRUE.equals(known));
+            return challenges.send(email, EmailPurpose.RECOVERY, account, address, account != null);
         } catch (EmailChallengeException failure) {
             if (failure.code() != EmailChallengeException.Code.DELIVERY_UNAVAILABLE) {
                 throw failure;
@@ -97,10 +96,19 @@ public final class EmailAccounts {
     }
 
     public void resetPassword(EmailChallenges.Proof proof, String password) {
-        challenges.consume(proof, EmailPurpose.RECOVERY, null, () -> {
+        List<UUID> targets = jdbc.query(
+                "select account_id from auth_accounts where verified_email=?",
+                (row, number) -> row.getObject(1, UUID.class),
+                proof.email());
+        if (targets.isEmpty()) {
+            throw new EmailChallengeException(EmailChallengeException.Code.INVALID_CHALLENGE);
+        }
+        UUID target = targets.getFirst();
+        challenges.consume(proof, EmailPurpose.RECOVERY, target, () -> {
             List<UUID> ids = jdbc.query(
-                    "select account_id from auth_accounts where verified_email=? for update",
+                    "select account_id from auth_accounts where account_id=? and verified_email=? for update",
                     (row, number) -> row.getObject(1, UUID.class),
+                    target,
                     proof.email());
             if (ids.isEmpty()) {
                 throw new EmailChallengeException(EmailChallengeException.Code.INVALID_CHALLENGE);

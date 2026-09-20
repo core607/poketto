@@ -199,7 +199,7 @@ public final class MediaFileService {
         return referencedDownload(snapshots, workspace, commit, route, path, identity, false);
     }
 
-    private Download referencedDownload(
+    Download referencedDownload(
             PublicContentSnapshots source,
             WorkspaceId workspace,
             String commit,

@@ -51,6 +51,9 @@ public final class EmailChallenges {
         requireNoTransaction();
         requireAvailable();
         requireBinding(purpose, account);
+        if (deliver && purpose == EmailPurpose.RECOVERY && account == null) {
+            throw new EmailChallengeException(EmailChallengeException.Code.INVALID_INPUT);
+        }
         String email = EmailAddress.normalize(input);
         UUID id = UUID.randomUUID();
         String code = String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000));
@@ -144,7 +147,9 @@ public final class EmailChallenges {
     }
 
     private static void requireBinding(EmailPurpose purpose, UUID account) {
-        if (purpose == null || (purpose == EmailPurpose.BIND) != (account != null)) {
+        if (purpose == null
+                || (purpose == EmailPurpose.BIND && account == null)
+                || (purpose == EmailPurpose.SIGNUP && account != null)) {
             throw new EmailChallengeException(EmailChallengeException.Code.INVALID_INPUT);
         }
     }

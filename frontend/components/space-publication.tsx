@@ -5,6 +5,8 @@ import { api } from "../lib/browser-api";
 import { message } from "./admin";
 import { useConfirmation } from "./confirmation";
 
+import { PublicationRestrictions } from "./site-review";
+
 type Publication = {
   workspaceId: string;
   slug: string;
@@ -175,10 +177,13 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
         </button>
       )}
       {publication && !publication.eligible && (
-        <p className="notice" role="status">
-          公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
-          恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
-        </p>
+        <div className="notice" role="status">
+          <p>
+            公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
+            恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
+          </p>
+          <PublicationRestrictions key={workspaceId} base={base} />
+        </div>
       )}
       {publication?.effectiveEnabled && (
         <p>
