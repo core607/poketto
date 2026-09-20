@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import io
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -107,8 +108,15 @@ class Docker:
             for file in files:
                 if file.suffix == ".json":
                     for name, value in json.loads(file.read_text())["services"].items():
-                        config["services"][name].update(value)
+                        overlay = copy.deepcopy(value)
+                        if "environment" in overlay:
+                            environment = config["services"][name].setdefault("environment", {})
+                            environment.update({key: item.replace("$$", "$") for key, item in overlay.pop("environment").items()})
+                        config["services"][name].update(overlay)
             if "config" in args:
+                for service in config["services"].values():
+                    if "environment" in service:
+                        service["environment"] = {key: value.replace("$", "$$") for key, value in service["environment"].items()}
                 return json.dumps(config)
             if "up" in args:
                 if self.fail_up:
@@ -118,6 +126,7 @@ class Docker:
                     image = config["services"][name]["image"]
                     self.running[name]["Image"] = self.find_image(image)[0]
                     self.running[name]["Config"]["Image"] = image
+                    self.running[name]["Config"]["Env"] = [key + "=" + value for key, value in config["services"][name].get("environment", {}).items()]
                 if self.changed_runtime:
                     self.running["app"]["HostConfig"]["Memory"] += 1
                 if self.changed_revision_environment:
@@ -135,6 +144,55 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.config = {"project": "example", "composeFiles": ["compose.yaml"]}
         self.docker = Docker()
         self.installation = updater.Installation(self.root, self.config, self.docker)
+
+    def test_identity_settings_are_literal_private_and_retained_on_image_only_updates(self):
+        secret = "synthetic-$literal-${VAR}-'quoted'=value"
+        settings = updater.read_settings(io.StringIO(
+            "POKETTO_RESEND_API_KEY=" + secret + "\nPOKETTO_EMAIL_FROM=Example <noreply@example.test>\n"
+            "POKETTO_GOOGLE_CLIENT_ID=client\nPOKETTO_GOOGLE_CLIENT_SECRET=" + secret + "\n"))
+        result = self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
+        self.assertEqual(result["status"], "healthy")
+        expected = [key + "=" + value for key, value in settings.items()]
+        for value in expected + ["REPOSITORY_PASSWORD=retained-secret"]:
+            self.assertIn(value, self.docker.running["app"]["Config"]["Env"])
+        self.assertEqual(self.docker.running["frontend"]["Config"]["Env"], ["API_BASE=http://app:8080"])
+        self.assertNotIn(secret, self.installation.state_file.read_text() + json.dumps(result) + str(self.docker.calls))
+        self.assertEqual(self.installation.overlay.stat().st_mode & 0o777, 0o600)
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for value in expected:
+            self.assertIn(value, self.docker.running["app"]["Config"]["Env"])
+        self.installation.update(REVISION, "new-app", "new-frontend", settings={
+            "POKETTO_GOOGLE_CLIENT_ID": "", "POKETTO_GOOGLE_CLIENT_SECRET": ""})
+        self.assertIn("POKETTO_GOOGLE_CLIENT_SECRET=", self.docker.running["app"]["Config"]["Env"])
+
+    def test_pending_identity_update_reconciles_only_its_original_configuration(self):
+        settings = {"POKETTO_EMAIL_DAILY_LIMIT": "80"}
+        self.docker.fail_up = True
+        with self.assertRaises(updater.DeploymentError):
+            self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
+        self.docker.fail_up = False
+        with self.assertRaisesRegex(updater.DeploymentError, "unfinished"):
+            self.installation.update(REVISION, "new-app", "new-frontend", settings={"POKETTO_EMAIL_DAILY_LIMIT": "90"})
+        self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend")["status"], "healthy")
+        self.assertIn("POKETTO_EMAIL_DAILY_LIMIT=80", self.docker.running["app"]["Config"]["Env"])
+
+    def test_identity_changes_do_not_allow_resource_changes(self):
+        self.docker.changed_runtime = True
+        with self.assertRaisesRegex(updater.DeploymentError, "runtime configuration"):
+            self.installation.update(REVISION, "new-app", "new-frontend", settings={"POKETTO_EMAIL_DAILY_LIMIT": "80"})
+
+    def test_invalid_identity_configuration_never_restarts_containers(self):
+        for settings in ({"POKETTO_RESEND_API_KEY": "missing-from"}, {"POKETTO_GOOGLE_CLIENT_ID": "unpaired"},
+                         {"POKETTO_EMAIL_DAILY_LIMIT": "0"}):
+            with self.subTest(settings=settings), self.assertRaises(updater.DeploymentError):
+                self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
+        self.assertFalse(any("up" in call for call in self.docker.calls))
+
+    def test_settings_input_rejects_unrelated_duplicate_multiline_and_excessive_values(self):
+        for payload in ("POKETTO_REPOSITORY_PASSWORD=keep-out", "POKETTO_EMAIL_FROM=a\nPOKETTO_EMAIL_FROM=b",
+                        "POKETTO_EMAIL_FROM=a\rb", "POKETTO_EMAIL_FROM=a\x00b", "x" * 65537):
+            with self.subTest(length=len(payload)), self.assertRaises(updater.DeploymentError):
+                updater.read_settings(io.StringIO(payload))
 
     def test_updates_only_images_and_leaves_operator_configuration_untouched(self):
         before = (self.root / "compose.yaml").read_bytes()

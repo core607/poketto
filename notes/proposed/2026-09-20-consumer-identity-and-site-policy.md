@@ -147,6 +147,25 @@ standard and existing-installation deployment paths must deliver runtime setting
 without logging secrets or baking them into artifacts. Tests use fake providers;
 real mail delivery and Google login require separate live verification.
 
+The existing-installation updater accepts only `POKETTO_RESEND_API_KEY`,
+`POKETTO_EMAIL_FROM`, `POKETTO_EMAIL_DAILY_LIMIT`, `POKETTO_GOOGLE_CLIENT_ID` and
+`POKETTO_GOOGLE_CLIENT_SECRET` through `--set-stdin`. This extends the image-only
+boundary of [existing-installation delivery](../implemented/2026-09-08-existing-installation-delivery.md)
+without admitting repository credentials or other runtime changes. Registry
+credentials reach only the pull helper. Install the current privileged updater
+before sending identity settings; the transfer script never replaces it.
+
+Keep supplied identity settings in the existing protected Compose overlay, with
+literal dollar signs escaped for Compose. Omitted values retain their effective
+settings; explicit empty values disable the corresponding provider, with both
+Google fields cleared together. Validate the combined configuration before
+restarting, and adjust runtime fingerprints only for supplied identity keys.
+Operator Compose and environment files, frontend environment, resources, mounts
+and dependency containers remain unchanged. The overlay is mode 0600; deployment
+state and command output contain fingerprints, not the credentials. A pending
+attempt accepts only the same images and candidate configuration, including the
+identity values. There is no automatic rollback.
+
 Update the English and Chinese README only where shipped capabilities or existing
 descriptions change. README is a product overview, not a progress or verification
 report. Usage documentation owns configuration details; PRs own execution evidence.

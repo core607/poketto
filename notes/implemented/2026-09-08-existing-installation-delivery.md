@@ -2,6 +2,12 @@
 
 Date: 2026-09-08
 
+[Consumer identity](../proposed/2026-09-20-consumer-identity-and-site-policy.md)
+defines the extension for explicit identity-setting injection. Its allowlist,
+protected overlay and reconciliation rules supersede this record's image-only
+restriction when that extension is enabled; unrelated settings retain this
+record's boundary.
+
 [Mirror registry delivery](2026-09-10-mirror-registry-delivery.md) adds `POKETTO_DEPLOY_MODE=mirror` to this layout. Both canonical digests are pulled before invoking the updater. Optional registry credentials are used only for those pulls and are deleted afterwards; application settings remain operator-owned.
 
 ## Problem and decision

@@ -527,10 +527,19 @@ jobs:
           MIRROR_USERNAME: ${{ vars.POKETTO_MIRROR_USERNAME }}
           MIRROR_PULL_PASSWORD: ${{ secrets.POKETTO_MIRROR_PULL_PASSWORD }}
           REVISION: ${{ github.sha }}
+          POKETTO_RESEND_API_KEY: ${{ secrets.POKETTO_RESEND_API_KEY }}
+          POKETTO_EMAIL_FROM: ${{ vars.POKETTO_EMAIL_FROM }}
+          POKETTO_EMAIL_DAILY_LIMIT: ${{ vars.POKETTO_EMAIL_DAILY_LIMIT }}
+          POKETTO_GOOGLE_CLIENT_ID: ${{ secrets.POKETTO_GOOGLE_CLIENT_ID }}
+          POKETTO_GOOGLE_CLIENT_SECRET: ${{ secrets.POKETTO_GOOGLE_CLIENT_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
+          settings=""
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_EMAIL_DAILY_LIMIT POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET; do
+            [ -z "${!key}" ] || settings+=$'\n'"$key=${!key}"
+          done
           args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing)
           # Pull mode reaches the canonical registry from the host and needs no archive; mirror mode
@@ -538,12 +547,12 @@ jobs:
           # hosts that cannot reach either registry.
           case "${DEPLOY_MODE:-pull}" in
             mirror)
-              printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
+              printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$MIRROR_USERNAME" "$MIRROR_PULL_PASSWORD" \
                 | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin ;;
             transfer)
-              bash deploy/transfer.sh "${args[@]}" ;;
+              printf '%s\n' "$settings" | bash deploy/transfer.sh "${args[@]}" --set-stdin ;;
             *)
-              printf 'REGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
+              printf '%s\nREGISTRY_USERNAME=%s\nREGISTRY_PASSWORD=%s\n' "$settings" "$GITHUB_ACTOR" "$GITHUB_TOKEN" \
                 | bash deploy/transfer.sh "${args[@]}" --pull --set-stdin ;;
           esac
 
