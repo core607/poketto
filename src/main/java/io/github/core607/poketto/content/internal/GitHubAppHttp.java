@@ -1,6 +1,5 @@
 package io.github.core607.poketto.content.internal;
 
-import io.github.core607.poketto.content.RepositoryConnectionException;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -85,7 +84,7 @@ final class GitHubAppHttp implements AutoCloseable {
             throw new IOException("GitHub HTTP client is closed");
         }
         if (!admission.tryAcquire()) {
-            throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
+            throw new GitHubAppFailure(GitHubAppFailure.Code.BUSY);
         }
         CompletableFuture<HttpResponse<byte[]>> pending = null;
         try {

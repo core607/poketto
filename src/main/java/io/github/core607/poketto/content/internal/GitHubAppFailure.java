@@ -4,6 +4,8 @@ package io.github.core607.poketto.content.internal;
 final class GitHubAppFailure extends RuntimeException {
     enum Code {
         AUTHORIZATION_REQUIRED,
+        AUTHORIZATION_CHANGED,
+        BUSY,
         UNAVAILABLE,
         INVALID_RESPONSE,
         IDENTITY_CHANGED,

@@ -182,6 +182,18 @@ final class GitHubAppOAuth {
     }
 
     record Tokens(String accessToken, Instant accessExpiresAt, String refreshToken, Instant refreshExpiresAt) {
+        Tokens {
+            GitHubAppJson.require(credential(accessToken));
+            GitHubAppJson.require(validExpirations(accessExpiresAt, refreshToken, refreshExpiresAt));
+        }
+
+        private static boolean validExpirations(Instant access, String refresh, Instant refreshExpiry) {
+            if (access == null && refresh == null && refreshExpiry == null) {
+                return true;
+            }
+            return access != null && credential(refresh) && refreshExpiry != null && refreshExpiry.isAfter(access);
+        }
+
         @Override
         public String toString() {
             return "GitHubUserTokens[redacted]";

@@ -90,8 +90,15 @@ operation and the `web` module owns HTTP and callback entrances.
 
 Persist encrypted user access and refresh tokens with account/provider identity
 binding and version checks. Respect provider expiry, serialize refresh-token
-replacement and fail closed after refresh rejection. Store no provider token in
-browser storage, repository content, logs or public responses. Installation access
+replacement and fail closed after refresh rejection. Bind the encrypted envelope
+to the App client, Poketto account, GitHub owner and grant version, using the
+existing repository credential key with a separate encryption context. A bounded
+database lease owns each refresh; provider I/O runs outside database locks.
+Late refresh results cannot overwrite revocation or newer consent. An expired
+lease or ambiguous provider response requires fresh consent because GitHub may
+already have consumed the refresh token. A local admission rejection before any
+request was sent leaves the existing grant available for retry. Store no provider
+token in browser storage, repository content, logs or public responses. Installation access
 tokens are short-lived runtime credentials, requested for exactly the recorded
 repository ID with only metadata/content permissions needed for Git operations;
 routine synchronization does not retain Administration write authority.

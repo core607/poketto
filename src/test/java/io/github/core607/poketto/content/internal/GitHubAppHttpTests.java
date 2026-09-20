@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import io.github.core607.poketto.content.RepositoryConnectionException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -143,8 +142,8 @@ class GitHubAppHttpTests {
             }
             assertThat(fixture.allStalled.await(3, TimeUnit.SECONDS)).isTrue();
             assertThatThrownBy(() -> client.getApi("/data", "fixture-token"))
-                    .isInstanceOf(RepositoryConnectionException.class)
-                    .hasMessage("Repository connection: BUSY");
+                    .isInstanceOf(GitHubAppFailure.class)
+                    .hasMessage("GitHub App: BUSY");
             fixture.release.countDown();
             for (Future<GitHubAppHttp.Reply> request : pending) {
                 assertThat(request.get(3, TimeUnit.SECONDS).status()).isEqualTo(200);

@@ -52,18 +52,8 @@ final class RepositoryCredentialCipher {
                 .put(username)
                 .put(password)
                 .array();
-        byte[] nonce = new byte[12];
-        random.nextBytes(nonce);
         try {
-            Cipher cipher = cipher(Cipher.ENCRYPT_MODE, workspace, canonicalUri, nonce);
-            byte[] encrypted = cipher.doFinal(plain);
-            return ByteBuffer.allocate(1 + nonce.length + encrypted.length)
-                    .put((byte) 1)
-                    .put(nonce)
-                    .put(encrypted)
-                    .array();
-        } catch (GeneralSecurityException invalid) {
-            throw unavailable();
+            return seal(repositoryContext(workspace, canonicalUri), plain);
         } finally {
             Arrays.fill(username, (byte) 0);
             Arrays.fill(password, (byte) 0);
@@ -72,14 +62,9 @@ final class RepositoryCredentialCipher {
     }
 
     Credentials decrypt(WorkspaceId workspace, String canonicalUri, byte[] envelope) {
-        requireKey();
-        if (envelope == null || envelope.length < 33 || envelope.length > 20_000 || envelope[0] != 1) {
-            throw unavailable();
-        }
         byte[] plain = null;
         try {
-            Cipher cipher = cipher(Cipher.DECRYPT_MODE, workspace, canonicalUri, Arrays.copyOfRange(envelope, 1, 13));
-            plain = cipher.doFinal(envelope, 13, envelope.length - 13);
+            plain = open(repositoryContext(workspace, canonicalUri), envelope);
             ByteBuffer buffer = ByteBuffer.wrap(plain);
             int length = buffer.getInt();
             if (length < 1 || length > buffer.remaining()) {
@@ -88,7 +73,7 @@ final class RepositoryCredentialCipher {
             return new Credentials(
                     new String(plain, 4, length, StandardCharsets.UTF_8),
                     new String(plain, 4 + length, plain.length - 4 - length, StandardCharsets.UTF_8));
-        } catch (GeneralSecurityException | IllegalArgumentException | BufferUnderflowException invalid) {
+        } catch (IllegalArgumentException | BufferUnderflowException invalid) {
             throw unavailable();
         } finally {
             if (plain != null) {
@@ -97,12 +82,46 @@ final class RepositoryCredentialCipher {
         }
     }
 
-    private Cipher cipher(int mode, WorkspaceId workspace, String canonicalUri, byte[] nonce)
-            throws GeneralSecurityException {
+    byte[] seal(byte[] context, byte[] plain) {
+        requireKey();
+        if (plain.length > 19_000) {
+            throw new IllegalArgumentException("Repository credential plaintext exceeds its limit");
+        }
+        byte[] nonce = new byte[12];
+        random.nextBytes(nonce);
+        try {
+            byte[] encrypted = cipher(Cipher.ENCRYPT_MODE, context, nonce).doFinal(plain);
+            return ByteBuffer.allocate(1 + nonce.length + encrypted.length)
+                    .put((byte) 1)
+                    .put(nonce)
+                    .put(encrypted)
+                    .array();
+        } catch (GeneralSecurityException invalid) {
+            throw new ContentRepositoryException("Workspace repository credentials are unavailable", invalid);
+        }
+    }
+
+    byte[] open(byte[] context, byte[] envelope) {
+        requireKey();
+        if (envelope == null || envelope.length < 33 || envelope.length > 20_000 || envelope[0] != 1) {
+            throw unavailable();
+        }
+        try {
+            return cipher(Cipher.DECRYPT_MODE, context, Arrays.copyOfRange(envelope, 1, 13))
+                    .doFinal(envelope, 13, envelope.length - 13);
+        } catch (GeneralSecurityException invalid) {
+            throw new ContentRepositoryException("Workspace repository credentials are unavailable", invalid);
+        }
+    }
+
+    private static byte[] repositoryContext(WorkspaceId workspace, String canonicalUri) {
+        return ("poketto-repository-v1\n" + workspace + "\n" + canonicalUri).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private Cipher cipher(int mode, byte[] context, byte[] nonce) throws GeneralSecurityException {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(mode, key, new GCMParameterSpec(128, nonce));
-        cipher.updateAAD(
-                ("poketto-repository-v1\n" + workspace + "\n" + canonicalUri).getBytes(StandardCharsets.UTF_8));
+        cipher.updateAAD(context);
         return cipher;
     }
 
