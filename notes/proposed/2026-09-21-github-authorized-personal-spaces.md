@@ -96,6 +96,11 @@ tokens are short-lived runtime credentials, requested for exactly the recorded
 repository ID with only metadata/content permissions needed for Git operations;
 routine synchronization does not retain Administration write authority.
 
+Provider exchanges use fixed GitHub HTTPS origins over direct public-network
+connections and refuse redirects. Bound concurrent exchanges, request and response
+bytes including error bodies, and the HTTP response deadline. Provider headers
+and credential payloads never enter diagnostic output.
+
 Before issuing or using repository credentials, verify the connection remains
 authorized and the repository belongs to the recorded personal owner and remains
 private. Handle signed GitHub authorization, installation and repository-access

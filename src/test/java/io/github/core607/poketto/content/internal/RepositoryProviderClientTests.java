@@ -49,13 +49,13 @@ class RepositoryProviderClientTests {
 
     @Test
     void boundsCompleteProviderResponseBeforeCopyingExcessBytes() {
-        var exact = new RepositoryProviderClient.BoundedBody(4);
+        var exact = new BoundedProviderBody(4);
         var exactSubscription = new Subscription();
         exact.onSubscribe(exactSubscription);
         exact.onNext(List.of(ByteBuffer.wrap(new byte[] {1, 2}), ByteBuffer.wrap(new byte[] {3, 4})));
         exact.onComplete();
         assertThat(exact.getBody().toCompletableFuture().join()).containsExactly(1, 2, 3, 4);
-        var overflow = new RepositoryProviderClient.BoundedBody(4);
+        var overflow = new BoundedProviderBody(4);
         var subscription = new Subscription();
         overflow.onSubscribe(subscription);
         overflow.onNext(List.of(ByteBuffer.wrap(new byte[] {1, 2}), ByteBuffer.wrap(new byte[] {3, 4, 5})));
