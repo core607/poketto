@@ -63,10 +63,16 @@ the operation resumable without granting a new space or deleting its repository.
 GitHub repository creation is not a database transaction. Record intent before
 the request and its immutable result before initialization. A lost response must
 not cause a blind POST retry or adoption based only on repository name, owner or
-creation time. Reconciliation needs verified provenance belonging to this
-operation; if that proof is unavailable, retain the uncertain state and require
-resolution. A pre-existing same-name repository is a conflict, never an implicit
-connection or overwrite target.
+creation time. Persist a server-generated random creation marker before the POST
+and include it in the repository description in that same creation request.
+Reconciliation requires the exact marker, recorded personal owner and private
+visibility before persisting the immutable repository ID. A missing repository
+after an ambiguous response does not prove the POST failed; retain the uncertain
+state instead of repeating it. The marker is operation metadata, not a credential;
+after the repository ID is durable, later access uses that ID and users may edit
+the description. Do not rewrite their description to remove the marker.
+A pre-existing same-name repository without this operation's marker is a
+conflict, never an implicit connection or overwrite target.
 
 Template initialization uses the existing repository initialization contract and
 must preserve unexpected user changes. Binding uniqueness covers immutable
