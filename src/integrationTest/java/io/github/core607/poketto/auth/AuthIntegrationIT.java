@@ -84,7 +84,8 @@ class AuthIntegrationIT {
                         .map(AuthException.class::cast)
                         .map(AuthException::code))
                 .containsExactly(AuthException.Code.ALREADY_INITIALIZED);
-        assertThat(jdbc.queryForObject("select count(*) from auth_accounts where instance_admin", Integer.class))
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from auth_accounts where site_group='ADMINISTRATOR'", Integer.class))
                 .isOne();
         assertThat(jdbc.queryForObject("select count(*) from auth_memberships where role = 'OWNER'", Integer.class))
                 .isOne();

@@ -80,7 +80,7 @@ class SpaceCreationIntegrationIT {
                 Clock.fixed(now, ZoneOffset.UTC));
         UUID id = UUID.randomUUID();
         jdbc.update(
-                "insert into auth_accounts(account_id,login_name,password_hash) values (?,'creator',?)",
+                "insert into auth_accounts(account_id,login_name,password_hash,site_group) values (?,'creator',?,'CREATOR')",
                 id,
                 encoder.encode("fixture-password-123"));
         actor = auth.authenticatePassword("creator", "fixture-password-123");
@@ -206,6 +206,31 @@ class SpaceCreationIntegrationIT {
     private SpaceCreationService service(Instant at) {
         return new SpaceCreationService(
                 jdbc, transactions, accounts, auth, catalog, remote, initialization, Clock.fixed(at, ZoneOffset.UTC));
+    }
+
+    @Test
+    void losingCreatorEligibilityDuringRemoteVerificationCannotCommitANewSpace() throws Exception {
+        remote.entered = new CountDownLatch(1);
+        remote.release = new CountDownLatch(1);
+        var service = service(now);
+        try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            var creation = pool.submit(() -> create(service, UUID.randomUUID(), "restricted-space", "first"));
+            assertThat(remote.entered.await(5, TimeUnit.SECONDS)).isTrue();
+            jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", actor.accountId());
+            remote.release.countDown();
+            assertThat(creation.get(10, TimeUnit.SECONDS).stage()).isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject("select count(*) from workspaces where not is_default", Integer.class))
+                    .isZero();
+            assertThat(jdbc.queryForObject(
+                            "select count(*) from auth_memberships where account_id=?",
+                            Integer.class,
+                            actor.accountId()))
+                    .isZero();
+            assertThatThrownBy(() -> create(service, UUID.randomUUID(), "another-space", "second"))
+                    .isInstanceOf(AuthException.class);
+        } finally {
+            remote.release.countDown();
+        }
     }
 
     @Test

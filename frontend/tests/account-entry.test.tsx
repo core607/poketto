@@ -75,6 +75,7 @@ const account = {
     accountId: "fixture-member",
     loginName: "fixture-member",
     siteAdministrator: false,
+    group: "VIEWER" as const,
   },
   mayIssueRegistrationInvitations: false,
 };
@@ -91,7 +92,7 @@ test("a rejected logout preserves the signed-in account and its navigation", asy
     )
       return Response.json(page);
     if (path === "/api/auth/workspaces/creation-policy")
-      return Response.json({ available: false });
+      return Response.json({ available: false, eligible: true });
     if (path === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
     if (path === "/api/auth/logout") return new Response(null, { status: 503 });
@@ -145,7 +146,7 @@ test("workspace connection retries reuse the request and never persist the provi
   globalThis.fetch = async (input, options) => {
     const path = String(input);
     if (path === "/api/auth/workspaces/creation-policy")
-      return Response.json({ available: true });
+      return Response.json({ available: true, eligible: true });
     if (path === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
     assert.equal(path, "/api/auth/workspaces/creations");
@@ -264,7 +265,7 @@ test("a no-space account stays signed in and joins explicitly from account manag
   globalThis.fetch = async (input, options) => {
     const path = new URL(String(input), "https://site.example").pathname;
     if (path === "/api/auth/workspaces/creation-policy")
-      return Response.json({ available: false });
+      return Response.json({ available: false, eligible: true });
     if (path === "/api/auth/account") return Response.json(account);
     if (path === "/api/auth/workspaces")
       return Response.json({
@@ -334,7 +335,7 @@ test("disabling issuance retains the ordinary issuer's existing invitation contr
   globalThis.fetch = async (input) => {
     const path = new URL(String(input), "https://site.example").pathname;
     if (path === "/api/auth/workspaces/creation-policy")
-      return Response.json({ available: false });
+      return Response.json({ available: false, eligible: true });
     if (path === "/api/auth/account") return Response.json(account);
     if (path === "/api/auth/workspaces") return Response.json(page);
     if (path === "/api/auth/workspaces/11111111-1111-4111-8111-111111111111/me")
@@ -370,7 +371,7 @@ test("an unavailable workspace does not turn a verified account into a login for
   globalThis.fetch = async (input) => {
     const path = new URL(String(input), "https://site.example").pathname;
     if (path === "/api/auth/workspaces/creation-policy")
-      return Response.json({ available: false });
+      return Response.json({ available: false, eligible: true });
     if (path === "/api/auth/account") return Response.json(account);
     if (path === "/api/auth/workspaces")
       return new Response(null, { status: 503 });

@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.Workspace;
@@ -70,6 +71,9 @@ class PostgresIntegrationIT {
     private JdbcTemplate jdbc;
 
     @Autowired
+    private AuthService auth;
+
+    @Autowired
     private WorkspaceCatalog workspaces;
 
     @Autowired
@@ -132,6 +136,7 @@ class PostgresIntegrationIT {
 
     @Test
     void servesRepositoryNativeDocumentsOnlyAfterPublishingPolicyIsEnabled() throws Exception {
+        auth.initializeOwner("publisher", "fixture-publisher-password");
         Workspace workspace = workspaces.defaultWorkspace();
         Path author = Files.createTempDirectory(dataDirectory, "author-");
         try (Git git = Git.init()

@@ -8,7 +8,8 @@ public final class AuthException extends RuntimeException {
         INVALID_INVITATION,
         ALREADY_INITIALIZED,
         INVALID_INPUT,
-        LAST_OWNER
+        LAST_OWNER,
+        LAST_ADMINISTRATOR
     }
 
     private final Code code;

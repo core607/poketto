@@ -46,6 +46,8 @@ class SpacePublicationController {
                 body.slug(),
                 body.displayName(),
                 body.enabled(),
+                body.eligible(),
+                body.publiclyEnabled(),
                 body.publicAuthorName());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
     }
@@ -59,7 +61,13 @@ class SpacePublicationController {
     }
 
     record PublicationResponse(
-            String workspaceId, String slug, String displayName, boolean enabled, String publicAuthorName) {}
+            String workspaceId,
+            String slug,
+            String displayName,
+            boolean enabled,
+            boolean eligible,
+            boolean effectiveEnabled,
+            String publicAuthorName) {}
 
     record UpdateAuthor(String name) {
         UpdateAuthor {

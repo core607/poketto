@@ -16,7 +16,7 @@ class AuthProblemResponses {
                 switch (exception.code()) {
                     case INVALID_CREDENTIALS -> HttpStatus.UNAUTHORIZED;
                     case DENIED -> HttpStatus.FORBIDDEN;
-                    case LAST_OWNER, ALREADY_INITIALIZED -> HttpStatus.CONFLICT;
+                    case LAST_OWNER, LAST_ADMINISTRATOR, ALREADY_INITIALIZED -> HttpStatus.CONFLICT;
                     case INVALID_INPUT, INVALID_INVITATION -> HttpStatus.BAD_REQUEST;
                 };
         ProblemDetail problem =

@@ -53,14 +53,22 @@ public final class RegistrationService {
             throw new AuthException(DENIED);
         }
         var identities = jdbc.query(
-                "select account_id, login_name, instance_admin from auth_accounts where account_id=?"
+                "select account_id, login_name, site_group from auth_accounts where account_id=?"
                         + (lock ? " for update" : ""),
-                (row, number) -> new AccountIdentity(row.getObject(1, UUID.class), row.getString(2), row.getBoolean(3)),
+                (row, number) -> new AccountIdentity(
+                        row.getObject(1, UUID.class), row.getString(2), SiteGroup.valueOf(row.getString(3))),
                 actor.accountId());
         if (identities.isEmpty()) {
             throw new AuthException(DENIED);
         }
         return identities.getFirst();
+    }
+
+    /** Creation eligibility is independent of grants on existing workspaces. */
+    public void requireCreator(AuthPrincipal actor) {
+        if (!account(actor).group().mayCreateSpace()) {
+            throw new AuthException(DENIED);
+        }
     }
 
     public boolean mayIssue(AuthPrincipal actor) {

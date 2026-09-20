@@ -14,7 +14,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 final class JdbcWorkspacePublications implements WorkspacePublications {
-    private static final String COLUMNS = "workspace_id,public_slug,display_name,public_delivery,public_author_name";
+    private static final String COLUMNS =
+            "w.workspace_id,w.public_slug,w.display_name,w.public_delivery,w.public_author_name,e.eligible";
+    private static final String SOURCES = "workspaces w join website_owner_eligibility e using(workspace_id)";
+    private static final String ENABLED = "w.public_delivery and e.eligible";
     private final JdbcTemplate jdbc;
 
     JdbcWorkspacePublications(JdbcTemplate jdbc) {
@@ -28,7 +31,7 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
         }
         return jdbc
                 .query(
-                        "select " + COLUMNS + " from workspaces where public_slug=? and public_delivery",
+                        "select " + COLUMNS + " from " + SOURCES + " where w.public_slug=? and " + ENABLED,
                         JdbcWorkspacePublications::read,
                         slug)
                 .stream()
@@ -43,13 +46,13 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
         }
         if (after.isEmpty()) {
             return jdbc.query(
-                    "select " + COLUMNS + " from workspaces where public_delivery order by workspace_id limit ?",
+                    "select " + COLUMNS + " from " + SOURCES + " where " + ENABLED + " order by w.workspace_id limit ?",
                     JdbcWorkspacePublications::read,
                     limit);
         }
         return jdbc.query(
-                "select " + COLUMNS
-                        + " from workspaces where public_delivery and workspace_id>? order by workspace_id limit ?",
+                "select " + COLUMNS + " from " + SOURCES + " where " + ENABLED
+                        + " and w.workspace_id>? order by w.workspace_id limit ?",
                 JdbcWorkspacePublications::read,
                 after.orElseThrow().value(),
                 limit);
@@ -59,7 +62,7 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
     public Publication settings(WorkspaceId workspace) {
         return jdbc
                 .query(
-                        "select " + COLUMNS + " from workspaces where workspace_id=?",
+                        "select " + COLUMNS + " from " + SOURCES + " where w.workspace_id=?",
                         JdbcWorkspacePublications::read,
                         workspace.value())
                 .stream()
@@ -72,6 +75,9 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Publication changes require an owner-authorization transaction");
         }
+        if (enabled && !settings(workspace).eligible()) {
+            throw new PublicationUnavailableException();
+        }
         if (jdbc.update("update workspaces set public_delivery=? where workspace_id=?", enabled, workspace.value())
                 != 1) {
             throw new PublicationUnavailableException();
@@ -82,7 +88,7 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
     @Override
     public void requireEnabled(WorkspaceId workspace) {
         Boolean enabled = jdbc.queryForObject(
-                "select exists(select 1 from workspaces where workspace_id=? and public_delivery)",
+                "select exists(select 1 from " + SOURCES + " where w.workspace_id=? and " + ENABLED + ")",
                 Boolean.class,
                 workspace.value());
         if (!Boolean.TRUE.equals(enabled)) {
@@ -112,6 +118,7 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
                 row.getString("public_slug"),
                 row.getString("display_name"),
                 row.getBoolean("public_delivery"),
+                row.getBoolean("eligible"),
                 row.getString("public_author_name"));
     }
 }

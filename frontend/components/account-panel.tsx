@@ -7,9 +7,15 @@ import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
 import { CreateWorkspace } from "./create-workspace";
+import { SiteAccounts, SiteGroup, siteGroups } from "./site-accounts";
 
 export type AccountProfile = {
-  account: { accountId: string; loginName: string; siteAdministrator: boolean };
+  account: {
+    accountId: string;
+    loginName: string;
+    siteAdministrator: boolean;
+    group: SiteGroup;
+  };
   mayIssueRegistrationInvitations: boolean;
 };
 type Invitation = {
@@ -59,6 +65,8 @@ export function AccountPanel({
   }
   return (
     <div className="management-panel">
+      <p>当前策略组：{siteGroups[profile.account.group]}</p>
+      {profile.account.siteAdministrator && <SiteAccounts />}
       <CreateWorkspace
         accountId={profile.account.accountId}
         onCreated={(workspaceId) => onJoined(workspaceId, true)}

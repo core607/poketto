@@ -319,6 +319,7 @@ test("Admin logout completing while member confirmation is open cancels the unmo
           accountId: "owner",
           loginName: "owner",
           siteAdministrator: true,
+          group: "ADMINISTRATOR" as const,
         },
         mayIssueRegistrationInvitations: true,
       });

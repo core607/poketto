@@ -20,7 +20,16 @@ public interface WorkspacePublications {
     void requireEnabled(WorkspaceId workspace);
 
     record Publication(
-            WorkspaceId workspaceId, String slug, String displayName, boolean enabled, String publicAuthorName) {
+            WorkspaceId workspaceId,
+            String slug,
+            String displayName,
+            boolean enabled,
+            boolean eligible,
+            String publicAuthorName) {
+        public boolean publiclyEnabled() {
+            return enabled && eligible;
+        }
+
         public String authorName() {
             return PublicAuthorNames.select(publicAuthorName, displayName);
         }

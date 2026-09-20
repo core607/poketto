@@ -68,9 +68,39 @@ async function fixture(t: TestContext) {
 const publication = (workspaceId = "first", enabled = false) => ({
   workspaceId,
   enabled,
+  eligible: true,
+  effectiveEnabled: enabled,
   slug: workspaceId,
   displayName: workspaceId,
   publicAuthorName: "",
+});
+
+test("restricted websites retain the owner's switch while preventing publication", async (t) => {
+  const f = await fixture(t);
+  let enabled = true;
+  globalThis.fetch = async (path, options) => {
+    if (String(path) === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (options?.method === "PUT") {
+      assert.deepEqual(JSON.parse(String(options.body)), { enabled: false });
+      enabled = false;
+    }
+    return Response.json({
+      ...publication("first", enabled),
+      eligible: false,
+      effectiveEnabled: false,
+    });
+  };
+  await f.mount();
+  assert.match(f.container.textContent, /公开展示已受限/);
+  assert.equal(f.container.querySelector("a"), null);
+  await f.click("关闭公开网站");
+  await f.click("关闭公开网站", true);
+  const enable = [...f.container.querySelectorAll("button")].find(
+    (button) => button.textContent === "开启公开网站",
+  );
+  assert.ok(enable?.disabled);
+  assert.equal(enabled, false);
 });
 
 test("publication confirmation and authoritative acknowledgement control the visible state", async (t) => {

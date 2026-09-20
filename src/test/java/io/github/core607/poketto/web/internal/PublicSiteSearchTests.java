@@ -177,7 +177,7 @@ class PublicSiteSearchTests {
     }
 
     private static WorkspacePublications.Publication publication(WorkspaceId id, String slug, String name) {
-        return new WorkspacePublications.Publication(id, slug, name, true, "");
+        return new WorkspacePublications.Publication(id, slug, name, true, true, "");
     }
 
     private static PublicContentSnapshot snapshot(WorkspaceId workspace, PublicArticle... articles) {

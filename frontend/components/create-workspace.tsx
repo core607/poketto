@@ -33,6 +33,7 @@ export function CreateWorkspace({
 }) {
   const storageKey = "poketto.workspace-creation." + accountId;
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [eligible, setEligible] = useState<boolean | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [pending, setPending] = useState(false);
@@ -59,9 +60,14 @@ export function CreateWorkspace({
   }
   useEffect(() => {
     let active = true;
-    void api<{ available: boolean }>("/api/auth/workspaces/creation-policy")
+    void api<{ available: boolean; eligible: boolean }>(
+      "/api/auth/workspaces/creation-policy",
+    )
       .then((policy) => {
-        if (active) setAvailable(policy.available);
+        if (active) {
+          setAvailable(policy.available);
+          setEligible(policy.eligible);
+        }
       })
       .catch((failure) => {
         if (active) setError(message(failure));
@@ -171,7 +177,14 @@ export function CreateWorkspace({
         连接已有的 GitHub 或 CNB
         私有仓库。创建后仅空间成员可以访问；公开网站默认关闭。空仓库会在创建时尝试写入内容模板作为第一个提交，没有写入时可在空间的“仓库连接”标签页补做；已有内容的仓库不会被改动，同一页面会列出可添加的指引文件。
       </p>
-      {available === false && <p>站点尚未启用仓库连接，请联系站点管理员。</p>}
+      {eligible === false && (
+        <p>
+          创建个人空间需要创作者资格，请联系站点管理员。已有空间仍可正常访问。
+        </p>
+      )}
+      {available === false && eligible !== false && (
+        <p>站点尚未启用仓库连接，请联系站点管理员。</p>
+      )}
       {available && result?.stage !== "READY" && (
         <form onSubmit={submit}>
           <label>

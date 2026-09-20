@@ -65,6 +65,12 @@ export async function api<T>(
       typeof problem?.code === "string" && problem.code.length <= 80
         ? problem.code
         : undefined;
+    if (code === "LAST_ADMINISTRATOR")
+      throw new ApiError(
+        409,
+        "至少需要保留一位站点管理员。请先指定其他管理员。",
+        code,
+      );
     if (response.status === 400) {
       if (problem?.code === "INVALID_INVITATION")
         throw new ApiError(

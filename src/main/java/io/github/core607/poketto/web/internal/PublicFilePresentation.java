@@ -26,6 +26,9 @@ final class PublicFilePresentation {
         if (!publication.enabled()) {
             return Page.state(State.WEBSITE_DISABLED);
         }
+        if (!publication.eligible()) {
+            return Page.state(State.WEBSITE_RESTRICTED);
+        }
         try {
             return snapshots.withCurrent(file.workspaceId(), snapshot -> {
                 if (!snapshot.commit().equals(file.commit())) {
@@ -46,6 +49,7 @@ final class PublicFilePresentation {
         UNSAVED,
         PRIVATE,
         WEBSITE_DISABLED,
+        WEBSITE_RESTRICTED,
         UNAVAILABLE,
         AVAILABLE
     }

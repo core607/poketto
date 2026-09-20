@@ -14,6 +14,7 @@ const account = {
     accountId: "owner",
     loginName: "owner",
     siteAdministrator: false,
+    group: "VIEWER" as const,
   },
   mayIssueRegistrationInvitations: false,
 };

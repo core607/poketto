@@ -477,11 +477,11 @@ public final class AuthService {
         UUID account = UUID.randomUUID();
         try {
             jdbc.update(
-                    "insert into auth_accounts (account_id, login_name, password_hash, instance_admin) values (?, ?, ?, ?)",
+                    "insert into auth_accounts (account_id, login_name, password_hash, site_group) values (?, ?, ?, ?)",
                     account,
                     login,
                     encoded,
-                    administrator);
+                    administrator ? SiteGroup.ADMINISTRATOR.name() : SiteGroup.VIEWER.name());
         } catch (DataIntegrityViolationException exception) {
             throw failure(INVALID_INPUT);
         }
