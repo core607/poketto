@@ -437,6 +437,11 @@ jobs:
   # behind one another; an in-progress deployment is never cancelled. The content-repository
   # credential travels to the host's .env over the entrance's standard input, never as an
   # argument.
+  # GitHub is authoritative for the six identity settings in both deployment layouts. Configure
+  # their secrets/variables before enabling this job: empty values clear the provider/contact,
+  # and an unset daily limit becomes 100. Host-only identity settings apply to manual deployment.
+  # Existing installations must install the identity-capable privileged updater before enabling
+  # this delivery version; transfer never replaces an operator's privileged executable.
   deploy:
     needs: [publish, mirror]
     if: ${{ !cancelled() && needs.publish.result == 'success' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
