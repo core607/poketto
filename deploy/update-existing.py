@@ -54,8 +54,8 @@ def validate_identity(environment):
     if bool(environment.get("POKETTO_GOOGLE_CLIENT_ID")) != bool(environment.get("POKETTO_GOOGLE_CLIENT_SECRET")):
         raise DeploymentError("Google client ID and secret must be configured together")
     limit = environment.get("POKETTO_EMAIL_DAILY_LIMIT")
-    if limit is not None and (not re.fullmatch(r"[0-9]+", str(limit)) or not 1 <= int(limit) <= 2147483647):
-        raise DeploymentError("email daily limit must be a positive 32-bit integer")
+    if limit is not None and (not re.fullmatch(r"[1-9][0-9]{0,5}", str(limit)) or int(limit) > 100000):
+        raise DeploymentError("email daily limit must be between 1 and 100000")
 
 
 def declared_environment(rendered, service):

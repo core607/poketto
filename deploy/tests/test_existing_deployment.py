@@ -189,7 +189,7 @@ class ExistingDeploymentTests(unittest.TestCase):
 
     def test_invalid_identity_configuration_never_restarts_containers(self):
         for settings in ({"POKETTO_RESEND_API_KEY": "missing-from"}, {"POKETTO_GOOGLE_CLIENT_ID": "unpaired"},
-                         {"POKETTO_EMAIL_DAILY_LIMIT": "0"}):
+                         {"POKETTO_EMAIL_DAILY_LIMIT": "0"}, {"POKETTO_EMAIL_DAILY_LIMIT": "100001"}):
             with self.subTest(settings=settings), self.assertRaises(updater.DeploymentError):
                 self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
         self.assertFalse(any("up" in call for call in self.docker.calls))
