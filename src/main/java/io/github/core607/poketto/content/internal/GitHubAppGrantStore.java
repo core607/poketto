@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Versioned grant writes and refresh leases; no provider I/O or account policy belongs in this store. */
 final class GitHubAppGrantStore {
@@ -32,6 +33,22 @@ final class GitHubAppGrantStore {
                 .query("select * from content_github_grants where account_id=?", GitHubAppGrantStore::row, account)
                 .stream()
                 .findFirst();
+    }
+
+    void lockActive(UUID account, long version, long owner) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("GitHub grant locking requires an account transaction");
+        }
+        List<Long> rows = jdbc.query(
+                "select version from content_github_grants where account_id=? and version=? and github_user_id=? and client_id=? and state='ACTIVE' for update",
+                (row, number) -> row.getLong(1),
+                account,
+                version,
+                owner,
+                clientId);
+        if (rows.isEmpty()) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
     }
 
     Grant authorize(

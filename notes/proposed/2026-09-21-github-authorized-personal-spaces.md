@@ -60,6 +60,15 @@ eligibility, connection version and attempt lease before each remote mutation
 and before committing the resulting binding. A downgrade during creation leaves
 the operation resumable without granting a new space or deleting its repository.
 
+A five-minute lease serializes each creation attempt. Preparation is resumable
+until the provider's creation callback commits the dispatch intent. After that
+commit, an expired lease resumes through reconciliation only. Local admission
+rejection before dispatch and a definitive provider rejection are distinguished
+from lost responses. A late worker cannot replace the result of a newer lease.
+Store a confirmed remote result even if site eligibility was withdrawn during
+the request; recording that fact grants no workspace or membership. Account
+restrictions block further creation independently of a disconnected GitHub grant.
+
 GitHub repository creation is not a database transaction. Record intent before
 the request and its immutable result before initialization. A lost response must
 not cause a blind POST retry or adoption based only on repository name, owner or

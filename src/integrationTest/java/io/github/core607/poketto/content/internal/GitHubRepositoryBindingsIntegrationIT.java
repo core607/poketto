@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.content.ContentRepositoryException;
+import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -180,6 +181,20 @@ class GitHubRepositoryBindingsIntegrationIT {
         assertThatThrownBy(() -> bindings.binding(workspace))
                 .isInstanceOf(ContentRepositoryException.class)
                 .hasRootCauseMessage("GitHub App: REPOSITORY_CHANGED");
+    }
+
+    @Test
+    void literalProviderNamesUseTheSameCanonicalCoordinatesAsCreation() {
+        var metadata = new GitHubRepositoryProvisioning.Repository(91, 42, "OctoCat", "Notes.git");
+        jdbc.update(
+                "update content_repository_bindings set canonical_uri=? where workspace_id=?",
+                metadata.canonicalUri(),
+                workspace.value());
+        when(installations.issue(7, 42, 91)).thenReturn(token("Notes.git"));
+        RepositoryBinding binding = bindings.binding(workspace);
+        assertThat(metadata.canonicalUri()).isEqualTo("https://github.com/octocat/notes.git");
+        assertThat(binding.location().toString()).isEqualTo("https://github.com/octocat/notes.git.git");
+        binding.requireCurrent();
     }
 
     @Test

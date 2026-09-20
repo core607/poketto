@@ -18,12 +18,29 @@ class GitHubAppRepositoriesTests {
     private static final String USER = "{\"id\":42,\"login\":\"octocat\",\"type\":\"User\"}";
 
     @Test
+    void rejectedDurableIntentPreventsTheActualCreationRequest() throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(200, USER);
+            var api = new GitHubAppRepositories(fixture.http);
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {
+                        assertThat(fixture.requests).hasSize(1);
+                        throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+                    }))
+                    .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+            assertThat(fixture.requests)
+                    .extracting(GitHubAppFixture.Request::path)
+                    .containsExactly("/user");
+        }
+    }
+
+    @Test
     void createsOnlyInVerifiedPersonalAccountWithPrivateVisibilityAndDurableMarker() throws Exception {
         try (var fixture = new GitHubAppFixture()) {
             fixture.reply(200, USER);
             fixture.reply(201, repository(GitHubAppRepositories.creationDescription(MARKER)));
             var api = new GitHubAppRepositories(fixture.http);
-            assertThat(api.create(42, "notes", MARKER, "fixture-user-token").id())
+            assertThat(api.create(42, "notes", MARKER, "fixture-user-token", () -> {})
+                            .id())
                     .isEqualTo(91);
             assertThat(fixture.requests)
                     .extracting(GitHubAppFixture.Request::path)
@@ -46,7 +63,7 @@ class GitHubAppRepositoriesTests {
         try (var fixture = new GitHubAppFixture()) {
             fixture.reply(200, USER.replace("User", type));
             var api = new GitHubAppRepositories(fixture.http);
-            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
                     .hasMessage("GitHub App: IDENTITY_CHANGED");
             assertThat(fixture.requests).hasSize(1);
         }
@@ -56,11 +73,11 @@ class GitHubAppRepositoriesTests {
     void refusesChangedAccountAndInvalidNamesBeforeCreating() throws Exception {
         try (var fixture = new GitHubAppFixture()) {
             var api = new GitHubAppRepositories(fixture.http);
-            assertThatThrownBy(() -> api.create(42, "../other", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(42, "../other", MARKER, "fixture-token", () -> {}))
                     .isInstanceOf(IllegalArgumentException.class);
             assertThat(fixture.requests).isEmpty();
             fixture.reply(200, USER);
-            assertThatThrownBy(() -> api.create(43, "notes", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(43, "notes", MARKER, "fixture-token", () -> {}))
                     .hasMessage("GitHub App: IDENTITY_CHANGED");
             assertThat(fixture.requests).hasSize(1);
         }
@@ -73,7 +90,7 @@ class GitHubAppRepositoriesTests {
             fixture.reply(200, USER);
             fixture.reply(status, "{\"message\":\"fixture-secret-error\"}");
             var api = new GitHubAppRepositories(fixture.http);
-            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
                     .hasMessage("GitHub App: CREATION_UNCERTAIN");
             assertThat(fixture.requests).hasSize(2);
         }
@@ -86,7 +103,7 @@ class GitHubAppRepositoriesTests {
             fixture.reply(200, USER);
             fixture.reply(status, "{\"message\":\"fixture-secret-error\"}");
             var api = new GitHubAppRepositories(fixture.http);
-            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
                     .hasMessage("GitHub App: CREATION_REJECTED");
             assertThat(fixture.requests).hasSize(2);
         }
@@ -100,7 +117,7 @@ class GitHubAppRepositoriesTests {
             fixture.reply(200, USER);
             fixture.reply(201, body);
             var api = new GitHubAppRepositories(fixture.http);
-            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
                     .isInstanceOfSatisfying(GitHubConnectionException.class, failure -> {
                         assertThat(failure.code()).isEqualTo(GitHubConnectionException.Code.CREATION_UNCERTAIN);
                         var trace = new StringWriter();
@@ -156,7 +173,7 @@ class GitHubAppRepositoriesTests {
             fixture.reply(200, USER);
             fixture.reply(201, body);
             var api = new GitHubAppRepositories(fixture.http);
-            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token"))
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
                     .hasMessage("GitHub App: CREATION_UNCERTAIN");
         }
     }

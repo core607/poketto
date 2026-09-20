@@ -39,7 +39,7 @@ final class GitHubRepositoryBindings {
                 expected.account(), expected.owner(), expected.installation(), expected.repository());
         GitHubAppRepositories.Repository repository = lease.token().repository();
         RepositoryCoordinates coordinates = RepositoryCoordinates.parse(
-                "https://github.com/" + repository.owner().login() + "/" + repository.name());
+                "https://github.com/" + repository.owner().login() + "/" + repository.name() + ".git");
         if (!coordinates.canonicalUri().equals(expected.uri())) {
             throw new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED);
         }

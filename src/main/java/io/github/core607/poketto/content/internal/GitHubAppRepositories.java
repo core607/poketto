@@ -31,7 +31,7 @@ final class GitHubAppRepositories {
         return owner;
     }
 
-    Repository create(long expectedOwner, String name, UUID marker, String userToken) {
+    Repository create(long expectedOwner, String name, UUID marker, String userToken, Runnable beforeCreate) {
         requireName(name);
         String description = creationDescription(marker);
         Owner owner = currentUser(userToken);
@@ -39,6 +39,7 @@ final class GitHubAppRepositories {
             throw new GitHubConnectionException(IDENTITY_CHANGED);
         }
         byte[] body = GitHubAppJson.write(new CreateRequest(name, true, false, description));
+        beforeCreate.run();
         GitHubAppHttp.Reply reply;
         try {
             reply = http.postApi("/user/repos", userToken, body);

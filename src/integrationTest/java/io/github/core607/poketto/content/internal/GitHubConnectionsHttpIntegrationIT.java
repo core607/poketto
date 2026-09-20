@@ -2,6 +2,7 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
@@ -17,7 +18,7 @@ import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.content.GitHubConnections;
+import io.github.core607.poketto.spaces.GitHubSpaceCreation;
 import java.net.URI;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -25,6 +26,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -93,15 +96,73 @@ class GitHubConnectionsHttpIntegrationIT {
     @Autowired
     ProviderFixture provider;
 
+    @Autowired
+    GitHubSpaceCreation creations;
+
     private final JsonMapper json = JsonMapper.builder().build();
     private AuthPrincipal owner;
+    private String ownerLogin;
 
     @BeforeEach
     void setup() {
         jdbc.execute("truncate auth_accounts cascade");
         jdbc.execute("update auth_initialization set initialized_at=null");
-        owner = auth.initializeOwner("owner", PASSWORD);
+        // The shared HTTP context retains throttle buckets after database cleanup.
+        ownerLogin = "owner-" + UUID.randomUUID();
+        owner = auth.initializeOwner(ownerLogin, PASSWORD);
         provider.resetProvider();
+    }
+
+    @Test
+    void browserConsentFeedsTheDurableCreationServiceWithoutExportingTokens() throws Exception {
+        MockHttpSession session = login("owner");
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        when(provider.repositories.create(anyLong(), anyString(), any(), anyString(), any()))
+                .thenAnswer(call -> {
+                    ((Runnable) call.getArgument(4)).run();
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isFalse();
+                    assertThat(jdbc.queryForObject("select stage from space_github_creation_attempts", String.class))
+                            .isEqualTo("CREATING");
+                    return new GitHubAppRepositories.Repository(
+                            91,
+                            "notes",
+                            new GitHubAppRepositories.Owner(42, "octocat", "User"),
+                            true,
+                            false,
+                            false,
+                            null);
+                });
+        var result = creations.create(
+                owner, new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes"));
+        assertThat(result.stage()).isEqualTo(GitHubSpaceCreation.Stage.AWAITING_INSTALLATION);
+        assertThat(result.repositoryId()).isEqualTo(91L);
+        assertThat(json.writeValueAsString(result)).doesNotContain("ghu_", "ghr_", "sealed", "creation_marker");
+        assertThat(jdbc.queryForObject("select count(*) from workspaces", Integer.class))
+                .isOne();
+        assertThat(jdbc.queryForObject("select count(*) from auth_memberships", Integer.class))
+                .isOne();
+    }
+
+    @Test
+    void disconnectionBeforeTheCreationCheckpointPreventsTheProviderMutation() throws Exception {
+        MockHttpSession session = login("owner");
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        var mutations = new AtomicInteger();
+        when(provider.repositories.create(anyLong(), anyString(), any(), anyString(), any()))
+                .thenAnswer(call -> {
+                    provider.connections.disconnect(owner, 1);
+                    ((Runnable) call.getArgument(4)).run();
+                    mutations.incrementAndGet();
+                    return null;
+                });
+        var result = creations.create(
+                owner, new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes"));
+        assertThat(result.stage()).isEqualTo(GitHubSpaceCreation.Stage.DISCONNECTED);
+        assertThat(result.failureCode()).isEqualTo("AUTHORIZATION_CHANGED");
+        assertThat(mutations).hasValue(0);
+        assertThat(jdbc.queryForObject("select creation_requested from space_github_creation_attempts", Boolean.class))
+                .isFalse();
     }
 
     @Test
@@ -290,7 +351,7 @@ class GitHubConnectionsHttpIntegrationIT {
     private MockHttpSession login(String name) throws Exception {
         var session = new MockHttpSession();
         mvc.perform(csrf(session, post("/api/auth/login"))
-                        .param("username", name)
+                        .param("username", name.equals("owner") ? ownerLogin : name)
                         .param("password", PASSWORD))
                 .andExpect(status().isNoContent());
         return session;
@@ -315,7 +376,7 @@ class GitHubConnectionsHttpIntegrationIT {
 
         @Bean
         @Primary
-        GitHubConnections fixtureGitHubConnections(ProviderFixture fixture) {
+        ManagedGitHubConnections fixtureGitHubConnections(ProviderFixture fixture) {
             return fixture.connections;
         }
     }
@@ -324,7 +385,7 @@ class GitHubConnectionsHttpIntegrationIT {
         private static final Instant NOW = Instant.parse("2026-09-21T00:00:00Z");
         private final GitHubAppOAuth oauth = mock(GitHubAppOAuth.class);
         private final GitHubAppRepositories repositories = mock(GitHubAppRepositories.class);
-        private final GitHubConnections connections;
+        private final ManagedGitHubConnections connections;
         private Instant flowTime;
         private String state;
         private String verifier;

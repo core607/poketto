@@ -9,13 +9,15 @@ import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubConnections;
+import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Account policy surrounds provider I/O; token persistence commits only with a current account. */
-final class ManagedGitHubConnections implements GitHubConnections, AutoCloseable {
+final class ManagedGitHubConnections implements GitHubConnections, GitHubRepositoryProvisioning, AutoCloseable {
     private final Accounts accounts;
     private final GitHubAppGrantStore store;
     private final GitHubAppOAuth oauth;
@@ -45,6 +47,51 @@ final class ManagedGitHubConnections implements GitHubConnections, AutoCloseable
 
     static ManagedGitHubConnections disabled(Accounts accounts) {
         return new ManagedGitHubConnections(accounts, null, null, null, null, Clock.systemUTC(), null);
+    }
+
+    @Override
+    public Owner verifiedOwner(AuthPrincipal actor) {
+        accounts.requireCreator(actor);
+        requireAvailable();
+        GitHubAppGrants.Access access = grants.verifiedAccess(actor.accountId());
+        accounts.requireCreator(actor);
+        return new Owner(access.owner().id(), access.owner().login(), access.version());
+    }
+
+    @Override
+    public void requireCurrent(AuthPrincipal actor, Owner owner) {
+        accounts.account(actor);
+        requireAvailable();
+        store.lockActive(actor.accountId(), owner.grantVersion(), owner.id());
+    }
+
+    @Override
+    public Repository create(AuthPrincipal actor, Owner owner, String name, UUID marker, Runnable beforeCreate) {
+        GitHubAppGrants.Access access = provisioningAccess(actor, owner);
+        return provisioned(repositories.create(owner.id(), name, marker, access.token(), beforeCreate));
+    }
+
+    @Override
+    public Optional<Repository> reconcile(AuthPrincipal actor, Owner owner, String name, UUID marker) {
+        GitHubAppGrants.Access access = provisioningAccess(actor, owner);
+        return repositories
+                .reconcile(owner.id(), name, marker, access.token())
+                .map(ManagedGitHubConnections::provisioned);
+    }
+
+    private GitHubAppGrants.Access provisioningAccess(AuthPrincipal actor, Owner owner) {
+        accounts.requireCreator(actor);
+        requireAvailable();
+        GitHubAppGrants.Access access = grants.verifiedAccess(actor.accountId());
+        if (access.owner().id() != owner.id() || access.version() != owner.grantVersion()) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
+        return access;
+    }
+
+    private static Repository provisioned(GitHubAppRepositories.Repository repository) {
+        return new Repository(
+                repository.id(), repository.owner().id(), repository.owner().login(), repository.name());
     }
 
     TokenLease repositoryToken(UUID account, long ownerId, long installationId, long repositoryId) {

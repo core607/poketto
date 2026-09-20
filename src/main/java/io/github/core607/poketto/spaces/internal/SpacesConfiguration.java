@@ -2,8 +2,10 @@ package io.github.core607.poketto.spaces.internal;
 
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
 import io.github.core607.poketto.content.RepositoryConnections;
 import io.github.core607.poketto.content.RepositoryInitialization;
+import io.github.core607.poketto.spaces.GitHubSpaceCreation;
 import io.github.core607.poketto.spaces.SpaceCreationService;
 import io.github.core607.poketto.spaces.SpacePublicationService;
 import io.github.core607.poketto.workspace.WorkspacePublications;
@@ -18,6 +20,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class SpacesConfiguration {
+    @Bean
+    GitHubSpaceCreation githubSpaceCreation(
+            JdbcTemplate jdbc, Accounts accounts, GitHubRepositoryProvisioning provider) {
+        return new GitHubSpaceCreation(jdbc, accounts, provider, Clock.systemUTC());
+    }
+
     @Bean
     SpacePublicationService spacePublicationService(AuthService auth, WorkspacePublications publications) {
         return new SpacePublicationService(auth, publications);
