@@ -60,6 +60,9 @@ if [ "$EXISTING" = 1 ]; then
             *) fail "existing updates accept only registry credentials and identity settings" ;;
         esac
     done <<< "$SETTINGS"
+    if [ "$PULL" = 0 ] && [ -n "$REGISTRY_SETTINGS" ]; then
+        fail "existing updates require --pull for registry credentials"
+    fi
 fi
 
 remote() {

@@ -92,6 +92,36 @@ assert_status 1
 assert_contains "$ERR" 'requires POKETTO_EMAIL_FROM'
 [ "$(up_count)" = 0 ]
 
+# A half-configured Google provider fails before containers start, including a partial rotation.
+for key in POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET; do
+    setup_root
+    printf '%s=synthetic-value\n' "$key" >> "$ROOT/.env"
+    run_deploy
+    assert_status 1
+    assert_contains "$ERR" 'must be configured together'
+    [ "$(up_count)" = 0 ]
+done
+
+# Explicit empty identity settings remove persisted credentials and the public contact.
+setup_root
+have_image "$DIGEST_IMAGE"
+for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+    printf '%s=old-value\n' "$key" >> "$ROOT/.env"
+done
+set +e
+OUT="$(printf '%s\n' 'POKETTO_RESEND_API_KEY=' 'POKETTO_EMAIL_FROM=' 'POKETTO_GOOGLE_CLIENT_ID=' \
+    'POKETTO_GOOGLE_CLIENT_SECRET=' 'POKETTO_SUPPORT_EMAIL=' \
+    | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+for key in POKETTO_RESEND_API_KEY POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET; do
+    [ ! -s "$FAKE_STATE/$key" ]
+    grep -qFx "$key=" "$ROOT/.env"
+done
+assert_not_contains "$(cat "$ROOT/.env")" 'old-value'
+
 # The deployment encryption key is forwarded literally without printing it.
 setup_root
 have_image "$DIGEST_IMAGE"

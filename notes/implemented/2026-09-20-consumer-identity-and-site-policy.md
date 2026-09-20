@@ -167,6 +167,10 @@ literal dollar signs escaped for Compose. Omitted values retain their effective
 settings; explicit empty values disable the corresponding provider, with both
 Google fields cleared together. Validate the combined configuration before
 restarting, and adjust runtime fingerprints only for supplied identity keys.
+CI supplies every identity key, using explicit empty values when GitHub settings
+are removed and a daily limit of 100 when unset. Both deployment layouts reject
+an incomplete Google credential pair. Archive delivery rejects registry
+credentials because only pull delivery consumes them.
 Operator Compose and environment files, other frontend settings, resources, mounts
 and dependency containers remain unchanged. The overlay is mode 0600; deployment
 state and command output contain fingerprints, not the credentials. A pending

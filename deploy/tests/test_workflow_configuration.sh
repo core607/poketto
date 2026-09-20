@@ -49,3 +49,44 @@ grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'python-version: "3.12.14"' "$workflow"
 
 grep -Fq 'dependsOn(appImageIdentityCheck)' "$DEPLOY_DIR/../build.gradle.kts"
+
+# Execute each actual deployment step with a capturing transfer boundary. Removing a GitHub
+# setting must emit KEY=; otherwise an installation silently retains its previous credential.
+for step in 'Update existing installation' 'Deploy'; do
+    awk -v step="$step" '
+        $0 == "      - name: " step { selected=1; next }
+        selected && /^      - name:/ { exit }
+        selected && /^        run: \|/ { body=1; next }
+        body { sub(/^          /, ""); print }
+    ' "$workflow" > workflow-step.sh
+    [ -s workflow-step.sh ]
+    for mode in transfer pull mirror; do
+        for values in empty configured; do
+            (
+                for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+                    printf -v "$key" '%s' ''
+                    [ "$values" = empty ] || printf -v "$key" '%s' 'synthetic-$literal'
+                done
+                POKETTO_EMAIL_DAILY_LIMIT=''
+                [ "$values" = empty ] || POKETTO_EMAIL_DAILY_LIMIT=250
+                DEPLOY_TARGET=ops@host DEPLOY_ROOT=/srv/poketto DEPLOY_MODE="$mode"
+                IMAGE="$DIGEST_IMAGE" REPOSITORY_PASSWORD=''
+                MIRROR_USERNAME=mirror MIRROR_PULL_PASSWORD=synthetic-mirror
+                GITHUB_ACTOR=actor GITHUB_TOKEN=synthetic-registry
+                bash() {
+                    [ "$1" = deploy/transfer.sh ] || exit 1
+                    cat > workflow-stdin
+                }
+                . ./workflow-step.sh
+            )
+            for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+                expected="$key="
+                [ "$values" = empty ] || expected+='synthetic-$literal'
+                grep -qFx "$expected" workflow-stdin
+            done
+            limit=100
+            [ "$values" = empty ] || limit=250
+            grep -qFx "POKETTO_EMAIL_DAILY_LIMIT=$limit" workflow-stdin
+        done
+    done
+done

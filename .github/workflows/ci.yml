@@ -538,9 +538,10 @@ jobs:
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           settings=""
-          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_EMAIL_DAILY_LIMIT POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
-            [ -z "${!key}" ] || settings+=$'\n'"$key=${!key}"
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            settings+=$'\n'"$key=${!key}"
           done
+          settings+=$'\n'"POKETTO_EMAIL_DAILY_LIMIT=${POKETTO_EMAIL_DAILY_LIMIT:-100}"
           args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing)
           # Pull mode reaches the canonical registry from the host and needs no archive; mirror mode
@@ -581,9 +582,10 @@ jobs:
         run: |
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
-          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_EMAIL_DAILY_LIMIT POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
-            [ -z "${!key}" ] || settings+=$'\n'"$key=${!key}"
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            settings+=$'\n'"$key=${!key}"
           done
+          settings+=$'\n'"POKETTO_EMAIL_DAILY_LIMIT=${POKETTO_EMAIL_DAILY_LIMIT:-100}"
           args=(--target "$DEPLOY_TARGET" --root "$DEPLOY_ROOT" --image "$IMAGE"
                 --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --sync --set-stdin)
           if [ "${DEPLOY_MODE:-pull}" = transfer ]; then

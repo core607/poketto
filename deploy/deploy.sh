@@ -392,6 +392,10 @@ load_configuration() {
     if [ -n "${POKETTO_RESEND_API_KEY:-}" ]; then
         [ -n "${POKETTO_EMAIL_FROM:-}" ] || fail "POKETTO_RESEND_API_KEY requires POKETTO_EMAIL_FROM"
     fi
+    if { [ -n "${POKETTO_GOOGLE_CLIENT_ID:-}" ] && [ -z "${POKETTO_GOOGLE_CLIENT_SECRET:-}" ]; } \
+        || { [ -z "${POKETTO_GOOGLE_CLIENT_ID:-}" ] && [ -n "${POKETTO_GOOGLE_CLIENT_SECRET:-}" ]; }; then
+        fail "POKETTO_GOOGLE_CLIENT_ID and POKETTO_GOOGLE_CLIENT_SECRET must be configured together"
+    fi
     [[ "${POKETTO_EMAIL_DAILY_LIMIT:-100}" =~ ^[1-9][0-9]{0,5}$ ]] && [ "${POKETTO_EMAIL_DAILY_LIMIT:-100}" -le 100000 ] \
         || fail "POKETTO_EMAIL_DAILY_LIMIT must be between 1 and 100000"
     [ -f "$ROOT/Caddyfile" ] || fail "missing $ROOT/Caddyfile"

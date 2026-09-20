@@ -159,6 +159,20 @@ for mode in transfer pull; do
     assert_not_contains "$(ssh_log)$(docker_log)$OUT$ERR" 'identity-$literal'
 done
 
+# Archive delivery refuses unused registry credentials before touching either host.
+rm -f "$FAKE_STATE/docker.log" "$FAKE_STATE/ssh.log"
+set +e
+OUT="$(printf '%s\n' 'REGISTRY_USERNAME=synthetic' 'REGISTRY_PASSWORD=unused-token' \
+    | bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 1
+assert_contains "$ERR" 'require --pull for registry credentials'
+assert_not_contains "$OUT$ERR" 'unused-token'
+[ ! -e "$FAKE_STATE/docker.log" ]
+[ ! -e "$FAKE_STATE/ssh.log" ]
+
 # Existing registry delivery executes the actual pull helper before invoking the updater.
 rm -f "$FAKE_STATE/docker.log" "$FAKE_STATE/deploy-calls" "$FAKE_STATE/ssh.log"
 echo "$REVISION" > "$FAKE_STATE/pull-revision"

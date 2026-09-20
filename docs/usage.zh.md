@@ -237,7 +237,7 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境文件、无关配置和依赖服务继续由运维配置维护。
 
-`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置，Google 两个字段须一起清空。CI 只转发非空身份配置，因此删除 GitHub secret 不会清除已部署的值，清除需通过受保护更新器执行。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
+`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置。CI 转发所有身份配置，包括空值，因此删除 GitHub 配置会清除已部署的值；未设置每日限额时恢复为 100。Google 两个字段须一起清空，两种部署布局都会拒绝不完整的配置对。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
 
 将 `POKETTO_SUPPORT_EMAIL` 设置为 `/privacy` 和 `/terms` 页面展示的公开联系方式，并按实际部署的数据处理方式核对页面说明。两种部署方式均接受此设置，现有安装更新仅将它传给前端；CI 从同名 repository variable 读取。Google 品牌配置可使用站点首页、`/privacy` 和 `/terms` 地址。
 
