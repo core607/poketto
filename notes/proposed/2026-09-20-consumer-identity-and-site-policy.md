@@ -40,6 +40,16 @@ logical message. Delivery failure never reports a successful send. Password
 recovery gives uniform anonymous responses and invalidates existing browser and
 machine credentials after a reset.
 
+Reserve sends in PostgreSQL before contacting Resend, without holding database
+locks during provider I/O. The initial limits are ten sends per email per UTC day,
+twenty per source address per UTC hour, and the configurable installation limit.
+The email cooldown spans purposes and UTC-day boundaries. Failed deliveries use
+their reservation, remain unusable and require a new challenge. Transport retries
+reuse the same message ID and payload. Derive the challenge HMAC key from the
+Resend credential with a separate purpose label; rotating that credential expires
+outstanding proofs. Rate buckets store keyed address identifiers. Retire expired
+challenge and rate rows during later reservations.
+
 ## Fixed account groups
 
 Each account has one group. Only a site administrator changes it. There is no
