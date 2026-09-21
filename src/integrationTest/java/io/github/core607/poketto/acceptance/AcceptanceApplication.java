@@ -2,6 +2,7 @@ package io.github.core607.poketto.acceptance;
 
 import io.github.core607.poketto.PokettoApplication;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.internal.AcceptanceGitHubConfiguration;
 import io.github.core607.poketto.content.internal.AcceptanceRepositories;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
@@ -37,7 +38,10 @@ public final class AcceptanceApplication {
         Path remote = root.resolve("remote.git");
         seed(remote, root.resolve("seed"));
         SpringApplication app = new SpringApplication(
-                PokettoApplication.class, AcceptanceRepositories.class, AcceptanceMailConfiguration.class);
+                PokettoApplication.class,
+                AcceptanceRepositories.class,
+                AcceptanceMailConfiguration.class,
+                AcceptanceGitHubConfiguration.class);
         app.setDefaultProperties(Map.of(
                 "poketto.data-dir",
                 root.resolve("data").toString(),

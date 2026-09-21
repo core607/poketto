@@ -4,6 +4,7 @@ import { api } from "../lib/browser-api";
 import { message } from "./admin";
 import { AccountSecurity } from "./account-security";
 import { CreateWorkspace } from "./create-workspace";
+import { GitHubSpace } from "./github-space";
 import { SiteAccounts, SiteGroup, siteGroups } from "./site-accounts";
 
 export type AccountProfile = {
@@ -76,10 +77,19 @@ export function AccountPanel({
       </button>
       {security && <AccountSecurity onDisplayName={onDisplayName} />}
       {profile.account.siteAdministrator && <SiteAccounts />}
-      <CreateWorkspace
+      <GitHubSpace
+        key={profile.account.accountId}
         accountId={profile.account.accountId}
+        onBeforeLeave={onBeforeJoin}
         onCreated={(workspaceId) => onJoined(workspaceId, true)}
       />
+      <details>
+        <summary>手动连接已有仓库（高级）</summary>
+        <CreateWorkspace
+          accountId={profile.account.accountId}
+          onCreated={(workspaceId) => onJoined(workspaceId, true)}
+        />
+      </details>
       <section>
         <div className="panel-heading">
           <h2>加入空间</h2>
