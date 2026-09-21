@@ -240,6 +240,15 @@ export function GitHubSpace({
                 {connected ? "重新授权 GitHub" : "授权 GitHub"}
               </button>
             )}
+            {connected && (
+              <button
+                className="button-secondary"
+                disabled={pending}
+                onClick={() => void run(installationLink)}
+              >
+                管理 GitHub 仓库授权
+              </button>
+            )}
             {connection.version > 0 && connection.state !== "DISCONNECTED" && (
               <button
                 className="text-button"
@@ -250,6 +259,16 @@ export function GitHubSpace({
               </button>
             )}
           </div>
+          {connected && installation && (
+            <p>
+              <a href={installation} target="_blank" rel="noopener noreferrer">
+                打开 GitHub 仓库授权设置
+              </a>
+              {draft && result?.repositoryId && !result.workspaceCreated
+                ? `，选中仓库 ${draft.repositoryName}，保存后回来继续准备空间。`
+                : "，选中需要连接的仓库并保存，再回到空间核对并恢复连接。"}
+            </p>
+          )}
           {disconnecting && (
             <div className="notice">
               <p>
@@ -380,29 +399,6 @@ export function GitHubSpace({
               >
                 {result?.repositoryId ? "继续准备空间" : "继续这次申请"}
               </button>
-            )}
-            {connected && result?.repositoryId && !result.workspaceCreated && (
-              <>
-                <button
-                  className="button-secondary"
-                  disabled={pending}
-                  onClick={() => void run(installationLink)}
-                >
-                  获取 GitHub 仓库授权入口
-                </button>
-                {installation && (
-                  <p>
-                    <a
-                      href={installation}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      去 GitHub 选择仓库 {draft.repositoryName}
-                    </a>
-                    ，保存后回到这里点击“继续准备空间”。
-                  </p>
-                )}
-              </>
             )}
             {(result?.stage === "READY" || result?.stage === "REJECTED") && (
               <button

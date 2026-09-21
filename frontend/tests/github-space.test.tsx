@@ -225,7 +225,7 @@ test("server history restores a repository and installation selection resumes wi
     ),
     false,
   );
-  await f.act(async () => f.button("获取 GitHub 仓库授权入口").click());
+  await f.act(async () => f.button("管理 GitHub 仓库授权").click());
   const link = f.container.querySelector(
     'a[href="https://github.com/settings/installations/7"]',
   );
@@ -239,6 +239,42 @@ test("server history restores a repository and installation selection resumes wi
   f.setMayLeave(true);
   await f.act(async () => f.button("进入空间").click());
   assert.deepEqual(f.entered, ["new-space"]);
+});
+
+test("an existing downgraded owner can manage repository access without an active creation request", async (t) => {
+  const f = await fixture(t);
+  const posts: string[] = [];
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (options?.method === "POST") {
+      posts.push(path);
+      assert.equal(path, githubRoot + "/installation");
+      assert.equal(new Headers(options.headers).get("X-CSRF"), "fixture-csrf");
+      return Response.json({
+        url: "https://github.com/settings/installations/7",
+      });
+    }
+    const response = f.initial(
+      path,
+      { ...connected, eligibleToCreate: false },
+      [{ request, result: receipt("READY") }],
+    );
+    assert.ok(response, path);
+    return response;
+  };
+  await f.render();
+  assert.equal(f.container.querySelector("form"), null);
+  assert.equal(f.window.sessionStorage.length, 0);
+  await f.act(async () => f.button("管理 GitHub 仓库授权").click());
+  const link = f.container.querySelector(
+    'a[href="https://github.com/settings/installations/7"]',
+  );
+  assert.ok(link);
+  assert.equal(link.textContent, "打开 GitHub 仓库授权设置");
+  assert.equal(link.getAttribute("target"), "_blank");
+  assert.equal(link.getAttribute("rel"), "noopener noreferrer");
+  assert.deepEqual(posts, [githubRoot + "/installation"]);
+  assert.equal(f.entered.length, 0);
 });
 
 test("a downgraded existing owner may finish initialization but sees no new-space form", async (t) => {
