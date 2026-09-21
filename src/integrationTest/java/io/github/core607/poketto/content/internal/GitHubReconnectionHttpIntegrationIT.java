@@ -18,6 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
 import io.github.core607.poketto.content.GitHubRepositoryReconnections;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -28,6 +30,8 @@ import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -89,6 +93,9 @@ class GitHubReconnectionHttpIntegrationIT {
     @Autowired
     GitHubRepositoryReconnections repositories;
 
+    @Autowired
+    AuthorizedRepositoryReader reader;
+
     private AuthPrincipal owner;
     private WorkspaceId workspace;
     private MockHttpSession session;
@@ -105,13 +112,49 @@ class GitHubReconnectionHttpIntegrationIT {
                 jdbc.queryForObject("select workspace_id from workspaces where is_default", UUID.class));
         path = "/api/auth/workspaces/github/repositories/" + workspace.value();
         session = login(login);
-        reset(repositories);
+        reset(repositories, reader);
         when(repositories.status(any(), any())).thenReturn(new GitHubRepositoryReconnections.Status(true, false));
         when(repositories.prepare(any(), any(), anyString())).thenAnswer(call -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
             return prepared();
         });
+    }
+
+    @Test
+    void repositoryRecoveryHintsNeverReachAnonymousOrUnrelatedAccounts() throws Exception {
+        String repositoryPath = "/api/admin/workspaces/" + workspace.value() + "/repository/tree";
+        mvc.perform(get(repositoryPath))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").doesNotExist());
+        String login = "outsider-" + UUID.randomUUID();
+        AuthPrincipal other = AccountFixtures.create(auth, login, PASSWORD);
+        jdbc.update("update auth_accounts set site_group='ADMINISTRATOR' where account_id=?", other.accountId());
+        mvc.perform(get(repositoryPath).session(login(login)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").doesNotExist());
+        verifyNoInteractions(reader);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ContentRepositoryException.Recovery.class,
+            names = {"RETRY", "RECONNECT"})
+    void authorizedRepositoryFailuresExposeOnlyFixedRecoveryHints(ContentRepositoryException.Recovery recovery)
+            throws Exception {
+        when(reader.readTree(any(), any(), any()))
+                .thenThrow(new ContentRepositoryException(
+                        "private-repository-diagnostic",
+                        recovery,
+                        new IllegalStateException("private-provider-cause")));
+        String body = mvc.perform(get("/api/admin/workspaces/" + workspace.value() + "/repository/tree")
+                        .session(session))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("REPOSITORY_" + recovery.name()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(body).doesNotContain("private-repository-diagnostic", "private-provider-cause");
     }
 
     @Test
@@ -215,6 +258,12 @@ class GitHubReconnectionHttpIntegrationIT {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class ProviderConfiguration {
+        @Bean
+        @Primary
+        AuthorizedRepositoryReader fixtureRepositoryReader() {
+            return mock(AuthorizedRepositoryReader.class);
+        }
+
         @Bean
         @Primary
         GitHubRepositoryReconnections fixtureReconnections() {

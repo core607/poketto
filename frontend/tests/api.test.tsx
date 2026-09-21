@@ -173,6 +173,41 @@ test("unavailable reads do not imply an uncertain write, while failed mutations 
   }
 });
 
+test("repository recovery codes distinguish retry and reconnection without replaying writes or exposing diagnostics", async () => {
+  const previous = globalThis.fetch;
+  const repositoryPath =
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch";
+  let requests = 0;
+  try {
+    for (const code of ["REPOSITORY_RETRY", "REPOSITORY_RECONNECT"]) {
+      globalThis.fetch = async (input) => {
+        if (String(input).endsWith("/csrf"))
+          return Response.json({ headerName: "X-CSRF", token: "fixture" });
+        requests++;
+        return Response.json(
+          { code, detail: "private-repository-diagnostic" },
+          { status: 503 },
+        );
+      };
+      for (const method of ["GET", "POST"]) {
+        await assert.rejects(api(repositoryPath, { method }), (error) => {
+          if (!(error instanceof ApiError) || error.code !== code) return false;
+          assert.ok(!error.message.includes("private-repository-diagnostic"));
+          if (code === "REPOSITORY_RECONNECT")
+            assert.ok(error.message.includes("原授权的空间主人"));
+          else if (method === "POST")
+            assert.ok(error.message.includes("先重新读取并核对原操作"));
+          else assert.ok(error.message.includes("稍后重试"));
+          return true;
+        });
+      }
+    }
+    assert.equal(requests, 4);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test("server public reads are uncached and never forward a browser identity", async () => {
   const previous = globalThis.fetch;
   globalThis.fetch = async (_input, options) => {

@@ -202,7 +202,12 @@ class GitHubRepositoryBindingsIntegrationIT {
         AuthPrincipal actor = preparingActor();
         jdbc.update("update content_repository_bindings set github_revoked=true,github_binding_version=2");
         assertThat(bindings.status(actor, workspace).revoked()).isTrue();
-        assertThatThrownBy(() -> bindings.binding(workspace)).hasRootCauseMessage("GitHub App: INSTALLATION_REQUIRED");
+        assertThatThrownBy(() -> bindings.binding(workspace))
+                .isInstanceOfSatisfying(
+                        ContentRepositoryException.class,
+                        failure ->
+                                assertThat(failure.recovery()).isEqualTo(ContentRepositoryException.Recovery.RECONNECT))
+                .hasRootCauseMessage("GitHub App: INSTALLATION_REQUIRED");
         verifyNoInteractions(installations);
         var prepared = bindings.prepare(actor, workspace, "notes");
         transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared));
@@ -367,6 +372,9 @@ class GitHubRepositoryBindingsIntegrationIT {
         assertThatThrownBy(binding::requireCurrent)
                 .isInstanceOf(ContentRepositoryException.class)
                 .hasMessage("GitHub repository access is temporarily unavailable; retry the operation")
+                .isInstanceOfSatisfying(
+                        ContentRepositoryException.class,
+                        failure -> assertThat(failure.recovery()).isEqualTo(ContentRepositoryException.Recovery.RETRY))
                 .hasRootCauseMessage("GitHub App: UNAVAILABLE");
         bindings.binding(workspace).requireCurrent();
         assertThat(store.find(account).orElseThrow().state()).isEqualTo(GitHubAppGrantStore.State.ACTIVE);

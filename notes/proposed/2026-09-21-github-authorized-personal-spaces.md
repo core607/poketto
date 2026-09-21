@@ -154,6 +154,10 @@ Prepared repository proofs and creation leases that expire while waiting cause
 transient failures, not authorization revocations. Continue the original creation request
 or prepare fresh access for the same operation without requiring new consent.
 Ambiguous remote writes still require reconciliation before another write.
+Authorized browser workspace routes expose fixed `REPOSITORY_RETRY` or
+`REPOSITORY_RECONNECT` recovery codes, without exception messages or provider
+diagnostics. The client renders its own instructions and never retries a write
+automatically. Public routes retain generic failures even for signed-in visitors.
 
 Provider exchanges use fixed GitHub HTTPS origins over direct public-network
 connections and refuse redirects. Bound concurrent exchanges, request and response

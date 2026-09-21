@@ -12,7 +12,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
-/** Local Git authorities used only by the isolated browser fixture. */
+/** Local Git transport for browser fixtures, retaining App credential validation for App-bound spaces. */
 @TestConfiguration(proxyBeanMethods = false)
 public class AcceptanceRepositories {
     private static final Map<WorkspaceId, Path> selected = new ConcurrentHashMap<>();
@@ -34,14 +34,18 @@ public class AcceptanceRepositories {
 
     @Bean
     @Primary
-    RepositoryBindingSource acceptanceRepositorySource(@Value("${poketto.test.repository-path}") String defaultRemote) {
+    RepositoryBindingSource acceptanceRepositorySource(
+            @Value("${poketto.test.repository-path}") String defaultRemote, GitHubRepositoryBindings github) {
         return workspace -> {
+            RepositoryBinding appBinding = github.binding(workspace);
             try {
                 return new RepositoryBinding(
                         new URIish(selected.getOrDefault(workspace, Path.of(defaultRemote))
                                 .toUri()
                                 .toString()),
-                        new UsernamePasswordCredentialsProvider("fixture", "fixture"));
+                        new UsernamePasswordCredentialsProvider("fixture", "fixture"),
+                        false,
+                        appBinding == null ? () -> {} : appBinding::requireCurrent);
             } catch (URISyntaxException exception) {
                 throw new IllegalStateException(exception);
             }
