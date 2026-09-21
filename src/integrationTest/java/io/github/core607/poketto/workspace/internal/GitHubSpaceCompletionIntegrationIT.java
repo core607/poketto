@@ -246,6 +246,7 @@ class GitHubSpaceCompletionIntegrationIT {
                     owner,
                     new Repository(91, 42, "octocat", "notes"),
                     7,
+                    new AccessEpochs(0, 0),
                     clock.instant(),
                     clock.instant().plusSeconds(60));
         }

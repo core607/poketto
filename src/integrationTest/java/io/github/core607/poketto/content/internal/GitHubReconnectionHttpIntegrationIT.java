@@ -182,6 +182,7 @@ class GitHubReconnectionHttpIntegrationIT {
                 new GitHubRepositoryProvisioning.Owner(42, "octocat", 1),
                 new GitHubRepositoryProvisioning.Repository(91, 42, "octocat", "notes"),
                 7,
+                new GitHubRepositoryProvisioning.AccessEpochs(0, 0),
                 now,
                 now.plusSeconds(60));
         return new GitHubRepositoryReconnections.Prepared(workspace, 1, binding);

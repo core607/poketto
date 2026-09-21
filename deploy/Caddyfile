@@ -19,6 +19,8 @@
                 request>uri delete
                 request>headers>Cookie delete
                 request>headers>Authorization delete
+                request>headers>X-Hub-Signature-256 delete
+                request>headers>X-Hub-Signature delete
                 request>headers>Set-Cookie delete
                 request>headers>Referer delete
             }
@@ -64,6 +66,8 @@
                 request>uri regexp "\?.*$" ""
                 request>headers>Cookie delete
                 request>headers>Authorization delete
+                request>headers>X-Hub-Signature-256 delete
+                request>headers>X-Hub-Signature delete
                 request>headers>Set-Cookie delete
                 request>headers>Referer delete
                 resp_headers>Set-Cookie delete

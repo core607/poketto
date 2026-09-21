@@ -35,6 +35,36 @@ final class GitHubAppGrantStore {
                 .findFirst();
     }
 
+    String clientId() {
+        return clientId;
+    }
+
+    long authorizationEpoch(long owner) {
+        jdbc.update(
+                "insert into content_github_authorization_epochs(client_id,github_user_id) values (?,?) on conflict do nothing",
+                clientId,
+                owner);
+        return jdbc.queryForObject(
+                "select epoch from content_github_authorization_epochs where client_id=? and github_user_id=?",
+                Long.class,
+                clientId,
+                owner);
+    }
+
+    void requireAuthorizationEpoch(long owner, long epoch) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("GitHub authorization validation requires an account transaction");
+        }
+        List<Long> current = jdbc.query(
+                "select epoch from content_github_authorization_epochs where client_id=? and github_user_id=? for update",
+                (row, number) -> row.getLong(1),
+                clientId,
+                owner);
+        if (!current.equals(List.of(epoch))) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
+    }
+
     void lockActive(UUID account, long version, long owner) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("GitHub grant locking requires an account transaction");

@@ -42,6 +42,8 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 已有的 GitHub App 连接在空间“仓库连接”页提供“核对并恢复连接”。先在账号设置中恢复原 GitHub 账号的授权，并确认仓库授权范围包含这个仓库。仓库改名后，填写当前名称。重连会核对原所有者和仓库的不可变 ID；转移给其他账号的仓库或重新创建的同名仓库不能接替。只有最初提供授权的空间主人能重连，策略组降级后仍可操作。重连成功会使此前准备的仓库凭证失效。手工令牌连接保留独立的凭据更新表单。
 
+将 App 的 Webhook URL 设置为公开 HTTPS 域名下的 `/api/hooks/github`，Webhook 密钥使用受保护配置中的 `POKETTO_GITHUB_WEBHOOK_SECRET`。订阅 Repository 事件；授权和安装事件默认投递。撤销会停止受影响的仓库访问，不删除内容或成员关系。恢复权限后需主动重连，增加授权范围或解除暂停不会自动恢复本地连接。入口接受最大 25 MiB 的 JSON 请求，已提交过的投递返回 409。服务恢复后，可在 GitHub 中重新投递失败的通知；正常准备仓库凭证时也会核验当前的 GitHub 权限。
+
 私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个已加入的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
 
 所有者在成员管理或空间邀请中分别设置私密读取、私密修改和公开内容修改/发布权限。邀请默认仅允许查看公开范围；私密修改必须同时允许私密读取。即使位于 `public/` 下，被发布策略排除的文件仍属私密内容。空间的匿名网站关闭时，成员仍可读取其当前公开范围。收回权限会撤销权限超限的连接；增加权限不会扩大已有连接的授权。详见[成员内容权限](../notes/implemented/2026-09-12-member-content-permissions.md)；安装该表结构后，已有普通成员也会失去隐含的私密访问权限。

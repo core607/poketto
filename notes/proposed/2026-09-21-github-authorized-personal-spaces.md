@@ -173,6 +173,46 @@ An account may reauthorize an existing grant after a group downgrade so its
 retained space permissions remain usable. Reauthorization does not restore
 creation eligibility, publish a space, or establish membership.
 
+### Revocation delivery and commit races
+
+The stateless `POST /api/hooks/github` entrance authenticates the exact request
+bytes using `X-Hub-Signature-256` before parsing. It caps JSON bodies at 25 MiB,
+admits one body at a time, and uses a five-second
+database transaction with a two-second lock timeout. No provider request runs
+inside the webhook transaction. Browser sessions, API keys and CSRF tokens do
+not authorize this endpoint; other browser endpoints retain their existing gates.
+
+Persist each `X-GitHub-Delivery` UUID under the configured App client and commit
+its receipt with all effects. Reject an already committed delivery with 409;
+a failed transaction leaves it retryable. Retain these small receipts across
+restarts and account reauthorization instead of expiring them without a trusted
+event timestamp. GitHub's [delivery guidance](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks)
+uses the same identifier for a redelivery. The signature authenticates the body,
+not an event chronology: a first-seen delayed revocation still closes access and
+requires explicit reconnection. Never infer permission restoration from a later
+arrival, an installation addition or an unsuspend event.
+Gateway access and process logs omit both webhook signature headers; the
+authenticator still reaches the application unchanged.
+
+Authorization revocation clears that App owner's encrypted grants and refresh
+leases. Installation deletion or suspension closes its bindings; selected-repo
+removal closes the specified repositories. GitHub can omit the removed list
+when changing from all repositories to selected repositories, so that event
+closes the installation's bindings until each is verified again. Repository
+deletion, transfer, publication, archival or rename requires reconnection of
+the same immutable identity. Subscribe to repository events as well as the
+App's default authorization and installation events.
+
+Persist installation and immutable-repository revocation epochs even when no
+space binding exists yet. Sample them before provider verification and lock and
+compare them when committing creation or reconnection. This prevents a webhook
+received during provider I/O from being lost because the workspace was not yet
+bound. A first OAuth consent likewise samples its owner's authorization epoch,
+revalidates the user token, and compares the epoch in the account transaction.
+Grant versions still prevent late refresh results from restoring revoked access.
+Epochs and revocation receipts contain identifiers only, never provider payloads
+or credentials. Accounts, memberships, remote repositories and originals survive.
+
 ## Configuration and acceptance
 
 The operator supplies the App ID, client ID, client secret, private signing key

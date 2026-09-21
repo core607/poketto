@@ -37,9 +37,13 @@ public interface GitHubRepositoryProvisioning {
             Owner owner,
             Repository repository,
             long installationId,
+            AccessEpochs accessEpochs,
             Instant preparedAt,
             Instant validUntil) {
         public PreparedBinding {
+            if (accessEpochs == null) {
+                throw new IllegalArgumentException("GitHub access epochs are required");
+            }
             if (accountId == null || owner == null || repository == null || installationId <= 0) {
                 throw new IllegalArgumentException("Verified GitHub installation is required");
             }
@@ -61,6 +65,17 @@ public interface GitHubRepositoryProvisioning {
         @Override
         public String toString() {
             return "PreparedGitHubBinding[redacted]";
+        }
+    }
+
+    record AccessEpochs(long installation, long repository) {
+        public AccessEpochs {
+            if (installation < 0) {
+                throw new IllegalArgumentException("GitHub installation epoch cannot be negative");
+            }
+            if (repository < 0) {
+                throw new IllegalArgumentException("GitHub repository epoch cannot be negative");
+            }
         }
     }
 

@@ -31,6 +31,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     private final GitHubAppGrants grants;
     private final JdbcTemplate jdbc;
     private final ManagedRepositoryConnections manual;
+    private final GitHubAccessEpochs epochs;
 
     ManagedGitHubConnections(
             Accounts accounts,
@@ -52,6 +53,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
         this.grants = oauth == null ? null : new GitHubAppGrants(store, oauth, repositories, clock);
         this.jdbc = jdbc;
         this.manual = manual;
+        this.epochs = store == null ? null : new GitHubAccessEpochs(jdbc, store.clientId());
     }
 
     static ManagedGitHubConnections disabled(Accounts accounts) {
@@ -136,6 +138,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
         GitHubAppRepositories.requireName(repositoryName);
         // Missing selected-repository access can hide repository metadata from the user token.
         long installation = installations.find(access.owner(), repositoryName);
+        AccessEpochs accessEpochs = epochs.snapshot(installation, repositoryId);
         repositories.known(owner.id(), repositoryId, repositoryName, access.token());
         GitHubAppInstallations.Token token = installations.issue(installation, owner.id(), repositoryId);
         Repository verified = provisioned(token.repository());
@@ -149,7 +152,8 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
             throw new GitHubConnectionException(UNAVAILABLE);
         }
         Instant validUntil = expiry.isBefore(preparedAt.plusSeconds(60)) ? expiry : preparedAt.plusSeconds(60);
-        return new PreparedBinding(actor.accountId(), owner, verified, installation, preparedAt, validUntil);
+        return new PreparedBinding(
+                actor.accountId(), owner, verified, installation, accessEpochs, preparedAt, validUntil);
     }
 
     @Override
@@ -181,6 +185,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
             throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
         }
         requireCurrent(actor, binding.owner());
+        epochs.requireCurrent(binding.installationId(), binding.repository().id(), binding.accessEpochs());
     }
 
     TokenLease repositoryToken(UUID account, long ownerId, long installationId, long repositoryId) {
@@ -260,10 +265,16 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
         var flow = new GitHubAppOAuth.Flow(authorization.state(), authorization.verifier(), authorization.issuedAt());
         GitHubAppOAuth.Tokens tokens = oauth.exchange(flow, authorization.state(), code);
         GitHubAppRepositories.Owner owner = repositories.currentUser(tokens.accessToken());
+        long epoch = store.authorizationEpoch(owner.id());
+        // A first consent has no grant row yet. Validate again after sampling its revocation epoch.
+        if (repositories.currentUser(tokens.accessToken()).id() != owner.id()) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.IDENTITY_CHANGED);
+        }
         accounts.withAccount(actor, () -> {
             requireSession.run();
             requireActor(actor, authorization);
             requireEligibility(actor, authorization.grantVersion());
+            store.requireAuthorizationEpoch(owner.id(), epoch);
             store.authorize(actor.accountId(), authorization.grantVersion(), owner, tokens);
             return null;
         });

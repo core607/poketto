@@ -1,6 +1,8 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.auth.Accounts;
+import io.github.core607.poketto.content.GitHubWebhookException;
+import io.github.core607.poketto.content.GitHubWebhooks;
 import java.net.URI;
 import java.time.Clock;
 import java.util.List;
@@ -9,10 +11,31 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class GitHubConnectionsConfiguration {
+    @Bean
+    GitHubWebhooks githubWebhooks(
+            JdbcTemplate jdbc,
+            PlatformTransactionManager transactions,
+            @Value("${poketto.github.app-id:}") String appId,
+            @Value("${poketto.github.client-id:}") String clientId,
+            @Value("${poketto.github.webhook-secret:}") String secret) {
+        if (List.of(appId, clientId, secret).stream().anyMatch(String::isBlank)) {
+            return (delivery, event, signature, body) -> {
+                throw new GitHubWebhookException(GitHubWebhookException.Code.UNAVAILABLE);
+            };
+        }
+        requireAppId(appId);
+        if (!clientId.matches("[A-Za-z0-9_.-]{1,128}")) {
+            throw new IllegalArgumentException("GitHub App client ID is invalid");
+        }
+        return new GitHubAppWebhooks(
+                Long.parseLong(appId), secret, new GitHubWebhookStore(jdbc, transactions, clientId));
+    }
+
     @Bean(destroyMethod = "close")
     ManagedGitHubConnections githubConnections(
             Accounts accounts,

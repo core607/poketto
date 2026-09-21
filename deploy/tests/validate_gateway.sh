@@ -37,6 +37,7 @@ marker_path="KOHAKUMARKERPATH"
 marker_grant="KOHAKUMARKERGRANTAAAAAAAAAAAAAAAAAAAAAAA"
 marker_referrer="KOHAKUMARKERREFERRER"
 marker_filename="KOHAKUMARKERFILENAME"
+marker_signature="FIXTUREWEBHOOKSIGNATURE"
 # A download names the file in its response header, so the probe needs something behind the
 # gateway that sets one. This stands in for the application; nothing else about it is realistic.
 network="poketto-gateway-probe-$$"
@@ -74,6 +75,14 @@ done
 # An administration page puts the open document's path in its own address, which a same-origin
 # request then carries in this header.
 "${POKETTO_CURL:-curl}" -sS -o /dev/null --max-time 5     -H "Referer: http://site.example.invalid/admin?path=private/$marker_referrer.md"     "http://127.0.0.1:$port/api/public/documents" >/dev/null 2>&1 || true
+# Both successful delivery and an unavailable application must keep webhook authenticators out of logs.
+"${POKETTO_CURL:-curl}" -fsS -o /dev/null --max-time 5 -X POST \
+    -H "X-Hub-Signature-256: sha256=$marker_signature" -H "X-Hub-Signature: sha1=$marker_signature" \
+    "http://127.0.0.1:$port/api/hooks/github"
+"$DOCKER" stop "$(cat "$work/upstream.id")" >/dev/null
+"${POKETTO_CURL:-curl}" -sS -o /dev/null --max-time 5 -X POST \
+    -H "X-Hub-Signature-256: sha256=$marker_signature" -H "X-Hub-Signature: sha1=$marker_signature" \
+    "http://127.0.0.1:$port/api/hooks/github" >/dev/null 2>&1 || true
 sleep 2
 recorded="$("$DOCKER" logs "$container" 2>&1 || true)"
 [ -n "$recorded" ] || { echo 'the gateway recorded nothing at all; the probe proves nothing' >&2; exit 1; }
@@ -100,4 +109,11 @@ esac
 case "$recorded" in
     *"$marker_filename"*) echo 'a private file name reached a gateway record' >&2; exit 1 ;;
 esac
-echo "gateway records carry no address, grant, referrer or file name"
+case "$served" in
+    *"$marker_signature"*) ;;
+    *) echo 'the upstream did not receive the webhook signature; the probe proves nothing' >&2; exit 1 ;;
+esac
+case "$recorded" in
+    *"$marker_signature"*) echo 'a webhook signature reached a gateway record' >&2; exit 1 ;;
+esac
+echo "gateway records carry no address, grant, referrer, file name or webhook signature"
