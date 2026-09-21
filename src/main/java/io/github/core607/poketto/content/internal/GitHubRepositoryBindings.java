@@ -1,7 +1,10 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.GitHubConnectionException;
+import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
+import io.github.core607.poketto.content.GitHubRepositoryReconnections;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.net.URISyntaxException;
@@ -9,16 +12,71 @@ import java.util.Optional;
 import java.util.UUID;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Resolves App bindings to bounded, checked Git credentials. It never falls back to operator credentials. */
-final class GitHubRepositoryBindings {
+final class GitHubRepositoryBindings implements GitHubRepositoryReconnections {
     private final JdbcTemplate jdbc;
     private final ManagedGitHubConnections github;
 
     GitHubRepositoryBindings(JdbcTemplate jdbc, ManagedGitHubConnections github) {
         this.jdbc = jdbc;
         this.github = github;
+    }
+
+    @Override
+    public Status status(AuthPrincipal actor, WorkspaceId workspace) {
+        Stored stored = requireBinding(workspace);
+        return new Status(stored.account().equals(actor.accountId()), stored.revoked());
+    }
+
+    @Override
+    public Prepared prepare(AuthPrincipal actor, WorkspaceId workspace, String repositoryName) {
+        Stored expected = requireBinding(workspace);
+        if (!expected.account().equals(actor.accountId())) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+        }
+        GitHubRepositoryProvisioning.PreparedBinding prepared =
+                github.prepareReconnection(actor, expected.owner(), expected.repository(), repositoryName);
+        return new Prepared(workspace, expected.version(), prepared);
+    }
+
+    @Override
+    public void apply(AuthPrincipal actor, WorkspaceId workspace, Prepared prepared) {
+        if (!workspace.equals(prepared.workspace())) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED);
+        }
+        GitHubRepositoryProvisioning.PreparedBinding binding = prepared.binding();
+        github.requirePrepared(actor, binding);
+        int changed;
+        try {
+            changed = jdbc.update(
+                    """
+                    update content_repository_bindings
+                    set canonical_uri=?,github_installation_id=?,github_revoked=false,
+                        github_binding_version=github_binding_version+1,updated_at=current_timestamp
+                    where workspace_id=? and credential_kind='GITHUB_APP' and github_binding_version=?
+                        and github_account_id=? and github_owner_id=? and provider_identity=?
+                    """,
+                    binding.repository().canonicalUri(),
+                    binding.installationId(),
+                    workspace.value(),
+                    prepared.bindingVersion(),
+                    actor.accountId(),
+                    binding.owner().id(),
+                    "github:" + binding.repository().id());
+        } catch (DuplicateKeyException duplicate) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED, duplicate);
+        }
+        if (changed != 1) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED);
+        }
+    }
+
+    private Stored requireBinding(WorkspaceId workspace) {
+        return find(workspace)
+                .orElseThrow(() -> new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED));
     }
 
     RepositoryBinding binding(WorkspaceId workspace) {
@@ -35,6 +93,9 @@ final class GitHubRepositoryBindings {
             return null;
         }
         Stored expected = stored.orElseThrow();
+        if (expected.revoked()) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.INSTALLATION_REQUIRED);
+        }
         ManagedGitHubConnections.TokenLease lease = github.repositoryToken(
                 expected.account(), expected.owner(), expected.installation(), expected.repository());
         GitHubAppRepositories.Repository repository = lease.token().repository();
@@ -77,7 +138,8 @@ final class GitHubRepositoryBindings {
         return jdbc
                 .query(
                         """
-                select canonical_uri,provider_identity,github_account_id,github_owner_id,github_installation_id
+                select canonical_uri,provider_identity,github_account_id,github_owner_id,github_installation_id,
+                    github_binding_version,github_revoked
                 from content_repository_bindings where workspace_id=? and credential_kind='GITHUB_APP'
                 """,
                         (row, number) -> new Stored(
@@ -85,7 +147,9 @@ final class GitHubRepositoryBindings {
                                 repositoryId(row.getString(2)),
                                 row.getObject(3, UUID.class),
                                 row.getLong(4),
-                                row.getLong(5)),
+                                row.getLong(5),
+                                row.getLong(6),
+                                row.getBoolean(7)),
                         workspace.value())
                 .stream()
                 .findFirst();
@@ -99,7 +163,8 @@ final class GitHubRepositoryBindings {
         }
     }
 
-    private record Stored(String uri, long repository, UUID account, long owner, long installation) {
+    private record Stored(
+            String uri, long repository, UUID account, long owner, long installation, long version, boolean revoked) {
         @Override
         public String toString() {
             return "GitHubRepositoryBinding[redacted]";

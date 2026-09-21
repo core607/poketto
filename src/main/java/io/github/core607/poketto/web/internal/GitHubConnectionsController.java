@@ -4,7 +4,10 @@ import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubConnections;
+import io.github.core607.poketto.content.GitHubRepositoryReconnections;
 import io.github.core607.poketto.spaces.GitHubSpaceCreation;
+import io.github.core607.poketto.spaces.GitHubSpaceReconnection;
+import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,10 +39,40 @@ class GitHubConnectionsController {
     private static final String ATTEMPT = GitHubConnectionsController.class.getName() + ".attempt";
     private final GitHubConnections connections;
     private final GitHubSpaceCreation creations;
+    private final GitHubSpaceReconnection reconnections;
 
-    GitHubConnectionsController(GitHubConnections connections, GitHubSpaceCreation creations) {
+    GitHubConnectionsController(
+            GitHubConnections connections, GitHubSpaceCreation creations, GitHubSpaceReconnection reconnections) {
         this.connections = connections;
         this.creations = creations;
+        this.reconnections = reconnections;
+    }
+
+    @GetMapping("/repositories/{workspaceId}")
+    GitHubRepositoryReconnections.Status repositoryStatus(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
+        return reconnections.status(actor, WorkspaceId.parse(workspaceId));
+    }
+
+    @PostMapping("/repositories/{workspaceId}/reconnect")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void reconnect(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestBody Reconnection body) {
+        reconnections.reconnect(actor, WorkspaceId.parse(workspaceId), body.repositoryName());
+    }
+
+    record Reconnection(String repositoryName) {
+        Reconnection {
+            if (!validName(repositoryName)) {
+                throw new IllegalArgumentException("GitHub repository name is invalid");
+            }
+        }
+
+        private static boolean validName(String name) {
+            return name != null && name.matches("[A-Za-z0-9_.-]{1,100}") && !name.equals(".") && !name.equals("..");
+        }
     }
 
     @GetMapping

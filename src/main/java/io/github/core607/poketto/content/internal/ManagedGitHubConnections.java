@@ -117,6 +117,23 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     @Override
     public PreparedBinding prepareBinding(AuthPrincipal actor, Owner owner, long repositoryId, String repositoryName) {
         GitHubAppGrants.Access access = provisioningAccess(actor, owner);
+        return prepareBinding(actor, owner, repositoryId, repositoryName, access);
+    }
+
+    PreparedBinding prepareReconnection(AuthPrincipal actor, long ownerId, long repositoryId, String repositoryName) {
+        accounts.account(actor);
+        requireAvailable();
+        GitHubAppGrants.Access access = grants.verifiedAccess(actor.accountId());
+        if (access.owner().id() != ownerId) {
+            throw new GitHubConnectionException(GitHubConnectionException.Code.IDENTITY_CHANGED);
+        }
+        Owner owner = new Owner(ownerId, access.owner().login(), access.version());
+        return prepareBinding(actor, owner, repositoryId, repositoryName, access);
+    }
+
+    private PreparedBinding prepareBinding(
+            AuthPrincipal actor, Owner owner, long repositoryId, String repositoryName, GitHubAppGrants.Access access) {
+        GitHubAppRepositories.requireName(repositoryName);
         // Missing selected-repository access can hide repository metadata from the user token.
         long installation = installations.find(access.owner(), repositoryName);
         repositories.known(owner.id(), repositoryId, repositoryName, access.token());
@@ -139,14 +156,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     public void install(AuthPrincipal actor, WorkspaceId workspace, PreparedBinding binding) {
         requireAvailable();
         accounts.requireCreator(actor);
-        if (!actor.accountId().equals(binding.accountId())) {
-            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
-        }
-        Instant now = clock.instant();
-        if (now.isBefore(binding.preparedAt()) || !now.isBefore(binding.validUntil())) {
-            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
-        }
-        requireCurrent(actor, binding.owner());
+        requirePrepared(actor, binding);
         jdbc.update(
                 """
                 insert into content_repository_bindings(workspace_id,canonical_uri,provider_identity,credential_kind,
@@ -159,6 +169,18 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
                 actor.accountId(),
                 binding.owner().id(),
                 binding.installationId());
+    }
+
+    void requirePrepared(AuthPrincipal actor, PreparedBinding binding) {
+        requireAvailable();
+        if (!actor.accountId().equals(binding.accountId())) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
+        Instant now = clock.instant();
+        if (now.isBefore(binding.preparedAt()) || !now.isBefore(binding.validUntil())) {
+            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+        }
+        requireCurrent(actor, binding.owner());
     }
 
     TokenLease repositoryToken(UUID account, long ownerId, long installationId, long repositoryId) {

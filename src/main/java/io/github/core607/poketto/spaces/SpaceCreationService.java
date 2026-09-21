@@ -80,12 +80,16 @@ public final class SpaceCreationService {
                     repositories.available()
                             && binding.map(RepositoryConnections.ConnectionInfo::tokenBased)
                                     .orElse(false),
+                    binding.map(info -> !info.tokenBased()).orElse(false),
                     binding.orElse(null));
         });
     }
 
     public record ConnectionInfo(
-            boolean managed, boolean rotationAvailable, RepositoryConnections.ConnectionInfo binding) {}
+            boolean managed,
+            boolean rotationAvailable,
+            boolean githubApp,
+            RepositoryConnections.ConnectionInfo binding) {}
 
     public void rotateCredentials(AuthPrincipal actor, WorkspaceId workspace, String username, String token) {
         accounts.account(actor);

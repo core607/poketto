@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -59,6 +60,7 @@ class GitHubRepositoryBindingsIntegrationIT {
     private ManagedGitHubConnections github;
     private ManagedRepositoryConnections manual;
     private GitHubAppRepositories repositories;
+    private Accounts accounts;
     private MutableClock clock;
     private UUID account;
     private WorkspaceId workspace;
@@ -97,16 +99,9 @@ class GitHubRepositoryBindingsIntegrationIT {
             return token("notes");
         });
         manual = mock(ManagedRepositoryConnections.class);
+        accounts = mock(Accounts.class);
         github = new ManagedGitHubConnections(
-                mock(Accounts.class),
-                store,
-                mock(GitHubAppOAuth.class),
-                repositories,
-                null,
-                clock,
-                installations,
-                jdbc,
-                manual);
+                accounts, store, mock(GitHubAppOAuth.class), repositories, null, clock, installations, jdbc, manual);
         bindings = new GitHubRepositoryBindings(jdbc, github);
         jdbc.update("""
                 insert into content_repository_bindings(workspace_id,canonical_uri,provider_identity,credential_kind,
@@ -168,6 +163,101 @@ class GitHubRepositoryBindingsIntegrationIT {
                 .thenReturn(token("notes").repository());
         when(installations.find(any(), anyString())).thenReturn(7L);
         return actor;
+    }
+
+    @Test
+    void reconnectionRestoresTheSameRepositoryAfterRenameAndInvalidatesOldCredentials() {
+        AuthPrincipal actor = preparingActor();
+        RepositoryBinding old = bindings.binding(workspace);
+        when(installations.find(OWNER, "renamed")).thenReturn(8L);
+        when(repositories.known(42, 91, "renamed", "ghu_fixture"))
+                .thenReturn(token("renamed").repository());
+        when(installations.issue(8, 42, 91)).thenReturn(token("renamed"));
+        var prepared = bindings.prepare(actor, workspace, "renamed");
+        transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared));
+        RepositoryBinding restored = bindings.binding(workspace);
+        assertThat(restored.location().toString()).isEqualTo("https://github.com/octocat/renamed.git");
+        restored.requireCurrent();
+        assertThatThrownBy(old::requireCurrent).hasRootCauseMessage("GitHub App: REPOSITORY_CHANGED");
+        verify(accounts, never()).requireCreator(any());
+        verify(repositories, never()).create(anyLong(), anyString(), any(), anyString(), any());
+    }
+
+    @Test
+    void restoringAnUnchangedInstallationStillInvalidatesOldCredentialsAndCannotReplayProof() {
+        AuthPrincipal actor = preparingActor();
+        RepositoryBinding old = bindings.binding(workspace);
+        var prepared = bindings.prepare(actor, workspace, "notes");
+        transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared));
+        assertThatThrownBy(old::requireCurrent).hasRootCauseMessage("GitHub App: REPOSITORY_CHANGED");
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared)))
+                .hasMessage("GitHub App: REPOSITORY_CHANGED");
+        bindings.binding(workspace).requireCurrent();
+    }
+
+    @Test
+    void revokedBindingsBlockAccessUntilExplicitVerifiedReconnection() {
+        AuthPrincipal actor = preparingActor();
+        jdbc.update("update content_repository_bindings set github_revoked=true,github_binding_version=2");
+        assertThat(bindings.status(actor, workspace).revoked()).isTrue();
+        assertThatThrownBy(() -> bindings.binding(workspace)).hasRootCauseMessage("GitHub App: INSTALLATION_REQUIRED");
+        verifyNoInteractions(installations);
+        var prepared = bindings.prepare(actor, workspace, "notes");
+        transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared));
+        assertThat(bindings.status(actor, workspace).revoked()).isFalse();
+        bindings.binding(workspace).requireCurrent();
+    }
+
+    @Test
+    void revocationDuringReconnectionRejectsTheStaleProof() {
+        AuthPrincipal actor = preparingActor();
+        var prepared = bindings.prepare(actor, workspace, "notes");
+        jdbc.update(
+                "update content_repository_bindings set github_revoked=true,github_binding_version=github_binding_version+1");
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared)))
+                .hasMessage("GitHub App: REPOSITORY_CHANGED");
+        assertThat(bindings.status(actor, workspace).revoked()).isTrue();
+    }
+
+    @Test
+    void reconnectionRejectsExpiredProofAndChangedAccountGrant() {
+        AuthPrincipal actor = preparingActor();
+        var prepared = bindings.prepare(actor, workspace, "notes");
+        clock.now = NOW.plusSeconds(60);
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared)))
+                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+        clock.now = NOW;
+        store.revoke(account, 1);
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared)))
+                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+    }
+
+    @Test
+    void otherAccountsAndReplacementRepositoriesCannotReconnect() {
+        AuthPrincipal other = mock(AuthPrincipal.class);
+        when(other.accountId()).thenReturn(UUID.randomUUID());
+        assertThat(bindings.status(other, workspace).authorizingAccount()).isFalse();
+        assertThatThrownBy(() -> bindings.prepare(other, workspace, "notes"))
+                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+        verifyNoInteractions(installations, repositories);
+        AuthPrincipal actor = preparingActor();
+        when(repositories.known(42, 91, "notes", "ghu_fixture"))
+                .thenThrow(new GitHubConnectionException(GitHubConnectionException.Code.REPOSITORY_CHANGED));
+        assertThatThrownBy(() -> bindings.prepare(actor, workspace, "notes"))
+                .hasMessage("GitHub App: REPOSITORY_CHANGED");
+        verify(installations, never()).issue(anyLong(), anyLong(), anyLong());
+    }
+
+    @Test
+    void malformedRepositoryNamesCannotReachInstallationLookup() {
+        AuthPrincipal actor = preparingActor();
+        assertThatThrownBy(() -> bindings.prepare(actor, workspace, "../other/notes"))
+                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(installations);
     }
 
     @Test
