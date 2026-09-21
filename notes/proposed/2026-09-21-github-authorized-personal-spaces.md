@@ -219,6 +219,13 @@ The operator supplies the App ID, client ID, client secret, private signing key
 and webhook secret through protected deployment configuration. Require the App's
 signing key as single-line Base64 PKCS#8 at the application boundary; deployment
 converts GitHub's downloaded PEM to preserve the line-oriented settings channel.
+The [operator guide](../../docs/github-app.md) owns App registration and protected
+settings. Both deployment layouts forward these settings literally and reject
+incomplete App setting updates before replacing containers. The PEM converter validates RSA
+key material through OpenSSL before emitting a single Base64 line; no temporary
+key file or secret-bearing command argument is needed. Retaining the App identity
+and webhook secret while clearing both signing credentials keeps revocation
+processing available during an authorization pause.
 Use the client ID as the issuer of short-lived RS256 App JWTs, following
 [GitHub's authentication contract](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app).
 Require the App's

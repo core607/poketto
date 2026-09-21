@@ -42,6 +42,8 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 已有的 GitHub App 连接在空间“仓库连接”页提供“核对并恢复连接”。先在账号设置中恢复原 GitHub 账号的授权，并确认仓库授权范围包含这个仓库。仓库改名后，填写当前名称。重连会核对原所有者和仓库的不可变 ID；转移给其他账号的仓库或重新创建的同名仓库不能接替。只有最初提供授权的空间主人能重连，策略组降级后仍可操作。重连成功会使此前准备的仓库凭证失效。手工令牌连接保留独立的凭据更新表单。
 
+部署所需的五项 GitHub App 配置、权限、回调地址和私钥转换方式见 [GitHub App 配置指南](github-app.md)。
+
 将 App 的 Webhook URL 设置为公开 HTTPS 域名下的 `/api/hooks/github`，Webhook 密钥使用受保护配置中的 `POKETTO_GITHUB_WEBHOOK_SECRET`。订阅 Repository 事件；授权和安装事件默认投递。撤销会停止受影响的仓库访问，不删除内容或成员关系。恢复权限后需主动重连，增加授权范围或解除暂停不会自动恢复本地连接。入口接受最大 25 MiB 的 JSON 请求，已提交过的投递返回 409。服务恢复后，可在 GitHub 中重新投递失败的通知；正常准备仓库凭证时也会核验当前的 GitHub 权限。
 
 私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个已加入的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
@@ -243,7 +245,7 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境文件、无关配置和依赖服务继续由运维配置维护。
 
-`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥和 Google 凭证配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这六项配置均以 GitHub 为准：CI 也转发空值，未设置或已删除的 GitHub 配置会清除主机上的值；未设置每日限额时恢复为 100。Google 两个字段须一起清空，两种部署布局都会拒绝不完整的配置对。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
+`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID`、`POKETTO_GOOGLE_CLIENT_SECRET`、`POKETTO_SUPPORT_EMAIL` 和 [GitHub App 配置指南](github-app.md)中的五项设置。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥、Google 凭证和 GitHub App 设置配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这些配置均以 GitHub 为准：CI 也转发空值，未设置或已删除的 GitHub 配置会清除主机上的值；未设置每日限额时恢复为 100。Google 两个字段须一起清空，两种部署布局都会拒绝不完整的配置对。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
 
 将 `POKETTO_SUPPORT_EMAIL` 设置为 `/privacy` 和 `/terms` 页面展示的公开联系方式，并按实际部署的数据处理方式核对页面说明。两种部署方式均接受此设置，现有安装更新仅将它传给前端；CI 从同名 repository variable 读取。Google 品牌配置可使用站点首页、`/privacy` 和 `/terms` 地址。
 

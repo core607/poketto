@@ -135,10 +135,23 @@ try:
         empty.write_text("")
         configuration = json.loads(docker("compose", "--env-file", empty, "-f", ROOT / "deploy/compose.yaml",
                                           "config", "--format", "json", env=environment).stdout)
+        github_settings = {"POKETTO_GITHUB_" + key: "synthetic-" + key.lower() for key in
+                           ("APP_ID", "CLIENT_ID", "CLIENT_SECRET", "PRIVATE_KEY", "WEBHOOK_SECRET")}
+        configured = json.loads(docker("compose", "--env-file", empty, "-f", ROOT / "deploy/compose.yaml",
+                                       "config", "--format", "json", env={**environment, **github_settings}).stdout)
+        for key, value in github_settings.items():
+            expect("GitHub App setting reaches only the application: " + key,
+                   configured["services"]["app"]["environment"][key], value)
+            for name, service in configured["services"].items():
+                if name != "app":
+                    expect("GitHub App setting is absent from " + name + ": " + key,
+                           key in service.get("environment", {}), False)
     app_environment = configuration["services"]["app"]["environment"]
     expect("email delivery defaults to disabled", app_environment["POKETTO_RESEND_API_KEY"], "")
     expect("email budget defaults to one hundred sends", app_environment["POKETTO_EMAIL_DAILY_LIMIT"], "100")
     expect("Google login defaults to disabled", app_environment["POKETTO_GOOGLE_CLIENT_SECRET"], "")
+    for key in github_settings:
+        expect("GitHub App defaults to disabled: " + key, app_environment[key], "")
     expect("workspace credential encryption key reaches the application", app_environment["POKETTO_REPOSITORY_CREDENTIAL_KEY"], "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     actual_gateway = configuration["services"]["gateway"]["networks"]["default"]["ipv4_address"]
     expect("gateway static address", actual_gateway, gateway_ip)

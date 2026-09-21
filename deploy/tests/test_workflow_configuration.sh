@@ -63,7 +63,8 @@ for step in 'Update existing installation' 'Deploy'; do
     for mode in transfer pull mirror; do
         for values in empty configured; do
             (
-                for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+                for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL \
+                        POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_CLIENT_SECRET POKETTO_GITHUB_PRIVATE_KEY POKETTO_GITHUB_WEBHOOK_SECRET; do
                     printf -v "$key" '%s' ''
                     [ "$values" = empty ] || printf -v "$key" '%s' 'synthetic-$literal'
                 done
@@ -80,7 +81,8 @@ for step in 'Update existing installation' 'Deploy'; do
                 . ./workflow-step.sh
             ) > workflow-output
             assert_not_contains "$(cat workflow-output)" 'synthetic-'
-            for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+            for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL \
+                    POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_CLIENT_SECRET POKETTO_GITHUB_PRIVATE_KEY POKETTO_GITHUB_WEBHOOK_SECRET; do
                 expected="$key="
                 [ "$values" = empty ] || expected+='synthetic-$literal'
                 grep -qFx "$expected" workflow-stdin

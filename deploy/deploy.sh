@@ -48,6 +48,8 @@ CONFIG_KEYS=(
     POKETTO_REPOSITORY_CREDENTIAL_KEY
     POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_EMAIL_DAILY_LIMIT
     POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET
+    POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_CLIENT_SECRET
+    POKETTO_GITHUB_PRIVATE_KEY POKETTO_GITHUB_WEBHOOK_SECRET
     POKETTO_SUPPORT_EMAIL
     POKETTO_DATA_DIR_HOST POKETTO_DB_DIR_HOST
     POKETTO_HTTP_PORT POKETTO_APP_MEMORY POKETTO_DB_MEMORY
@@ -71,6 +73,29 @@ usage() {
 fail() {
     echo "deploy: $*" >&2
     exit 1
+}
+
+check_github_configuration() {
+    local configured=0 key
+    for key in POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_CLIENT_SECRET \
+            POKETTO_GITHUB_PRIVATE_KEY POKETTO_GITHUB_WEBHOOK_SECRET; do
+        [ -z "${!key:-}" ] || configured=1
+    done
+    [ "$configured" = 1 ] || return 0
+    for key in POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_WEBHOOK_SECRET; do
+        [ -n "${!key:-}" ] || fail "GitHub App configuration requires $key"
+    done
+    [[ "$POKETTO_GITHUB_APP_ID" =~ ^[1-9][0-9]{0,17}$ ]] || fail "GitHub App ID must be a positive integer of at most 18 digits"
+    [[ "$POKETTO_GITHUB_CLIENT_ID" =~ ^[A-Za-z0-9_.-]{1,128}$ ]] || fail "GitHub App client ID is invalid"
+    [ "${#POKETTO_GITHUB_WEBHOOK_SECRET}" -ge 32 ] && [ "${#POKETTO_GITHUB_WEBHOOK_SECRET}" -le 256 ] \
+        || fail "GitHub webhook secret must contain 32-256 characters"
+    if [ -n "${POKETTO_GITHUB_CLIENT_SECRET:-}${POKETTO_GITHUB_PRIVATE_KEY:-}" ]; then
+        [ -n "${POKETTO_GITHUB_CLIENT_SECRET:-}" ] && [ -n "${POKETTO_GITHUB_PRIVATE_KEY:-}" ] \
+            || fail "GitHub client secret and private key must be configured together"
+        [ -n "${POKETTO_REPOSITORY_CREDENTIAL_KEY:-}" ] || fail "GitHub authorization requires POKETTO_REPOSITORY_CREDENTIAL_KEY"
+        [[ "$POKETTO_GITHUB_PRIVATE_KEY" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] && [ "${#POKETTO_GITHUB_PRIVATE_KEY}" -le 16384 ] \
+            || fail "GitHub private key must be single-line Base64 PKCS#8; use deploy/convert-github-key.py"
+    fi
 }
 
 is_config_key() {
@@ -398,6 +423,7 @@ load_configuration() {
     fi
     [[ "${POKETTO_EMAIL_DAILY_LIMIT:-100}" =~ ^[1-9][0-9]{0,5}$ ]] && [ "${POKETTO_EMAIL_DAILY_LIMIT:-100}" -le 100000 ] \
         || fail "POKETTO_EMAIL_DAILY_LIMIT must be between 1 and 100000"
+    check_github_configuration
     [ -f "$ROOT/Caddyfile" ] || fail "missing $ROOT/Caddyfile"
     check_proxy_network
     check_directories

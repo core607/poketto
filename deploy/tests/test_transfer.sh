@@ -149,6 +149,7 @@ for mode in transfer pull; do
     [ "$mode" != pull ] || extra+=(--pull)
     set +e
     OUT="$(printf '%s\n' 'POKETTO_RESEND_API_KEY=identity-$literal' 'POKETTO_EMAIL_FROM=Example <noreply@example.test>' \
+        'POKETTO_GITHUB_PRIVATE_KEY=c3ludGhldGlj' 'POKETTO_GITHUB_WEBHOOK_SECRET=github-$literal' \
         | bash "$DEPLOY_DIR/transfer.sh" --target ops@host --root /srv/existing --image "$DIGEST_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --existing --set-stdin "${extra[@]}" 2> "$PWD/stderr")"
     STATUS=$?
     set -e
@@ -156,6 +157,10 @@ for mode in transfer pull; do
     assert_status 0
     assert_contains "$(cat "$FAKE_STATE/deploy-calls")" '--set-stdin'
     assert_contains "$(cat "$FAKE_STATE/deploy-stdin")" 'POKETTO_RESEND_API_KEY=identity-$literal'
+    assert_contains "$(cat "$FAKE_STATE/deploy-stdin")" 'POKETTO_GITHUB_PRIVATE_KEY=c3ludGhldGlj'
+    assert_contains "$(cat "$FAKE_STATE/deploy-stdin")" 'POKETTO_GITHUB_WEBHOOK_SECRET=github-$literal'
+    assert_not_contains "$(ssh_log)$(docker_log)$OUT$ERR" 'github-$literal'
+    assert_not_contains "$(ssh_log)$(docker_log)$OUT$ERR" 'c3ludGhldGlj'
     assert_not_contains "$(ssh_log)$(docker_log)$OUT$ERR" 'identity-$literal'
 done
 

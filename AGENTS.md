@@ -23,7 +23,7 @@ Before 1.0 there is no compatibility promise; a 0.x release names a commit and d
 
 ## Commands
 
-Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. `check` requires Python 3.10+; Linux executor tests additionally require venv and pip support.
+Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. `check` requires Python 3.10+ and OpenSSL 3+ on PATH; Linux executor tests additionally require venv and pip support.
 
 | Command | Purpose |
 |---|---|
