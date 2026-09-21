@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicArticle;
@@ -39,7 +40,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.servlet.HandlerMapping;
 
 @WebMvcTest(PublicDocumentController.class)
 @Import(PublicDocumentControllerTests.Fakes.class)
@@ -139,15 +144,34 @@ class PublicDocumentControllerTests {
 
     @Test
     void expiredOrInvalidSnapshotsReturnGenericServiceUnavailableEverywhere() throws Exception {
-        snapshots.failure = new ContentRepositoryException("private workspace or policy diagnostic");
+        snapshots.failure = new ContentRepositoryException(
+                "private workspace or policy diagnostic", ContentRepositoryException.Recovery.RECONNECT, null);
         for (String path : List.of("/api/public/documents", "/api/public/tags", "/api/public/document?route=/城市/雨")) {
             String body = mvc.perform(get(path))
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(jsonPath("$.code").doesNotExist())
+                    .andExpect(jsonPath("$.detail").value("the content repository is unavailable"))
                     .andReturn()
                     .getResponse()
                     .getContentAsString();
             assertThat(body).doesNotContain("private workspace", "policy diagnostic");
+        }
+    }
+
+    @Test
+    void signedInPublicRequestsDoNotExposeRepositoryRecoveryState() {
+        AuthPrincipal actor = Mockito.mock(AuthPrincipal.class);
+        Mockito.when(actor.kind()).thenReturn(AuthPrincipal.Kind.ACCOUNT);
+        var request = new MockHttpServletRequest("GET", "/api/public/documents");
+        request.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, "/api/public/documents");
+        request.setUserPrincipal(new UsernamePasswordAuthenticationToken(actor, null, List.of()));
+        for (ContentRepositoryException.Recovery recovery : ContentRepositoryException.Recovery.values()) {
+            var failure = new ContentRepositoryException("private workspace diagnostic", recovery, null);
+            ProblemDetail response = new ProblemResponses().repositoryUnavailable(failure, request);
+            assertThat(response.getStatus()).isEqualTo(503);
+            assertThat(response.getDetail()).isEqualTo("the content repository is unavailable");
+            assertThat(response.getProperties()).isNullOrEmpty();
         }
     }
 

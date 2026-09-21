@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError } from "../lib/browser-api";
 import { message } from "./admin";
+import { GitHubRepositoryReconnection } from "./github-repository-reconnection";
 
 type ConnectionInfo = {
   managed: boolean;
   rotationAvailable: boolean;
+  githubApp: boolean;
   binding: { repository: string; updatedAt: string } | null;
 };
 type Initialization = { repositoryEmpty: boolean; missingFiles: string[] };
@@ -156,7 +158,17 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
             凭据更新时间：
             {new Date(connection.binding.updatedAt).toLocaleString("zh-CN")}
           </p>
-          {!connection.rotationAvailable ? (
+          {connection.githubApp ? (
+            <GitHubRepositoryReconnection
+              key={workspaceId}
+              workspaceId={workspaceId}
+              repository={connection.binding.repository}
+              onReconnected={async () => {
+                await load();
+                await loadInitialization();
+              }}
+            />
+          ) : !connection.rotationAvailable ? (
             <p>站点尚未配置凭据加密密钥，请联系站点管理员恢复配置后再更新。</p>
           ) : (
             <form onSubmit={rotate} autoComplete="off">

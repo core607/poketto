@@ -38,6 +38,16 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 管理页会列出当前账号的空间。选择空间后再编辑，URL 中的 `workspace` 参数让不同标签页保持独立。“账号与空间”支持连接已有的 GitHub/CNB 私有仓库、查询或重试中断的创建申请，以及接受空间邀请码。启用仓库连接前，将 `POKETTO_REPOSITORY_CREDENTIAL_KEY` 配置为 Base64 编码的 32 字节密钥。新空间默认关闭公开网站。创建时会把内容模板作为第一个提交写入空仓库；若未写入，空间的“仓库连接”标签页可以补做。已有内容的仓库保持不变，同一标签页会列出模板中缺少的指引与策略文件，并提供只添加这些文件的操作。仓库令牌需要读取元数据和 Git 写入权限，不会保存在浏览器草稿中。
 
+站点配置 GitHub App 后，创作者和管理员可以在账号设置中授权自己的 GitHub 个人账号。创建空间前，先通过“管理 GitHub 仓库授权”将 App 安装到该账号。GitHub 的“仅选部分仓库”安装需要至少一个已有仓库，可以先新建一个空白私有仓库供安装使用。确认账号身份和未占用的仓库名后，再为空间创建私有仓库。GitHub 会自动将 App 创建的仓库加入其授权范围；若仍缺少权限，在安装设置中选中新仓库后继续原申请。明确的安装权限拒绝允许在恢复权限后重试同一次申请。申请记录保留中断的操作；建仓结果不确定时，应先在那里查询确认，再发起其他申请。
+
+已有的 GitHub App 连接在空间“仓库连接”页提供“核对并恢复连接”。先在账号设置中恢复原 GitHub 账号的授权，再通过“管理 GitHub 仓库授权”选中这个仓库。策略组降级后仍可使用该入口，也不需要有未完成的建仓申请。仓库改名后，填写当前名称。重连会核对原所有者和仓库的不可变 ID；转移给其他账号的仓库或重新创建的同名仓库不能接替。只有最初提供授权的空间主人能重连，策略组降级后仍可操作。重连成功会使此前准备的仓库凭证失效。手工令牌连接保留独立的凭据更新表单。
+
+如果操作等待期间的短期核验过期，可以重试原操作或继续原创建申请，无须仅因此重新授权 GitHub。管理页会区分暂时无法访问与需要重连；需要重连时，由最初提供授权的空间主人前往“仓库连接”恢复。远程写入结果不确定时，仍需先核对结果再重试，浏览器不会自动重复发送。
+
+部署所需的五项 GitHub App 配置、权限、回调地址和私钥转换方式见 [GitHub App 配置指南](github-app.md)。
+
+将 App 的 Webhook URL 设置为公开 HTTPS 域名下的 `/api/hooks/github`，Webhook 密钥使用受保护配置中的 `POKETTO_GITHUB_WEBHOOK_SECRET`。订阅 Repository 事件；授权和安装事件默认投递。撤销会停止受影响的仓库访问，不删除内容或成员关系。恢复权限后需主动重连，增加授权范围或解除暂停不会自动恢复本地连接。入口接受最大 25 MiB 的 JSON 请求，已提交过的投递返回 409。服务恢复后，可在 GitHub 中重新投递失败的通知；正常准备仓库凭证时也会核验当前的 GitHub 权限。
+
 私有 HTTP 入口统一使用 `/api/admin/workspaces/{workspaceId}`。`GET /api/auth/workspaces` 列出成员空间，`GET /api/auth/workspaces/{workspaceId}/me` 查询当前权限；没有指定空间的管理路径不会回退到默认空间。OAuth 授权时选择一个已加入的空间，`/mcp` 从已签发凭据解析该空间。详见[工作空间路由](../notes/implemented/2026-09-11-workspace-browser-and-mcp-routing.md)。
 
 所有者在成员管理或空间邀请中分别设置私密读取、私密修改和公开内容修改/发布权限。邀请默认仅允许查看公开范围；私密修改必须同时允许私密读取。即使位于 `public/` 下，被发布策略排除的文件仍属私密内容。空间的匿名网站关闭时，成员仍可读取其当前公开范围。收回权限会撤销权限超限的连接；增加权限不会扩大已有连接的授权。详见[成员内容权限](../notes/implemented/2026-09-12-member-content-permissions.md)；安装该表结构后，已有普通成员也会失去隐含的私密访问权限。
@@ -237,7 +247,7 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境文件、无关配置和依赖服务继续由运维配置维护。
 
-`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID` 和 `POKETTO_GOOGLE_CLIENT_SECRET`。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥和 Google 凭证配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这六项配置均以 GitHub 为准：CI 也转发空值，未设置或已删除的 GitHub 配置会清除主机上的值；未设置每日限额时恢复为 100。Google 两个字段须一起清空，两种部署布局都会拒绝不完整的配置对。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
+`transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID`、`POKETTO_GOOGLE_CLIENT_SECRET`、`POKETTO_SUPPORT_EMAIL` 和 [GitHub App 配置指南](github-app.md)中的五项设置。身份配置只传给受保护更新器的标准输入，镜像仓库凭证只传给拉取脚本。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置；显式空值清除设置。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥、Google 凭证和 GitHub App 设置配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这些配置均以 GitHub 为准：CI 也转发空值，未设置或已删除的 GitHub 配置会清除主机上的值；未设置每日限额时恢复为 100。Google 两个字段须一起清空，两种部署布局都会拒绝不完整的配置对。手动运行 Compose 时，将该覆盖文件放在最后。中断后使用相同镜像和配置重试；更新器会拒绝不同的候选配置。
 
 将 `POKETTO_SUPPORT_EMAIL` 设置为 `/privacy` 和 `/terms` 页面展示的公开联系方式，并按实际部署的数据处理方式核对页面说明。两种部署方式均接受此设置，现有安装更新仅将它传给前端；CI 从同名 repository variable 读取。Google 品牌配置可使用站点首页、`/privacy` 和 `/terms` 地址。
 

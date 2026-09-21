@@ -42,6 +42,16 @@ mail and is absent from production; these checks do not verify Resend delivery.
 
 For managed-credential browser flows, set `POKETTO_ACCEPTANCE_MANAGED_CONNECTIONS=true` and supply a fresh Base64-encoded 32-byte `POKETTO_ACCEPTANCE_CREDENTIAL_KEY`. The integration-only provider fixture accepts `https://github.com/example/acceptance`, username `fixture`, and synthetic tokens `fixture-token-initial` or `fixture-token-replacement`; other credentials fail validation. Creation, authorization, encryption, relational binding and rotation compare-and-set use the real services. Provider metadata and Git credential validation are mocked, and content uses the local synthetic repository. This mode must not be cited as real GitHub/CNB interoperability evidence. It is absent from the production application image.
 
+For GitHub personal-space controls, set `POKETTO_ACCEPTANCE_GITHUB=true` and a
+fresh `POKETTO_ACCEPTANCE_CREDENTIAL_KEY` as above. The synthetic personal account
+is `acceptance-user`. OAuth returns directly through the normal browser callback;
+the installation link opens a clearly labelled local selection page. Select the
+new repository there, save, then return to continue the original creation.
+Sessions, CSRF, encrypted grants, durable creation, workspace binding and template
+initialization use the real services. Provider responses and credentials are
+synthetic, and content uses a separate local Git repository per created space.
+This exercises the browser flow, not real GitHub permission or API compatibility.
+
 The application refuses to seed a nonempty fixture root. Each fresh run requires disposing of this stack's sample volumes first:
 
 ```sh

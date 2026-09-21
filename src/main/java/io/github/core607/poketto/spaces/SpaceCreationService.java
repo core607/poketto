@@ -75,12 +75,21 @@ public final class SpaceCreationService {
         accounts.account(actor);
         return auth.withAuthorization(actor, workspace, Set.of(Capability.MANAGE_KEYS), () -> {
             Optional<RepositoryConnections.ConnectionInfo> binding = repositories.connectionInfo(workspace);
-            return new ConnectionInfo(binding.isPresent(), repositories.available(), binding.orElse(null));
+            return new ConnectionInfo(
+                    binding.isPresent(),
+                    repositories.available()
+                            && binding.map(RepositoryConnections.ConnectionInfo::tokenBased)
+                                    .orElse(false),
+                    binding.map(info -> !info.tokenBased()).orElse(false),
+                    binding.orElse(null));
         });
     }
 
     public record ConnectionInfo(
-            boolean managed, boolean rotationAvailable, RepositoryConnections.ConnectionInfo binding) {}
+            boolean managed,
+            boolean rotationAvailable,
+            boolean githubApp,
+            RepositoryConnections.ConnectionInfo binding) {}
 
     public void rotateCredentials(AuthPrincipal actor, WorkspaceId workspace, String username, String token) {
         accounts.account(actor);

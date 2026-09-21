@@ -19,6 +19,11 @@ public interface RepositoryInitialization {
     /** Adds the absent files on current main, or as the root commit; a repository that has them all is left alone. */
     Outcome apply(AuthPrincipal actor, WorkspaceId workspace);
 
+    /** Checks an external operation lease immediately before a remote ref advance. Already complete templates do not write. */
+    default Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Runnable beforeWrite) {
+        throw new UnsupportedOperationException("Guarded repository initialization is unavailable");
+    }
+
     /** An empty repository has no commit, and then every template file is missing. */
     record Status(boolean repositoryEmpty, List<String> missingFiles) {
         public Status {

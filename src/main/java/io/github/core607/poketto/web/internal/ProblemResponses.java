@@ -1,6 +1,7 @@
 package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.assets.AssetStorageException;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentExportException;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentConflictException;
@@ -8,12 +9,16 @@ import io.github.core607.poketto.content.DocumentNotFoundException;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMoveDependencyException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
+import io.github.core607.poketto.workspace.WorkspaceHttpRoutes;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -88,10 +93,37 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler(ContentRepositoryException.class)
-    ProblemDetail repositoryUnavailable(ContentRepositoryException exception) {
+    ProblemDetail repositoryUnavailable(ContentRepositoryException exception, HttpServletRequest request) {
         log.warn("content repository unavailable: {}", exception.getMessage());
-        return problem(
-                HttpStatus.SERVICE_UNAVAILABLE, "Repository unavailable", "the content repository is unavailable");
+        ContentRepositoryException.Recovery recovery =
+                workspaceRecoveryAllowed(request) ? exception.recovery() : ContentRepositoryException.Recovery.NONE;
+        String detail =
+                switch (recovery) {
+                    case NONE -> "the content repository is unavailable";
+                    case RETRY -> "repository access is temporarily unavailable; re-read before retrying a write";
+                    case RECONNECT ->
+                        "the authorizing workspace owner must verify and restore the repository connection";
+                };
+        ProblemDetail problem = problem(HttpStatus.SERVICE_UNAVAILABLE, "Repository unavailable", detail);
+        if (recovery != ContentRepositoryException.Recovery.NONE) {
+            problem.setProperty("code", "REPOSITORY_" + recovery.name());
+        }
+        return problem;
+    }
+
+    private static boolean workspaceRecoveryAllowed(HttpServletRequest request) {
+        // The identity filter authorizes workspace membership before dispatch to these routes.
+        // Public handlers retain generic failures even when the visitor has a browser session.
+        Object mapping = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        if (!(mapping instanceof String route) || !route.startsWith(WorkspaceHttpRoutes.ADMIN)) {
+            return false;
+        }
+        if (!(request.getUserPrincipal() instanceof Authentication authentication)) {
+            return false;
+        }
+        return authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof AuthPrincipal actor
+                && actor.kind() == AuthPrincipal.Kind.ACCOUNT;
     }
 
     @ExceptionHandler(Exception.class)

@@ -437,10 +437,10 @@ jobs:
   # behind one another; an in-progress deployment is never cancelled. The content-repository
   # credential travels to the host's .env over the entrance's standard input, never as an
   # argument.
-  # GitHub is authoritative for the six identity settings in both deployment layouts. Configure
+  # GitHub is authoritative for identity and GitHub App settings in both deployment layouts. Configure
   # their secrets/variables before enabling this job: empty values clear the provider/contact,
   # and an unset daily limit becomes 100. Host-only identity settings apply to manual deployment.
-  # Existing installations must install the identity-capable privileged updater before enabling
+  # Existing installations must install the current privileged updater before enabling
   # this delivery version; transfer never replaces an operator's privileged executable.
   deploy:
     needs: [publish, mirror]
@@ -538,12 +538,18 @@ jobs:
           POKETTO_EMAIL_DAILY_LIMIT: ${{ vars.POKETTO_EMAIL_DAILY_LIMIT }}
           POKETTO_GOOGLE_CLIENT_ID: ${{ secrets.POKETTO_GOOGLE_CLIENT_ID }}
           POKETTO_GOOGLE_CLIENT_SECRET: ${{ secrets.POKETTO_GOOGLE_CLIENT_SECRET }}
+          POKETTO_GITHUB_APP_ID: ${{ secrets.POKETTO_GITHUB_APP_ID }}
+          POKETTO_GITHUB_CLIENT_ID: ${{ secrets.POKETTO_GITHUB_CLIENT_ID }}
+          POKETTO_GITHUB_CLIENT_SECRET: ${{ secrets.POKETTO_GITHUB_CLIENT_SECRET }}
+          POKETTO_GITHUB_PRIVATE_KEY: ${{ secrets.POKETTO_GITHUB_PRIVATE_KEY }}
+          POKETTO_GITHUB_WEBHOOK_SECRET: ${{ secrets.POKETTO_GITHUB_WEBHOOK_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           settings=""
-          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL \
+              POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_CLIENT_SECRET POKETTO_GITHUB_PRIVATE_KEY POKETTO_GITHUB_WEBHOOK_SECRET; do
             [ -n "${!key}" ] || printf 'Clearing identity setting: %s\n' "$key"
             settings+=$'\n'"$key=${!key}"
           done
@@ -582,13 +588,19 @@ jobs:
           POKETTO_EMAIL_DAILY_LIMIT: ${{ vars.POKETTO_EMAIL_DAILY_LIMIT }}
           POKETTO_GOOGLE_CLIENT_ID: ${{ secrets.POKETTO_GOOGLE_CLIENT_ID }}
           POKETTO_GOOGLE_CLIENT_SECRET: ${{ secrets.POKETTO_GOOGLE_CLIENT_SECRET }}
+          POKETTO_GITHUB_APP_ID: ${{ secrets.POKETTO_GITHUB_APP_ID }}
+          POKETTO_GITHUB_CLIENT_ID: ${{ secrets.POKETTO_GITHUB_CLIENT_ID }}
+          POKETTO_GITHUB_CLIENT_SECRET: ${{ secrets.POKETTO_GITHUB_CLIENT_SECRET }}
+          POKETTO_GITHUB_PRIVATE_KEY: ${{ secrets.POKETTO_GITHUB_PRIVATE_KEY }}
+          POKETTO_GITHUB_WEBHOOK_SECRET: ${{ secrets.POKETTO_GITHUB_WEBHOOK_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
         run: |
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
-          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL; do
+          for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL \
+              POKETTO_GITHUB_APP_ID POKETTO_GITHUB_CLIENT_ID POKETTO_GITHUB_CLIENT_SECRET POKETTO_GITHUB_PRIVATE_KEY POKETTO_GITHUB_WEBHOOK_SECRET; do
             [ -n "${!key}" ] || printf 'Clearing identity setting: %s\n' "$key"
             settings+=$'\n'"$key=${!key}"
           done

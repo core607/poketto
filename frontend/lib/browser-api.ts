@@ -82,6 +82,20 @@ export async function api<T>(
     };
     if (code && identityErrors[code])
       throw new ApiError(response.status, identityErrors[code], code);
+    if (response.status === 503 && code === "REPOSITORY_RECONNECT")
+      throw new ApiError(
+        response.status,
+        "仓库连接需要恢复。请由原授权的空间主人前往“仓库连接”核对并恢复连接。",
+        code,
+      );
+    if (response.status === 503 && code === "REPOSITORY_RETRY")
+      throw new ApiError(
+        response.status,
+        method === "GET"
+          ? "仓库访问暂时不可用，请稍后重试。"
+          : "仓库访问暂时不可用。请先重新读取并核对原操作，再决定是否重试。",
+        code,
+      );
     if (response.status === 400) {
       if (problem?.code === "INVALID_INVITATION")
         throw new ApiError(

@@ -28,6 +28,8 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
 IDENTITY_SETTINGS = frozenset((
     "POKETTO_RESEND_API_KEY", "POKETTO_EMAIL_FROM", "POKETTO_EMAIL_DAILY_LIMIT",
     "POKETTO_GOOGLE_CLIENT_ID", "POKETTO_GOOGLE_CLIENT_SECRET", "POKETTO_SUPPORT_EMAIL",
+    "POKETTO_GITHUB_APP_ID", "POKETTO_GITHUB_CLIENT_ID", "POKETTO_GITHUB_CLIENT_SECRET",
+    "POKETTO_GITHUB_PRIVATE_KEY", "POKETTO_GITHUB_WEBHOOK_SECRET",
 ))
 
 
@@ -56,6 +58,30 @@ def validate_identity(environment):
     limit = environment.get("POKETTO_EMAIL_DAILY_LIMIT")
     if limit is not None and (not re.fullmatch(r"[1-9][0-9]{0,5}", str(limit)) or int(limit) > 100000):
         raise DeploymentError("email daily limit must be between 1 and 100000")
+    validate_github(environment)
+
+
+def validate_github(environment):
+    fields = {key: str(environment.get("POKETTO_GITHUB_" + key, "")) for key in
+              ("APP_ID", "CLIENT_ID", "CLIENT_SECRET", "PRIVATE_KEY", "WEBHOOK_SECRET")}
+    if not any(fields.values()):
+        return
+    for key in ("APP_ID", "CLIENT_ID", "WEBHOOK_SECRET"):
+        if not fields[key]:
+            raise DeploymentError("GitHub App configuration requires POKETTO_GITHUB_" + key)
+    if not re.fullmatch(r"[1-9][0-9]{0,17}", fields["APP_ID"]):
+        raise DeploymentError("GitHub App ID must be a positive integer of at most 18 digits")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", fields["CLIENT_ID"]):
+        raise DeploymentError("GitHub App client ID is invalid")
+    if not 32 <= len(fields["WEBHOOK_SECRET"]) <= 256:
+        raise DeploymentError("GitHub webhook secret must contain 32-256 characters")
+    if fields["CLIENT_SECRET"] or fields["PRIVATE_KEY"]:
+        if not fields["CLIENT_SECRET"] or not fields["PRIVATE_KEY"]:
+            raise DeploymentError("GitHub client secret and private key must be configured together")
+        if not environment.get("POKETTO_REPOSITORY_CREDENTIAL_KEY"):
+            raise DeploymentError("GitHub authorization requires POKETTO_REPOSITORY_CREDENTIAL_KEY")
+        if len(fields["PRIVATE_KEY"]) > 16384 or not re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", fields["PRIVATE_KEY"]):
+            raise DeploymentError("GitHub private key must be single-line Base64 PKCS#8; use deploy/convert-github-key.py")
 
 
 def declared_environment(rendered, service):

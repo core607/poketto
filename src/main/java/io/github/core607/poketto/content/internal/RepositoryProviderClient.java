@@ -6,7 +6,6 @@ import static io.github.core607.poketto.content.RepositoryConnectionException.Co
 
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryCoordinates;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -15,13 +14,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Flow;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -63,7 +58,7 @@ final class RepositoryProviderClient implements AutoCloseable {
                     .header("Authorization", "Bearer " + credentials.password())
                     .GET()
                     .build();
-            HttpResponse<byte[]> response = http.send(request, info -> new BoundedBody(MAX_METADATA_BYTES));
+            HttpResponse<byte[]> response = http.send(request, info -> new BoundedProviderBody(MAX_METADATA_BYTES));
             if (response.statusCode() == 401 || response.statusCode() == 403) {
                 throw new RepositoryConnectionException(PERMISSION_DENIED);
             }
@@ -244,53 +239,6 @@ final class RepositoryProviderClient implements AutoCloseable {
         @Override
         public String toString() {
             return "RepositoryMetadata[redacted]";
-        }
-    }
-
-    static final class BoundedBody implements HttpResponse.BodySubscriber<byte[]> {
-        private final CompletableFuture<byte[]> body = new CompletableFuture<>();
-        private final ByteArrayOutputStream output = new ByteArrayOutputStream();
-        private final int maximum;
-        private Flow.Subscription subscription;
-
-        BoundedBody(int maximum) {
-            this.maximum = maximum;
-        }
-
-        @Override
-        public CompletionStage<byte[]> getBody() {
-            return body;
-        }
-
-        @Override
-        public void onSubscribe(Flow.Subscription value) {
-            subscription = value;
-            value.request(1);
-        }
-
-        @Override
-        public void onNext(List<ByteBuffer> buffers) {
-            for (ByteBuffer buffer : buffers) {
-                if (buffer.remaining() > maximum - output.size()) {
-                    subscription.cancel();
-                    body.completeExceptionally(new IOException("Provider metadata exceeds its limit"));
-                    return;
-                }
-                byte[] part = new byte[buffer.remaining()];
-                buffer.get(part);
-                output.writeBytes(part);
-            }
-            subscription.request(1);
-        }
-
-        @Override
-        public void onError(Throwable error) {
-            body.completeExceptionally(error);
-        }
-
-        @Override
-        public void onComplete() {
-            body.complete(output.toByteArray());
         }
     }
 }

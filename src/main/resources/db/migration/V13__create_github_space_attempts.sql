@@ -1,0 +1,32 @@
+create table space_github_creation_attempts (
+    account_id uuid not null references auth_accounts(account_id),
+    request_id uuid not null,
+    workspace_id uuid not null unique,
+    display_name text not null,
+    public_slug text not null,
+    github_owner_id bigint not null check (github_owner_id > 0),
+    repository_name text not null,
+    creation_marker uuid not null unique,
+    grant_version bigint not null check (grant_version > 0),
+    stage text not null check (stage in ('PREPARING','CREATING','UNCERTAIN','AWAITING_INSTALLATION','VALIDATING_INSTALLATION','INITIALIZING','READY','DISCONNECTED','BLOCKED','REJECTED')),
+    creation_requested boolean not null default false,
+    repository_id bigint check (repository_id > 0),
+    canonical_uri text,
+    bound boolean not null default false,
+    initialization_commit text,
+    failure_code text,
+    lease_id uuid,
+    lease_started_at timestamptz,
+    lease_expires_at timestamptz,
+    updated_at timestamptz not null,
+    primary key (account_id, request_id),
+    check ((repository_id is null) = (canonical_uri is null)),
+    check (stage not in ('AWAITING_INSTALLATION','VALIDATING_INSTALLATION','INITIALIZING','READY') or repository_id is not null),
+    check (not bound or repository_id is not null),
+    check ((stage = 'READY') = (initialization_commit is not null)),
+    check (initialization_commit is null or (bound and initialization_commit ~ '^[0-9a-f]{40}$')),
+    check (not (stage = 'CREATING' and not creation_requested)),
+    check ((lease_id is null and lease_started_at is null and lease_expires_at is null)
+        or (lease_id is not null and lease_started_at is not null and lease_expires_at is not null
+            and lease_expires_at > lease_started_at))
+);

@@ -165,6 +165,62 @@ class ExistingDeploymentTests(unittest.TestCase):
             "POKETTO_GOOGLE_CLIENT_ID": "", "POKETTO_GOOGLE_CLIENT_SECRET": ""})
         self.assertIn("POKETTO_GOOGLE_CLIENT_SECRET=", self.docker.running["app"]["Config"]["Env"])
 
+    def github_settings(self):
+        return {
+            "POKETTO_GITHUB_APP_ID": "12345",
+            "POKETTO_GITHUB_CLIENT_ID": "Iv1.synthetic",
+            "POKETTO_GITHUB_CLIENT_SECRET": "synthetic-client-secret",
+            "POKETTO_GITHUB_PRIVATE_KEY": "c3ludGhldGlj",
+            "POKETTO_GITHUB_WEBHOOK_SECRET": "synthetic-webhook-$literal-'quotes'",
+        }
+
+    def configure_repository_key(self):
+        key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        self.docker.configuration["services"]["app"]["environment"]["POKETTO_REPOSITORY_CREDENTIAL_KEY"] = key
+        self.docker.running["app"]["Config"]["Env"].append("POKETTO_REPOSITORY_CREDENTIAL_KEY=" + key)
+
+    def test_github_settings_stay_private_and_support_retention_webhook_only_and_clearing(self):
+        self.configure_repository_key()
+        settings = self.github_settings()
+        parsed = updater.read_settings(io.StringIO("\n".join(key + "=" + value for key, value in settings.items())))
+        result = self.installation.update(REVISION, "new-app", "new-frontend", settings=parsed)
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for key, value in settings.items():
+            self.assertIn(key + "=" + value, self.docker.running["app"]["Config"]["Env"])
+        public_output = self.installation.state_file.read_text() + json.dumps(result) + str(self.docker.calls)
+        for key in ("CLIENT_SECRET", "PRIVATE_KEY", "WEBHOOK_SECRET"):
+            self.assertNotIn(settings["POKETTO_GITHUB_" + key], public_output)
+        self.assertEqual(self.installation.overlay.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(any("GITHUB" in value for value in self.docker.running["frontend"]["Config"]["Env"]))
+        self.installation.update(REVISION, "new-app", "new-frontend", settings={
+            "POKETTO_GITHUB_CLIENT_SECRET": "", "POKETTO_GITHUB_PRIVATE_KEY": ""})
+        self.assertIn("POKETTO_GITHUB_WEBHOOK_SECRET=" + settings["POKETTO_GITHUB_WEBHOOK_SECRET"],
+                      self.docker.running["app"]["Config"]["Env"])
+        self.installation.update(REVISION, "new-app", "new-frontend", settings={key: "" for key in settings})
+        for key in settings:
+            self.assertIn(key + "=", self.docker.running["app"]["Config"]["Env"])
+        self.assertEqual((self.root / "compose.yaml").read_text(), "operator-owned compose\n")
+
+    def test_partial_github_settings_never_restart_containers(self):
+        self.configure_repository_key()
+        for missing in self.github_settings():
+            settings = self.github_settings()
+            del settings[missing]
+            with self.subTest(missing=missing), self.assertRaises(updater.DeploymentError):
+                self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
+        for key, value in (("APP_ID", "0"), ("CLIENT_ID", "invalid client"), ("WEBHOOK_SECRET", "short"),
+                           ("PRIVATE_KEY", "-----BEGIN PRIVATE KEY-----")):
+            settings = self.github_settings()
+            settings["POKETTO_GITHUB_" + key] = value
+            with self.subTest(invalid=key), self.assertRaises(updater.DeploymentError):
+                self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
+        self.assertFalse(any("up" in call for call in self.docker.calls))
+
+    def test_github_signing_requires_the_existing_host_encryption_key(self):
+        with self.assertRaisesRegex(updater.DeploymentError, "POKETTO_REPOSITORY_CREDENTIAL_KEY"):
+            self.installation.update(REVISION, "new-app", "new-frontend", settings=self.github_settings())
+        self.assertFalse(any("up" in call for call in self.docker.calls))
+
     def test_pending_identity_update_reconciles_only_its_original_configuration(self):
         settings = {"POKETTO_EMAIL_DAILY_LIMIT": "80"}
         self.docker.fail_up = True

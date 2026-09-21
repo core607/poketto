@@ -48,6 +48,25 @@ class ContentRepositoryInitializerTests {
     private final AuthService auth = mock(AuthService.class);
 
     @Test
+    void expiredCreationLeasePreventsTheActualInitializationPush() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var initializer = initializer(fixture);
+        assertThatThrownBy(() -> initializer.apply(principal, workspace, () -> {
+                    throw new IllegalStateException("creation lease expired");
+                }))
+                .hasMessage("creation lease expired");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(ObjectId.zeroId());
+        var completed = initializer.apply(principal, workspace, () -> {});
+        assertThat(fixture.remoteHead(workspace).name()).isEqualTo(completed.commit());
+        assertThat(initializer
+                        .apply(principal, workspace, () -> {
+                            throw new AssertionError("complete template must not write");
+                        })
+                        .commit())
+                .isEqualTo(completed.commit());
+    }
+
+    @Test
     void anEmptyRepositoryReceivesTheWholeTemplateAsItsRootCommitWithPublicationDisabled() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var initializer = initializer(fixture);

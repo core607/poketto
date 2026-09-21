@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
@@ -31,6 +32,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private final Clock clock;
     private final Map<WorkspaceId, CacheLock> workspaceLocks = new HashMap<>();
     private final ReentrantLock cacheLifecycleLock = new ReentrantLock();
+    private final ScopedValue<PreparedBinding> prepared = ScopedValue.newInstance();
 
     JGitRemoteRepositoryAuthority(
             WorkspacePaths paths,
@@ -49,6 +51,30 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     public void ensureReady(WorkspaceId workspaceId) {
         read(workspaceId, snapshot -> null);
     }
+
+    @Override
+    public <T> T withPreparedCredentials(WorkspaceId workspace, Supplier<T> action) {
+        Objects.requireNonNull(workspace, "workspace is required");
+        Objects.requireNonNull(action, "credential-scoped action is required");
+        if (prepared.isBound() && prepared.get().workspace().equals(workspace)) {
+            prepared.get().binding().requireCurrent();
+            return action.get();
+        }
+        RepositoryBinding binding =
+                Objects.requireNonNull(bindings.bindingFor(workspace), "repository binding is required");
+        binding.requireCurrent();
+        return ScopedValue.where(prepared, new PreparedBinding(workspace, binding))
+                .call(action::get);
+    }
+
+    private RepositoryBinding binding(WorkspaceId workspace) {
+        if (prepared.isBound() && prepared.get().workspace().equals(workspace)) {
+            return prepared.get().binding();
+        }
+        return Objects.requireNonNull(bindings.bindingFor(workspace), "repository binding is required");
+    }
+
+    private record PreparedBinding(WorkspaceId workspace, RepositoryBinding binding) {}
 
     @Override
     public <T> T read(WorkspaceId workspaceId, SnapshotReader<T> reader) {
@@ -203,8 +229,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
         try {
-            RepositoryBinding binding =
-                    Objects.requireNonNull(bindings.bindingFor(workspaceId), "repository binding must not be null");
+            RepositoryBinding binding = binding(workspaceId);
+            binding.requireCurrent();
             Path cache = paths.contentDirectory(workspaceId);
             Repository opened;
             cacheLifecycleLock.lock();
@@ -251,6 +277,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ObjectId candidateCommit,
             boolean materialize) {
         Objects.requireNonNull(candidateCommit, "candidate commit must not be null");
+        binding.requireCurrent();
         try {
             RemoteGitTransport.PushStatus result = transport.pushMain(repository, binding, baseCommit, candidateCommit);
             if (result == RemoteGitTransport.PushStatus.CONFLICT) {

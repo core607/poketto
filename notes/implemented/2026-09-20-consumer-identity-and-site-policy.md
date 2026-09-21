@@ -161,6 +161,9 @@ boundary of [existing-installation delivery](../implemented/2026-09-08-existing-
 without admitting repository credentials or other runtime changes. Registry
 credentials reach only the pull helper. Install the current privileged updater
 before sending identity settings; the transfer script never replaces it.
+The [GitHub-authorized personal-spaces decision](2026-09-21-github-authorized-personal-spaces.md)
+defines a further extension for GitHub App settings through this same protected
+channel; it does not authorize changes to unrelated repository credentials.
 
 Keep supplied identity settings in the existing protected Compose overlay, with
 literal dollar signs escaped for Compose. Omitted values retain their effective

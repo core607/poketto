@@ -33,6 +33,11 @@ services:
       POKETTO_EMAIL_DAILY_LIMIT: "${POKETTO_EMAIL_DAILY_LIMIT:-100}"
       POKETTO_GOOGLE_CLIENT_ID: "${POKETTO_GOOGLE_CLIENT_ID:-}"
       POKETTO_GOOGLE_CLIENT_SECRET: "${POKETTO_GOOGLE_CLIENT_SECRET:-}"
+      POKETTO_GITHUB_APP_ID: "${POKETTO_GITHUB_APP_ID:-}"
+      POKETTO_GITHUB_CLIENT_ID: "${POKETTO_GITHUB_CLIENT_ID:-}"
+      POKETTO_GITHUB_CLIENT_SECRET: "${POKETTO_GITHUB_CLIENT_SECRET:-}"
+      POKETTO_GITHUB_PRIVATE_KEY: "${POKETTO_GITHUB_PRIVATE_KEY:-}"
+      POKETTO_GITHUB_WEBHOOK_SECRET: "${POKETTO_GITHUB_WEBHOOK_SECRET:-}"
       # One JSON record per line is the point of collecting them; a reader filters fields rather
       # than parsing a sentence. POKETTO_LOG_FORMAT selects the format for a deployment that wants
       # a different one; whether an empty value falls back or refuses to start is untested.

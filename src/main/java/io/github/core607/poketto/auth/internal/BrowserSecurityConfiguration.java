@@ -32,6 +32,22 @@ import org.springframework.security.web.csrf.CsrfFilter;
 @EnableWebSecurity
 class BrowserSecurityConfiguration {
     @Bean
+    @Order(-1)
+    SecurityFilterChain githubWebhookSecurity(HttpSecurity http) throws Exception {
+        http.securityMatcher("/api/hooks/github")
+                .csrf(csrf -> csrf.disable())
+                .requestCache(cache -> cache.disable())
+                .securityContext(context -> context.securityContextRepository(new NullSecurityContextRepository()))
+                .sessionManagement(sessions -> sessions.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
+                .headers(headers -> headers.addHeaderWriter((request, response) -> {
+                    response.setHeader("Cache-Control", "no-store");
+                    response.setHeader("Referrer-Policy", "no-referrer");
+                }));
+        return http.build();
+    }
+
+    @Bean
     @Order(0)
     SecurityFilterChain imageTransferSecurity(
             HttpSecurity http, @Value("${poketto.security.allowed-origins:}") String origins) throws Exception {
@@ -120,6 +136,7 @@ class BrowserSecurityConfiguration {
                                 "/api/auth/identity/policy",
                                 "/api/auth/identity/google/start",
                                 "/api/auth/identity/google/callback",
+                                "/api/auth/workspaces/github/callback",
                                 "/api/auth/identity/signup",
                                 "/api/auth/identity/signup/challenge",
                                 "/api/auth/identity/recovery",

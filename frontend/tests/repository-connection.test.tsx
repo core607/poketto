@@ -56,6 +56,92 @@ const managed = {
 };
 const complete = { repositoryEmpty: false, missingFiles: [] };
 
+test("GitHub App reconnection checks the original workspace and refreshes metadata only after acknowledgement", async (t) => {
+  const f = await fixture(t);
+  let resolveWrite!: (response: Response) => void;
+  let captured: unknown;
+  let reads = 0;
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (path.endsWith("/repository-initialization"))
+      return Response.json(complete);
+    if (path.endsWith("/repository-connection")) {
+      reads++;
+      return Response.json({
+        ...managed,
+        rotationAvailable: false,
+        githubApp: true,
+        binding: {
+          ...managed.binding,
+          repository: "https://github.com/octocat/notes.git",
+        },
+      });
+    }
+    if (options?.method === "POST") {
+      assert.equal(
+        path,
+        "/api/auth/workspaces/github/repositories/selected/reconnect",
+      );
+      captured = JSON.parse(String(options.body));
+      return new Promise<Response>((resolve) => {
+        resolveWrite = resolve;
+      });
+    }
+    assert.equal(path, "/api/auth/workspaces/github/repositories/selected");
+    return Response.json({ authorizingAccount: true, revoked: true });
+  };
+  await f.act(async () =>
+    f.root.render(<f.RepositoryConnection workspaceId="selected" />),
+  );
+  assert.match(f.container.textContent, /GitHub App/);
+  assert.doesNotMatch(f.container.textContent, /加密密钥/);
+  assert.equal(f.container.querySelector('input[name="token"]'), null);
+  const name = f.container.querySelector<HTMLInputElement>(
+    'input[name="repositoryName"]',
+  )!;
+  assert.equal(name.value, "notes.git");
+  name.value = "renamed";
+  await f.act(async () =>
+    f.container
+      .querySelector("form")!
+      .dispatchEvent(
+        new f.window.Event("submit", { bubbles: true, cancelable: true }),
+      ),
+  );
+  assert.deepEqual(captured, { repositoryName: "renamed" });
+  assert.doesNotMatch(f.container.textContent, /已核对原仓库并恢复连接/);
+  assert.equal(f.container.querySelector("fieldset")!.disabled, true);
+  assert.equal(reads, 1);
+  await f.act(async () => resolveWrite(new Response(null, { status: 204 })));
+  assert.match(f.container.textContent, /已核对原仓库并恢复连接/);
+  assert.doesNotMatch(f.container.textContent, /GitHub 已撤销仓库访问/);
+  assert.equal(reads, 2);
+});
+
+test("another space owner sees who must restore GitHub access without a replacement form", async (t) => {
+  const f = await fixture(t);
+  globalThis.fetch = async (input) => {
+    const path = String(input);
+    if (path.endsWith("/repository-initialization"))
+      return Response.json(complete);
+    if (path.endsWith("/repository-connection"))
+      return Response.json({
+        ...managed,
+        rotationAvailable: false,
+        githubApp: true,
+      });
+    return Response.json({ authorizingAccount: false, revoked: true });
+  };
+  await f.act(async () =>
+    f.root.render(<f.RepositoryConnection workspaceId="selected" />),
+  );
+  assert.match(f.container.textContent, /最初授权此仓库的空间主人/);
+  assert.doesNotMatch(f.container.textContent, /加密密钥/);
+  assert.equal(f.container.querySelector("form"), null);
+});
+
 test("credential submission stays workspace-scoped, clears secrets and shows success only after acknowledgement", async (t) => {
   const f = await fixture(t);
   let resolveWrite!: (response: Response) => void;
