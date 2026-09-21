@@ -252,6 +252,29 @@ class GitHubSpaceCreationIntegrationIT {
     }
 
     @Test
+    void expiredCreationLeaseIsRetryableWithoutNewConsentOrDuplicateCreation() {
+        var store = new GitHubCreationStore(jdbc, clock);
+        GitHubCreationStore.Attempt attempt = accounts.withAccount(
+                actor,
+                () -> store.claim(
+                        actor.accountId(),
+                        request,
+                        new GitHubRepositoryProvisioning.Owner(42, "octocat", 1),
+                        UUID.randomUUID()));
+        clock.now = clock.now.plusSeconds(301);
+        assertThatThrownBy(() -> accounts.withAccount(actor, () -> {
+                    store.beginCreate(attempt);
+                    return null;
+                }))
+                .hasMessage("GitHub App: BUSY");
+        assertThatThrownBy(() -> accounts.withAccount(actor, () -> store.requireLease(attempt)))
+                .hasMessage("GitHub App: BUSY");
+        assertThat(service().create(actor, request).stage()).isEqualTo(GitHubSpaceCreation.Stage.AWAITING_INSTALLATION);
+        assertThat(provider.creates).hasValue(1);
+        assertThat(provider.reconciliations).hasValue(0);
+    }
+
+    @Test
     void lateResponseCannotOverwriteTheNewLeaseRecoveryResult() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);

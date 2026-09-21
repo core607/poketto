@@ -150,6 +150,11 @@ An App binding failure never falls back to manual or operator credentials.
 Manual bindings retain their encrypted credentials and reject a prepared token
 after rotation. App bindings cannot enter manual token rotation.
 
+Prepared repository proofs and creation leases that expire while waiting cause
+transient failures, not authorization revocations. Continue the original creation request
+or prepare fresh access for the same operation without requiring new consent.
+Ambiguous remote writes still require reconciliation before another write.
+
 Provider exchanges use fixed GitHub HTTPS origins over direct public-network
 connections and refuse redirects. Bound concurrent exchanges, request and response
 bytes including error bodies, and the HTTP response deadline. Provider headers
@@ -223,9 +228,10 @@ The [operator guide](../../docs/github-app.md) owns App registration and protect
 settings. Both deployment layouts forward these settings literally and reject
 incomplete App setting updates before replacing containers. The PEM converter validates RSA
 key material through OpenSSL before emitting a single Base64 line; no temporary
-key file or secret-bearing command argument is needed. Retaining the App identity
-and webhook secret while clearing both signing credentials keeps revocation
-processing available during an authorization pause.
+key file or secret-bearing command argument is needed. Clearing the client secret
+and private key disables authorization and App-backed repository operations,
+including synchronization of existing spaces. Retaining the App identity and
+webhook secret keeps revocation processing available in that state.
 Use the client ID as the issuer of short-lived RS256 App JWTs, following
 [GitHub's authentication contract](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app).
 Require the App's

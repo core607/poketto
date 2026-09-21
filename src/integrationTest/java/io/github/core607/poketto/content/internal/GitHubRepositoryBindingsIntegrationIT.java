@@ -18,6 +18,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.GitHubRepositoryProvisioning;
+import io.github.core607.poketto.content.GitHubRepositoryReconnections;
 import io.github.core607.poketto.content.RepositoryConnectionException;
 import io.github.core607.poketto.content.RepositoryCoordinates;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -135,7 +136,7 @@ class GitHubRepositoryBindingsIntegrationIT {
         clock.now = NOW.plusSeconds(60);
         assertThatThrownBy(
                         () -> transaction().executeWithoutResult(status -> github.install(actor, workspace, prepared)))
-                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+                .hasMessage("GitHub App: UNAVAILABLE");
         clock.now = NOW;
         store.revoke(account, 1);
         assertThatThrownBy(
@@ -228,12 +229,29 @@ class GitHubRepositoryBindingsIntegrationIT {
         clock.now = NOW.plusSeconds(60);
         assertThatThrownBy(
                         () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared)))
-                .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+                .hasMessage("GitHub App: UNAVAILABLE");
         clock.now = NOW;
         store.revoke(account, 1);
         assertThatThrownBy(
                         () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, prepared)))
                 .hasMessage("GitHub App: AUTHORIZATION_CHANGED");
+    }
+
+    @Test
+    void expiredReconnectionProofCanBePreparedAgainWithoutReplacingConsent() {
+        AuthPrincipal actor = preparingActor();
+        GitHubRepositoryReconnections.Prepared expired = bindings.prepare(actor, workspace, "notes");
+        clock.now = NOW.plusSeconds(60);
+        assertThatThrownBy(
+                        () -> transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, expired)))
+                .hasMessage("GitHub App: UNAVAILABLE");
+        GitHubRepositoryReconnections.Prepared renewed = bindings.prepare(actor, workspace, "notes");
+        transaction().executeWithoutResult(status -> bindings.apply(actor, workspace, renewed));
+        bindings.binding(workspace).requireCurrent();
+        assertThat(store.find(account).orElseThrow().state()).isEqualTo(GitHubAppGrantStore.State.ACTIVE);
+        assertThat(store.find(account).orElseThrow().version()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select github_binding_version from content_repository_bindings", Long.class))
+                .isEqualTo(2);
     }
 
     @Test
@@ -348,7 +366,10 @@ class GitHubRepositoryBindingsIntegrationIT {
         clock.now = NOW.plusSeconds(60);
         assertThatThrownBy(binding::requireCurrent)
                 .isInstanceOf(ContentRepositoryException.class)
+                .hasMessage("GitHub repository access is temporarily unavailable; retry the operation")
                 .hasRootCauseMessage("GitHub App: UNAVAILABLE");
+        bindings.binding(workspace).requireCurrent();
+        assertThat(store.find(account).orElseThrow().state()).isEqualTo(GitHubAppGrantStore.State.ACTIVE);
         clock.now = NOW.minusSeconds(1);
         assertThatThrownBy(binding::requireCurrent)
                 .isInstanceOf(ContentRepositoryException.class)

@@ -44,10 +44,13 @@ fields. Both deployment layouts reject incomplete App setting updates before
 replacing containers. An existing installation must install the current protected
 `deploy/update-existing.py` before it can accept these fields.
 
-To pause App authorization while continuing to process revocations, clear both
-the client secret and private key; retain the App ID, client ID and webhook
-secret. Clear all five to disable the integration completely. Restoring settings
-does not undo a processed revocation: users must restore GitHub permission and
+Clearing both the client secret and private key disables new authorization and
+App-backed repository operations, including synchronization of existing spaces.
+Retaining the App ID, client ID and webhook secret keeps revocation processing
+available in that state. Workspace contents and memberships are retained;
+manual-token connections are unaffected. Clear all five to disable the
+integration completely. Restoring settings does not undo a processed revocation:
+users must restore GitHub permission and
 explicitly reconnect the same repository.
 
 ## Convert the downloaded key

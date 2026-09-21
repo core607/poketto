@@ -130,8 +130,17 @@ final class GitHubRepositoryBindings implements GitHubRepositoryReconnections {
     }
 
     private static ContentRepositoryException unavailable(GitHubConnectionException failure) {
-        return new ContentRepositoryException(
-                "GitHub repository connection is unavailable; reconnect its authorization", failure);
+        String message =
+                switch (failure.code()) {
+                    case AUTHORIZATION_REQUIRED,
+                            AUTHORIZATION_CHANGED,
+                            IDENTITY_CHANGED,
+                            REPOSITORY_CHANGED,
+                            INSTALLATION_REQUIRED ->
+                        "GitHub repository connection is unavailable; reconnect its authorization";
+                    default -> "GitHub repository access is temporarily unavailable; retry the operation";
+                };
+        return new ContentRepositoryException(message, failure);
     }
 
     private Optional<Stored> find(WorkspaceId workspace) {

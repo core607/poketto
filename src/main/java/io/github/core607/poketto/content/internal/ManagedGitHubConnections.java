@@ -182,7 +182,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
         }
         Instant now = clock.instant();
         if (now.isBefore(binding.preparedAt()) || !now.isBefore(binding.validUntil())) {
-            throw new GitHubConnectionException(AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(UNAVAILABLE);
         }
         requireCurrent(actor, binding.owner());
         epochs.requireCurrent(binding.installationId(), binding.repository().id(), binding.accessEpochs());

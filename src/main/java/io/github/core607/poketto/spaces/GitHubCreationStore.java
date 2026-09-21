@@ -107,7 +107,7 @@ final class GitHubCreationStore {
                 timestamp(now),
                 timestamp(now));
         if (changed != 1) {
-            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(GitHubConnectionException.Code.BUSY);
         }
     }
 
@@ -195,7 +195,7 @@ final class GitHubCreationStore {
                 && !now.isBefore(current.leaseStarted())
                 && now.isBefore(current.leaseExpires());
         if (!valid) {
-            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(GitHubConnectionException.Code.BUSY);
         }
         return current;
     }
@@ -221,7 +221,7 @@ final class GitHubCreationStore {
                 where account_id=? and request_id=? and lease_id=? and bound
                 """, commit, timestamp(clock.instant()), attempt.account(), attempt.request(), attempt.lease());
         if (changed != 1) {
-            throw new GitHubConnectionException(GitHubConnectionException.Code.AUTHORIZATION_CHANGED);
+            throw new GitHubConnectionException(GitHubConnectionException.Code.BUSY);
         }
         return required(attempt.account(), attempt.request());
     }
