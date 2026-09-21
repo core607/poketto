@@ -18,8 +18,9 @@ public interface GitHubRepositoryProvisioning {
      * Invokes beforeCreate immediately before the single creation request. The callback must commit
      * durable intent and recheck account, grant and attempt ownership. A returned result remains
      * evidence of creation even if authorization changes while the request is in flight.
-     * BUSY and authorization/identity failures imply no accepted creation; an ambiguous provider
-     * result uses CREATION_UNCERTAIN and must be reconciled rather than posted again.
+     * BUSY, INSTALLATION_REQUIRED and authorization/identity failures imply no accepted creation;
+     * installation failures are detected before dispatch or confirmed by an explicit provider denial.
+     * An ambiguous provider result uses CREATION_UNCERTAIN and must be reconciled rather than posted again.
      */
     Repository create(AuthPrincipal actor, Owner owner, String name, UUID marker, Runnable beforeCreate);
 

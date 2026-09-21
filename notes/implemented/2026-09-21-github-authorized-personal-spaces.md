@@ -1,13 +1,13 @@
 # GitHub-authorized Personal Spaces
 
 Date: 2026-09-21
-Status: Proposed
+Status: Implemented
 
 ## Problem
 
 [Managed repository connections](../implemented/2026-09-11-managed-workspace-connections.md)
 require a user to create a private repository and supply a provider token. A
-personal-space entrance should instead ask the user to authorize GitHub and
+personal-space entrance asks the user to authorize GitHub and
 confirm a repository name. The repository must belong to that user's personal
 GitHub account, with no platform-owned repository or organization provisioning.
 
@@ -25,7 +25,11 @@ group, grant membership, or add a Poketto login method.
 2. Show the verified personal GitHub account, requested repository name and fixed
    private visibility before accepting creation. Derive the owner server-side.
    Starting OAuth or returning from installation does not itself create a repo.
-3. Create through the GitHub App's user access token. Record the returned immutable
+3. Verify an active App installation on that personal account with Administration
+   write, Contents write and metadata read before recording dispatch intent.
+   GitHub requires an existing selected repository for the first installation;
+   the user can explicitly create an empty private repository for that purpose.
+   Create through the GitHub App's user access token. Record the returned immutable
    repository ID and verify its owner and private visibility.
 4. If the App installation cannot access the new repository, return the user to
    GitHub's installation settings to select it. Verify the App, personal owner,
@@ -47,10 +51,9 @@ for App user access tokens with Administration write permission; installation
 tokens are not accepted for that endpoint. Set `private=true` explicitly.
 The [add-repository endpoint](https://docs.github.com/en/rest/apps/installations#add-a-repository-to-an-app-installation)
 does not accept App tokens. Do not substitute a personal access token or silently
-expand installation access to all repositories. The exact interaction between a
-new repository and a selected-repository installation needs real-provider
-acceptance; the UI must support an explicit installation step instead of assuming
-automatic access.
+expand installation access to all repositories. GitHub's [installation contract](https://docs.github.com/en/apps/using-github-apps/installing-your-own-github-app)
+grants access to repositories created by the App, including for selected-repository
+installations. The UI retains explicit installation recovery when access is missing.
 
 ## Durable creation and recovery
 
@@ -78,6 +81,10 @@ until the provider's creation callback commits the dispatch intent. After that
 commit, an expired lease resumes through reconciliation only. Local admission
 rejection before dispatch and a definitive provider rejection are distinguished
 from lost responses. A late worker cannot replace the result of a newer lease.
+An HTTP 403 with GitHub's exact `Resource not accessible by integration` error
+confirms a permission denial and leaves the original request retryable after
+installation repair. Other 403 responses, malformed replies, rate limits and
+transport failures remain uncertain after dispatch; they cannot trigger a new POST.
 Store a confirmed remote result even if site eligibility was withdrawn during
 the request; recording that fact grants no workspace or membership. Account
 restrictions block further creation independently of a disconnected GitHub grant.
@@ -259,8 +266,17 @@ selected-repository authorization, initialize and synchronize through a scoped
 installation token, and verify reconnection behavior. Synthetic provider tests
 cannot establish these provider capabilities.
 
-Update both public README files and usage references with the resulting entry
-flow and limits when implemented. Do not describe this proposal as available.
+Real GitHub acceptance on 2026-09-21 verified browser authorization, installation
+limited to an explicitly approved empty private repository, App-created private
+repository access, template initialization and content saves through scoped
+installation credentials. Removing that repository from the installation delivered
+a signed webhook that revoked its binding before another application operation.
+The browser retained a rejected write as an unsaved draft and the remote commit
+did not change. Restoring GitHub access left the binding revoked until the owner
+explicitly verified the same repository; reads and saves then succeeded, with
+public delivery still disabled. Two regression tests reproduced the initial
+installation-permission denial being misclassified as uncertain creation; the
+preflight and explicit-denial recovery cover that failure.
 
 ## Alternatives and related decisions
 
@@ -269,6 +285,6 @@ preserve the current setup burden and are not the authorization mechanism for
 this entrance. Installation-wide tokens unnecessarily expand routine Git access.
 Automatic repository creation during registration remains rejected by the
 [earlier consumer-account proposal](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md);
-this proposal instead requires an eligible, signed-in user's explicit action.
+this entrance instead requires an eligible, signed-in user's explicit action.
 The account, workspace, public-visibility and existing manual-connection decisions
 remain authoritative outside this extension.

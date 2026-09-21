@@ -258,8 +258,12 @@ public final class GitHubSpaceCreation {
                     default -> false;
                 };
         boolean rejected = failure.code() == GitHubConnectionException.Code.CREATION_REJECTED;
+        boolean installationRequired = failure.code() == GitHubConnectionException.Code.INSTALLATION_REQUIRED;
         boolean notCreated = !attempt.creationRequested()
-                && (disconnected || rejected || failure.code() == GitHubConnectionException.Code.BUSY);
+                && (disconnected
+                        || rejected
+                        || installationRequired
+                        || failure.code() == GitHubConnectionException.Code.BUSY);
         Stage stopped = disconnected ? Stage.DISCONNECTED : rejected ? Stage.REJECTED : null;
         return store.failed(attempt, failure.code().name(), notCreated, stopped);
     }

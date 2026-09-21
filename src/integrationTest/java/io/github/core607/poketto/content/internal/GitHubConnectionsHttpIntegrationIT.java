@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -20,6 +21,7 @@ import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.content.GitHubConnectionException;
 import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.spaces.GitHubSpaceCreation;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -163,6 +165,19 @@ class GitHubConnectionsHttpIntegrationIT {
                         .value(request.requestId().toString()))
                 .andExpect(jsonPath("$.items[0].request.repositoryName").value("notes"))
                 .andExpect(jsonPath("$.items[0].result.repositoryId").value(91));
+    }
+
+    @Test
+    void missingInstallationStopsCreationBeforeDispatchIntentOrProviderPost() throws Exception {
+        MockHttpSession session = login("owner");
+        callback(session, start(session)).andExpect(status().isSeeOther());
+        doThrow(new GitHubConnectionException(GitHubConnectionException.Code.INSTALLATION_REQUIRED))
+                .when(provider.installations)
+                .requireCreationInstallation(any());
+        create(session, new GitHubSpaceCreation.Request(UUID.randomUUID(), "Notes", "personal-notes", 42, "notes"));
+        assertThat(jdbc.queryForObject("select creation_requested from space_github_creation_attempts", Boolean.class))
+                .isFalse();
+        verify(provider.repositories, times(0)).create(anyLong(), anyString(), any(), anyString(), any());
     }
 
     @Test

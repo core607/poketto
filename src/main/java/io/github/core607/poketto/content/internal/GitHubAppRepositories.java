@@ -4,6 +4,7 @@ import static io.github.core607.poketto.content.GitHubConnectionException.Code.A
 import static io.github.core607.poketto.content.GitHubConnectionException.Code.CREATION_REJECTED;
 import static io.github.core607.poketto.content.GitHubConnectionException.Code.CREATION_UNCERTAIN;
 import static io.github.core607.poketto.content.GitHubConnectionException.Code.IDENTITY_CHANGED;
+import static io.github.core607.poketto.content.GitHubConnectionException.Code.INSTALLATION_REQUIRED;
 import static io.github.core607.poketto.content.GitHubConnectionException.Code.REPOSITORY_CHANGED;
 import static io.github.core607.poketto.content.GitHubConnectionException.Code.UNAVAILABLE;
 
@@ -164,8 +165,30 @@ final class GitHubAppRepositories {
         if (reply.status() == 400 || reply.status() == 422) {
             throw new GitHubConnectionException(CREATION_REJECTED);
         }
+        if (creationPermissionDenied(reply)) {
+            throw new GitHubConnectionException(INSTALLATION_REQUIRED);
+        }
         // Rate limits and redirects do not prove whether the mutation was applied.
         throw new GitHubConnectionException(CREATION_UNCERTAIN);
+    }
+
+    private static boolean creationPermissionDenied(GitHubAppHttp.Reply reply) {
+        if (reply.status() != 403) {
+            return false;
+        }
+        try {
+            ProviderError error = GitHubAppJson.read(reply.body(), ProviderError.class);
+            return "Resource not accessible by integration".equals(error.message());
+        } catch (GitHubConnectionException malformed) {
+            return false;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record ProviderError(String message) {
+        ProviderError {
+            GitHubAppJson.require(message != null);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

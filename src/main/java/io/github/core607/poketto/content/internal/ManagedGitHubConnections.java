@@ -90,6 +90,7 @@ final class ManagedGitHubConnections implements GitHubConnections, GitHubReposit
     @Override
     public Repository create(AuthPrincipal actor, Owner owner, String name, UUID marker, Runnable beforeCreate) {
         GitHubAppGrants.Access access = provisioningAccess(actor, owner);
+        installations.requireCreationInstallation(access.owner());
         return provisioned(repositories.create(owner.id(), name, marker, access.token(), beforeCreate));
     }
 

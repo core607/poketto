@@ -234,6 +234,14 @@ export function GitHubSpace({
             授权将请求仓库管理、内容读写及基本仓库信息权限，用于创建私有仓库和保存内容；连接
             GitHub 不会提升站点策略组，也不会成为本站登录方式。
           </p>
+          {connected && connection.eligibleToCreate && (
+            <p className="muted">
+              首次使用请先打开“管理 GitHub 仓库授权”安装 App。 GitHub
+              的“仅选部分仓库”安装需要选择至少一个已有仓库；可以先在 GitHub
+              新建一个空白私有仓库供安装使用。App
+              创建的新仓库会自动加入授权范围。
+            </p>
+          )}
           <div className="button-row">
             {(connection.eligibleToCreate || connection.version > 0) && (
               <button disabled={pending} onClick={() => void run(authorize)}>
@@ -266,7 +274,7 @@ export function GitHubSpace({
               </a>
               {draft && result?.repositoryId && !result.workspaceCreated
                 ? `，选中仓库 ${draft.repositoryName}，保存后回来继续准备空间。`
-                : "，选中需要连接的仓库并保存，再回到空间核对并恢复连接。"}
+                : "，完成 App 安装或调整仓库范围并保存，再回来继续申请或恢复已有连接。"}
             </p>
           )}
           {disconnecting && (
@@ -356,8 +364,11 @@ export function GitHubSpace({
           )}
           {result?.failureCode && (
             <p className="notice">
-              {githubFailures[result.failureCode] ??
-                "操作尚未完成，请查询当前状态后继续。"}
+              {result.failureCode === "INSTALLATION_REQUIRED" &&
+              !result.repositoryId
+                ? "尚未创建仓库。请打开“管理 GitHub 仓库授权”，确认 App 已安装到当前个人账号且具有仓库管理和内容读写权限，然后继续这次申请。"
+                : (githubFailures[result.failureCode] ??
+                  "操作尚未完成，请查询当前状态后继续。")}
             </p>
           )}
           {result?.repository && (

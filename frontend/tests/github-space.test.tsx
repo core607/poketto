@@ -181,6 +181,50 @@ test("explicit creation retains its request identity through uncertainty and sen
   assert.equal(f.entered.length, 0);
 });
 
+test("missing initial installation directs the user to install before retrying the same request", async (t) => {
+  const f = await fixture(t);
+  const preparing = {
+    ...receipt("PREPARING"),
+    repositoryId: null,
+    repository: null,
+    failureCode: "INSTALLATION_REQUIRED",
+  };
+  const sent: GitHubRequest[] = [];
+  f.window.sessionStorage.setItem(
+    "poketto.github-creation.fixture-account",
+    JSON.stringify(request),
+  );
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path.endsWith("/installation"))
+      return Response.json({
+        url: "https://github.com/apps/poketto/installations/new",
+      });
+    if (options?.method === "POST") {
+      assert.equal(path, githubRoot + "/creations");
+      sent.push(JSON.parse(String(options.body)));
+      return Response.json(preparing);
+    }
+    const response = f.initial(path, connected, [
+      { request, result: preparing },
+    ]);
+    assert.ok(response, path);
+    return response;
+  };
+  await f.render();
+  assert.match(f.container.textContent, /尚未创建仓库/);
+  assert.doesNotMatch(f.container.textContent, /选中这个仓库/);
+  await f.act(async () => f.button("管理 GitHub 仓库授权").click());
+  assert.ok(
+    f.container.querySelector(
+      'a[href="https://github.com/apps/poketto/installations/new"]',
+    ),
+  );
+  assert.equal(sent.length, 0);
+  await f.act(async () => f.button("继续这次申请").click());
+  assert.deepEqual(sent, [request]);
+});
+
 test("server history restores a repository and installation selection resumes without another creation", async (t) => {
   const f = await fixture(t);
   let resumes = 0;

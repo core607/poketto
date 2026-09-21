@@ -3,8 +3,8 @@
 Date: 2026-09-01
 Status: Rejected
 
-[GitHub-authorized personal spaces](../proposed/2026-09-21-github-authorized-personal-spaces.md)
-proposes explicit repository creation by an eligible signed-in user. It does not
+[GitHub-authorized personal spaces](../implemented/2026-09-21-github-authorized-personal-spaces.md)
+implements explicit repository creation by an eligible signed-in user. It does not
 revive this record's automatic workspace provisioning during registration.
 
 The [multi-user workspace delivery](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md) separates invitation-gated account registration from explicit workspace creation and connects existing repositories. Automatically creating a personal repository during registration adds provider-side lifecycle and credential requirements that are not selected. This record retains that alternative's constraints if automatic provisioning is reconsidered.

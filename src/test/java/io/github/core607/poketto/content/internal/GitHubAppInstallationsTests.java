@@ -89,6 +89,43 @@ class GitHubAppInstallationsTests {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"absent", "administration", "suspended", "owner", "app"})
+    void creationRequiresAnActivePersonalInstallationWithAdministrationPermission(String variant) throws Exception {
+        String metadata =
+                switch (variant) {
+                    case "administration" ->
+                        INSTALLATION.replace("\"administration\":\"write\"", "\"administration\":\"read\"");
+                    case "suspended" ->
+                        INSTALLATION.replace("\"suspended_at\":null", "\"suspended_at\":\"2026-09-21T00:00:00Z\"");
+                    case "owner" -> INSTALLATION.replace("\"id\":42", "\"id\":43");
+                    case "app" -> INSTALLATION.replace("\"app_id\":3", "\"app_id\":4");
+                    default -> INSTALLATION;
+                };
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(variant.equals("absent") ? 404 : 200, metadata);
+            assertThatThrownBy(() -> api(fixture)
+                            .requireCreationInstallation(new GitHubAppRepositories.Owner(42, "octocat", "User")))
+                    .hasMessage("GitHub App: INSTALLATION_REQUIRED");
+            assertThat(fixture.requests)
+                    .extracting(GitHubAppFixture.Request::path)
+                    .containsExactly("/users/octocat/installation");
+            assertThat(fixture.requests.getFirst().method()).isEqualTo("GET");
+        }
+    }
+
+    @Test
+    void creationPreflightOnlyReadsTheVerifiedInstallation() throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(200, INSTALLATION);
+            api(fixture).requireCreationInstallation(new GitHubAppRepositories.Owner(42, "octocat", "User"));
+            assertThat(fixture.requests)
+                    .extracting(GitHubAppFixture.Request::path)
+                    .containsExactly("/users/octocat/installation");
+            assertThat(fixture.requests.getFirst().method()).isEqualTo("GET");
+        }
+    }
+
     @Test
     void findsPersonalInstallationAndIssuesExactlyOneRepositoryWithOnlyGitPermissions() throws Exception {
         try (var fixture = new GitHubAppFixture()) {

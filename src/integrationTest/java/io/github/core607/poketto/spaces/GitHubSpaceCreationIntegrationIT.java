@@ -152,6 +152,27 @@ class GitHubSpaceCreationIntegrationIT {
     }
 
     @Test
+    void explicitInstallationDenialCanResumeTheSameRequestAfterPermissionIsRestored() {
+        provider.afterDispatch = () -> {
+            throw failure(GitHubConnectionException.Code.INSTALLATION_REQUIRED);
+        };
+        GitHubSpaceCreation.Result denied = service().create(actor, request);
+        UUID marker = marker();
+        assertThat(denied.stage()).isEqualTo(GitHubSpaceCreation.Stage.PREPARING);
+        assertThat(denied.failureCode()).isEqualTo("INSTALLATION_REQUIRED");
+        assertThat(denied.repositoryId()).isNull();
+        assertThat(jdbc.queryForObject("select creation_requested from space_github_creation_attempts", Boolean.class))
+                .isFalse();
+        provider.afterDispatch = () -> {};
+        GitHubSpaceCreation.Result resumed = service().create(actor, request);
+        assertThat(resumed.stage()).isEqualTo(GitHubSpaceCreation.Stage.AWAITING_INSTALLATION);
+        assertThat(resumed.workspaceId()).isEqualTo(denied.workspaceId());
+        assertThat(marker()).isEqualTo(marker);
+        assertThat(provider.creates).hasValue(2);
+        assertThat(provider.reconciliations).hasValue(0);
+    }
+
+    @Test
     void mismatchingRecoveryMarkerLeavesTheAttemptUncertain() {
         provider.afterDispatch = () -> {
             throw failure(GitHubConnectionException.Code.CREATION_UNCERTAIN);

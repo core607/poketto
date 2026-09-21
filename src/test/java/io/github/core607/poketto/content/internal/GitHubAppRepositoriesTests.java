@@ -135,6 +135,30 @@ class GitHubAppRepositoriesTests {
         }
     }
 
+    @Test
+    void explicitIntegrationPermissionDenialRequiresInstallationWithoutAnUncertainMutation() throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(200, USER);
+            fixture.reply(403, "{\"message\":\"Resource not accessible by integration\",\"status\":\"403\"}");
+            var api = new GitHubAppRepositories(fixture.http);
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
+                    .hasMessage("GitHub App: INSTALLATION_REQUIRED");
+            assertThat(fixture.requests).hasSize(2);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "null", "{", "{\"message\":\"API rate limit exceeded\"}"})
+    void otherForbiddenResponsesRemainUncertain(String body) throws Exception {
+        try (var fixture = new GitHubAppFixture()) {
+            fixture.reply(200, USER);
+            fixture.reply(403, body);
+            var api = new GitHubAppRepositories(fixture.http);
+            assertThatThrownBy(() -> api.create(42, "notes", MARKER, "fixture-token", () -> {}))
+                    .hasMessage("GitHub App: CREATION_UNCERTAIN");
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(
             strings = {"null", "{}", "{\"id\":\"fixture-secret\"}", "{\"id\":1.5}", "{\"id\":1,\"id\":2}", "{} {}"})

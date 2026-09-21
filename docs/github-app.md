@@ -79,10 +79,15 @@ fixed diagnostics without repeating the input or OpenSSL error output.
 
 ## Verify the connection
 
-An eligible signed-in user authorizes GitHub from account settings, confirms the
-personal account and repository name, and creates a private repository. Select
-only that repository in installation settings, then continue the original
-request. Verify initial content and synchronization, remove access, and confirm
+An eligible signed-in user authorizes GitHub from account settings and installs
+the App on the same personal account through **Manage GitHub repository access**.
+GitHub requires at least one existing repository for a selected-repository
+installation; an empty private repository can serve this purpose without granting
+access to existing content. The user then confirms an unused repository name and
+creates the private repository. GitHub [automatically grants access to repositories
+created by the App](https://docs.github.com/en/apps/using-github-apps/installing-your-own-github-app).
+If access is missing, select the new repository and continue the original request.
+Verify initial content and synchronization, remove access, and confirm
 that writes stop. Restore provider permission and use **Verify and restore
 connection** on the space's Repository connection tab.
 
