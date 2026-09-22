@@ -1,12 +1,12 @@
 # Controlled Audio and Video Playback
 
 Date: 2026-09-23
-Status: Proposed
+Status: Implemented
 
 ## Problem and decision
 
-Indexed originals can be downloaded but cannot be played in an article or editor
-preview. Add native audio and video controls for explicitly supported managed
+Indexed originals need a playback entrance in articles and editor previews.
+Native audio and video controls are provided for explicitly supported managed
 media, with an ordinary download link retained beside them. Relative Markdown
 links remain the authoring format. Playback does not require raw HTML, external
 embeds, a new asset database, transcoding or automatic playback.
@@ -17,7 +17,8 @@ can select a player but cannot authorize output: the playback request verifies
 the immutable original's digest and length and checks its container signature
 before committing headers or bytes. Unsupported or mislabelled originals remain
 available through attachment download. A recognized container does not guarantee
-that the browser supports every codec inside it.
+that the browser supports every codec inside it. Signature inspection retains at
+most 4 KiB; a container without a recognized prefix falls back to download.
 
 Playback reuses the exact attachment authorization path. Public requests bind the
 workspace, current publication commit, article route and referenced public logical
@@ -29,21 +30,22 @@ buffered by a browser cannot be recalled.
 
 ## Delivery and limits
 
-Use the existing media endpoints with an explicit playback selector. Ordinary
+The existing media endpoints accept an explicit `play=true` selector. Ordinary
 requests retain attachment disposition and octet-stream type. Playback sends
 inline disposition, a fixed allowlisted media type, no-store and nosniff. The
 frontend accepts only its scoped same-origin resolved media URLs; raw HTML and
 arbitrary authored URLs cannot create players. Players use controls and
 `preload="none"`, without autoplay.
 
-Support one HTTP bytes range, including open-ended and suffix ranges, with exact
-206/Content-Range/Content-Length responses. Reject unsatisfiable ranges with 416;
-ignore unsupported units and multiple ranges rather than generating multipart
+Playback supports one HTTP bytes range, including open-ended and suffix ranges,
+with exact
+206/Content-Range/Content-Length responses. Unsatisfiable ranges return 416;
+unsupported units and multiple ranges are ignored rather than generating multipart
 responses. An If-Range request receives the complete representation because this
 entrance issues no reusable cache validator. HEAD ignores Range. Full original
 verification remains bounded by the existing 128 MiB original limit and runs for
-every request, including seeks. The initial implementation uses bounded streaming
-selection over verified bytes, accepting extra disk reads to preserve one trusted
+every request, including seeks. Playback uses bounded streaming selection over
+verified bytes, accepting extra disk reads to preserve one trusted
 storage path. Existing per-instance and per-workspace transfer admission applies.
 
 ## Alternatives and consequences
@@ -61,22 +63,28 @@ storage path. Existing per-instance and per-workspace transfer admission applies
 
 ## Verification
 
-Test exact full and ranged bytes, boundary and invalid ranges, corrupt or
-mislabelled originals, public/private reference isolation, withdrawal and midstream
-revocation. HTTP tests must observe headers and body lengths through the real
-entrance. Frontend tests must refuse untrusted playback mappings and retain
-downloads. Use the documented browser entrance to play synthetic audio and video,
-seek, preview private content and verify that withdrawal denies a fresh request.
+Native storage tests verify exact full and ranged bytes, false types, corruption,
+public/private aliases, withdrawal, midstream revocation and released admission.
+Range tests cover closed, open-ended, suffix, invalid and overflowing inputs.
+The real Spring/PostgreSQL/Git HTTP integration verifies full and partial bodies,
+headers, HEAD and If-Range behavior, public/private isolation and invalidation of
+an old playback address after its reference is withdrawn. Frontend rendering tests
+refuse external, private-in-public and unrecognized playback mappings while
+retaining ordinary downloads. Browser acceptance uses the
+[documented entrance](../../acceptance/README.md): synthetic WAV, MP3, M4A, WebM
+audio, H.264 MP4 and VP9 WebM video decode in Chrome; private preview, native seek,
+mobile layout and failed-format feedback work. Withdrawing the article through
+the editor removes its public page and makes all six old playback addresses fail.
 
 ## Related decisions
 
 [Indexed media delivery](../implemented/2026-09-09-indexed-media-delivery.md) owns
-attachment authorization, admission and integrity verification; this proposal adds
+attachment authorization, admission and integrity verification; this record adds
 an explicit constrained playback mode. The
 [CodeAct content contract](../implemented/2026-09-09-codeact-content-and-media.md)
 retains immutable originals, logical paths and independent publication authority.
-Its original delivery excluded playback; that boundary is extended only by this
-record. [Sandbox content tools](../implemented/2026-09-15-sandbox-content-toolkit.md)
+Its original delivery excluded playback; this record extends that boundary.
+[Sandbox content tools](../implemented/2026-09-15-sandbox-content-toolkit.md)
 continue to exclude audio/video processing.
 
 [HTTP range semantics](https://httpwg.org/specs/rfc9110.html#field.range) and the

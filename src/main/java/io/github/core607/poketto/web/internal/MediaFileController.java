@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.MediaFileService;
+import io.github.core607.poketto.assets.MediaPlayback;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import jakarta.servlet.http.HttpServletRequest;
@@ -50,8 +51,14 @@ class MediaFileController {
             @PathVariable String workspaceId,
             @RequestParam String path,
             @RequestParam(required = false) String commit,
+            @RequestParam(defaultValue = "false") boolean play,
+            HttpServletRequest request,
             HttpServletResponse response) {
-        send(media.privateDownload(actor, WorkspaceId.parse(workspaceId), Optional.ofNullable(commit), path), response);
+        send(
+                media.privateDownload(actor, WorkspaceId.parse(workspaceId), Optional.ofNullable(commit), path),
+                play,
+                request,
+                response);
     }
 
     @GetMapping("/api/public/media")
@@ -60,8 +67,53 @@ class MediaFileController {
             @RequestParam String path,
             @RequestParam String commit,
             @RequestParam String route,
+            @RequestParam(defaultValue = "false") boolean play,
+            HttpServletRequest request,
             HttpServletResponse response) {
-        send(media.publicDownload(WorkspaceId.parse(workspace), commit, route, path), response);
+        send(media.publicDownload(WorkspaceId.parse(workspace), commit, route, path), play, request, response);
+    }
+
+    static void send(
+            MediaFileService.Download download,
+            boolean play,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        if (!play) {
+            send(download, response);
+            return;
+        }
+        MediaPlayback type = download.playback();
+        String requested = "GET".equals(request.getMethod()) && request.getHeader("If-Range") == null
+                ? request.getHeader("Range")
+                : null;
+        MediaRange range;
+        try {
+            range = MediaRange.parse(requested, download.size());
+        } catch (IllegalArgumentException invalid) {
+            response.setStatus(416);
+            response.setHeader("Content-Range", "bytes */" + download.size());
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            return;
+        }
+        download.playTo(
+                new DeferredDownload(response, () -> {
+                    response.setContentType(type.mediaType());
+                    response.setHeader(
+                            "Content-Disposition",
+                            ContentDisposition.inline()
+                                    .filename(download.filename(), StandardCharsets.UTF_8)
+                                    .build()
+                                    .toString());
+                    response.setHeader("Accept-Ranges", "bytes");
+                    if (range.partial()) {
+                        response.setStatus(206);
+                        response.setHeader("Content-Range", range.contentRange(download.size()));
+                    }
+                    response.setContentLengthLong(range.length());
+                }),
+                range.start(),
+                range.length());
     }
 
     static void send(MediaFileService.Download download, HttpServletResponse response) {

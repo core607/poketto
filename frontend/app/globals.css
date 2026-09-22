@@ -1765,3 +1765,18 @@ body:has(.image-lightbox[open]) {
   overflow-wrap: anywhere;
   text-align: left;
 }
+
+.media-player {
+  display: block;
+  margin: 1rem 0;
+}
+.media-player audio,
+.media-player video {
+  display: block;
+  width: min(100%, 48rem);
+  max-height: 70vh;
+  margin-bottom: 0.5rem;
+}
+.media-player [role="status"] {
+  display: block;
+}

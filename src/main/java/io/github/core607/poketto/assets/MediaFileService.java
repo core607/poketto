@@ -290,9 +290,23 @@ public final class MediaFileService {
 
         /** Leaves output open; consumers discard partial output after failure or authorization loss. */
         public void writeTo(OutputStream output) {
+            write(output, null, 0, asset.size());
+        }
+
+        /** A candidate type is not an integrity check; playback verifies the container before output. */
+        public MediaPlayback playback() {
+            return MediaPlayback.forType(asset.mediaType())
+                    .orElseThrow(() -> new IllegalArgumentException("original type does not support playback"));
+        }
+
+        public void playTo(OutputStream output, long start, long length) {
+            write(output, playback(), start, length);
+        }
+
+        private void write(OutputStream output, MediaPlayback playback, long start, long length) {
             check.run();
             try (var admission = admit(workspace, publicTransfer)) {
-                originals.get().copyTo(workspace, asset.reference(), new OutputStream() {
+                OutputStream authorized = new OutputStream() {
                     long allowance;
 
                     @Override
@@ -314,7 +328,10 @@ public final class MediaFileService {
                             length -= count;
                         }
                     }
-                });
+                };
+                OutputStream selected =
+                        playback == null ? authorized : playback.select(authorized, asset.size(), start, length);
+                originals.get().copyTo(workspace, asset.reference(), selected);
             } catch (RuntimeException failure) {
                 throw checkedFailure(check, failure);
             }

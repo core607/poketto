@@ -46,6 +46,7 @@ type Preview = {
   images?: Record<string, string>;
   links?: Record<string, string>;
   downloads?: Record<string, string>;
+  playback?: Record<string, string>;
   gallery?: { src: string; original: string; alt: string }[];
   galleryStatus: GalleryStatus;
 };
@@ -1057,6 +1058,7 @@ export function Editor({
                           images={preview.images}
                           links={preview.links}
                           downloads={preview.downloads}
+                          playback={preview.playback}
                           preview
                         />
                         <Gallery

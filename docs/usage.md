@@ -252,6 +252,25 @@ Folder landing links supply a collection in authored order. Reading from that la
 
 `POST /api/admin/workspaces/{workspaceId}/media` accepts raw octet-stream originals up to 128 MiB with an `Idempotency-Key` and optional `X-Media-Type`. Storage deduplicates bytes strictly within a workspace while retaining independent upload identities. Set `poketto.assets.max-file-bytes` to lower the upload bound; existing originals remain readable. The [logical media index](../notes/implemented/2026-09-09-logical-media-index.md) combines media paths with Git directory entries and can be saved atomically with text. [Indexed media delivery](../notes/implemented/2026-09-09-indexed-media-delivery.md) renders relative image links and supplies original attachments through authenticated `/api/admin/workspaces/{workspaceId}/media` and publication-bound `/api/public/media` downloads. Uploading never writes the index or publishes.
 
+Relative Markdown links to indexed MP3, WAV, MP4 or WebM originals show native
+playback controls in articles and authorized previews, for example a relative link
+to `recording.mp3`. Use `audio/mpeg`, `audio/wav` (also `audio/wave` or
+`audio/x-wav`), `audio/mp4`, `video/mp4`, `audio/webm` or `video/webm` when importing.
+Playback checks original integrity and a bounded container signature; codec
+support still depends on the browser. Players never autoplay or preload media.
+The adjacent download link remains available if playback fails. External links,
+raw HTML and unsupported originals do not become players.
+
+Adding `play=true` to an authorized media download requests playback with a fixed
+media type, inline disposition, `no-store` and `nosniff`. One bytes range supports
+seeking; invalid or unsatisfiable byte ranges return 416. Multiple ranges or
+unsupported units receive the complete representation. HEAD ignores Range;
+If-Range receives a full response. Every request verifies the original, so seeks
+can add disk-read cost within the existing 128 MiB original bound. Current identity
+and publication checks apply to every request and subsequent output blocks;
+already buffered bytes cannot be recalled. [Playback limits and rationale](../notes/implemented/2026-09-23-controlled-media-playback.md).
+
+
 Members editing public content without private-read permission use **Choose public images**. The picker lists current eligible Git images and indexed managed images, inserts relative paths, and excludes private or withdrawn content. Uploading a new original still requires private-write permission.
 
 ## Export HTTP interface

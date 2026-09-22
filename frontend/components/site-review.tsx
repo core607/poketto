@@ -21,6 +21,7 @@ type Review = {
     body: string;
     images: Record<string, string>;
     downloads: Record<string, string>;
+    playback?: Record<string, string>;
     gallery: { src: string; original: string; alt: string }[];
   };
 };
@@ -126,6 +127,7 @@ function ReviewDocument({ base, route }: { base: string; route: string }) {
         source={document.media.body}
         images={document.media.images}
         downloads={document.media.downloads}
+        playback={document.media.playback}
         preview
       />
       <div className="image-grid">
