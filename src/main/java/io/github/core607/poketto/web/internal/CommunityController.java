@@ -220,6 +220,9 @@ class CommunityController {
             if (positions == null || positions.isEmpty() || positions.size() > 50) {
                 throw new IllegalArgumentException("one to fifty notification positions are required");
             }
+            if (positions.stream().anyMatch(position -> position == null || position <= 0)) {
+                throw new IllegalArgumentException("notification positions must be positive");
+            }
             positions = List.copyOf(positions);
         }
     }

@@ -119,9 +119,7 @@ export function CommunityCommentItem({
             disabled={busy}
             onClick={() => setConfirmDelete(!confirmDelete)}
           >
-            {thread.accountId === comment.author?.accountId
-              ? "删除"
-              : "移除评论"}
+            {moderating ? (comment.parentId ? "移除评论" : "移除讨论") : "删除"}
           </button>
         )}
         {thread.accountId && !comment.deleted && (
