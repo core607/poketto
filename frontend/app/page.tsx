@@ -55,6 +55,11 @@ export default async function Home({
             ? "标签或翻页参数无效。标签最多 64 个字符；更换标签时，请开始新一批。"
             : "这批浏览记录已过期，可以重新开始。"}
         </p>
+        {page === 400 && (
+          <DiscoveryTagForm
+            tag={typeof parameters.tag === "string" ? parameters.tag : ""}
+          />
+        )}
         <a href="/">开始新一批 ↗</a>
       </section>
     );
@@ -81,18 +86,7 @@ export default async function Home({
           <a href="/admin">我的空间 ↗</a>
         </div>
       </section>
-      <form className="discovery-filter" action="/">
-        <label htmlFor="discovery-tag">按标签发现</label>
-        <input
-          id="discovery-tag"
-          name="tag"
-          defaultValue={page.tag}
-          maxLength={128}
-          placeholder="输入完整标签"
-        />
-        <button type="submit">发现</button>
-        {page.tag && <a href="/">清除标签</a>}
-      </form>
+      <DiscoveryTagForm tag={page.tag} />
       <p className="muted">
         {page.tag
           ? `正在发现「${page.tag}」相关内容。`
@@ -167,5 +161,22 @@ export default async function Home({
         )}
       </nav>
     </div>
+  );
+}
+
+function DiscoveryTagForm({ tag }: { tag: string }) {
+  return (
+    <form className="discovery-filter" action="/">
+      <label htmlFor="discovery-tag">按标签发现</label>
+      <input
+        id="discovery-tag"
+        name="tag"
+        defaultValue={tag}
+        maxLength={128}
+        placeholder="输入完整标签"
+      />
+      <button type="submit">发现</button>
+      {tag && <a href="/">清除标签</a>}
+    </form>
   );
 }

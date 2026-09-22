@@ -254,5 +254,9 @@ test("discovery renders valid emoji tags and offers recovery for rejected parame
       parameters.batch === "expired" ? /浏览记录已过期/ : /标签或翻页参数无效/,
     );
     assert.doesNotMatch(page, /内容暂时无法读取/);
+    if (parameters.tag) {
+      assert.ok(page.includes(`value="${parameters.tag}"`));
+      assert.ok(page.includes('action="/"'));
+    }
   }
 });
