@@ -240,6 +240,7 @@ test("discovery renders valid emoji tags and offers recovery for rejected parame
   );
   assert.ok(html.includes(`正在发现「${tag}」相关内容。`));
   assert.ok(html.includes('maxLength="128"'));
+  assert.ok(html.includes('pattern=".{0,64}"'));
   for (const parameters of [
     { batch: "kept", tag: tag + "x" },
     { batch: "mismatched-tag", tag: "new" },

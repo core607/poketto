@@ -173,6 +173,8 @@ function DiscoveryTagForm({ tag }: { tag: string }) {
         name="tag"
         defaultValue={tag}
         maxLength={128}
+        pattern=".{0,64}"
+        title="标签最多 64 个字符"
         placeholder="输入完整标签"
       />
       <button type="submit">发现</button>
