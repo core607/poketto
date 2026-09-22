@@ -908,6 +908,7 @@ export function Editor({
               </label>
               <div className="editor-actions">
                 {identity.capabilities.includes("READ_PRIVATE") &&
+                  !unreadable &&
                   file.commit && (
                     <button
                       type="button"
