@@ -909,6 +909,7 @@ export function Editor({
               <div className="editor-actions">
                 {identity.capabilities.includes("READ_PRIVATE") &&
                   !unreadable &&
+                  path === file.path &&
                   file.commit && (
                     <button
                       type="button"
@@ -999,23 +1000,25 @@ export function Editor({
               pending={busy || pagePending}
               onRefresh={() => void refreshPublicPage(file)}
             />
-            {historySelection?.file === file && (
-              <HistoryDialog
-                file={file}
-                currentSource={source}
-                dirty={dirty}
-                writable={writable && !unreadable && path === file.path}
-                returnFocus={historySelection.returnFocus}
-                onClose={() => setHistorySelection(null)}
-                onRestore={(historicalSource, commit) => {
-                  setSource(historicalSource);
-                  setHistorySelection(null);
-                  setNotice(
-                    `已将 ${commit.slice(0, 8)} 的正文放入编辑框。请预览后保存，保存将生成新版本。`,
-                  );
-                }}
-              />
-            )}
+            {historySelection?.file === file &&
+              !unreadable &&
+              path === file.path && (
+                <HistoryDialog
+                  file={file}
+                  currentSource={source}
+                  dirty={dirty}
+                  writable={writable}
+                  returnFocus={historySelection.returnFocus}
+                  onClose={() => setHistorySelection(null)}
+                  onRestore={(historicalSource, commit) => {
+                    setSource(historicalSource);
+                    setHistorySelection(null);
+                    setNotice(
+                      `已将 ${commit.slice(0, 8)} 的正文放入编辑框。请预览后保存，保存将生成新版本。`,
+                    );
+                  }}
+                />
+              )}
             {file.source === null && !file.expectedAbsence ? (
               <p className="notice danger">
                 这个文件无法作为 UTF-8 文本读取。请查看诊断，不要覆盖原文件。
