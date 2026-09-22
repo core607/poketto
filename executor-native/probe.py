@@ -68,7 +68,7 @@ def main():
     disk_mounted = False
     disk_pool = root / 'copy-pool'
     evidence = []
-    for name in ('worker.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('worker.py', 'command_channel.py', 'shell_loop.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
     (root / 'worker_entry.py').write_text('''import json,os
@@ -288,7 +288,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
-            'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
+            'idleUnitSeconds': 1800, 'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
         disk_pool.mkdir()
         disk_image = root / 'copies.img'
         run(['fallocate', '-l', '512M', str(disk_image)])
@@ -346,6 +346,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
+            'commandChannelSha256': digest(root / 'command_channel.py'), 'shellLoopSha256': digest(root / 'shell_loop.py'),
             'bridgeSha256': digest(root / 'bridge.py'), 'cliSha256': digest(root / 'cli.py'),
             'sessionFilesSha256': digest(root / 'session_files.py'),
             'materializeSha256': digest(root / 'materialize.py'),

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 import uuid
 
 from bridge import BridgeRejected, LeaseBridge, MAX_FRAME, MAX_REQUESTS
@@ -15,6 +16,20 @@ from cli import BridgeUnavailable, _send, call
 
 
 class LeaseBridgeTests(unittest.TestCase):
+    def test_background_requests_from_a_finished_execution_cannot_enter_the_next_command(self):
+        previous = self.execution_id
+        self.execution_id = str(uuid.uuid4())
+        self.bridge.reset_command(self.execution_id)
+        stale = {'requestId': str(uuid.uuid4()), 'executionId': previous, 'operation': 'save', 'arguments': {}}
+        _send(self.path, stale, time.monotonic() + 2)
+        self.assertIsNone(self.bridge.poll(timeout=0.05))
+        self.assertFalse(self.bridge.pending)
+        with self.assertRaisesRegex(BridgeUnavailable, 'not active'):
+            call(self.path, 'save', {}, timeout=0.1)
+        current = {**stale, 'executionId': self.execution_id}
+        _send(self.path, current, time.monotonic() + 2)
+        self.assertEqual(current, self.bridge.poll(timeout=1))
+
     def test_stdin_and_files_preserve_large_utf8_text_through_the_real_bridge(self):
         text = ('中文 "$HOME" `not a command` \'quoted\'\n' * 1500) + '\n'
         source = Path(self.temporary.name) / 'article.txt'
@@ -57,23 +72,23 @@ class LeaseBridgeTests(unittest.TestCase):
 
     def test_finished_commands_release_replay_budget_but_not_within_command(self):
         for index in range(MAX_REQUESTS + 1):
-            request = {'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}}
+            request = {'requestId': str(uuid.uuid4()), 'executionId': self.execution_id, 'operation': 'status', 'arguments': {}}
             _send(self.path, request, time.monotonic() + 2)
             self.assertEqual(request, self.bridge.poll(timeout=1))
             self.bridge.complete(request['requestId'], {'ok': True})
-            self.bridge.reset_command()
+            self.bridge.reset_command(self.execution_id)
         self.assertFalse(self.bridge.closed)
         self.assertFalse(list(self.bridge.responses.iterdir()))
         for index in range(MAX_REQUESTS):
-            request = {'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}}
+            request = {'requestId': str(uuid.uuid4()), 'executionId': self.execution_id, 'operation': 'status', 'arguments': {}}
             self.bridge._message(request)
             self.bridge.complete(request['requestId'], {'ok': True})
-            self.bridge._message({'operation': 'ack', 'requestId': request['requestId']})
+            self.bridge._message({'operation': 'ack', 'requestId': request['requestId'], 'executionId': self.execution_id})
         with self.assertRaises(BridgeRejected):
             self.bridge._message(request)
         with self.assertRaises(BridgeRejected):
             self.bridge._message({**request, 'requestId': str(uuid.uuid4())})
-        self.bridge.reset_command()
+        self.bridge.reset_command(self.execution_id)
         self.assertEqual(request, self.bridge._message(request))
 
     def setUp(self):
@@ -88,6 +103,11 @@ class LeaseBridgeTests(unittest.TestCase):
         self.assertEqual(0o750, self.path.stat().st_mode & 0o777)
         self.assertEqual(0o750, (self.path / 'responses').stat().st_mode & 0o777)
         self.addCleanup(self.bridge.close)
+        self.execution_id = str(uuid.uuid4())
+        self.bridge.reset_command(self.execution_id)
+        environment = patch.dict(os.environ, {'POKETTO_EXECUTION_ID': self.execution_id})
+        environment.start()
+        self.addCleanup(environment.stop)
 
     def test_real_cli_waits_for_exact_host_result_and_reply_is_read_only(self):
         process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')), 'status'],
@@ -202,7 +222,7 @@ class LeaseBridgeTests(unittest.TestCase):
                     bridge.poll(timeout=1)
             finally:
                 bridge.close()
-        request = {'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}}
+        request = {'requestId': str(uuid.uuid4()), 'executionId': self.execution_id, 'operation': 'status', 'arguments': {}}
         _send(self.path, request, time.monotonic() + 2)
         self.assertEqual(request, self.bridge.poll(timeout=1))
         _send(self.path, request, time.monotonic() + 2)
@@ -210,7 +230,7 @@ class LeaseBridgeTests(unittest.TestCase):
             self.bridge.poll(timeout=1)
 
     def test_pending_capacity_and_reply_bound_recover_after_acknowledgement(self):
-        requests = [{'requestId': str(uuid.uuid4()), 'operation': 'status', 'arguments': {}} for _ in range(5)]
+        requests = [{'requestId': str(uuid.uuid4()), 'executionId': self.execution_id, 'operation': 'status', 'arguments': {}} for _ in range(5)]
         for request in requests[:4]:
             _send(self.path, request, time.monotonic() + 2)
             self.assertEqual(request, self.bridge.poll(timeout=1))
@@ -221,7 +241,7 @@ class LeaseBridgeTests(unittest.TestCase):
             self.bridge.complete(requests[0]['requestId'], {'value': 'x' * MAX_FRAME})
         for request in requests[:4]:
             self.bridge.complete(request['requestId'], {'ok': True})
-            _send(self.path, {'requestId': request['requestId'], 'operation': 'ack'}, time.monotonic() + 2)
+            _send(self.path, {'requestId': request['requestId'], 'operation': 'ack', 'executionId': self.execution_id}, time.monotonic() + 2)
         self.bridge.poll(timeout=0.05)
         _send(self.path, requests[4], time.monotonic() + 2)
         self.assertEqual(requests[4], self.bridge.poll(timeout=1))

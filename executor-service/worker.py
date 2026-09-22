@@ -30,6 +30,7 @@ from materialize import IncomingFile, IncomingMove, MaterializationCapacity
 from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 from disk_pool import DiskPool
+from command_channel import CommandChannel, CommandEnded
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -124,6 +125,9 @@ class Session:
     git_commit: str = ''
     disk_lock: int = -1
     maintenance: 'Session | None' = None
+    channel: object = None
+    unit_files: tuple = ()
+    idle_since: float = 0
 
 
 class Service:
@@ -144,6 +148,7 @@ class Service:
     def hello(self):
         return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
                 'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1, 'workspaceSyncProtocol': 1,
+                'leaseSandboxProtocol': 1,
                 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
@@ -362,6 +367,7 @@ class Service:
                     else:
                         s.state = 'READY'
                         s.execution_id = ''
+                        s.idle_since = self.clock()
                     answer = self.response(s)
                     if result is not None:
                         answer['result'] = result
@@ -427,7 +433,7 @@ class Service:
                     raise Rejected('SESSION_BUSY')
                 s.state = 'UPDATING'
         try:
-            self.backend.baseline(s, data, active)
+            self.backend.baseline(s, data)
             with self.lock:
                 self.recheck(p, s)
                 return self.response(s)
@@ -587,10 +593,12 @@ class Service:
             raise Rejected('INVALID_REQUEST')
         with self.lock:
             s = self.live_session(p)
-            if s.state != 'RUNNING' or not s.execution_id or data['executionId'] != s.execution_id:
+            active = s.state == 'RUNNING' and s.execution_id and data['executionId'] == s.execution_id
+            idle = s.state == 'READY' and s.channel is not None and data['executionId'] == ''
+            if not (active or idle):
                 raise Rejected('EXECUTION_MISMATCH')
         # Keep the mount and unit alive without blocking renewal or revocation.
-        # run() cleanup takes this lock before releasing either resource.
+        # Unit cleanup takes this lock before releasing either resource.
         with s.files_lock:
             if s.cancelled.is_set() or s.execution_id != data['executionId'] or not s.unit:
                 raise Rejected('SESSION_NOT_READY')
@@ -636,6 +644,8 @@ class Service:
             if p['operation'] == 'BRIDGE_POLL':
                 if data:
                     raise Rejected('INVALID_REQUEST')
+                if s.state != 'RUNNING':
+                    return {**self.response(s), 'executionId': '', 'bridgeRequest': None}
             elif set(data) != {'bridgeRequestId', 'executionId', 'response'} or not isinstance(data['response'], dict):
                 raise Rejected('INVALID_REQUEST')
             else:
@@ -678,6 +688,7 @@ class Service:
                 s.operation.release()
 
     def sweep(self):
+        idle = []
         with self.lock:
             now = self.clock()
             for s in self.sessions.values():
@@ -691,6 +702,28 @@ class Service:
                 for key in [k for k, deadline in table.items() if deadline <= now]:
                     del table[key]
             retained = list(self.sessions.values())
+            for s in retained:
+                if (s.state == 'READY' and s.channel is not None
+                        and now - s.idle_since >= self.config['idleUnitSeconds']
+                        and s.operation.acquire(blocking=False)):
+                    s.state = 'UPDATING'
+                    idle.append(s)
+        for s in idle:
+            try:
+                with s.files_lock:
+                    self.backend.stop_unit(s)
+                    s.bridge.reset_command()
+                with self.lock:
+                    if not s.cancelled.is_set():
+                        s.state = 'READY'
+            except Exception:
+                with self.lock:
+                    self.cancel(s, 'sandbox_failed')
+            finally:
+                s.operation.release()
+                if s.cancelled.is_set():
+                    with self.lock:
+                        self.cancel(s, s.reason)
         for s in retained:
             failed = False
             if s.files_lock.acquire(blocking=False):
@@ -774,6 +807,9 @@ class SystemdBackend:
         cli = bootstrap / 'poketto'
         cli.write_bytes(Path(self.c['launcher']).with_name('cli.py').read_bytes())
         cli.chmod(0o555)
+        shell = bootstrap / 'shell_loop.py'
+        shell.write_bytes(Path(self.c['launcher']).with_name('shell_loop.py').read_bytes())
+        shell.chmod(0o555)
         return target
 
     def open(self, s, data):
@@ -819,11 +855,11 @@ class SystemdBackend:
         os.chmod(destination, 0o440)
         os.chown(destination, 0, self.user.pw_gid)
 
-    def baseline(self, s, data, active):
+    def baseline(self, s, data):
         target = self.mount_path(s)
         destination = target / 'baseline.bundle'
         try:
-            with self.frozen(s) if active else nullcontext():
+            with self.frozen(s) if s.unit else nullcontext():
                 destination.unlink(missing_ok=True)
                 self.copy_export(s, data, destination)
                 helper = Session(s.id, s.identity, s.commit, s.deadline, cancelled=CommandCancellation(s.cancelled))
@@ -857,9 +893,77 @@ class SystemdBackend:
             (target / '.git-baseline.pending').unlink(missing_ok=True)
 
     def execute(self, s, data):
-        result = self.run(s, {'mode': 'execute', 'command': data['command']}, data['timeoutMillis'])
-        s.bridge.reset_command()
-        return result
+        self.pool.verify()
+        with s.files_lock:
+            if s.channel is not None and s.channel.process.poll() is not None:
+                self.stop_unit(s)
+            fresh = s.channel is None
+            if fresh:
+                s.bridge.reset_command(data['executionId'])
+                args, record, settings = self.unit_arguments(s, {'mode': 'shell'}, None)
+                s.unit_files = (record, settings)
+                try:
+                    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    s.channel = CommandChannel(process)
+                except Exception:
+                    self.stop_unit(s)
+                    raise
+            else:
+                with self.frozen(s):
+                    s.bridge.reset_command(data['executionId'])
+                    self.release_command_files(s)
+        reason, exit_code, ended = 'normal', 0, False
+        try:
+            completion, output, truncated = s.channel.execute(
+                data['executionId'], data['command'], data['timeoutMillis'],
+                s.cancelled.is_set, lambda: s.reason)
+            exit_code, ended = completion['exitCode'], completion['shellExited']
+        except CommandEnded as error:
+            reason, output, truncated = error.reason, error.output, error.truncated
+            exit_code, ended = 124 if reason == 'timeout' else 137, True
+            if reason == 'sandbox_failed':
+                status = checked(['systemctl', 'show', s.unit, '-p', 'Result']).stdout.decode()
+                if 'Result=oom-kill' in status:
+                    reason = 'resource_limit'
+            if reason not in ('timeout', 'output_limit'):
+                s.reason = reason
+                s.cancelled.set()
+        finally:
+            with s.files_lock:
+                if ended or s.cancelled.is_set():
+                    self.stop_unit(s)
+                    s.bridge.reset_command()
+                else:
+                    with self.frozen(s):
+                        s.bridge.reset_command()
+                        self.release_command_files(s)
+        return {'commit': s.commit, 'exitCode': exit_code,
+                **retain_output(s.artifacts if not s.cancelled.is_set() else None, output, truncated),
+                'timedOut': reason == 'timeout', 'terminationReason': reason, 'freshSandbox': fresh}
+
+    @staticmethod
+    def release_command_files(s):
+        for name in ('capture', 'incoming'):
+            value = getattr(s, name)
+            if value is not None:
+                value.close()
+                setattr(s, name, None)
+
+    def stop_unit(self, s):
+        """Caller holds files_lock; no next command may start until containment succeeds."""
+        if s.unit:
+            subprocess.run(['systemctl', 'stop', s.unit], capture_output=True, timeout=10)
+            self.assert_empty(s.unit)
+            subprocess.run(['systemctl', 'reset-failed', s.unit], capture_output=True, timeout=5)
+        if s.channel is not None:
+            s.channel.process.wait(timeout=5)
+            s.channel.close()
+            s.channel = None
+        for path in s.unit_files:
+            path.unlink(missing_ok=True)
+        s.unit_files = ()
+        s.unit = ''
+        self.release_command_files(s)
 
     def capture(self, s, writes, deletes):
         with self.frozen(s):
@@ -915,7 +1019,7 @@ class SystemdBackend:
                 s.cancelled.set()
                 s.reason = 'sandbox_failed'
 
-    def run(self, s, payload, timeout_ms):
+    def unit_arguments(self, s, payload, timeout_ms):
         self.pool.verify()
         target = self.mount_path(s)
         operation = str(uuid.uuid4())
@@ -943,7 +1047,7 @@ class SystemdBackend:
                 '--slice', self.pool.name,
                 '-p', 'User=' + self.c['execUser'], '-p', 'CPUQuota=' + str(self.c['cpuQuotaPercent']) + '%',
                 '-p', 'MemoryMax=' + str(self.c['memoryBytes']), '-p', 'MemorySwapMax=0',
-                '-p', 'TasksMax=' + str(self.c['tasksMax']), '-p', f'RuntimeMaxSec={timeout_ms / 1000}',
+                '-p', 'TasksMax=' + str(self.c['tasksMax']),
                 '-p', 'KillMode=control-group', '-p', 'TimeoutStopSec=1', '-p', 'SendSIGKILL=yes',
                 '-p', 'NoNewPrivileges=yes', '-p', 'UMask=0077',
                 '-p', f"TemporaryFileSystem=/tmp:rw,size={self.c['temporaryBytes']},nr_inodes={self.c['temporaryInodes']},mode=1777,nosuid,nodev",
@@ -951,7 +1055,14 @@ class SystemdBackend:
                 '-p', 'BindPaths=' + str(target)]
         if self.c.get('supervisorUnit'):
             args += ['-p', 'BindsTo=' + self.c['supervisorUnit'], '-p', 'After=' + self.c['supervisorUnit']]
+        if timeout_ms is not None:
+            args += ['-p', f'RuntimeMaxSec={timeout_ms / 1000}']
         args += ['/usr/bin/env', '-i', 'PATH=/usr/bin:/bin', '/usr/bin/python3', self.c['launcher'], str(record)]
+        return args, record, settings
+
+    def run(self, s, payload, timeout_ms):
+        args, record, settings = self.unit_arguments(s, payload, timeout_ms)
+        unit = s.unit
         output = [bytearray(), bytearray()]
         truncated = [False, False]
         reason = 'normal'
@@ -995,12 +1106,10 @@ class SystemdBackend:
             if reason != 'normal':
                 if exit_code == 0:
                     exit_code = 124 if reason == 'timeout' else 137
-                if payload['mode'] != 'execute' or reason not in ('output_limit', 'timeout'):
-                    s.reason = reason
-                    s.cancelled.set()
+                s.reason = reason
+                s.cancelled.set()
             return {'commit': s.commit, 'exitCode': exit_code,
-                    **retain_output(s.artifacts if payload['mode'] == 'execute' and not s.cancelled.is_set() else None,
-                                    output, truncated),
+                    **retain_output(None, output, truncated),
                     'timedOut': reason == 'timeout', 'terminationReason': reason}
         finally:
             with s.files_lock:
@@ -1012,12 +1121,7 @@ class SystemdBackend:
                 record.unlink(missing_ok=True)
                 settings.unlink(missing_ok=True)
                 s.unit = ''
-                if s.capture is not None:
-                    s.capture.close()
-                    s.capture = None
-                if s.incoming is not None:
-                    s.incoming.close()
-                    s.incoming = None
+                self.release_command_files(s)
 
     def assert_empty(self, unit):
         result = checked(['systemctl', 'show', unit, '-p', 'ControlGroup', '--value']).stdout.decode().strip()
@@ -1036,15 +1140,7 @@ class SystemdBackend:
                 s.maintenance = None
             if s.bridge is not None:
                 s.bridge.close()
-            if s.unit:
-                checked(['systemctl', 'stop', s.unit])
-                self.assert_empty(s.unit)
-            if s.incoming is not None:
-                s.incoming.close()
-                s.incoming = None
-            if s.capture is not None:
-                s.capture.close()
-                s.capture = None
+            self.stop_unit(s)
             if s.artifacts is not None:
                 s.artifacts.close()
                 s.artifacts = None
@@ -1235,6 +1331,7 @@ def load_config(path):
                  'diskBytes', 'diskInodes', 'memoryBytes', 'tasksMax', 'cpuQuotaPercent', 'maxTimeoutMillis', 'initTimeoutMillis',
                  'maxConnections', 'maxExecutionsPerSession', 'temporaryBytes', 'temporaryInodes'):
         integer(c[name], 1, 2**40)
+    integer(c['idleUnitSeconds'], 1, 86400)
     if c['renewAfterSeconds'] >= c['leaseSeconds'] or not re.fullmatch(r'poketto-exec-[a-z0-9]+-', c['unitPrefix']):
         raise ValueError('Invalid executor configuration')
     root = Path(c['copyRoot'])

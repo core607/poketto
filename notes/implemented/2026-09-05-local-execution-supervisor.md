@@ -38,14 +38,13 @@ The worker maps opaque export IDs under its configured export directory; caller
 arguments cannot select a host path or remote address. A new bundle clone has
 no source inode sharing, alternates, credentials, or inherited Git configuration.
 
-Each command gets a fresh process tree in a fixed low-privilege SRT unit while
+Commands share a fixed low-privilege SRT unit within one lease while
 the account/workspace copy persists across transports. Runtime, CPU, memory, swap,
 descendant count, output, temporary storage, and repository storage are bounded
 outside the command. Only one command runs per shared copy. Lease and request
 admission have explicit bounds. Sandbox failure never invokes an ordinary
-subprocess. The [per-lease command sandboxes](../proposed/2026-09-16-per-lease-command-sandboxes.md)
-proposal would replace the per-command process tree with one unit per lease; it
-is open, and per-command units are the shipped behavior.
+subprocess. The [per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md)
+decision owns unit reuse and reset reporting; this record retains the privileged boundary.
 
 A dedicated systemd slice supplies the aggregate memory, swap, process and CPU
 budget. The root supervisor and every transient command explicitly use the same
@@ -198,6 +197,6 @@ slots and 32 GiB pool.
 - [Remote repository authority](2026-09-01-remote-repository-authority.md) is retained. Execution copies never become write authority.
 - [Phase-one delivery](2026-09-05-phase-one-daily-use.md) is retained; it owns completion criteria and excludes partial clone.
 - [Account working copies](2026-09-14-account-working-copies.md), the [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) and [executor command ownership](2026-09-16-executor-command-ownership.md) are retained as the authorities named above.
-- The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) stays an independent proposal; this local socket and systemd topology does not implement remote workers. [Per-lease command sandboxes](../proposed/2026-09-16-per-lease-command-sandboxes.md) stays open.
+- The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) stays an independent proposal; this local socket and systemd topology does not implement remote workers. [Per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) owns the implemented runtime reuse.
 
 No note is archived or rejected by this consolidation.

@@ -6,7 +6,7 @@ import uuid
 import os
 import tempfile
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from bridge import LeaseBridge
@@ -16,7 +16,7 @@ from binary_capture import BinaryCapture
 from artifacts import ArtifactStore
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from worker import Service
+from worker import Rejected, Service, load_config
 
 
 def uid():
@@ -32,6 +32,7 @@ class Backend:
         self.opened = []
         self.executed = []
         self.closed = []
+        self.stopped = []
         self.wait = None
         self.entered = threading.Event()
 
@@ -49,6 +50,11 @@ class Backend:
 
     def close(self, session):
         self.closed.append(session.id)
+
+    def stop_unit(self, session):
+        self.stopped.append(session.id)
+        session.unit = ''
+        session.channel = None
 
     def capture(self, session, writes, deletes):
         return capture_text(self.root, writes, deletes)
@@ -70,6 +76,38 @@ class Backend:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_idle_cleanup_stops_the_unit_but_preserves_the_renewable_lease(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.channel, session.unit, session.bridge = object(), 'owned-unit', Mock()
+        self.service.config['idleUnitSeconds'] = 2
+        self.now += 1
+        self.service.sweep()
+        self.assertFalse(self.backend.stopped)
+        self.now += 1
+        self.service.sweep()
+        self.assertEqual([session.id], self.backend.stopped)
+        self.assertFalse(self.backend.closed)
+        self.assertEqual('READY', session.state)
+        self.assertTrue(self.send(self.payload('RENEW'))['ok'])
+        self.assertTrue(self.send(self.execution())['ok'])
+        session.bridge.reset_command.assert_called_once_with()
+
+    def test_idle_configuration_is_explicit_and_bounded(self):
+        example = json.loads(Path(__file__).with_name('config.example.json').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'worker.json'
+            path.write_text(json.dumps(example))
+            self.assertEqual(1800, load_config(path)['idleUnitSeconds'])
+            for value in (0, -1, 86401, True, None, '1800'):
+                path.write_text(json.dumps({**example, 'idleUnitSeconds': value}))
+                with self.subTest(value=value), self.assertRaises(Rejected):
+                    load_config(path)
+            del example['idleUnitSeconds']
+            path.write_text(json.dumps(example))
+            with self.assertRaises(KeyError):
+                load_config(path)
+
     def test_signed_move_transfer_preflight_install_and_release_keep_identity_and_local_edits(self):
         import hashlib
         self.opened()
@@ -184,6 +222,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(1, response['artifactProtocol'])
         self.assertEqual(1, response['moveProtocol'])
         self.assertEqual(1, response['exportProtocol'])
+        self.assertEqual(1, response['leaseSandboxProtocol'])
 
     def test_signed_binary_capture_releases_its_protected_file(self):
         self.opened()
@@ -321,6 +360,10 @@ class ProtocolTests(unittest.TestCase):
             running = pool.submit(self.send, execution)
             try:
                 self.assertTrue(self.backend.entered.wait(2))
+                session.bridge.reset_command(session.execution_id)
+                environment = patch.dict(os.environ, {'POKETTO_EXECUTION_ID': session.execution_id})
+                environment.start()
+                self.addCleanup(environment.stop)
                 client = pool.submit(call, session.bridge.path, 'status', {}, 3)
                 polled = self.send(self.payload('BRIDGE_POLL'))
                 self.assertTrue(polled['ok'])
@@ -368,7 +411,7 @@ class ProtocolTests(unittest.TestCase):
         self.now = 1000
         self.service = Service(self.key.public_key(), self.backend,
             {'leaseSeconds': 15, 'renewAfterSeconds': 5, 'maxRequests': 100,
-             'maxSessions': 2, 'maxBundleBytes': 1000, 'maxTimeoutMillis': 60000, 'maxExecutionsPerSession': 1000},
+             'idleUnitSeconds': 1800, 'maxSessions': 2, 'maxBundleBytes': 1000, 'maxTimeoutMillis': 60000, 'maxExecutionsPerSession': 1000},
             lambda: self.now)
         self.identity = {'principalId': uid(), 'accountId': uid(), 'workspaceId': uid(),
                          'serverSessionHash': 'a' * 64, 'appBootId': uid(), 'leaseId': uid()}

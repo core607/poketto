@@ -13,6 +13,7 @@
   "resourceSlice": "poketto-executor.slice",
   "leaseSeconds": 15,
   "renewAfterSeconds": 5,
+  "idleUnitSeconds": 1800,
   "maxRequests": 4096,
   "maxConnections": 32,
   "maxExecutionsPerSession": 1000,

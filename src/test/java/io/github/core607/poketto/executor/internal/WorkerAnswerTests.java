@@ -18,6 +18,24 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class WorkerAnswerTests {
     @Test
+    void sandboxFreshnessMustBeAnExplicitBoolean() {
+        String finished = """
+                {"exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,
+                 "stderrTruncated":false,"timedOut":false,"freshSandbox":false,"terminationReason":"normal"}
+                """;
+        assertThat(WorkerResponses.read(json(finished), WorkerResponses.Execution.class)
+                        .freshSandbox())
+                .isFalse();
+        for (String replacement :
+                new String[] {"", "\"freshSandbox\":null,", "\"freshSandbox\":\"false\",", "\"freshSandbox\":0,"}) {
+            assertThatThrownBy(() -> WorkerResponses.read(
+                            json(finished.replace("\"freshSandbox\":false,", replacement)),
+                            WorkerResponses.Execution.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+    }
+
+    @Test
     void binaryCaptureKeepsItsOriginalFileBoundWithoutIncreasingTheTextBudget() {
         String file = "{\"path\":\"private/large.bin\",\"bytes\":%d,\"sha256\":\"" + "a".repeat(64) + "\"}";
         String manifest = "{\"captureId\":\"" + UUID + "\",\"writes\":[%s],\"deletes\":[],\"absent\":[]}";
@@ -80,8 +98,9 @@ class WorkerAnswerTests {
                 .describedAs("a capture page without an index")
                 .isInstanceOf(WorkerUnavailableException.class);
         assertThatThrownBy(() -> WorkerResponses.read(
-                        json("{\"stdout\":\"\",\"stderr\":\"\",\"stdoutTruncated\":false,"
-                                + "\"stderrTruncated\":false,\"timedOut\":false,\"terminationReason\":\"normal\"}"),
+                        json(
+                                "{\"stdout\":\"\",\"stderr\":\"\",\"stdoutTruncated\":false,"
+                                        + "\"stderrTruncated\":false,\"timedOut\":false,\"freshSandbox\":false,\"terminationReason\":\"normal\"}"),
                         WorkerResponses.Execution.class))
                 .describedAs("a finished command without an exit code")
                 .isInstanceOf(WorkerUnavailableException.class);
@@ -90,12 +109,15 @@ class WorkerAnswerTests {
     @Test
     void aHandshakeThatAdvertisesAnotherProtocolIsRefused() {
         String good = "{\"ok\":true,\"version\":1,\"maxFrameBytes\":1048576,\"codeActProtocol\":1,"
-                + "\"artifactProtocol\":1,\"moveProtocol\":1,\"exportProtocol\":1,\"diskCopyProtocol\":1,\"gitBaselineProtocol\":1,\"workspaceSyncProtocol\":1,\"workerBootId\":\""
+                + "\"artifactProtocol\":1,\"moveProtocol\":1,\"exportProtocol\":1,\"diskCopyProtocol\":1,\"gitBaselineProtocol\":1,\"workspaceSyncProtocol\":1,\"leaseSandboxProtocol\":1,\"workerBootId\":\""
                 + UUID
                 + "\",\"leaseSeconds\":60,\"renewAfterSeconds\":20}";
         assertThat(WorkerResponses.read(json(good), WorkerResponses.Handshake.class)
                         .leaseSeconds())
                 .isEqualTo(60);
+        assertThatThrownBy(() -> WorkerResponses.read(
+                        json(good.replace("\"leaseSandboxProtocol\":1,", "")), WorkerResponses.Handshake.class))
+                .isInstanceOf(WorkerUnavailableException.class);
         assertThatThrownBy(() -> WorkerResponses.read(
                         json(good.replace("\"moveProtocol\":1", "\"moveProtocol\":2")),
                         WorkerResponses.Handshake.class))
@@ -117,7 +139,7 @@ class WorkerAnswerTests {
     @Test
     void aFinishedCommandMustAgreeWithItsOwnTerminationReason() {
         String finished = "{\"exitCode\":0,\"stdout\":\"\",\"stderr\":\"\",\"stdoutTruncated\":false,"
-                + "\"stderrTruncated\":false,\"timedOut\":true,\"terminationReason\":\"normal\"}";
+                + "\"stderrTruncated\":false,\"timedOut\":true,\"freshSandbox\":false,\"terminationReason\":\"normal\"}";
         assertThatThrownBy(() -> WorkerResponses.read(json(finished), WorkerResponses.Execution.class)
                         .reason())
                 .isInstanceOf(WorkerUnavailableException.class);

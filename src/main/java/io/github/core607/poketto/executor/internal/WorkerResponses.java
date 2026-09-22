@@ -13,6 +13,7 @@ import java.util.UUID;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,6 +43,7 @@ final class WorkerResponses {
             // exit code or an offset is malformed, and reading it as success would be worse than
             // refusing it.
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
             .build();
 
     private WorkerResponses() {}
@@ -89,6 +91,7 @@ final class WorkerResponses {
             int diskCopyProtocol,
             int gitBaselineProtocol,
             int workspaceSyncProtocol,
+            int leaseSandboxProtocol,
             String workerBootId,
             int leaseSeconds,
             int renewAfterSeconds) {
@@ -104,6 +107,7 @@ final class WorkerResponses {
             require(diskCopyProtocol == 1, "diskCopyProtocol", "must be 1");
             require(gitBaselineProtocol == 1, "gitBaselineProtocol", "must be 1");
             require(workspaceSyncProtocol == 1, "workspaceSyncProtocol", "must be 1");
+            require(leaseSandboxProtocol == 1, "leaseSandboxProtocol", "must be 1");
             require(leaseSeconds >= 10 && leaseSeconds <= 3600, "leaseSeconds", "must be between 10 and 3600");
             // Renewing three times within one lease leaves room for two lost attempts.
             require(
@@ -273,6 +277,7 @@ final class WorkerResponses {
             boolean stdoutTruncated,
             boolean stderrTruncated,
             boolean timedOut,
+            boolean freshSandbox,
             String terminationReason) {
         /** Two 16 KiB previews plus their worst-case multibyte expansion. */
         static final int MAX_PREVIEW_BYTES = 3 * 64 * 1024;
