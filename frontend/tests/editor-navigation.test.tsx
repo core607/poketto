@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
 import { scopedRoot, workspaceId } from "./workspace-fixture";
+import { retainDraft, type LocalDraft } from "../lib/local-drafts";
 import {
   navigationFolder,
   privateCreationPath,
@@ -41,8 +42,16 @@ async function mountEditor(
   url: string,
   handler: RequestHandler,
   onNavigate: (location: ContentLocation, replace?: boolean) => void,
+  prepare?: (window: Window) => void,
 ) {
   const window = new Window({ url });
+  Object.defineProperty(window.navigator, "locks", {
+    configurable: true,
+    value: {
+      request: async (_name: string, operation: () => unknown) => operation(),
+    },
+  });
+  prepare?.(window);
   const globals = {
     window,
     document: window.document,
@@ -450,6 +459,89 @@ test("preparing an existing article identity changes only the draft and retains 
     prepared,
   );
   assert.match(editor.container.textContent!, /编辑框中的内容仍然保留/);
+});
+
+test("draft recovery rechecks access and preserves the original write preconditions after remote edits", async (t) => {
+  let allowed = true;
+  const patches: {
+    baseCommit: string;
+    changes: { expectedRevision: string; content: string }[];
+  }[] = [];
+  const cached: LocalDraft = {
+    version: 1,
+    id: "recovery",
+    accountId: "owner",
+    workspaceId,
+    path: "private/note.md",
+    source: "My unsaved draft",
+    updatedAt: 1,
+    baseline: {
+      path: "private/note.md",
+      commit: "old-commit",
+      revision: "old-revision",
+      expectedAbsence: false,
+    },
+  };
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "new-commit", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return allowed
+          ? json({
+              path: cached.path,
+              source: "Someone else's newer text",
+              commit: "new-commit",
+              revision: "new-revision",
+              expectedAbsence: false,
+              publicScope: false,
+              diagnostics: [],
+            })
+          : new Response("{}", { status: 403 });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "preview", galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/repository/patch")) {
+        patches.push(JSON.parse(String(options?.body)));
+        return new Response("{}", { status: 409 });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    () => {},
+    (window) => retainDraft(window.localStorage, cached),
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const button = (label: string) => {
+    const found = [...editor.container.querySelectorAll("button")].find(
+      (item) => item.textContent?.trim() === label,
+    );
+    assert.ok(found, label);
+    return found;
+  };
+  const body = () =>
+    (editor.container.querySelector("textarea") as Control).value;
+  assert.equal(body(), "Someone else's newer text");
+  assert.equal(patches.length, 0);
+  allowed = false;
+  await editor.act(async () => button("恢复草稿").click());
+  await settle(editor.act);
+  assert.equal(body(), "Someone else's newer text");
+  assert.match(editor.container.textContent!, /无权/);
+  allowed = true;
+  await editor.act(async () => button("恢复草稿").click());
+  await settle(editor.act);
+  assert.equal(body(), cached.source);
+  await editor.act(async () => button("保存").click());
+  await settle(editor.act);
+  assert.equal(patches[0]?.baseCommit, "old-commit");
+  assert.equal(patches[0]?.changes[0].expectedRevision, "old-revision");
+  assert.equal(patches[0]?.changes[0].content, cached.source);
+  assert.equal(body(), cached.source);
 });
 
 test("opening and saving a file after selecting a folder retains that folder", async (t) => {

@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/browser-api";
 import { useWorkspaceApi } from "./workspace-context";
 import { EditorPublicPage } from "./editor-public-page";
+import { DraftRecovery, useEditorRecovery } from "./editor-recovery";
+import { DraftLibrary } from "./draft-library";
+import { recoveredFile, type LocalDraft } from "../lib/local-drafts";
 import type {
   GalleryStatus,
   RepositoryFile,
@@ -43,7 +46,7 @@ export function Editor({
   onNavigate,
 }: {
   identity: Identity;
-  onDirtyChange: (dirty: boolean) => void;
+  onDirtyChange: (dirty: boolean, discard?: () => void) => void;
   onNavigate: (location: ContentLocation, replace?: boolean) => void;
 }) {
   const api = useWorkspaceApi();
@@ -93,6 +96,14 @@ export function Editor({
     ((file.expectedAbsence && writable) ||
       source !== (file.source ?? "") ||
       path !== file.path);
+  const recovery = useEditorRecovery(
+    identity,
+    file,
+    path,
+    source,
+    dirty,
+    writable,
+  );
   async function reloadTree() {
     const next = await api<RepositoryTree>("/api/admin/repository/tree");
     setTree(next);
@@ -118,13 +129,13 @@ export function Editor({
     };
   }, []);
   useEffect(() => {
-    onDirtyChange(dirty);
+    onDirtyChange(dirty, recovery.discard);
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     if (dirty) window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty, onDirtyChange]);
+  }, [dirty, onDirtyChange, recovery.discard]);
   useEffect(() => {
     setPreview({ galleryStatus: "COMPLETE" });
     setPreviewError("");
@@ -198,6 +209,8 @@ export function Editor({
             "文件夹已经存在，请换一个名称，或在文件树选择它。",
           );
       }
+      if (dirty) recovery.discard();
+      recovery.opened(result);
       setPreview({ galleryStatus: "COMPLETE" });
       setFile(result);
       setPath(result.path);
@@ -237,6 +250,45 @@ export function Editor({
       setSearch({ query, items: result.items });
     } catch (error) {
       setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function restoreDraft(draft: LocalDraft) {
+    if (
+      dirty &&
+      !(await confirm({
+        title: "恢复本机草稿？",
+        description:
+          "当前编辑框的修改将被所选草稿替换。请先保存需要保留的内容。",
+        confirmLabel: "恢复草稿",
+      }))
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      const current = await api<RepositoryFile>(
+        "/api/admin/repository/file?" +
+          new URLSearchParams({ path: draft.path }),
+      );
+      if (!alive.current) return;
+      if (current.source === null && !current.expectedAbsence)
+        throw new Error("unreadable file");
+      const restored = recoveredFile(current, draft);
+      recovery.discard();
+      recovery.adopt(draft);
+      setFile(restored);
+      setSource(draft.source);
+      setPath(draft.path);
+      setConflict(restored !== current);
+      setNotice(
+        restored === current
+          ? "草稿已恢复到编辑框，请预览后保存。"
+          : "草稿已恢复，但仓库文件已有变化。原版本检查已保留，请先复制需要的修改并重新读取文件。",
+      );
+    } catch (failure) {
+      setError(message(failure));
     } finally {
       setBusy(false);
     }
@@ -315,6 +367,7 @@ export function Editor({
         source,
         remove,
       );
+      recovery.discard();
       if (remove) {
         pageRequest.current++;
         setPagePending(false);
@@ -415,6 +468,7 @@ export function Editor({
               new URLSearchParams({ path: nextPath }),
           );
           if (!alive.current) return true;
+          recovery.opened(current);
           setFile(current);
           setSource(current.source ?? "");
           setPath(current.path);
@@ -518,6 +572,11 @@ export function Editor({
             刷新
           </button>
         </div>
+        <DraftLibrary
+          identity={identity}
+          disabled={busy}
+          onOpen={(draftPath) => void open(draftPath)}
+        />
         <section className="content-creation" aria-label="当前目录与新建">
           <p className="selected-folder">当前目录：{folder || "仓库根目录"}</p>
           <button
@@ -732,6 +791,28 @@ export function Editor({
         {notice && (
           <p className="notice" role="status">
             {notice}
+          </p>
+        )}
+        {file && (
+          <DraftRecovery
+            drafts={recovery.available}
+            disabled={busy || !writable || unreadable}
+            onRestore={(draft) => void restoreDraft(draft)}
+            onForget={async (draft) => {
+              if (
+                await confirm({
+                  title: "删除这份本机草稿？",
+                  description: "这份未保存正文将从浏览器移除，仓库文件不变。",
+                  confirmLabel: "删除本机草稿",
+                })
+              )
+                await recovery.forget(draft);
+            }}
+          />
+        )}
+        {recovery.status && (
+          <p className="muted" role="status">
+            {recovery.status}
           </p>
         )}
         {file ? (
