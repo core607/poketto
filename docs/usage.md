@@ -163,6 +163,25 @@ or collisions refuse the move. Publishing does not enable a disabled website or
 override exclusions or account restrictions. The public-page status remains the
 authority for availability. Move the containing folder when media must travel with it.
 
+**File history** is available to members with private-read permission. It lists
+changes to the selected literal path along remote main's first-parent history;
+merge entries compare the resulting tree with the first parent. It does not follow
+renames. Select a version to compare its exact source with the current editor text,
+including unsaved changes. Large comparisons show source side by side. Deleted,
+binary, oversized and managed-media versions cannot supply restoration text.
+**Restore to editor** requires current write permission and confirms replacement
+of unsaved text. It retains the current file's revision/absence precondition;
+**Save** creates a new commit and still refuses concurrent changes. It never resets
+Git history or saves automatically.
+
+`GET /api/admin/workspaces/{workspaceId}/repository/history` accepts `path`, an
+optional exact `commit`, `offset` (default 0) and `limit` (default 20, maximum 32).
+Pages inspect at most 256 commits for changes. `nextOffset` counts inspected
+commits, so an empty page can still have a continuation; pass its pinned `commit`
+when continuing. Historical metadata and bytes require current private-read access,
+even for a currently public path. The [history record](../notes/implemented/2026-09-23-browser-history-and-restoration.md)
+owns traversal and comparison bounds.
+
 Unsaved text is retained as plaintext recovery data in this browser, scoped by
 account, space, path and editing tab. **Local drafts** lists accessible recovery
 records; opening a file offers restoration only after a fresh authorized read.
