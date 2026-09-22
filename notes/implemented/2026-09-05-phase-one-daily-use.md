@@ -5,7 +5,7 @@ Date: 2026-09-05
 The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) supersedes
 standalone agent file-read, list and patch tool selections in this record. Shared
 service contracts and outstanding delivery requirements remain applicable.
-The [MCP OAuth extension](2026-09-11-mcp-oauth.md) adds owner-approved client connections. The [multi-user delivery](2026-09-11-multiuser-workspaces-and-discovery.md) adds invitation-gated registration and connecting existing repositories; social login and automatic provider-side repository creation remain excluded. [Account working copies](2026-09-14-account-working-copies.md) owns durable disk storage, shared account/workspace identity and transport-independent execution.
+The [MCP OAuth extension](2026-09-11-mcp-oauth.md) adds owner-approved client connections. The [multi-user delivery](2026-09-11-multiuser-workspaces-and-discovery.md) adds multiple spaces and connecting existing repositories. [Consumer identity](2026-09-20-consumer-identity-and-site-policy.md) replaces its invitation-gated registration with verified email and Google login, and [GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md) add explicit repository creation; automatic creation during registration remains excluded. [Account working copies](2026-09-14-account-working-copies.md) owns durable disk storage, shared account/workspace identity and transport-independent execution.
 
 Status: Implemented
 

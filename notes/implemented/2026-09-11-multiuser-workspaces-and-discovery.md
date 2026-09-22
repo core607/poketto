@@ -6,6 +6,8 @@ Date: 2026-09-11
 supersedes invitation-only registration and unrestricted account eligibility to
 connect repositories. New identities start as viewers; creator eligibility and
 all-owner website eligibility supplement this record's workspace boundaries.
+[GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md)
+add the user-authorized repository creation this record excludes.
 
 ## Problem
 
