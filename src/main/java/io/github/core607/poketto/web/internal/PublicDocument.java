@@ -8,6 +8,7 @@ import io.github.core607.poketto.workspace.PublicAuthorNames;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /** Public Markdown body only; private frontmatter and raw source never cross this mapper. */
 record PublicDocument(
@@ -27,7 +28,8 @@ record PublicDocument(
         List<ResolvedMedia.GalleryImage> gallery,
         ResolvedMedia.GalleryStatus galleryStatus,
         PublicCollections.Navigation navigation,
-        String authorName) {
+        String authorName,
+        UUID articleId) {
     static PublicDocument of(
             PublicArticle article, PublicContentSnapshot snapshot, ResolvedMedia media, String workspaceAuthor) {
         return new PublicDocument(
@@ -47,6 +49,7 @@ record PublicDocument(
                 media.gallery(),
                 media.galleryStatus(),
                 snapshot.collections().forArticle(article.route()),
-                PublicAuthorNames.select(article.publicAuthor(), workspaceAuthor));
+                PublicAuthorNames.select(article.publicAuthor(), workspaceAuthor),
+                article.articleId());
     }
 }

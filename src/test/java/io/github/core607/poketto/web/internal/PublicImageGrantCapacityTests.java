@@ -70,7 +70,7 @@ class PublicImageGrantCapacityTests {
                 at,
                 at.plusSeconds(3600),
                 List.of(new PublicArticle(
-                        "index.md", "/", "Readable", "# Readable body", List.of(), at, at, true, "")));
+                        "index.md", "/", "Readable", "# Readable body", List.of(), at, at, true, "", null)));
         var snapshots = mock(PublicContentSnapshots.class);
         when(snapshots.withCurrent(any(), any()))
                 .thenAnswer(call -> ((Function<PublicContentSnapshot, ?>) call.getArgument(1)).apply(snapshot));
@@ -128,7 +128,16 @@ class PublicImageGrantCapacityTests {
         List<PublicArticle> articles = new ArrayList<>();
         for (int i = 0; i < 129; i++) {
             articles.add(new PublicArticle(
-                    "article-" + i + ".md", "/article-" + i, "Still readable", body, List.of(), at, at, false, ""));
+                    "article-" + i + ".md",
+                    "/article-" + i,
+                    "Still readable",
+                    body,
+                    List.of(),
+                    at,
+                    at,
+                    false,
+                    "",
+                    null));
         }
         var snapshot = new PublicContentSnapshot(
                 workspace.id(), Optional.of("b".repeat(40)), at, at.plusSeconds(3600), articles);

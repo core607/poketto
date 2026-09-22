@@ -187,7 +187,16 @@ class PublicSiteSearchTests {
 
     private static PublicArticle article(String route, String title) {
         return new PublicArticle(
-                route.substring(1) + ".md", route, title, "Needle body", List.of("notes"), CREATED, CREATED, false, "");
+                route.substring(1) + ".md",
+                route,
+                title,
+                "Needle body",
+                List.of("notes"),
+                CREATED,
+                CREATED,
+                false,
+                "",
+                null);
     }
 
     private static final class FakePublications implements WorkspacePublications {

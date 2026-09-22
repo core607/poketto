@@ -331,6 +331,7 @@ test("creation prepares private folder drafts, saves index.md explicitly, and re
   );
   const textarea = editor.container.querySelector("textarea") as Control | null;
   assert.ok(textarea);
+  assert.match(textarea.value, /^---\nid: [0-9a-f-]{36}\n---\n$/);
   Object.getOwnPropertyDescriptor(
     editor.window.HTMLTextAreaElement.prototype,
     "value",
@@ -370,6 +371,85 @@ test("creation prepares private folder drafts, saves index.md explicitly, and re
   assert.match(editor.container.textContent!, /同名文件已经存在/);
   assert.equal(patches.length, 1);
   assert.equal(navigations.length, navigationCount);
+});
+
+test("preparing an existing article identity changes only the draft and retains it on a failed save", async (t) => {
+  const original = "# Existing\n\nUnsaved work";
+  const prepared =
+    "---\nid: 12345678-1234-4234-8234-123456789abc\n---\n" + original;
+  const requests: string[] = [];
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: "private/note.md",
+          source: original,
+          revision: "revision",
+          commit: "before",
+          expectedAbsence: false,
+          publicScope: false,
+          diagnostics: [],
+        });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: original, galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/repository/article-identity")) {
+        requests.push("prepare");
+        assert.deepEqual(JSON.parse(String(options?.body)), {
+          path: "private/note.md",
+          source: original,
+        });
+        return json({
+          source: prepared,
+          articleId: "12345678-1234-4234-8234-123456789abc",
+        });
+      }
+      if (url.pathname.endsWith("/repository/patch")) {
+        requests.push("save");
+        const patch = JSON.parse(String(options?.body));
+        assert.equal(patch.baseCommit, "before");
+        assert.equal(patch.changes[0].expectedRevision, "revision");
+        assert.equal(patch.changes[0].content, prepared);
+        return new Response("{}", {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    () => {},
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const button = (label: string) => {
+    const found = [...editor.container.querySelectorAll("button")].find(
+      (item) => item.textContent?.trim() === label,
+    );
+    assert.ok(found, label);
+    return found;
+  };
+  await editor.act(async () => button("启用文章互动").click());
+  await settle(editor.act);
+  assert.deepEqual(requests, ["prepare"]);
+  assert.equal(
+    (editor.container.querySelector("textarea") as Control | null)?.value,
+    prepared,
+  );
+  assert.match(editor.container.textContent!, /点击保存后写入仓库/);
+  await editor.act(async () => button("保存").click());
+  await settle(editor.act);
+  assert.deepEqual(requests, ["prepare", "save"]);
+  assert.equal(
+    (editor.container.querySelector("textarea") as Control | null)?.value,
+    prepared,
+  );
+  assert.match(editor.container.textContent!, /编辑框中的内容仍然保留/);
 });
 
 test("opening and saving a file after selecting a folder retains that folder", async (t) => {

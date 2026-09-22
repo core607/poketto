@@ -2,6 +2,14 @@ import type { Diagnostic } from "../lib/types";
 
 const descriptions = new Map([
   [
+    "INVALID_ARTICLE_ID",
+    "文章仍可阅读，但 id 不是有效的小写 UUID。请在源码中修正，或移除错误字段后重新添加文章 ID。",
+  ],
+  [
+    "DUPLICATE_ARTICLE_ID",
+    "多个文件共用文章 ID。复制为另一篇文章时请换用新 ID；同时公开的重复 ID 无法用于关联互动。",
+  ],
+  [
     "INFERRED_METADATA",
     "未填写的标题由正文或文件名补充，日期取自 Git 历史，无须补齐元数据。",
   ],

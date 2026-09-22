@@ -246,8 +246,13 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
 
     static int bodyLimit(String path) {
         path = WorkspaceHttpRoutes.operation(path);
+        if (path.startsWith("/api/auth/community/")) {
+            return 64 * 1024;
+        }
         return switch (path) {
-            case "/api/admin/repository/patch", "/api/admin/repository/preview" -> 6 * 1024 * 1024;
+            case "/api/admin/repository/patch",
+                    "/api/admin/repository/preview",
+                    "/api/admin/repository/article-identity" -> 6 * 1024 * 1024;
             case "/api/admin/assets" -> 17 * 1024 * 1024;
             case "/api/admin/media" -> 128 * 1024 * 1024;
             default -> MAX_AUTH_BODY;

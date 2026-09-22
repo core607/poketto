@@ -1,6 +1,8 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ArticleIdentityDrafts;
 import io.github.core607.poketto.content.ContentLimits;
+import io.github.core607.poketto.content.DocumentId;
 import io.github.core607.poketto.workspace.PublicAuthorNames;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +13,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -65,7 +68,46 @@ final class RepositoryMarkdownParser {
                 route,
                 !frontmatter.present(),
                 PublicAuthorNames.normalize(
-                        optionalText(metadata, "public_author").orElse("")));
+                        optionalText(metadata, "public_author").orElse("")),
+                articleId(metadata),
+                metadata != null && metadata.has("id") && articleId(metadata) == null);
+    }
+
+    private static UUID articleId(JsonNode metadata) {
+        if (metadata == null || !metadata.has("id") || !metadata.get("id").isString()) {
+            return null;
+        }
+        try {
+            return DocumentId.parse(metadata.get("id").stringValue()).value();
+        } catch (IllegalArgumentException invalid) {
+            // Optional identity must not turn previously readable Markdown into invalid content.
+            return null;
+        }
+    }
+
+    ArticleIdentityDrafts.Draft prepareIdentity(String source) {
+        String bom = source.startsWith("\ufeff") ? "\ufeff" : "";
+        String text = source.substring(bom.length());
+        Frontmatter frontmatter = frontmatter(text);
+        UUID existing = articleId(frontmatter.metadata());
+        if (existing != null) {
+            return new ArticleIdentityDrafts.Draft(source, existing);
+        }
+        if (frontmatter.metadata() != null && frontmatter.metadata().has("id")) {
+            throw new IllegalArgumentException(
+                    "existing article id must be a canonical lowercase UUID; correct it in source");
+        }
+        UUID id = UUID.randomUUID();
+        String newline = text.indexOf('\n') > 0 && text.charAt(text.indexOf('\n') - 1) == '\r' ? "\r\n" : "\n";
+        String field = "id: " + id + newline;
+        String prepared;
+        if (frontmatter.present()) {
+            int insertion = text.indexOf('\n') + 1;
+            prepared = bom + text.substring(0, insertion) + field + text.substring(insertion);
+        } else {
+            prepared = bom + "---" + newline + field + "---" + newline + text;
+        }
+        return new ArticleIdentityDrafts.Draft(prepared, id);
     }
 
     /** The frontmatter mapping (null when absent) and the body that follows it. */
@@ -231,5 +273,7 @@ final class RepositoryMarkdownParser {
             Optional<Instant> updatedAt,
             String route,
             boolean inferredMetadata,
-            String publicAuthor) {}
+            String publicAuthor,
+            UUID articleId,
+            boolean invalidArticleId) {}
 }

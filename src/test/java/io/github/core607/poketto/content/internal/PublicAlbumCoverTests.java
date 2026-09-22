@@ -252,7 +252,7 @@ class PublicAlbumCoverTests {
     }
 
     private static PublicArticle article(String path, String route, boolean folderPage, String body) {
-        return new PublicArticle(path, route, "Album", body, List.of(), AT, AT, folderPage, "");
+        return new PublicArticle(path, route, "Album", body, List.of(), AT, AT, folderPage, "", null);
     }
 
     private static PublicContentSnapshot snapshot(WorkspaceId workspace, String commit, PublicArticle article) {
