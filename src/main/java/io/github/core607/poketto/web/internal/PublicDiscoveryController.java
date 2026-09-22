@@ -20,7 +20,10 @@ class PublicDiscoveryController {
     ResponseEntity<PublicDiscovery.Page> discover(
             @RequestParam(required = false) String batch,
             @RequestParam(required = false) String afterBatch,
+            @RequestParam(required = false) String tag,
             @RequestParam(defaultValue = "0") int offset) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(discovery.page(batch, afterBatch, offset));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(discovery.page(batch, afterBatch, offset, tag));
     }
 }

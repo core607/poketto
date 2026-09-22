@@ -263,7 +263,8 @@ class CommunityIntegrationIT {
                     now,
                     false,
                     "",
-                    UUID.randomUUID()));
+                    UUID.randomUUID(),
+                    false));
         }
         snapshots.snapshot =
                 new PublicContentSnapshot(workspace, Optional.of("b".repeat(40)), now, now.plusSeconds(3600), articles);
@@ -469,7 +470,8 @@ class CommunityIntegrationIT {
                                 now,
                                 false,
                                 "Byline",
-                                first),
+                                first,
+                                false),
                         new PublicArticle(
                                 "public/second.md",
                                 "/second",
@@ -480,7 +482,8 @@ class CommunityIntegrationIT {
                                 now,
                                 false,
                                 "",
-                                second)));
+                                second,
+                                false)));
     }
 
     private static void await(CountDownLatch latch) {

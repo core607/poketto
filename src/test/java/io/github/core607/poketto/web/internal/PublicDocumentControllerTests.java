@@ -219,7 +219,8 @@ class PublicDocumentControllerTests {
                                     VERIFIED,
                                     false,
                                     "",
-                                    null),
+                                    null,
+                                    false),
                             new PublicArticle(
                                     "older.md",
                                     "/older",
@@ -230,7 +231,8 @@ class PublicDocumentControllerTests {
                                     VERIFIED,
                                     false,
                                     "",
-                                    null)));
+                                    null,
+                                    false)));
         }
 
         @Override

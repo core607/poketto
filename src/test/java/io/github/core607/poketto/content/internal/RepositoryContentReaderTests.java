@@ -258,12 +258,13 @@ class RepositoryContentReaderTests {
     void optionalMetadataOverridesFallbacksButUnknownMetadataIsPreserved() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         String source =
-                "---\ntitle: Authored\ndate: 2026-08-20\nupdated_at: 2026-09-02T10:00:00+08:00\ntags: [知识, Git]\ncustom: keep me\nroute: /chosen\n---\n# Heading\n";
+                "---\ntitle: Authored\ndate: 2026-08-20\nupdated_at: 2026-09-02T10:00:00+08:00\ntags: [知识, Git]\nfeatured: true\ncustom: keep me\nroute: /chosen\n---\n# Heading\n";
         fixture.commitRemote(workspace, Map.of("note.md", bytes(source)));
         var tree = new JGitRepositoryContentReader(fixture.authority()).readTree(workspace, Optional.empty());
         assertThat(tree.diagnostics()).isEmpty();
         var document = tree.documents().getFirst();
         assertThat(document.title()).isEqualTo("Authored");
+        assertThat(document.featured()).isTrue();
         assertThat(document.createdAt()).isEqualTo(Instant.parse("2026-08-20T00:00:00Z"));
         assertThat(document.updatedAt()).isEqualTo(Instant.parse("2026-09-02T02:00:00Z"));
         assertThat(document.tags()).containsExactly("知识", "Git");

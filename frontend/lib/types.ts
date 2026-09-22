@@ -6,6 +6,7 @@ export type Snapshot = {
 };
 export type DiscoveryPage = {
   batch: string;
+  tag: string;
   expiresAt: string;
   offset: number;
   limit: number;

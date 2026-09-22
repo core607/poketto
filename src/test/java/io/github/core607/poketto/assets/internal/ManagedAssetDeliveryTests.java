@@ -92,7 +92,8 @@ class ManagedAssetDeliveryTests {
                         now,
                         false,
                         "",
-                        null)));
+                        null,
+                        false)));
         PublicContentSnapshots snapshots = mock(PublicContentSnapshots.class);
         when(snapshots.withCurrent(eq(workspace), any()))
                 .thenAnswer(

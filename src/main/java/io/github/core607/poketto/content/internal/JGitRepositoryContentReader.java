@@ -455,7 +455,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 RepositoryPathRules.folderPage(file.path()),
                 RepositoryPathRules.privatePath(file.path()),
                 metadata.publicAuthor(),
-                metadata.articleId());
+                metadata.articleId(),
+                metadata.featured());
     }
 
     @Override
