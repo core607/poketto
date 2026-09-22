@@ -77,6 +77,25 @@ class WorkerSocketTests {
     private static final WorkspaceId WORKSPACE = WorkspaceId.random();
 
     @Test
+    void sandboxFreshnessReachesTheExecutionResultWithoutChangingTheCopy() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            assertThat(first.freshSandbox()).isTrue();
+            peer.freshSandbox = false;
+            var reused = command(executor, actor, first.copyId());
+            assertThat(reused.freshSandbox()).isFalse();
+            assertThat(reused.copyId()).isEqualTo(first.copyId());
+            peer.freshSandbox = true;
+            var restarted = command(executor, actor, first.copyId());
+            assertThat(restarted.freshSandbox()).isTrue();
+            assertThat(restarted.copyId()).isEqualTo(first.copyId());
+            assertThat(peer.operations("OPEN")).hasSize(1);
+        }
+    }
+
+    @Test
     void failedGitInstallationLeavesInspectionAvailableWithoutRetryingOnEachCommand() throws Exception {
         var actor = principal();
         var saves = mock(SelectedFileSaves.class);
@@ -1377,6 +1396,7 @@ class WorkerSocketTests {
         private volatile boolean executionCapacity;
         private volatile boolean baselineUnavailable;
         private volatile String terminationReason = "normal";
+        private volatile boolean freshSandbox = true;
         private volatile String attachRefusal;
         private volatile String stdout = "fixture result";
 
@@ -1467,6 +1487,7 @@ class WorkerSocketTests {
                     hello.put("diskCopyProtocol", 1);
                     hello.put("gitBaselineProtocol", 1);
                     hello.put("workspaceSyncProtocol", 1);
+                    hello.put("leaseSandboxProtocol", 1);
                     response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()
@@ -1601,29 +1622,29 @@ class WorkerSocketTests {
                     if (stallExec) {
                         Thread.sleep(500);
                     }
-                    response.put(
-                            "result",
-                            Map.of(
-                                    "commit",
-                                    COMMIT,
-                                    "exitCode",
-                                    0,
-                                    "stdout",
-                                    stdout,
-                                    "stderr",
-                                    "",
-                                    "stdoutTruncated",
-                                    false,
-                                    "stderrTruncated",
-                                    false,
-                                    "timedOut",
-                                    false,
-                                    "terminationReason",
-                                    terminationReason,
-                                    "artifacts",
-                                    Map.of(),
-                                    "artifactErrors",
-                                    Map.of()));
+                    var result = new LinkedHashMap<String, Object>(Map.of(
+                            "commit",
+                            COMMIT,
+                            "exitCode",
+                            0,
+                            "stdout",
+                            stdout,
+                            "stderr",
+                            "",
+                            "stdoutTruncated",
+                            false,
+                            "stderrTruncated",
+                            false,
+                            "timedOut",
+                            false,
+                            "terminationReason",
+                            terminationReason,
+                            "artifacts",
+                            Map.of(),
+                            "artifactErrors",
+                            Map.of()));
+                    result.put("freshSandbox", freshSandbox);
+                    response.put("result", result);
                     if (Set.of(
                                     "cancelled",
                                     "session_closed",

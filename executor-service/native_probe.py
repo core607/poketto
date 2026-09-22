@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--tools', type=Path)
     parser.add_argument('--baseline-only', action='store_true')
+    parser.add_argument('--lease-sandbox-only', action='store_true')
     args = parser.parse_args()
     assert os.geteuid() == 0
     root = args.root.resolve(strict=True)
@@ -71,7 +72,7 @@ def main():
         'maxRequests': 4096, 'maxConnections': 32, 'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
         'diskBytes': 33554432, 'diskInodes': 8192, 'memoryBytes': 201326592,
         'temporaryBytes': 8388608, 'temporaryInodes': 1024,
-        'tasksMax': 48, 'cpuQuotaPercent': 50, 'maxTimeoutMillis': 30000,
+        'tasksMax': 48, 'cpuQuotaPercent': 50, 'idleUnitSeconds': 2 if args.lease_sandbox_only else 1800, 'maxTimeoutMillis': 30000,
         'initTimeoutMillis': 15000, 'copyRoot': str(disk_pool), 'poolBytes': 512 * 1024 * 1024}
     (root / 'config.json').write_text(json.dumps(config))
     config_path = str(root / 'config.json')
@@ -161,13 +162,8 @@ def main():
         (exports / 'updated.bundle').rename(updated_bundle)
         assert execute(resumed, 'printf "saved through authority" > article.md; printf unsaved > unselected.md')['exitCode'] == 0
         execution = str(uuid.uuid4())
-        future = pool.submit(execute, resumed, 'sleep 4; git rev-parse HEAD; git status --porcelain; cat unselected.md', 15000, execution)
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            units = run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*'])
-            if units:
-                break
-            time.sleep(.05)
+        future = pool.submit(execute, resumed, 'printf ' + execution + ' > .active-probe; sleep 4; git rev-parse HEAD; git status --porcelain; cat unselected.md', 15000, execution)
+        wait_execution(resumed, execution)
         updated_reply = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
                             'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
                             'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
@@ -184,8 +180,8 @@ def main():
         boot = start()['workerBootId']
         resumed = attach(resumed)
         execution = str(uuid.uuid4())
-        future = pool.submit(execute, resumed, 'sleep 3; printf parent-survived', 10000, execution)
-        wait_units(1)
+        future = pool.submit(execute, resumed, 'printf ' + execution + ' > .active-probe; sleep 3; printf parent-survived', 10000, execution)
+        wait_execution(resumed, execution)
         refused = send(resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
                        'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
                        'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
@@ -203,8 +199,8 @@ def main():
         boot = start()['workerBootId']
         resumed = attach(resumed)
         execution = str(uuid.uuid4())
-        future = pool.submit(execute, resumed, 'sleep 30', 30000, execution)
-        wait_units(1)
+        future = pool.submit(execute, resumed, 'printf ' + execution + ' > .active-probe; sleep 30', 30000, execution)
+        wait_execution(resumed, execution)
         update = pool.submit(send, resumed, 'BASELINE', {'executionId': execution, 'exportId': export,
                              'bundleSha256': hashlib.sha256(updated_bundle.read_bytes()).hexdigest(),
                              'bundleBytes': updated_bundle.stat().st_size, 'commit': updated})
@@ -218,6 +214,15 @@ def main():
         passed('parent-cancellation-contains-the-active-baseline-helper-before-releasing-the-copy')
         return resumed
 
+    def wait_execution(identity, execution):
+        marker = runtime / 'sessions' / identity['leaseId'] / 'work/repository/.active-probe'
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if marker.exists() and marker.read_text() == execution:
+                return
+            time.sleep(.05)
+        raise AssertionError('Expected command did not enter its shell')
+
     def wait_units(count):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
@@ -226,6 +231,73 @@ def main():
                 return
             time.sleep(.02)
         raise AssertionError('Expected active command units were not observed')
+
+    def lease_sandbox_checks(identity):
+        def units():
+            return run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*']).splitlines()
+
+        def contained(unit):
+            group = Path('/sys/fs/cgroup') / properties(resource_pool.name)['ControlGroup'].lstrip('/') / unit
+            assert not group.exists() or not any(p.read_text().strip() for p in group.rglob('cgroup.procs'))
+
+        first = execute(identity, 'mkdir nested; cd nested; export KEPT=state; '
+                        'probe_function() { printf "$KEPT"; }; alias probe_alias=probe_function; '
+                        'printf temporary > /tmp/lease-state; sleep 60 & background=$!; '
+                        'printf captured > ../capture.md')
+        assert first['exitCode'] == 0 and first['freshSandbox'], first
+        unit = units()[0].split()[0]
+        group = Path('/sys/fs/cgroup') / properties(unit)['ControlGroup'].lstrip('/')
+        memory = int((group / 'memory.current').read_text())
+        second = execute(identity, 'test "${PWD##*/}" = nested; test "$(cat /tmp/lease-state)" = temporary; '
+                         'kill -0 "$background"; probe_alias')
+        assert second['exitCode'] == 0 and second['stdout'] == 'state' and not second['freshSandbox'], second
+        assert units()[0].split()[0] == unit
+        passed('lease-shell-cwd-environment-function-alias-tmp-and-background-persist', idleMemoryBytes=memory)
+        captured = send(identity, 'CAPTURE_BEGIN', {'executionId': '', 'writes': ['capture.md'], 'deletes': []})
+        assert captured.get('ok'), captured
+        reference = {'executionId': '', 'captureId': captured['captureId']}
+        chunk = send(identity, 'CAPTURE_READ', {**reference, 'index': 0, 'offset': 0, 'limit': 65536})
+        assert chunk.get('ok') and base64.b64decode(chunk['data']) == b'captured', chunk
+        assert send(identity, 'CAPTURE_RELEASE', reference).get('ok')
+        assert (group / 'cgroup.freeze').read_text().strip() == '0'
+        passed('frozen-capture-between-commands')
+        timings = []
+        for _ in range(20):
+            started = time.monotonic()
+            reply = execute(identity, 'true')
+            assert reply['exitCode'] == 0 and not reply['freshSandbox'], reply
+            timings.append((time.monotonic() - started) * 1000)
+        passed('lease-reused-command-latency', count=len(timings), meanMillis=round(sum(timings) / len(timings), 2))
+        timeout = execute(identity, 'sleep 30', 100)
+        assert timeout['timedOut'] and not timeout['freshSandbox'], timeout
+        contained(unit)
+        assert send(identity, 'RENEW').get('ok')
+        restarted = execute(identity, 'test "${KEPT-unset}" = unset; test ! -e /tmp/lease-state; test -f capture.md')
+        assert restarted['exitCode'] == 0 and restarted['freshSandbox'], restarted
+        passed('timeout-contains-unit-and-restarts-within-the-same-lease')
+        unit = units()[0].split()[0]
+        limited = execute(identity, 'yes output')
+        assert limited['terminationReason'] == 'output_limit' and not limited['freshSandbox'], limited
+        contained(unit)
+        assert send(identity, 'RENEW').get('ok')
+        restarted = execute(identity, 'test -f capture.md')
+        assert restarted['exitCode'] == 0 and restarted['freshSandbox'], restarted
+        passed('output-limit-contains-unit-and-restarts-within-the-same-lease')
+        unit = units()[0].split()[0]
+        deadline = time.monotonic() + 8
+        while units() and time.monotonic() < deadline:
+            time.sleep(.1)
+        assert not units()
+        contained(unit)
+        assert send(identity, 'RENEW').get('ok')
+        restarted = execute(identity, 'test -f capture.md')
+        assert restarted['exitCode'] == 0 and restarted['freshSandbox'], restarted
+        passed('idle-unit-expires-while-lease-renews')
+        unit = units()[0].split()[0]
+        assert send(identity, 'CLOSE').get('ok')
+        contained(unit)
+        assert not (runtime / 'sessions' / identity['leaseId']).exists()
+        passed('close-contains-idle-sandbox-and-releases-mount')
 
     try:
         assert run(['findmnt', '-n', '-o', 'FSTYPE', '-T', str(root)]) != 'tmpfs'
@@ -256,6 +328,10 @@ def main():
         assert supervisor_umask == '0077'
         started = time.monotonic()
         first, first_stop = new_session()
+        if args.lease_sandbox_only:
+            lease_sandbox_checks(first)
+            print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'scenario': 'lease-sandbox-only', 'source': 'synthetic-only'}), flush=True)
+            return
         if args.baseline_only:
             first_stop.set()
             ended = baseline_checks(first)
@@ -469,6 +545,8 @@ def main():
             'resourcePoolSha256': hashlib.sha256((root / 'resource_pool.py').read_bytes()).hexdigest(),
             'nativePoolSha256': hashlib.sha256((root / 'native_pool.py').read_bytes()).hexdigest(),
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
+            'commandChannelSha256': hashlib.sha256((root / 'command_channel.py').read_bytes()).hexdigest(),
+            'shellLoopSha256': hashlib.sha256((root / 'shell_loop.py').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
     finally:

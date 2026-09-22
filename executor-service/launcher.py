@@ -60,10 +60,8 @@ def main():
             'test ! -e "$1/work/repository/.git/objects/info/alternates"; '
             'test -z "$(git -C "$1/work/repository" remote)"',
             'initialize', str(root), record['commit']]
-    elif record['mode'] == 'execute':
-        command = ['/bin/bash', '--noprofile', '--norc', '-c',
-                   'cd -- "$1" || exit; exec /bin/bash --noprofile --norc -c "$2"',
-                   'execute', str(root / 'work/repository'), record['command']]
+    elif record['mode'] == 'shell':
+        command = ['/usr/bin/python3', '-I', str(root / 'bootstrap/shell_loop.py'), str(root / 'work/repository')]
     elif record['mode'] == 'baseline':
         command = ['/usr/bin/python3', '-c', INSTALL_BASELINE, str(root), record['commit']]
     else:

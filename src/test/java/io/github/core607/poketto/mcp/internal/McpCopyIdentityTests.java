@@ -95,6 +95,7 @@ class McpCopyIdentityTests {
                         false,
                         false,
                         false,
+                        true,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
                         Map.of(),
@@ -102,6 +103,7 @@ class McpCopyIdentityTests {
         var initial = call(Map.of("expectedCopyId", "new", "command", "pwd"));
         assertThat(initial.isError()).isFalse();
         assertThat(body(initial).path("copyId").stringValue()).isEqualTo(id);
+        assertThat(body(initial).path("freshSandbox").booleanValue()).isTrue();
         when(executor.execute(
                         eq(principal),
                         eq(workspace),
@@ -120,6 +122,7 @@ class McpCopyIdentityTests {
                         false,
                         false,
                         false,
+                        true,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
                         Map.of(),
@@ -238,6 +241,7 @@ class McpCopyIdentityTests {
                         false,
                         false,
                         false,
+                        true,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
                         Map.of(),

@@ -62,6 +62,7 @@ class LeaseBridge:
         self.pending = {}
         self.seen = set()
         self.closed = False
+        self.execution_id = ''
         self.buffer = bytearray()
         self.frame_started = None
         self.path.mkdir(mode=0o750)
@@ -88,18 +89,21 @@ class LeaseBridge:
         if not isinstance(value, dict) or not isinstance(value.get('operation'), str):
             raise BridgeRejected('Invalid bridge request')
         request_id = identifier(value.get('requestId'))
+        execution_id = identifier(value.get('executionId'))
         with self.condition:
             if self.closed:
                 raise BridgeRejected('Session closed')
+            if not self.execution_id or execution_id != self.execution_id:
+                return None
             if value['operation'] == 'ack':
-                if set(value) != {'operation', 'requestId'}:
+                if set(value) != {'operation', 'requestId', 'executionId'}:
                     raise BridgeRejected('Invalid acknowledgement')
                 item = self.pending.get(request_id)
                 if item is not None and item['completed']:
                     (self.responses / (request_id + '.json')).unlink(missing_ok=True)
                     self.pending.pop(request_id)
                 return None
-            if set(value) != {'requestId', 'operation', 'arguments'} or value['operation'] not in OPERATIONS or not isinstance(value['arguments'], dict):
+            if set(value) != {'requestId', 'executionId', 'operation', 'arguments'} or value['operation'] not in OPERATIONS or not isinstance(value['arguments'], dict):
                 raise BridgeRejected('Invalid bridge request')
             if request_id in self.seen or len(self.seen) >= MAX_REQUESTS or len(self.pending) >= MAX_PENDING:
                 raise BridgeRejected('Bridge request capacity or replay limit')
@@ -182,8 +186,10 @@ class LeaseBridge:
             # Update the existing inode: native SRT exposes this file through a read-only bind.
             (self.path / 'state').write_bytes(b'closed\n')
 
-    def reset_command(self):
-        """Call after the command cgroup is empty; abandoned requests cannot enter a later command."""
+    def reset_command(self, execution_id=''):
+        """Call with the cgroup empty or frozen; late background calls keep their old execution ID."""
+        if execution_id:
+            identifier(execution_id)
         with self.reader:
             with self.condition:
                 if self.closed:
@@ -200,3 +206,5 @@ class LeaseBridge:
                     except BlockingIOError:
                         break
                 self.seen.clear()
+                self.execution_id = execution_id
+                (self.path / 'state').write_bytes(execution_id.encode('ascii'))
