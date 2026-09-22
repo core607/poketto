@@ -11,6 +11,8 @@ import time
 import unittest
 import uuid
 
+from shell_loop import MAX_RETAINED_STREAMS
+
 
 class ShellLoopTests(unittest.TestCase):
     def setUp(self):
@@ -113,6 +115,19 @@ class ShellLoopTests(unittest.TestCase):
         # One command's EOF may be pending in the selector when its completion is read.
         current = len(list(Path('/proc', str(self.process.pid), 'fd').iterdir()))
         self.assertLessEqual(current, baseline + 4)
+
+    def test_retained_output_writers_are_bounded_without_resetting_the_shell(self):
+        baseline = len(list(Path('/proc', str(self.process.pid), 'fd').iterdir()))
+        self.execute('VALUE=retained')
+        for _ in range(MAX_RETAINED_STREAMS // 2 + 10):
+            # Retain old pipe writers in bash itself, below the test container's 64-task bound.
+            result, _ = self.execute('exec {held_out}>&1; exec {held_err}>&2')
+            self.assertEqual(0, result['exitCode'])
+        result, output = self.execute('printf "$VALUE"')
+        self.assertEqual(0, result['exitCode'])
+        self.assertEqual(b'retained', output['stdout'])
+        current = len(list(Path('/proc', str(self.process.pid), 'fd').iterdir()))
+        self.assertLessEqual(current, baseline + MAX_RETAINED_STREAMS)
 
     def test_oversized_command_ends_driver_without_evaluation(self):
         self.process.stdin.write(json.dumps({

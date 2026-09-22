@@ -17,6 +17,7 @@ import uuid
 MAX_COMMAND = 65536
 MAX_INPUT = 6 * MAX_COMMAND + 1024
 CHUNK = 8192
+MAX_RETAINED_STREAMS = 128
 
 
 def emit(kind, **fields):
@@ -56,6 +57,8 @@ class ShellLoop:
             raise ValueError('Invalid command identity')
         if not isinstance(command, str) or '\0' in command or not 0 < len(command.encode()) <= MAX_COMMAND:
             raise ValueError('Invalid command source')
+        while len(self.streams) > MAX_RETAINED_STREAMS - 2:
+            self.release_stream(next(iter(self.streams)))
         self.active = identity
         paths = []
         for stream in ('stdout', 'stderr'):
@@ -84,17 +87,20 @@ class ShellLoop:
         except BlockingIOError:
             return 0
         if not data:
-            self.selector.unregister(descriptor)
-            os.close(descriptor)
-            if sentinel is not None:
-                os.close(sentinel)
-            del self.streams[descriptor]
-            path.unlink(missing_ok=True)
+            self.release_stream(descriptor)
             return 0
         if identity == self.active:
             emit('output', executionId=identity, stream=stream, data=base64.b64encode(data).decode())
         # Completed-command writers keep their pipe; later bytes are drained without attribution.
         return len(data)
+
+    def release_stream(self, descriptor):
+        _, _, path, sentinel = self.streams.pop(descriptor)
+        self.selector.unregister(descriptor)
+        os.close(descriptor)
+        if sentinel is not None:
+            os.close(sentinel)
+        path.unlink(missing_ok=True)
 
     def reply(self, raw):
         parts = raw.decode('ascii').split(' ')

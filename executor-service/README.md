@@ -95,6 +95,12 @@ shell exit also reset the unit. Background output after its command completes is
 drained and discarded, never attached to a later command. XFS project quotas bound
 working-tree and history storage.
 
+The shell driver retains at most 128 output readers, including the current pair.
+When background processes keep older pipes open beyond that bound, the oldest
+readers close; a later write to those pipes receives `EPIPE`/`SIGPIPE`. Shell exit
+codes and completion frames are command-reported observations inside the sandbox,
+not proof that background work has stopped. Host cleanup confirms the cgroup is empty.
+
 The worker captures at most 4 MiB of combined stdout/stderr bytes and stops
 the process tree when that limit is exceeded. Each stream returns a preview of
 at most 16 KiB of captured bytes. Longer streams also return immutable artifact

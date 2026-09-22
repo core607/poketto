@@ -40,7 +40,7 @@ One systemd command unit per lease. The lease already is the session boundary: t
 
 - State loss becomes visible instead of constant: timeout, output limit, shell exit, idle cleanup and lease replacement reset it, and the next result says so.
 - systemd's per-unit `Consumed` and memory-peak figures no longer describe one command; per-command resource attribution needs the control group's counters at command boundaries if it is still wanted.
-- Each command has separate output FIFOs. The driver closes attribution at completion and drains later background bytes without adding them to another command. The existing combined output bound still stops the whole unit.
+- Each command has separate output FIFOs. The driver closes attribution at completion and drains later background bytes without adding them to another command. At most 128 readers, including the current pair, remain open; excess oldest readers close and later writers receive `EPIPE`/`SIGPIPE`. The existing combined output bound still stops the whole unit. After containment, the supervisor closes channel pipes before waiting for the host forwarding client so buffered output cannot block cleanup.
 - The shell loop is new code inside the sandbox boundary. The driver is loaded from the root-owned bootstrap and receives commands only through the supervisor's channel; command payloads are evaluated inside SRT.
 - Worker and application ship together: HELLO requires `leaseSandboxProtocol: 1`, every EXEC result contains a boolean `freshSandbox`, and worker configuration requires the idle setting. Missing or coerced protocol fields are rejected.
 

@@ -395,6 +395,9 @@ runtime state; repository files remain. The worker's required `idleUnitSeconds`
 setting defaults to 1800 in the example configuration and accepts 1 through 86400.
 Background processes share the sandbox's resource limits and stop with it. Their
 late output is discarded, and host CLI operations require a current command.
+The driver retains at most 128 output readers including the current command's
+pair. Excess oldest readers close; a later background write can receive
+`EPIPE`/`SIGPIPE`.
 
 A command timeout preserves the current working copy after its process tree is confirmed stopped. The response reports timeout; earlier edits and any partial work from that command remain available under the same `copyId`. The next command gets a fresh `/tmp`. Disk-copy retention is independent of transport and runtime-lease closure. After an interruption, inspect the retained command and write state before retrying; expiry and explicit disposal remove local work.
 

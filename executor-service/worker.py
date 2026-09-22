@@ -956,8 +956,15 @@ class SystemdBackend:
             self.assert_empty(s.unit)
             subprocess.run(['systemctl', 'reset-failed', s.unit], capture_output=True, timeout=5)
         if s.channel is not None:
-            s.channel.process.wait(timeout=5)
+            # systemd-run can still be forwarding buffered output after the unit is empty.
+            # Release its pipes before waiting; no producer may depend on another EXEC to drain them.
             s.channel.close()
+            try:
+                s.channel.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                # The cgroup is already confirmed empty; only the host-side forwarding client remains.
+                s.channel.process.kill()
+                s.channel.process.wait(timeout=5)
             s.channel = None
         for path in s.unit_files:
             path.unlink(missing_ok=True)

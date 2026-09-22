@@ -6,12 +6,38 @@ import sys
 import tempfile
 import unittest
 import uuid
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from artifacts import MAX_OUTPUT_BYTES
 from command_channel import CommandChannel, CommandEnded
+from worker import SystemdBackend
 
 
 class CommandChannelTests(unittest.TestCase):
+    def test_unit_cleanup_releases_a_forwarder_blocked_on_unconsumed_output(self):
+        process = subprocess.Popen(
+            [sys.executable, '-c', "import os; os.write(2,b'ready'); os.write(1,b'x'*16000000)"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.assertEqual(b'ready', process.stderr.read(5))
+            channel = CommandChannel(process)
+            session = SimpleNamespace(unit='already-contained.service', channel=channel,
+                                      unit_files=(), capture=None, incoming=None)
+            backend = SystemdBackend.__new__(SystemdBackend)
+            backend.assert_empty = Mock()
+            with patch('worker.subprocess.run'):
+                backend.stop_unit(session)
+            self.assertIsNotNone(process.poll())
+            self.assertIsNone(session.channel)
+            self.assertEqual('', session.unit)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=3)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                stream.close()
+
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
         self.addCleanup(self.root.cleanup)
