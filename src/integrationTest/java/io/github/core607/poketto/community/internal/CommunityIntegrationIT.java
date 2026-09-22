@@ -99,14 +99,18 @@ class CommunityIntegrationIT {
         policy = new SitePolicyService(jdbc, accounts, auth, transactions);
         WorkspacePublications publications = CommunityPublicationFixture.publications(jdbc);
         snapshots.snapshot = snapshot("/first", articleId, secondId);
-        community = new CommunityConfiguration()
+        community = community(accounts, publications, snapshots);
+    }
+
+    private Community community(Accounts accounts, WorkspacePublications publications, TestSnapshots source) {
+        return new CommunityConfiguration()
                 .community(
                         jdbc,
                         accounts,
                         new CommunityAccounts(jdbc, accounts),
                         new PublicationGuard(jdbc, publications),
                         publications,
-                        snapshots,
+                        source,
                         transactions,
                         JsonMapper.builder().findAndAddModules().build());
     }
@@ -347,6 +351,84 @@ class CommunityIntegrationIT {
         }
         assertThat(jdbc.queryForObject("select count(*) from community_notifications", Long.class))
                 .isOne();
+    }
+
+    @Test
+    void concurrentSpacesRetainExactlyTheLatestThousandOwnerNotifications() throws Exception {
+        WorkspaceId secondWorkspace = WorkspaceId.random();
+        jdbc.update(
+                "insert into workspaces(workspace_id,display_name,public_slug,public_delivery) values (?,'Second','community-second',true)",
+                secondWorkspace.value());
+        jdbc.update(
+                "insert into auth_memberships(workspace_id,account_id,role) values (?,?,'OWNER')",
+                secondWorkspace.value(),
+                owner.accountId());
+        var secondSnapshots = new TestSnapshots();
+        PublicContentSnapshot original = snapshots.snapshot;
+        secondSnapshots.snapshot = new PublicContentSnapshot(
+                secondWorkspace, original.commit(), original.verifiedAt(), original.expiresAt(), original.articles());
+        Community second = community(
+                new Accounts(jdbc, transactions), CommunityPublicationFixture.publications(jdbc), secondSnapshots);
+        seedFullInboxAndDeletionGate();
+        try (var gate = jdbc.getDataSource().getConnection();
+                var workers = Executors.newFixedThreadPool(2)) {
+            gate.setAutoCommit(false);
+            try (var statement = gate.createStatement()) {
+                statement.execute("select pg_advisory_xact_lock(93431,7)");
+            }
+            var firstWrite = workers.submit(() -> post(member, null, "first space"));
+            var secondWrite = workers.submit(() -> second.comment(
+                    other, "community-second", articleId, new CommentInput(UUID.randomUUID(), null, "second space")));
+            try {
+                awaitNotificationWriters();
+            } finally {
+                gate.commit();
+            }
+            assertThat(firstWrite.get(5, TimeUnit.SECONDS)).isNotNull();
+            assertThat(secondWrite.get(5, TimeUnit.SECONDS)).isNotNull();
+        } finally {
+            jdbc.execute("drop trigger inbox_test_gate on community_notifications");
+            jdbc.execute("drop function inbox_test_gate()");
+        }
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from community_notifications where recipient_id=?",
+                        Long.class,
+                        owner.accountId()))
+                .isEqualTo(1000);
+        assertThat(community.notifications(owner, 0).items())
+                .extracting(Community.Notification::excerpt)
+                .contains("first space", "second space");
+    }
+
+    private void seedFullInboxAndDeletionGate() {
+        jdbc.update(
+                "insert into community_comments(comment_id,request_id,workspace_id,article_id,author_id,body,request_digest) "
+                        + "select gen_random_uuid(),gen_random_uuid(),?,?,?,'seed','sha256:' || repeat('a',64) from generate_series(1,1000)",
+                workspace.value(),
+                articleId,
+                member.accountId());
+        jdbc.update(
+                "insert into community_notifications(recipient_id,comment_id) select ?,comment_id from community_comments",
+                owner.accountId());
+        jdbc.execute("create function inbox_test_gate() returns trigger language plpgsql as $$ begin "
+                + "perform pg_advisory_xact_lock(93431,7); return old; end $$");
+        jdbc.execute("create trigger inbox_test_gate before delete on community_notifications "
+                + "for each row execute function inbox_test_gate()");
+    }
+
+    private void awaitNotificationWriters() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            long waiting = jdbc.queryForObject(
+                    "select count(*) from pg_stat_activity where datname=current_database() and wait_event_type='Lock' "
+                            + "and (query like 'delete from community_notifications%' or query like '%community-inbox:%')",
+                    Long.class);
+            if (waiting == 2) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        throw new IllegalStateException("both notification writers must reach the database gate");
     }
 
     private AuthPrincipal account(String name, SiteGroup group) {

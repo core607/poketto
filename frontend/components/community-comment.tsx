@@ -155,14 +155,15 @@ export function CommunityCommentItem({
           <button
             disabled={busy}
             onClick={() =>
-              void act(() =>
-                api(
+              void act(async () => {
+                await api(
                   `${communityRoot}/comments/${comment.id}${moderating ? "/moderation" : ""}`,
                   {
                     method: "DELETE",
                   },
-                ),
-              )
+                );
+                setConfirmDelete(false);
+              })
             }
           >
             确认删除

@@ -92,6 +92,11 @@ final class CommunityComments {
             if (recipient.equals(actor) || activity.blocked(actor, recipient)) {
                 continue;
             }
+            // Separate from account locks: recovery may hold the recipient while awaiting this workspace.
+            jdbc.queryForObject(
+                    "select pg_advisory_xact_lock(hashtextextended('community-inbox:' || ?::text,0))",
+                    Object.class,
+                    recipient);
             jdbc.update(
                     "insert into community_notifications(recipient_id,comment_id) values (?,?) on conflict do nothing",
                     recipient,
