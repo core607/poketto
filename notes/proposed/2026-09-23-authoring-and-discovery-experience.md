@@ -1,0 +1,121 @@
+# Authoring and discovery experience
+
+Date: 2026-09-23
+
+## Problem and scope
+
+The browser already saves Markdown, previews images and moves content atomically,
+but publishing a note requires understanding its storage path. An interrupted tab
+loses unsaved text, and image insertion requires a separate file-selection flow.
+Discovery samples spaces randomly without an explicit following entrance or a
+small set of understandable selection signals.
+
+Provide draft, preview, publish and withdraw actions; image paste and drop; local
+draft recovery; and following/discovery entrances with bounded recommendations.
+The Markdown source editor remains available. This decision does not add a second
+content authority, rich-text editor, cloud draft store or behavioral tracking.
+
+## Authoring actions
+
+Drafts start under `private/`. Saving a draft uses the ordinary optimistic text
+patch. Preview keeps the existing authenticated renderer and exact media grants.
+Publish and withdraw move a saved note between matching `private/` and `public/`
+paths, preserving category paths and article identity. They use the
+[atomic move service](../implemented/2026-09-09-atomic-content-moves.md), including
+reference repair, collision refusal and private dependency checks. Unsaved text
+must be saved first; a move never discards it or silently creates two commits.
+
+The interface names the requested visibility action and resulting location before
+confirmation. Moving into public storage does not enable the website or override
+an exclusion, invalid policy or administrator restriction. The current public-page
+state determines whether the interface reports a live page, an unpublished saved
+file or a restriction requiring attention. Website settings remain a separate,
+explicit owner action. Advanced path and folder controls remain available.
+
+## Image paste and drop
+
+Pasted or dropped supported image files enter the same bounded, authenticated
+upload path as file selection. Upload success inserts a reference into the current
+draft, without saving or publishing it. File size and media validation remain
+server-owned; local checks provide early feedback. Ordinary text paste is unchanged.
+
+Each selected upload retains one idempotency key across uncertain retries. A late
+reply cannot insert into a different file, workspace or unmounted editor. While an
+upload is in progress, navigation must preserve the existing draft and clearly
+handle the unfinished insertion. Unsupported files and partial failures remain
+visible rather than being silently dropped. No external image URL is fetched.
+
+## Local draft recovery
+
+Unsaved text may be retained in this browser, scoped by account, workspace, path
+and draft identity. Retention includes the loaded commit, expected revision or
+absence, edited source and timestamp. It is recovery state, never an authoritative
+repository version. Bound each draft by the ordinary document limit, the browser
+store to 20 drafts and total encoded content to 2 MiB. Quota or storage failures
+keep editing available and display that recovery could not be updated; they must
+not evict another unsaved draft silently.
+
+Recovery is offered only after the current account and normal file read establish
+access. It never automatically applies or saves cached text. A changed remote file
+retains the original conflict preconditions; recovery cannot adopt a newer revision
+and overwrite intervening edits. Matching already-saved source clears the redundant
+draft. Explicit discard, successful save and explicit logout clear the appropriate
+recovery records. Separate tab drafts cannot overwrite each other's cached edits.
+These records do not sync to another device and are lost if browser storage is cleared.
+
+## Following and discovery
+
+The homepage exposes discovery and following as distinct views, with a direct
+entrance to private bookmarks. Following reuses the chronological, account-scoped
+[community feed](../implemented/2026-09-23-community-interactions.md). It does not
+mix personal follow data into public responses or recommendation caches.
+
+Discovery retains [stable batches](../implemented/2026-09-14-public-discovery-batches.md),
+their current-publication checks, expiry and count/text budgets. Extend selection
+within each bounded space sample with an optional authored `featured: true` signal,
+recent publication dates and tag diversity. A featured signal is an author's
+selection for their own space, not a site endorsement. Space caps prevent one
+author's volume or featured flags from occupying the complete batch. Randomized
+selection among remaining candidates keeps older and differently tagged content
+discoverable. Optional tag selection is public, explicit and retained with the batch.
+
+There is no model ranking, private reading-history profile, database article copy
+or paid placement. Article cards still resolve against current publication before
+emission; withdrawal and owner restrictions override every selection signal.
+
+## Alternatives and consequences
+
+A separate draft/publication database would duplicate Git state and require another
+reconciliation contract. Directly toggling metadata would bypass the directory and
+dependency rules. The existing save and move services keep those boundaries visible.
+
+Automatic recovery into the newest file baseline can overwrite work saved by another
+client. Explicit recovery with retained preconditions preserves conflict detection.
+Browser recovery is simpler than a cloud draft service, but is device-local and
+must explain retention and clearing to the author. Image insertion shares upload
+semantics so uncertainty does not create a second retry mechanism.
+
+Full recommendation profiling is disproportionate to the current content scale.
+Authored selection, tags, recency and per-space diversity make the initial behavior
+inspectable while retaining bounded random discovery. This supersedes only the
+uniform selection algorithm in the batch record when implemented, not its replay,
+withdrawal, isolation or capacity contract.
+
+## Verification and related decisions
+
+Exercise draft/preview/publish/withdraw with real Git and current permissions,
+including dependencies, collisions, administrator restrictions and uncertain writes.
+Verify pasted/dropped images through real uploads, late responses and failure
+retries. Verify recovery after reload, changed remote content, account/workspace
+switches, concurrent tabs, explicit discard/logout and storage exhaustion.
+
+Verify recommendation diversity and signals, tag-bound replay, batch expiry and
+immediate withdrawal through the public HTTP path. Browser acceptance covers the
+integrated author and reader flows. Update bilingual usage and the product overview
+for implemented behavior, then move this record to implemented.
+
+The [browser interface](../implemented/2026-09-06-blog-browser-interface.md),
+[CodeAct content contract](../implemented/2026-09-09-codeact-content-and-media.md),
+atomic move record, discovery batch record and community record retain ownership
+of their existing mechanisms. This proposal extends their user entrances and
+supersedes no permission, repository ownership or media-delivery rule.
