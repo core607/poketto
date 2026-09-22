@@ -45,6 +45,9 @@ class PublicDiscoveryTests {
     @Test
     void invalidTagsAreRefusedAndExpiredBatchesDoNotSilentlyReshuffle() {
         var fixture = new Fixture();
+        assertThat(fixture.discovery.page(null, null, 0, "😸".repeat(64)).tag()).isEqualTo("😸".repeat(64));
+        assertThatThrownBy(() -> fixture.discovery.page(null, null, 0, "😸".repeat(64) + "x"))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> fixture.discovery.page(null, null, 0, "x".repeat(65)))
                 .isInstanceOf(IllegalArgumentException.class);
         var first = fixture.discovery.page(null, null, 0, "");

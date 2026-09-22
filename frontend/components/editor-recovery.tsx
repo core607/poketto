@@ -27,6 +27,20 @@ export function useEditorRecovery(
   const generation = useRef("");
   const [available, setAvailable] = useState<LocalDraft[]>([]);
   const [status, setStatus] = useState("");
+  const pending = useRef<(() => void) | null>(null);
+  const delay = useRef<number | null>(null);
+  const deadline = useRef<number | null>(null);
+  const cancelPending = useCallback(() => {
+    if (delay.current !== null) window.clearTimeout(delay.current);
+    if (deadline.current !== null) window.clearTimeout(deadline.current);
+    delay.current = deadline.current = null;
+    pending.current = null;
+  }, []);
+  const flush = useCallback(() => {
+    const write = pending.current;
+    cancelPending();
+    write?.();
+  }, [cancelPending]);
   useEffect(() => {
     mounted.current = true;
     try {
@@ -35,12 +49,21 @@ export function useEditorRecovery(
         identity.accountId,
       );
     } catch {}
+    const hide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", hide);
     return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", hide);
+      cancelPending();
       mounted.current = false;
       editing.current = null;
     };
-  }, []);
+  }, [cancelPending, flush]);
   const discard = useCallback(() => {
+    cancelPending();
     const previous = editing.current;
     editing.current = null;
     if (mounted.current) setStatus("");
@@ -63,8 +86,9 @@ export function useEditorRecovery(
         if (mounted.current)
           setStatus("本机草稿未能清理，请在恢复入口中重试。");
       });
-  }, []);
+  }, [cancelPending]);
   function opened(current: RepositoryFile) {
+    cancelPending();
     editing.current = null;
     setAvailable([]);
     setStatus("");
@@ -141,32 +165,38 @@ export function useEditorRecovery(
     selected.latest = draft;
     const expectedGeneration = generation.current;
     setStatus("正在保存本机恢复草稿…");
-    void withDraftStorage((storage) => {
-      if (editing.current === selected && selected.latest === draft)
-        retainDraft(storage, draft, expectedGeneration);
-    })
-      .then(() => {
-        if (
-          mounted.current &&
-          editing.current === selected &&
-          selected.latest === draft
-        )
-          setStatus(
-            "恢复草稿已保留在此浏览器；尚未保存到仓库。退出登录会清理本机草稿。",
-          );
+    pending.current = () => {
+      void withDraftStorage((storage) => {
+        if (editing.current === selected && selected.latest === draft)
+          retainDraft(storage, draft, expectedGeneration);
       })
-      .catch((failure) => {
-        if (
-          mounted.current &&
-          editing.current === selected &&
-          selected.latest === draft
-        )
-          setStatus(
-            failure instanceof Error && failure.message.startsWith("本机")
-              ? failure.message
-              : "本机恢复草稿未能保存，请保存到仓库或复制正文后再离开。",
-          );
-      });
+        .then(() => {
+          if (
+            mounted.current &&
+            editing.current === selected &&
+            selected.latest === draft
+          )
+            setStatus(
+              "恢复草稿已保留在此浏览器；尚未保存到仓库。退出登录会清理本机草稿。",
+            );
+        })
+        .catch((failure) => {
+          if (
+            mounted.current &&
+            editing.current === selected &&
+            selected.latest === draft
+          )
+            setStatus(
+              failure instanceof Error && failure.message.startsWith("本机")
+                ? failure.message
+                : "本机恢复草稿未能保存，请保存到仓库或复制正文后再离开。",
+            );
+        });
+    };
+    if (delay.current !== null) window.clearTimeout(delay.current);
+    delay.current = window.setTimeout(flush, 250);
+    if (deadline.current === null)
+      deadline.current = window.setTimeout(flush, 1000);
   }, [
     file,
     path,
@@ -176,6 +206,7 @@ export function useEditorRecovery(
     identity.accountId,
     identity.workspaceId,
     discard,
+    flush,
   ]);
   return { available, status, opened, adopt, forget, discard };
 }

@@ -586,6 +586,9 @@ for (const absent of [false, true]) {
         );
       });
       await settle(editor.act);
+      await editor.act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
     };
     await write("Unsaved");
     assert.equal(
@@ -602,6 +605,79 @@ for (const absent of [false, true]) {
     if (absent) assert.equal(retained[0].source, "");
   });
 }
+
+test("recovery batches typing, flushes on page hide, and cancels a pending write on unmount", async (t) => {
+  let locks = 0;
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url) => {
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: "private/note.md",
+          source: "Saved",
+          commit: "before",
+          revision: "old",
+          expectedAbsence: false,
+          publicScope: false,
+          diagnostics: [],
+        });
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "Saved", galleryStatus: "COMPLETE" });
+      throw new Error(`Unexpected ${url.pathname}`);
+    },
+    () => {},
+    (window) => {
+      Object.defineProperty(window.navigator, "locks", {
+        configurable: true,
+        value: {
+          request: async (_name: string, operation: () => unknown) => {
+            locks++;
+            return operation();
+          },
+        },
+      });
+    },
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const textarea = editor.container.querySelector("textarea")!;
+  const write = (value: string) =>
+    editor.act(async () => {
+      Object.getOwnPropertyDescriptor(
+        editor.window.HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(textarea, value);
+      textarea.dispatchEvent(
+        new editor.window.Event("input", { bubbles: true }),
+      );
+    });
+  const before = locks;
+  for (const value of ["A", "AB", "ABC"]) await write(value);
+  assert.equal(locks, before);
+  assert.equal(editor.window.localStorage.length, 0);
+  await editor.act(async () =>
+    editor.window.dispatchEvent(new editor.window.Event("pagehide")),
+  );
+  assert.equal(locks, before + 1);
+  assert.equal(
+    localDrafts(editor.window.localStorage, "owner", workspaceId)[0].source,
+    "ABC",
+  );
+  await write("Must not appear after unmount");
+  await editor.unmount();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.equal(locks, before + 1);
+  assert.equal(
+    localDrafts(editor.window.localStorage, "owner", workspaceId)[0].source,
+    "ABC",
+  );
+});
 
 test("publish and withdraw use confirmed atomic moves and retain the authoritative website restriction", async (t) => {
   let published = false;

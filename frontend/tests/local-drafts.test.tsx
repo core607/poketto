@@ -85,11 +85,26 @@ test("logout fences an already-open tab while a freshly authenticated editor can
   assert.equal(localDrafts(store, "author", "space")[0].id, "fresh");
 });
 
+test("foreign records cannot block reading an owned draft or authorize silent eviction", () => {
+  const store = storage();
+  retainDraft(store, draft());
+  for (let index = 0; index < 20; index++) {
+    const foreign = { ...draft(`other-${index}`), accountId: "other-account" };
+    store.setItem(
+      `poketto:draft:v1:other-account:space:${foreign.id}`,
+      JSON.stringify(foreign),
+    );
+  }
+  assert.equal(localDrafts(store, "author", "space")[0].source, "Unsaved text");
+  assert.throws(() => retainDraft(store, draft("new")), /浏览器共用上限/);
+  assert.equal(store.length, 21);
+});
+
 test("capacity refusal preserves all existing recovery records, including updates at the count limit", () => {
   const store = storage();
   for (let index = 0; index < 20; index++)
     retainDraft(store, draft(`draft-${index}`));
-  assert.throws(() => retainDraft(store, draft("overflow")), /数量/);
+  assert.throws(() => retainDraft(store, draft("overflow")), /浏览器共用上限/);
   retainDraft(store, draft("draft-0", "continued editing"));
   assert.equal(store.length, 20);
   assert.ok(

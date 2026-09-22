@@ -41,15 +41,20 @@ export default async function Home({
     ...(batch ? { batch, offset } : afterBatch ? { afterBatch } : {}),
     ...(typeof parameters.tag === "string" ? { tag: parameters.tag } : {}),
   }).catch((error) => {
-    if (error instanceof PublicApiError && error.status === 410) return null;
+    if (error instanceof PublicApiError && [400, 410].includes(error.status))
+      return error.status;
     throw error;
   });
-  if (!page)
+  if (typeof page === "number")
     return (
       <section className="page-shell">
         <HomeNavigation />
-        <h1>换一批，继续发现。</h1>
-        <p>这批浏览记录已过期，可以重新开始。</p>
+        <h1>{page === 400 ? "调整筛选，继续发现。" : "换一批，继续发现。"}</h1>
+        <p>
+          {page === 400
+            ? "标签或翻页参数无效。标签最多 64 个字符；更换标签时，请开始新一批。"
+            : "这批浏览记录已过期，可以重新开始。"}
+        </p>
         <a href="/">开始新一批 ↗</a>
       </section>
     );
@@ -82,7 +87,7 @@ export default async function Home({
           id="discovery-tag"
           name="tag"
           defaultValue={page.tag}
-          maxLength={64}
+          maxLength={128}
           placeholder="输入完整标签"
         />
         <button type="submit">发现</button>

@@ -63,6 +63,13 @@ recovery records. Separate tab drafts cannot overwrite each other's cached edits
 Returning to the saved source clears the current editing record; intentionally
 emptying a new draft retains its latest state. Web Locks serialize bounded writes,
 and a logout generation prevents stale tabs from recreating cleared records.
+Writes coalesce after 250 ms without input and at most one second during continuous
+typing. Visibility loss and pagehide attempt an earlier flush; explicit discard
+and unmount cancel pending work. Abrupt termination can lose pending edits, so the
+interface distinguishes a pending write from a retained recovery record. Count
+and byte limits are shared by the browser's accounts and spaces; scoped reads
+remain available even when foreign records fill the store. Capacity feedback names
+account/space cleanup and the data-loss consequence of clearing browser site data.
 These records do not sync to another device and are lost if browser storage is
 cleared. Access to the browser profile can expose their plaintext.
 

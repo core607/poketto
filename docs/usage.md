@@ -167,13 +167,19 @@ Unsaved text is retained as plaintext recovery data in this browser, scoped by
 account, space, path and editing tab. **Local drafts** lists accessible recovery
 records; opening a file offers restoration only after a fresh authorized read.
 Restoration never saves automatically. Changed remote content retains the original
-revision check, so copy and reconcile conflicting edits before saving. The browser
-store holds at most 20 drafts and 2 MiB of encoded records, with a 1 MiB source
+revision check, so copy and reconcile conflicting edits before saving. Typing is
+batched after a 250 ms pause, with a one-second maximum delay; hiding or leaving
+the page attempts an earlier write. Wait for the retained-draft notice before
+relying on recovery; abrupt termination can lose the most recent pending edits.
+The browser store shares a limit of 20 drafts and 2 MiB of encoded records across
+accounts and spaces, with a 1 MiB source
 limit per draft. Unsupported Web Locks, storage failures and quota exhaustion show
 a notice without evicting another draft. Successful save, explicit discard and
 logout clear the corresponding records; logout clears this account's records in
 all spaces. They do not sync across devices. Clearing browser data loses them,
-and anyone with access to the browser profile may read them.
+and anyone with access to the browser profile may read them. A full shared store
+may require switching to another authorized account or space to clean its drafts;
+clearing site data in browser settings removes all local drafts.
 
 Paste or drop one PNG, JPEG, WebP or GIF image, at most 16 MiB, into the source
 editor to upload and insert a reference. Ordinary text paste is unchanged. Failed

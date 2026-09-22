@@ -4,6 +4,8 @@ const PREFIX = "poketto:draft:v1:";
 export const MAX_DRAFTS = 20;
 export const MAX_DRAFT_BYTES = 1024 * 1024;
 export const MAX_STORE_BYTES = 2 * MAX_DRAFT_BYTES;
+const CAPACITY_NOTICE =
+  "本机草稿已达浏览器共用上限。请切换账号或空间清理；也可在浏览器设置中清除本站数据，但会丢失所有本机草稿。";
 
 export type LocalDraft = {
   version: 1;
@@ -89,13 +91,15 @@ function parse(raw: string | null): LocalDraft | null {
 function key(draft: Pick<LocalDraft, "accountId" | "workspaceId" | "id">) {
   return PREFIX + [draft.accountId, draft.workspaceId, draft.id].join(":");
 }
-function records(storage: DraftStorage) {
+function records(storage: DraftStorage, scope?: string) {
   const result: { key: string; raw: string; draft: LocalDraft | null }[] = [];
   for (let index = 0; index < storage.length; index++) {
     const name = storage.key(index);
-    if (!name?.startsWith(PREFIX)) continue;
-    if (result.length >= MAX_DRAFTS)
-      throw new Error("本机草稿数量已达到上限，请先恢复或清理已有草稿。");
+    if (!name?.startsWith(scope ?? PREFIX)) continue;
+    if (result.length >= MAX_DRAFTS) {
+      if (scope) break;
+      throw new Error(CAPACITY_NOTICE);
+    }
     const raw = storage.getItem(name) ?? "";
     const draft = parse(raw);
     result.push({
@@ -113,7 +117,8 @@ export function localDrafts(
   accountId: string,
   workspaceId: string,
 ) {
-  return records(storage)
+  if (!identity(accountId) || !identity(workspaceId)) return [];
+  return records(storage, PREFIX + accountId + ":" + workspaceId + ":")
     .flatMap(({ draft }) =>
       draft?.accountId === accountId && draft.workspaceId === workspaceId
         ? [draft]
@@ -137,13 +142,12 @@ export function retainDraft(
   if (!parse(raw)) throw new Error("草稿格式或大小超出本机恢复范围。");
   const target = key(draft);
   const existing = records(storage).filter((record) => record.key !== target);
-  if (existing.length >= MAX_DRAFTS)
-    throw new Error("本机草稿数量已达到上限，请先恢复或清理已有草稿。");
+  if (existing.length >= MAX_DRAFTS) throw new Error(CAPACITY_NOTICE);
   if (
     existing.reduce((size, record) => size + bytes(record.raw), bytes(raw)) >
     MAX_STORE_BYTES
   )
-    throw new Error("本机草稿空间已满，请先恢复或清理已有草稿。");
+    throw new Error("本机草稿空间已满。" + CAPACITY_NOTICE);
   storage.setItem(target, raw);
 }
 

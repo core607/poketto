@@ -106,7 +106,7 @@ class SpacePublicationIntegrationIT {
             Files.writeString(root.resolve(".poketto/publishing.yaml"), "enabled: true\nmode: public-root\n");
             Files.writeString(
                     root.resolve("public/note.md"),
-                    "---\ntags: [fixture]\nfeatured: true\n---\n# " + title
+                    "---\ntags: [fixture, " + "😸".repeat(64) + "]\nfeatured: true\n---\n# " + title
                             + "\n\n![Picture](picture.png)\n\n[Download](source.pdf)\n");
             Files.writeString(root.resolve("public/source.pdf"), "%PDF-1.7\n" + title);
             Files.writeString(root.resolve("private/secret.md"), "# Private sentinel\n");
@@ -743,6 +743,9 @@ class SpacePublicationIntegrationIT {
     }
 
     private void verifyTaggedDiscovery() throws Exception {
+        mvc.perform(get("/api/public/discovery").param("tag", "😸".repeat(64)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2));
         var response = mvc.perform(get("/api/public/discovery").param("tag", "fixture"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(2))

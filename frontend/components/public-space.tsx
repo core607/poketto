@@ -57,7 +57,7 @@ export async function PublicSpacePage({
   const base = spaceHref(space.slug);
   const query = String(parameters.query ?? "");
   const tag = String(parameters.tag ?? "");
-  const invalid = query.length > 200 || tag.length > 64;
+  const invalid = query.length > 200 || [...tag].length > 64;
   const tagListing = view === "tags" && !tag;
   const page =
     !invalid && !tagListing && (view !== "search" || query)
