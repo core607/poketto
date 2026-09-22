@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.community.Community;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -126,6 +127,7 @@ class RepositoryAdminIntegrationIT {
                         .param("password", password))
                 .andExpect(status().isNoContent());
         Csrf editor = csrf(anonymous.session());
+        verifyIdentityDraft(editor);
         mvc.perform(get(scoped("/api/admin/repository/file"))
                         .session(editor.session())
                         .param("path", "private/中文.md"))
@@ -427,12 +429,61 @@ class RepositoryAdminIntegrationIT {
             }
             http(client, "GET", "/api/public/document?route=" + encode("/private/隐藏 %#"), null, null, 404);
             http(client, "GET", "/api/public/document?route=" + encode("/explicit ?%#"), null, null, 404);
+            communityOverHttp(client, csrf);
             // Durable managed originals require native directory synchronization; CI exercises this on Linux.
             if (System.getProperty("os.name").equals("Linux")) {
                 rawMediaUploadOverHttp(client, csrf);
             }
             overflowingGalleryOverHttp(client, csrf);
         }
+    }
+
+    private void communityOverHttp(HttpClient client, JsonNode csrf) throws Exception {
+        UUID article = UUID.randomUUID();
+        JsonNode tree = http(client, "GET", scoped("/api/admin/repository/tree"), null, null, 200);
+        var patch = new RepositoryAdminController.PatchRequest(
+                tree.get("commit").stringValue(),
+                List.of(new RepositoryAdminController.Change(
+                        "public/community.md", true, null, "---\nid: " + article + "\n---\n# Community")));
+        http(client, "POST", scoped("/api/admin/repository/patch"), csrf, patch, 200);
+        String space = jdbc.queryForObject(
+                "select public_slug from workspaces where workspace_id=?",
+                String.class,
+                catalog.defaultWorkspace().id().value());
+        String path = "/spaces/" + space + "/articles/" + article;
+        String publicPath = "/api/public/community" + path;
+        String privatePath = "/api/auth/community" + path;
+        var input = new Community.CommentInput(UUID.randomUUID(), null, "😸".repeat(4000));
+        http(client, "POST", privatePath + "/comments", null, input, 403);
+        JsonNode created = http(client, "POST", privatePath + "/comments", csrf, input, 200);
+        assertThat(http(client, "POST", privatePath + "/comments", csrf, input, 200))
+                .isEqualTo(created);
+        mvc.perform(get(publicPath))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.comments.items.length()").value(1))
+                .andExpect(jsonPath("$.comments.items[0].body").value(input.body()))
+                .andExpect(jsonPath("$.accountId").doesNotExist());
+        http(client, "PUT", privatePath + "/relations/BOOKMARK", csrf, new CommunityController.Toggle(true), 204);
+        assertThat(http(client, "GET", "/api/auth/community/bookmarks", null, null, 200)
+                        .get("items")
+                        .size())
+                .isOne();
+        mvc.perform(get("/api/auth/community/bookmarks")).andExpect(status().isUnauthorized());
+        http(client, "GET", "/api/auth/community/feed?cursor=bm90LWpzb24", null, null, 400);
+        jdbc.update(
+                "update workspaces set public_delivery=false where workspace_id=?",
+                catalog.defaultWorkspace().id().value());
+        mvc.perform(get(publicPath)).andExpect(status().isNotFound());
+        assertThat(http(client, "GET", "/api/auth/community/bookmarks", null, null, 200)
+                        .get("items")
+                        .get(0)
+                        .get("article")
+                        .isNull())
+                .isTrue();
+        jdbc.update(
+                "update workspaces set public_delivery=true where workspace_id=?",
+                catalog.defaultWorkspace().id().value());
     }
 
     private void createPublicOnlyMember() {
@@ -722,6 +773,35 @@ class RepositoryAdminIntegrationIT {
         assertThat(client.send(release, HttpResponse.BodyHandlers.discarding()).statusCode())
                 .isEqualTo(204);
         http(client, "GET", scoped("/api/admin/exports/") + handle + "/metadata", null, null, 404);
+    }
+
+    private void verifyIdentityDraft(Csrf editor) throws Exception {
+        String endpoint = scoped("/api/admin/repository/article-identity");
+        String source = "# Draft\n" + "原文".repeat(10_000);
+        String payload =
+                json.writeValueAsString(new RepositoryAdminController.IdentityRequest("private/note.md", source));
+        mvc.perform(post(endpoint).contentType("application/json").content(payload))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post(endpoint)
+                        .session(editor.session())
+                        .contentType("application/json")
+                        .content(payload))
+                .andExpect(status().isForbidden());
+        JsonNode draft = body(mvc.perform(post(endpoint)
+                        .session(editor.session())
+                        .header(editor.header(), editor.token())
+                        .contentType("application/json")
+                        .content(payload))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn());
+        UUID id = UUID.fromString(draft.get("articleId").stringValue());
+        assertThat(draft.get("source").stringValue()).isEqualTo("---\nid: " + id + "\n---\n" + source);
+        mvc.perform(get(scoped("/api/admin/repository/file"))
+                        .session(editor.session())
+                        .param("path", "private/note.md"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.expectedAbsence").value(true));
     }
 
     private JsonNode http(HttpClient client, String method, String path, JsonNode csrf, Object payload, int status)

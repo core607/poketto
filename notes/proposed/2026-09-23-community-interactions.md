@@ -85,6 +85,40 @@ or snapshot installation.
 
 ## Delivery and verification
 
+### Transaction and resource boundaries
+
+Community writes acquire a shared site-policy lock, the acting account lock and a
+shared workspace publication lock before entering the current snapshot callback.
+The transaction commits inside that callback. Group changes, credential changes,
+membership changes, website withdrawal and snapshot replacement therefore serialize
+with the operation without acquiring repository authority from a snapshot callback.
+The operation owns its transaction boundary and refuses an enclosing transaction.
+
+Community records use opaque account and workspace UUID references rather than
+cross-module foreign keys. Authority and existence are checked before insertion.
+Foreign-key locks acquired while emitting an owner notification could otherwise
+deadlock with that owner's credential recovery, which locks their account before
+waiting for workspace revocation. Comment, reply, notification and report references
+inside the community module retain database foreign keys. A future account or
+workspace deletion operation must explicitly retire its community records.
+
+Notifications retain the latest 1,000 entries per recipient and fan out to at most
+100 current owners. Paginated lists inspect 21 rows to return at most 20 entries;
+hidden entries may leave an empty page with a continuation cursor. Unavailable
+bookmarks and followed spaces have private removable placeholders without content
+metadata. The following-space list is bounded to 100 entries. Current titles and
+routes are resolved from publication snapshots, including after an article move.
+
+Per-account retained limits are 1,000 likes, 1,000 bookmarks, 100 follows and 500
+blocks. Fixed UTC windows bound new comments to 10/minute and 300/day, new relations
+to 60/minute and 3,000/day, reports to 5/minute and 30/day, and blocks to 30/minute
+and 500/day. Existing request identities and relations are checked before consuming
+allowances. The feed admits two concurrent scans with 100,000-document and five-second
+bounds, checked between bounded workspace scans. Request bodies allow 64 KiB to
+accommodate a 4,000-code-point comment even when JSON escapes surrogate pairs.
+
+### Acceptance
+
 Implement the identity foundation first, then the community persistence and browser
 flows. Keep this proposal pending until the entire scope is delivered. Update current-state
 documentation only for behavior implemented in the same change; the existing content

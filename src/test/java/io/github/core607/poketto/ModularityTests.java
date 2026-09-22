@@ -14,6 +14,15 @@ class ModularityTests {
 
         assertThat(modules.stream().map(module -> module.getIdentifier().toString()))
                 .containsExactlyInAnyOrder(
-                        "assets", "auth", "content", "executor", "mcp", "qa", "spaces", "workspace", "web");
+                        "assets",
+                        "auth",
+                        "community",
+                        "content",
+                        "executor",
+                        "mcp",
+                        "qa",
+                        "spaces",
+                        "workspace",
+                        "web");
     }
 }

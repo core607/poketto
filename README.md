@@ -15,6 +15,7 @@ Agents use shell, Python and Git in isolated environments; Poketto controls auth
 - Separate public and private views: directories express publication state, publishing requires permission, and public readers receive an independent projection without private files or original history.
 - Separate text and originals: Git records media paths and versions; independent storage holds immutable originals, referenced through relative paths.
 - Account groups control participation and public visibility. Withdrawing an author's websites preserves their existing editing and MCP permissions so they can correct the content.
+- Community: private bookmarks, space following, likes, comments and in-site notifications, with reporting and blocking. Article identities travel with Markdown across moves.
 - GitHub personal spaces: eligible users authorize the configured GitHub App to create a private repository in their own account; routine access is scoped to that repository. [Setup and recovery](docs/usage.md#content-and-images).
 
 ## Direction

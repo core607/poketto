@@ -19,6 +19,10 @@ use directory listings to discover individual files.
 
 Use ordinary Markdown and relative document/media links. Start with these paths:
 
+For an article intended to receive community interactions, add a fresh lowercase
+UUID as optional frontmatter `id`. Preserve it through edits and moves; use a new
+ID for a different article copied from it. Articles without an ID remain readable.
+
 - Text: `poketto create PATH --stdin` with a quoted heredoc creates only an absent
   file. `poketto edit PATH --old 'exact original' --new-stdin` preserves exact-match
   checks. Use `--text-file`, `--old-file` or `--new-file` for existing UTF-8 inputs.

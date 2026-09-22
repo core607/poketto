@@ -12,6 +12,7 @@ import { pageOffset } from "../lib/pagination";
 import { ArticleList } from "./articles";
 import { Markdown } from "./markdown";
 import { Gallery } from "./gallery";
+import { SpaceFollow } from "./article-community";
 
 export async function requirePublicSpace(slug: string) {
   return spaceInfo(slug).catch((error) => {
@@ -32,6 +33,7 @@ export function SpaceNavigation({ space }: { space: PublicSpace }) {
         <a href={base + "/tags"}>标签</a>
         <a href={base + "/archive"}>归档</a>
       </nav>
+      <SpaceFollow space={space.slug} />
     </header>
   );
 }

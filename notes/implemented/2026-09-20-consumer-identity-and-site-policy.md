@@ -77,14 +77,14 @@ custom policy editor, multiple-group union or automatic promotion.
 | Group | Site operations | Existing workspace operations |
 |---|---|---|
 | VIEWER | Public reading and own-account management | Existing membership and machine grants remain effective |
-| COMMUNITY | Viewer operations and future community interactions | Same membership boundary; no space creation or website eligibility |
+| COMMUNITY | Viewer operations and community interactions | Same membership boundary; no space creation or website eligibility |
 | CREATOR | Community operations, repository connection and website eligibility | Still requires the owning workspace grants |
 | ADMINISTRATOR | Site account and group administration, plus creator eligibility | No implicit private-file or original-history access |
 
 All new accounts are VIEWER and acquire no membership. Email verification, Google
 login, GitHub connection and accepting a workspace invitation do not promote the
-account. Community operations are reserved for their later implementation, not
-exposed as working features in this delivery. The group replaces the independently
+account. The [community decision](../proposed/2026-09-23-community-interactions.md)
+defines participation and retained history after downgrade. The group replaces the independently
 mutable administrator flag. Protect the last administrator and record who changed
 each group, its previous and new value, the time and the operator's reason.
 

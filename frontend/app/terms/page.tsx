@@ -34,6 +34,13 @@ export default function Terms() {
         </p>
       </section>
       <section>
+        <h2>社区讨论</h2>
+        <p>
+          社区成员及以上可以新增互动。评论和回复同样适用内容规则；空间 owner
+          与管理员可移除评论，管理员处理举报。你可以删除自己的评论、取消互动记录或屏蔽账号；删除根评论不会删除其他账号已经发表的回复。
+        </p>
+      </section>
+      <section>
         <h2>服务运行</h2>
         <p>
           网络、Git
