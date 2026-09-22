@@ -276,7 +276,7 @@ playback controls in articles and authorized previews, for example a relative li
 to `recording.mp3`. Use `audio/mpeg`, `audio/wav` (also `audio/wave` or
 `audio/x-wav`), `audio/mp4`, `video/mp4`, `audio/webm` or `video/webm` when importing.
 Playback checks original integrity and a bounded container signature; codec
-support still depends on the browser. Players never autoplay or preload media.
+support still depends on the browser. Players disable autoplay and request no preloading.
 The adjacent download link remains available if playback fails. External links,
 raw HTML and unsupported originals do not become players.
 
@@ -288,7 +288,6 @@ If-Range receives a full response. Every request verifies the original, so seeks
 can add disk-read cost within the existing 128 MiB original bound. Current identity
 and publication checks apply to every request and subsequent output blocks;
 already buffered bytes cannot be recalled. [Playback limits and rationale](../notes/implemented/2026-09-23-controlled-media-playback.md).
-
 
 Members editing public content without private-read permission use **Choose public images**. The picker lists current eligible Git images and indexed managed images, inserts relative paths, and excludes private or withdrawn content. Uploading a new original still requires private-write permission.
 
