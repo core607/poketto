@@ -83,7 +83,7 @@ custom policy editor, multiple-group union or automatic promotion.
 
 All new accounts are VIEWER and acquire no membership. Email verification, Google
 login, GitHub connection and accepting a workspace invitation do not promote the
-account. The [community decision](../proposed/2026-09-23-community-interactions.md)
+account. The [community decision](2026-09-23-community-interactions.md)
 defines participation and retained history after downgrade. The group replaces the independently
 mutable administrator flag. Protect the last administrator and record who changed
 each group, its previous and new value, the time and the operator's reason.

@@ -46,7 +46,7 @@ Poketto 的运行依赖、内容配置、MCP 接入与部署参考。
 公开社区读取使用 `/api/public/community/spaces/{slug}` 及其 `/articles/{articleId}` 子路径；
 浏览器变更和私密列表使用 `/api/auth/community`。变更沿用会话、Origin 和 CSRF 校验，请求体最多 64 KiB。
 评论请求包含新生成的 `requestId`、可选根评论 `parentId` 和 `body`；结果不确定时保留原请求 ID 重试。
-[社区决策](../notes/proposed/2026-09-23-community-interactions.md)定义身份、可见性与事务边界。
+[社区决策](../notes/implemented/2026-09-23-community-interactions.md)定义身份、可见性与事务边界。
 
 ## 开发
 

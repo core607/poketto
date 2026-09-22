@@ -64,7 +64,7 @@ Public community reads use `/api/public/community/spaces/{slug}` and its
 `/api/auth/community`; mutations require the normal session, Origin and CSRF
 checks, and request bodies are bounded to 64 KiB. Comment requests include a fresh
 `requestId`, optional root `parentId` and `body`; preserve the request ID for an
-uncertain retry. The [community decision](../notes/proposed/2026-09-23-community-interactions.md)
+uncertain retry. The [community decision](../notes/implemented/2026-09-23-community-interactions.md)
 owns identity, visibility and transaction boundaries.
 
 ## Development

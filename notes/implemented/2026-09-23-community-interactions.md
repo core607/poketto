@@ -4,13 +4,13 @@ Date: 2026-09-23
 
 ## Problem and scope
 
-The [consumer identity policy](../implemented/2026-09-20-consumer-identity-and-site-policy.md)
-reserves the community group for participation. Reading remains anonymous; participation
+The [consumer identity policy](2026-09-20-consumer-identity-and-site-policy.md)
+assigns community participation to the community group and above. Reading remains anonymous; participation
 requires a current browser account in COMMUNITY, CREATOR, or ADMINISTRATOR. Space
 membership alone never grants community participation, and machine credentials cannot
 post as a person.
 
-Provide likes, private bookmarks, space following, article comments with one level of
+The community module provides likes, private bookmarks, space following, article comments with one level of
 replies, in-site notifications, deletion, reporting, and blocking. A following feed is
 chronological. Private messages, group chat, email notifications, recommendation ranking,
 and account following are outside this decision.
@@ -103,7 +103,11 @@ inside the community module retain database foreign keys. A future account or
 workspace deletion operation must explicitly retire its community records.
 
 Notifications retain the latest 1,000 entries per recipient and fan out to at most
-100 current owners. Paginated lists inspect 21 rows to return at most 20 entries;
+100 current owners. A transaction-scoped advisory lock serializes each recipient's
+notification insertion and trimming across spaces. Owner recipients are processed
+in UUID order. This guard is separate from account locks to preserve credential
+recovery ordering. Without it, concurrent spaces can each trim an older view and
+commit more than 1,000 notifications. Paginated lists inspect 21 rows to return at most 20 entries;
 hidden entries may leave an empty page with a continuation cursor. Unavailable
 bookmarks and followed spaces have private removable placeholders without content
 metadata. The following-space list is bounded to 100 entries. Current titles and
@@ -119,14 +123,17 @@ accommodate a 4,000-code-point comment even when JSON escapes surrogate pairs.
 
 ### Acceptance
 
-Implement the identity foundation first, then the community persistence and browser
-flows. Keep this proposal pending until the entire scope is delivered. Update current-state
-documentation only for behavior implemented in the same change; the existing content
-contract continues to permit Markdown without frontmatter.
+The identity suites exercise real Git save, move, route-change, duplicate and conflict
+paths. Database integration tests cover uniqueness, retries, reply depth, moderation,
+private-list isolation, downgrade, withdrawal, recovery, inbox retention and concurrent
+credential recovery. HTTP acceptance covers session/CSRF enforcement, private-list
+isolation, 4,000-code-point comments and the no-write identity preparation endpoint.
 
-Verify identity through real repository save, move, route-change, duplicate, and conflict
-paths. Verify database uniqueness, retries, reply depth, moderation, private-list isolation,
-account downgrade, space withdrawal, and recovery through the service and HTTP entries.
-Exercise the browser entrance with separate author, community, viewer, and administrator
-accounts. Preserve existing accounts, workspaces, and grants through additive database
-changes. Follow the repository delivery checks and verify the deployed revision and health.
+The [browser entrance](../../acceptance/README.md) was exercised with separate author,
+community, viewer and administrator fixture accounts. It confirmed saved identity
+preparation; likes, private bookmarks and following; comments and replies; notifications
+and read state; report handling and blocking; article moves; website withdrawal and
+recovery; downgrade and removal of unavailable records. Article bylines remain distinct
+from account display identities. The additive migration preserves existing accounts,
+workspaces and grants. These synthetic fixtures do not claim real-provider acceptance;
+community interactions require no additional external provider.
