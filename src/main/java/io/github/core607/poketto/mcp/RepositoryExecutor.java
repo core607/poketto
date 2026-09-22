@@ -154,6 +154,10 @@ public interface RepositoryExecutor {
         }
     }
 
+    /**
+     * Command output. {@code freshSandbox} identifies a newly started runtime for this command;
+     * otherwise the lease's shell state was reused. The disk copy has an independent lifetime.
+     */
     record ExecutionResult(
             String copyId,
             String commit,
@@ -163,6 +167,7 @@ public interface RepositoryExecutor {
             boolean stdoutTruncated,
             boolean stderrTruncated,
             boolean timedOut,
+            boolean freshSandbox,
             TerminationReason terminationReason,
             Map<String, ArtifactMetadata> artifacts,
             Map<String, String> artifactErrors,

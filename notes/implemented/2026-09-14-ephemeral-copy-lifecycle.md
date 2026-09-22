@@ -18,7 +18,7 @@ reports timeout and a nonzero exit code with the same copy ID. Earlier edits and
 partial output from this command remain local. The next command starts at the
 repository root with a fresh temporary directory. Failed initialization, resource
 exhaustion, cancellation, revocation and unconfirmed containment retain their
-existing closure behavior.
+existing closure behavior. [Per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) retains shell state and `/tmp` across successful commands and reports resets with `freshSandbox`; timeout still starts the next command with a fresh unit.
 
 This changes the runtime lifecycle, not the durability guarantee. With retention
 disabled, transport expiry, application deployment and worker loss may still

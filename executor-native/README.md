@@ -76,7 +76,7 @@ Build the reproducible runtime with Java 26:
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs,
 and a SHA-256 manifest. Copy that directory, `probe.py`, `rejected_peer.py`, and the corresponding
-worker, launcher, `resource_pool.py`, `native_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py`, `artifacts.py` and `disk_pool.py` sources to isolated host staging. The probe verifies every
+worker, launcher, `command_channel.py`, `shell_loop.py`, `resource_pool.py`, `native_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py`, `artifacts.py` and `disk_pool.py` sources to isolated host staging. The probe verifies every
 manifest entry before running. It never stages operator settings or credentials.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's
@@ -87,7 +87,7 @@ globally. Runtime classes and JARs must be readable by the probe's temporary
 application account.
 
 `--scenario ephemeral-lifecycle` selects a real five-second command timeout,
-preservation of unsaved text and binary bytes, explicit disposal without a
+persistent shell state and `freshSandbox` reporting, preservation of unsaved text and binary bytes, explicit disposal without a
 generation, repeated disposal and fresh admission in the same transport.
 `--scenario exports` selects the real private/public CLI ZIP flows. `--scenario media`
 selects original fetches, historical versions, local collision protection and member

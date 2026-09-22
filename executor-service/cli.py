@@ -71,13 +71,14 @@ def _send(root, value, deadline):
 def call(root, operation, arguments, timeout=55):
     root = Path(root)
     request_id = str(uuid.uuid4())
+    execution_id = os.environ.get('POKETTO_EXECUTION_ID', '')
     deadline = time.monotonic() + timeout
-    if (root / 'state').read_bytes():
-        raise BridgeUnavailable('Execution bridge is closed')
-    _send(root, {'requestId': request_id, 'operation': operation, 'arguments': arguments}, deadline)
+    if not execution_id or (root / 'state').read_bytes() != execution_id.encode():
+        raise BridgeUnavailable('Execution bridge is not active for this command')
+    _send(root, {'requestId': request_id, 'executionId': execution_id, 'operation': operation, 'arguments': arguments}, deadline)
     result = root / 'responses' / (request_id + '.json')
     while True:
-        if (root / 'state').read_bytes():
+        if (root / 'state').read_bytes() != execution_id.encode():
             raise BridgeUnavailable('Execution bridge closed; write outcome may be unknown')
         try:
             fd = os.open(result, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -96,7 +97,7 @@ def call(root, operation, arguments, timeout=55):
             raise BridgeUnavailable('Invalid bridge result')
         # A reply is already known; failed cleanup acknowledgement must not change its outcome.
         try:
-            _send(root, {'requestId': request_id, 'operation': 'ack'}, deadline)
+            _send(root, {'requestId': request_id, 'executionId': execution_id, 'operation': 'ack'}, deadline)
         except (OSError, BridgeUnavailable):
             pass
         return response
@@ -106,7 +107,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog='poketto',
         description='Host operations use repository-relative paths, independent of the shell working directory. '
-                    'Create files in the repository to retain them between commands; /tmp is reset for every command. '
+                    'Shell state and /tmp persist within the live lease sandbox; repository files also survive sandbox resets. '
                     'Use python3 for Python scripts.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Common workflow:

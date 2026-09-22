@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('disk_pool.py', 'worker.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py',
+MODULES = ('disk_pool.py', 'worker.py', 'command_channel.py', 'shell_loop.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py',
            'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
 
 
@@ -104,7 +104,7 @@ def main():
             'maxSessions': 4, 'maxBundleBytes': 16777216, 'diskBytes': 67108864,
             'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
-            'maxTimeoutMillis': 60000, 'initTimeoutMillis': 15000}
+            'idleUnitSeconds': 1800, 'maxTimeoutMillis': 60000, 'initTimeoutMillis': 15000}
         worker_settings.update(copyRoot=str(disk_pool), poolBytes=512 * 1024 * 1024)
         worker_config.write_text(json.dumps(worker_settings))
         run(['systemd-run', '--quiet', '--unit', worker_unit, '--slice', pool.name,

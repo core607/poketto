@@ -9,7 +9,7 @@ owns topology, alternatives, and remaining integration acceptance.
 
 ## Runtime
 
-The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1`, `diskCopyProtocol: 1`, `gitBaselineProtocol: 1` and `workspaceSyncProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves, Git baseline installation and recoverable workspace synchronization. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py` and `disk_pool.py`, and restart its service before deploying the application; existing leases end on restart while account copies remain on disk. The outer signed envelope remains version 1.
+The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1`, `diskCopyProtocol: 1`, `gitBaselineProtocol: 1`, `workspaceSyncProtocol: 1` and `leaseSandboxProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves, Git baseline installation, recoverable workspace synchronization and persistent lease sandboxes. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, `disk_pool.py`, `command_channel.py` and `shell_loop.py`, and restart its service before deploying the application; existing leases end on restart while account copies remain on disk. The outer signed envelope remains version 1.
 
 Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
 and the toolchain prepared by [the native spike](../executor-spike/README.md)
@@ -44,7 +44,7 @@ including native image/PDF operations, after installation.
 Package Linux worker sources from the selected commit with `git archive` or raw Git blobs, retaining LF line endings. Do not package a Windows checkout whose existing files may still contain CRLF: a Python launcher shebang with CRLF cannot execute on Linux. Record the source revision and hashes, then verify installed files and run `poketto --help` through the deployed connector after restart.
 
 [config.example.json](config.example.json) lists all configurable paths and
-per-command resource bounds. Its UID/GID and numeric limits are examples, not approved
+per-sandbox resource bounds. Add the required `idleUnitSeconds` setting before upgrading; the example uses 1800, and accepted values are 1 through 86400. Its UID/GID and numeric limits are examples, not approved
 production values. `runtimeRoot` must be a dedicated root-owned directory;
 `exportRoot` contains only the application's atomic `<UUID>.bundle` exports.
 `socketPath` must be under `runtimeRoot`. Configure `appUid` for `SO_PEERCRED`
@@ -74,13 +74,33 @@ Successful authorized copy operations renew a seven-day idle deadline. A separat
 
 The root supervisor only verifies requests, copies bounded exports, mounts
 private disk-copy mounts, and controls fixed systemd units. Git initialization and
-commands run as `execUser`, always through the pinned SRT launcher. Each
-invocation has a fresh process tree; copy files persist until explicit disposal or idle expiry.
+commands run as `execUser`, always through the pinned SRT launcher. A lease starts
+one command unit lazily and reuses its shell, working directory, environment,
+functions, aliases, private `/tmp` and background processes. Copy files survive
+unit resets until explicit disposal or copy expiry. A new lease never reuses
+another lease's unit.
+
 SRT starts in a root-owned bootstrap directory containing only inert deny-marker
-targets. The launcher enters the command-modified repository only after SRT has
-installed its boundary; Git and shell configuration cannot influence startup.
-Memory, swap, CPU, process count, wall time, and private temporary storage are
-bounded by systemd. XFS project quotas bound working-tree and history storage.
+targets, the fixed CLI and the shell driver. The launcher enters the command-modified
+repository only after SRT has installed its boundary; Git and shell configuration cannot influence startup.
+
+Memory, swap, CPU, process count and private temporary storage are bounded by
+systemd for the whole unit, including background processes. The supervisor enforces
+each command's wall deadline; `RuntimeMaxSec` remains only on initialization and
+baseline helpers. `idleUnitSeconds` without a command stops the unit while the
+lease remains renewable. Unit stop always precedes an empty-cgroup assertion.
+The next command starts a new unit and reports `freshSandbox: true`; commands
+reusing the current unit report false. Timeout, output-limit stop and an explicit
+shell exit also reset the unit. Background output after its command completes is
+drained and discarded, never attached to a later command. XFS project quotas bound
+working-tree and history storage.
+
+The shell driver retains at most 128 output readers, including the current pair.
+When background processes keep older pipes open beyond that bound, the oldest
+readers close; a later write to those pipes receives `EPIPE`/`SIGPIPE`. Shell exit
+codes and completion frames are command-reported observations inside the sandbox,
+not proof that background work has stopped. Host cleanup confirms the cgroup is empty.
+
 The worker captures at most 4 MiB of combined stdout/stderr bytes and stops
 the process tree when that limit is exceeded. Each stream returns a preview of
 at most 16 KiB of captured bytes. Longer streams also return immutable artifact
@@ -106,8 +126,8 @@ numbers are bounded examples, not production sizing. Run `systemctl daemon-reloa
 after installation or changes. `resourceSlice` in worker configuration must match
 the service's `Slice`; the default name is `poketto-executor.slice`.
 
-The root supervisor and every transient command explicitly join this pool.
-Its memory budget includes command processes, bundle copying, filesystem cache and temporary pages. Repository storage has a separate disk bound. Per-command limits remain additional bounds; they do not replace
+The root supervisor, lease sandboxes and transient helpers explicitly join this pool.
+Its memory budget includes command processes, bundle copying, filesystem cache and temporary pages. Repository storage has a separate disk bound. Per-unit limits remain additional bounds; they do not replace
 the pool. Startup and new OPEN/EXEC operations reject missing, unlimited or
 incorrectly placed pools. Startup cleanup runs before validation, and CLOSE,
 revocation and `--cleanup` remain available when pool validation fails.
@@ -192,18 +212,18 @@ The application sends the following operations for account disk copies.
 | Operation | Exact `data` fields and behavior |
 |---|---|
 | `OPEN` | `copyId` UUID, `scope` full or public, `exportId` UUID, `bundleSha256` 64 lowercase hex, `bundleBytes` positive integer, `commit` 40 lowercase hex. Blocks until READY or failure. Initialization accepts concurrent RENEW, but has its own hard timeout. |
-| `BASELINE` | `executionId` (empty when idle), `exportId`, `bundleSha256`, `bundleBytes`, `commit` | Full-read copy only. Freeze an active command, install trusted Git metadata inside SRT, preserve working files, and return `gitCommit`. |
+| `BASELINE` | `executionId` (empty when idle), `exportId`, `bundleSha256`, `bundleBytes`, `commit` | Full-read copy only. Freeze an existing lease unit, including an idle one, install trusted Git metadata inside SRT, preserve working files, and return `gitCommit`. |
 | `ATTACH` | `copyId`, `scope`, original `commit`. Claims an existing disk copy under a new execution lease after checking the signed account/workspace, pinned baseline and exclusive copy lock. Does not clone or replace files. |
 | `DISCARD` | `copyId`, `scope`, original `commit`. Deletes an owner-matched disk copy only after all execution leases release its lock. Returns DISCARDED or ABSENT; an active copy returns COPY_BUSY. |
-| `EXEC` | `executionId` UUID, `commit`, `command` nonempty UTF-8 text up to 64 KiB without NUL, `timeoutMillis` within worker bounds. Requires READY and the pinned commit; blocks until the entire process tree terminates. |
+| `EXEC` | `executionId` UUID, `commit`, `command` nonempty UTF-8 text up to 64 KiB without NUL, `timeoutMillis` within worker bounds. Requires READY and the pinned commit; blocks until this command completes or the supervisor contains its stopped unit. |
 | `RENEW` | Empty object. Extends an unexpired INITIALIZING, READY, or RUNNING lease to `expiresAt`. Other operations do not renew it. |
-| `BRIDGE_POLL` | Empty object. Claims one CLI request, or returns null after a bounded wait; includes the current `executionId`. Contention with input cleanup or another poll returns no request without cancelling the lease. Does not acquire the command operation lock. |
+| `BRIDGE_POLL` | Empty object. Claims one current-command CLI request, or returns null while idle or after a bounded wait; includes the current `executionId`. Contention with input cleanup or another poll returns no request without cancelling the lease. Does not acquire the command operation lock. |
 | `BRIDGE_COMPLETE` | `executionId`, `bridgeRequestId` and `response` object. Publishes one bounded reply only for that running execution and pending request. |
-| `CAPTURE_BEGIN` | `executionId`, `writes` and `deletes` path lists. Freezes the command cgroup, captures up to 64 selected UTF-8 files and 4 MiB, then thaws. Returns a worker-owned capture ID, ordered path/length/SHA-256 manifest and explicit deletions. One capture per command; mount cleanup waits for capture. |
+| `CAPTURE_BEGIN` | `executionId`, `writes` and `deletes` path lists. Freezes the command cgroup, captures up to 64 selected UTF-8 files and 4 MiB, then thaws. Returns a worker-owned capture ID, ordered path/length/SHA-256 manifest and explicit deletions. One capture per lease; use an empty executionId between commands. The next command or unit cleanup releases idle captures; mount cleanup waits for capture. |
 | `CAPTURE_OPTIONAL` | `executionId` and `path`. Captures one current text file or explicit absence for synchronization; missing lease roots and unsafe paths fail. Uses the same cgroup freeze and capture lifetime. |
 | `CAPTURE_BINARY` | `executionId` and `path`. Freezes the command cgroup and copies one regular binary file with a link count of one into protected lease storage, up to 128 MiB. Returns the same immutable capture manifest and uses `CAPTURE_READ`/`CAPTURE_RELEASE`; unsafe paths and missing bytes fail. |
 | `CAPTURE_READ` | `executionId`, `captureId`, zero-based file `index`, byte `offset`, and `limit` from 1 to 65536. Returns a base64 chunk from that immutable capture, never a fresh read of the mutable worktree. |
-| `CAPTURE_RELEASE` | `executionId` and `captureId`. Drops the retained capture; command cleanup also drops it. Capture operations require the matching running execution and current lease authority. |
+| `CAPTURE_RELEASE` | `executionId` and `captureId`. Drops the retained capture; command cleanup also drops it. Capture operations require the matching running execution, or an empty executionId with an idle live unit, and current lease authority. |
 | `MATERIALIZE_BEGIN` | `executionId`, `path`, `bytes` (0 through 1 GiB; the lease disk quota still applies), `sha256`, `expectedSha256` (null means absent), `delete`, and `allowIdentical`. The last flag permits reusing an identical existing file without replacement; otherwise the captured precondition is strict. Allocates one protected incoming file per lease; returns `transferId`. |
 | `MATERIALIZE_CHUNK` | `executionId`, `transferId`, exact next byte `offset`, and base64 `data` of at most 65536 decoded bytes. Stages outside sandbox-readable paths. |
 | `MATERIALIZE_COMMIT` | `executionId` and `transferId`. Verifies staged length/hash, freezes the cgroup, compares the current target with the captured precondition, then atomically replaces or explicitly deletes it. Repeated completion returns its retained receipt without modifying a newer local edit. |
@@ -223,10 +243,17 @@ OPEN, RENEW, CLOSE, and EXEC success responses contain `ok: true`, `requestId`,
 `leaseId`, `state`, and `commit`. EXEC also returns `result`:
 
 ```json
-{"commit":"40_HEX","exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,"stderrTruncated":false,"timedOut":false,"terminationReason":"normal","artifacts":{},"artifactErrors":{}}
+{"commit":"40_HEX","exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,"stderrTruncated":false,"timedOut":false,"freshSandbox":true,"terminationReason":"normal","artifacts":{},"artifactErrors":{}}
 ```
 
-Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply. Command cleanup discards abandoned requests before another command can start.
+Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply.
+
+The supervisor changes the bridge execution epoch while the unit is frozen. Each
+CLI process inherits its command's execution ID and checks the protected epoch;
+late requests and acknowledgements from completed commands cannot enter a later
+command. This ID correlates execution only and grants no authority. Command
+cleanup discards abandoned requests before another command starts; idle background
+processes cannot invoke host operations.
 
 `poketto edit PATH --old TEXT --new TEXT` changes one exact, unique match in an existing local UTF-8 text file. It refuses missing or ambiguous original text. `poketto create PATH --text TEXT` refuses existing paths. Both capture current local bytes and use the frozen compare-and-replace installation channel, so another local write between capture and installation is rejected. Neither changes the host save baseline or remote Git. Errors carry `EDIT_REJECTED` with a bounded reason, including `OLD_TEXT_NOT_FOUND`, `AMBIGUOUS_MATCH`, `ALREADY_EXISTS`, or `LOCAL_FILE_CHANGED`. The existing text bounds apply; arbitrary shell writes do not receive these edit preconditions.
 
@@ -360,10 +387,10 @@ publishes content, or creates an independently accessible URL.
 ### Termination and cleanup
 
 `terminationReason` is `normal`, `timeout`, `resource_limit`, `output_limit`,
-`cancelled`, `session_closed`, `client_shutdown`, `lease_expired`, or `revoked`.
+`cancelled`, `session_closed`, `client_shutdown`, `lease_expired`, `sandbox_failed`, or `revoked`.
 `normal` may have a nonzero exit code. An execution timeout keeps the same copy
 after the complete command control group is confirmed empty. Prior files and
-partial command work remain local; the next command receives a fresh `/tmp`.
+partial command work remain local; the next command receives fresh shell state and `/tmp`, reported by `freshSandbox: true`.
 Failed containment still closes the copy. Resource exhaustion and lifecycle
 cancellation retain their existing closure behavior. Failed OPEN initialization is an operation
 error, never a ready session. A failed launcher or SRT invocation does not run a

@@ -10,7 +10,7 @@ Agents use shell, Python and Git in isolated environments; Poketto controls auth
 
 - CodeAct workflow: `repo_exec` and the workspace CLI expose content operations; agents compose tasks using general-purpose tools.
 - Git as content authority: text, directories and media references are inspectable and versioned. Browser and agent writes share the same revision-checked path.
-- Persistent copies, isolated commands: copies are shared by account, space and reading scope, with hard disk quotas. Commands run serially per copy under separate resource limits.
+- Persistent copies, isolated commands: copies are shared by account, space and reading scope, with hard disk quotas. Commands run serially per copy; each live lease retains shell state and background processes under separate resource limits.
 - Host-controlled writes: repository credentials stay outside the sandbox. The host handles selected saves, conflict checks and uncertain-result recovery.
 - Separate public and private views: directories express publication state, publishing requires permission, and public readers receive an independent projection without private files or original history.
 - Separate text and originals: Git records media paths and versions; independent storage holds immutable originals, referenced through relative paths.

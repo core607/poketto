@@ -553,6 +553,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     finished.stdoutTruncated(),
                     finished.stderrTruncated(),
                     finished.timedOut(),
+                    finished.freshSandbox(),
                     reason,
                     artifacts,
                     artifactErrors,

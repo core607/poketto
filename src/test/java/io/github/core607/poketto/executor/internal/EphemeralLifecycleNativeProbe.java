@@ -37,8 +37,10 @@ record EphemeralLifecycleNativeProbe(
         RepositoryExecutor.ExecutionResult first = execute(
                 "new", "printf before > draft.txt; python3 -c \"open('scratch.bin','wb').write(bytes([0,255]))\"", 30);
         assertThat(first.exitCode()).isZero();
+        assertThat(first.freshSandbox()).isTrue();
         assertThat(first.retention()).isNotNull();
         assertThat(first.retention().expiresAt()).isGreaterThan(System.currentTimeMillis());
+        verifyShellState(first);
         verifyLocalEditing(first);
         verifyReconnection(first);
         RepositoryExecutor.ExecutionResult timedOut =
@@ -52,8 +54,28 @@ record EphemeralLifecycleNativeProbe(
                         + "python3 -c \"assert open('scratch.bin','rb').read() == bytes([0,255])\"; git rev-parse HEAD",
                 30);
         assertThat(inspected.exitCode()).isZero();
+        assertThat(inspected.freshSandbox()).isTrue();
         assertThat(inspected.commit()).isEqualTo(first.commit());
         verifyApplicationRestart(first);
+    }
+
+    private void verifyShellState(RepositoryExecutor.ExecutionResult first) {
+        var prepared = execute(
+                first.copyId(),
+                "mkdir -p nested; cd nested; export LEASE_VALUE=retained; "
+                        + "lease_function() { printf \"$LEASE_VALUE\"; }; alias lease_alias=lease_function; "
+                        + "printf temporary > /tmp/lease-marker; sleep 60 & lease_background=$!",
+                30);
+        assertThat(prepared.exitCode()).isZero();
+        assertThat(prepared.freshSandbox()).isFalse();
+        var reused = execute(
+                first.copyId(),
+                "test \"${PWD##*/}\" = nested && test \"$(cat /tmp/lease-marker)\" = temporary "
+                        + "&& kill -0 \"$lease_background\" && lease_alias; cd ..",
+                30);
+        assertThat(reused.exitCode()).isZero();
+        assertThat(reused.stdout()).isEqualTo("retained");
+        assertThat(reused.freshSandbox()).isFalse();
     }
 
     private void verifyApplicationRestart(RepositoryExecutor.ExecutionResult first) {
