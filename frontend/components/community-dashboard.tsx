@@ -43,7 +43,13 @@ const labels: Record<Tab, string> = {
   reports: "举报处理",
 };
 
-export function CommunityDashboard() {
+export function CommunityDashboard({
+  initialTab = "feed",
+  embedded = false,
+}: {
+  initialTab?: "feed" | "bookmarks";
+  embedded?: boolean;
+}) {
   const [account, setAccount] = useState<AccountProfile | null>(null);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
@@ -65,19 +71,31 @@ export function CommunityDashboard() {
   }, []);
   if (checking) return <p role="status">正在确认会话…</p>;
   return (
-    <div className="page-shell community-dashboard">
-      <header className="page-heading">
-        <p className="eyebrow">我的社区</p>
-        <h1>{account ? account.account.displayName : "收藏、关注与讨论"}</h1>
-        <p className="muted">收藏与通知仅自己可见；关注动态按文章时间排列。</p>
-      </header>
+    <div
+      className={
+        embedded ? "community-dashboard" : "page-shell community-dashboard"
+      }
+    >
+      {!embedded && (
+        <header className="page-heading">
+          <p className="eyebrow">我的社区</p>
+          <h1>{account ? account.account.displayName : "收藏、关注与讨论"}</h1>
+          <p className="muted">
+            收藏与通知仅自己可见；关注动态按文章时间排列。
+          </p>
+        </header>
+      )}
       {error && (
         <p role="alert" className="notice danger">
           {error}
         </p>
       )}
       {account ? (
-        <CommunityLists account={account} />
+        <CommunityLists
+          account={account}
+          initialTab={initialTab}
+          feedOnly={embedded}
+        />
       ) : (
         <Login onLogin={login} />
       )}
@@ -85,8 +103,16 @@ export function CommunityDashboard() {
   );
 }
 
-function CommunityLists({ account }: { account: AccountProfile }) {
-  const [tab, setTab] = useState<Tab>("feed");
+function CommunityLists({
+  account,
+  initialTab,
+  feedOnly,
+}: {
+  account: AccountProfile;
+  initialTab: "feed" | "bookmarks";
+  feedOnly: boolean;
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [before, setBefore] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [results, setResults] = useState<Results>({});
@@ -147,23 +173,31 @@ function CommunityLists({ account }: { account: AccountProfile }) {
     page?.items.length;
   return (
     <>
-      <nav className="community-tabs" aria-label="我的社区栏目">
-        {tabs.map((item) => (
-          <button
-            key={item}
-            className={item === tab ? "" : "button-secondary"}
-            aria-current={item === tab ? "page" : undefined}
-            onClick={() => {
-              setTab(item);
-              setBefore(0);
-              setCursor(null);
-              setRemoveReport(null);
-            }}
-          >
-            {labels[item]}
-          </button>
-        ))}
-      </nav>
+      {!feedOnly && (
+        <nav className="community-tabs" aria-label="我的社区栏目">
+          {tabs.map((item) => (
+            <button
+              key={item}
+              className={item === tab ? "" : "button-secondary"}
+              aria-current={item === tab ? "page" : undefined}
+              onClick={() => {
+                setTab(item);
+                setBefore(0);
+                setCursor(null);
+                setRemoveReport(null);
+              }}
+            >
+              {labels[item]}
+            </button>
+          ))}
+        </nav>
+      )}
+      {feedOnly && (
+        <p className="muted">
+          来自你关注的空间，按文章时间排列。
+          <a href="/community">管理关注与通知 ↗</a>
+        </p>
+      )}
       {account.account.group === "VIEWER" && (
         <p className="notice">
           当前账号可管理已有记录。社区成员及以上可新增收藏、关注和评论。

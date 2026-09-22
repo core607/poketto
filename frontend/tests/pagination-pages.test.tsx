@@ -7,6 +7,7 @@ import { PublicSpacePage } from "../components/public-space";
 import Archive from "../app/archive/page";
 import Search from "../app/search/page";
 import Tags from "../app/tags/page";
+import Home from "../app/page";
 
 type Offset = string | string[] | undefined;
 const pages = [
@@ -68,15 +69,34 @@ async function backend(t: TestContext) {
     requests.push(url);
     const offset = Number(url.searchParams.get("offset"));
     const maximum = url.pathname === "/api/public/tags" ? 320000 : 10000;
-    // PublicDocuments uses Java String.length (UTF-16) and these endpoint bounds.
+    // Queries use UTF-16 bounds; tags share the repository's Unicode code-point bound.
     if (
       !Number.isInteger(offset) ||
       offset < 0 ||
       offset > maximum ||
       (url.searchParams.get("query") ?? "").length > 200 ||
-      (url.searchParams.get("tag") ?? "").length > 64
+      [...(url.searchParams.get("tag") ?? "")].length > 64
     ) {
       response.writeHead(400).end("{}");
+      return;
+    }
+    if (url.pathname === "/api/public/discovery") {
+      const batch = url.searchParams.get("batch");
+      if (batch === "expired" || batch === "mismatched-tag") {
+        response.writeHead(batch === "expired" ? 410 : 400).end("{}");
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          batch,
+          tag: url.searchParams.get("tag") ?? "",
+          items: [],
+          offset: 0,
+          limit: 6,
+          nextOffset: null,
+          previousOffset: null,
+        }),
+      );
       return;
     }
     response.end(
@@ -185,11 +205,11 @@ test("search rejects overlong UTF-16 input locally while preserving the entered 
   }
 });
 
-test("tag filters preserve the 64 UTF-16 boundary and reject oversized tags before HTTP", async (t) => {
+test("tag filters preserve the repository's 64-code-point boundary and reject oversized tags before HTTP", async (t) => {
   const requests = await backend(t);
   for (const tag of [
     "a".repeat(64),
-    "😀".repeat(32),
+    "😀".repeat(64),
     ["a".repeat(31), "b".repeat(32)],
   ]) {
     const html = renderToStaticMarkup(
@@ -201,7 +221,7 @@ test("tag filters preserve the 64 UTF-16 boundary and reject oversized tags befo
   }
   for (const tag of [
     "a".repeat(65),
-    "😀".repeat(32) + "a",
+    "😀".repeat(64) + "a",
     ["a".repeat(32), "b".repeat(32)],
   ]) {
     await assert.rejects(
@@ -209,5 +229,35 @@ test("tag filters preserve the 64 UTF-16 boundary and reject oversized tags befo
       /NEXT_HTTP_ERROR_FALLBACK;404/,
     );
     assert.equal(requests.length, 0);
+  }
+});
+
+test("discovery renders valid emoji tags and offers recovery for rejected parameters and expired batches", async (t) => {
+  await backend(t);
+  const tag = "😸".repeat(64);
+  const html = renderToStaticMarkup(
+    await Home({ searchParams: Promise.resolve({ batch: "kept", tag }) }),
+  );
+  assert.ok(html.includes(`正在发现「${tag}」相关内容。`));
+  assert.ok(html.includes('maxLength="128"'));
+  assert.ok(html.includes('pattern=".{0,64}"'));
+  for (const parameters of [
+    { batch: "kept", tag: tag + "x" },
+    { batch: "mismatched-tag", tag: "new" },
+    { batch: "expired" },
+  ]) {
+    const page = renderToStaticMarkup(
+      await Home({ searchParams: Promise.resolve(parameters) }),
+    );
+    assert.match(page, /开始新一批/);
+    assert.match(
+      page,
+      parameters.batch === "expired" ? /浏览记录已过期/ : /标签或翻页参数无效/,
+    );
+    assert.doesNotMatch(page, /内容暂时无法读取/);
+    if (parameters.tag) {
+      assert.ok(page.includes(`value="${parameters.tag}"`));
+      assert.ok(page.includes('action="/"'));
+    }
   }
 });

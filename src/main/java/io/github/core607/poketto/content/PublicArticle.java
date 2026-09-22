@@ -15,7 +15,8 @@ public record PublicArticle(
         Instant updatedAt,
         boolean folderPage,
         String publicAuthor,
-        UUID articleId) {
+        UUID articleId,
+        boolean featured) {
     public PublicArticle {
         tags = List.copyOf(tags);
     }
@@ -23,6 +24,16 @@ public record PublicArticle(
     /** An ambiguous identity cannot be used for interaction lookup; the article remains readable. */
     PublicArticle withoutIdentity() {
         return new PublicArticle(
-                repositoryPath, route, title, body, tags, createdAt, updatedAt, folderPage, publicAuthor, null);
+                repositoryPath,
+                route,
+                title,
+                body,
+                tags,
+                createdAt,
+                updatedAt,
+                folderPage,
+                publicAuthor,
+                null,
+                featured);
     }
 }

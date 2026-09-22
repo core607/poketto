@@ -16,7 +16,8 @@ public record RepositoryDocument(
         boolean folderPage,
         boolean privatePath,
         String publicAuthor,
-        UUID articleId) {
+        UUID articleId,
+        boolean featured) {
     public RepositoryDocument {
         tags = List.copyOf(tags);
     }

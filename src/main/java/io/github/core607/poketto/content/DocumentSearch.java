@@ -28,7 +28,9 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
         require(query != null, "query must not be null");
         require(tag != null, "tag must not be null");
         require(query.length() <= MAX_QUERY_LENGTH, "query must not exceed " + MAX_QUERY_LENGTH + " characters");
-        require(tag.length() <= MAX_TAG_LENGTH, "tag must not exceed " + MAX_TAG_LENGTH + " characters");
+        require(
+                tag.codePointCount(0, tag.length()) <= MAX_TAG_LENGTH,
+                "tag must not exceed " + MAX_TAG_LENGTH + " Unicode code points");
         require(offset >= 0 && offset <= MAX_OFFSET, "offset must be between 0 and " + MAX_OFFSET);
         require(limit >= 1 && limit <= MAX_LIMIT, "limit must be between 1 and " + MAX_LIMIT);
         require(from == null || to == null || !from.isAfter(to), "from must not be after to");

@@ -31,7 +31,7 @@ final class PublicDiscovery {
     private static final int MAX_BATCHES = 256;
     private static final long MAX_TEXT_BYTES = 8L * 1024 * 1024;
     private static final int SPACES_PER_BATCH = 32;
-    private static final int CARDS_PER_SPACE = 4;
+    private static final int CARDS_PER_SPACE = DiscoverySelection.LIMIT;
     private static final int PAGE_SIZE = 6;
     private static final Duration LIFETIME = Duration.ofMinutes(30);
     private final WorkspacePublications publications;
@@ -50,7 +50,7 @@ final class PublicDiscovery {
         this.clock = clock;
     }
 
-    Page page(String id, String afterBatch, int offset) {
+    Page page(String id, String afterBatch, int offset, String tag) {
         if (offset < 0 || offset > SPACES_PER_BATCH * CARDS_PER_SPACE || offset % PAGE_SIZE != 0) {
             throw new IllegalArgumentException("Discovery offset is outside the batch page bounds");
         }
@@ -60,7 +60,9 @@ final class PublicDiscovery {
         if (id == null && offset != 0) {
             throw new IllegalArgumentException("A discovery offset requires an existing batch");
         }
-        Batch batch = id == null ? create(afterBatch) : lookup(id);
+        String requestedTag = tag == null ? null : new DocumentSearch("", tag.strip(), null, null, 0, PAGE_SIZE).tag();
+        Batch batch = id == null ? create(afterBatch, requestedTag) : lookup(id);
+        requireTag(batch, requestedTag);
         int end = Math.min(batch.entries().size(), offset + PAGE_SIZE);
         var spaces = new LinkedHashMap<WorkspaceId, List<Entry>>();
         for (int index = offset; index < end; index++) {
@@ -79,6 +81,7 @@ final class PublicDiscovery {
         }
         return new Page(
                 batch.id(),
+                batch.tag(),
                 batch.expiresAt(),
                 List.copyOf(cards),
                 offset,
@@ -87,26 +90,30 @@ final class PublicDiscovery {
                 offset > 0 ? offset - PAGE_SIZE : null);
     }
 
-    private Batch create(String afterBatch) {
+    private Batch create(String afterBatch, String requestedTag) {
         if (!building.tryAcquire()) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Discovery is busy");
         }
         try {
-            Optional<WorkspaceId> after =
-                    afterBatch == null ? Optional.empty() : lookup(afterBatch).nextSpace();
+            Batch previous = afterBatch == null ? null : lookup(afterBatch);
+            if (previous != null) {
+                requireTag(previous, requestedTag);
+            }
+            String tag = previous != null ? previous.tag() : requestedTag == null ? "" : requestedTag;
+            Optional<WorkspaceId> after = previous == null ? Optional.empty() : previous.nextSpace();
             List<WorkspacePublications.Publication> spaces = publications.publishedAfter(after, SPACES_PER_BATCH + 1);
             if (spaces.isEmpty() && after.isPresent()) {
                 spaces = publications.publishedAfter(Optional.empty(), SPACES_PER_BATCH + 1);
             }
             var random = new Random();
             var entries = new ArrayList<Entry>();
-            spaces.stream().limit(SPACES_PER_BATCH).forEach(space -> entries.addAll(sample(space, random)));
+            spaces.stream().limit(SPACES_PER_BATCH).forEach(space -> entries.addAll(sample(space, tag, random)));
             Collections.shuffle(entries, random);
             Optional<WorkspaceId> next = spaces.size() > SPACES_PER_BATCH
                     ? Optional.of(spaces.get(SPACES_PER_BATCH - 1).workspaceId())
                     : Optional.empty();
-            var batch =
-                    new Batch(UUID.randomUUID().toString(), clock.instant().plus(LIFETIME), List.copyOf(entries), next);
+            var batch = new Batch(
+                    UUID.randomUUID().toString(), tag, clock.instant().plus(LIFETIME), List.copyOf(entries), next);
             remember(batch);
             return batch;
         } finally {
@@ -114,26 +121,23 @@ final class PublicDiscovery {
         }
     }
 
-    private List<Entry> sample(WorkspacePublications.Publication space, Random random) {
+    private static void requireTag(Batch batch, String requestedTag) {
+        if (requestedTag != null && !batch.tag().equals(requestedTag)) {
+            throw new IllegalArgumentException("Changing the discovery tag requires a new batch");
+        }
+    }
+
+    private List<Entry> sample(WorkspacePublications.Publication space, String tag, Random random) {
         try {
-            return snapshots.withCurrent(space.workspaceId(), snapshot -> sample(space, snapshot, random));
+            return snapshots.withCurrent(space.workspaceId(), snapshot -> sample(space, snapshot, tag, random));
         } catch (ContentRepositoryException unavailable) {
             return List.of();
         }
     }
 
     private static List<Entry> sample(
-            WorkspacePublications.Publication space, PublicContentSnapshot snapshot, Random random) {
-        var selected = new ArrayList<PublicArticle>();
-        int seen = 0;
-        for (PublicArticle article : snapshot.articles()) {
-            int index = random.nextInt(++seen);
-            if (selected.size() < CARDS_PER_SPACE) {
-                selected.add(article);
-            } else if (index < CARDS_PER_SPACE) {
-                selected.set(index, article);
-            }
-        }
+            WorkspacePublications.Publication space, PublicContentSnapshot snapshot, String tag, Random random) {
+        List<PublicArticle> selected = DiscoverySelection.select(snapshot.articles(), tag, random);
         var search = new DocumentSearch("", "", null, null, 0, CARDS_PER_SPACE);
         return selected.stream()
                 .map(article -> new Entry(
@@ -250,27 +254,29 @@ final class PublicDiscovery {
     }
 
     private static long weight(Batch batch) {
-        return batch.entries().stream()
-                .mapToLong(entry -> {
-                    Card card = entry.card();
-                    return 2L
-                            * (entry.commit().length()
-                                    + card.space().length()
-                                    + card.spaceName().length()
-                                    + card.route().length()
-                                    + card.title().length()
-                                    + card.snippet().length()
-                                    + card.authorName().length()
-                                    + card.tags().stream()
-                                            .mapToInt(String::length)
-                                            .sum());
-                })
-                .sum();
+        return 2L * batch.tag().length()
+                + batch.entries().stream()
+                        .mapToLong(entry -> {
+                            Card card = entry.card();
+                            return 2L
+                                    * (entry.commit().length()
+                                            + card.space().length()
+                                            + card.spaceName().length()
+                                            + card.route().length()
+                                            + card.title().length()
+                                            + card.snippet().length()
+                                            + card.authorName().length()
+                                            + card.tags().stream()
+                                                    .mapToInt(String::length)
+                                                    .sum());
+                        })
+                        .sum();
     }
 
     private record Entry(WorkspaceId workspace, String commit, Card card) {}
 
-    private record Batch(String id, Instant expiresAt, List<Entry> entries, Optional<WorkspaceId> nextSpace) {}
+    private record Batch(
+            String id, String tag, Instant expiresAt, List<Entry> entries, Optional<WorkspaceId> nextSpace) {}
 
     record Card(
             String space,
@@ -304,6 +310,7 @@ final class PublicDiscovery {
 
     record Page(
             String batch,
+            String tag,
             Instant expiresAt,
             List<Card> items,
             int offset,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
 import { scopedRoot, workspaceId } from "./workspace-fixture";
+import { localDrafts, retainDraft, type LocalDraft } from "../lib/local-drafts";
 import {
   navigationFolder,
   privateCreationPath,
@@ -41,8 +42,16 @@ async function mountEditor(
   url: string,
   handler: RequestHandler,
   onNavigate: (location: ContentLocation, replace?: boolean) => void,
+  prepare?: (window: Window) => void,
 ) {
   const window = new Window({ url });
+  Object.defineProperty(window.navigator, "locks", {
+    configurable: true,
+    value: {
+      request: async (_name: string, operation: () => unknown) => operation(),
+    },
+  });
+  prepare?.(window);
   const globals = {
     window,
     document: window.document,
@@ -450,6 +459,445 @@ test("preparing an existing article identity changes only the draft and retains 
     prepared,
   );
   assert.match(editor.container.textContent!, /编辑框中的内容仍然保留/);
+});
+
+test("draft recovery rechecks access and preserves the original write preconditions after remote edits", async (t) => {
+  let allowed = true;
+  const patches: {
+    baseCommit: string;
+    changes: { expectedRevision: string; content: string }[];
+  }[] = [];
+  const cached: LocalDraft = {
+    version: 1,
+    id: "recovery",
+    accountId: "owner",
+    workspaceId,
+    path: "private/note.md",
+    source: "My unsaved draft",
+    updatedAt: 1,
+    baseline: {
+      path: "private/note.md",
+      commit: "old-commit",
+      revision: "old-revision",
+      expectedAbsence: false,
+    },
+  };
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "new-commit", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return allowed
+          ? json({
+              path: cached.path,
+              source: "Someone else's newer text",
+              commit: "new-commit",
+              revision: "new-revision",
+              expectedAbsence: false,
+              publicScope: false,
+              diagnostics: [],
+            })
+          : new Response("{}", { status: 403 });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "preview", galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/repository/patch")) {
+        patches.push(JSON.parse(String(options?.body)));
+        return new Response("{}", { status: 409 });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    () => {},
+    (window) => retainDraft(window.localStorage, cached),
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const button = (label: string) => {
+    const found = [...editor.container.querySelectorAll("button")].find(
+      (item) => item.textContent?.trim() === label,
+    );
+    assert.ok(found, label);
+    return found;
+  };
+  const body = () =>
+    (editor.container.querySelector("textarea") as Control).value;
+  assert.equal(body(), "Someone else's newer text");
+  assert.equal(patches.length, 0);
+  allowed = false;
+  await editor.act(async () => button("恢复草稿").click());
+  await settle(editor.act);
+  assert.equal(body(), "Someone else's newer text");
+  assert.match(editor.container.textContent!, /无权/);
+  allowed = true;
+  await editor.act(async () => button("恢复草稿").click());
+  await settle(editor.act);
+  assert.equal(body(), cached.source);
+  await editor.act(async () => button("保存").click());
+  await settle(editor.act);
+  assert.equal(patches[0]?.baseCommit, "old-commit");
+  assert.equal(patches[0]?.changes[0].expectedRevision, "old-revision");
+  assert.equal(patches[0]?.changes[0].content, cached.source);
+  assert.equal(body(), cached.source);
+});
+
+for (const absent of [false, true]) {
+  test(`recovery follows edits back to ${absent ? "an intentionally empty new draft" : "the saved baseline"}`, async (t) => {
+    const baseline = absent ? "" : "Saved";
+    const editor = await mountEditor(
+      "http://localhost/admin?path=private%2Fnote.md",
+      async (url) => {
+        if (url.pathname.endsWith("/repository/tree"))
+          return json({ commit: "before", entries: [], diagnostics: [] });
+        if (url.pathname.endsWith("/repository/directory"))
+          return directoryResponse("", []);
+        if (url.pathname.endsWith("/repository/file"))
+          return json({
+            path: "private/note.md",
+            source: absent ? null : baseline,
+            commit: "before",
+            revision: absent ? null : "old",
+            expectedAbsence: absent,
+            publicScope: false,
+            diagnostics: [],
+          });
+        if (url.pathname === "/api/auth/csrf")
+          return json({ headerName: "X-CSRF", token: "fixture" });
+        if (url.pathname.endsWith("/repository/preview"))
+          return json({ body: baseline, galleryStatus: "COMPLETE" });
+        throw new Error(`Unexpected ${url.pathname}`);
+      },
+      () => {},
+    );
+    t.after(() => editor.cleanup());
+    await settle(editor.act);
+    const textarea = editor.container.querySelector("textarea")!;
+    const write = async (value: string) => {
+      await editor.act(async () => {
+        Object.getOwnPropertyDescriptor(
+          editor.window.HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(textarea, value);
+        textarea.dispatchEvent(
+          new editor.window.Event("input", { bubbles: true }),
+        );
+      });
+      await settle(editor.act);
+      await editor.act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
+    };
+    await write("Unsaved");
+    assert.equal(
+      localDrafts(editor.window.localStorage, "owner", workspaceId)[0].source,
+      "Unsaved",
+    );
+    await write(baseline);
+    const retained = localDrafts(
+      editor.window.localStorage,
+      "owner",
+      workspaceId,
+    );
+    assert.equal(retained.length, absent ? 1 : 0);
+    if (absent) assert.equal(retained[0].source, "");
+  });
+}
+
+test("recovery batches typing, flushes on page hide, and cancels a pending write on unmount", async (t) => {
+  let locks = 0;
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url) => {
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: "private/note.md",
+          source: "Saved",
+          commit: "before",
+          revision: "old",
+          expectedAbsence: false,
+          publicScope: false,
+          diagnostics: [],
+        });
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "Saved", galleryStatus: "COMPLETE" });
+      throw new Error(`Unexpected ${url.pathname}`);
+    },
+    () => {},
+    (window) => {
+      Object.defineProperty(window.navigator, "locks", {
+        configurable: true,
+        value: {
+          request: async (_name: string, operation: () => unknown) => {
+            locks++;
+            return operation();
+          },
+        },
+      });
+    },
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const textarea = editor.container.querySelector("textarea")!;
+  const write = (value: string) =>
+    editor.act(async () => {
+      Object.getOwnPropertyDescriptor(
+        editor.window.HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(textarea, value);
+      textarea.dispatchEvent(
+        new editor.window.Event("input", { bubbles: true }),
+      );
+    });
+  const before = locks;
+  for (const value of ["A", "AB", "ABC"]) await write(value);
+  assert.equal(locks, before);
+  assert.equal(editor.window.localStorage.length, 0);
+  await editor.act(async () =>
+    editor.window.dispatchEvent(new editor.window.Event("pagehide")),
+  );
+  assert.equal(locks, before + 1);
+  assert.equal(
+    localDrafts(editor.window.localStorage, "owner", workspaceId)[0].source,
+    "ABC",
+  );
+  await write("Must not appear after unmount");
+  await editor.unmount();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.equal(locks, before + 1);
+  assert.equal(
+    localDrafts(editor.window.localStorage, "owner", workspaceId)[0].source,
+    "ABC",
+  );
+});
+
+test("publish and withdraw use confirmed atomic moves and retain the authoritative website restriction", async (t) => {
+  let published = false;
+  const moves: unknown[] = [];
+  const original =
+    "---\nid: 12345678-1234-4234-8234-123456789abc\n---\n# Retained";
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fcategory%2Fnote.md",
+    async (url, options) => {
+      const commit = published ? "published" : "draft";
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit, entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: `${published ? "public" : "private"}/category/note.md`,
+          source: original,
+          commit,
+          revision: "same-revision",
+          expectedAbsence: false,
+          publicScope: published,
+          diagnostics: [],
+          publicPage: { state: "WEBSITE_RESTRICTED", space: null, route: null },
+        });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "Retained", galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/repository/move")) {
+        moves.push(JSON.parse(String(options?.body)));
+        published = !published;
+        return json({
+          commit: published ? "published" : "draft",
+          committed: true,
+          snapshotUpdated: true,
+          revisions: {},
+        });
+      }
+      throw new Error(`Unexpected ${url.pathname}`);
+    },
+    () => {},
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const button = (label: string, dialog = false) => {
+    const found = [
+      ...editor.container.querySelectorAll(dialog ? "dialog button" : "button"),
+    ].find((item) => item.textContent?.trim() === label);
+    assert.ok(found, label);
+    return found as unknown as Clickable;
+  };
+  await editor.act(async () => button("发布").click());
+  assert.equal(moves.length, 0);
+  await editor.act(async () => button("取消", true).click());
+  assert.equal(moves.length, 0);
+  await editor.act(async () => button("发布").click());
+  await editor.act(async () => button("发布", true).click());
+  await settle(editor.act);
+  assert.deepEqual(moves[0], {
+    baseCommit: "draft",
+    source: "private/category/note.md",
+    destination: "public/category/note.md",
+  });
+  assert.match(editor.container.textContent!, /公开展示已受限/);
+  assert.equal(
+    (editor.container.querySelector("textarea") as Control).value,
+    original,
+  );
+  await editor.act(async () => button("撤回为草稿").click());
+  await editor.act(async () => button("撤回为草稿", true).click());
+  await settle(editor.act);
+  assert.deepEqual(moves[1], {
+    baseCommit: "published",
+    source: "public/category/note.md",
+    destination: "private/category/note.md",
+  });
+  assert.equal(
+    (editor.container.querySelector("textarea") as Control).value,
+    original,
+  );
+});
+
+for (const transfer of ["paste", "drop"] as const) {
+  test(`${transfer} uploads a draft image once and retries an uncertain response with the same identity`, async (t) => {
+    const attempts: string[] = [];
+    const pending = deferred<Response>();
+    let saved = 0;
+    const editor = await mountEditor(
+      "http://localhost/admin?path=private%2Fnote.md",
+      async (url, options) => {
+        if (url.pathname === "/api/auth/csrf")
+          return json({ headerName: "X-CSRF", token: "fixture" });
+        if (url.pathname.endsWith("/repository/tree"))
+          return json({ commit: "before", entries: [], diagnostics: [] });
+        if (url.pathname.endsWith("/repository/directory"))
+          return directoryResponse("", []);
+        if (url.pathname.endsWith("/repository/file"))
+          return json({
+            path: "private/note.md",
+            source: "AB",
+            commit: "before",
+            revision: "old",
+            expectedAbsence: false,
+            publicScope: false,
+            diagnostics: [],
+          });
+        if (url.pathname.endsWith("/repository/preview"))
+          return json({ body: "AB", galleryStatus: "COMPLETE" });
+        if (url.pathname.endsWith("/repository/patch")) saved++;
+        if (url.pathname.endsWith("/assets")) {
+          attempts.push(new Headers(options?.headers).get("Idempotency-Key")!);
+          if (attempts.length === 1)
+            throw new TypeError("connection lost after upload");
+          return pending.promise;
+        }
+        throw new Error(`Unexpected ${url.pathname}`);
+      },
+      () => {},
+    );
+    t.after(() => editor.cleanup());
+    await settle(editor.act);
+    const textarea = editor.container.querySelector("textarea")!;
+    textarea.setSelectionRange(1, 1);
+    const file = new editor.window.File(["fixture"], "test.png", {
+      type: "image/png",
+    });
+    const event = new editor.window.Event(transfer, {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(
+      event,
+      transfer === "paste" ? "clipboardData" : "dataTransfer",
+      { value: { files: [file] } },
+    );
+    await editor.act(async () => textarea.dispatchEvent(event));
+    await settle(editor.act);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(attempts.length, 1);
+    assert.equal(textarea.value, "AB");
+    assert.match(editor.container.textContent!, /连接中断/);
+    const retry = [...editor.container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "上传 test.png",
+    )!;
+    assert.ok(retry);
+    await editor.act(async () => retry.click());
+    assert.equal(textarea.readOnly, true);
+    assert.equal(attempts.length, 2);
+    assert.equal(attempts[0], attempts[1]);
+    assert.match(attempts[0], /^[0-9a-f-]{36}$/);
+    await editor.act(async () =>
+      pending.resolve(
+        json({ reference: { assetId: "image", revision: "revision" } }),
+      ),
+    );
+    assert.equal(textarea.value, "A\n![图片](managed:image:revision)\nB");
+    assert.equal(saved, 0);
+    assert.equal(textarea.readOnly, false);
+    assert.match(editor.container.textContent!, /图片已上传并插入草稿/);
+  });
+}
+
+test("an upload acknowledged after leaving the editor cannot recreate a draft", async (t) => {
+  const pending = deferred<Response>();
+  let uploads = 0;
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: "before", entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/file"))
+        return json({
+          path: "private/note.md",
+          source: "Unchanged",
+          commit: "before",
+          revision: "old",
+          expectedAbsence: false,
+          publicScope: false,
+          diagnostics: [],
+        });
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "Unchanged", galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/assets")) {
+        uploads++;
+        return pending.promise;
+      }
+      throw new Error(`Unexpected ${url.pathname}`);
+    },
+    () => {},
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const event = new editor.window.Event("paste", {
+    bubbles: true,
+    cancelable: true,
+  });
+  Object.defineProperty(event, "clipboardData", {
+    value: {
+      files: [
+        new editor.window.File(["fixture"], "late.png", { type: "image/png" }),
+      ],
+    },
+  });
+  await editor.act(async () =>
+    editor.container.querySelector("textarea")!.dispatchEvent(event),
+  );
+  assert.equal(uploads, 1);
+  await editor.unmount();
+  await editor.act(async () =>
+    pending.resolve(
+      json({ reference: { assetId: "late", revision: "revision" } }),
+    ),
+  );
+  assert.equal(editor.container.textContent, "");
+  assert.equal(editor.window.localStorage.length, 0);
 });
 
 test("opening and saving a file after selecting a folder retains that folder", async (t) => {

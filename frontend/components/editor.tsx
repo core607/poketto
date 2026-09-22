@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/browser-api";
 import { useWorkspaceApi } from "./workspace-context";
 import { EditorPublicPage } from "./editor-public-page";
+import { DraftRecovery, useEditorRecovery } from "./editor-recovery";
+import { DraftLibrary } from "./draft-library";
+import { recoveredFile, type LocalDraft } from "../lib/local-drafts";
+import {
+  imageUpload,
+  type ImageInsertion,
+  type ImageUpload,
+} from "../lib/image-upload";
 import type {
   GalleryStatus,
   RepositoryFile,
@@ -21,7 +29,11 @@ import { SearchHighlight } from "./search-highlight";
 import { FolderPicker } from "./folder-picker";
 import { ExportDialog } from "./export-dialog";
 import { DiagnosticMessage } from "./diagnostic";
-import { inContentRoot, readDirectory } from "../lib/repository-directory";
+import {
+  contentRoot,
+  inContentRoot,
+  readDirectory,
+} from "../lib/repository-directory";
 import {
   navigationFolder,
   parentDirectory,
@@ -43,7 +55,7 @@ export function Editor({
   onNavigate,
 }: {
   identity: Identity;
-  onDirtyChange: (dirty: boolean) => void;
+  onDirtyChange: (dirty: boolean, discard?: () => void) => void;
   onNavigate: (location: ContentLocation, replace?: boolean) => void;
 }) {
   const api = useWorkspaceApi();
@@ -62,7 +74,10 @@ export function Editor({
     query: string;
     items: { path: string; title: string; snippet: string }[];
   } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [incomingImage, setIncomingImage] = useState<ImageUpload | null>(null);
+  const busy = working || uploading;
   const [exportSelection, setExportSelection] = useState<{
     source: string;
     returnFocus: HTMLElement | null;
@@ -82,6 +97,8 @@ export function Editor({
   const [previewVersion, setPreviewVersion] = useState(0);
   const [view, setView] = useState("split");
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const currentSource = useRef(source);
+  currentSource.current = source;
   const editorRoot = useRef<HTMLDivElement>(null);
   const unreadable =
     file !== null && file.source === null && !file.expectedAbsence;
@@ -93,6 +110,14 @@ export function Editor({
     ((file.expectedAbsence && writable) ||
       source !== (file.source ?? "") ||
       path !== file.path);
+  const recovery = useEditorRecovery(
+    identity,
+    file,
+    path,
+    source,
+    dirty,
+    writable,
+  );
   async function reloadTree() {
     const next = await api<RepositoryTree>("/api/admin/repository/tree");
     setTree(next);
@@ -118,13 +143,16 @@ export function Editor({
     };
   }, []);
   useEffect(() => {
-    onDirtyChange(dirty);
+    onDirtyChange(dirty || uploading, recovery.discard);
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
-    if (dirty) window.addEventListener("beforeunload", warn);
+    if (dirty || uploading) window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty, onDirtyChange]);
+  }, [dirty, uploading, onDirtyChange, recovery.discard]);
+  useEffect(() => {
+    setIncomingImage(null);
+  }, [path]);
   useEffect(() => {
     setPreview({ galleryStatus: "COMPLETE" });
     setPreviewError("");
@@ -198,6 +226,8 @@ export function Editor({
             "文件夹已经存在，请换一个名称，或在文件树选择它。",
           );
       }
+      if (dirty) recovery.discard();
+      recovery.opened(result);
       setPreview({ galleryStatus: "COMPLETE" });
       setFile(result);
       setPath(result.path);
@@ -237,6 +267,45 @@ export function Editor({
       setSearch({ query, items: result.items });
     } catch (error) {
       setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function restoreDraft(draft: LocalDraft) {
+    if (
+      dirty &&
+      !(await confirm({
+        title: "恢复本机草稿？",
+        description:
+          "当前编辑框的修改将被所选草稿替换。请先保存需要保留的内容。",
+        confirmLabel: "恢复草稿",
+      }))
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      const current = await api<RepositoryFile>(
+        "/api/admin/repository/file?" +
+          new URLSearchParams({ path: draft.path }),
+      );
+      if (!alive.current) return;
+      if (current.source === null && !current.expectedAbsence)
+        throw new Error("unreadable file");
+      const restored = recoveredFile(current, draft);
+      recovery.discard();
+      recovery.adopt(draft);
+      setFile(restored);
+      setSource(draft.source);
+      setPath(draft.path);
+      setConflict(restored !== current);
+      setNotice(
+        restored === current
+          ? "草稿已恢复到编辑框，请预览后保存。"
+          : "草稿已恢复，但仓库文件已有变化。原版本检查已保留，请先复制需要的修改并重新读取文件。",
+      );
+    } catch (failure) {
+      setError(message(failure));
     } finally {
       setBusy(false);
     }
@@ -315,6 +384,7 @@ export function Editor({
         source,
         remove,
       );
+      recovery.discard();
       if (remove) {
         pageRequest.current++;
         setPagePending(false);
@@ -375,8 +445,36 @@ export function Editor({
       returnFocus: trigger,
     });
   }
-  async function move(destination: string) {
-    if (!moveSelection || dirty) return false;
+  async function switchVisibility() {
+    if (!file?.commit || file.expectedAbsence || dirty || busy || unreadable)
+      return;
+    const publishing = contentRoot(file.path) === "private";
+    const destination = inContentRoot(
+      file.path,
+      publishing ? "public" : "private",
+    );
+    if (
+      !(await confirm({
+        title: publishing ? "发布这篇内容？" : "撤回为私有草稿？",
+        description: publishing
+          ? `将已保存的内容移到「${destination}」。只有网站开启、符合发布规则且账号未受限时才会公开；需要一起发布的媒体请通过移动文件夹处理。`
+          : `将已保存的内容移到「${destination}」，停止通过此文章提供公开内容。其他公开引用仍可能提供相同媒体，已被他人保存的副本无法撤回。`,
+        confirmLabel: publishing ? "发布" : "撤回为草稿",
+      }))
+    )
+      return;
+    try {
+      await move(destination, {
+        source: file.path,
+        commit: file.commit,
+        returnFocus: null,
+      });
+    } catch {
+      // The shared move path retains its actionable failure; confirmation never retries it.
+    }
+  }
+  async function move(destination: string, selection = moveSelection) {
+    if (!selection || dirty) return false;
     setBusy(true);
     setError("");
     setNotice("");
@@ -385,16 +483,15 @@ export function Editor({
       const result = await api<PatchResult>("/api/admin/repository/move", {
         method: "POST",
         body: {
-          baseCommit: moveSelection.commit,
-          source: moveSelection.source,
+          baseCommit: selection.commit,
+          source: selection.source,
           destination,
         },
       });
       if (!alive.current) return true;
       const nextFolder =
-        folder === moveSelection.source ||
-        folder.startsWith(moveSelection.source + "/")
-          ? destination + folder.slice(moveSelection.source.length)
+        folder === selection.source || folder.startsWith(selection.source + "/")
+          ? destination + folder.slice(selection.source.length)
           : folder;
       setSearch(null);
       let notice = result.snapshotUpdated
@@ -402,9 +499,9 @@ export function Editor({
         : "已移动，公开页面暂时无法更新。";
       if (file) {
         const nextPath =
-          file.path === moveSelection.source ||
-          file.path.startsWith(moveSelection.source + "/")
-            ? destination + file.path.slice(moveSelection.source.length)
+          file.path === selection.source ||
+          file.path.startsWith(selection.source + "/")
+            ? destination + file.path.slice(selection.source.length)
             : file.path;
         setFile(null);
         setSource("");
@@ -415,6 +512,7 @@ export function Editor({
               new URLSearchParams({ path: nextPath }),
           );
           if (!alive.current) return true;
+          recovery.opened(current);
           setFile(current);
           setSource(current.source ?? "");
           setPath(current.path);
@@ -460,18 +558,45 @@ export function Editor({
       setBusy(false);
     }
   }
-  function insert(markdown: string) {
-    const start = textarea.current?.selectionStart;
-    const end = textarea.current?.selectionEnd;
+  function insertion(): ImageInsertion {
+    return {
+      start: textarea.current?.selectionStart ?? source.length,
+      end: textarea.current?.selectionEnd ?? source.length,
+      source,
+    };
+  }
+  function receiveImage(files: File[]) {
+    if (
+      busy ||
+      !writable ||
+      unreadable ||
+      !identity.capabilities.includes("WRITE_PRIVATE")
+    ) {
+      setError("当前无法上传图片，请等待正在进行的操作完成并确认写入权限。");
+      return;
+    }
+    try {
+      setIncomingImage(imageUpload(files, true, insertion()));
+      setError("");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : message(failure));
+    }
+  }
+  function insert(markdown: string, position?: ImageInsertion) {
+    if (position && currentSource.current !== position.source) return false;
+    const start = position?.start ?? textarea.current?.selectionStart;
+    const end = position?.end ?? textarea.current?.selectionEnd;
     setNotice("");
-    setSource(
-      (current) =>
-        current.slice(0, start ?? current.length) +
-        "\n" +
-        markdown +
-        "\n" +
-        current.slice(end ?? current.length),
+    setSource((current) =>
+      position && current !== position.source
+        ? current
+        : current.slice(0, start ?? current.length) +
+          "\n" +
+          markdown +
+          "\n" +
+          current.slice(end ?? current.length),
     );
+    return true;
   }
   return (
     <div className="editor-layout" ref={editorRoot} tabIndex={-1}>
@@ -518,6 +643,11 @@ export function Editor({
             刷新
           </button>
         </div>
+        <DraftLibrary
+          identity={identity}
+          disabled={busy}
+          onOpen={(draftPath) => void open(draftPath)}
+        />
         <section className="content-creation" aria-label="当前目录与新建">
           <p className="selected-folder">当前目录：{folder || "仓库根目录"}</p>
           <button
@@ -734,6 +864,28 @@ export function Editor({
             {notice}
           </p>
         )}
+        {file && (
+          <DraftRecovery
+            drafts={recovery.available}
+            disabled={busy || !writable || unreadable}
+            onRestore={(draft) => void restoreDraft(draft)}
+            onForget={async (draft) => {
+              if (
+                await confirm({
+                  title: "删除这份本机草稿？",
+                  description: "这份未保存正文将从浏览器移除，仓库文件不变。",
+                  confirmLabel: "删除本机草稿",
+                })
+              )
+                await recovery.forget(draft);
+            }}
+          />
+        )}
+        {recovery.status && (
+          <p className="muted" role="status">
+            {recovery.status}
+          </p>
+        )}
         {file ? (
           <>
             <div className="editor-toolbar">
@@ -750,6 +902,31 @@ export function Editor({
                 />
               </label>
               <div className="editor-actions">
+                {contentRoot(path) && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={
+                      busy ||
+                      dirty ||
+                      unreadable ||
+                      file.expectedAbsence ||
+                      !file.commit ||
+                      !["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"].every(
+                        (capability) =>
+                          identity.capabilities.includes(capability),
+                      )
+                    }
+                    title={
+                      dirty || file.expectedAbsence
+                        ? "请先保存草稿，再发布或撤回。"
+                        : "需要私有读取、写入和发布权限。"
+                    }
+                    onClick={() => void switchVisibility()}
+                  >
+                    {contentRoot(path) === "public" ? "撤回为草稿" : "发布"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="button-secondary"
@@ -848,6 +1025,22 @@ export function Editor({
                           if (writable && !busy && dirty) void save(path);
                         }
                       }}
+                      onPaste={(event) => {
+                        const files = Array.from(event.clipboardData.files);
+                        if (!files.length) return;
+                        event.preventDefault();
+                        receiveImage(files);
+                      }}
+                      onDragOver={(event) => {
+                        if (event.dataTransfer.types.includes("Files"))
+                          event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        const files = Array.from(event.dataTransfer.files);
+                        if (!files.length) return;
+                        event.preventDefault();
+                        receiveImage(files);
+                      }}
                       spellCheck={false}
                       readOnly={!writable || busy}
                     />
@@ -875,7 +1068,7 @@ export function Editor({
                     )}
                   </div>
                 </div>
-                {writable && !busy && (
+                {writable && !working && (
                   <AssetPicker
                     key={path}
                     path={path}
@@ -885,7 +1078,17 @@ export function Editor({
                       "READ_PRIVATE",
                     )}
                     onInsert={insert}
+                    incoming={incomingImage}
+                    onConsumed={() => setIncomingImage(null)}
+                    onUploading={setUploading}
+                    insertion={insertion}
                   />
+                )}
+                {identity.capabilities.includes("WRITE_PRIVATE") && (
+                  <p className="muted">
+                    可在正文中粘贴或拖入一张图片，最多 16
+                    MiB；上传后保存文章才会写入内容。
+                  </p>
                 )}
               </>
             )}

@@ -5,6 +5,7 @@ import { ConfirmationProvider } from "./confirmation";
 import { type AccountProfile } from "./account-panel";
 import { WorkspaceDashboard } from "./workspace-dashboard";
 import { Login } from "./login";
+import { clearAccountDrafts, withDraftStorage } from "../lib/local-drafts";
 export { Login } from "./login";
 
 export type Identity = {
@@ -49,6 +50,17 @@ function AdminContent() {
   async function logout() {
     try {
       await api("/api/auth/logout", { method: "POST" });
+      if (account) {
+        try {
+          await withDraftStorage((storage) =>
+            clearAccountDrafts(storage, account.account.accountId),
+          );
+        } catch {
+          setError(
+            "已退出登录，但本机草稿未能清理；可在浏览器设置中清除本站数据。",
+          );
+        }
+      }
       window.history.replaceState(
         window.history.state,
         "",

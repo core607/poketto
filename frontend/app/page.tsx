@@ -2,11 +2,15 @@ import { redirect } from "next/navigation";
 import { discovery, PublicApiError } from "../lib/public-api";
 import { articleHref, date, spaceHref } from "../lib/format";
 import { DiscoveryCover } from "../components/discovery-cover";
+import { HomeNavigation } from "../components/home-navigation";
+import { CommunityDashboard } from "../components/community-dashboard";
 
 type Parameters = {
   batch?: string | string[];
   afterBatch?: string | string[];
   offset?: string | string[];
+  tag?: string | string[];
+  view?: string | string[];
 };
 export default async function Home({
   searchParams,
@@ -14,6 +18,17 @@ export default async function Home({
   searchParams: Promise<Parameters>;
 }) {
   const parameters = await searchParams;
+  if (parameters.view === "following")
+    return (
+      <div className="page-shell">
+        <HomeNavigation following />
+        <header className="page-heading">
+          <p className="eyebrow">继续读你喜欢的记录</p>
+          <h1>关注动态</h1>
+        </header>
+        <CommunityDashboard embedded />
+      </div>
+    );
   const batch =
     typeof parameters.batch === "string" ? parameters.batch : undefined;
   const afterBatch =
@@ -24,15 +39,27 @@ export default async function Home({
     typeof parameters.offset === "string" ? parameters.offset : "0";
   const page = await discovery({
     ...(batch ? { batch, offset } : afterBatch ? { afterBatch } : {}),
+    ...(typeof parameters.tag === "string" ? { tag: parameters.tag } : {}),
   }).catch((error) => {
-    if (error instanceof PublicApiError && error.status === 410) return null;
+    if (error instanceof PublicApiError && [400, 410].includes(error.status))
+      return error.status;
     throw error;
   });
-  if (!page)
+  if (typeof page === "number")
     return (
-      <section className="page-shell empty-state">
-        <h1>换一批，继续发现。</h1>
-        <p>这批浏览记录已过期，可以重新开始。</p>
+      <section className="page-shell">
+        <HomeNavigation />
+        <h1>{page === 400 ? "调整筛选，继续发现。" : "换一批，继续发现。"}</h1>
+        <p>
+          {page === 400
+            ? "标签或翻页参数无效。标签最多 64 个字符；更换标签时，请开始新一批。"
+            : "这批浏览记录已过期，可以重新开始。"}
+        </p>
+        {page === 400 && (
+          <DiscoveryTagForm
+            tag={typeof parameters.tag === "string" ? parameters.tag : ""}
+          />
+        )}
         <a href="/">开始新一批 ↗</a>
       </section>
     );
@@ -41,6 +68,7 @@ export default async function Home({
     "/?" + new URLSearchParams({ batch: page.batch, offset: String(position) });
   return (
     <div className="page-shell">
+      <HomeNavigation />
       <section className="hero">
         <div>
           <p className="eyebrow">来自不同空间的记录</p>
@@ -58,6 +86,12 @@ export default async function Home({
           <a href="/admin">我的空间 ↗</a>
         </div>
       </section>
+      <DiscoveryTagForm tag={page.tag} />
+      <p className="muted">
+        {page.tag
+          ? `正在发现「${page.tag}」相关内容。`
+          : "结合作者精选、新近文章、标签与随机发现，每个空间最多四篇。"}
+      </p>
       <div className="article-list">
         {page.items.map((item) => (
           <article className="article-card" key={item.space + ":" + item.route}>
@@ -89,14 +123,7 @@ export default async function Home({
             <p>{item.snippet}</p>
             <div className="tag-row">
               {item.tags.map((tag) => (
-                <a
-                  href={
-                    spaceHref(item.space) +
-                    "/tags?tag=" +
-                    encodeURIComponent(tag)
-                  }
-                  key={tag}
-                >
+                <a href={"/?tag=" + encodeURIComponent(tag)} key={tag}>
                   {tag}
                 </a>
               ))}
@@ -134,5 +161,24 @@ export default async function Home({
         )}
       </nav>
     </div>
+  );
+}
+
+function DiscoveryTagForm({ tag }: { tag: string }) {
+  return (
+    <form className="discovery-filter" action="/">
+      <label htmlFor="discovery-tag">按标签发现</label>
+      <input
+        id="discovery-tag"
+        name="tag"
+        defaultValue={tag}
+        maxLength={128}
+        pattern=".{0,64}"
+        title="标签最多 64 个字符"
+        placeholder="输入完整标签"
+      />
+      <button type="submit">发现</button>
+      {tag && <a href="/">清除标签</a>}
+    </form>
   );
 }

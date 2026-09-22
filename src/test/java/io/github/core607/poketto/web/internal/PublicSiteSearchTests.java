@@ -196,7 +196,8 @@ class PublicSiteSearchTests {
                 CREATED,
                 false,
                 "",
-                null);
+                null,
+                false);
     }
 
     private static final class FakePublications implements WorkspacePublications {

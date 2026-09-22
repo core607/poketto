@@ -70,7 +70,11 @@ final class RepositoryMarkdownParser {
                 PublicAuthorNames.normalize(
                         optionalText(metadata, "public_author").orElse("")),
                 articleId(metadata),
-                metadata != null && metadata.has("id") && articleId(metadata) == null);
+                metadata != null && metadata.has("id") && articleId(metadata) == null,
+                metadata != null
+                        && metadata.has("featured")
+                        && metadata.get("featured").isBoolean()
+                        && metadata.get("featured").booleanValue());
     }
 
     private static UUID articleId(JsonNode metadata) {
@@ -275,5 +279,6 @@ final class RepositoryMarkdownParser {
             boolean inferredMetadata,
             String publicAuthor,
             UUID articleId,
-            boolean invalidArticleId) {}
+            boolean invalidArticleId,
+            boolean featured) {}
 }

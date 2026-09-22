@@ -106,7 +106,8 @@ class SpacePublicationIntegrationIT {
             Files.writeString(root.resolve(".poketto/publishing.yaml"), "enabled: true\nmode: public-root\n");
             Files.writeString(
                     root.resolve("public/note.md"),
-                    "# " + title + "\n\n![Picture](picture.png)\n\n[Download](source.pdf)\n");
+                    "---\ntags: [fixture, " + "😸".repeat(64) + "]\nfeatured: true\n---\n# " + title
+                            + "\n\n![Picture](picture.png)\n\n[Download](source.pdf)\n");
             Files.writeString(root.resolve("public/source.pdf"), "%PDF-1.7\n" + title);
             Files.writeString(root.resolve("private/secret.md"), "# Private sentinel\n");
             var picture = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
@@ -737,7 +738,31 @@ class SpacePublicationIntegrationIT {
         assertThat(json.readTree(replay)).isEqualTo(parsed);
         assertThat(first).contains("Second unique sentinel", "Visible").doesNotContain("Private sentinel");
         mvc.perform(get("/api/public/discovery").param("batch", "missing")).andExpect(status().isGone());
+        verifyTaggedDiscovery();
         return batch;
+    }
+
+    private void verifyTaggedDiscovery() throws Exception {
+        mvc.perform(get("/api/public/discovery").param("tag", "😸".repeat(64)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2));
+        var response = mvc.perform(get("/api/public/discovery").param("tag", "fixture"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.tag").value("fixture"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String tagged = json.readTree(response).get("batch").stringValue();
+        mvc.perform(get("/api/public/discovery").param("batch", tagged))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tag").value("fixture"))
+                .andExpect(jsonPath("$.items.length()").value(2));
+        mvc.perform(get("/api/public/discovery").param("batch", tagged).param("tag", "other"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/public/discovery").param("tag", "not-in-fixture"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
     }
 
     private String publicImage() throws Exception {

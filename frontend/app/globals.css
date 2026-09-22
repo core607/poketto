@@ -1689,6 +1689,19 @@ body:has(.image-lightbox[open]) {
 .community-tabs {
   margin: 1.5rem 0;
 }
+.community-tabs a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--accent);
+}
+.discovery-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.discovery-filter input {
+  width: min(100%, 20rem);
+}
 .community-comment,
 .community-list-item {
   border-top: 1px solid var(--line);
@@ -1740,4 +1753,15 @@ body:has(.image-lightbox[open]) {
 }
 .community-dashboard {
   max-width: 960px;
+}
+.draft-library-item {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--line);
+}
+.draft-library-item button {
+  justify-content: flex-start;
+  overflow-wrap: anywhere;
+  text-align: left;
 }

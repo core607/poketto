@@ -15,7 +15,7 @@ export default async function Tags({
 }) {
   const { tag: rawTag, offset = "0", tagOffset = "0" } = await searchParams;
   const tag = String(rawTag ?? "");
-  if (tag.length > 64) notFound();
+  if ([...tag].length > 64) notFound();
   if (tag) {
     const page = await articles({
       tag,

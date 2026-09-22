@@ -15,6 +15,10 @@ Search text longer than 200 UTF-16 code units stays in the input with a Chinese 
 
 The editor keeps the loaded revision and commit alongside the draft. A rename or delete becomes an atomic repository patch. Conflict and uncertain-response states retain the draft instead of retrying a write. Image uploads use independent idempotency keys and report their acknowledgement separately from a document save.
 
+[Authoring and discovery](2026-09-23-authoring-and-discovery-experience.md) adds
+bounded local draft recovery, image paste/drop and explicit publish/withdraw actions
+over the existing save, upload and atomic move services.
+
 Member suspension, key revocation, file deletion and discarding unsaved edits use a shared in-page modal dialog. It identifies the action and target, initially focuses Cancel, and treats Escape or unmounting the caller as cancellation. Closing the dialog restores focus to the invoking control when it remains available. The application waits for explicit confirmation before sending the mutation or discarding the draft. Closing or reloading a browser tab with unsaved edits retains the browser's unload warning.
 
 Repository image choices encode each filename segment while retaining relative parent traversal. New image references and previews use the draft's pending destination path. Changing that path clears old image choices without rewriting the draft or its existing references.

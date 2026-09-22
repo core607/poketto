@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/browser-api";
 import { message, type Identity } from "./admin";
 import { AccountPanel, type AccountProfile } from "./account-panel";
@@ -57,6 +57,11 @@ export function WorkspaceDashboard({
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
   const [dirty, setDirty] = useState(false);
+  const discardDraft = useRef<(() => void) | undefined>(undefined);
+  const editorDirty = useCallback((value: boolean, discard?: () => void) => {
+    setDirty(value);
+    discardDraft.current = discard;
+  }, []);
   const initial = useRef(false);
   const generation = useRef(0);
   const currentUrl = useRef("");
@@ -64,14 +69,16 @@ export function WorkspaceDashboard({
   const returningPosition = useRef<number | null>(null);
   const confirmingNavigation = useRef(false);
   async function discard() {
-    return (
+    const accepted =
       !dirty ||
       (await confirm({
         title: "放弃未保存的修改？",
-        description: "请先保存当前文件，或放弃修改后继续。",
+        description:
+          "请先保存当前文件并等待图片上传完成，或放弃修改后继续。离开后，仍在上传的图片不会插入其他文件。",
         confirmLabel: "放弃并继续",
-      }))
-    );
+      }));
+    if (accepted && dirty) discardDraft.current?.();
+    return accepted;
   }
   function writeUrl(
     workspace: string,
@@ -238,7 +245,7 @@ export function WorkspaceDashboard({
       {activeTab === "content" && identity && (
         <Editor
           identity={identity}
-          onDirtyChange={setDirty}
+          onDirtyChange={editorDirty}
           onNavigate={(location, replace = false) =>
             writeUrl(selected, "content", replace, true, location)
           }

@@ -184,13 +184,13 @@ test("viewer comments remain plain text and existing bookmarks can be removed", 
   ]);
 });
 
-test("a downgraded account can remove an unavailable private bookmark without seeing its title", async (t) => {
+test("a direct bookmark entrance opens only the private list and lets a downgraded account remove unavailable records", async (t) => {
   const actions: string[] = [];
   const ui = await mount(
     async () => {
       const { CommunityDashboard } =
         await import("../components/community-dashboard");
-      return <CommunityDashboard />;
+      return <CommunityDashboard initialTab="bookmarks" />;
     },
     async (input, options) => {
       const path = String(input);
@@ -205,8 +205,6 @@ test("a downgraded account can remove an unavailable private bookmark without se
             siteAdministrator: false,
           },
         });
-      if (path.includes("/feed"))
-        return Response.json({ items: [], nextCursor: null });
       if (options?.method === "DELETE") {
         actions.push(path);
         return new Response(null, { status: 204 });
@@ -224,7 +222,7 @@ test("a downgraded account can remove an unavailable private bookmark without se
     (item) => item.textContent === "私密收藏",
   );
   assert.ok(tab);
-  await ui.act(async () => tab.click());
+  assert.equal(tab.getAttribute("aria-current"), "page");
   assert.match(ui.container.textContent!, /收藏的文章目前不可用/);
   const remove = [...ui.container.querySelectorAll("button")].find(
     (item) => item.textContent === "取消收藏",
