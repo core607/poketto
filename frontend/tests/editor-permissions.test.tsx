@@ -148,6 +148,12 @@ for (const scenario of [
     assert.ok(textarea);
     assert.equal(textarea.readOnly, !scenario.writable);
     assert.equal(
+      [...container.querySelectorAll("button")].some(
+        (button) => button.textContent?.trim() === "历史版本",
+      ),
+      scenario.capabilities.includes("READ_PRIVATE"),
+    );
+    assert.equal(
       container.textContent.includes("选择已上传图片"),
       scenario.picker,
     );

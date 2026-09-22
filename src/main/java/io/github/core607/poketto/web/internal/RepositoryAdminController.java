@@ -8,6 +8,8 @@ import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
 import io.github.core607.poketto.content.RepositoryFilenamePage;
 import io.github.core607.poketto.content.RepositoryFilenameSearch;
+import io.github.core607.poketto.content.RepositoryHistoryPage;
+import io.github.core607.poketto.content.RepositoryHistoryQuery;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatch;
@@ -102,6 +104,20 @@ class RepositoryAdminController {
         }
         var move = new RepositoryMoveRequest(request.baseCommit(), request.source(), request.destination());
         return result(moves.move(actor, workspaces.selected(), move));
+    }
+
+    @GetMapping("/history")
+    RepositoryHistoryPage history(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @RequestParam String path,
+            @RequestParam(required = false) String commit,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "20") int limit) {
+        return reader.history(
+                actor,
+                workspaces.selected(),
+                Optional.ofNullable(commit),
+                new RepositoryHistoryQuery(path, offset, limit));
     }
 
     @GetMapping("/tree")

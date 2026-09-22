@@ -1265,3 +1265,126 @@ test("an editor unmount prevents a late file response from changing navigation",
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(navigations, []);
 });
+
+test("history selection ignores late reads and restoration saves against the current baseline", async (t) => {
+  const oldRead = deferred<Response>();
+  const patches: unknown[] = [];
+  const current = {
+    path: "private/note.md",
+    source: "# Current",
+    revision: "current-revision",
+    commit: "current-commit",
+    expectedAbsence: false,
+    publicScope: false,
+    diagnostics: [],
+    publicPage: null,
+  };
+  const historical = "# Historical B\n<script>plain source</script>";
+  const editor = await mountEditor(
+    "http://localhost/admin?path=private%2Fnote.md",
+    async (url, options) => {
+      if (url.pathname === "/api/auth/csrf")
+        return json({ headerName: "X-CSRF", token: "fixture" });
+      if (url.pathname.endsWith("/repository/tree"))
+        return json({ commit: current.commit, entries: [], diagnostics: [] });
+      if (url.pathname.endsWith("/repository/directory"))
+        return directoryResponse("", []);
+      if (url.pathname.endsWith("/repository/preview"))
+        return json({ body: "", images: {}, galleryStatus: "COMPLETE" });
+      if (url.pathname.endsWith("/repository/history"))
+        return json({
+          commit: current.commit,
+          path: current.path,
+          nextOffset: null,
+          entries: ["older-a", "older-b"].map((commit) => ({
+            commit,
+            subject: commit,
+            author: "Author",
+            committedAt: "2026-09-01T00:00:00Z",
+            present: true,
+          })),
+        });
+      if (url.pathname.endsWith("/repository/file")) {
+        if (url.searchParams.get("commit") === "older-a")
+          return oldRead.promise;
+        if (url.searchParams.get("commit") === "older-b")
+          return json({
+            ...current,
+            source: historical,
+            commit: "older-b",
+            revision: "old-revision",
+          });
+        return json(current);
+      }
+      if (url.pathname.endsWith("/repository/patch")) {
+        patches.push(JSON.parse(String(options?.body)));
+        return new Response(null, { status: 409 });
+      }
+      throw new Error(`Unexpected API call: ${url.pathname}`);
+    },
+    () => {},
+  );
+  t.after(() => editor.cleanup());
+  await settle(editor.act);
+  const textarea = editor.container.querySelector("textarea") as Control;
+  Object.getOwnPropertyDescriptor(
+    editor.window.HTMLTextAreaElement.prototype,
+    "value",
+  )!.set!.call(textarea, "# Unsaved");
+  await editor.act(async () =>
+    textarea.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
+  );
+  const button = (label: string) => {
+    const found = [...editor.container.querySelectorAll("button")].find(
+      (item) => item.textContent?.trim() === label,
+    );
+    assert.ok(found, label);
+    return found;
+  };
+  await editor.act(async () => button("历史版本").click());
+  await settle(editor.act);
+  const revision = (name: string) => {
+    const found = [
+      ...editor.container.querySelectorAll(".history-versions button"),
+    ].find((item) => item.querySelector("strong")?.textContent === name);
+    assert.ok(found, name);
+    return found as unknown as Clickable;
+  };
+  await editor.act(async () => revision("older-a").click());
+  await editor.act(async () => revision("older-b").click());
+  await settle(editor.act);
+  assert.match(editor.container.textContent, /Historical B/);
+  assert.equal(editor.container.querySelectorAll("script").length, 0);
+  await editor.act(async () =>
+    oldRead.resolve(
+      json({ ...current, source: "# Stale A", commit: "older-a" }),
+    ),
+  );
+  assert.doesNotMatch(editor.container.textContent, /Stale A/);
+  await editor.act(async () => button("恢复到编辑框").click());
+  assert.match(editor.container.textContent, /用历史版本替换当前编辑内容/);
+  await editor.act(async () => button("取消").click());
+  assert.equal(textarea.value, "# Unsaved");
+  await editor.act(async () => button("恢复到编辑框").click());
+  await editor.act(async () => button("替换编辑内容").click());
+  assert.equal(textarea.value, historical);
+  assert.deepEqual(patches, []);
+  assert.equal(editor.container.querySelector(".history-dialog"), null);
+  await editor.act(async () => button("保存").click());
+  await settle(editor.act);
+  assert.deepEqual(patches, [
+    {
+      baseCommit: "current-commit",
+      changes: [
+        {
+          path: current.path,
+          expectedAbsence: false,
+          expectedRevision: "current-revision",
+          content: historical,
+        },
+      ],
+    },
+  ]);
+  assert.equal(textarea.value, historical);
+  assert.match(editor.container.textContent, /编辑框中的内容仍然保留/);
+});

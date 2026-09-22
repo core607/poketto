@@ -1,7 +1,7 @@
 # Browser History and Restoration
 
 Date: 2026-09-23
-Status: Proposed
+Status: Implemented
 
 ## Problem
 
@@ -12,7 +12,7 @@ text must preserve the existing remote-main authority and optimistic write check
 
 ## Decision
 
-Add a history panel to the browser text editor. History belongs to a literal
+The browser text editor provides a history panel. History belongs to a literal
 repository path; the panel states that it does not follow renames. A full reader
 can browse changes along remote main's first-parent history, select an earlier
 revision, and compare its exact source with the current editor text. Merge commits
@@ -46,6 +46,24 @@ automatically. A stale current baseline still conflicts. Current write and publi
 permissions determine whether restoration and saving are available, independently
 of history-read permission. Local recovery continues to retain unsaved editor text.
 
+## Mechanism and limits
+
+[Repository history](../../src/main/java/io/github/core607/poketto/content/internal/JGitRepositoryHistory.java)
+uses Git objects under the authoritative repository lock. The existing reachable
+commit check validates requested anchors. A page returns at most 32 entries and
+compares at most 256 commits after its scan offset, within the existing 100,000
+commit history bound. The mainline traversal checks a two-second deadline between
+steps, excluding remote refresh and anchor validation. Individual commit metadata
+is limited to 1 MiB, and bodies are released after selection; returned subjects
+and author names have 240 and 120 Unicode code point limits respectively.
+
+The browser keeps one 20-entry page and one selected source rather than growing
+an unbounded history list. Its line comparison accepts at most 256 KiB combined
+UTF-8 source, 2,000 combined lines and 250,000 line-pair comparisons; exceeding any
+bound selects side-by-side source. Line endings remain distinguishable, including
+CRLF and missing trailing newlines. Historical source retains the existing 1 MiB
+file-read limit. Neither preview nor restoration edits the historical object.
+
 ## Alternatives and consequences
 
 - A dedicated server-side restore mutation would duplicate the existing patch
@@ -60,13 +78,20 @@ of history-read permission. Local recovery continues to retain unsaved editor te
 
 ## Verification
 
-Exercise a real Git repository with additions, edits, unrelated commits, a merge,
-deletion and recreation; verify bounded pagination and remote-history validation.
-Direct HTTP coverage must reject public-only and unrelated principals and recheck
-revocation. Mounted editor tests cover late responses, unsaved replacement,
-comparison bounds and preserving current write preconditions. Browser acceptance
-must show history, comparison, explicit restoration and a new saved commit while
-retaining the earlier history; a concurrent write must refuse overwrite.
+Real Git tests cover additions, edits, unrelated commits, first-parent merges,
+deletion and recreation, bounded pagination, metadata limits and cross-workspace
+commit rejection. Authorization tests check denial before traversal and revocation
+before returning data. HTTP integration tests reject anonymous and public-only
+readers, retrieve exact historical source, and verify that restoration adds a
+commit while stale writes fail without overwriting current content.
+
+Mounted editor tests cover late responses, escaped source, cancellation of unsaved
+replacement and saving restored text with the current write preconditions. Source
+comparison tests retain exact line endings and exercise the fallback bounds.
+Chrome acceptance through the [browser entrance](../../acceptance/README.md)
+confirmed a new saved restoration with earlier history retained, conflicting edits
+from another tab preserved, desktop and mobile layouts, and the large-source
+fallback.
 
 ## Same-topic audit
 
@@ -76,5 +101,5 @@ retains arbitrary-path reads and revision-checked writes.
 retains full-reader history and excludes it from public projections.
 [Authoring and discovery](../implemented/2026-09-23-authoring-and-discovery-experience.md)
 retains unsaved local recovery; this feature recovers committed source.
-[Off-host backup and restore](2026-08-27-off-host-backup-and-restore.md) remains a
+[Off-host backup and restore](../proposed/2026-08-27-off-host-backup-and-restore.md) remains a
 separate proposal; choosing an older text version supplies no backup service.
