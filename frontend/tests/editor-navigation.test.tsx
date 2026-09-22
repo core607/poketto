@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
 import { scopedRoot, workspaceId } from "./workspace-fixture";
-import { retainDraft, type LocalDraft } from "../lib/local-drafts";
+import { localDrafts, retainDraft, type LocalDraft } from "../lib/local-drafts";
 import {
   navigationFolder,
   privateCreationPath,
@@ -543,6 +543,65 @@ test("draft recovery rechecks access and preserves the original write preconditi
   assert.equal(patches[0]?.changes[0].content, cached.source);
   assert.equal(body(), cached.source);
 });
+
+for (const absent of [false, true]) {
+  test(`recovery follows edits back to ${absent ? "an intentionally empty new draft" : "the saved baseline"}`, async (t) => {
+    const baseline = absent ? "" : "Saved";
+    const editor = await mountEditor(
+      "http://localhost/admin?path=private%2Fnote.md",
+      async (url) => {
+        if (url.pathname.endsWith("/repository/tree"))
+          return json({ commit: "before", entries: [], diagnostics: [] });
+        if (url.pathname.endsWith("/repository/directory"))
+          return directoryResponse("", []);
+        if (url.pathname.endsWith("/repository/file"))
+          return json({
+            path: "private/note.md",
+            source: absent ? null : baseline,
+            commit: "before",
+            revision: absent ? null : "old",
+            expectedAbsence: absent,
+            publicScope: false,
+            diagnostics: [],
+          });
+        if (url.pathname === "/api/auth/csrf")
+          return json({ headerName: "X-CSRF", token: "fixture" });
+        if (url.pathname.endsWith("/repository/preview"))
+          return json({ body: baseline, galleryStatus: "COMPLETE" });
+        throw new Error(`Unexpected ${url.pathname}`);
+      },
+      () => {},
+    );
+    t.after(() => editor.cleanup());
+    await settle(editor.act);
+    const textarea = editor.container.querySelector("textarea")!;
+    const write = async (value: string) => {
+      await editor.act(async () => {
+        Object.getOwnPropertyDescriptor(
+          editor.window.HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(textarea, value);
+        textarea.dispatchEvent(
+          new editor.window.Event("input", { bubbles: true }),
+        );
+      });
+      await settle(editor.act);
+    };
+    await write("Unsaved");
+    assert.equal(
+      localDrafts(editor.window.localStorage, "owner", workspaceId)[0].source,
+      "Unsaved",
+    );
+    await write(baseline);
+    const retained = localDrafts(
+      editor.window.localStorage,
+      "owner",
+      workspaceId,
+    );
+    assert.equal(retained.length, absent ? 1 : 0);
+    if (absent) assert.equal(retained[0].source, "");
+  });
+}
 
 test("publish and withdraw use confirmed atomic moves and retain the authoritative website restriction", async (t) => {
   let published = false;

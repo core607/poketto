@@ -106,11 +106,16 @@ export function useEditorRecovery(
     }
   }
   useEffect(() => {
+    if (!dirty) {
+      if (editing.current) discard();
+      return;
+    }
     if (
       !file ||
-      !dirty ||
       !writable ||
-      (source === (file.source ?? "") && path === file.path)
+      (editing.current === null &&
+        source === (file.source ?? "") &&
+        path === file.path)
     )
       return;
     const selected = editing.current ?? {
@@ -170,6 +175,7 @@ export function useEditorRecovery(
     writable,
     identity.accountId,
     identity.workspaceId,
+    discard,
   ]);
   return { available, status, opened, adopt, forget, discard };
 }
