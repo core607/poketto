@@ -366,6 +366,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         FolderLandings.preferIndex(documents, diagnostics);
         Set<String> excluded = collisions(scan.paths(), documents, diagnostics);
         documents.removeIf(document -> excluded.contains(document.file().path()));
+        ArticleIdentityDiagnostics.append(documents, diagnostics);
         documents.sort(Comparator.comparing(document -> document.file().path()));
         diagnostics.sort(Comparator.comparing(RepositoryDiagnostic::path).thenComparing(RepositoryDiagnostic::code));
         return new RepositoryTree(workspaceId, resolved, documents, diagnostics);
@@ -436,6 +437,10 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         var metadata = document.metadata();
         Instant createdAt = metadata.createdAt().orElseGet(() -> dates.createdAt());
         Instant updatedAt = metadata.updatedAt().orElseGet(() -> dates.updatedAt());
+        if (metadata.invalidArticleId()) {
+            diagnostics.add(
+                    diagnostic(file.path(), "INVALID_ARTICLE_ID", "article id must be a canonical lowercase UUID"));
+        }
         if (metadata.inferredMetadata()) {
             diagnostics.add(diagnostic(file.path(), "INFERRED_METADATA", "title and dates use repository fallbacks"));
         }
@@ -449,7 +454,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 metadata.route(),
                 RepositoryPathRules.folderPage(file.path()),
                 RepositoryPathRules.privatePath(file.path()),
-                metadata.publicAuthor());
+                metadata.publicAuthor(),
+                metadata.articleId());
     }
 
     @Override

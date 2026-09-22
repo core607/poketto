@@ -1,6 +1,7 @@
 package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.content.ArticleIdentityDrafts;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryDiagnostic;
@@ -38,18 +39,34 @@ class RepositoryAdminController {
     private final RepositoryMoveService moves;
     private final BrowserWorkspace workspaces;
     private final PublicFilePresentation presentation;
+    private final ArticleIdentityDrafts identities;
 
     RepositoryAdminController(
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             RepositoryMoveService moves,
             BrowserWorkspace workspaces,
-            PublicFilePresentation presentation) {
+            PublicFilePresentation presentation,
+            ArticleIdentityDrafts identities) {
         this.reader = reader;
         this.patches = patches;
         this.moves = moves;
         this.workspaces = workspaces;
         this.presentation = presentation;
+        this.identities = identities;
+    }
+
+    @PostMapping("/article-identity")
+    ArticleIdentityDrafts.Draft prepareIdentity(@RequestBody IdentityRequest request) {
+        return identities.prepare(request.path(), request.source());
+    }
+
+    record IdentityRequest(String path, String source) {
+        IdentityRequest {
+            if (path == null || source == null) {
+                throw new IllegalArgumentException("article path and source are required");
+            }
+        }
     }
 
     @GetMapping("/directory")

@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.ArticleIdentityDrafts;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
@@ -63,6 +64,33 @@ class RepositoryPatchServiceTests {
     private final AuthPrincipal principal = mock(AuthPrincipal.class);
     private final AuthService auth = mock(AuthService.class);
     private final RepositoryMediaValidator mediaValidator = mock(RepositoryMediaValidator.class);
+
+    @Test
+    void preparedIdentityUsesNormalSavePreconditionsAndSurvivesAnAtomicMove() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        String path = "private/note.md";
+        String original = "# Existing";
+        ObjectId base = fixture.commitRemote(workspace, Map.of(path, bytes(original)));
+        var configuration = new RepositoryMarkdownConfiguration();
+        ArticleIdentityDrafts.Draft draft = configuration
+                .articleIdentityDrafts(configuration.repositoryMarkdownInspector())
+                .prepare(path, original);
+        var patches = service(fixture, (id, snapshot) -> {});
+        RepositoryPatchResult saved =
+                patches.apply(principal, workspace, patch(base, update(path, original, draft.source())));
+        assertThatThrownBy(() ->
+                        patches.apply(principal, workspace, patch(base, update(path, original, draft.source()))))
+                .isInstanceOf(RepositoryConflictException.class);
+        patches.move(principal, workspace, new RepositoryMoveRequest(saved.commit(), path, "private/folder/moved.md"));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        assertThat(reader.readTree(workspace, Optional.empty()).documents())
+                .singleElement()
+                .satisfies(document -> {
+                    assertThat(document.articleId()).isEqualTo(draft.articleId());
+                    assertThat(document.file().path()).isEqualTo("private/folder/moved.md");
+                    assertThat(document.file().source()).contains(draft.source());
+                });
+    }
 
     @Test
     void aMoveRepairsALinkWrittenByAMarkdownFileAtTheRepositoryRoot() throws Exception {

@@ -1662,3 +1662,82 @@ td select {
 body:has(.image-lightbox[open]) {
   overflow: hidden;
 }
+.community-section {
+  border-top: 1px solid var(--line);
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+}
+.community-heading,
+.community-actions,
+.community-tabs,
+.community-comment-meta,
+.community-follow {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.community-heading {
+  justify-content: space-between;
+}
+.community-heading h2 {
+  font-size: 1.3rem;
+}
+.community-actions {
+  margin: 0.75rem 0;
+}
+.community-tabs {
+  margin: 1.5rem 0;
+}
+.community-comment,
+.community-list-item {
+  border-top: 1px solid var(--line);
+  padding: 1.25rem 0;
+}
+.community-comment-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.community-comment-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.community-comment-meta strong {
+  color: var(--ink);
+}
+.community-reply {
+  margin-left: 1.2rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--line);
+}
+.community-form {
+  margin: 1.2rem 0;
+}
+.community-form label {
+  display: block;
+}
+.community-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 6rem;
+  padding: 0.8rem;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  resize: vertical;
+}
+.community-identity-note {
+  font-size: 0.85rem;
+}
+.community-article-card {
+  padding: 1rem 0;
+}
+.community-article-card h2 {
+  font-size: 1.25rem;
+}
+.community-follow {
+  margin-top: 1rem;
+}
+.community-dashboard {
+  max-width: 960px;
+}

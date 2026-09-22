@@ -25,6 +25,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <a href="/tags">标签</a>
             <a href="/archive">归档</a>
             <a href="/search">搜索</a>
+            <a href="/community">社区</a>
             <a href="/admin" className="nav-admin">
               管理 ↗
             </a>

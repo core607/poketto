@@ -3,6 +3,7 @@ import { spaceArticle, PublicApiError } from "../../../../../lib/public-api";
 import { date, spaceHref } from "../../../../../lib/format";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
+import { ArticleCommunity } from "../../../../../components/article-community";
 import { CollectionNavigation } from "../../../../../components/collection-navigation";
 import {
   readingSearchReturn,
@@ -65,7 +66,9 @@ export default async function Article({
       </a>
       <header className="reading-header">
         <div className="article-meta">
-          <span className="author-name">{value.authorName}</span>
+          <span className="author-name" title="作者自行填写的署名">
+            作者署名：{value.authorName}
+          </span>
           <time dateTime={value.createdAt}>{date(value.createdAt)}</time>
           {value.folderPage && <span>文件夹笔记</span>}
         </div>
@@ -106,6 +109,7 @@ export default async function Article({
         最后更新于 {date(value.updatedAt)}
         <a href={spaceHref(space)}>更多记录 ↗</a>
       </footer>
+      <ArticleCommunity space={space} articleId={value.articleId} />
     </article>
   );
 }

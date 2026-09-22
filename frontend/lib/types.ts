@@ -49,6 +49,7 @@ export type SiteSearchPage = {
 };
 export type Article = Snapshot &
   Omit<ArticleSummary, "snippet"> & {
+    articleId: string | null;
     body: string;
     folderPage: boolean;
     images?: Record<string, string>;

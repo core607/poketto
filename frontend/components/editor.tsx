@@ -201,7 +201,10 @@ export function Editor({
       setPreview({ galleryStatus: "COMPLETE" });
       setFile(result);
       setPath(result.path);
-      setSource(result.source ?? "");
+      setSource(
+        result.source ??
+          (options.create ? `---\nid: ${crypto.randomUUID()}\n---\n` : ""),
+      );
       setPreviewVersion((version) => version + 1);
       navigate(result.path, options.folder ?? folder, options.replace);
       if (options.create) {
@@ -234,6 +237,33 @@ export function Editor({
       setSearch({ query, items: result.items });
     } catch (error) {
       setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function prepareIdentity() {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const original = source;
+    try {
+      const draft = await api<{ source: string; articleId: string }>(
+        "/api/admin/repository/article-identity",
+        { method: "POST", body: { path, source: original } },
+      );
+      if (!alive.current) return;
+      setSource((current) => (current === original ? draft.source : current));
+      setNotice(
+        draft.source === original
+          ? "文章已有 ID，改名或移动时请保留；复制为另一篇文章时请换用新 ID。"
+          : "互动标识已加入草稿，点击保存后写入仓库。公开且标识唯一时生效，改名或移动时请保留。",
+      );
+    } catch (failure) {
+      setError(
+        failure instanceof ApiError && failure.status === 400
+          ? "无法启用文章互动。请检查元数据格式、现有 id 是否为小写 UUID，以及文件是否超过大小限制。草稿已保留。"
+          : message(failure),
+      );
     } finally {
       setBusy(false);
     }
@@ -720,6 +750,14 @@ export function Editor({
                 />
               </label>
               <div className="editor-actions">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={!writable || busy || unreadable || !path}
+                  onClick={() => void prepareIdentity()}
+                >
+                  启用文章互动
+                </button>
                 {!file.expectedAbsence && file.commit && (
                   <button
                     type="button"

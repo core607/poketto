@@ -4,6 +4,69 @@ Runtime requirements, content configuration, MCP access and deployment for Poket
 
 [Project overview](../README.md) · [中文说明](usage.zh.md)
 
+## Community
+
+The **Community** page at `/community` contains chronological updates from followed
+spaces, private bookmarks, your like history, notifications, followed spaces and blocked accounts.
+COMMUNITY, CREATOR and ADMINISTRATOR accounts may add likes, bookmarks, follows,
+comments and replies through a browser session. VIEWER accounts can read public
+discussion, remove their own records, mark notifications read, report comments and
+manage blocks. Workspace membership and API keys do not grant these interactions.
+
+Articles need a unique canonical lowercase UUID in optional frontmatter `id` to
+receive interactions. New browser note and folder drafts include one. For an
+existing article, choose **Enable article interactions** in the editor, then save
+and publish normally. Preparation only changes the draft and retains its original
+text, metadata, line endings and version checks. A malformed existing `id` must be
+corrected in source; the action does not replace it. Keep the ID when renaming or
+moving the same article, and generate a new UUID when copying it as another article.
+External Git authors can supply the same field without using the editor.
+
+Markdown without an ID remains readable. Missing, malformed or currently duplicated
+public IDs have no interaction entrance; diagnostics help authors resolve invalid
+and duplicate IDs. The public article response includes `articleId`, or null when
+unavailable. The workspace is part of the identity: another space cannot claim its
+history. Changing an ID starts a different history; restoring it reconnects the
+retained records. Space following also works for articles without IDs.
+
+Comments are plain text with up to 4,000 Unicode code points and one level of
+replies. Retrying the same comment request is idempotent. Deleting your comment
+cannot be undone; a root becomes a tombstone when replies remain and accepts no
+new replies. Space owners and site administrators can remove comments, hiding a
+root's replies with it. Administrator report review is on the Community page and
+grants no access to private Git content. Reports contain at most 1,000 code points.
+Comment identities are account display names; article bylines are freely authored.
+
+Blocking hides an account's comments and notifications for you and prevents new
+replies between you. It does not hide public articles from anonymous readers.
+New root comments notify up to 100 current space owners, and replies notify the
+root author, excluding the actor and blocked pairs. Each inbox retains its latest
+1,000 notifications. Bookmarks and following do not disclose a public roster or
+send the space owner a notification. There are no direct messages or email alerts.
+
+Withdrawal, publication restrictions, expired snapshots and removed articles hide
+their public discussion, notification targets and distribution cards. Existing
+records remain. Private lists show unavailable placeholders with removal controls;
+they do not expose the old title or body. Account downgrade prevents new
+interactions but does not automatically erase comments on other people's articles.
+
+Each account can retain 1,000 likes, 1,000 bookmarks, 100 followed spaces and 500
+blocks. New comments are limited to 10 per minute and 300 per UTC day; relations to
+60 per minute and 3,000 per day; reports to 5 per minute and 30 per day; blocks to
+30 per minute and 500 per day. Idempotent retries do not consume another allowance.
+Paginated lists return at most 20 records per page; the following-space list returns at most 100 entries; a page with hidden records may be empty
+and still have a cursor. The following feed admits two concurrent scans, at most
+100,000 documents and five seconds per scan. Retry a limited scan later or follow
+fewer spaces. Feed cursors describe current content, not a retained historical batch.
+
+Public community reads use `/api/public/community/spaces/{slug}` and its
+`/articles/{articleId}` child. Browser mutations and private lists use
+`/api/auth/community`; mutations require the normal session, Origin and CSRF
+checks, and request bodies are bounded to 64 KiB. Comment requests include a fresh
+`requestId`, optional root `parentId` and `body`; preserve the request ID for an
+uncertain retry. The [community decision](../notes/implemented/2026-09-23-community-interactions.md)
+owns identity, visibility and transaction boundaries.
+
 ## Development
 
 Use Java 26 and the checked-in Gradle Wrapper. Linux executor tests require Python 3.10+ with venv and pip support; Windows runs that required suite in a pinned Linux container. The frontend and complete check also require Node.js 24.19.0 and npm 12.0.2. Docker is required for database integration tests and the complete check; the faster unit and repository checks do not require it. `./gradlew frontendCheck` runs frontend formatting, types, tests and the production build. Use the [isolated browser entrance](../acceptance/README.md) to exercise the real application with synthetic data; frontend runtime settings are documented in [frontend/README.md](../frontend/README.md).
@@ -28,7 +91,7 @@ Set `POKETTO_RESEND_API_KEY` and `POKETTO_EMAIL_FROM` to enable email verificati
 
 Set `POKETTO_GOOGLE_CLIENT_ID` and `POKETTO_GOOGLE_CLIENT_SECRET` to enable Google login. Register a Web application in Google and set its authorized redirect URI to `<POKETTO_OAUTH_ISSUER>/api/auth/identity/google/callback`. `POKETTO_OAUTH_ISSUER` is the exact HTTPS origin without a path; local development also permits loopback HTTP. Request only `openid`, `email` and `profile`. Google must return a verified email. Matching emails do not merge accounts: sign into the existing account and explicitly link Google. Account security cannot remove the final login method. Google and email configuration are independent; an unconfigured provider has no login button.
 
-New accounts are **viewers**, including accounts registered through Google. Administrators assign one fixed group: viewer, community member, creator or site administrator. Community membership reserves future interaction eligibility; creators and administrators can connect repositories and expose eligible websites. Site administrators search accounts, change groups with a reason, inspect the change history and review each account's owned spaces. They can review current repository-public articles and referenced media without receiving private-file or original-history access. The last administrator cannot be demoted.
+New accounts are **viewers**, including accounts registered through Google. Administrators assign one fixed group: viewer, community member, creator or site administrator. Community membership permits the interactions described above; creators and administrators can connect repositories and expose eligible websites. Site administrators search accounts, change groups with a reason, inspect the change history and review each account's owned spaces. They can review current repository-public articles and referenced media without receiving private-file or original-history access. The last administrator cannot be demoted.
 
 Every owner must be a creator or administrator for a space's website to appear. Demoting any owner hides that space's public routes, discovery, search, feeds and media, while retaining the author's website switch and existing member/MCP permissions. Owners see the restriction reasons and can continue editing. Restoring eligibility restores websites whose switches remain on; a switch the author turned off remains off. A group change does not affect spaces where the account is only a member.
 

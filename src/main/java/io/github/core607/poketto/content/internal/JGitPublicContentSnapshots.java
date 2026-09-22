@@ -208,7 +208,8 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
                             document.createdAt(),
                             document.updatedAt(),
                             document.folderPage(),
-                            document.publicAuthor()))
+                            document.publicAuthor(),
+                            document.articleId()))
                     .sorted(Comparator.comparing(PublicArticle::createdAt)
                             .reversed()
                             .thenComparing(PublicArticle::route))

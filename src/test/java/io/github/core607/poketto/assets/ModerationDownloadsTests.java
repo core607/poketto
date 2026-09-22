@@ -62,7 +62,8 @@ class ModerationDownloadsTests {
                         now,
                         now,
                         false,
-                        "")));
+                        "",
+                        null)));
         when(snapshots.withCurrent(eq(workspace), any())).thenAnswer(invocation -> {
             Function<PublicContentSnapshot, ?> action = invocation.getArgument(1);
             return action.apply(snapshot);

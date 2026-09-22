@@ -1,5 +1,7 @@
 package io.github.core607.poketto.workspace.internal;
 
+import io.github.core607.poketto.workspace.PublicationGuard;
+import io.github.core607.poketto.workspace.WorkspacePublications;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +14,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class WorkspaceJdbcConfiguration {
+    @Bean
+    PublicationGuard publicationGuard(JdbcTemplate jdbc, WorkspacePublications publications) {
+        return new PublicationGuard(jdbc, publications);
+    }
 
     @Bean
     JdbcWorkspacePublications workspacePublications(JdbcTemplate jdbc) {

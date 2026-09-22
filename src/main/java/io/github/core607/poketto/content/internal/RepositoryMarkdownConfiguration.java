@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import io.github.core607.poketto.content.ArticleIdentityDrafts;
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.RepositoryMarkdownInspector;
 import java.nio.charset.CharacterCodingException;
@@ -8,6 +9,18 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 class RepositoryMarkdownConfiguration {
+    @Bean
+    ArticleIdentityDrafts articleIdentityDrafts(RepositoryMarkdownInspector inspector) {
+        var parser = new RepositoryMarkdownParser();
+        return (path, source) -> {
+            inspector.inspect(path, source);
+            ArticleIdentityDrafts.Draft draft = parser.prepareIdentity(source);
+            // The added frontmatter must fit the same limits as an ordinary save.
+            inspector.inspect(path, draft.source());
+            return draft;
+        };
+    }
+
     @Bean
     RepositoryMarkdownInspector repositoryMarkdownInspector() {
         RepositoryMarkdownParser parser = new RepositoryMarkdownParser();

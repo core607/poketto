@@ -2,6 +2,7 @@ package io.github.core607.poketto.content;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /** Structured metadata never replaces the original source stored in {@code file}. */
 public record RepositoryDocument(
@@ -14,7 +15,8 @@ public record RepositoryDocument(
         String route,
         boolean folderPage,
         boolean privatePath,
-        String publicAuthor) {
+        String publicAuthor,
+        UUID articleId) {
     public RepositoryDocument {
         tags = List.copyOf(tags);
     }

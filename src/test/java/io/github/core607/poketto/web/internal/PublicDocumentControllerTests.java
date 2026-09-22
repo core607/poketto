@@ -218,7 +218,8 @@ class PublicDocumentControllerTests {
                                     Instant.parse("2026-09-03T00:00:00Z"),
                                     VERIFIED,
                                     false,
-                                    ""),
+                                    "",
+                                    null),
                             new PublicArticle(
                                     "older.md",
                                     "/older",
@@ -228,7 +229,8 @@ class PublicDocumentControllerTests {
                                     Instant.parse("2026-09-01T00:00:00Z"),
                                     VERIFIED,
                                     false,
-                                    "")));
+                                    "",
+                                    null)));
         }
 
         @Override
