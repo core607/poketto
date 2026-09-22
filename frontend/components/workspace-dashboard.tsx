@@ -73,7 +73,8 @@ export function WorkspaceDashboard({
       !dirty ||
       (await confirm({
         title: "放弃未保存的修改？",
-        description: "请先保存当前文件，或放弃修改后继续。",
+        description:
+          "请先保存当前文件并等待图片上传完成，或放弃修改后继续。离开后，仍在上传的图片不会插入其他文件。",
         confirmLabel: "放弃并继续",
       }));
     if (accepted && dirty) discardDraft.current?.();

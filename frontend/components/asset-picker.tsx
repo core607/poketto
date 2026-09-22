@@ -3,6 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
 import { safeImage } from "../lib/format";
 import { message } from "./admin";
+import {
+  imageUpload,
+  type ImageInsertion,
+  type ImageUpload,
+} from "../lib/image-upload";
 type Asset = {
   reference: { assetId: string; revision: string };
   mediaType: string;
@@ -16,21 +21,26 @@ export function AssetPicker({
   canUpload,
   canReadPrivate = true,
   onInsert,
+  incoming,
+  onConsumed,
+  onUploading,
+  insertion,
 }: {
   path: string;
   commit: string | null;
   canUpload: boolean;
   canReadPrivate?: boolean;
-  onInsert: (markdown: string) => void;
+  onInsert: (markdown: string, insertion?: ImageInsertion) => void | boolean;
+  incoming?: ImageUpload | null;
+  onConsumed?: () => void;
+  onUploading?: (uploading: boolean) => void;
+  insertion?: () => ImageInsertion;
 }) {
   const api = useWorkspaceApi();
   const [expanded, setExpanded] = useState(false);
   const [items, setItems] = useState<{ source: string; label: string }[]>([]);
   const [images, setImages] = useState<Record<string, string>>({});
-  const [upload, setUpload] = useState<{
-    file: File;
-    operation: string;
-  } | null>(null);
+  const [upload, setUpload] = useState<ImageUpload | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -38,12 +48,23 @@ export function AssetPicker({
   const [total, setTotal] = useState(0);
   const [kind, setKind] = useState(canReadPrivate ? "managed" : "repository");
   const mounted = useRef(true);
+  const sending = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      onUploading?.(false);
     };
   }, []);
+  useEffect(() => {
+    if (!incoming || !canUpload) return;
+    setUpload(incoming);
+    setError("");
+    onConsumed?.();
+  }, [incoming?.operation, canUpload]);
+  useEffect(() => {
+    if (upload?.automatic) void send(upload);
+  }, [upload?.operation]);
   async function list(nextKind = kind, nextOffset = 0) {
     setExpanded(true);
     setBusy(true);
@@ -93,28 +114,39 @@ export function AssetPicker({
       setBusy(false);
     }
   }
-  async function send() {
-    if (!upload || !canUpload) return;
+  async function send(selected = upload) {
+    if (!selected || !canUpload || busy || sending.current) return;
+    sending.current = true;
+    const position = selected.insertion ?? insertion?.();
     setBusy(true);
+    onUploading?.(true);
     setError("");
     setNotice("");
     try {
       const data = new FormData();
-      data.append("file", upload.file);
+      data.append("file", selected.file);
       const asset = await api<Asset>("/api/admin/assets", {
         method: "POST",
         multipart: data,
-        headers: { "Idempotency-Key": upload.operation },
+        headers: { "Idempotency-Key": selected.operation },
       });
       const reference = `managed:${asset.reference.assetId}:${asset.reference.revision}`;
       if (!mounted.current) return;
-      onInsert(`![图片](${reference})`);
+      const inserted = onInsert(`![图片](${reference})`, position);
       setUpload(null);
-      setNotice("图片已上传并插入草稿；保存文章后才会更新内容。");
+      setNotice(
+        inserted === false
+          ? "图片已上传，但草稿已改变；请从已上传图片中选择插入。"
+          : "图片已上传并插入草稿；保存文章后才会更新内容。",
+      );
     } catch (error) {
-      setError(message(error));
+      if (mounted.current) setError(message(error));
     } finally {
-      setBusy(false);
+      sending.current = false;
+      if (mounted.current) {
+        setBusy(false);
+        onUploading?.(false);
+      }
     }
   }
   return (
@@ -147,19 +179,25 @@ export function AssetPicker({
               disabled={busy}
               onChange={(event) => {
                 const file = event.target.files?.[0];
+                event.target.value = "";
                 if (!file) return;
-                if (file.size > 16 * 1024 * 1024) {
-                  setError("图片不能超过 16 MiB。");
-                  return;
+                try {
+                  setUpload(imageUpload([file]));
+                  setError("");
+                  setNotice("");
+                } catch (failure) {
+                  setError(
+                    failure instanceof Error
+                      ? failure.message
+                      : message(failure),
+                  );
                 }
-                setUpload({ file, operation: crypto.randomUUID() });
-                setError("");
               }}
             />
           </label>
         )}
         {canUpload && upload && (
-          <button disabled={busy} onClick={send}>
+          <button disabled={busy} onClick={() => void send()}>
             {busy ? "上传中…" : `上传 ${upload.file.name}`}
           </button>
         )}
