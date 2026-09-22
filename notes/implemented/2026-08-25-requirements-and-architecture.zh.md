@@ -10,19 +10,19 @@ Date: 2026-08-25
 
 本文保留主要的单服务器基线及为其选定的产品边界。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)和[已验证内容快照](2026-09-04-validated-content-snapshot.md)记录最初实现。新的创作基础与第一阶段记录定义替代契约；下文的历史与后续设计章节不代表已交付行为。
 
-更广泛的[前端](2026-08-30-nextjs-frontend.md)与[检索与沙箱执行](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)记录已实现；[托管资产](../rejected/2026-09-01-repository-asset-blob-store.md)与[发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提案已被后续决定取代并拒绝。[基于邀请的多用户空间](2026-09-11-multiuser-workspaces-and-discovery.md)已纳入交付。在托管平台上代建仓库与[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍在第一阶段范围之外。这些选择均不改变工作空间租户边界。
+更广泛的[前端](2026-08-30-nextjs-frontend.md)与[检索与沙箱执行](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)记录已实现；[托管资产](../rejected/2026-09-01-repository-asset-blob-store.md)与[发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提案已被后续决定取代并拒绝。[多用户空间](2026-09-11-multiuser-workspaces-and-discovery.md)已纳入交付。[账号与站点策略](2026-09-20-consumer-identity-and-site-policy.md)取代其邀请制注册，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)在注册后提供显式创建仓库。注册时自动创建仓库的方案仍[被拒绝](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md)，[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍为提案。这些选择均不改变工作空间租户边界。
 
 ## 定位
 
-Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown 内容，既支撑公开发布，也作为受控 AI 的长期记忆，通过 MCP 访问。
-第一阶段公开面包含服务端渲染文章、标签、归档、有界搜索、RSS 与 sitemap。限额访客问答仍是后续产品目标。
+Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应一个 Git 仓库：成员在浏览器中创作，其 AI 通过 MCP 操作同一仓库，已发布的空间把公开内容呈现为网站。同一份 Markdown 既支撑公开展示，也作为受控 AI 的长期记忆。
+空间网站包含服务端渲染的文章、目录、相册与合集页面、标签、归档和有界搜索。根站点另提供跨空间搜索、已发布空间的发现批次、覆盖所有已发布空间的 sitemap，以及默认空间的 RSS。限额访客问答仍是后续产品目标。
 
 ## 设计原则
 
 - 开源：代码与项目文档采用 Apache-2.0；美术素材与站点发布的创作内容采用 CC BY-NC-SA 4.0。
 - 单实例，支持邮箱验证注册和 Google 登录。[账号与站点策略](2026-09-20-consumer-identity-and-site-policy.md)将账号策略组与空间授权分离：新账号默认为浏览者，停止公开展示仍保留已有成员及机器访问权限。使用者与其 AI 通过已发放的身份或 API Key 在获授权的工作空间内行动。
 - 面向资源有限的单机设计；生产容量与资源限制须在选定主机上测量后确定。
-- 使用方式是 clone 自部署。代码仓与各工作空间的内容仓分离。运营者通过 secret 为默认工作空间提供预先建好的私有 HTTPS 仓库；远端 `main` 是权威，本地仓库存储只是一次性缓存。
+- 运营者 clone 本仓库自部署实例，注册账号使用该实例。代码仓与各工作空间的内容仓分离。运营者通过 secret 为默认工作空间提供预先建好的私有 HTTPS 仓库，其他空间使用各自的仓库（见决策 5）。远端 `main` 是权威，本地仓库存储只是一次性缓存。
 
 ## 核心架构决策
 
@@ -30,7 +30,7 @@ Poketto 是自托管的个人知识库，公开面是博客。同一份 Markdown
 2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。管理端与 MCP 共用有界 UTF-8 补丁服务，保留未修改的源码，构建带调用者归属的候选提交，并且只从预期 base 推进远端 ref。竞争 push 返回冲突；回包丢失时须向远端 `main` 对账，绝不盲目重试。可选元数据错误与不安全文件产生文件级诊断；无效发布策略关闭公开服务。仓库确认与快照安装是独立状态。
 3. 仅保留历史选型：从未实现，现已废止，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：当时计划默认使用 agentic 检索，由服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY；AI key 默认不含后三项。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。[显式成员权限](2026-09-12-member-content-permissions.md)分别控制私密读取、私密修改和公开发布；普通成员与邀请默认仅能读取当前公开范围。连接不能超出持有人的权限，也不会随其权限增加而自动扩大。
-5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开发现由[多用户交付契约](2026-09-11-multiuser-workspaces-and-discovery.md)定义。
+5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)允许具备资格的账号在自己的 GitHub 账号下创建仓库作为新空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开发现由[多用户交付契约](2026-09-11-multiuser-workspaces-and-discovery.md)定义。
 
 从仓库路径派生或由可选元数据指定的[路由](2026-09-06-logical-repository-routes.md)保留原始名称，包括空格、`%`、`?` 和 `#`，不做 URI 编码、解码或首尾裁剪。原有路径安全与长度限制继续适用；调用方在 URI 边界编码逻辑路由。
 
@@ -66,10 +66,10 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 技术栈
 
-构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[博客前端](2026-09-06-blog-browser-interface.md)使用 Next.js App Router、React、TypeScript 与 Tailwind，锁定 Node.js 24.19.0 和 npm 12.0.2。它取代 JTE + htmx，业务 API 与持久化仍归 Spring。
+构建要求 JDK 26，并锁定 Spring Boot 4.1.1 与 Spring AI 2.0.1。Spring Security 负责浏览器认证，Spring Modulith 定义应用模块边界；JGit 负责仓库访问，commonmark-java 与 Jackson YAML 解析内容，[官方 PostgreSQL 17](2026-09-05-stock-postgresql.md)存储关系型应用状态。[浏览器前端](2026-09-06-blog-browser-interface.md)使用 Next.js App Router、React、TypeScript 与 Tailwind，锁定 Node.js 24.19.0 和 npm 12.0.2。它取代 JTE + htmx，业务 API 与持久化仍归 Spring。
 CI：GitHub Actions + Testcontainers；镜像发布到 GHCR。可选的[交付镜像仓库](2026-09-10-mirror-registry-delivery.md)把规范发布的 digest 复制到另一仓库，供服务器拉取。仍提供 docker save 经 SSH 传输的部署脚本，供访问镜像仓库受限的网络环境使用。GraalVM Native Image 与 JDK 结构化并发（preview）在实验轨，不进主线。
 MCP 协议版本随固定 SDK 确定。[MCP OAuth](2026-09-11-mcp-oauth.md)在静态 API Key 之外提供持有人明确批准、可独立撤销的客户端连接；Streamable HTTP 校验传入的 Origin header。
 
 ## 不做清单
 
-自动在 Git 平台创建仓库、评论点赞等社交功能、微服务与 K8s 与消息队列、知识图谱、重 RAG 管道（切块 + 重排 + 多路召回）、富文本编辑器、图床 CDN、移动端、界面多语言、访客会话历史、Redis（单实例下预算计数归 PostgreSQL、限流归 JVM、缓存归 Caffeine）。
+注册时自动创建仓库、评论点赞等社交功能、微服务与 K8s 与消息队列、知识图谱、重 RAG 管道（切块 + 重排 + 多路召回）、富文本编辑器、图床 CDN、移动端、界面多语言、访客会话历史、Redis（单实例下预算计数归 PostgreSQL、限流归 JVM、缓存归 Caffeine）。

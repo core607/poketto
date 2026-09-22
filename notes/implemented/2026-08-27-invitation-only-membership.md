@@ -3,6 +3,10 @@
 Date: 2026-08-27
 Implemented: 2026-09-06
 
+[Consumer identity and site policy](2026-09-20-consumer-identity-and-site-policy.md)
+replaces registration invitations with verified email registration and Google login,
+and adds email password recovery. Workspace invitations keep the membership semantics recorded here.
+
 ## Problem
 
 A Poketto workspace serves its owner, trusted members and their AI agents. The [requirements](2026-08-25-requirements-and-architecture.md) allow trusted members but define only issued API keys; they do not say how a human joins or leaves a workspace while keeping an independent audit identity. Sharing the owner account or a long-lived key obscures attribution and prevents independent revocation, and any account-creation path must not by itself grant access to an existing workspace.

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Poketto is a repository-native personal knowledge service whose public face is a blog. Remote Git is content authority; workspace repositories cached locally are disposable. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted targets awaiting implementation and must not be described as shipped.
+Poketto is a Git-native content workspace: members and their agents author each space's repository through the browser and MCP, and published spaces serve public websites. Remote Git is content authority; workspace repositories cached locally are disposable. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted targets awaiting implementation and must not be described as shipped.
 
 The public README, [usage reference](docs/usage.md), requirements note and [content foundation](notes/implemented/2026-08-26-content-foundation.md) have .zh.md counterparts; make the smallest corresponding edit to both sides in the same change.
 
