@@ -156,6 +156,32 @@ Existing exact paths are refused before preparation, and Save checks repository
 name collisions while retaining a rejected draft for correction. Full-path entry
 remains under **Advanced: full path**, starting at `private/`.
 
+**Publish** and **Withdraw to draft** move a saved note between matching private
+and public paths after confirmation. Save edits first. Category paths, article IDs
+and reference repair follow the ordinary atomic move rules; private dependencies
+or collisions refuse the move. Publishing does not enable a disabled website or
+override exclusions or account restrictions. The public-page status remains the
+authority for availability. Move the containing folder when media must travel with it.
+
+Unsaved text is retained as plaintext recovery data in this browser, scoped by
+account, space, path and editing tab. **Local drafts** lists accessible recovery
+records; opening a file offers restoration only after a fresh authorized read.
+Restoration never saves automatically. Changed remote content retains the original
+revision check, so copy and reconcile conflicting edits before saving. The browser
+store holds at most 20 drafts and 2 MiB of encoded records, with a 1 MiB source
+limit per draft. Unsupported Web Locks, storage failures and quota exhaustion show
+a notice without evicting another draft. Successful save, explicit discard and
+logout clear the corresponding records; logout clears this account's records in
+all spaces. They do not sync across devices. Clearing browser data loses them,
+and anyone with access to the browser profile may read them.
+
+Paste or drop one PNG, JPEG, WebP or GIF image, at most 16 MiB, into the source
+editor to upload and insert a reference. Ordinary text paste is unchanged. Failed
+uploads retain the same operation identity for retry. Uploading alone does not
+save or publish the article. Leaving during an upload prevents a late response
+from inserting into another file; an uploaded original can still be selected from
+the image shelf. Upload requires private-write permission.
+
 In the move picker, the private/public
 directory buttons retain the category path while switching roots. Selecting a
 destination does not write until the move is submitted. Moving a directory includes
@@ -200,6 +226,19 @@ disabled or unknown spaces return 404. `/robots.txt` advertises this index using
 directives do not grant or revoke content access.
 
 The root homepage samples enabled public spaces into a stable browsing batch. Pagination and browser return keep its order; **New batch** explicitly reshuffles. Withdrawal removes cards from existing batches. A batch lasts up to 30 minutes and can expire earlier after restart or cache eviction; an expired link offers a new batch. Discovery samples at most four pages per space and 32 spaces per batch, with later batches advancing through the catalog. It is not an exhaustive search. See [discovery batches](../notes/implemented/2026-09-14-public-discovery-batches.md).
+
+The homepage also offers **Following** and a direct **Private bookmarks** entrance.
+Following reads the signed-in account's chronological feed through authenticated
+requests, separately from public discovery. Within each space's four-card cap,
+discovery selects an authored `featured: true` choice, a recent article, a tag-diverse
+choice and random remaining content. Missing featured choices leave more random
+slots; malformed or non-boolean values do not enable the signal. This is an author's
+choice, not a site endorsement. **Discover by tag** matches a complete, case-sensitive
+tag (up to 64 characters); cards' tag links start a new filtered batch. The tag is
+retained across pagination and continuation, and changing it starts a new batch.
+`/api/public/discovery` accepts optional `tag` when creating a batch; a different tag
+with an existing `batch` or `afterBatch` returns 400. No private reading history or
+follow list enters the selection. See [authoring and discovery](../notes/implemented/2026-09-23-authoring-and-discovery-experience.md).
 
 Homepage cards distinguish articles, directories, albums and collections. A folder with both sibling images and an authored reading sequence shows both album and collection labels. Visible album cards load one thumbnail linking to the named folder; an unavailable cover keeps that entrance without downloading an original. Revisiting a current batch page refreshes its short-lived cover URLs while retaining the card order.
 

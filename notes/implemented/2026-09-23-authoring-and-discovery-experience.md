@@ -4,14 +4,13 @@ Date: 2026-09-23
 
 ## Problem and scope
 
-The browser already saves Markdown, previews images and moves content atomically,
-but publishing a note requires understanding its storage path. An interrupted tab
-loses unsaved text, and image insertion requires a separate file-selection flow.
-Discovery samples spaces randomly without an explicit following entrance or a
-small set of understandable selection signals.
+The source editor exposed saves, previews and atomic moves, but publishing required
+understanding storage paths. An interrupted tab lost unsaved text, and image
+insertion required a separate file-selection flow. Uniform discovery samples
+provided neither a following entrance nor authored selection signals.
 
-Provide draft, preview, publish and withdraw actions; image paste and drop; local
-draft recovery; and following/discovery entrances with bounded recommendations.
+The browser provides draft, preview, publish and withdraw actions; image paste and
+drop; local draft recovery; and following/discovery entrances with bounded recommendations.
 The Markdown source editor remains available. This decision does not add a second
 content authority, rich-text editor, cloud draft store or behavioral tracking.
 
@@ -21,7 +20,7 @@ Drafts start under `private/`. Saving a draft uses the ordinary optimistic text
 patch. Preview keeps the existing authenticated renderer and exact media grants.
 Publish and withdraw move a saved note between matching `private/` and `public/`
 paths, preserving category paths and article identity. They use the
-[atomic move service](../implemented/2026-09-09-atomic-content-moves.md), including
+[atomic move service](2026-09-09-atomic-content-moves.md), including
 reference repair, collision refusal and private dependency checks. Unsaved text
 must be saved first; a move never discards it or silently creates two commits.
 
@@ -47,7 +46,7 @@ visible rather than being silently dropped. No external image URL is fetched.
 
 ## Local draft recovery
 
-Unsaved text may be retained in this browser, scoped by account, workspace, path
+Unsaved text is retained as plaintext in this browser, scoped by account, workspace, path
 and draft identity. Retention includes the loaded commit, expected revision or
 absence, edited source and timestamp. It is recovery state, never an authoritative
 repository version. Bound each draft by the ordinary document limit, the browser
@@ -61,23 +60,35 @@ retains the original conflict preconditions; recovery cannot adopt a newer revis
 and overwrite intervening edits. Matching already-saved source clears the redundant
 draft. Explicit discard, successful save and explicit logout clear the appropriate
 recovery records. Separate tab drafts cannot overwrite each other's cached edits.
-These records do not sync to another device and are lost if browser storage is cleared.
+Returning to the saved source clears the current editing record; intentionally
+emptying a new draft retains its latest state. Web Locks serialize bounded writes,
+and a logout generation prevents stale tabs from recreating cleared records.
+These records do not sync to another device and are lost if browser storage is
+cleared. Access to the browser profile can expose their plaintext.
 
 ## Following and discovery
 
 The homepage exposes discovery and following as distinct views, with a direct
 entrance to private bookmarks. Following reuses the chronological, account-scoped
-[community feed](../implemented/2026-09-23-community-interactions.md). It does not
+[community feed](2026-09-23-community-interactions.md). It does not
 mix personal follow data into public responses or recommendation caches.
 
-Discovery retains [stable batches](../implemented/2026-09-14-public-discovery-batches.md),
-their current-publication checks, expiry and count/text budgets. Extend selection
-within each bounded space sample with an optional authored `featured: true` signal,
-recent publication dates and tag diversity. A featured signal is an author's
-selection for their own space, not a site endorsement. Space caps prevent one
-author's volume or featured flags from occupying the complete batch. Randomized
+Discovery retains [stable batches](2026-09-14-public-discovery-batches.md),
+their current-publication checks, expiry and count/text budgets. Selection uses
+four slots within each bounded space sample: one optional authored
+`featured: true` choice, one most-recent article by its existing creation date, one
+article contributing the most unseen tags, and random remaining content. Ties use
+reservoir sampling; absent featured choices leave another random slot. Selection
+retains only four article references and scans the existing public snapshot. Only
+a boolean enables the optional featured field; malformed values leave it disabled.
+A featured signal is an author's selection for their own space, not a site
+endorsement. A space contributes at most four cards regardless of its volume or
+featured flags. Randomized
 selection among remaining candidates keeps older and differently tagged content
-discoverable. Optional tag selection is public, explicit and retained with the batch.
+discoverable. Optional tag selection is public, explicit, exact and retained with the batch.
+Continuation inherits that tag; a conflicting tag on replay or continuation is
+rejected, and changing the selection starts a new batch. The retained tag counts
+toward the existing text budget.
 
 There is no model ranking, private reading-history profile, database article copy
 or paid placement. Article cards still resolve against current publication before
@@ -98,24 +109,33 @@ semantics so uncertainty does not create a second retry mechanism.
 Full recommendation profiling is disproportionate to the current content scale.
 Authored selection, tags, recency and per-space diversity make the initial behavior
 inspectable while retaining bounded random discovery. This supersedes only the
-uniform selection algorithm in the batch record when implemented, not its replay,
+uniform selection algorithm in the batch record, not its replay,
 withdrawal, isolation or capacity contract.
 
 ## Verification and related decisions
 
-Exercise draft/preview/publish/withdraw with real Git and current permissions,
-including dependencies, collisions, administrator restrictions and uncertain writes.
-Verify pasted/dropped images through real uploads, late responses and failure
-retries. Verify recovery after reload, changed remote content, account/workspace
-switches, concurrent tabs, explicit discard/logout and storage exhaustion.
+Chrome acceptance against the isolated Spring/PostgreSQL/Git/Next.js entrance
+verifies private creation, explicit restoration after reload, cross-tab revision
+conflicts without overwriting the saved file, real PNG clipboard upload and preview,
+save/publish/withdraw with stable article identity, tag-filtered batches and their
+continuations, withdrawal from an existing batch, following, direct private bookmarks,
+workspace isolation, logout cleanup and stale-tab refusal. The refreshed frontend
+also verifies cleanup after returning to the saved source. Desktop and 390-pixel
+layouts retain usable discovery controls; anonymous following requires login.
 
-Verify recommendation diversity and signals, tag-bound replay, batch expiry and
-immediate withdrawal through the public HTTP path. Browser acceptance covers the
-integrated author and reader flows. Update bilingual usage and the product overview
-for implemented behavior, then move this record to implemented.
+Mounted component tests cover paste and drop events, uncertain upload retries
+under one idempotency key, late acknowledgements after unmount, permission revocation
+before recovery, publication restrictions, undo cleanup and intentionally empty
+new drafts. OS file-manager drag was not exercised in Chrome. Storage tests cover
+multiple accounts/tabs, count and multibyte quotas, malformed records and browser
+storage failures. Selection tests cover authored, recent, diverse and older content;
+real PostgreSQL/HTTP tests verify tag-bound replay and mismatched-tag rejection.
+Unit, style, frontend production-build and Linux storage gates cover adjacent
+interfaces. Synthetic acceptance does not claim production-corpus scale or new
+provider interoperability.
 
-The [browser interface](../implemented/2026-09-06-blog-browser-interface.md),
-[CodeAct content contract](../implemented/2026-09-09-codeact-content-and-media.md),
+The [browser interface](2026-09-06-blog-browser-interface.md),
+[CodeAct content contract](2026-09-09-codeact-content-and-media.md),
 atomic move record, discovery batch record and community record retain ownership
-of their existing mechanisms. This proposal extends their user entrances and
+of their existing mechanisms. This decision extends their user entrances and
 supersedes no permission, repository ownership or media-delivery rule.
