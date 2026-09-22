@@ -28,6 +28,7 @@ import { FilenameSearch } from "./filename-search";
 import { SearchHighlight } from "./search-highlight";
 import { FolderPicker } from "./folder-picker";
 import { ExportDialog } from "./export-dialog";
+import { HistoryDialog } from "./history-dialog";
 import { DiagnosticMessage } from "./diagnostic";
 import {
   contentRoot,
@@ -80,6 +81,10 @@ export function Editor({
   const busy = working || uploading;
   const [exportSelection, setExportSelection] = useState<{
     source: string;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
+  const [historySelection, setHistorySelection] = useState<{
+    file: RepositoryFile;
     returnFocus: HTMLElement | null;
   } | null>(null);
   const [moveSelection, setMoveSelection] = useState<{
@@ -902,6 +907,24 @@ export function Editor({
                 />
               </label>
               <div className="editor-actions">
+                {identity.capabilities.includes("READ_PRIVATE") &&
+                  !unreadable &&
+                  path === file.path &&
+                  file.commit && (
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      disabled={busy}
+                      onClick={(event) =>
+                        setHistorySelection({
+                          file,
+                          returnFocus: event.currentTarget,
+                        })
+                      }
+                    >
+                      历史版本
+                    </button>
+                  )}
                 {contentRoot(path) && (
                   <button
                     type="button"
@@ -977,6 +1000,25 @@ export function Editor({
               pending={busy || pagePending}
               onRefresh={() => void refreshPublicPage(file)}
             />
+            {historySelection?.file === file &&
+              !unreadable &&
+              path === file.path && (
+                <HistoryDialog
+                  file={file}
+                  currentSource={source}
+                  dirty={dirty}
+                  writable={writable}
+                  returnFocus={historySelection.returnFocus}
+                  onClose={() => setHistorySelection(null)}
+                  onRestore={(historicalSource, commit) => {
+                    setSource(historicalSource);
+                    setHistorySelection(null);
+                    setNotice(
+                      `已将 ${commit.slice(0, 8)} 的正文放入编辑框。请预览后保存，保存将生成新版本。`,
+                    );
+                  }}
+                />
+              )}
             {file.source === null && !file.expectedAbsence ? (
               <p className="notice danger">
                 这个文件无法作为 UTF-8 文本读取。请查看诊断，不要覆盖原文件。

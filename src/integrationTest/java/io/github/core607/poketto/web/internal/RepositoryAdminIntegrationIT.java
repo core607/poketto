@@ -392,6 +392,20 @@ class RepositoryAdminIntegrationIT {
                         .isEqualTo(204);
                 JsonNode memberPage = http(
                         memberClient, "GET", scoped("/api/admin/repository/filenames?query=literal"), null, null, 200);
+                http(
+                        memberClient,
+                        "GET",
+                        scoped("/api/admin/repository/history?path=public/literal%252Fname.md"),
+                        null,
+                        null,
+                        403);
+                http(
+                        memberClient,
+                        "GET",
+                        scoped("/api/admin/repository/history?path=private/moved.md"),
+                        null,
+                        null,
+                        403);
                 assertThat(memberPage.get("total").intValue()).isEqualTo(2);
                 assertThat(http(
                                         memberClient,
@@ -435,7 +449,62 @@ class RepositoryAdminIntegrationIT {
                 rawMediaUploadOverHttp(client, csrf);
             }
             overflowingGalleryOverHttp(client, csrf);
+            historyRestorationOverHttp(client, csrf);
         }
+    }
+
+    private void historyRestorationOverHttp(HttpClient client, JsonNode csrf) throws Exception {
+        String path = "private/history.md";
+        String fileUrl = scoped("/api/admin/repository/file?path=") + encode(path);
+        String historyUrl = scoped("/api/admin/repository/history?path=") + encode(path);
+        try (HttpClient anonymous = HttpClient.newHttpClient()) {
+            http(anonymous, "GET", historyUrl, null, null, 401);
+        }
+        String original = "\uFEFF# Original\r\nExact source\r\n";
+        JsonNode absent = http(client, "GET", fileUrl, null, null, 200);
+        JsonNode first = historySave(client, csrf, absent, original, 200);
+        JsonNode firstFile = http(client, "GET", fileUrl, null, null, 200);
+        JsonNode second = historySave(client, csrf, firstFile, "# Concurrent edit\n", 200);
+        JsonNode current = http(client, "GET", fileUrl, null, null, 200);
+        JsonNode page = http(client, "GET", historyUrl + "&limit=1", null, null, 200);
+        assertThat(page.get("entries").get(0).get("commit").stringValue())
+                .isEqualTo(second.get("commit").stringValue());
+        String continuation = historyUrl + "&commit=" + page.get("commit").stringValue() + "&offset="
+                + page.get("nextOffset").intValue();
+        JsonNode older = http(client, "GET", continuation, null, null, 200);
+        String historicalCommit = older.get("entries").get(0).get("commit").stringValue();
+        assertThat(historicalCommit).isEqualTo(first.get("commit").stringValue());
+        JsonNode historical = http(client, "GET", fileUrl + "&commit=" + historicalCommit, null, null, 200);
+        assertThat(historical.get("source").stringValue()).isEqualTo(original);
+        historySave(client, csrf, firstFile, original, 409);
+        assertThat(http(client, "GET", fileUrl, null, null, 200).get("source").stringValue())
+                .isEqualTo("# Concurrent edit\n");
+        JsonNode restored =
+                historySave(client, csrf, current, historical.get("source").stringValue(), 200);
+        assertThat(restored.get("commit").stringValue())
+                .isNotIn(first.get("commit").stringValue(), second.get("commit").stringValue());
+        assertThat(http(client, "GET", fileUrl, null, null, 200).get("source").stringValue())
+                .isEqualTo(original);
+        JsonNode complete = http(client, "GET", historyUrl, null, null, 200);
+        assertThat(complete.get("entries").size()).isEqualTo(3);
+        assertThat(http(client, "GET", fileUrl + "&commit=" + historicalCommit, null, null, 200)
+                        .get("source")
+                        .stringValue())
+                .isEqualTo(original);
+    }
+
+    private JsonNode historySave(HttpClient client, JsonNode csrf, JsonNode baseline, String source, int status)
+            throws Exception {
+        var change = new RepositoryAdminController.Change(
+                baseline.get("path").stringValue(),
+                baseline.get("expectedAbsence").booleanValue(),
+                baseline.get("revision").isNull()
+                        ? null
+                        : baseline.get("revision").stringValue(),
+                source);
+        var patch = new RepositoryAdminController.PatchRequest(
+                baseline.get("commit").isNull() ? null : baseline.get("commit").stringValue(), List.of(change));
+        return http(client, "POST", scoped("/api/admin/repository/patch"), csrf, patch, status);
     }
 
     private void communityOverHttp(HttpClient client, JsonNode csrf) throws Exception {

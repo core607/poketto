@@ -60,6 +60,12 @@ public final class AuthorizedRepositoryReader {
                         : reader.getPublicFile(workspace, commit, path));
     }
 
+    public RepositoryHistoryPage history(
+            AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, RepositoryHistoryQuery query) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE);
+        return recheck(actor, workspace, true, reader.history(workspace, commit, query));
+    }
+
     public RepositorySyncEntry inspectBlob(AuthPrincipal actor, WorkspaceId workspace, String commit, String path) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
         return recheck(actor, workspace, true, reader.inspectBlob(workspace, commit, path));

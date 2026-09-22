@@ -23,6 +23,9 @@ public interface RepositoryContentReader {
     RepositoryFilenamePage searchFilenames(
             WorkspaceId workspace, Optional<String> commit, RepositoryFilenameSearch search);
 
+    /** Full-source history only. A nonzero scan offset requires the first page's pinned commit. */
+    RepositoryHistoryPage history(WorkspaceId workspace, Optional<String> commit, RepositoryHistoryQuery query);
+
     /** Reads committed text; indexed media reports MANAGED_MEDIA rather than absence or placeholder bytes. */
     RepositoryFile getFile(WorkspaceId workspaceId, Optional<String> commit, String path);
 

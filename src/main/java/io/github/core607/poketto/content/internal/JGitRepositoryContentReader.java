@@ -11,6 +11,8 @@ import io.github.core607.poketto.content.RepositoryDocument;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryFilenamePage;
 import io.github.core607.poketto.content.RepositoryFilenameSearch;
+import io.github.core607.poketto.content.RepositoryHistoryPage;
+import io.github.core607.poketto.content.RepositoryHistoryQuery;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySyncEntry;
 import io.github.core607.poketto.content.RepositoryTree;
@@ -36,7 +38,6 @@ import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
@@ -49,6 +50,15 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
 
     JGitRepositoryContentReader(RepositoryAuthority authority) {
         this.authority = Objects.requireNonNull(authority);
+    }
+
+    @Override
+    public RepositoryHistoryPage history(WorkspaceId workspace, Optional<String> commit, RepositoryHistoryQuery query) {
+        if (query.offset() > 0 && commit.isEmpty()) {
+            throw new IllegalArgumentException("history continuation requires a pinned commit");
+        }
+        return resolve(
+                workspace, commit, (repository, selected) -> JGitRepositoryHistory.read(repository, selected, query));
     }
 
     @Override
@@ -532,7 +542,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                         throw denied();
                     }
                     if (snapshot.commitId().isEmpty()
-                            || !reachable(repository, snapshot.commitId().orElseThrow(), requested.orElseThrow())) {
+                            || !JGitRepositoryHistory.reachable(
+                                    repository, snapshot.commitId().orElseThrow(), requested.orElseThrow())) {
                         throw new IllegalArgumentException("requested commit is not in remote main history");
                     }
                 }
@@ -541,22 +552,6 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 throw new ContentRepositoryException("repository objects cannot be read", exception);
             }
         });
-    }
-
-    private static boolean reachable(Repository repository, String head, String candidate) throws IOException {
-        try (RevWalk walk = new RevWalk(repository)) {
-            walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
-            int count = 0;
-            for (RevCommit commit : walk) {
-                if (++count > RepositoryHistoryDates.MAX_COMMITS) {
-                    throw new ContentRepositoryException("repository history limit exceeded");
-                }
-                if (commit.name().equals(candidate)) {
-                    return true;
-                }
-            }
-            return false;
-        }
     }
 
     private static Set<String> collisions(
