@@ -4,7 +4,7 @@ import { api, ApiError } from "../lib/browser-api";
 import { Login, message } from "./admin";
 import type { AccountProfile } from "./account-panel";
 import type { SpaceSummary } from "./workspace-dashboard";
-import { permissionLabels } from "./content-permissions";
+import { permissionLabels } from "../lib/permissions";
 
 export const scopeLabels: Record<string, { label: string; detail: string }> = {
   "repository:execute": {

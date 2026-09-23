@@ -6,7 +6,7 @@ import type { Member } from "./members";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
-import { permissionLabels } from "./content-permissions";
+import { permissionLabels } from "../lib/permissions";
 const capabilities = [
   {
     key: "READ_PRIVATE",

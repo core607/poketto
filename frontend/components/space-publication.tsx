@@ -85,7 +85,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           ? "开启这个空间的公开网站？"
           : "关闭这个空间的公开网站？",
         description: enabled
-          ? "符合发布规则的公开内容将允许所有人访问。私密内容仍保持私密。"
+          ? "「已发布」里符合发布规则的笔记，所有人都能访问；「草稿」始终只有空间成员能看到。"
           : "公开页面和图片链接将停止提供内容。空间成员仍可读取获准的文件，已被他人下载的副本无法撤回。",
         confirmLabel: enabled ? "开启公开网站" : "关闭公开网站",
       });
