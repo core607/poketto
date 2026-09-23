@@ -48,6 +48,8 @@ test("cover addresses sit beside reading addresses and decode like them", () => 
     "/s/home/cover/%E9%9A%8F%E8%AE%B0/%E9%9B%A8%E5%90%8E",
   );
   assert.equal(coverHref("/", "home"), "/s/home/cover");
+  // A space may itself be called "read"; only the section after it changes.
+  assert.equal(coverHref("/read/a", "read"), "/s/read/cover/read/a");
   assert.equal(routeFromSegments(["%E9%9B%A8", "100%25"]), "/雨/100%");
   assert.equal(routeFromSegments([]), "/");
   for (const bad of [["%"], ["%2F"], [".."], [""], ["%00"]])

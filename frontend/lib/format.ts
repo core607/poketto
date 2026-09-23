@@ -46,14 +46,15 @@ export const SHARE_IMAGE = {
 };
 /** The stable address of an article's cover image, beside its reading address. */
 export function coverHref(route: string, space: string) {
-  return articleHref(route, space).replace(/\/read(?=\/|$)/, "/cover");
+  return spaceHref(space) + "/cover" + encodedRoute(route);
 }
 export function articleHref(route: string, space?: string) {
-  return (
-    spaceHref(space) +
-    "/read" +
-    (route === "/" ? "" : route.split("/").map(encodeURIComponent).join("/"))
-  );
+  return spaceHref(space) + "/read" + encodedRoute(route);
+}
+function encodedRoute(route: string) {
+  return route === "/"
+    ? ""
+    : route.split("/").map(encodeURIComponent).join("/");
 }
 export function xml(value: string) {
   return value.replace(

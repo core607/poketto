@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { article, defaultSpace, PublicApiError } from "../../../lib/public-api";
-import { articleHref } from "../../../lib/format";
+import { articleHref, routeFromSegments } from "../../../lib/format";
 import {
   carryReadingSearch,
   type ReadingSearchParameters,
@@ -29,23 +29,8 @@ export default async function Article({
 }) {
   const { slug = [] } = await params;
   // Next's page catch-all segments are URI-encoded; metadata params are decoded.
-  let segments: string[];
-  try {
-    segments = slug.map(decodeURIComponent);
-  } catch {
-    notFound();
-  }
-  if (
-    segments.some(
-      (segment) =>
-        !segment ||
-        segment === "." ||
-        segment === ".." ||
-        /[/\\\u0000-\u001f\u007f]/.test(segment),
-    )
-  )
-    notFound();
-  const route = "/" + segments.join("/");
+  const route = routeFromSegments(slug);
+  if (route === null) notFound();
   await article(route).catch((error) => {
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
