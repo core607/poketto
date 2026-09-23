@@ -175,16 +175,24 @@
   padding-left: 0.35rem;
   border-left: 1px solid var(--line);
 }
+/* Folder actions stay in the focus order; they fade in on hover or focus. */
 .tree-actions {
   position: absolute;
   top: 3px;
   right: 4px;
-  display: none;
+  display: flex;
   gap: 0.15rem;
+  opacity: 0;
+  pointer-events: none;
 }
 .tree-directory:hover > .tree-actions,
+.tree-directory > summary:focus + .tree-actions,
 .tree-directory > .tree-actions:focus-within {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+.tree-actions .tree-move {
+  display: inline-flex;
 }
 .tree-file-row {
   position: relative;
