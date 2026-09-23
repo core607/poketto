@@ -116,19 +116,34 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
 
     @Override
     public Publication setDisplayName(WorkspaceId workspace, String name) {
-        return update("display_name", workspace, SpaceProfiles.name(name));
+        requireProfileTransaction();
+        String normalized = SpaceProfiles.name(name);
+        return updated(
+                workspace,
+                jdbc.update(
+                        "update workspaces set display_name=? where workspace_id=?", normalized, workspace.value()));
     }
 
     @Override
     public Publication setDescription(WorkspaceId workspace, String description) {
-        return update("public_description", workspace, SpaceProfiles.description(description));
+        requireProfileTransaction();
+        String normalized = SpaceProfiles.description(description);
+        return updated(
+                workspace,
+                jdbc.update(
+                        "update workspaces set public_description=? where workspace_id=?",
+                        normalized,
+                        workspace.value()));
     }
 
-    private Publication update(String column, WorkspaceId workspace, String value) {
+    private static void requireProfileTransaction() {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Space profile changes require an owner-authorization transaction");
         }
-        if (jdbc.update("update workspaces set " + column + "=? where workspace_id=?", value, workspace.value()) != 1) {
+    }
+
+    private Publication updated(WorkspaceId workspace, int rows) {
+        if (rows != 1) {
             throw new PublicationUnavailableException();
         }
         return settings(workspace);

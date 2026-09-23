@@ -203,3 +203,59 @@ test("switching spaces cancels an old confirmation and ignores an old read resul
   assert.equal(f.container.querySelector("strong")?.textContent, "已关闭");
   assert.equal(f.container.querySelector("a"), null);
 });
+
+test("a profile save that fails part-way keeps what was saved and the unsaved edits", async (t) => {
+  const f = await fixture(t);
+  const writes: string[] = [];
+  let current = { ...publication(), publicDescription: "" };
+  globalThis.fetch = async (path, options) => {
+    if (String(path) === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (options?.method === "PUT") {
+      const field = String(path).split("/").at(-1)!;
+      writes.push(field);
+      if (field === "description")
+        return Response.json({ detail: "简介暂时无法保存。" }, { status: 500 });
+      const { text } = JSON.parse(String(options.body));
+      current = { ...current, displayName: text };
+      return Response.json(current);
+    }
+    return Response.json(current);
+  };
+  await f.mount();
+  const type = async (selector: string, value: string) => {
+    const field = f.container.querySelector(selector) as
+      HTMLInputElement | HTMLTextAreaElement | null;
+    assert.ok(field, selector);
+    const prototype = Object.getPrototypeOf(field);
+    await f.act(async () => {
+      Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(
+        field,
+        value,
+      );
+      field.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+  };
+  const valueOf = (selector: string) =>
+    (f.container.querySelector(selector) as unknown as HTMLInputElement).value;
+  await type(".profile-editor input", "雨后的口袋");
+  await type(".profile-editor textarea", "天桥与云");
+  const form = f.container.querySelector(
+    ".profile-editor form",
+  ) as unknown as HTMLFormElement;
+  await f.act(async () =>
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    ),
+  );
+  assert.deepEqual(writes, ["name", "description"]);
+  const notice = f.container.querySelector(".profile-editor [role=alert]");
+  assert.match(notice?.textContent ?? "", /空间名称已保存；空间简介没有保存/);
+  assert.equal(valueOf(".profile-editor input"), "雨后的口袋");
+  assert.equal(valueOf(".profile-editor textarea"), "天桥与云");
+  assert.match(f.container.textContent, /网站开关/);
+  const save = [...f.container.querySelectorAll("button")].find(
+    (button) => button.textContent === "保存网站资料",
+  );
+  assert.equal(save?.disabled, false);
+});

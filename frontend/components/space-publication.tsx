@@ -29,6 +29,10 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
+  const [profileNotice, setProfileNotice] = useState<{
+    failed: boolean;
+    text: string;
+  } | null>(null);
   const epoch = useRef(0);
   const busy = useRef(false);
 
@@ -39,6 +43,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
     setPublication(null);
     setError("");
     setReceipt("");
+    setProfileNotice(null);
     try {
       const value = await api<Publication>(base);
       if (version === epoch.current) {
@@ -114,46 +119,73 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  /** Saves each changed profile field in turn; the server's answer is the displayed state. */
+  /**
+   * Saves each changed profile field in turn. Every confirmed answer becomes the displayed state at
+   * once, so a failure part-way keeps the fields already saved and leaves the rest in the form.
+   */
   async function saveProfile() {
     if (!publication || busy.current) return;
     const version = epoch.current;
     const changes = [
-      name.trim() !== publication.displayName && { path: "/name", text: name },
+      name.trim() !== publication.displayName && {
+        label: "空间名称",
+        path: "/name",
+        body: { text: name },
+      },
       description.trim() !== (publication.publicDescription ?? "") && {
+        label: "空间简介",
         path: "/description",
-        text: description,
+        body: { text: description },
       },
       author.trim() !== publication.publicAuthorName && {
+        label: "公开署名",
         path: "/author",
-        name: author,
+        body: { name: author },
       },
-    ].filter(Boolean) as { path: string; text?: string; name?: string }[];
+    ].filter(Boolean) as {
+      label: string;
+      path: string;
+      body: { text?: string; name?: string };
+    }[];
     if (!changes.length) return;
     busy.current = true;
     setPending(true);
     setError("");
     setReceipt("");
+    setProfileNotice(null);
+    const saved: string[] = [];
     try {
-      let value = publication;
-      for (const { path, ...body } of changes) {
-        value = await api<Publication>(base + path, { method: "PUT", body });
+      for (const { label, path, body } of changes) {
+        const value = await api<Publication>(base + path, {
+          method: "PUT",
+          body,
+        });
         if (version !== epoch.current) return;
-        if (value.workspaceId !== workspaceId)
-          throw new Error("空间状态不匹配");
+        if (value.workspaceId !== workspaceId) {
+          setPublication(null);
+          setError("未能确认网站资料当前状态，请重新读取后再操作。");
+          return;
+        }
         setPublication(value);
+        saved.push(label);
+        if (path === "/name") setName(value.displayName);
+        if (path === "/description")
+          setDescription(value.publicDescription ?? "");
+        if (path === "/author") setAuthor(value.publicAuthorName);
       }
-      setName(value.displayName);
-      setDescription(value.publicDescription ?? "");
-      setAuthor(value.publicAuthorName);
-      setReceipt("网站资料已保存。");
+      setProfileNotice({ failed: false, text: "网站资料已保存。" });
     } catch (failure) {
-      if (version === epoch.current) {
-        setPublication(null);
-        setError(
-          "未能确认网站资料当前状态，请重新读取后再操作。" + message(failure),
-        );
-      }
+      if (version === epoch.current)
+        setProfileNotice({
+          failed: true,
+          text:
+            (saved.length ? `${saved.join("、")}已保存；` : "") +
+            `${changes
+              .slice(saved.length)
+              .map((change) => change.label)
+              .join("、")}没有保存，你的修改还留在上面，可以再保存一次。` +
+            message(failure),
+        });
     } finally {
       if (version === epoch.current) {
         busy.current = false;
@@ -169,7 +201,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
       author.trim() !== publication.publicAuthorName);
   return (
     <div className="management-panel">
-      <section className="sub-panel" aria-label="网站发布">
+      <section className="sub-panel" aria-label="公开网站">
         <div className="panel-heading">
           <h2>公开网站</h2>
           {publication?.effectiveEnabled && (
@@ -290,6 +322,14 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
                   <code>public_author: 名字</code>。
                 </span>
               </label>
+              {profileNotice && (
+                <p
+                  className={`notice ${profileNotice.failed ? "danger" : "success"}`}
+                  role={profileNotice.failed ? "alert" : "status"}
+                >
+                  {profileNotice.text}
+                </p>
+              )}
               <button disabled={pending || !changed || !name.trim()}>
                 保存网站资料
               </button>
