@@ -42,7 +42,7 @@ test("move dependency failures have an actionable message without exposing arbit
       (error) =>
         error instanceof ApiError &&
         error.status === 400 &&
-        error.message.includes("检查依赖") &&
+        error.message.includes("检查它引用的内容") &&
         !error.message.includes("private diagnostic"),
     );
     globalThis.fetch = async () =>

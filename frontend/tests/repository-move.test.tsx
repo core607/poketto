@@ -298,7 +298,7 @@ test("folder selection cancels without writing and moves via the host service be
     destination: "private/renamed.md",
   });
   assert.ok(!container.querySelector("dialog[open]"));
-  assert.match(container.textContent!, /仓库内容已改变，目录已刷新/);
+  assert.match(container.textContent!, /内容已被别处修改，列表已刷新/);
   assert.equal(container.querySelector("textarea"), null);
   assert.equal(directoryVersions.at(-1), "concurrent");
   const expandedPaths = [

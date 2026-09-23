@@ -145,7 +145,7 @@ export function FolderPicker({
           ? "移到「已发布」后，网站开启时它会出现在网站上。单独移动一篇笔记不会带走它引用的图片。"
           : "「草稿」里的内容只有空间成员能看到。移动整个分类会保留里面的结构，并带上其中的图片。"}
       </p>
-      <nav className="folder-navigation" aria-label="目标文件夹">
+      <nav className="folder-navigation" aria-label="目标分类">
         <button
           type="button"
           disabled={moving || loading || !folder}
@@ -197,7 +197,7 @@ export function FolderPicker({
         ) : (
           page &&
           !page.entries.some((entry) => entry.kind === "DIRECTORY") && (
-            <p className="muted">没有子文件夹，可以选择当前文件夹。</p>
+            <p className="muted">这里没有下一级分类，可以直接放在这里。</p>
           )
         )}
         {page?.nextOffset != null && (
@@ -206,7 +206,7 @@ export function FolderPicker({
             disabled={moving || loading}
             onClick={() => void more()}
           >
-            加载更多文件夹
+            加载更多分类
           </button>
         )}
       </div>
@@ -229,7 +229,7 @@ export function FolderPicker({
         />
       </label>
       <label>
-        新建子文件夹（可选）
+        新建下一级分类（可选）
         <input
           value={newFolder}
           maxLength={255}

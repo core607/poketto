@@ -220,7 +220,7 @@ function DirectoryBranch({
             className="tree-move"
             type="button"
             disabled={props.busy}
-            aria-label={`移动文件夹 ${path}`}
+            aria-label={`移动分类 ${path}`}
             onClick={(event) =>
               props.onMove!(path, props.commit!, event.currentTarget)
             }
@@ -232,7 +232,7 @@ function DirectoryBranch({
           <button
             type="button"
             className="tree-move"
-            aria-label={`导出文件夹 ${path}`}
+            aria-label={`导出分类 ${path}`}
             disabled={props.busy}
             onClick={(event) => props.onExport!(path, event.currentTarget)}
           >

@@ -1129,7 +1129,7 @@ test("moving a folder maps a selected descendant but preserves an unrelated fold
   await settle(editor.act);
   const moveFolder = (path: string) => {
     const button = editor.container.querySelector(
-      `button[aria-label="移动文件夹 ${path}"]`,
+      `button[aria-label="移动分类 ${path}"]`,
     );
     assert.ok(button, path);
     return button as unknown as Clickable;
@@ -1145,7 +1145,7 @@ test("moving a folder maps a selected descendant but preserves an unrelated fold
   await editor.act(async () => rootButton.click());
   await settle(editor.act);
   const newFolder = [...firstDialog.querySelectorAll("input")].find((item) =>
-    item.parentElement?.textContent?.includes("新建子文件夹"),
+    item.parentElement?.textContent?.includes("新建下一级分类"),
   );
   assert.ok(newFolder);
   Object.getOwnPropertyDescriptor(

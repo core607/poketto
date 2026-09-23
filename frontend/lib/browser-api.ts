@@ -105,7 +105,7 @@ export async function api<T>(
       if (problem?.code === "MOVE_UNPUBLISHABLE_DEPENDENCY")
         throw new ApiError(
           400,
-          "移动后公开文档会引用私有或不支持的内容。请检查依赖，或连同所需媒体一起移动文件夹。",
+          "移动后，已发布的笔记会引用草稿里的内容或不支持的文件。请检查它引用的内容，或把所需图片所在的分类一起移动。",
         );
     }
     const messages: Record<number, string> = {

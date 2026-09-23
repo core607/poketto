@@ -450,7 +450,7 @@ export function Editor({
   }
   function chooseMove(source: string, commit: string, trigger: HTMLElement) {
     if (dirty) {
-      setError("有未保存的修改，请先保存，再移动文件或文件夹。");
+      setError("有未保存的修改，请先保存，再移动笔记或分类。");
       return;
     }
     setError("");
@@ -472,7 +472,7 @@ export function Editor({
       !(await confirm({
         title: publishing ? "发布这篇内容？" : "撤回为私有草稿？",
         description: publishing
-          ? `将已保存的内容移到「${destination}」。只有网站开启、符合发布规则且账号未受限时才会公开；需要一起发布的媒体请通过移动文件夹处理。`
+          ? `将已保存的内容移到「${destination}」。只有网站开启、符合发布规则且账号未受限时才会公开；它用到的图片不会跟着移动；需要一起发布的话，请移动图片所在的整个分类。`
           : `将已保存的内容移到「${destination}」，停止通过此文章提供公开内容。其他公开引用仍可能提供相同媒体，已被他人保存的副本无法撤回。`,
         confirmLabel: publishing ? "发布" : "撤回为草稿",
       }))
@@ -555,7 +555,7 @@ export function Editor({
         try {
           await reloadTree();
           setError(
-            "仓库内容已改变，目录已刷新。请重新选择要移动的文件或文件夹。",
+            "内容已被别处修改，列表已刷新。请重新选择要移动的笔记或分类。",
           );
         } catch {
           setError(
