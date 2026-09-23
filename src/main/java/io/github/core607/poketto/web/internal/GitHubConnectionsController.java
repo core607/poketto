@@ -161,6 +161,7 @@ class GitHubConnectionsController {
         return connections.disconnect(actor, version);
     }
 
+    /** Removes the authorization a callback answers; see {@link GitHubConnections#begin} for concurrent callbacks. */
     private static GitHubConnections.Authorization consume(HttpServletRequest request, String state) {
         HttpSession session = request.getSession(false);
         if (session == null || state == null || state.length() != 43) {

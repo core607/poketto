@@ -135,6 +135,11 @@ class GoogleIdentityController {
         }
     }
 
+    /**
+     * Removes the pending flow a callback answers. A stored session gives each request its own copy,
+     * so the lock does not stop two simultaneous callbacks from both reading the flow; Google redeems
+     * the authorization code only once, so only one of them signs in.
+     */
     private static Pending consume(HttpServletRequest request, String state) {
         HttpSession session = request.getSession(false);
         if (session == null || state == null || state.length() > 256) {

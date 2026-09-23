@@ -9,7 +9,11 @@ import java.util.UUID;
 public interface GitHubConnections {
     Status status(AuthPrincipal actor);
 
-    /** The caller keeps this authorization in the initiating browser session and consumes it once. */
+    /**
+     * The caller keeps this authorization in the initiating browser session and removes it when a
+     * callback uses it. Simultaneous callbacks can both read it before the removal is stored; GitHub
+     * accepts the authorization code only once, so only one of them completes.
+     */
     Authorization begin(AuthPrincipal actor);
 
     /** Exchanges credentials outside transactions; requireSession rechecks the initiating browser before saving. */
