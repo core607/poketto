@@ -357,6 +357,11 @@ public final class AssetService {
         return reads.covers(selected, requested);
     }
 
+    /** The current cover thumbnail of one public article, for an address that does not expire. */
+    public Optional<AssetBytes> publicArticleCover(WorkspaceId workspace, String route) {
+        return reads.articleCover(workspace, route);
+    }
+
     /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */
     public AssetBytes readPublicImage(String token) {
         return reads.image(token);

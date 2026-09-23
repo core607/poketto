@@ -8,6 +8,7 @@ import { CommunityDashboard } from "../components/community-dashboard";
 import { Avatar, Icon } from "../components/ui/icons";
 import { Pager } from "../components/ui/pager";
 import { PinBatch } from "../components/pin-batch";
+import { JsonLd, absoluteUrl } from "../components/json-ld";
 
 // Every batch, page and tag view of the homepage is the same page to a search engine.
 export const metadata: Metadata = { alternates: { canonical: "/" } };
@@ -77,9 +78,25 @@ export default async function Home({
   const pageHref = (position: number) =>
     "/?" + new URLSearchParams({ batch: page.batch, offset: String(position) });
   const another = "/?" + new URLSearchParams({ afterBatch: page.batch });
+  const search = absoluteUrl("/search");
   return (
     <div className="page">
       {pinned && <PinBatch href={pinned} />}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "Poketto",
+          alternateName: "poketto.top",
+          url: absoluteUrl("/"),
+          // The template placeholder must stay literal, so it is appended after URL resolution.
+          potentialAction: search && {
+            "@type": "SearchAction",
+            target: search + "?query={search_term_string}",
+            "query-input": "required name=search_term_string",
+          },
+        }}
+      />
       <DiscoverHead />
       <div className="discover-bar">
         <HomeNavigation />

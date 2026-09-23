@@ -1,10 +1,12 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Instant;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,11 +19,17 @@ class PublicSpaceController {
     private final WorkspacePublications publications;
     private final WorkspaceCatalog workspaces;
     private final PublicDocuments documents;
+    private final AssetService assets;
 
-    PublicSpaceController(WorkspacePublications publications, WorkspaceCatalog workspaces, PublicDocuments documents) {
+    PublicSpaceController(
+            WorkspacePublications publications,
+            WorkspaceCatalog workspaces,
+            PublicDocuments documents,
+            AssetService assets) {
         this.publications = publications;
         this.workspaces = workspaces;
         this.documents = documents;
+        this.assets = assets;
     }
 
     @GetMapping("/api/public/default-space")
@@ -51,6 +59,25 @@ class PublicSpaceController {
     @GetMapping("/api/public/spaces/{slug}/document")
     ResponseEntity<PublicDocument> article(@PathVariable String slug, @RequestParam String route) {
         return response(documents.find(published(slug).workspaceId(), route));
+    }
+
+    /**
+     * The article's current cover thumbnail, or 204 when it has none, for link previews and search
+     * engines that need an address which does not expire. It is prepared per request, so a
+     * withdrawn article answers 404 at once; only copies a client already fetched outlive it.
+     */
+    @GetMapping("/api/public/spaces/{slug}/cover")
+    ResponseEntity<byte[]> cover(@PathVariable String slug, @RequestParam String route) {
+        return assets.publicArticleCover(published(slug).workspaceId(), route)
+                .map(image -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.noStore())
+                        .contentType(MediaType.parseMediaType(image.mediaType()))
+                        .header("X-Content-Type-Options", "nosniff")
+                        .header("Content-Security-Policy", "default-src 'none'; sandbox")
+                        .body(image.bytes()))
+                .orElseGet(() -> ResponseEntity.noContent()
+                        .cacheControl(CacheControl.noStore())
+                        .build());
     }
 
     @GetMapping("/api/public/spaces/{slug}/tags")

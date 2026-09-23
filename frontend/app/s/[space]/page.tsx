@@ -4,7 +4,7 @@ import {
   type SpaceParameters,
 } from "../../../components/public-space";
 import { spaceInfo } from "../../../lib/public-api";
-import { spaceFeed, spaceHref } from "../../../lib/format";
+import { SHARE_IMAGE, spaceFeed, spaceHref } from "../../../lib/format";
 
 export async function generateMetadata({
   params,
@@ -24,6 +24,7 @@ export async function generateMetadata({
       title: name,
       description,
       url: spaceHref(space),
+      images: [SHARE_IMAGE],
     },
   };
 }

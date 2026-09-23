@@ -7,11 +7,14 @@ import {
 } from "../../../../../lib/public-api";
 import {
   articleHref,
+  coverHref,
   date,
+  routeFromSegments,
   spaceFeed,
   spaceHref,
 } from "../../../../../lib/format";
 import { plainSummary } from "../../../../../lib/summary";
+import { JsonLd, absoluteUrl } from "../../../../../components/json-ld";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
 import { ArticleCommunity } from "../../../../../components/article-community";
@@ -42,6 +45,8 @@ export async function generateMetadata({
     const name = info?.displayName ?? space;
     const description = plainSummary(value.body, value.title) || undefined;
     const url = articleHref(route, space);
+    // The cover address falls back to the site's share image when the article has none.
+    const image = coverHref(route, space);
     return {
       title: value.title,
       description,
@@ -55,8 +60,14 @@ export async function generateMetadata({
         publishedTime: value.createdAt,
         modifiedTime: value.updatedAt,
         authors: [value.authorName],
+        images: [{ url: image, alt: value.title }],
       },
-      twitter: { card: "summary", title: value.title, description },
+      twitter: {
+        card: "summary_large_image",
+        title: value.title,
+        description,
+        images: [image],
+      },
     };
   } catch {
     return { title: "文章" };
@@ -74,23 +85,8 @@ export default async function Article({
 }) {
   const { space, slug = [] } = await params;
   // Next's page catch-all segments are URI-encoded; metadata params are decoded.
-  let segments: string[];
-  try {
-    segments = slug.map(decodeURIComponent);
-  } catch {
-    notFound();
-  }
-  if (
-    segments.some(
-      (segment) =>
-        !segment ||
-        segment === "." ||
-        segment === ".." ||
-        /[/\\\u0000-\u001f\u007f]/.test(segment),
-    )
-  )
-    notFound();
-  const route = "/" + segments.join("/");
+  const route = routeFromSegments(slug);
+  if (route === null) notFound();
   const value = await spaceArticle(space, route).catch((error) => {
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
@@ -105,7 +101,7 @@ export default async function Article({
       ? parameters.collection
       : undefined;
   const returnToSearch = readingSearchReturn(parameters, space);
-  const folders = segments.slice(0, -1);
+  const folders = route.split("/").slice(1, -1);
   const collection = (
     <CollectionPanel
       navigation={value.navigation}
@@ -123,6 +119,22 @@ export default async function Article({
       }
     >
       <article className="reading-shell">
+        <JsonLd
+          data={{
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            headline: value.title,
+            description: plainSummary(value.body, value.title) || undefined,
+            datePublished: value.createdAt,
+            dateModified: value.updatedAt,
+            author: { "@type": "Person", name: value.authorName },
+            publisher: { "@type": "Organization", name: spaceName },
+            image: absoluteUrl(coverHref(route, space)),
+            mainEntityOfPage: absoluteUrl(articleHref(route, space)),
+            keywords: value.tags.length ? value.tags.join(", ") : undefined,
+            inLanguage: "zh-CN",
+          }}
+        />
         {returnToSearch && (
           <a href={returnToSearch} className="back-link">
             <Icon name="arrowLeft" />
