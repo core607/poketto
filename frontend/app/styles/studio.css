@@ -235,25 +235,64 @@ body:has(.studio) .site-footer {
 }
 
 /* Studio panels. Element defaults use :where() so scoped legacy rules still win. */
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) h2 {
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
+  h2 {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: 700;
   line-height: 1.35;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) h3 {
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
+  h3 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: 700;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) p {
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
+  p {
   margin: 0;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) form {
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
+  form {
   display: grid;
   gap: 1rem;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   fieldset {
   display: grid;
   gap: 0.65rem;
@@ -262,19 +301,41 @@ body:has(.studio) .site-footer {
   padding: 0;
   border: 0;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   legend {
   margin-bottom: 0.5rem;
   font-weight: 650;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) label {
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
+  label {
   display: grid;
   gap: 0.4rem;
   color: var(--ink-2);
   font-size: var(--text-sm);
   font-weight: 600;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   :is(
     input:not([type="checkbox"], [type="radio"], [type="file"]),
     select,
@@ -290,39 +351,88 @@ body:has(.studio) .site-footer {
   font-size: var(--text-base);
   font-weight: 400;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   textarea {
   line-height: 1.7;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
   border-color: var(--accent);
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   :is([type="checkbox"], [type="radio"]) {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   details
   > summary {
   color: var(--ink-2);
   font-weight: 600;
   cursor: pointer;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   blockquote {
   margin: 0;
   padding-left: 0.9rem;
   border-left: 3px solid var(--line-strong);
   color: var(--ink-2);
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   button:not([class]),
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   :is(.button-primary, .button) {
   display: inline-flex;
   align-items: center;
@@ -341,7 +451,14 @@ body:has(.studio) .site-footer {
   white-space: nowrap;
   cursor: pointer;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   .button-secondary {
   display: inline-flex;
   align-items: center;
@@ -360,7 +477,14 @@ body:has(.studio) .site-footer {
   white-space: nowrap;
   cursor: pointer;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   .button-danger {
   display: inline-flex;
   align-items: center;
@@ -376,7 +500,14 @@ body:has(.studio) .site-footer {
   font-weight: 600;
   cursor: pointer;
 }
-:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+:where(
+    .studio-main,
+    .oauth-shell,
+    .confirmation-dialog,
+    .export-dialog,
+    .history-dialog,
+    .folder-picker
+  )
   :is(button, .button-secondary):disabled {
   cursor: not-allowed;
   opacity: 0.5;

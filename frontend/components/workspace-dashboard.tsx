@@ -276,15 +276,13 @@ export function WorkspaceDashboard({
   const content = (
     <>
       {activeTab === "content" && identity && (
-        <div className="legacy">
-          <Editor
-            identity={identity}
-            onDirtyChange={editorDirty}
-            onNavigate={(location, replace = false) =>
-              writeUrl(selected, "content", replace, true, location)
-            }
-          />
-        </div>
+        <Editor
+          identity={identity}
+          onDirtyChange={editorDirty}
+          onNavigate={(location, replace = false) =>
+            writeUrl(selected, "content", replace, true, location)
+          }
+        />
       )}
       {activeTab === "members" && <Members />}
       {activeTab === "keys" && identity && <Keys identity={identity} />}
