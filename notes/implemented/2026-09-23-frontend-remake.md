@@ -74,7 +74,8 @@ also served as the site icon. Interface text uses the platform sans stack; displ
 titles use a Latin serif (Iowan Old Style, Palatino, Georgia) before the CJK serif.
 Colors, type scale, spacing, radii and elevation are custom properties in
 `frontend/app/styles/base.css`, with a warm dark theme that follows the system
-preference. Styles are split into base, controls, public places, studio and editor
+preference unless the reader picks light or dark in the footer or account menu; a
+nonce-carrying head script applies that stored choice before paint. Styles are split into base, controls, public places, studio and editor
 files; components style themselves with classes, and studio element defaults use
 `:where()` so component rules always win. Fonts, icons and tree chevrons are local:
 the content security policy allows neither remote fonts nor `data:` images.
@@ -110,6 +111,5 @@ space, a collection article, sign-in and the editor.
 
 ## Gaps
 
-- The theme follows the system preference; there is no manual switch.
-- The space masthead has no description: the public space API returns only a slug
-  and a display name.
+- Discovery covers need a readable public image; articles that only link external
+  images, or whose images are private, show no cover.
