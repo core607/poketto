@@ -262,6 +262,42 @@ class PublicAlbumCoverTests {
     }
 
     @Test
+    void folderPageWithAnUnreadableInventoryIsNotTreatedAsADirectory() throws Exception {
+        var workspace = WorkspaceId.random();
+        String commit = "b".repeat(40);
+        var article = article("public/trip/index.md", "/trip", true, "# Trip\n\n![Figure](figure.png)");
+        var snapshot = snapshot(workspace, commit, article);
+        var snapshots = mock(PublicContentSnapshots.class);
+        install(snapshots, snapshot);
+        byte[] image = png();
+        var figure = blob(workspace, commit, "public/trip/figure.png", image);
+        var empty = new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of());
+
+        var unlisted = mock(RepositoryBlobReader.class);
+        when(unlisted.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenThrow(new ContentRepositoryException("listing unavailable"));
+        when(unlisted.media(any(), any())).thenReturn(empty);
+        var truncated = mock(RepositoryBlobReader.class);
+        when(truncated.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenReturn(new SiblingImages(List.of(), true));
+        when(truncated.media(any(), any())).thenReturn(empty);
+        var unindexed = mock(RepositoryBlobReader.class);
+        when(unindexed.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenReturn(new SiblingImages(List.of(), false));
+        when(unindexed.media(any(), any())).thenThrow(new ContentRepositoryException("index unavailable"));
+
+        for (var blobs : List.of(unlisted, truncated, unindexed)) {
+            when(blobs.find(workspace, commit, figure.path())).thenReturn(Optional.of(figure));
+            when(blobs.read(figure)).thenReturn(image);
+            var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
+
+            assertThat(service.publicCovers(snapshot, List.of(article)).get(article.route()))
+                    .isEqualTo(new PublicAlbumCover(false, null));
+            verify(blobs, never()).find(any(), any(), any());
+        }
+    }
+
+    @Test
     void articleWithoutPublicImagesHasNoCover() {
         var workspace = WorkspaceId.random();
         String commit = "b".repeat(40);

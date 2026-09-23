@@ -115,7 +115,8 @@ final class PublicReads {
     /**
      * Prepares covers for at most six visible cards, sharing one media inventory for the selected
      * workspace and commit. A folder landing uses a sibling image and reports whether it is an
-     * album; any other article uses its first inline image that is public and readable. Publication
+     * album; one whose folder reads in full with no further images, like any other article, uses
+     * its first inline image that is public and readable. Publication
      * is checked before and after source preparation outside the snapshot lock. Missing routes are
      * no longer current; a null URL only means no cover.
      */
@@ -184,20 +185,21 @@ final class PublicReads {
     private PreparedCover prepareAlbumCover(
             WorkspaceId workspace, String commit, PublicArticle article, RepositoryMediaSnapshot catalog) {
         var candidates = new TreeMap<String, Target>();
+        boolean complete = false;
         try {
             Set<String> inline = new HashSet<>();
             for (String authored : MarkdownDestinations.parse(article.body()).images()) {
                 MarkdownDestinations.path(article.repositoryPath(), authored).ifPresent(inline::add);
             }
-            coverCandidates(workspace, commit, article.repositoryPath(), inline, catalog, candidates);
+            complete = coverCandidates(workspace, commit, article.repositoryPath(), inline, catalog, candidates);
         } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
             // Card text remains readable when its optional image inventory is unavailable.
         }
-        if (candidates.isEmpty()) {
-            // Without further images the folder is a directory, not an album; its own figure can still be its cover.
+        if (complete && candidates.isEmpty()) {
+            // A fully read folder without further images is a directory; its own figure can still be its cover.
             return prepareArticleCover(workspace, commit, article, catalog);
         }
-        return new PreparedCover(true, firstImage(workspace, candidates.values()));
+        return new PreparedCover(!candidates.isEmpty(), firstImage(workspace, candidates.values()));
     }
 
     /** Inline images in document order; private and unreadable references are skipped, not substituted. */
@@ -250,25 +252,29 @@ final class PublicReads {
         return null;
     }
 
-    private void coverCandidates(
+    /** Returns whether both inventories were read in full, so that an empty selection means no further images. */
+    private boolean coverCandidates(
             WorkspaceId workspace,
             String commit,
             String path,
             Set<String> inline,
             RepositoryMediaSnapshot catalog,
             TreeMap<String, Target> selected) {
+        boolean complete;
         try {
-            for (RepositoryBlob blob : blobs.siblings(workspace, commit, path, COVER_CANDIDATES, true, inline)
-                    .items()) {
+            var siblings = blobs.siblings(workspace, commit, path, COVER_CANDIDATES, true, inline);
+            complete = !siblings.partial();
+            for (RepositoryBlob blob : siblings.items()) {
                 if (blob.publicPath() && !inline.contains(blob.path())) {
                     selected.put(blob.path(), new Git(blob));
                 }
             }
         } catch (ContentRepositoryException unavailable) {
             // A previously validated media index can still supply an independent managed cover.
+            complete = false;
         }
         if (catalog == null) {
-            return;
+            return false;
         }
         String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
         for (var entry : catalog.index().files().entrySet()) {
@@ -285,6 +291,7 @@ final class PublicReads {
                 }
             }
         }
+        return complete;
     }
 
     private record PreparedCover(boolean album, Target target) {}
