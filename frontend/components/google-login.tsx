@@ -29,14 +29,11 @@ export function GoogleReturnNotice({ global = false }: { global?: boolean }) {
   useEffect(() => {
     const url = new URL(window.location.href);
     const inPlace = ["/admin", "/connect"].includes(url.pathname);
-    const started = global && !inPlace ? takeFlowMarker() : null;
+    // Every instance clears the marker on load, so no return path leaves it behind.
+    const started = takeFlowMarker();
     const reason = url.searchParams.get("loginError");
     if (!reason) return;
-    if (global) {
-      if (inPlace || started === false) return;
-    } else {
-      takeFlowMarker();
-    }
+    if (global && (inPlace || started === false)) return;
     setError(
       // Without a readable marker only the generic failure is safe to show.
       global && started === null
