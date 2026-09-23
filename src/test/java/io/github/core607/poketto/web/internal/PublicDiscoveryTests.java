@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
+import io.github.core607.poketto.assets.PublicAlbumCover;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -77,7 +78,15 @@ class PublicDiscoveryTests {
                 Function<PublicContentSnapshot, ?> action = invocation.getArgument(1);
                 return action.apply(snapshot);
             });
-            discovery = new PublicDiscovery(publications, snapshots, mock(AssetService.class), clock);
+            var assets = mock(AssetService.class);
+            // Every current card gets a cover entry; a missing entry would mean the card is stale.
+            when(assets.publicCovers(any(), any())).thenAnswer(invocation -> {
+                List<PublicArticle> requested = invocation.getArgument(1);
+                return requested.stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                PublicArticle::route, value -> new PublicAlbumCover(false, null)));
+            });
+            discovery = new PublicDiscovery(publications, snapshots, assets, clock);
         }
     }
 

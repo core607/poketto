@@ -2,7 +2,11 @@
 import { Icon } from "./ui/icons";
 import { useWorkspaceApi } from "./workspace-context";
 import { useEffect, useRef, useState } from "react";
-import { readDirectory, movablePath } from "../lib/repository-directory";
+import {
+  folderLabel,
+  movablePath,
+  readDirectory,
+} from "../lib/repository-directory";
 import type { RepositoryDirectory } from "../lib/types";
 import { message } from "./admin";
 
@@ -208,7 +212,7 @@ function DirectoryBranch({
           else props.onSelectFolder(path);
         }}
       >
-        {path.split("/").at(-1)}
+        {folderLabel(path)}
       </summary>
       <span className="tree-actions">
         {props.onMove && props.commit && movablePath(path) && (
@@ -216,7 +220,7 @@ function DirectoryBranch({
             className="tree-move"
             type="button"
             disabled={props.busy}
-            aria-label={`移动文件夹 ${path}`}
+            aria-label={`移动分类 ${path}`}
             onClick={(event) =>
               props.onMove!(path, props.commit!, event.currentTarget)
             }
@@ -228,7 +232,7 @@ function DirectoryBranch({
           <button
             type="button"
             className="tree-move"
-            aria-label={`导出文件夹 ${path}`}
+            aria-label={`导出分类 ${path}`}
             disabled={props.busy}
             onClick={(event) => props.onExport!(path, event.currentTarget)}
           >

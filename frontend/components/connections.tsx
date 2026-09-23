@@ -59,16 +59,22 @@ export function Connections() {
     }
   }
   return (
-    <section>
-      <h2>已连接应用</h2>
-      <p>查看授予应用的权限，或撤销整个连接。</p>
+    <section className="sub-panel" aria-labelledby="connections-title">
+      <div className="panel-heading">
+        <div>
+          <h2 id="connections-title">已连接的 AI 助手</h2>
+          <p>每个连接能做什么、到什么时候有效；不需要了可以随时断开。</p>
+        </div>
+      </div>
       {loading && <p role="status">正在读取连接…</p>}
       {error && (
         <p className="notice danger" role="alert">
           {error}
         </p>
       )}
-      {!loading && !error && items.length === 0 && <p>还没有应用连接。</p>}
+      {!loading && !error && items.length === 0 && (
+        <p className="muted">还没有连接任何 AI 助手。</p>
+      )}
       {items.map((item) => {
         const inactive =
           item.revoked || Date.parse(item.expiresAt) <= Date.now();

@@ -175,9 +175,7 @@ final class PublicDiscovery {
                 currentArticle(selected, entry).ifPresent(article -> articles.put(entry, article));
             }
             // Source I/O and image admission must not run under the public snapshot installation lock.
-            Map<String, PublicAlbumCover> covers = assets.publicAlbumCovers(
-                    selected,
-                    articles.values().stream().filter(PublicArticle::folderPage).toList());
+            Map<String, PublicAlbumCover> covers = assets.publicCovers(selected, List.copyOf(articles.values()));
             return snapshots.withCurrent(first.workspace(), snapshot -> {
                 var publication = publications
                         .findPublished(first.card().space())
@@ -188,8 +186,7 @@ final class PublicDiscovery {
                 var cards = new HashMap<Entry, Card>();
                 for (var entry : articles.entrySet()) {
                     PublicArticle expected = entry.getValue();
-                    PublicAlbumCover cover =
-                            expected.folderPage() ? covers.get(expected.route()) : new PublicAlbumCover(false, null);
+                    PublicAlbumCover cover = covers.get(expected.route());
                     if (cover != null
                             && currentArticle(snapshot, entry.getKey())
                                     .filter(expected::equals)

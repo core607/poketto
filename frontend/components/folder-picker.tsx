@@ -3,6 +3,8 @@ import { useWorkspaceApi } from "./workspace-context";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   contentRoot,
+  folderLabel,
+  folderLocation,
   inContentRoot,
   readDirectory,
 } from "../lib/repository-directory";
@@ -110,7 +112,7 @@ export function FolderPicker({
         if (!moving) onClose();
       }}
     >
-      <h2 id={title}>移动到文件夹</h2>
+      <h2 id={title}>移动到分类</h2>
       <p className="muted">{source}</p>
       <div className="folder-navigation" role="group" aria-label="存放范围">
         <button
@@ -121,11 +123,9 @@ export function FolderPicker({
             contentRoot(folder) === "private" ? undefined : "button-secondary"
           }
           onClick={() => setFolder(inContentRoot(folder, "private"))}
-          title={
-            canWritePrivate ? "保留分类路径，移到 private" : "需要私有写入权限"
-          }
+          title={canWritePrivate ? "保留分类，移到草稿" : "需要私有写入权限"}
         >
-          私有目录
+          草稿
         </button>
         <button
           type="button"
@@ -134,24 +134,24 @@ export function FolderPicker({
           className={
             contentRoot(folder) === "public" ? undefined : "button-secondary"
           }
-          title={canPublish ? "保留分类路径，移到 public" : "需要发布权限"}
+          title={canPublish ? "保留分类，移到已发布" : "需要发布权限"}
           onClick={() => setFolder(inContentRoot(folder, "public"))}
         >
-          公开目录
+          已发布
         </button>
       </div>
       <p className="muted">
         {contentRoot(folder) === "public"
-          ? "移入公开目录后，启用发布且未被排除的内容会在网站展示。单独移动文件不会带走它引用的媒体。"
-          : "私有目录中的内容不会在网站展示。移动文件夹会保留内部分类，并带上其中的媒体。"}
+          ? "移到「已发布」后，网站开启时它会出现在网站上。单独移动一篇笔记不会带走它引用的图片。"
+          : "「草稿」里的内容只有空间成员能看到。移动整个分类会保留里面的结构，并带上其中的图片。"}
       </p>
-      <nav className="folder-navigation" aria-label="目标文件夹">
+      <nav className="folder-navigation" aria-label="目标分类">
         <button
           type="button"
           disabled={moving || loading || !folder}
           onClick={() => setFolder("")}
         >
-          根目录
+          最外层
         </button>
         <button
           type="button"
@@ -166,7 +166,7 @@ export function FolderPicker({
         >
           上一级
         </button>
-        <span>{folder || "/"}</span>
+        <span>{folderLocation(folder)}</span>
       </nav>
       <div className="folder-options">
         {page?.entries
@@ -189,7 +189,7 @@ export function FolderPicker({
               }
               onClick={() => setFolder(entry.path)}
             >
-              ▸ {entry.path.split("/").at(-1)}
+              ▸ {folderLabel(entry.path)}
             </button>
           ))}
         {page?.expectedAbsence ? (
@@ -197,7 +197,7 @@ export function FolderPicker({
         ) : (
           page &&
           !page.entries.some((entry) => entry.kind === "DIRECTORY") && (
-            <p className="muted">没有子文件夹，可以选择当前文件夹。</p>
+            <p className="muted">这里没有下一级分类，可以直接放在这里。</p>
           )
         )}
         {page?.nextOffset != null && (
@@ -206,7 +206,7 @@ export function FolderPicker({
             disabled={moving || loading}
             onClick={() => void more()}
           >
-            加载更多文件夹
+            加载更多分类
           </button>
         )}
       </div>
@@ -229,7 +229,7 @@ export function FolderPicker({
         />
       </label>
       <label>
-        新建子文件夹（可选）
+        新建下一级分类（可选）
         <input
           value={newFolder}
           maxLength={255}

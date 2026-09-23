@@ -209,14 +209,18 @@ export function GitHubSpace({
 
   return (
     <section className="sub-panel" aria-label="GitHub 个人空间">
-      <h2>使用 GitHub 创建个人空间</h2>
+      <h2>新建一个空间</h2>
       <p className="muted">
-        在你自己的 GitHub
-        个人账号下创建私有仓库。内容归你所有，空间的公开网站默认关闭。
+        空间的笔记和它们的全部修改历史，会保存在你自己 GitHub
+        账号里的一个私有仓库中（GitHub
+        是一个存放文件的网站，可以免费注册）。内容始终归你所有，随时可以带走；新空间的公开网站默认关闭。
       </p>
       {!connection && !error && <p role="status">正在读取 GitHub 连接…</p>}
       {connection?.available === false && (
-        <p>站点尚未启用 GitHub 授权建仓，可以使用下方的手动连接。</p>
+        <p>
+          这个站点暂时没有开通用 GitHub 新建空间。已经有自己的 Git
+          仓库的话，可以用下方的「手动连接已有仓库」。
+        </p>
       )}
       {connection?.available && (
         <>

@@ -1,10 +1,9 @@
 "use client";
+import { permissionLabels } from "../lib/permissions";
 
-export const contentPermissions = [
-  { key: "READ_PRIVATE", label: "读取私密内容" },
-  { key: "WRITE_PRIVATE", label: "修改私密内容" },
-  { key: "PUBLISH", label: "修改和发布公开内容" },
-] as const;
+export const contentPermissions = (
+  ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"] as const
+).map((key) => ({ key, label: permissionLabels[key] }));
 
 export function PermissionFields({
   value,
@@ -53,6 +52,6 @@ export function permissionSummary(value: string[]) {
     contentPermissions
       .filter((permission) => value.includes(permission.key))
       .map((permission) => permission.label)
-      .join("、") || "仅查看公开目录"
+      .join("、") || "只能查看已发布的内容"
   );
 }

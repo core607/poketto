@@ -850,6 +850,10 @@ label.oauth-permission {
 details.sub-panel > summary {
   list-style: none;
 }
+/* A closed fold keeps no grid gap for its hidden content. */
+details.sub-panel:not([open]) {
+  gap: 0;
+}
 details.sub-panel > summary::before {
   content: "+ ";
   color: var(--accent);
@@ -873,4 +877,77 @@ details.sub-panel[open] > summary::before {
 :where(.studio-main) code {
   font-family: var(--font-mono);
   font-size: 0.88em;
+}
+
+/* Website profile: fields beside a live preview of how the site shows them. */
+.profile-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+  align-items: start;
+  gap: 1.5rem;
+}
+.profile-editor .form-help code {
+  font-size: 0.95em;
+}
+.profile-preview {
+  position: sticky;
+  top: calc(var(--bar-height) + 1rem);
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.profile-preview strong {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.profile-preview p {
+  font-size: var(--text-sm);
+  white-space: pre-line;
+}
+@media (max-width: 760px) {
+  .profile-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .profile-preview {
+    position: static;
+  }
+}
+
+/* Section heading: what this part of the studio is for, in one sentence. */
+.studio-head {
+  display: grid;
+  gap: 0.3rem;
+  max-width: 980px;
+  margin-bottom: 1.5rem;
+}
+.studio-head h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.studio-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.mcp-guide ol {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.3em;
+  list-style: decimal;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.mcp-guide code {
+  padding: 0.1em 0.4em;
+  border-radius: 5px;
+  background: var(--bg-sunken);
+  overflow-wrap: anywhere;
 }

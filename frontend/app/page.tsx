@@ -214,8 +214,13 @@ function DiscoveryCard({ item }: { item: DiscoveryPage["items"][number] }) {
         : null;
   return (
     <article className="card">
-      {item.album && (
-        <DiscoveryCover src={item.cover} href={href} title={item.title} />
+      {(item.album || item.cover) && (
+        <DiscoveryCover
+          src={item.cover}
+          href={href}
+          title={item.title}
+          album={item.album}
+        />
       )}
       <div className="card-meta">
         <a className="space-link" href={spaceHref(item.space)}>

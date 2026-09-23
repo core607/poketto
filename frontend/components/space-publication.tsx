@@ -12,6 +12,8 @@ type Publication = {
   slug: string;
   displayName: string;
   publicAuthorName: string;
+  /** Absent from servers older than the description field. */
+  publicDescription?: string;
   enabled: boolean;
   eligible: boolean;
   effectiveEnabled: boolean;
@@ -22,9 +24,15 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
   const confirm = useConfirmation();
   const [publication, setPublication] = useState<Publication | null>(null);
   const [author, setAuthor] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
+  const [profileNotice, setProfileNotice] = useState<{
+    failed: boolean;
+    text: string;
+  } | null>(null);
   const epoch = useRef(0);
   const busy = useRef(false);
 
@@ -35,6 +43,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
     setPublication(null);
     setError("");
     setReceipt("");
+    setProfileNotice(null);
     try {
       const value = await api<Publication>(base);
       if (version === epoch.current) {
@@ -42,6 +51,8 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           throw new Error("空间状态不匹配");
         setPublication(value);
         setAuthor(value.publicAuthorName);
+        setName(value.displayName);
+        setDescription(value.publicDescription ?? "");
       }
     } catch (failure) {
       if (version === epoch.current) setError(message(failure));
@@ -74,7 +85,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           ? "开启这个空间的公开网站？"
           : "关闭这个空间的公开网站？",
         description: enabled
-          ? "符合发布规则的公开内容将允许所有人访问。私密内容仍保持私密。"
+          ? "「已发布」里符合发布规则的笔记，所有人都能访问；「草稿」始终只有空间成员能看到。"
           : "公开页面和图片链接将停止提供内容。空间成员仍可读取获准的文件，已被他人下载的副本无法撤回。",
         confirmLabel: enabled ? "开启公开网站" : "关闭公开网站",
       });
@@ -108,32 +119,73 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  async function saveAuthor() {
+  /**
+   * Saves each changed profile field in turn. Every confirmed answer becomes the displayed state at
+   * once, so a failure part-way keeps the fields already saved and leaves the rest in the form.
+   */
+  async function saveProfile() {
     if (!publication || busy.current) return;
     const version = epoch.current;
+    const changes = [
+      name.trim() !== publication.displayName && {
+        label: "空间名称",
+        path: "/name",
+        body: { text: name },
+      },
+      description.trim() !== (publication.publicDescription ?? "") && {
+        label: "空间简介",
+        path: "/description",
+        body: { text: description },
+      },
+      author.trim() !== publication.publicAuthorName && {
+        label: "公开署名",
+        path: "/author",
+        body: { name: author },
+      },
+    ].filter(Boolean) as {
+      label: string;
+      path: string;
+      body: { text?: string; name?: string };
+    }[];
+    if (!changes.length) return;
     busy.current = true;
     setPending(true);
     setError("");
     setReceipt("");
+    setProfileNotice(null);
+    const saved: string[] = [];
     try {
-      const value = await api<Publication>(base + "/author", {
-        method: "PUT",
-        body: { name: author },
-      });
-      if (version === epoch.current) {
-        if (value.workspaceId !== workspaceId)
-          throw new Error("空间状态不匹配");
+      for (const { label, path, body } of changes) {
+        const value = await api<Publication>(base + path, {
+          method: "PUT",
+          body,
+        });
+        if (version !== epoch.current) return;
+        if (value.workspaceId !== workspaceId) {
+          setPublication(null);
+          setError("未能确认网站资料当前状态，请重新读取后再操作。");
+          return;
+        }
         setPublication(value);
-        setAuthor(value.publicAuthorName);
-        setReceipt("公开署名已保存。");
+        saved.push(label);
+        if (path === "/name") setName(value.displayName);
+        if (path === "/description")
+          setDescription(value.publicDescription ?? "");
+        if (path === "/author") setAuthor(value.publicAuthorName);
       }
+      setProfileNotice({ failed: false, text: "网站资料已保存。" });
     } catch (failure) {
-      if (version === epoch.current) {
-        setPublication(null);
-        setError(
-          "未能确认署名当前状态，请重新读取后再操作。" + message(failure),
-        );
-      }
+      if (version === epoch.current)
+        setProfileNotice({
+          failed: true,
+          text:
+            (saved.length ? `${saved.join("、")}已保存；` : "") +
+            `${changes
+              .slice(saved.length)
+              .map((change) => change.label)
+              .join("、")}没有保存，你的修改还留在上面，可以再保存一次。` +
+            message(failure),
+        });
     } finally {
       if (version === epoch.current) {
         busy.current = false;
@@ -141,83 +193,156 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
       }
     }
   }
-
+  const signature = author.trim() || name.trim() || publication?.displayName;
+  const changed =
+    publication &&
+    (name.trim() !== publication.displayName ||
+      description.trim() !== (publication.publicDescription ?? "") ||
+      author.trim() !== publication.publicAuthorName);
   return (
-    <section className="sub-panel" aria-label="网站发布">
-      <h2>网站发布</h2>
-      <p className="muted">
-        开启后，符合发布规则的公开内容可以被所有人浏览。新空间默认关闭公开网站。
-      </p>
-      {publication && (
-        <p>
-          网站开关：<strong>{publication.enabled ? "已开启" : "已关闭"}</strong>
-        </p>
-      )}
-      {receipt && (
-        <p className="notice" role="status">
-          {receipt}
-        </p>
-      )}
-      {error && (
-        <p className="notice danger" role="alert">
-          {error}
-        </p>
-      )}
-      {pending && <p role="status">正在处理网站状态…</p>}
-      {publication ? (
-        <button
-          disabled={pending || (!publication.enabled && !publication.eligible)}
-          onClick={() => void change()}
-        >
-          {publication.enabled ? "关闭公开网站" : "开启公开网站"}
-        </button>
-      ) : (
-        <button disabled={pending} onClick={() => void read()}>
-          重新读取网站状态
-        </button>
-      )}
-      {publication && !publication.eligible && (
-        <div className="notice" role="status">
-          <p>
-            公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
-            恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
-          </p>
-          <PublicationRestrictions key={workspaceId} base={base} />
+    <div className="management-panel">
+      <section className="sub-panel" aria-label="公开网站">
+        <div className="panel-heading">
+          <h2>公开网站</h2>
+          {publication?.effectiveEnabled && (
+            <a href={`/s/${encodeURIComponent(publication.slug)}`}>
+              查看公开网站
+            </a>
+          )}
         </div>
-      )}
-      {publication?.effectiveEnabled && (
-        <p>
-          <a href={`/s/${encodeURIComponent(publication.slug)}`}>
-            查看公开网站
-          </a>
+        <p className="muted">
+          开启后，放在「已发布」里的内容会出现在这个空间的网站上，所有人都能看到；草稿始终只有空间成员能看到。新空间默认关闭公开网站。
         </p>
-      )}
-      {publication && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void saveAuthor();
-          }}
-        >
-          <label htmlFor={`public-author-${workspaceId}`}>空间公开署名</label>
-          <input
-            id={`public-author-${workspaceId}`}
-            value={author}
-            disabled={pending}
-            maxLength={240}
-            placeholder={publication.displayName}
-            onChange={(event) => setAuthor(event.target.value)}
-            aria-describedby={`public-author-help-${workspaceId}`}
-          />
-          <p id={`public-author-help-${workspaceId}`} className="muted">
-            最多 120
-            个字符。文章填写了公开署名时优先使用文章署名；这里留空时使用空间名称。
+        {publication && (
+          <p>
+            网站开关：
+            <strong>{publication.enabled ? "已开启" : "已关闭"}</strong>
+            {publication.effectiveEnabled && (
+              <span className="muted"> · 网址 /s/{publication.slug}</span>
+            )}
           </p>
-          <button disabled={pending || author === publication.publicAuthorName}>
-            保存公开署名
+        )}
+        {receipt && (
+          <p className="notice success" role="status">
+            {receipt}
+          </p>
+        )}
+        {error && (
+          <p className="notice danger" role="alert">
+            {error}
+          </p>
+        )}
+        {pending && (
+          <p role="status" className="muted">
+            正在处理网站状态…
+          </p>
+        )}
+        {publication ? (
+          <button
+            disabled={
+              pending || (!publication.enabled && !publication.eligible)
+            }
+            onClick={() => void change()}
+          >
+            {publication.enabled ? "关闭公开网站" : "开启公开网站"}
           </button>
-        </form>
+        ) : (
+          <button disabled={pending} onClick={() => void read()}>
+            重新读取网站状态
+          </button>
+        )}
+        {publication && !publication.eligible && (
+          <div className="notice" role="status">
+            <p>
+              公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
+              恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
+            </p>
+            <PublicationRestrictions key={workspaceId} base={base} />
+          </div>
+        )}
+      </section>
+      {publication && (
+        <section
+          className="sub-panel"
+          aria-labelledby={`profile-${workspaceId}`}
+        >
+          <div className="panel-heading">
+            <h2 id={`profile-${workspaceId}`}>网站资料</h2>
+          </div>
+          <div className="profile-editor">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveProfile();
+              }}
+            >
+              <label>
+                空间名称
+                <input
+                  value={name}
+                  disabled={pending}
+                  required
+                  maxLength={120}
+                  onChange={(event) => setName(event.target.value)}
+                />
+                <span className="form-help">
+                  这个空间叫什么。显示在网站标题、首页发现卡片和工作台里。
+                </span>
+              </label>
+              <label>
+                空间简介
+                <textarea
+                  value={description}
+                  disabled={pending}
+                  rows={3}
+                  maxLength={280}
+                  placeholder="一两句话，介绍这里写些什么。"
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+                <span className="form-help">
+                  显示在网站首页的空间名称下方，最多 280 字，可以留空。
+                </span>
+              </label>
+              <label htmlFor={`public-author-${workspaceId}`}>
+                公开署名
+                <input
+                  id={`public-author-${workspaceId}`}
+                  value={author}
+                  disabled={pending}
+                  maxLength={240}
+                  placeholder={name || publication.displayName}
+                  onChange={(event) => setAuthor(event.target.value)}
+                  aria-describedby={`public-author-help-${workspaceId}`}
+                />
+                <span
+                  id={`public-author-help-${workspaceId}`}
+                  className="form-help"
+                >
+                  文章「作者」一栏显示的名字，比如你的笔名。留空时直接用空间名称。某篇文章想换个署名，可以在它开头写{" "}
+                  <code>public_author: 名字</code>。
+                </span>
+              </label>
+              {profileNotice && (
+                <p
+                  className={`notice ${profileNotice.failed ? "danger" : "success"}`}
+                  role={profileNotice.failed ? "alert" : "status"}
+                >
+                  {profileNotice.text}
+                </p>
+              )}
+              <button disabled={pending || !changed || !name.trim()}>
+                保存网站资料
+              </button>
+            </form>
+            <aside className="profile-preview" aria-label="网站上的样子">
+              <p className="eyebrow">网站上会这样显示</p>
+              <strong>{name.trim() || publication.displayName}</strong>
+              {description.trim() && <p>{description.trim()}</p>}
+              <p className="muted">文章署名：{signature}</p>
+            </aside>
+          </div>
+        </section>
       )}
-    </section>
+    </div>
   );
 }

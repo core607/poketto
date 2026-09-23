@@ -348,14 +348,13 @@ public final class AssetService {
         }
     }
 
-    /** Anonymous reading of published documents, album covers and image tokens. */
+    /** Anonymous reading of published documents, discovery card covers and image tokens. */
     public Optional<ResolvedPublicDocument> publicDocument(WorkspaceId workspace, String route) {
         return reads.document(workspace, route);
     }
 
-    public Map<String, PublicAlbumCover> publicAlbumCovers(
-            PublicContentSnapshot selected, List<PublicArticle> requested) {
-        return reads.albumCovers(selected, requested);
+    public Map<String, PublicAlbumCover> publicCovers(PublicContentSnapshot selected, List<PublicArticle> requested) {
+        return reads.covers(selected, requested);
     }
 
     /** The opaque token fixes the workspace; a browser's selected workspace never affects this read. */

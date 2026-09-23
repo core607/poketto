@@ -202,7 +202,7 @@ test("folder navigation preserves a dirty draft and reports folder separately fr
     textarea.dispatchEvent(new editor.window.Event("input", { bubbles: true })),
   );
   const publicSummary = [...editor.container.querySelectorAll("summary")].find(
-    (item) => item.textContent?.trim() === "public",
+    (item) => item.textContent?.trim() === "已发布",
   );
   assert.ok(publicSummary);
   await editor.act(async () => publicSummary.click());
@@ -308,7 +308,7 @@ test("creation prepares private folder drafts, saves index.md explicitly, and re
   await editor.act(async () => button("新建笔记").click());
   assert.match(editor.container.textContent!, /默认创建在 private\/notes\//);
   await editor.act(async () => button("取消").click());
-  await editor.act(async () => button("新建文件夹").click());
+  await editor.act(async () => button("新建分类").click());
   const name = editor.container.querySelector(
     'input[name="name"]',
   ) as FormControl | null;
@@ -331,7 +331,7 @@ test("creation prepares private folder drafts, saves index.md explicitly, and re
   assert.equal(patches.length, 0, "preparing a draft must not write");
   assert.match(
     editor.container.textContent!,
-    /文件夹入口已准备，保存后创建文件夹/,
+    /分类的介绍页已打开，保存后分类就建好了/,
   );
   assert.equal(
     (editor.container.querySelector(".path-label input") as Control | null)
@@ -1129,7 +1129,7 @@ test("moving a folder maps a selected descendant but preserves an unrelated fold
   await settle(editor.act);
   const moveFolder = (path: string) => {
     const button = editor.container.querySelector(
-      `button[aria-label="移动文件夹 ${path}"]`,
+      `button[aria-label="移动分类 ${path}"]`,
     );
     assert.ok(button, path);
     return button as unknown as Clickable;
@@ -1139,13 +1139,13 @@ test("moving a folder maps a selected descendant but preserves an unrelated fold
   const firstDialog = editor.container.querySelector("dialog[open]");
   assert.ok(firstDialog);
   const rootButton = [...firstDialog.querySelectorAll("button")].find(
-    (item) => item.textContent?.trim() === "根目录",
+    (item) => item.textContent?.trim() === "最外层",
   );
   assert.ok(rootButton);
   await editor.act(async () => rootButton.click());
   await settle(editor.act);
   const newFolder = [...firstDialog.querySelectorAll("input")].find((item) =>
-    item.parentElement?.textContent?.includes("新建子文件夹"),
+    item.parentElement?.textContent?.includes("新建下一级分类"),
   );
   assert.ok(newFolder);
   Object.getOwnPropertyDescriptor(
@@ -1173,7 +1173,7 @@ test("moving a folder maps a selected descendant but preserves an unrelated fold
     path: "",
   });
   const privateSummary = [...editor.container.querySelectorAll("summary")].find(
-    (item) => item.textContent?.trim() === "private",
+    (item) => item.textContent?.trim() === "草稿",
   );
   assert.ok(privateSummary);
   await editor.act(async () => privateSummary.click());

@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * What an anonymous reader may see: one article with its media, the covers of the albums a
+ * What an anonymous reader may see: one article with its media, the covers of the cards a
  * discovery batch lists, and the bytes behind a public image token. Each read is bound to the
  * publication snapshot it was prepared from and is rechecked before anything is returned, so a
  * withdrawal between preparation and delivery serves nothing.
@@ -113,13 +113,15 @@ final class PublicReads {
     }
 
     /**
-     * Prepares at most six visible folder covers, sharing one media inventory for the selected
-     * workspace and commit. Publication is checked before and after source preparation outside
-     * the snapshot lock. Missing routes are no longer current; a null URL only means no cover.
+     * Prepares covers for at most six visible cards, sharing one media inventory for the selected
+     * workspace and commit. A folder landing uses a sibling image and reports whether it is an
+     * album; any other article uses its first inline image that is public and readable. Publication
+     * is checked before and after source preparation outside the snapshot lock. Missing routes are
+     * no longer current; a null URL only means no cover.
      */
-    Map<String, PublicAlbumCover> albumCovers(PublicContentSnapshot selected, List<PublicArticle> requested) {
-        if (requested.size() > 6 || requested.stream().anyMatch(article -> !article.folderPage())) {
-            throw new IllegalArgumentException("cover preparation requires at most six folder landings");
+    Map<String, PublicAlbumCover> covers(PublicContentSnapshot selected, List<PublicArticle> requested) {
+        if (requested.size() > 6) {
+            throw new IllegalArgumentException("cover preparation accepts at most six cards");
         }
         if (requested.isEmpty() || selected.commit().isEmpty()) {
             return Map.of();
@@ -138,7 +140,11 @@ final class PublicReads {
         RepositoryMediaSnapshot catalog = media.availableMedia(workspace, commit);
         var prepared = new LinkedHashMap<PublicArticle, PreparedCover>();
         for (PublicArticle article : current) {
-            prepared.put(article, prepareAlbumCover(workspace, commit, article, catalog));
+            prepared.put(
+                    article,
+                    article.folderPage()
+                            ? prepareAlbumCover(workspace, commit, article, catalog)
+                            : prepareArticleCover(workspace, commit, article, catalog));
         }
         return snapshots.withCurrent(workspace, snapshot -> {
             var covers = new LinkedHashMap<String, PublicAlbumCover>();
@@ -187,21 +193,57 @@ final class PublicReads {
         } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
             // Card text remains readable when its optional image inventory is unavailable.
         }
+        return new PreparedCover(!candidates.isEmpty(), firstImage(workspace, candidates.values()));
+    }
+
+    /** Inline images in document order; private and unreadable references are skipped, not substituted. */
+    private PreparedCover prepareArticleCover(
+            WorkspaceId workspace, String commit, PublicArticle article, RepositoryMediaSnapshot catalog) {
+        var candidates = new LinkedHashMap<String, Target>();
+        try {
+            for (String authored : MarkdownDestinations.parse(article.body()).images()) {
+                if (candidates.size() >= COVER_CANDIDATES) {
+                    break;
+                }
+                var path = MarkdownDestinations.path(article.repositoryPath(), authored);
+                if (path.isEmpty() || candidates.containsKey(path.orElseThrow())) {
+                    continue;
+                }
+                String name = path.orElseThrow();
+                var indexed = catalog == null ? null : catalog.index().files().get(name);
+                if (indexed != null) {
+                    if (indexed.mediaType().startsWith("image/")
+                            && catalog.publicPaths().contains(name)) {
+                        candidates.put(name, new Indexed(commit, name, indexed, true));
+                    }
+                } else {
+                    blobs.find(workspace, commit, name)
+                            .filter(RepositoryBlob::publicPath)
+                            .ifPresent(blob -> candidates.put(name, new Git(blob)));
+                }
+            }
+        } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
+            // Card text remains readable when its optional image inventory is unavailable.
+        }
+        return new PreparedCover(false, firstImage(workspace, candidates.values()));
+    }
+
+    private Target firstImage(WorkspaceId workspace, Iterable<Target> candidates) {
         Map<Target, Boolean> resolved = new HashMap<>();
         long[] total = {0};
-        for (Target target : candidates.values()) {
+        for (Target target : candidates) {
             if (MediaPreparations.imageAllowance(target) > COVER_IMAGE_BYTES - total[0]) {
                 continue;
             }
             try {
                 if (media.prepareImage(workspace, target, resolved, total)) {
-                    return new PreparedCover(true, target);
+                    return target;
                 }
             } catch (AssetStorageException | ContentRepositoryException unavailable) {
                 // A later candidate may still have independently available original bytes.
             }
         }
-        return new PreparedCover(!candidates.isEmpty(), null);
+        return null;
     }
 
     private void coverCandidates(

@@ -41,8 +41,11 @@ function SpaceMast({
     <header className="space-mast">
       <div className="space-mast-top">
         <Avatar name={space.displayName} large />
-        <div>
+        <div className="space-mast-text">
           <h1>{space.displayName}</h1>
+          {space.description && (
+            <p className="space-description">{space.description}</p>
+          )}
           <p className="space-sub">
             公开空间
             {total !== undefined && ` · ${total} 篇公开记录`}

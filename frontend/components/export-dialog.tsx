@@ -127,7 +127,7 @@ export function ExportDialog({
             checked={!publicOnly}
             onChange={() => setPublicOnly(false)}
           />
-          私人副本<span>保留原文与元数据，可能包含私密内容。</span>
+          私人副本<span>保留原文与元数据，可能包含草稿。</span>
         </label>
         <label>
           <input
@@ -136,7 +136,7 @@ export function ExportDialog({
             checked={publicOnly}
             onChange={() => setPublicOnly(true)}
           />
-          公开副本<span>用于分享；所选文件及附件必须已经公开。</span>
+          公开副本<span>用于分享；所选笔记和附件都必须已经发布。</span>
         </label>
       </fieldset>
       {error && <p role="alert">{error}</p>}

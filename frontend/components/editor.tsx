@@ -31,8 +31,10 @@ import { ExportDialog } from "./export-dialog";
 import { HistoryDialog } from "./history-dialog";
 import { DiagnosticMessage } from "./diagnostic";
 import { Icon } from "./ui/icons";
+import { NoteLibrary } from "./note-library";
 import {
   contentRoot,
+  folderLocation,
   inContentRoot,
   readDirectory,
 } from "../lib/repository-directory";
@@ -107,6 +109,7 @@ export function Editor({
   const currentSource = useRef(source);
   currentSource.current = source;
   const editorRoot = useRef<HTMLDivElement>(null);
+  const editorMain = useRef<HTMLElement>(null);
   const unreadable =
     file !== null && file.source === null && !file.expectedAbsence;
   const writable = identity.capabilities.includes(
@@ -230,7 +233,7 @@ export function Editor({
         if (!directory.expectedAbsence)
           throw new ApiError(
             409,
-            "文件夹已经存在，请换一个名称，或在文件树选择它。",
+            "这个分类已经存在，请换一个名称，或在文件树选择它。",
           );
       }
       if (dirty) recovery.discard();
@@ -244,11 +247,16 @@ export function Editor({
       );
       setPreviewVersion((version) => version + 1);
       navigate(result.path, options.folder ?? folder, options.replace);
+      // Narrow screens stack the file list under the editor; bring the opened note into view.
+      if (window.matchMedia?.("(max-width: 1100px)").matches)
+        requestAnimationFrame(() =>
+          editorMain.current?.scrollIntoView?.({ block: "start" }),
+        );
       if (options.create) {
         setCreation(null);
         setNotice(
           options.create === "folder"
-            ? "文件夹入口已准备，保存后创建文件夹。"
+            ? "分类的介绍页已打开，保存后分类就建好了。"
             : "笔记草稿已打开，保存后写入仓库。",
         );
         requestAnimationFrame(() => {
@@ -442,7 +450,7 @@ export function Editor({
   }
   function chooseMove(source: string, commit: string, trigger: HTMLElement) {
     if (dirty) {
-      setError("有未保存的修改，请先保存，再移动文件或文件夹。");
+      setError("有未保存的修改，请先保存，再移动笔记或分类。");
       return;
     }
     setError("");
@@ -464,8 +472,8 @@ export function Editor({
       !(await confirm({
         title: publishing ? "发布这篇内容？" : "撤回为私有草稿？",
         description: publishing
-          ? `将已保存的内容移到「${destination}」。只有网站开启、符合发布规则且账号未受限时才会公开；需要一起发布的媒体请通过移动文件夹处理。`
-          : `将已保存的内容移到「${destination}」，停止通过此文章提供公开内容。其他公开引用仍可能提供相同媒体，已被他人保存的副本无法撤回。`,
+          ? `将已保存的内容移到「${destination}」。只有网站开启、符合发布规则且账号未受限时才会公开；它用到的图片不会跟着移动；需要一起发布的话，请移动图片所在的整个分类。`
+          : `将已保存的内容移到「${destination}」，这篇笔记不再出现在网站上。其他已发布的笔记若引用了同样的图片，图片仍会公开；已被他人保存的副本无法撤回。`,
         confirmLabel: publishing ? "发布" : "撤回为草稿",
       }))
     )
@@ -547,7 +555,7 @@ export function Editor({
         try {
           await reloadTree();
           setError(
-            "仓库内容已改变，目录已刷新。请重新选择要移动的文件或文件夹。",
+            "内容已被别处修改，列表已刷新。请重新选择要移动的笔记或分类。",
           );
         } catch {
           setError(
@@ -626,7 +634,7 @@ export function Editor({
       )}
       <aside className="file-sidebar">
         <div className="sidebar-title">
-          <h2>文件</h2>
+          <h2>全部文件</h2>
           <button
             type="button"
             className="text-button"
@@ -655,16 +663,20 @@ export function Editor({
           disabled={busy}
           onOpen={(draftPath) => void open(draftPath)}
         />
-        <section className="content-creation" aria-label="当前目录与新建">
-          <p className="selected-folder">当前目录：{folder || "仓库根目录"}</p>
-          <button
-            type="button"
-            className="text-button"
-            disabled={busy}
-            onClick={() => navigate(file?.path ?? "", "")}
-          >
-            选择根目录
-          </button>
+        <section className="content-creation" aria-label="新建位置">
+          <p className="selected-folder">
+            新建到：{folderLocation(inContentRoot(folder, "private"))}
+          </p>
+          {folder && (
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => navigate(file?.path ?? "", "")}
+            >
+              回到最外层
+            </button>
+          )}
           <div className="creation-actions">
             {(["note", "folder"] as const).map((kind) => (
               <button
@@ -679,7 +691,7 @@ export function Editor({
                   setCreation(kind);
                 }}
               >
-                {kind === "note" ? "新建笔记" : "新建文件夹"}
+                {kind === "note" ? "新建笔记" : "新建分类"}
               </button>
             ))}
           </div>
@@ -705,7 +717,7 @@ export function Editor({
               }}
             >
               <label>
-                {creation === "note" ? "笔记名称" : "文件夹名称"}
+                {creation === "note" ? "笔记名称" : "分类名称"}
                 <input
                   name="name"
                   required
@@ -721,7 +733,7 @@ export function Editor({
                 默认创建在 {inContentRoot(folder, "private")}/，保存后生效。
               </p>
               <button disabled={busy}>
-                准备{creation === "note" ? "笔记" : "文件夹"}
+                准备{creation === "note" ? "笔记" : "分类"}
               </button>
               <button
                 type="button"
@@ -737,11 +749,6 @@ export function Editor({
             </form>
           )}
         </section>
-        <FilenameSearch
-          busy={busy}
-          commit={tree?.commit ?? null}
-          onOpen={(path) => void open(path)}
-        />
         <nav className="file-tree" aria-label="仓库文件">
           {tree && (
             <FileTree
@@ -760,35 +767,16 @@ export function Editor({
             />
           )}
         </nav>
-        <details className="advanced-path">
-          <summary>高级：完整路径</summary>
-          <form
-            className="open-path"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const target = String(
-                new FormData(event.currentTarget).get("path"),
-              );
-              void open(target);
-            }}
-          >
-            <label>
-              打开或新建路径
-              <input
-                name="path"
-                defaultValue="private/"
-                placeholder="private/笔记/新文章.md"
-                required
-                maxLength={255}
-              />
-            </label>
-            <button className="button-secondary" disabled={busy}>
-              打开路径
-            </button>
-          </form>
+        <details className="filename-details">
+          <summary>按文件名查找</summary>
+          <FilenameSearch
+            busy={busy}
+            commit={tree?.commit ?? null}
+            onOpen={(path) => void open(path)}
+          />
         </details>
         <details className="body-search" open={search !== null || undefined}>
-          <summary>搜索库内正文</summary>
+          <summary>搜索笔记正文</summary>
           <form
             className="open-path private-search"
             onSubmit={(event) => {
@@ -799,7 +787,7 @@ export function Editor({
             }}
           >
             <label>
-              <span className="sr-only">搜索库内正文</span>
+              <span className="sr-only">搜索笔记正文</span>
               <input
                 name="query"
                 required
@@ -839,6 +827,33 @@ export function Editor({
             )}
           </section>
         )}
+        <details className="advanced-path">
+          <summary>高级：完整路径</summary>
+          <form
+            className="open-path"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const target = String(
+                new FormData(event.currentTarget).get("path"),
+              );
+              void open(target);
+            }}
+          >
+            <label>
+              打开或新建路径
+              <input
+                name="path"
+                defaultValue="private/"
+                placeholder="private/笔记/新文章.md"
+                required
+                maxLength={255}
+              />
+            </label>
+            <button className="button-secondary" disabled={busy}>
+              打开路径
+            </button>
+          </form>
+        </details>
         {tree?.diagnostics.length ? (
           <details className="diagnostics">
             <summary>仓库诊断 · {tree.diagnostics.length}</summary>
@@ -851,7 +866,7 @@ export function Editor({
           </details>
         ) : null}
       </aside>
-      <section className="editor-main">
+      <section className="editor-main" ref={editorMain}>
         {error && (
           <div className="notice danger" role="alert">
             {error}
@@ -983,7 +998,7 @@ export function Editor({
                     <Icon
                       name={contentRoot(path) === "public" ? "globe" : "lock"}
                     />
-                    {contentRoot(path) === "public" ? "公开" : "私密"}
+                    {contentRoot(path) === "public" ? "已发布" : "草稿"}
                   </span>
                 )}
                 <span
@@ -1192,13 +1207,16 @@ export function Editor({
             ))}
           </>
         ) : (
-          <div className="editor-empty">
-            <span className="empty-mark">
-              <Icon name="pen" />
-            </span>
-            <h2>从一篇记录开始。</h2>
-            <p>在左侧选择目录、新建笔记，或打开已有文件。</p>
-          </div>
+          <NoteLibrary
+            tree={tree}
+            busy={busy}
+            canWrite={identity.capabilities.includes("WRITE_PRIVATE")}
+            onOpen={(target) => void open(target)}
+            onCreate={(kind, trigger) => {
+              creationTrigger.current = trigger;
+              setCreation(kind);
+            }}
+          />
         )}
       </section>
     </div>

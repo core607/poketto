@@ -502,9 +502,15 @@
   .editor-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Below the note, the file list can take its natural height instead of scrolling inside. */
   .file-sidebar {
     position: static;
-    max-height: 45vh;
+    max-height: none;
+    overflow: visible;
+  }
+  /* The note list or the open note comes first; the full file list follows it. */
+  .editor-main {
+    order: -1;
   }
   .editor-panes {
     grid-template-columns: 1fr;
@@ -794,4 +800,131 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   white-space: pre-wrap;
+}
+
+/* Content home: notes by state, newest first. */
+.note-library {
+  display: grid;
+  gap: 1rem;
+}
+.library-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+.library-head h2 {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+.library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.library-actions button:not(.button-secondary) {
+  background: var(--accent);
+}
+.library-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.library-bar .segmented button {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+}
+.library-bar .segmented button[aria-selected="true"] {
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.library-bar .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+label.library-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: min(100%, 16rem);
+}
+.library-filter .icon {
+  position: absolute;
+  left: 0.8rem;
+  color: var(--muted);
+}
+.library-filter input {
+  padding-left: 2.2rem !important;
+  border-radius: 999px !important;
+}
+.note-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  list-style: none;
+}
+.note-list li + li {
+  border-top: 1px solid var(--line);
+}
+.note-list button {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.note-list button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.note-list button > .icon {
+  color: var(--faint);
+}
+.note-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  color: var(--ink-2);
+}
+.note-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.note-text strong {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-text small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.library-help {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.library-help p {
+  margin-top: 0.5rem;
 }

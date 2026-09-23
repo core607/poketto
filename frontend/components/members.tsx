@@ -102,7 +102,7 @@ export function Members() {
           disabled={pending}
         />
         <p className="muted">
-          默认只能查看空间里的公开目录。私密读取、私密修改和公开发布需要单独授权。
+          默认只能查看已发布的内容。查看草稿、修改草稿和发布需要在上面单独勾选。
         </p>
         <button onClick={invite} disabled={pending}>
           创建空间邀请码

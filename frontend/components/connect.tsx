@@ -4,28 +4,29 @@ import { api, ApiError } from "../lib/browser-api";
 import { Login, message } from "./admin";
 import type { AccountProfile } from "./account-panel";
 import type { SpaceSummary } from "./workspace-dashboard";
+import { permissionLabels } from "../lib/permissions";
 
 export const scopeLabels: Record<string, { label: string; detail: string }> = {
   "repository:execute": {
     label: "运行隔离命令",
     detail:
-      "在隔离工作区中检索和分析内容。未授予私密读取时，命令环境仅供读取；保存修改还需要对应的写入权限。",
+      "在隔离工作区中检索和分析内容。未授予「查看草稿」时，命令环境仅供读取；保存修改还需要对应的写入权限。",
   },
   "content:read_private": {
-    label: "读取私密内容",
-    detail: "读取私密笔记、媒体和完整 Git 历史。",
+    label: permissionLabels.READ_PRIVATE,
+    detail: "读取草稿里的笔记、图片，以及完整的修改历史。",
   },
   "content:write_private": {
-    label: "修改私密内容",
-    detail: "保存、移动或删除私密文件，并上传媒体。",
+    label: permissionLabels.WRITE_PRIVATE,
+    detail: "保存、移动或删除草稿里的文件，并上传图片。",
   },
   "content:publish": {
-    label: "发布与修改公开内容",
-    detail: "允许发布、更新或删除公开内容，包括将私密内容公开。",
+    label: permissionLabels.PUBLISH,
+    detail: "允许发布、更新或删除已发布的内容，包括把草稿发布出去。",
   },
   offline_access: {
     label: "保持连接",
-    detail: "允许自动续期；可随时在后台断开连接。",
+    detail: "允许自动续期；可随时在工作台的「AI 助手」里断开。",
   },
 };
 type Consent = { clientName: string; redirectUri: string; scopes: string[] };
@@ -233,7 +234,7 @@ export function Connect() {
                   </label>
                 ))}
             </fieldset>
-            <p>未勾选的权限不会授予。可在管理页面的“已连接应用”中断开连接。</p>
+            <p>未勾选的权限不会授予。可在工作台的“AI 助手”中断开连接。</p>
             <div className="oauth-actions">
               <button
                 disabled={

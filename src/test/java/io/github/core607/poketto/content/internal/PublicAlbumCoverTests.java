@@ -1,7 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -19,6 +18,7 @@ import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.assets.ManagedBlobStore;
 import io.github.core607.poketto.assets.ManagedImage;
+import io.github.core607.poketto.assets.PublicAlbumCover;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
@@ -79,7 +79,7 @@ class PublicAlbumCoverTests {
         when(blobs.read(candidate)).thenReturn(image);
 
         var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
-        var cover = service.publicAlbumCovers(snapshot, List.of(article)).get(article.route());
+        var cover = service.publicCovers(snapshot, List.of(article)).get(article.route());
         assertThat(cover).isNotNull();
 
         assertThat(cover.album()).isTrue();
@@ -123,7 +123,7 @@ class PublicAlbumCoverTests {
                 .thenReturn(new ManagedImage(new ManagedAsset(reference, "image/png", image.length), image));
 
         var service = service(blobs, snapshots, originals);
-        var cover = service.publicAlbumCovers(snapshot, List.of(article)).get(article.route());
+        var cover = service.publicCovers(snapshot, List.of(article)).get(article.route());
         assertThat(cover).isNotNull();
 
         assertThat(cover.album()).isTrue();
@@ -157,7 +157,7 @@ class PublicAlbumCoverTests {
         when(blobs.read(candidate)).thenReturn(image);
 
         var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
-        assertThat(service.publicAlbumCovers(selected, List.of(article))).isEmpty();
+        assertThat(service.publicCovers(selected, List.of(article))).isEmpty();
 
         verify(blobs).read(candidate);
         verify(blobs, never()).protect(any(), any());
@@ -183,7 +183,7 @@ class PublicAlbumCoverTests {
         when(blobs.read(any())).thenThrow(new ContentRepositoryException("source unavailable"));
 
         var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
-        var cover = service.publicAlbumCovers(snapshot, List.of(article)).get(article.route());
+        var cover = service.publicCovers(snapshot, List.of(article)).get(article.route());
         assertThat(cover).isNotNull();
 
         assertThat(cover.album()).isTrue();
@@ -193,19 +193,62 @@ class PublicAlbumCoverTests {
     }
 
     @Test
-    void nonFolderRequestsAreRejectedBeforeScanningCoverImages() {
+    void articleCoverUsesTheFirstPublicInlineImageWithoutScanningSiblings() throws Exception {
         var workspace = WorkspaceId.random();
         String commit = "b".repeat(40);
-        var article = article("public/article.md", "/article", false);
+        var article = article(
+                "public/notes/article.md",
+                "/notes/article",
+                false,
+                "# Article\n\n![Hidden](../../private/secret.png)\n\n![Shown](first.png)\n\n![Later](later.png)");
         var snapshot = snapshot(workspace, commit, article);
         var snapshots = mock(PublicContentSnapshots.class);
         install(snapshots, snapshot);
         var blobs = mock(RepositoryBlobReader.class);
+        byte[] image = png();
+        var hidden = new RepositoryBlob(
+                workspace,
+                commit,
+                "private/secret.png",
+                blob(workspace, commit, "x", image).objectId(),
+                image.length,
+                false);
+        var shown = blob(workspace, commit, "public/notes/first.png", image);
+        when(blobs.find(workspace, commit, "private/secret.png")).thenReturn(Optional.of(hidden));
+        when(blobs.find(workspace, commit, "public/notes/first.png")).thenReturn(Optional.of(shown));
+        when(blobs.media(any(), any()))
+                .thenReturn(new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of()));
+        when(blobs.read(shown)).thenReturn(image);
 
-        assertThatThrownBy(() -> service(blobs, snapshots, mock(ManagedBlobStore.class))
-                        .publicAlbumCovers(snapshot, List.of(article)))
-                .isInstanceOf(IllegalArgumentException.class);
-        org.mockito.Mockito.verifyNoInteractions(blobs);
+        var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
+        var cover = service.publicCovers(snapshot, List.of(article)).get(article.route());
+
+        assertThat(cover).isNotNull();
+        assertThat(cover.album()).isFalse();
+        assertThat(cover.src()).startsWith("/api/public/assets/");
+        assertThat(service.readPublicImage(workspace, token(cover.src())).source())
+                .isEqualTo(new AssetSource.Repository(Optional.of(commit), shown.path()));
+        verify(blobs, org.mockito.Mockito.never()).siblings(any(), any(), any(), anyInt(), anyBoolean(), any());
+        verify(blobs, org.mockito.Mockito.never()).read(hidden);
+    }
+
+    @Test
+    void articleWithoutPublicImagesHasNoCover() {
+        var workspace = WorkspaceId.random();
+        String commit = "b".repeat(40);
+        var article = article("public/article.md", "/article", false, "# Text only");
+        var snapshot = snapshot(workspace, commit, article);
+        var snapshots = mock(PublicContentSnapshots.class);
+        install(snapshots, snapshot);
+        var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), any()))
+                .thenReturn(new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of()));
+
+        var cover = service(blobs, snapshots, mock(ManagedBlobStore.class))
+                .publicCovers(snapshot, List.of(article))
+                .get(article.route());
+
+        assertThat(cover).isEqualTo(new PublicAlbumCover(false, null));
     }
 
     @Test
@@ -224,7 +267,7 @@ class PublicAlbumCoverTests {
         when(blobs.media(workspace, commit))
                 .thenReturn(new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of()));
 
-        var covers = service(blobs, snapshots, mock(ManagedBlobStore.class)).publicAlbumCovers(snapshot, articles);
+        var covers = service(blobs, snapshots, mock(ManagedBlobStore.class)).publicCovers(snapshot, articles);
 
         assertThat(covers).hasSize(6).containsKeys("/album-0", "/album-5");
         verify(blobs, times(1)).media(workspace, commit);

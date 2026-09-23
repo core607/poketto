@@ -2,6 +2,7 @@ package io.github.core607.poketto.workspace.internal;
 
 import io.github.core607.poketto.workspace.PublicAuthorNames;
 import io.github.core607.poketto.workspace.PublicationUnavailableException;
+import io.github.core607.poketto.workspace.SpaceProfiles;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.sql.ResultSet;
@@ -15,7 +16,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 final class JdbcWorkspacePublications implements WorkspacePublications {
     private static final String COLUMNS =
-            "w.workspace_id,w.public_slug,w.display_name,w.public_delivery,w.public_author_name,e.eligible";
+            "w.workspace_id,w.public_slug,w.display_name,w.public_delivery,w.public_author_name,w.public_description,"
+                    + "e.eligible";
     private static final String SOURCES = "workspaces w join website_owner_eligibility e using(workspace_id)";
     private static final String ENABLED = "w.public_delivery and e.eligible";
     private final JdbcTemplate jdbc;
@@ -112,6 +114,41 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
         return settings(workspace);
     }
 
+    @Override
+    public Publication setDisplayName(WorkspaceId workspace, String name) {
+        requireProfileTransaction();
+        String normalized = SpaceProfiles.name(name);
+        return updated(
+                workspace,
+                jdbc.update(
+                        "update workspaces set display_name=? where workspace_id=?", normalized, workspace.value()));
+    }
+
+    @Override
+    public Publication setDescription(WorkspaceId workspace, String description) {
+        requireProfileTransaction();
+        String normalized = SpaceProfiles.description(description);
+        return updated(
+                workspace,
+                jdbc.update(
+                        "update workspaces set public_description=? where workspace_id=?",
+                        normalized,
+                        workspace.value()));
+    }
+
+    private static void requireProfileTransaction() {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Space profile changes require an owner-authorization transaction");
+        }
+    }
+
+    private Publication updated(WorkspaceId workspace, int rows) {
+        if (rows != 1) {
+            throw new PublicationUnavailableException();
+        }
+        return settings(workspace);
+    }
+
     private static Publication read(ResultSet row, int number) throws SQLException {
         return new Publication(
                 new WorkspaceId(row.getObject("workspace_id", UUID.class)),
@@ -119,6 +156,7 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
                 row.getString("display_name"),
                 row.getBoolean("public_delivery"),
                 row.getBoolean("eligible"),
-                row.getString("public_author_name"));
+                row.getString("public_author_name"),
+                row.getString("public_description"));
     }
 }

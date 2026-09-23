@@ -130,7 +130,7 @@ export function AccountPanel({
         )}
       </section>
       <details className="sub-panel advanced">
-        <summary>手动连接已有仓库（高级）</summary>
+        <summary>手动连接已有仓库（高级，需要了解 Git）</summary>
         <CreateWorkspace
           accountId={profile.account.accountId}
           onCreated={(workspaceId) => onJoined(workspaceId, true)}

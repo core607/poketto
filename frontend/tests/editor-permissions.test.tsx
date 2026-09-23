@@ -175,10 +175,10 @@ for (const scenario of [
       assert.ok(move);
       await act(async () => move.click());
       const privateRoot = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent === "私有目录",
+        (button) => button.textContent === "草稿",
       );
       const publicRoot = Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent === "公开目录",
+        (button) => button.textContent === "已发布",
       );
       assert.ok(privateRoot);
       assert.ok(publicRoot);

@@ -241,7 +241,8 @@ a.tag:hover {
   cursor: pointer;
 }
 .segmented [aria-current="page"],
-.segmented [aria-selected="true"] {
+.segmented [aria-selected="true"],
+.segmented [aria-checked="true"] {
   background: var(--bg-raised);
   color: var(--ink);
   box-shadow: var(--shadow-1);

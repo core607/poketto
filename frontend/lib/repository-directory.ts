@@ -6,6 +6,20 @@ export function contentRoot(path: string): "public" | "private" | null {
   return root === "public" || root === "private" ? root : null;
 }
 
+/** The writer-facing name of a folder: the two content roots read as note states. */
+export function folderLabel(path: string) {
+  if (path === "private") return "草稿";
+  if (path === "public") return "已发布";
+  return path.split("/").at(-1) ?? path;
+}
+
+/** A folder path as a writer reads it, such as 「草稿 / 旅行」. */
+export function folderLocation(path: string) {
+  if (!path) return "最外层";
+  const [root, ...rest] = path.split("/");
+  return [folderLabel(root), ...rest].join(" / ");
+}
+
 export function inContentRoot(path: string, root: "public" | "private") {
   const current = contentRoot(path);
   const relative = current

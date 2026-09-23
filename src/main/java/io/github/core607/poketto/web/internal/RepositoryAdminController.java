@@ -126,10 +126,15 @@ class RepositoryAdminController {
         Map<String, Entry> entries = new TreeMap<>();
         tree.documents()
                 .forEach(document -> entries.put(
-                        document.file().path(), new Entry(document.file().path(), document.title())));
+                        document.file().path(),
+                        new Entry(
+                                document.file().path(),
+                                document.title(),
+                                document.updatedAt(),
+                                document.folderPage())));
         tree.diagnostics()
-                .forEach(diagnostic ->
-                        entries.putIfAbsent(diagnostic.path(), new Entry(diagnostic.path(), diagnostic.path())));
+                .forEach(diagnostic -> entries.putIfAbsent(
+                        diagnostic.path(), new Entry(diagnostic.path(), diagnostic.path(), null, false)));
         return new Tree(tree.commit().orElse(null), List.copyOf(entries.values()), tree.diagnostics());
     }
 
@@ -190,7 +195,8 @@ class RepositoryAdminController {
         return new PatchResult(result.commit(), result.committed(), result.snapshotUpdated(), revisions);
     }
 
-    record Entry(String path, String title) {}
+    /** The update time is absent for files that did not parse as documents. */
+    record Entry(String path, String title, Instant updatedAt, boolean folderPage) {}
 
     record Directory(
             String commit,
