@@ -1,9 +1,10 @@
-import { permanentRedirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { defaultSpace } from "../../lib/public-api";
 import { spaceHref } from "../../lib/format";
 
 export const metadata = { title: "标签" };
-// Root tag pages belong to the default space; its site owns the canonical view.
+// Root tag pages belong to the default space. The target follows the current
+// default space, so the redirect stays temporary.
 export default async function Tags({
   searchParams,
 }: {
@@ -21,5 +22,5 @@ export default async function Tags({
     if (typeof offset === "string") query.set("offset", offset);
   } else if (typeof tagOffset === "string") query.set("offset", tagOffset);
   const suffix = query.size ? "?" + query : "";
-  permanentRedirect(spaceHref(space.slug) + "/tags" + suffix);
+  redirect(spaceHref(space.slug) + "/tags" + suffix);
 }
