@@ -103,7 +103,7 @@ export function SpaceSwitcher({
                   }}
                 >
                   <Avatar name={space.displayName} />
-                  <span>{space.displayName}</span>
+                  <span className="space-option-name">{space.displayName}</span>
                   {space.workspaceId === selected && <Icon name="check" />}
                 </button>
               </li>
