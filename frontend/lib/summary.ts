@@ -14,18 +14,22 @@ export function plainSummary(markdown: string, title = "", limit = 120) {
     const withoutImages = paragraph.replace(/!\[[^\]]*\]\([^)]*\)/g, "").trim();
     // A caption is one short italic line right under an image; bold or longer prose stays.
     const caption =
-      afterImage && /^([*_])(?!\1)[^*_\n]{1,80}\1$/.test(withoutImages);
+      afterImage && /^(?:\*[^*\n]{1,80}\*|_[^_\n]{1,80}_)$/.test(withoutImages);
     afterImage = withoutImages.length === 0;
-    // Headings name the article or its sections, and rules only separate; the summary is prose.
+    // Headings, rules and tables organise the article; the summary is its prose.
     const structure =
       /^#{1,6}\s/.test(withoutImages) ||
-      /^([-*_])(\s*\1){2,}$/.test(withoutImages);
+      /\n\s*(=+|-+)\s*$/.test(withoutImages) ||
+      /^([-*_])(\s*\1){2,}$/.test(withoutImages) ||
+      withoutImages.split("\n").every((line) => line.trim().startsWith("|"));
     if (afterImage || caption || structure) continue;
     const text = withoutImages
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replace(/<[^>]+>/g, "")
       .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
-      .replace(/[*_~`]+/g, "")
+      .replace(/[*~`]+/g, "")
+      // Underscores inside a word, as in file names, are text; only emphasis ones go.
+      .replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "")
       .replace(/\s+/g, " ")
       .trim();
     if (!text || text === title.trim()) continue;

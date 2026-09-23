@@ -33,6 +33,21 @@ test("bold prose under an image and a leading rule are kept as prose", () => {
   );
 });
 
+test("captions with file names, underlined headings and tables are not prose", () => {
+  assert.equal(
+    plainSummary(
+      [
+        "![图](cover_v2.png)",
+        "*配图：cover_v2.png 的示意*",
+        "标题\n===",
+        "| 列 | 值 |\n| --- | --- |\n| a | b |",
+        "正文提到 snake_case 与 _强调_。",
+      ].join("\n\n"),
+    ),
+    "正文提到 snake_case 与 强调。",
+  );
+});
+
 test("long summaries end at a nearby sentence or an ellipsis", () => {
   const sentence = "这是一句足够长的正文，用来确认摘要会在句号处收尾。";
   assert.equal(plainSummary(sentence.repeat(10), "", 60), sentence.repeat(2));
