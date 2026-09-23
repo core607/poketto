@@ -1126,6 +1126,8 @@ body:has(.image-lightbox[open]) {
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--bg-raised);
+  /* The primary rule above sets light text for its dark fill; a light button needs ink. */
+  color: var(--ink);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
