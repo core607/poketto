@@ -356,6 +356,7 @@ export function WorkspaceDashboard({
         <SpacePublication
           key={identity.workspaceId}
           workspaceId={identity.workspaceId}
+          onRenamed={page.reload}
         />
       )}
       {activeTab === "account" && (

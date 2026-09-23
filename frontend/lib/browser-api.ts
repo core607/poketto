@@ -65,6 +65,12 @@ export async function api<T>(
       typeof problem?.code === "string" && problem.code.length <= 80
         ? problem.code
         : undefined;
+    if (code === "LAST_OWNER")
+      throw new ApiError(
+        409,
+        "空间至少需要一位所有者。请先把另一位成员设为所有者，再更改这位的角色或停用。",
+        code,
+      );
     if (code === "LAST_ADMINISTRATOR")
       throw new ApiError(
         409,
