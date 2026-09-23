@@ -1008,7 +1008,7 @@ export function Editor({
                       source === file.source &&
                       path === file.path)
                   }
-                  title="保存（Ctrl+S）"
+                  title="保存（在正文中可按 Ctrl+S）"
                   onClick={() => void save(path)}
                 >
                   {busy ? "处理中…" : "保存"}
