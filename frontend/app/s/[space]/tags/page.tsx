@@ -3,6 +3,8 @@ import {
   type SpaceParameters,
 } from "../../../../components/public-space";
 
+export const metadata = { title: "标签" };
+
 export default async function Page({
   params,
   searchParams,

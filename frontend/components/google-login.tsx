@@ -3,12 +3,34 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/browser-api";
 import { message } from "./admin";
 
-export function GoogleReturnNotice() {
+const FLOW = "poketto:google-flow";
+
+/**
+ * Shows why a Google flow failed. The sign-in and account security cards show it in place; the
+ * global instance covers other pages and only answers a flow this browser tab started, so a
+ * crafted link cannot raise the warning on its own.
+ */
+export function GoogleReturnNotice({ global = false }: { global?: boolean }) {
   const [error, setError] = useState("");
   useEffect(() => {
     const url = new URL(window.location.href);
     const reason = url.searchParams.get("loginError");
     if (!reason) return;
+    if (global) {
+      if (["/admin", "/connect"].includes(url.pathname)) return;
+      let started = false;
+      try {
+        started = sessionStorage.getItem(FLOW) !== null;
+      } catch {
+        started = false;
+      }
+      if (!started) return;
+    }
+    try {
+      sessionStorage.removeItem(FLOW);
+    } catch {
+      // The flag only gates the global notice.
+    }
     setError(
       reason === "google_email_in_use"
         ? "该 Google 邮箱已对应一个账号。请使用原有方式登录，再到“登录与安全”绑定 Google。"
@@ -56,6 +78,11 @@ export function GoogleLogin({
           },
         },
       );
+      try {
+        sessionStorage.setItem(FLOW, "1");
+      } catch {
+        // Without the flag a failure is still shown on the account and connection pages.
+      }
       window.location.assign(result.url);
     } catch (error) {
       setError(message(error));
