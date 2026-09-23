@@ -93,8 +93,16 @@ export function ArticleCommunity({
   space: string;
   articleId: string | null;
 }) {
-  // Without a stable article identity there is nothing to attach interactions to.
-  if (!articleId) return null;
+  // Without a stable article identity only the space itself can be followed.
+  if (!articleId)
+    return (
+      <section className="community-section" aria-label="关注空间">
+        <div className="join-prompt">
+          <span>关注这个空间，它的新文章会出现在你的关注动态里。</span>
+          <SpaceFollow space={space} />
+        </div>
+      </section>
+    );
   return (
     <ArticleDiscussion
       key={`${space}/${articleId}`}

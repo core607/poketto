@@ -1248,7 +1248,7 @@
   }
 }
 @media (max-width: 580px) {
-  .legacy body {
+  .legacy {
     font-size: 14px;
   }
   .legacy .site-header {
@@ -1411,11 +1411,6 @@
   }
   .legacy .secret-panel {
     padding: 15px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .legacy html {
-    scroll-behavior: auto;
   }
 }
 
