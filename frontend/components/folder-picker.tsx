@@ -143,7 +143,7 @@ export function FolderPicker({
       <p className="muted">
         {contentRoot(folder) === "public"
           ? "移到「已发布」后，网站开启时它会出现在网站上。单独移动一篇笔记不会带走它引用的图片。"
-          : "「草稿」里的内容只有空间成员能看到。移动整个分类会保留里面的结构，并带上其中的图片。"}
+          : "「草稿」里的内容只有获准查看草稿的成员能看到。移动整个分类会保留里面的结构，并带上其中的图片。"}
       </p>
       <nav className="folder-navigation" aria-label="目标分类">
         <button

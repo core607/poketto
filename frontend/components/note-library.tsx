@@ -73,7 +73,7 @@ export function NoteLibrary({
         <div>
           <h2 id="note-library-title">我的笔记</h2>
           <p className="muted">
-            草稿只有空间成员能看到；发布后会出现在这个空间的网站上。
+            草稿只有获准查看草稿的成员能看到；发布后会出现在这个空间的网站上。
           </p>
         </div>
         {canWrite && (
