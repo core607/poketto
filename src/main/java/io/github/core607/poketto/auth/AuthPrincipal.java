@@ -1,9 +1,17 @@
 package io.github.core607.poketto.auth;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.UUID;
 
-/** Authenticated identity, not cached authorization; each operation must revalidate its workspace access. */
-public final class AuthPrincipal {
+/**
+ * Authenticated identity, not cached authorization; each operation must revalidate its workspace access.
+ * Browser sessions store it serialized, and every request revalidates its credential version.
+ */
+public final class AuthPrincipal implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     public enum Kind {
         ACCOUNT,
         API_KEY

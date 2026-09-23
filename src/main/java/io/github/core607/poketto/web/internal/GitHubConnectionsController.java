@@ -14,12 +14,16 @@ import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.UUID;
+import java.util.function.Function;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.session.Session;
+import org.springframework.session.SessionRepository;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,12 +44,17 @@ class GitHubConnectionsController {
     private final GitHubConnections connections;
     private final GitHubSpaceCreation creations;
     private final GitHubSpaceReconnection reconnections;
+    private final ObjectProvider<SessionRepository<?>> storedSessions;
 
     GitHubConnectionsController(
-            GitHubConnections connections, GitHubSpaceCreation creations, GitHubSpaceReconnection reconnections) {
+            GitHubConnections connections,
+            GitHubSpaceCreation creations,
+            GitHubSpaceReconnection reconnections,
+            ObjectProvider<SessionRepository<?>> storedSessions) {
         this.connections = connections;
         this.creations = creations;
         this.reconnections = reconnections;
+        this.storedSessions = storedSessions;
     }
 
     @GetMapping("/repositories/{workspaceId}")
@@ -161,6 +170,7 @@ class GitHubConnectionsController {
         return connections.disconnect(actor, version);
     }
 
+    /** Removes the authorization a callback answers; see {@link GitHubConnections#begin} for concurrent callbacks. */
     private static GitHubConnections.Authorization consume(HttpServletRequest request, String state) {
         HttpSession session = request.getSession(false);
         if (session == null || state == null || state.length() != 43) {
@@ -181,13 +191,24 @@ class GitHubConnectionsController {
         }
     }
 
-    private static void requireSession(HttpServletRequest request, GitHubConnections.Authorization authorization) {
+    private void requireSession(HttpServletRequest request, GitHubConnections.Authorization authorization) {
         HttpSession session = request.getSession(false);
         if (session == null) {
             throw new AuthException(AuthException.Code.INVALID_CREDENTIALS);
         }
         try {
-            Object value = session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+            // A stored session is this request's own copy; the saved session shows a disconnect or
+            // sign-out from another tab that happened while this callback was exchanging the code.
+            Function<String, Object> attribute = session::getAttribute;
+            SessionRepository<?> repository = storedSessions.getIfAvailable();
+            if (repository != null) {
+                Session stored = repository.findById(session.getId());
+                if (stored == null) {
+                    throw new AuthException(AuthException.Code.INVALID_CREDENTIALS);
+                }
+                attribute = stored::getAttribute;
+            }
+            Object value = attribute.apply(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
             var authentication = value instanceof SecurityContext context ? context.getAuthentication() : null;
             Object principal = authentication == null ? null : authentication.getPrincipal();
             if (!(principal instanceof AuthPrincipal actor)) {
@@ -197,7 +218,7 @@ class GitHubConnectionsController {
                     || actor.credentialVersion() != authorization.credentialVersion()) {
                 throw new AuthException(AuthException.Code.INVALID_CREDENTIALS);
             }
-            if (!authorization.state().equals(session.getAttribute(ATTEMPT))) {
+            if (!authorization.state().equals(attribute.apply(ATTEMPT))) {
                 throw new AuthException(AuthException.Code.INVALID_CREDENTIALS);
             }
         } catch (IllegalStateException invalidated) {

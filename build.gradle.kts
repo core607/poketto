@@ -53,6 +53,7 @@ val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
 dependencies {
     implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc:2.0.1")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-session-jdbc")
     implementation("org.springframework.security:spring-security-oauth2-client")
     implementation("org.springframework.security:spring-security-oauth2-jose")
     implementation("org.apache.httpcomponents.client5:httpclient5")
@@ -121,6 +122,13 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     classpath = integrationTestSourceSet.runtimeClasspath
     shouldRunAfter(tasks.test)
     systemProperty("poketto.postgres.image", postgresTestImage.get())
+    // Most integration tests hold container sessions through MockMvc; the browser session store
+    // integration test opts back in to the JDBC session store that production uses.
+    systemProperty(
+        "spring.autoconfigure.exclude",
+        "org.springframework.boot.session.autoconfigure.SessionAutoConfiguration," +
+            "org.springframework.boot.session.jdbc.autoconfigure.JdbcSessionAutoConfiguration",
+    )
 }
 
 tasks.register<Sync>("stageAcceptanceRuntime") {

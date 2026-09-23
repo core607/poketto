@@ -558,10 +558,13 @@ public final class OAuthService {
         }
     }
 
-    public record Client(String id, String name, List<String> redirectUris, Instant unconnectedUntil) {}
+    public record Client(String id, String name, List<String> redirectUris, Instant unconnectedUntil)
+            implements java.io.Serializable {}
 
+    /** Held in the browser session between the authorization redirect and the consent decision. */
     public record AuthorizationRequest(
-            Client client, String redirectUri, Set<String> scopes, String state, String challenge, Instant expiresAt) {}
+            Client client, String redirectUri, Set<String> scopes, String state, String challenge, Instant expiresAt)
+            implements java.io.Serializable {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Tokens(String access_token, String token_type, long expires_in, String refresh_token, String scope) {

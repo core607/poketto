@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.auth.AccountSessionLifetime;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -43,11 +44,17 @@ class GoogleIdentityController {
     private final GoogleIdentityProvider provider;
     private final GoogleAccounts accounts;
     private final AuthService auth;
+    private final AccountSessionLifetime accountSessions;
 
-    GoogleIdentityController(GoogleIdentityProvider provider, GoogleAccounts accounts, AuthService auth) {
+    GoogleIdentityController(
+            GoogleIdentityProvider provider,
+            GoogleAccounts accounts,
+            AuthService auth,
+            AccountSessionLifetime accountSessions) {
         this.provider = provider;
         this.accounts = accounts;
         this.auth = auth;
+        this.accountSessions = accountSessions;
     }
 
     @PostMapping("/start")
@@ -128,6 +135,11 @@ class GoogleIdentityController {
         }
     }
 
+    /**
+     * Removes the pending flow a callback answers. A stored session gives each request its own copy,
+     * so the lock does not stop two simultaneous callbacks from both reading the flow; Google redeems
+     * the authorization code only once, so only one of them signs in.
+     */
     private static Pending consume(HttpServletRequest request, String state) {
         HttpSession session = request.getSession(false);
         if (session == null || state == null || state.length() > 256) {
@@ -159,6 +171,7 @@ class GoogleIdentityController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         new HttpSessionSecurityContextRepository().saveContext(context, request, response);
+        accountSessions.apply(request);
     }
 
     private static void redirect(HttpServletResponse response, String target, String error) {
@@ -230,7 +243,8 @@ class GoogleIdentityController {
             Mode mode,
             AuthPrincipal actor,
             String returnTo,
-            Instant expiresAt) {
+            Instant expiresAt)
+            implements java.io.Serializable {
         @Override
         public String toString() {
             return "GooglePending[REDACTED]";

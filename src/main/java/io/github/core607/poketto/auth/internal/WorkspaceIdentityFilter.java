@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.auth.AccountSessionLifetime;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -22,10 +23,21 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
     private final ObjectProvider<AuthService> auth;
     private final boolean bearer;
     private final String challenge;
+    private final AccountSessionLifetime accountSessions;
 
     WorkspaceIdentityFilter(ObjectProvider<AuthService> auth, boolean bearer, String issuer) {
+        this(auth, bearer, issuer, null);
+    }
+
+    /**
+     * Sign-in routes give a session the account idle timeout when they store the account; the
+     * filter reapplies it to a validated session, which also covers sessions stored before it.
+     */
+    WorkspaceIdentityFilter(
+            ObjectProvider<AuthService> auth, boolean bearer, String issuer, AccountSessionLifetime accountSessions) {
         this.auth = auth;
         this.bearer = bearer;
+        this.accountSessions = accountSessions;
         this.challenge = issuer.isBlank()
                 ? "Bearer realm=\"poketto\""
                 : "Bearer resource_metadata=\"" + issuer + "/.well-known/oauth-protected-resource\"";
@@ -64,6 +76,9 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                 if (authentication != null && authentication.getPrincipal() instanceof AuthPrincipal recognised) {
                     auth.getObject().validateAccount(recognised);
                     RequestCaller.remember(request, recognised);
+                    if (accountSessions != null && recognised.kind() == AuthPrincipal.Kind.ACCOUNT) {
+                        accountSessions.apply(request);
+                    }
                 }
                 if (path.startsWith("/api/admin/")) {
                     if (authentication == null

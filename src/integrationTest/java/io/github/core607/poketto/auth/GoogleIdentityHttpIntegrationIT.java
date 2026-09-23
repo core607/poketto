@@ -110,6 +110,8 @@ class GoogleIdentityHttpIntegrationIT {
         callback(session, state)
                 .andExpect(header().string("Location", "/connect?client_id=fixture&state=caller-state"));
         assertThat(session.getId()).isNotEqualTo(prior);
+        // The session gets the signed-in idle timeout when the login stores the account.
+        assertThat(session.getMaxInactiveInterval()).isEqualTo(90 * 24 * 60 * 60);
         mvc.perform(get("/api/auth/account").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.account.group").value("VIEWER"));
