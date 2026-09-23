@@ -79,13 +79,13 @@ function Accounts({ query }: { query: string }) {
               !page.error &&
               page.items.map((account) => (
                 <tr key={account.accountId}>
-                  <td>
+                  <td data-label="账号">
                     {account.displayName}
                     <small className="muted"> · {account.loginName}</small>
                   </td>
-                  <td>{siteGroups[account.group]}</td>
-                  <td>{account.ownedSpaces}</td>
-                  <td>
+                  <td data-label="策略组">{siteGroups[account.group]}</td>
+                  <td data-label="拥有的空间">{account.ownedSpaces}</td>
+                  <td data-label="操作">
                     <button onClick={() => setSelected(account)}>
                       管理 {account.displayName}
                     </button>

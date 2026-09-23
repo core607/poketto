@@ -19,7 +19,14 @@ type Publication = {
   effectiveEnabled: boolean;
 };
 
-export function SpacePublication({ workspaceId }: { workspaceId: string }) {
+export function SpacePublication({
+  workspaceId,
+  onRenamed,
+}: {
+  workspaceId: string;
+  /** Called once the server confirms a new space name, so lists showing it can reread. */
+  onRenamed?: () => void;
+}) {
   const base = `/api/auth/workspaces/${encodeURIComponent(workspaceId)}/publication`;
   const confirm = useConfirmation();
   const [publication, setPublication] = useState<Publication | null>(null);
@@ -168,7 +175,10 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
         }
         setPublication(value);
         saved.push(label);
-        if (path === "/name") setName(value.displayName);
+        if (path === "/name") {
+          setName(value.displayName);
+          onRenamed?.();
+        }
         if (path === "/description")
           setDescription(value.publicDescription ?? "");
         if (path === "/author") setAuthor(value.publicAuthorName);

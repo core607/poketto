@@ -303,6 +303,35 @@ class PublicAlbumCoverTests {
     }
 
     @Test
+    void articleCoverUsesAManagedInlineImageLikeItsPage() throws Exception {
+        var workspace = WorkspaceId.random();
+        String commit = "b".repeat(40);
+        byte[] image = png();
+        var reference = new ManagedAssetReference(UUID.randomUUID(), "a".repeat(64));
+        var article = article(
+                "public/notes/article.md", "/notes/article", false, "# Article\n\n![Figure](" + reference + ")");
+        var snapshot = snapshot(workspace, commit, article);
+        var snapshots = mock(PublicContentSnapshots.class);
+        install(snapshots, snapshot);
+        var blobs = mock(RepositoryBlobReader.class);
+        when(blobs.media(any(), any()))
+                .thenReturn(new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of()));
+        var originals = mock(ManagedBlobStore.class);
+        when(originals.read(workspace, reference))
+                .thenReturn(new ManagedImage(new ManagedAsset(reference, "image/png", image.length), image));
+
+        var service = service(blobs, snapshots, originals);
+        var cover = service.publicCovers(snapshot, List.of(article)).get(article.route());
+
+        assertThat(cover).isNotNull();
+        assertThat(cover.album()).isFalse();
+        assertThat(cover.src()).startsWith("/api/public/assets/");
+        assertThat(service.readPublicImage(workspace, token(cover.src())).source())
+                .isEqualTo(new AssetSource.Managed(reference));
+        verify(blobs, never()).find(any(), any(), any());
+    }
+
+    @Test
     void articleWithoutPublicImagesHasNoCover() {
         var workspace = WorkspaceId.random();
         String commit = "b".repeat(40);
