@@ -610,13 +610,9 @@ body:has(.studio) .site-footer {
   .table-scroll :is(table, tbody, tr, td) {
     display: block;
   }
+  /* Every cell carries its own column name, so the header row would only be read twice. */
   .table-scroll thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+    display: none;
   }
   .table-scroll tr {
     padding: 0.6rem 1rem;
@@ -634,6 +630,7 @@ body:has(.studio) .site-footer {
     gap: 0.35rem 0.75rem;
     padding: 0.4rem 0;
     border-top: 0;
+    overflow-wrap: anywhere;
   }
   .table-scroll td:empty {
     display: none;
