@@ -1,5 +1,6 @@
 package io.github.core607.poketto.web.internal;
 
+import io.github.core607.poketto.auth.AccountSessionLifetime;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -43,11 +44,17 @@ class GoogleIdentityController {
     private final GoogleIdentityProvider provider;
     private final GoogleAccounts accounts;
     private final AuthService auth;
+    private final AccountSessionLifetime accountSessions;
 
-    GoogleIdentityController(GoogleIdentityProvider provider, GoogleAccounts accounts, AuthService auth) {
+    GoogleIdentityController(
+            GoogleIdentityProvider provider,
+            GoogleAccounts accounts,
+            AuthService auth,
+            AccountSessionLifetime accountSessions) {
         this.provider = provider;
         this.accounts = accounts;
         this.auth = auth;
+        this.accountSessions = accountSessions;
     }
 
     @PostMapping("/start")
@@ -159,6 +166,7 @@ class GoogleIdentityController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         new HttpSessionSecurityContextRepository().saveContext(context, request, response);
+        accountSessions.apply(request);
     }
 
     private static void redirect(HttpServletResponse response, String target, String error) {

@@ -116,11 +116,12 @@ class BrowserSessionStoreIntegrationIT {
             String cookie =
                     login.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
             assertThat(cookie).isNotEqualTo(guestCookie);
+            // The login itself stores the long timeout; no later request is needed for it.
+            assertThat(idleSeconds(cookie)).isEqualTo(ACCOUNT_SECONDS);
 
             // Every request reads the stored context back from PostgreSQL through the attribute filter.
             assertThat(send(client, get("/api/auth/account", cookie)).statusCode())
                     .isEqualTo(200);
-            assertThat(idleSeconds(cookie)).isEqualTo(ACCOUNT_SECONDS);
             assertThat(jdbc.queryForObject(
                             "select principal_name from spring_session where session_id = ?",
                             String.class,

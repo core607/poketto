@@ -22,13 +22,17 @@ design lacks otherwise: every request already revalidates the account.
 Browser sessions are stored in PostgreSQL through Spring Session JDBC, in the tables created by
 migration `V18`, so a restart or deploy keeps them.
 
-A session starts with the 30-minute anonymous idle timeout. `WorkspaceIdentityFilter`
-validates the stored account on each browser request. Once the session carries a signed-in
-account, the filter raises that session's idle timeout to
-`poketto.security.account-session-idle-days`, which defaults to 90 and slides with every
-request. Password login, Google login and sign-up all pass through this filter, so every route
-into an account gets the same lifetime. Sessions created only for a CSRF token keep the short
-timeout, so anonymous traffic cannot fill the table with long-lived rows.
+A session starts with the 30-minute anonymous idle timeout. `AccountSessionLifetime` raises
+it to `poketto.security.account-session-idle-days`, which defaults to 90 and slides with every
+request, at the moment a route stores an account in the session:
+- password login in its success handler;
+- Google login right after it saves the security context.
+
+Sign-up creates no session; the browser signs in with the new password afterwards.
+`WorkspaceIdentityFilter`, which validates the stored account on each browser request, applies
+the same lifetime again, which covers sessions stored before this change. Sessions created only
+for a CSRF token keep the short timeout, so anonymous traffic cannot fill the table with
+long-lived rows.
 
 The `POKETTO_SESSION` cookie carries a 400-day `Max-Age`, the longest lifetime current browsers
 keep, so closing the browser does not end the session. The server-side idle expiry is the bound
@@ -47,8 +51,10 @@ Session attributes are Java-serialized. The stored types are:
 Each of these types is `Serializable`. Reading applies an `ObjectInputFilter` that admits only
 application, Spring Security and JDK classes, within depth, reference and size limits. An
 attribute that does not read back, for example one written by a release whose classes changed,
-counts as absent: the visitor is signed out and signs in again, and does not see an error. The
-PostgreSQL customizer writes attributes with `ON CONFLICT` upserts.
+counts as absent: the visitor is signed out and signs in again, and does not see an error. A
+value that cannot be serialized is logged as an error and stored empty, which also reads as
+absent, so a new session type that misses `Serializable` does not fail the request that stores
+it. The PostgreSQL customizer writes attributes with `ON CONFLICT` upserts.
 
 ## Alternatives
 
@@ -75,9 +81,15 @@ PostgreSQL customizer writes attributes with `ON CONFLICT` upserts.
   Such code must write the attribute back. OAuth consent now does this when it removes the
   answered request, so a later consent for the same request fails.
 - `synchronized (session)` no longer serializes concurrent requests, because each request gets
-  its own session object. Two simultaneous consents for one pending request could therefore
-  each return a code. Both come from the same signed-in visitor for the same client, and each
-  code is still single-use and bound to its PKCE challenge.
+  its own session object.
+  - Two simultaneous consents for one pending request could each return a code. Both come from
+    the same signed-in visitor for the same client, and each code is still single-use and bound
+    to its PKCE challenge.
+  - Two simultaneous Google or GitHub callbacks for one stored state could both pass the state
+    check before either removes it. The provider's authorization code is single-use, so only one
+    exchange succeeds; the other ends as a failed sign-in or connection.
+  - Moving these one-time values to atomic database rows would close the window. It is not done
+    here, because the providers already reject the replay.
 - Most integration tests keep MockMvc container sessions: the `integrationTest` task excludes
   the session auto-configuration. `BrowserSessionStoreIntegrationIT` opts back in and exercises
   the production store over real HTTP.
@@ -90,10 +102,13 @@ PostgreSQL customizer writes attributes with `ON CONFLICT` upserts.
   - pending OAuth requests;
   - the GitHub and Google flows.
 
-  It also shows that classes outside the allow-list and damaged bytes read as absent.
+  It also shows that classes outside the allow-list, damaged bytes and a value that cannot be
+  serialized all read as absent.
 - `BrowserSessionStoreIntegrationIT` checks the store over real HTTP:
   - an anonymous CSRF session has a 30-minute idle timeout and a 400-day cookie;
-  - after login the next request authenticates from the stored row;
-  - the row then carries the 90-day timeout and the account's principal name;
+  - the login response alone leaves the row with the 90-day timeout;
+  - the next request authenticates from the stored row, which names the account;
   - logout deletes the row;
   - an unreadable stored context answers 401, not an error.
+- `GoogleIdentityHttpIntegrationIT` checks that a Google login leaves its session with the
+  90-day timeout.

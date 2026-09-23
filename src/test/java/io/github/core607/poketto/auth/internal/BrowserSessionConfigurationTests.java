@@ -76,6 +76,14 @@ class BrowserSessionConfigurationTests {
         assertThat(conversion.convert(new byte[] {1, 2, 3}, Object.class)).isNull();
     }
 
+    @Test
+    void aValueThatCannotBeSerializedIsStoredAsAbsentInsteadOfFailing() {
+        byte[] stored = conversion.convert(new Object(), byte[].class);
+
+        assertThat(stored).isEmpty();
+        assertThat(conversion.convert(stored, Object.class)).isNull();
+    }
+
     private Object roundTrip(Object value) {
         return conversion.convert(conversion.convert(value, byte[].class), Object.class);
     }

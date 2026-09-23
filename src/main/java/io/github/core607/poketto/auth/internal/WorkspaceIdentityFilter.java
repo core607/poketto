@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.auth.AccountSessionLifetime;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
@@ -10,7 +11,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -23,21 +23,21 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
     private final ObjectProvider<AuthService> auth;
     private final boolean bearer;
     private final String challenge;
-    private final int accountSessionSeconds;
+    private final AccountSessionLifetime accountSessions;
 
     WorkspaceIdentityFilter(ObjectProvider<AuthService> auth, boolean bearer, String issuer) {
-        this(auth, bearer, issuer, Duration.ZERO);
+        this(auth, bearer, issuer, null);
     }
 
     /**
-     * A browser session starts with the short anonymous idle timeout; once it carries a validated
-     * account, it keeps the longer account idle timeout, so signing in by any route lasts.
+     * Sign-in routes give a session the account idle timeout when they store the account; the
+     * filter reapplies it to a validated session, which also covers sessions stored before it.
      */
     WorkspaceIdentityFilter(
-            ObjectProvider<AuthService> auth, boolean bearer, String issuer, Duration accountSessionIdle) {
+            ObjectProvider<AuthService> auth, boolean bearer, String issuer, AccountSessionLifetime accountSessions) {
         this.auth = auth;
         this.bearer = bearer;
-        this.accountSessionSeconds = Math.toIntExact(accountSessionIdle.toSeconds());
+        this.accountSessions = accountSessions;
         this.challenge = issuer.isBlank()
                 ? "Bearer realm=\"poketto\""
                 : "Bearer resource_metadata=\"" + issuer + "/.well-known/oauth-protected-resource\"";
@@ -76,7 +76,9 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
                 if (authentication != null && authentication.getPrincipal() instanceof AuthPrincipal recognised) {
                     auth.getObject().validateAccount(recognised);
                     RequestCaller.remember(request, recognised);
-                    extendAccountSession(request, recognised);
+                    if (accountSessions != null && recognised.kind() == AuthPrincipal.Kind.ACCOUNT) {
+                        accountSessions.apply(request);
+                    }
                 }
                 if (path.startsWith("/api/admin/")) {
                     if (authentication == null
@@ -107,16 +109,6 @@ final class WorkspaceIdentityFilter extends OncePerRequestFilter {
             return;
         }
         chain.doFilter(request, response);
-    }
-
-    private void extendAccountSession(HttpServletRequest request, AuthPrincipal principal) {
-        if (accountSessionSeconds <= 0 || principal.kind() != AuthPrincipal.Kind.ACCOUNT) {
-            return;
-        }
-        var session = request.getSession(false);
-        if (session != null && session.getMaxInactiveInterval() != accountSessionSeconds) {
-            session.setMaxInactiveInterval(accountSessionSeconds);
-        }
     }
 
     private void invalidateExpiredSession(HttpServletRequest request, AuthException exception) {

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.auth.internal;
 
+import io.github.core607.poketto.auth.AccountSessionLifetime;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
 import java.net.URI;
@@ -67,6 +68,12 @@ class BrowserSecurityConfiguration {
     }
 
     @Bean
+    AccountSessionLifetime accountSessionLifetime(
+            @Value("${poketto.security.account-session-idle-days:90}") long accountSessionIdleDays) {
+        return new AccountSessionLifetime(Duration.ofDays(accountSessionIdleDays));
+    }
+
+    @Bean
     AuthenticationProvider accountAuthenticationProvider(ObjectProvider<AuthService> auth) {
         return new AuthenticationProvider() {
             @Override
@@ -126,7 +133,7 @@ class BrowserSecurityConfiguration {
             @Value("${poketto.security.login-limit-per-address:40}") int perAddress,
             @Value("${poketto.security.login-throttle-max-entries:10000}") int maxEntries,
             @Value("${poketto.security.login-throttle-window-seconds:300}") long windowSeconds,
-            @Value("${poketto.security.account-session-idle-days:90}") long accountSessionIdleDays)
+            AccountSessionLifetime accountSessions)
             throws Exception {
         http.authenticationProvider(accountAuthenticationProvider)
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
@@ -155,7 +162,10 @@ class BrowserSecurityConfiguration {
                 .sessionManagement(sessions -> sessions.sessionFixation(fixation -> fixation.changeSessionId()))
                 .formLogin(login -> login.loginPage("/login")
                         .loginProcessingUrl("/api/auth/login")
-                        .successHandler((request, response, authentication) -> response.setStatus(204))
+                        .successHandler((request, response, authentication) -> {
+                            accountSessions.apply(request);
+                            response.setStatus(204);
+                        })
                         .failureHandler((request, response, exception) -> AuthHttpErrors.write(response, 401)))
                 .logout(logout -> logout.logoutUrl("/api/auth/logout")
                         .invalidateHttpSession(true)
@@ -169,8 +179,7 @@ class BrowserSecurityConfiguration {
                         csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'")))
                 .addFilterBefore(new AdminBodyFilter(adminBodyConcurrency), CsrfFilter.class)
                 .addFilterBefore(
-                        new WorkspaceIdentityFilter(auth, false, issuer, Duration.ofDays(accountSessionIdleDays)),
-                        AdminBodyFilter.class)
+                        new WorkspaceIdentityFilter(auth, false, issuer, accountSessions), AdminBodyFilter.class)
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), WorkspaceIdentityFilter.class)
                 .addFilterBefore(
                         new LoginThrottleFilter(
