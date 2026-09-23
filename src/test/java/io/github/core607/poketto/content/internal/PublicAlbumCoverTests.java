@@ -262,7 +262,7 @@ class PublicAlbumCoverTests {
     }
 
     @Test
-    void folderPageWithAnUnreadableInventoryIsNotTreatedAsADirectory() throws Exception {
+    void folderPageIsADirectoryOnlyWhenItsInventoryIsKnownToHoldNothingElse() throws Exception {
         var workspace = WorkspaceId.random();
         String commit = "b".repeat(40);
         var article = article("public/trip/index.md", "/trip", true, "# Trip\n\n![Figure](figure.png)");
@@ -286,13 +286,18 @@ class PublicAlbumCoverTests {
                 .thenReturn(new SiblingImages(List.of(), false));
         when(unindexed.media(any(), any())).thenThrow(new ContentRepositoryException("index unavailable"));
 
-        for (var blobs : List.of(unlisted, truncated, unindexed)) {
+        // A failed read with nothing found claims no album; a partial listing proves a further image exists.
+        var expected = Map.of(
+                unlisted, new PublicAlbumCover(false, null),
+                truncated, new PublicAlbumCover(true, null),
+                unindexed, new PublicAlbumCover(false, null));
+        for (var blobs : expected.keySet()) {
             when(blobs.find(workspace, commit, figure.path())).thenReturn(Optional.of(figure));
             when(blobs.read(figure)).thenReturn(image);
             var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
 
             assertThat(service.publicCovers(snapshot, List.of(article)).get(article.route()))
-                    .isEqualTo(new PublicAlbumCover(false, null));
+                    .isEqualTo(expected.get(blobs));
             verify(blobs, never()).find(any(), any(), any());
         }
     }
