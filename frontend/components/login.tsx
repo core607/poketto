@@ -15,9 +15,11 @@ type Policy = { emailAvailable: boolean; googleAvailable: boolean };
 export function Login({
   onLogin,
   connection = false,
+  embedded = false,
 }: {
   onLogin: () => Promise<void>;
   connection?: boolean;
+  embedded?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("login");
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -89,41 +91,36 @@ export function Login({
     }
   }
   return (
-    <section className="login-card">
+    <section className={embedded ? "auth embedded" : "auth"}>
       <GoogleReturnNotice />
-      <p className="muted">
-        使用本站前，请阅读
-        <a href="/privacy" target="_blank" rel="noopener noreferrer">
-          隐私政策
-        </a>
-        和
-        <a href="/terms" target="_blank" rel="noopener noreferrer">
-          服务条款
-        </a>
-        。
-      </p>
-      <p className="eyebrow">
-        {mode === "login"
-          ? "欢迎回来"
-          : mode === "signup"
-            ? "开始记录与收藏"
-            : "找回账号"}
-      </p>
-      <h1>
-        {mode === "login"
-          ? "登录 Poketto"
-          : mode === "signup"
-            ? "创建账号"
-            : "重设密码"}
-      </h1>
-      <p className="muted">
-        {mode === "login"
-          ? "使用邮箱或原有用户名登录。"
-          : mode === "signup"
-            ? "验证邮箱即可注册。加入空间需要空间主人的邀请。"
-            : "验证账号绑定的邮箱，设置新密码。旧会话和旧连接密钥将失效，空间权限会保留。"}
-      </p>
-      {notice && <p role="status">{notice}</p>}
+      <header className="auth-head">
+        <p className="eyebrow">
+          {mode === "login"
+            ? "欢迎回来"
+            : mode === "signup"
+              ? "开始记录与收藏"
+              : "找回账号"}
+        </p>
+        <h1>
+          {mode === "login"
+            ? "登录 Poketto"
+            : mode === "signup"
+              ? "创建账号"
+              : "重设密码"}
+        </h1>
+        <p>
+          {mode === "login"
+            ? "使用邮箱或原有用户名登录。"
+            : mode === "signup"
+              ? "验证邮箱即可注册。加入空间需要空间主人的邀请。"
+              : "验证账号绑定的邮箱，设置新密码。旧会话和旧连接密钥将失效，空间权限会保留。"}
+        </p>
+      </header>
+      {notice && (
+        <p role="status" className="notice success">
+          {notice}
+        </p>
+      )}
       <form onSubmit={submit} key={mode}>
         <fieldset disabled={pending}>
           {mode === "login" ? (
@@ -175,13 +172,13 @@ export function Login({
               {error}
             </p>
           )}
-          <button disabled={pending}>
+          <button className="auth-submit" disabled={pending}>
             {pending
               ? "正在处理…"
               : mode === "login"
-                ? "登录 →"
+                ? "登录"
                 : mode === "signup"
-                  ? "注册并登录 →"
+                  ? "注册并登录"
                   : "更新密码"}
           </button>
         </fieldset>
@@ -197,7 +194,7 @@ export function Login({
           </button>
         </p>
       )}
-      <div className="login-options">
+      <div className="auth-switch">
         {mode !== "login" ? (
           <button
             className="text-button"
@@ -229,6 +226,17 @@ export function Login({
           )
         )}
       </div>
+      <p className="auth-legal">
+        使用本站前，请阅读
+        <a href="/privacy" target="_blank" rel="noopener noreferrer">
+          隐私政策
+        </a>
+        和
+        <a href="/terms" target="_blank" rel="noopener noreferrer">
+          服务条款
+        </a>
+        。
+      </p>
     </section>
   );
 }

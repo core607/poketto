@@ -2,6 +2,16 @@ import { ApiError } from "./browser-api";
 
 export const communityRoot = "/api/auth/community";
 export const publicCommunityRoot = "/api/public/community";
+export const communityTabs = [
+  "feed",
+  "bookmarks",
+  "likes",
+  "notifications",
+  "following",
+  "blocks",
+  "reports",
+] as const;
+export type CommunityTab = (typeof communityTabs)[number];
 export type CommunityProfile = { accountId: string; displayName: string };
 export type CommunityPage<T> = { items: T[]; nextBefore: number | null };
 export type CommunityComment = {

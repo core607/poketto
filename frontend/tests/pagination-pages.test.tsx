@@ -12,7 +12,7 @@ import Home from "../app/page";
 type Offset = string | string[] | undefined;
 const pages = [
   {
-    title: "公开记录",
+    title: "全部记录",
     max: 10000,
     limit: "12",
     filter: {},
@@ -20,15 +20,19 @@ const pages = [
       PublicSpacePage({ slug: "home", view: "home", parameters: { offset } }),
   },
   {
-    title: "归档",
+    title: "按时间翻阅",
     max: 10000,
     limit: "100",
     filter: {},
     render: (offset: Offset) =>
-      Archive({ searchParams: Promise.resolve({ offset }) }),
+      PublicSpacePage({
+        slug: "home",
+        view: "archive",
+        parameters: { offset },
+      }),
   },
   {
-    title: "搜索记录",
+    title: "「分页文字」",
     max: 10000,
     limit: "12",
     filter: { query: "分页文字" },
@@ -41,15 +45,19 @@ const pages = [
     limit: "12",
     filter: { tag: "分页标签" },
     render: (offset: Offset) =>
-      Tags({ searchParams: Promise.resolve({ tag: "分页标签", offset }) }),
+      PublicSpacePage({
+        slug: "home",
+        view: "tags",
+        parameters: { tag: "分页标签", offset },
+      }),
   },
   {
-    title: "标签",
+    title: "所有标签",
     max: 320000,
     limit: "100",
     filter: {},
-    render: (tagOffset: Offset) =>
-      Tags({ searchParams: Promise.resolve({ tagOffset }) }),
+    render: (offset: Offset) =>
+      PublicSpacePage({ slug: "home", view: "tags", parameters: { offset } }),
   },
 ];
 
@@ -58,6 +66,10 @@ async function backend(t: TestContext) {
   const server = createServer((request, response) => {
     const url = new URL(request.url!, "http://localhost");
     response.setHeader("Content-Type", "application/json");
+    if (url.pathname === "/api/public/default-space") {
+      response.end(JSON.stringify({ slug: "home", displayName: "Home" }));
+      return;
+    }
     if (url.pathname === "/api/public/spaces/home") {
       response.end(JSON.stringify({ slug: "home", displayName: "Home" }));
       return;
@@ -68,7 +80,7 @@ async function backend(t: TestContext) {
     }
     requests.push(url);
     const offset = Number(url.searchParams.get("offset"));
-    const maximum = url.pathname === "/api/public/tags" ? 320000 : 10000;
+    const maximum = url.pathname.endsWith("/tags") ? 320000 : 10000;
     // Queries use UTF-16 bounds; tags share the repository's Unicode code-point bound.
     if (
       !Number.isInteger(offset) ||
@@ -155,7 +167,7 @@ test("all public page consumers fall back to the first page for invalid or repea
       assert.equal(request.searchParams.get("limit"), page.limit);
       for (const [key, value] of Object.entries(page.filter))
         assert.equal(request.searchParams.get(key), value);
-      assert.doesNotMatch(html, /← 上一页/);
+      assert.doesNotMatch(html, /上一页/);
     }
   }
 });
@@ -169,7 +181,7 @@ test("public page consumers retain valid offsets through each backend maximum", 
       assert.equal(requests.length, 1);
       const [request] = requests.splice(0);
       assert.equal(request.searchParams.get("offset"), String(Number(offset)));
-      if (Number(offset) > 0) assert.match(html, /← 上一页/);
+      if (Number(offset) > 0) assert.match(html, /上一页/);
     }
   }
 });
@@ -207,14 +219,14 @@ test("search rejects overlong UTF-16 input locally while preserving the entered 
 
 test("tag filters preserve the repository's 64-code-point boundary and reject oversized tags before HTTP", async (t) => {
   const requests = await backend(t);
+  const tagPage = (tag: string | string[]) =>
+    PublicSpacePage({ slug: "home", view: "tags", parameters: { tag } });
   for (const tag of [
     "a".repeat(64),
     "😀".repeat(64),
     ["a".repeat(31), "b".repeat(32)],
   ]) {
-    const html = renderToStaticMarkup(
-      await Tags({ searchParams: Promise.resolve({ tag }) }),
-    );
+    const html = renderToStaticMarkup(await tagPage(tag));
     assert.equal(requests.length, 1);
     assert.equal(requests.shift()!.searchParams.get("tag"), String(tag));
     if (typeof tag === "string") assert.ok(html.includes(`#${tag}`));
@@ -224,12 +236,38 @@ test("tag filters preserve the repository's 64-code-point boundary and reject ov
     "😀".repeat(64) + "a",
     ["a".repeat(32), "b".repeat(32)],
   ]) {
-    await assert.rejects(
-      Tags({ searchParams: Promise.resolve({ tag }) }),
-      /NEXT_HTTP_ERROR_FALLBACK;404/,
-    );
+    const html = renderToStaticMarkup(await tagPage(tag));
+    assert.match(html, /搜索内容或标签过长/);
     assert.equal(requests.length, 0);
   }
+});
+
+test("root tag and archive pages redirect into the default space with their offsets", async (t) => {
+  await backend(t);
+  const target = async (page: Promise<unknown>) => {
+    try {
+      await page;
+    } catch (error) {
+      const digest = String((error as { digest?: string }).digest);
+      assert.match(digest, /^NEXT_REDIRECT;/);
+      return digest.split(";")[2];
+    }
+    assert.fail("expected a redirect");
+  };
+  assert.equal(
+    await target(
+      Tags({ searchParams: Promise.resolve({ tag: "旅行", offset: "12" }) }),
+    ),
+    "/s/home/tags?tag=%E6%97%85%E8%A1%8C&offset=12",
+  );
+  assert.equal(
+    await target(Tags({ searchParams: Promise.resolve({ tagOffset: "100" }) })),
+    "/s/home/tags?offset=100",
+  );
+  assert.equal(
+    await target(Archive({ searchParams: Promise.resolve({ offset: "100" }) })),
+    "/s/home/archive?offset=100",
+  );
 });
 
 test("discovery renders valid emoji tags and offers recovery for rejected parameters and expired batches", async (t) => {

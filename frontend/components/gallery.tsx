@@ -67,6 +67,15 @@ export function Gallery({
                 alt={item.alt}
                 loading="lazy"
                 decoding="async"
+                // A preview can fail before hydration attaches onError.
+                ref={(image) => {
+                  if (image?.complete && image.naturalWidth === 0)
+                    setFailedPreviews((failed) =>
+                      failed.includes(item.src)
+                        ? failed
+                        : [...failed, item.src],
+                    );
+                }}
                 onError={() =>
                   setFailedPreviews((failed) => [...failed, item.src])
                 }

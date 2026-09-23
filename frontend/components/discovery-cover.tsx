@@ -15,11 +15,7 @@ export function DiscoveryCover({
   const image = safeImage(src ?? undefined);
   const [failedSource, setFailedSource] = useState<string | null>(null);
   return (
-    <a
-      className="discovery-cover"
-      href={href}
-      aria-label={`打开相册：${title}`}
-    >
+    <a className="card-cover" href={href} aria-label={`打开相册：${title}`}>
       {image && failedSource !== image ? (
         <img
           src={image}
@@ -29,7 +25,7 @@ export function DiscoveryCover({
           onError={() => setFailedSource(image)}
         />
       ) : (
-        <span>封面暂时不可用 · 打开相册 ↗</span>
+        <span className="card-cover-empty">封面暂时不可用 · 打开相册</span>
       )}
     </a>
   );

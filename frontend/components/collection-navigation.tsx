@@ -1,7 +1,29 @@
 import { articleHref, collectionArticleHref } from "../lib/format";
 import type { CollectionNavigation as Navigation } from "../lib/types";
+import { Icon } from "./ui/icons";
 
-export function CollectionNavigation({
+type Membership = Navigation["memberships"][number];
+
+export function selectedMembership(
+  navigation: Navigation | undefined,
+  selected: string | undefined,
+): Membership | undefined {
+  return navigation?.memberships.find(
+    (item) => item.collection.route === selected,
+  );
+}
+
+export function hasCollectionPanel(navigation: Navigation | undefined) {
+  return Boolean(
+    navigation &&
+    (!navigation.available ||
+      navigation.entries.length > 0 ||
+      navigation.memberships.length > 0),
+  );
+}
+
+/** The collection a page opens, belongs to, or is being read through. */
+export function CollectionPanel({
   navigation,
   selected,
   route,
@@ -12,22 +34,23 @@ export function CollectionNavigation({
   route: string;
   space: string;
 }) {
-  if (!navigation) return null;
-  const membership = navigation.memberships.find(
-    (item) => item.collection.route === selected,
-  );
+  if (!navigation || !hasCollectionPanel(navigation)) return null;
+  const membership = selectedMembership(navigation, selected);
   const href = (target: string, collection: string) =>
     collectionArticleHref(target, space, collection);
   return (
-    <>
+    <div className="collection-stack">
       {!navigation.available && (
         <p role="status" className="notice">
-          合集目录暂时无法生成，仍可阅读下方原文。
+          合集目录暂时无法生成，仍可阅读原文。
         </p>
       )}
       {navigation.entries.length > 0 && (
-        <details className="collection-directory">
-          <summary>合集目录 · {navigation.entries.length} 篇</summary>
+        <nav className="collection-card" aria-label="合集目录">
+          <header>
+            <span>本合集</span>
+            <strong>{navigation.entries.length} 篇</strong>
+          </header>
           <ol>
             {navigation.entries.map((entry) => (
               <li key={entry.route}>
@@ -35,57 +58,104 @@ export function CollectionNavigation({
               </li>
             ))}
           </ol>
-        </details>
+        </nav>
       )}
       {membership ? (
-        <nav className="collection-reading" aria-label="合集阅读">
-          <a href={articleHref(membership.collection.route, space)}>
-            ← 返回合集：{membership.collection.title}
-          </a>
-          <p>
-            第 {membership.position} / {membership.total} 篇
-          </p>
-          <div className="pagination">
-            {membership.previous ? (
+        <nav className="collection-card" aria-label="合集阅读">
+          <header>
+            <span>
+              合集 · 第 {membership.position} / {membership.total} 篇
+            </span>
+            <a href={articleHref(membership.collection.route, space)}>
+              {membership.collection.title}
+            </a>
+          </header>
+          <div className="collection-choices">
+            {membership.previous && (
               <a
                 href={href(
                   membership.previous.route,
                   membership.collection.route,
                 )}
               >
-                ← 上一篇：{membership.previous.title}
+                ← {membership.previous.title}
               </a>
-            ) : (
-              <span>这是第一篇</span>
             )}
-            {membership.next ? (
+            {membership.next && (
               <a
                 href={href(membership.next.route, membership.collection.route)}
               >
-                下一篇：{membership.next.title} →
+                {membership.next.title} →
               </a>
-            ) : (
-              <span>已读到本合集最后一篇</span>
             )}
           </div>
         </nav>
       ) : (
         navigation.memberships.length > 0 && (
-          <nav className="collection-reading" aria-label="选择所属合集">
-            <p>从合集继续阅读</p>
-            <ul>
+          <nav className="collection-card" aria-label="选择所属合集">
+            <header>
+              <span>收录于</span>
+              <strong>从合集继续阅读</strong>
+            </header>
+            <div className="collection-choices">
               {navigation.memberships.map((item) => (
-                <li key={item.collection.route}>
-                  <a href={href(route, item.collection.route)}>
-                    {item.collection.title} · 第 {item.position} / {item.total}{" "}
-                    篇
-                  </a>
-                </li>
+                <a
+                  key={item.collection.route}
+                  href={href(route, item.collection.route)}
+                >
+                  {item.collection.title} · 第 {item.position} / {item.total} 篇
+                </a>
               ))}
-            </ul>
+            </div>
           </nav>
         )
       )}
-    </>
+    </div>
+  );
+}
+
+/** Previous and next pages at the end of an article read through a collection. */
+export function SequenceNavigation({
+  membership,
+  space,
+}: {
+  membership?: Membership;
+  space: string;
+}) {
+  if (!membership) return null;
+  const collection = membership.collection.route;
+  return (
+    <nav className="seq-nav" aria-label="合集翻页">
+      {membership.previous ? (
+        <a
+          className="seq-link"
+          href={collectionArticleHref(
+            membership.previous.route,
+            space,
+            collection,
+          )}
+        >
+          <small>上一篇</small>
+          <strong>{membership.previous.title}</strong>
+        </a>
+      ) : (
+        <span className="seq-end">这是合集的第一篇</span>
+      )}
+      {membership.next ? (
+        <a
+          className="seq-link next"
+          href={collectionArticleHref(membership.next.route, space, collection)}
+        >
+          <small>下一篇</small>
+          <strong>{membership.next.title}</strong>
+        </a>
+      ) : (
+        <a className="seq-end" href={articleHref(collection, space)}>
+          <span>
+            <Icon name="check" /> 已读完「{membership.collection.title}」
+          </span>
+        </a>
+      )}
+    </nav>
   );
 }
