@@ -115,7 +115,8 @@ final class PublicReads {
     /**
      * Prepares covers for at most six visible cards, sharing one media inventory for the selected
      * workspace and commit. A folder landing uses a sibling image and reports whether it is an
-     * album; any other article uses its first inline image that is public and readable. Publication
+     * album; one whose folder reads in full with no further images, like any other article, uses
+     * its first inline image that is public and readable. Publication
      * is checked before and after source preparation outside the snapshot lock. Missing routes are
      * no longer current; a null URL only means no cover.
      */
@@ -184,16 +185,23 @@ final class PublicReads {
     private PreparedCover prepareAlbumCover(
             WorkspaceId workspace, String commit, PublicArticle article, RepositoryMediaSnapshot catalog) {
         var candidates = new TreeMap<String, Target>();
+        Inventory inventory = Inventory.UNKNOWN;
         try {
             Set<String> inline = new HashSet<>();
             for (String authored : MarkdownDestinations.parse(article.body()).images()) {
                 MarkdownDestinations.path(article.repositoryPath(), authored).ifPresent(inline::add);
             }
-            coverCandidates(workspace, commit, article.repositoryPath(), inline, catalog, candidates);
+            inventory = coverCandidates(workspace, commit, article.repositoryPath(), inline, catalog, candidates);
         } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
             // Card text remains readable when its optional image inventory is unavailable.
         }
-        return new PreparedCover(!candidates.isEmpty(), firstImage(workspace, candidates.values()));
+        if (inventory == Inventory.NONE) {
+            // A fully read folder without further images is a directory; its own figure can still be its cover.
+            return prepareArticleCover(workspace, commit, article, catalog);
+        }
+        // An unknown inventory with nothing found claims neither an album nor a figure.
+        boolean album = inventory == Inventory.FURTHER || !candidates.isEmpty();
+        return new PreparedCover(album, firstImage(workspace, candidates.values()));
     }
 
     /** Inline images in document order; private and unreadable references are skipped, not substituted. */
@@ -246,26 +254,46 @@ final class PublicReads {
         return null;
     }
 
-    private void coverCandidates(
+    /** Selects cover candidates and reports what the folder holds beyond the page's own images. */
+    private Inventory coverCandidates(
             WorkspaceId workspace,
             String commit,
             String path,
             Set<String> inline,
             RepositoryMediaSnapshot catalog,
             TreeMap<String, Target> selected) {
+        boolean unknown = false;
+        // A partial listing skipped an oversized image or stopped at the limit; either way one exists.
+        boolean further = false;
         try {
-            for (RepositoryBlob blob : blobs.siblings(workspace, commit, path, COVER_CANDIDATES, true, inline)
-                    .items()) {
+            var siblings = blobs.siblings(workspace, commit, path, COVER_CANDIDATES, true, inline);
+            further = siblings.partial();
+            for (RepositoryBlob blob : siblings.items()) {
                 if (blob.publicPath() && !inline.contains(blob.path())) {
                     selected.put(blob.path(), new Git(blob));
                 }
             }
         } catch (ContentRepositoryException unavailable) {
             // A previously validated media index can still supply an independent managed cover.
+            unknown = true;
         }
         if (catalog == null) {
-            return;
+            unknown = true;
+        } else {
+            addIndexedCandidates(commit, path, inline, catalog, selected);
         }
+        if (further || !selected.isEmpty()) {
+            return Inventory.FURTHER;
+        }
+        return unknown ? Inventory.UNKNOWN : Inventory.NONE;
+    }
+
+    private static void addIndexedCandidates(
+            String commit,
+            String path,
+            Set<String> inline,
+            RepositoryMediaSnapshot catalog,
+            TreeMap<String, Target> selected) {
         String prefix = path.contains("/") ? path.substring(0, path.lastIndexOf('/') + 1) : "";
         for (var entry : catalog.index().files().entrySet()) {
             String name = entry.getKey();
@@ -281,6 +309,13 @@ final class PublicReads {
                 }
             }
         }
+    }
+
+    /** NONE only when every inventory was read and held nothing beyond the page's own images. */
+    private enum Inventory {
+        NONE,
+        FURTHER,
+        UNKNOWN
     }
 
     private record PreparedCover(boolean album, Target target) {}
