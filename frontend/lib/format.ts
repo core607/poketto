@@ -17,6 +17,37 @@ export function spaceFeed(space: string, name: string) {
     ],
   };
 }
+/**
+ * The route named by URI-encoded catch-all segments, as Next passes them to pages and route
+ * handlers; null for malformed escapes, empty or dot segments, separators and control characters.
+ */
+export function routeFromSegments(slug: string[]) {
+  let segments: string[];
+  try {
+    segments = slug.map(decodeURIComponent);
+  } catch {
+    return null;
+  }
+  const invalid = segments.some(
+    (segment) =>
+      !segment ||
+      segment === "." ||
+      segment === ".." ||
+      /[/\\\u0000-\u001f\u007f]/.test(segment),
+  );
+  return invalid ? null : "/" + segments.join("/");
+}
+/** The site's 1200x630 link-preview image, for pages without an image of their own. */
+export const SHARE_IMAGE = {
+  url: "/share.png",
+  width: 1200,
+  height: 630,
+  alt: "Poketto · 给想法一个留下来的地方",
+};
+/** The stable address of an article's cover image, beside its reading address. */
+export function coverHref(route: string, space: string) {
+  return articleHref(route, space).replace(/\/read(?=\/|$)/, "/cover");
+}
 export function articleHref(route: string, space?: string) {
   return (
     spaceHref(space) +

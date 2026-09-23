@@ -27,6 +27,28 @@ async function get<T>(path: string): Promise<T> {
     throw new PublicApiError(503);
   }
 }
+/** An article's cover thumbnail from its stable address; null when the article has no cover. */
+export async function spaceCover(slug: string, route: string) {
+  const base = process.env.POKETTO_API_BASE_URL ?? "http://127.0.0.1:8080";
+  let response: Response;
+  try {
+    response = await fetch(
+      new URL(
+        `/api/public/spaces/${encodeURIComponent(slug)}/cover?` +
+          new URLSearchParams({ route }),
+        base,
+      ),
+      { cache: "no-store", signal: AbortSignal.timeout(10000) },
+    );
+  } catch {
+    throw new PublicApiError(503);
+  }
+  if (response.status === 204) return null;
+  if (!response.ok) throw new PublicApiError(response.status);
+  const type = response.headers.get("Content-Type") ?? "";
+  if (!/^image\/(jpeg|png)$/.test(type)) throw new PublicApiError(503);
+  return { type, bytes: await response.arrayBuffer() };
+}
 export function articles(parameters: Record<string, string> = {}) {
   return get<ArticlePage>(
     "/api/public/documents?" + new URLSearchParams(parameters),

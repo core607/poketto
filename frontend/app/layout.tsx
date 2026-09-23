@@ -5,6 +5,7 @@ import { SiteBar, SiteFooter } from "../components/site-chrome";
 import { GoogleReturnNotice } from "../components/google-login";
 import { publicOrigin } from "../lib/public-api";
 import { themeScript } from "../lib/theme";
+import { SHARE_IMAGE } from "../lib/format";
 
 export function generateMetadata(): Metadata {
   // Relative alternates such as space feeds resolve against the public origin, not the dev server.
@@ -18,6 +19,13 @@ export function generateMetadata(): Metadata {
     title: { default: "Poketto · 记录与收藏", template: "%s · Poketto" },
     description: "那些值得留下的想法、故事与发现。",
     metadataBase,
+    // Pages that set their own openGraph replace this object, so they repeat the image.
+    openGraph: {
+      type: "website",
+      siteName: "Poketto",
+      images: [SHARE_IMAGE],
+    },
+    twitter: { card: "summary_large_image", images: [SHARE_IMAGE.url] },
   };
 }
 export const dynamic = "force-dynamic";

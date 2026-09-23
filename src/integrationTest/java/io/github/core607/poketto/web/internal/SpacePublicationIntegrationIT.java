@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -231,6 +232,7 @@ class SpacePublicationIntegrationIT {
                 "/api/public/spaces/home",
                 "/api/public/spaces/home/documents",
                 "/api/public/spaces/home/document?route=/note",
+                "/api/public/spaces/home/cover?route=/note",
                 "/api/public/spaces/home/sitemap")) {
             mvc.perform(get(path).session(ownerSession)).andExpect(status().isNotFound());
         }
@@ -595,6 +597,13 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get("/api/public/spaces/home/document").param("route", "/note"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.navigation.memberships").isEmpty());
+        // The stable cover address serves the article's current cover thumbnail without a grant.
+        mvc.perform(get("/api/public/spaces/home/cover").param("route", "/note"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/jpeg"))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        mvc.perform(get("/api/public/spaces/home/cover").param("route", "/missing"))
+                .andExpect(status().isNotFound());
         verifyDiscoveryAlbumCards(owner, workspace, root);
         service.setEnabled(owner, workspace, false);
         mvc.perform(get(endpoint).param("route", "/guide")).andExpect(status().isNotFound());

@@ -30,7 +30,8 @@ import java.util.TreeMap;
 
 /**
  * What an anonymous reader may see: one article with its media, the covers of the cards a
- * discovery batch lists, and the bytes behind a public image token. Each read is bound to the
+ * discovery batch lists, one article's cover at its stable address, and the bytes behind a public
+ * image token. Each read is bound to the
  * publication snapshot it was prepared from and is rechecked before anything is returned, so a
  * withdrawal between preparation and delivery serves nothing.
  */
@@ -359,6 +360,42 @@ final class PublicReads {
             requireCurrentPublication(grant);
             return rendered;
         });
+        return thumbnail(target, version, image);
+    }
+
+    /**
+     * The current cover of one public article for its stable address: the discovery card's selection
+     * and thumbnail, prepared without minting an image grant, so repeated fetches by link previews
+     * and crawlers do not fill the grant registry. Empty when the article has no readable cover; an
+     * article that is not public now is not found. Publication is checked again after preparation.
+     */
+    Optional<AssetBytes> articleCover(WorkspaceId workspace, String route) {
+        PublicContentSnapshot selected = snapshots.withCurrent(workspace, value -> value);
+        PublicArticle article = article(selected, route).orElseThrow(AssetService::notFound);
+        String commit = selected.commit().orElseThrow(AssetService::notFound);
+        RepositoryMediaSnapshot catalog = media.availableMedia(workspace, commit);
+        Target target = (article.folderPage()
+                        ? prepareAlbumCover(workspace, commit, article, catalog)
+                        : prepareArticleCover(workspace, commit, article, catalog))
+                .target();
+        String version = target == null ? null : thumbnailSource(target);
+        byte[] image = target == null
+                ? null
+                : thumbnails.get(
+                        workspace,
+                        version,
+                        () -> AlbumThumbnailRenderer.render(
+                                media.bytes(workspace, target).bytes()));
+        snapshots.withCurrent(workspace, snapshot -> {
+            if (!sameArticle(snapshot, selected, article)) {
+                throw AssetService.notFound();
+            }
+            return null;
+        });
+        return image == null ? Optional.empty() : Optional.of(thumbnail(target, version, image));
+    }
+
+    private static AssetBytes thumbnail(Target target, String version, byte[] image) {
         AssetSource source =
                 switch (target) {
                     case Git git ->

@@ -1,6 +1,7 @@
 package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.AssetSource;
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetReference;
@@ -329,6 +331,33 @@ class PublicAlbumCoverTests {
         assertThat(service.readPublicImage(workspace, token(cover.src())).source())
                 .isEqualTo(new AssetSource.Managed(reference));
         verify(blobs, never()).find(any(), any(), any());
+    }
+
+    @Test
+    void theStableCoverServesTheCurrentThumbnailAndNothingForUnknownOrImagelessArticles() throws Exception {
+        var workspace = WorkspaceId.random();
+        String commit = "b".repeat(40);
+        var pictured = article("public/notes/pictured.md", "/notes/pictured", false, "# Note\n\n![Figure](figure.png)");
+        var plain = article("public/notes/plain.md", "/notes/plain", false, "# Text only");
+        var snapshot = new PublicContentSnapshot(
+                workspace, Optional.of(commit), AT, AT.plusSeconds(3600), List.of(pictured, plain));
+        var snapshots = mock(PublicContentSnapshots.class);
+        install(snapshots, snapshot);
+        var blobs = mock(RepositoryBlobReader.class);
+        byte[] image = png();
+        var figure = blob(workspace, commit, "public/notes/figure.png", image);
+        when(blobs.find(workspace, commit, figure.path())).thenReturn(Optional.of(figure));
+        when(blobs.read(figure)).thenReturn(image);
+        when(blobs.media(any(), any()))
+                .thenReturn(new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of()));
+        var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
+
+        var cover = service.publicArticleCover(workspace, "/notes/pictured").orElseThrow();
+        assertThat(cover.mediaType()).isEqualTo("image/jpeg");
+        assertThat(cover.source()).isEqualTo(new AssetSource.Repository(Optional.of(commit), figure.path()));
+        assertThat(service.publicArticleCover(workspace, "/notes/plain")).isEmpty();
+        assertThatThrownBy(() -> service.publicArticleCover(workspace, "/notes/missing"))
+                .isInstanceOf(AssetStorageException.class);
     }
 
     @Test
