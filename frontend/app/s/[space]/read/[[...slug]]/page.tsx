@@ -1,10 +1,17 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   spaceArticle,
   spaceInfo,
   PublicApiError,
 } from "../../../../../lib/public-api";
-import { date, spaceHref } from "../../../../../lib/format";
+import {
+  articleHref,
+  date,
+  spaceFeed,
+  spaceHref,
+} from "../../../../../lib/format";
+import { plainSummary } from "../../../../../lib/summary";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
 import { ArticleCommunity } from "../../../../../components/article-community";
@@ -24,11 +31,33 @@ export async function generateMetadata({
   params,
 }: {
   params: Promise<{ space: string; slug?: string[] }>;
-}) {
+}): Promise<Metadata> {
   const { space, slug = [] } = await params;
+  const route = "/" + slug.join("/");
   try {
-    const value = await spaceArticle(space, "/" + slug.join("/"));
-    return { title: value.title };
+    const [value, info] = await Promise.all([
+      spaceArticle(space, route),
+      spaceInfo(space).catch(() => null),
+    ]);
+    const name = info?.displayName ?? space;
+    const description = plainSummary(value.body, value.title) || undefined;
+    const url = articleHref(route, space);
+    return {
+      title: value.title,
+      description,
+      alternates: { canonical: url, types: spaceFeed(space, name) },
+      openGraph: {
+        type: "article",
+        siteName: name,
+        title: value.title,
+        description,
+        url,
+        publishedTime: value.createdAt,
+        modifiedTime: value.updatedAt,
+        authors: [value.authorName],
+      },
+      twitter: { card: "summary", title: value.title, description },
+    };
   } catch {
     return { title: "文章" };
   }

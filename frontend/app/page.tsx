@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { discovery, PublicApiError } from "../lib/public-api";
 import type { DiscoveryPage } from "../lib/types";
 import { articleHref, date, spaceHref } from "../lib/format";
@@ -7,6 +7,10 @@ import { HomeNavigation } from "../components/home-navigation";
 import { CommunityDashboard } from "../components/community-dashboard";
 import { Avatar, Icon } from "../components/ui/icons";
 import { Pager } from "../components/ui/pager";
+import { PinBatch } from "../components/pin-batch";
+
+// Every batch, page and tag view of the homepage is the same page to a search engine.
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 type Parameters = {
   batch?: string | string[];
@@ -67,12 +71,15 @@ export default async function Home({
         </a>
       </div>
     );
-  if (!batch) redirect("/?" + new URLSearchParams({ batch: page.batch }));
+  const pinned = batch
+    ? null
+    : "/?" + new URLSearchParams({ batch: page.batch });
   const pageHref = (position: number) =>
     "/?" + new URLSearchParams({ batch: page.batch, offset: String(position) });
   const another = "/?" + new URLSearchParams({ afterBatch: page.batch });
   return (
     <div className="page">
+      {pinned && <PinBatch href={pinned} />}
       <DiscoverHead />
       <div className="discover-bar">
         <HomeNavigation />

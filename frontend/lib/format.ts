@@ -9,6 +9,14 @@ export function date(value: string) {
 export function spaceHref(space?: string) {
   return space ? `/s/${encodeURIComponent(space)}` : "";
 }
+/** The feed link a space's pages declare; a page that sets its own alternates repeats it. */
+export function spaceFeed(space: string, name: string) {
+  return {
+    "application/rss+xml": [
+      { url: spaceHref(space) + "/rss.xml", title: name },
+    ],
+  };
+}
 export function articleHref(route: string, space?: string) {
   return (
     spaceHref(space) +
