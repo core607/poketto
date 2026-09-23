@@ -78,11 +78,14 @@ test("article page sends decoded route bytes to HTTP API while metadata keeps li
     );
     assert.match(html, /<article class="reading-shell">/);
     assert.match(html, /正文应该出现在初始 HTML 中。/);
-    assert.deepEqual(
-      await generateMetadata({
-        params: Promise.resolve({ space: "second-site", slug: metadataSlug }),
-      }),
-      { title: "路径验收文章" },
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ space: "second-site", slug: metadataSlug }),
+    });
+    assert.equal(metadata.title, "路径验收文章");
+    assert.equal(metadata.description, "正文应该出现在初始 HTML 中。");
+    assert.equal(
+      metadata.alternates?.canonical,
+      articleHref(route, "second-site"),
     );
     assert.deepEqual(requests.splice(0), [route, route]);
   }

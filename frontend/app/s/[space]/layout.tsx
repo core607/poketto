@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { spaceInfo } from "../../../lib/public-api";
-import { spaceHref } from "../../../lib/format";
+import { spaceFeed } from "../../../lib/format";
 
 export async function generateMetadata({
   params,
@@ -12,13 +12,7 @@ export async function generateMetadata({
   const name = info?.displayName ?? space;
   return {
     title: { default: name, template: `%s · ${name} · Poketto` },
-    alternates: {
-      types: {
-        "application/rss+xml": [
-          { url: spaceHref(space) + "/rss.xml", title: name },
-        ],
-      },
-    },
+    alternates: { types: spaceFeed(space, name) },
   };
 }
 
