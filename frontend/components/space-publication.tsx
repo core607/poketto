@@ -85,7 +85,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           ? "开启这个空间的公开网站？"
           : "关闭这个空间的公开网站？",
         description: enabled
-          ? "「已发布」里符合发布规则的笔记，所有人都能访问；「草稿」始终只有空间成员能看到。"
+          ? "「已发布」里符合发布规则的笔记，所有人都能访问；「草稿」始终只有获准查看草稿的成员能看到。"
           : "公开页面和图片链接将停止提供内容。空间成员仍可读取获准的文件，已被他人下载的副本无法撤回。",
         confirmLabel: enabled ? "开启公开网站" : "关闭公开网站",
       });
@@ -211,7 +211,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           )}
         </div>
         <p className="muted">
-          开启后，放在「已发布」里的内容会出现在这个空间的网站上，所有人都能看到；草稿始终只有空间成员能看到。新空间默认关闭公开网站。
+          开启后，放在「已发布」里的内容会出现在这个空间的网站上，所有人都能看到；草稿始终只有获准查看草稿的成员能看到。新空间默认关闭公开网站。
         </p>
         {publication && (
           <p>
