@@ -85,16 +85,17 @@ class AlbumThumbnailRendererTests {
     }
 
     @Test
-    void readsWebpExifOrientationInsteadOfRejectingThePreview() throws Exception {
-        byte[] webp = Base64.getDecoder().decode("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
-        byte[] payload = tiff(ByteOrder.LITTLE_ENDIAN, 1);
+    void readsWebpExifOrientationAndTurnsTheRasterExactlyOnce() throws Exception {
+        // A 96×64 lossless source: one quarter turn gives 64×96, a second one by the decoder would undo it.
+        byte[] webp = resource("/images/lossless-vp8l.webp");
+        byte[] payload = tiff(ByteOrder.LITTLE_ENDIAN, 6);
         var source = ByteBuffer.allocate(webp.length + 8 + payload.length).order(ByteOrder.LITTLE_ENDIAN);
         source.put(webp).put("EXIF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
         source.putInt(payload.length).put(payload);
         source.putInt(4, source.capacity() - 8);
 
-        assertThat(AlbumThumbnailRenderer.validateEncoded(AlbumThumbnailRenderer.render(source.array())))
-                .isIn("image/png", "image/jpeg");
+        var thumbnail = ImageIO.read(new java.io.ByteArrayInputStream(AlbumThumbnailRenderer.render(source.array())));
+        assertThat(new int[] {thumbnail.getWidth(), thumbnail.getHeight()}).isEqualTo(new int[] {64, 96});
     }
 
     @Test
