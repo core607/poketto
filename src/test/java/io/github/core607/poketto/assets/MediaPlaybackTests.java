@@ -25,6 +25,50 @@ class MediaPlaybackTests {
     }
 
     @Test
+    void mp4RecognizesCompleteMajorAndCompatibleBrands() throws Exception {
+        for (String brand : new String[] {
+            "mp41", "mp42", "M4A ", "M4V ", "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9",
+            "isoa", "isob", "isoc", "avc1", "dash"
+        }) {
+            for (MediaPlayback type : new MediaPlayback[] {MediaPlayback.MP4_AUDIO, MediaPlayback.MP4_VIDEO}) {
+                for (int offset : new int[] {8, 16}) {
+                    byte[] bytes = mp4Header();
+                    put(bytes, offset, brand);
+                    var output = new ByteArrayOutputStream();
+                    type.select(output, bytes.length, 10, 10).write(bytes);
+                    assertThat(output.toByteArray()).containsExactly(Arrays.copyOfRange(bytes, 10, 20));
+                }
+            }
+        }
+    }
+
+    @Test
+    void mp4RejectsPartialBrandsAndMarkersOutsideBrandFieldsBeforeOutput() {
+        for (int offset : new int[] {8, 12, 16, 24}) {
+            for (String brand : new String[] {"mp4x", "mp42", "isom"}) {
+                if ((offset == 8 || offset == 16) && !brand.equals("mp4x")) {
+                    continue;
+                }
+                byte[] bytes = mp4Header();
+                put(bytes, offset, brand);
+                var output = new ByteArrayOutputStream();
+                assertThatThrownBy(() -> MediaPlayback.MP4_VIDEO
+                                .select(output, bytes.length, 4096, 1)
+                                .write(bytes))
+                        .isInstanceOf(IllegalArgumentException.class);
+                assertThat(output.size()).isZero();
+            }
+        }
+    }
+
+    private static byte[] mp4Header() {
+        byte[] bytes = new byte[8192];
+        ByteBuffer.wrap(bytes).putInt(24);
+        put(bytes, 4, "ftyp");
+        return bytes;
+    }
+
+    @Test
     void invalidContainersAndMetadataNeverProducePlaybackBytes() {
         for (MediaPlayback type : MediaPlayback.values()) {
             for (byte[] bytes : new byte[][] {

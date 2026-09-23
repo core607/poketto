@@ -20,6 +20,16 @@ available through attachment download. A recognized container does not guarantee
 that the browser supports every codec inside it. Signature inspection retains at
 most 4 KiB; a container without a recognized prefix falls back to download.
 
+MP4 inspection requires a complete initial `ftyp` box within that bound and an
+exact four-byte major or compatible brand: `mp41`, `mp42`, `M4A `, `M4V `,
+`isom`, `iso2` through `iso9`, `isoa` through `isoc`, `avc1` or `dash`. These
+[registered brands](https://mp4ra.org/registered-types/brands) broaden recognition
+beyond the `mp4` prefix in the
+[browser sniffing algorithm](https://mimesniff.spec.whatwg.org/#signature-for-mp4).
+Version bytes and bytes outside the box cannot match. This is bounded container
+recognition, not validation of tracks or decodability; audio and video candidates
+share the check because these brands do not establish an exclusive track type.
+
 Playback reuses the exact attachment authorization path. Public requests bind the
 workspace, current publication commit, article route and referenced public logical
 path. Private previews and moderation retain their current distinct authority.

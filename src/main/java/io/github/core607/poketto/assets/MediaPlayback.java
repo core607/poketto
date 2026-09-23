@@ -105,15 +105,39 @@ public enum MediaPlayback {
         if (size < 16 || size > bytes.length || size % 4 != 0) {
             return false;
         }
-        if (at(bytes, 8, "mp4") || at(bytes, 8, "M4A ")) {
+        if (mp4Brand(bytes, 8)) {
             return true;
         }
         for (int offset = 16; offset < size; offset += 4) {
-            if (at(bytes, offset, "mp4") || at(bytes, offset, "M4A ")) {
+            if (mp4Brand(bytes, offset)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static boolean mp4Brand(byte[] bytes, int offset) {
+        return switch (new String(bytes, offset, 4, StandardCharsets.US_ASCII)) {
+            case "mp41",
+                    "mp42",
+                    "M4A ",
+                    "M4V ",
+                    "isom",
+                    "iso2",
+                    "iso3",
+                    "iso4",
+                    "iso5",
+                    "iso6",
+                    "iso7",
+                    "iso8",
+                    "iso9",
+                    "isoa",
+                    "isob",
+                    "isoc",
+                    "avc1",
+                    "dash" -> true;
+            default -> false;
+        };
     }
 
     private static boolean webm(byte[] bytes) {
