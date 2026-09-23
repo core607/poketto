@@ -77,6 +77,12 @@ it. The PostgreSQL customizer writes attributes with `ON CONFLICT` upserts.
   attribute or the last-access time is written back. For one instance's traffic this is small next to the
   content work the same requests do. Spring Session's cleanup job removes expired rows every
   minute.
+- Session writes use Spring Session's immediate flush mode, so an attribute removal reaches
+  PostgreSQL when it happens rather than when its request ends. A running request still holds
+  its own copy, so a flow that must notice a change made by another request of the same browser
+  reads the saved session. The GitHub connection callback does this before storing a grant, so a
+  disconnect from another tab while the callback exchanges its code stops the connection, as it
+  did when both requests shared one in-memory session.
 - A value that a request reads from the session and then mutates in place is no longer saved.
   Such code must write the attribute back. OAuth consent now does this when it removes the
   answered request, so a later consent for the same request fails.
