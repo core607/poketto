@@ -26,7 +26,7 @@ public final class AlbumThumbnailRenderer {
 
     public static byte[] render(byte[] original) {
         String mediaType = ImagePreviewPolicy.validate(original);
-        ThumbnailOrientation.requireSupportedMetadata(original, mediaType);
+        int embedded = ThumbnailOrientation.embedded(original, mediaType);
         try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(original))) {
             var readers = ImageIO.getImageReaders(input);
             if (!readers.hasNext()) {
@@ -35,7 +35,8 @@ public final class AlbumThumbnailRenderer {
             ImageReader reader = readers.next();
             try {
                 reader.setInput(input, true, false);
-                int orientation = ThumbnailOrientation.read(reader);
+                // A container EXIF payload is authoritative; otherwise the decoder's metadata decides.
+                int orientation = embedded != 0 ? embedded : ThumbnailOrientation.read(reader);
                 return encode(ThumbnailOrientation.apply(read(reader, mediaType), orientation));
             } finally {
                 reader.dispose();

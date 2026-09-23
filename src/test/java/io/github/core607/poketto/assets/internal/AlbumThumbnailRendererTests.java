@@ -52,6 +52,52 @@ class AlbumThumbnailRendererTests {
     }
 
     @Test
+    void readsPngExifOrientationInsteadOfRejectingThePreview() throws Exception {
+        byte[] png = image("png", 800, 400, BufferedImage.TYPE_INT_RGB);
+        var cases = java.util.Map.of(
+                tiff(ByteOrder.BIG_ENDIAN, 1), new int[] {640, 320},
+                tiff(ByteOrder.LITTLE_ENDIAN, null), new int[] {640, 320},
+                tiff(ByteOrder.BIG_ENDIAN, 6), new int[] {320, 640});
+        for (var entry : cases.entrySet()) {
+            byte[] source = withChunk(png, "eXIf", entry.getKey());
+
+            var thumbnail = ImageIO.read(new java.io.ByteArrayInputStream(AlbumThumbnailRenderer.render(source)));
+            assertThat(new int[] {thumbnail.getWidth(), thumbnail.getHeight()}).isEqualTo(entry.getValue());
+        }
+    }
+
+    @Test
+    void unreadableOrAmbiguousExifPayloadsStillRejectThePreview() throws Exception {
+        byte[] png = image("png", 800, 400, BufferedImage.TYPE_INT_RGB);
+        byte[] unknownOrder = tiff(ByteOrder.BIG_ENDIAN, 1);
+        unknownOrder[0] = 'X';
+        byte[] outOfRange = tiff(ByteOrder.BIG_ENDIAN, 9);
+        byte[] twice =
+                withChunk(withChunk(png, "eXIf", tiff(ByteOrder.BIG_ENDIAN, 1)), "eXIf", tiff(ByteOrder.BIG_ENDIAN, 1));
+
+        for (byte[] source :
+                new byte[][] {withChunk(png, "eXIf", unknownOrder), withChunk(png, "eXIf", outOfRange), twice}) {
+            assertThatThrownBy(() -> AlbumThumbnailRenderer.render(source))
+                    .isInstanceOf(AssetStorageException.class)
+                    .extracting("reason")
+                    .isEqualTo(AssetStorageException.Reason.INVALID_IMAGE);
+        }
+    }
+
+    @Test
+    void readsWebpExifOrientationInsteadOfRejectingThePreview() throws Exception {
+        byte[] webp = Base64.getDecoder().decode("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
+        byte[] payload = tiff(ByteOrder.LITTLE_ENDIAN, 1);
+        var source = ByteBuffer.allocate(webp.length + 8 + payload.length).order(ByteOrder.LITTLE_ENDIAN);
+        source.put(webp).put("EXIF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        source.putInt(payload.length).put(payload);
+        source.putInt(4, source.capacity() - 8);
+
+        assertThat(AlbumThumbnailRenderer.validateEncoded(AlbumThumbnailRenderer.render(source.array())))
+                .isIn("image/png", "image/jpeg");
+    }
+
+    @Test
     void decodesWebpAndRejectsSourcesOverItsIndependentRasterBound() throws Exception {
         byte[] source = Base64.getDecoder().decode("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
         byte[] thumbnail = AlbumThumbnailRenderer.render(source);
@@ -119,6 +165,38 @@ class AlbumThumbnailRendererTests {
             output.write(segmentLength);
             output.write(exif.array());
             output.write(jpeg, 2, jpeg.length - 2);
+            return output.toByteArray();
+        }
+    }
+
+    /** A bare TIFF payload whose first directory holds only the orientation tag, or nothing when null. */
+    private static byte[] tiff(ByteOrder order, Integer orientation) {
+        int entries = orientation == null ? 0 : 1;
+        var tiff = ByteBuffer.allocate(8 + 2 + 12 * entries + 4).order(order);
+        tiff.put(order == ByteOrder.LITTLE_ENDIAN ? new byte[] {'I', 'I'} : new byte[] {'M', 'M'});
+        tiff.putShort((short) 42).putInt(8).putShort((short) entries);
+        if (orientation != null) {
+            tiff.putShort((short) 0x0112).putShort((short) 3).putInt(1);
+            tiff.putShort((short) (int) orientation).putShort((short) 0);
+        }
+        tiff.putInt(0);
+        return tiff.array();
+    }
+
+    /** Inserts a CRC-correct chunk right after IHDR, where encoders place eXIf. */
+    private static byte[] withChunk(byte[] png, String type, byte[] data) throws Exception {
+        int afterHeader = 8 + 12 + 13;
+        byte[] name = type.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        var crc = new java.util.zip.CRC32();
+        crc.update(name);
+        crc.update(data);
+        try (var output = new ByteArrayOutputStream()) {
+            output.write(png, 0, afterHeader);
+            output.write(ByteBuffer.allocate(4).putInt(data.length).array());
+            output.write(name);
+            output.write(data);
+            output.write(ByteBuffer.allocate(4).putInt((int) crc.getValue()).array());
+            output.write(png, afterHeader, png.length - afterHeader);
             return output.toByteArray();
         }
     }
