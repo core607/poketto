@@ -1,5 +1,6 @@
 /* Design tokens and element defaults. Components style themselves with classes. */
 :root {
+  color-scheme: light dark;
   --bg: #f6f3ec;
   --bg-raised: #fffdf8;
   --bg-sunken: #efebe1;
@@ -18,6 +19,10 @@
   --danger: #a63f2d;
   --danger-soft: #f6e0da;
   --focus: #c98a36;
+  --on-accent: #fffaf1;
+  --on-danger: #fff;
+  --avatar-bg: 86%;
+  --avatar-fg: 28%;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
@@ -50,6 +55,40 @@
   --measure: 700px;
   --gutter: clamp(16px, 4vw, 40px);
   --bar-height: 60px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161512;
+    --bg-raised: #1f1d19;
+    --bg-sunken: #121110;
+    --bg-hover: #29261f;
+    --ink: #ede7db;
+    --ink-2: #cbc4b6;
+    --muted: #978f82;
+    --faint: #6f695f;
+    --line: #2f2c26;
+    --line-strong: #423d34;
+    --accent: #e3a55a;
+    --accent-ink: #f2c07f;
+    --accent-soft: #3b2d1a;
+    --moss: #9fc59c;
+    --moss-soft: #1e2a1f;
+    --danger: #f19482;
+    --danger-soft: #3b201b;
+    --focus: #e3a55a;
+    --on-accent: #1d1409;
+    --on-danger: #230d09;
+    --avatar-bg: 26%;
+    --avatar-fg: 82%;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 35%);
+    --shadow-2: 0 18px 40px -22px rgb(0 0 0 / 70%);
+    --shadow-pop:
+      0 14px 36px -8px rgb(0 0 0 / 65%), 0 0 0 1px rgb(255 255 255 / 6%);
+  }
+  img:not([src$=".svg"]) {
+    filter: brightness(0.92);
+  }
 }
 
 html {

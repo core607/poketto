@@ -30,11 +30,11 @@
   color: var(--bg-raised);
 }
 .btn-primary:hover:not(:disabled) {
-  background: #34372f;
+  background: color-mix(in srgb, var(--ink) 84%, var(--bg));
 }
 .btn-accent {
   background: var(--accent);
-  color: #fffaf1;
+  color: var(--on-accent);
 }
 .btn-accent:hover:not(:disabled) {
   background: var(--accent-ink);
@@ -62,7 +62,7 @@
 }
 .btn-danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 .btn-sm {
   min-height: 30px;
@@ -279,12 +279,12 @@ a.tag:hover {
   font-size: var(--text-sm);
 }
 .notice.danger {
-  border-color: #e8c0b6;
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--bg-raised));
   background: var(--danger-soft);
   color: var(--danger);
 }
 .notice.success {
-  border-color: #c9d7c1;
+  border-color: color-mix(in srgb, var(--moss) 30%, var(--bg-raised));
   background: var(--moss-soft);
   color: var(--moss);
 }
@@ -363,8 +363,8 @@ a.tag:hover {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: hsl(var(--hue, 32) 42% 86%);
-  color: hsl(var(--hue, 32) 38% 28%);
+  background: hsl(var(--hue, 32) 42% var(--avatar-bg, 86%));
+  color: hsl(var(--hue, 32) 38% var(--avatar-fg, 28%));
   font-size: 0.7rem;
   font-weight: 700;
   line-height: 1;

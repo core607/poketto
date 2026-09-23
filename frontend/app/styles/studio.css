@@ -494,7 +494,7 @@ body:has(.studio) .site-footer {
   border: 0;
   border-radius: 999px;
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 600;

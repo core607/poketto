@@ -4,7 +4,7 @@
   top: 0;
   z-index: 30;
   border-bottom: 1px solid var(--line);
-  background: rgb(246 243 236 / 86%);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: saturate(1.4) blur(14px);
 }
 .site-bar-inner {
@@ -714,7 +714,7 @@
 .markdown a {
   color: var(--accent-ink);
   text-decoration: underline;
-  text-decoration-color: rgb(184 115 36 / 40%);
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
 }
@@ -815,7 +815,7 @@
 /* Folder galleries and the lightbox */
 .gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 42vw), 1fr));
   gap: 0.9rem;
   margin-top: 2.25rem;
 }
