@@ -35,8 +35,13 @@ public final class AlbumThumbnailRenderer {
             ImageReader reader = readers.next();
             try {
                 reader.setInput(input, true, false);
-                // A container EXIF payload is authoritative; otherwise the decoder's metadata decides.
-                int orientation = embedded != 0 ? embedded : ThumbnailOrientation.read(reader);
+                int decoded = ThumbnailOrientation.read(reader);
+                // A decoder that reports a different orientation than the container payload leaves the
+                // authored one ambiguous, so only the original is delivered.
+                if (embedded != 0 && decoded != 1 && decoded != embedded) {
+                    throw invalid();
+                }
+                int orientation = embedded != 0 ? embedded : decoded;
                 return encode(ThumbnailOrientation.apply(read(reader, mediaType), orientation));
             } finally {
                 reader.dispose();
