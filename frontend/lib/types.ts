@@ -105,7 +105,13 @@ export type RepositoryFile = {
 export type Diagnostic = { path: string; code: string; message: string };
 export type RepositoryTree = {
   commit: string | null;
-  entries: { path: string; title: string }[];
+  entries: {
+    path: string;
+    title: string;
+    /** Absent for unparsable files and from servers that predate it. */
+    updatedAt?: string | null;
+    folderPage?: boolean;
+  }[];
   diagnostics: Diagnostic[];
 };
 export type PatchResult = {

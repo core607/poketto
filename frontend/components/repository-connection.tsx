@@ -130,8 +130,11 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
 
   return (
     <section className="sub-panel" aria-label="仓库连接">
-      <h2>仓库连接</h2>
-      <p className="muted">这个空间的内容保存在已连接的 Git 仓库中。</p>
+      <h2>当前连接</h2>
+      <p className="muted">
+        这个空间的全部内容和修改历史都保存在下面这个 Git 仓库里。Poketto
+        负责读写；懂 Git 的话，你也可以用任何 Git 工具直接编辑它。
+      </p>
       {receipt && (
         <p className="notice" role="status">
           {receipt}
@@ -210,7 +213,10 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
       )}
       {connection && (
         <div aria-label="仓库指引文件">
-          <h3>仓库指引文件</h3>
+          <h3>给 AI 助手的说明文件</h3>
+          <p className="muted">
+            这几个文件告诉 AI 助手这个空间怎样组织内容、哪里是草稿、哪里会公开。
+          </p>
           {initializationError && (
             <p className="notice danger" role="alert">
               {initializationError}{" "}

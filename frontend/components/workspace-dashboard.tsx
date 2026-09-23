@@ -25,13 +25,27 @@ export type SpaceSummary = {
 };
 const tabs = {
   content: "内容",
-  account: "账号与空间",
+  account: "账号",
   members: "成员与邀请",
-  keys: "访问密钥",
-  connections: "已连接应用",
-  repository: "仓库连接",
-  publication: "网站发布",
+  keys: "AI 助手",
+  connections: "AI 助手",
+  repository: "存储位置",
+  publication: "网站",
   site: "站务",
+};
+/** One plain sentence per section: what it is for, without repository vocabulary. */
+const descriptions: Record<keyof typeof tabs, string> = {
+  content:
+    "写笔记、整理分类和图片。保存会写进这个空间的仓库，发布后出现在网站上。",
+  account: "你的登录方式和昵称，以及新建或加入空间。",
+  members: "邀请别人一起整理这个空间，并决定每个人能看、能改哪些内容。",
+  keys: "让 Claude、ChatGPT 等 AI 助手读写这个空间，和你一起整理。",
+  connections: "让 Claude、ChatGPT 等 AI 助手读写这个空间，和你一起整理。",
+  repository:
+    "这个空间的内容存放在一个 Git 仓库里，可以把它理解成会记住每次修改的云端文件夹。这里显示它连到哪里、是否正常。",
+  publication:
+    "决定这个空间要不要公开成网站，以及网站上显示的名字、简介和署名。",
+  site: "站点管理员专用：调整账号的站点权限、审阅公开内容、处理举报。",
 };
 type Tab = keyof typeof tabs;
 const icons: Record<Tab, IconName> = {
@@ -48,7 +62,6 @@ const spaceSections: Tab[] = [
   "content",
   "publication",
   "members",
-  "keys",
   "connections",
   "repository",
 ];
@@ -60,6 +73,32 @@ function historyPosition() {
     position >= 0
     ? position
     : null;
+}
+
+/** How to connect an AI client; the address is this installation's MCP endpoint. */
+function McpGuide() {
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  return (
+    <section className="sub-panel mcp-guide" aria-labelledby="mcp-guide">
+      <div className="panel-heading">
+        <h2 id="mcp-guide">连接一个 AI 助手</h2>
+      </div>
+      <ol>
+        <li>
+          在 Claude、ChatGPT 等支持 MCP 的 AI
+          客户端里，找到「添加连接器」或「自定义 MCP」。
+        </li>
+        <li>
+          填入这个地址：<code>{origin ? origin + "/mcp" : "/mcp"}</code>
+        </li>
+        <li>
+          按提示登录
+          Poketto，选择这个空间和允许的权限。连接成功后会出现在下面的列表里，随时可以撤销。
+        </li>
+      </ol>
+    </section>
+  );
 }
 
 export function WorkspaceDashboard({
@@ -255,7 +294,11 @@ export function WorkspaceDashboard({
         key={key}
         type="button"
         className="studio-nav-item"
-        aria-current={activeTab === key ? "page" : undefined}
+        aria-current={
+          activeTab === key || (key === "connections" && activeTab === "keys")
+            ? "page"
+            : undefined
+        }
         onClick={async () => {
           if (!(await discard())) return;
           setDirty(false);
@@ -285,8 +328,24 @@ export function WorkspaceDashboard({
         />
       )}
       {activeTab === "members" && <Members />}
-      {activeTab === "keys" && identity && <Keys identity={identity} />}
-      {activeTab === "connections" && <Connections />}
+      {(activeTab === "connections" || activeTab === "keys") && (
+        <div className="management-panel">
+          <McpGuide />
+          <Connections />
+          {identity?.role === "OWNER" && (
+            <details
+              className="sub-panel advanced"
+              open={activeTab === "keys" || undefined}
+            >
+              <summary>访问密钥（高级）</summary>
+              <p className="muted">
+                给无法登录授权的脚本或工具使用。每个工具一把钥匙，可随时撤销。
+              </p>
+              <Keys identity={identity} />
+            </details>
+          )}
+        </div>
+      )}
       {activeTab === "repository" && identity?.role === "OWNER" && (
         <RepositoryConnection
           key={identity.workspaceId}
@@ -368,6 +427,10 @@ export function WorkspaceDashboard({
         </div>
       </aside>
       <section className="studio-main" aria-label={tabs[activeTab]}>
+        <header className="studio-head">
+          <h1>{tabs[activeTab]}</h1>
+          <p>{descriptions[activeTab]}</p>
+        </header>
         {receipt && (
           <p className="notice success" role="status">
             {receipt}

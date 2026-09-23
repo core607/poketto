@@ -31,6 +31,7 @@ import { ExportDialog } from "./export-dialog";
 import { HistoryDialog } from "./history-dialog";
 import { DiagnosticMessage } from "./diagnostic";
 import { Icon } from "./ui/icons";
+import { NoteLibrary } from "./note-library";
 import {
   contentRoot,
   inContentRoot,
@@ -626,7 +627,7 @@ export function Editor({
       )}
       <aside className="file-sidebar">
         <div className="sidebar-title">
-          <h2>文件</h2>
+          <h2>全部文件</h2>
           <button
             type="button"
             className="text-button"
@@ -1192,13 +1193,16 @@ export function Editor({
             ))}
           </>
         ) : (
-          <div className="editor-empty">
-            <span className="empty-mark">
-              <Icon name="pen" />
-            </span>
-            <h2>从一篇记录开始。</h2>
-            <p>在左侧选择目录、新建笔记，或打开已有文件。</p>
-          </div>
+          <NoteLibrary
+            tree={tree}
+            busy={busy}
+            canWrite={identity.capabilities.includes("WRITE_PRIVATE")}
+            onOpen={(target) => void open(target)}
+            onCreate={(kind, trigger) => {
+              creationTrigger.current = trigger;
+              setCreation(kind);
+            }}
+          />
         )}
       </section>
     </div>
