@@ -63,7 +63,7 @@ class PublicSpaceController {
 
     private PublicSpace space(String slug) {
         var publication = published(slug);
-        return new PublicSpace(publication.slug(), publication.displayName());
+        return new PublicSpace(publication.slug(), publication.displayName(), publication.publicDescription());
     }
 
     private WorkspacePublications.Publication published(String slug) {
@@ -76,5 +76,5 @@ class PublicSpaceController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
 
-    record PublicSpace(String slug, String displayName) {}
+    record PublicSpace(String slug, String displayName, String description) {}
 }

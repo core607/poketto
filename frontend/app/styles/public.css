@@ -1294,3 +1294,34 @@ body:has(.image-lightbox[open]) {
 .global-notice:not(:empty) {
   padding-top: 1rem;
 }
+.space-mast-text {
+  min-width: 0;
+  max-width: 44rem;
+}
+.space-description {
+  margin: 0.45rem 0 0.2rem;
+  color: var(--ink-2);
+  line-height: 1.75;
+  white-space: pre-line;
+}
+.theme-switch button {
+  min-height: 28px;
+  padding: 0 0.7rem;
+  font-size: var(--text-xs);
+}
+.theme-switch.compact button {
+  padding: 0 0.55rem;
+}
+.menu-panel .theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.menu-panel .theme-row button {
+  width: auto;
+  padding: 0 0.55rem;
+}

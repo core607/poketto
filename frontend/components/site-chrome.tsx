@@ -5,6 +5,7 @@ import { api, ApiError } from "../lib/browser-api";
 import { clearAccountDrafts, withDraftStorage } from "../lib/local-drafts";
 import type { AccountProfile } from "./account-panel";
 import { Avatar, BrandMark, Icon } from "./ui/icons";
+import { ThemeSwitch } from "./theme-switch";
 
 export function SiteBar() {
   const pathname = usePathname();
@@ -153,6 +154,10 @@ function AccountEntrance() {
             <Icon name="settings" />
             账号与安全
           </a>
+          <div className="theme-row">
+            外观
+            <ThemeSwitch compact />
+          </div>
           {account.siteAdministrator && (
             <a href="/admin?tab=site">
               <Icon name="shield" />
@@ -181,6 +186,7 @@ export function SiteFooter() {
           <BrandMark />
           Poketto · 给想法一个留下来的地方
         </span>
+        <ThemeSwitch />
         <nav aria-label="站点信息">
           <a href={space ? `/s/${space}/rss.xml` : "/rss.xml"}>RSS</a>
           <a href="/privacy">隐私政策</a>

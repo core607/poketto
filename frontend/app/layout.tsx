@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import { SiteBar, SiteFooter } from "../components/site-chrome";
 import { GoogleReturnNotice } from "../components/google-login";
 import { publicOrigin } from "../lib/public-api";
+import { themeScript } from "../lib/theme";
 
 export function generateMetadata(): Metadata {
   // Relative alternates such as space feeds resolve against the public origin, not the dev server.
@@ -19,9 +21,21 @@ export function generateMetadata(): Metadata {
   };
 }
 export const dynamic = "force-dynamic";
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // The proxy issues a per-request nonce; the CSP admits only scripts carrying it.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
+      </head>
       <body>
         <a href="#main" className="skip-link">
           跳转到正文

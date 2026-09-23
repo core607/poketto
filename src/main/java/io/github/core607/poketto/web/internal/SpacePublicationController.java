@@ -64,7 +64,8 @@ class SpacePublicationController {
                 body.enabled(),
                 body.eligible(),
                 body.publiclyEnabled(),
-                body.publicAuthorName());
+                body.publicAuthorName(),
+                body.publicDescription());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
     }
 
@@ -76,6 +77,22 @@ class SpacePublicationController {
         return response(publications.setAuthorName(actor, WorkspaceId.parse(workspaceId), request.name()));
     }
 
+    @PutMapping("/name")
+    ResponseEntity<PublicationResponse> updateName(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestBody UpdateText request) {
+        return response(publications.setDisplayName(actor, WorkspaceId.parse(workspaceId), request.text()));
+    }
+
+    @PutMapping("/description")
+    ResponseEntity<PublicationResponse> updateDescription(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestBody UpdateText request) {
+        return response(publications.setDescription(actor, WorkspaceId.parse(workspaceId), request.text()));
+    }
+
     record PublicationResponse(
             String workspaceId,
             String slug,
@@ -83,7 +100,17 @@ class SpacePublicationController {
             boolean enabled,
             boolean eligible,
             boolean effectiveEnabled,
-            String publicAuthorName) {}
+            String publicAuthorName,
+            String publicDescription) {}
+
+    /** Validation belongs to {@link io.github.core607.poketto.workspace.SpaceProfiles}. */
+    record UpdateText(String text) {
+        UpdateText {
+            if (text == null) {
+                throw new IllegalArgumentException("Text is required");
+            }
+        }
+    }
 
     record UpdateAuthor(String name) {
         UpdateAuthor {

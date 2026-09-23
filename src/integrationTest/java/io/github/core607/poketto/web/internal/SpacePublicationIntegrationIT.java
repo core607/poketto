@@ -200,6 +200,7 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get(publicImage())).andExpect(status().isOk());
         mvc.perform(get(publication(workspace))).andExpect(status().isUnauthorized());
         verifyAuthorNames(owner, workspace, ownerSession);
+        verifySpaceProfile(workspace, ownerSession);
         verifyPolicyWithdrawal(owner, workspace, ownerSession);
     }
 
@@ -295,6 +296,49 @@ class SpacePublicationIntegrationIT {
                 .isInstanceOf(AuthException.class);
         assertThatThrownBy(() -> service.setAuthorName(auth.authenticateApiKey(token), workspace, "Denied"))
                 .isInstanceOf(AuthException.class);
+        for (String field : new String[] {"/name", "/description"}) {
+            mvc.perform(csrf(session, put(publication(workspace) + field))
+                            .contentType("application/json")
+                            .content("{\"text\":\"Denied\"}"))
+                    .andExpect(status().isForbidden());
+        }
+        assertThatThrownBy(() -> service.setDisplayName(auth.authenticateApiKey(token), workspace, "Denied"))
+                .isInstanceOf(AuthException.class);
+    }
+
+    private void verifySpaceProfile(WorkspaceId workspace, MockHttpSession session) throws Exception {
+        String original = publications.settings(workspace).displayName();
+        mvc.perform(csrf(session, put(publication(workspace) + "/description"))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(new SpacePublicationController.UpdateText("  第一行\r\n第二行  "))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicDescription").value("第一行\n第二行"));
+        mvc.perform(get("/api/public/spaces/home"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").value("第一行\n第二行"));
+        mvc.perform(csrf(session, put(publication(workspace) + "/description"))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(new SpacePublicationController.UpdateText("🐾".repeat(281)))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(csrf(session, put(publication(workspace) + "/name"))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(new SpacePublicationController.UpdateText("  Renamed  "))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Renamed"));
+        mvc.perform(get("/api/public/spaces/home"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Renamed"));
+        for (String rejected : new String[] {"   ", "a".repeat(121), "two\nlines"}) {
+            mvc.perform(csrf(session, put(publication(workspace) + "/name"))
+                            .contentType("application/json")
+                            .content(json.writeValueAsString(new SpacePublicationController.UpdateText(rejected))))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(publications.settings(workspace).displayName()).isEqualTo("Renamed");
+        mvc.perform(csrf(session, put(publication(workspace) + "/name"))
+                        .contentType("application/json")
+                        .content(json.writeValueAsString(new SpacePublicationController.UpdateText(original))))
+                .andExpect(status().isOk());
     }
 
     private void verifyAuthorNames(AuthPrincipal owner, WorkspaceId workspace, MockHttpSession session)
@@ -579,6 +623,10 @@ class SpacePublicationIntegrationIT {
         assertThat(guide.get("album").booleanValue()).isFalse();
         assertThat(guide.get("collection").booleanValue()).isTrue();
         assertThat(guide.get("cover").isNull()).isTrue();
+        JsonNode note = item(discoveryWithRoutes("/note"), "/note");
+        assertThat(note.get("album").booleanValue()).isFalse();
+        assertThat(note.get("cover").isTextual()).isTrue();
+        mvc.perform(get(note.get("cover").stringValue())).andExpect(status().isOk());
         String firstCover = album.get("cover").stringValue();
         var thumbnail = mvc.perform(get(firstCover))
                 .andExpect(status().isOk())

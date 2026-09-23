@@ -12,6 +12,8 @@ type Publication = {
   slug: string;
   displayName: string;
   publicAuthorName: string;
+  /** Absent from servers older than the description field. */
+  publicDescription?: string;
   enabled: boolean;
   eligible: boolean;
   effectiveEnabled: boolean;
@@ -22,6 +24,8 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
   const confirm = useConfirmation();
   const [publication, setPublication] = useState<Publication | null>(null);
   const [author, setAuthor] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
@@ -42,6 +46,8 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
           throw new Error("空间状态不匹配");
         setPublication(value);
         setAuthor(value.publicAuthorName);
+        setName(value.displayName);
+        setDescription(value.publicDescription ?? "");
       }
     } catch (failure) {
       if (version === epoch.current) setError(message(failure));
@@ -108,30 +114,44 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  async function saveAuthor() {
+  /** Saves each changed profile field in turn; the server's answer is the displayed state. */
+  async function saveProfile() {
     if (!publication || busy.current) return;
     const version = epoch.current;
+    const changes = [
+      name.trim() !== publication.displayName && { path: "/name", text: name },
+      description.trim() !== (publication.publicDescription ?? "") && {
+        path: "/description",
+        text: description,
+      },
+      author.trim() !== publication.publicAuthorName && {
+        path: "/author",
+        name: author,
+      },
+    ].filter(Boolean) as { path: string; text?: string; name?: string }[];
+    if (!changes.length) return;
     busy.current = true;
     setPending(true);
     setError("");
     setReceipt("");
     try {
-      const value = await api<Publication>(base + "/author", {
-        method: "PUT",
-        body: { name: author },
-      });
-      if (version === epoch.current) {
+      let value = publication;
+      for (const { path, ...body } of changes) {
+        value = await api<Publication>(base + path, { method: "PUT", body });
+        if (version !== epoch.current) return;
         if (value.workspaceId !== workspaceId)
           throw new Error("空间状态不匹配");
         setPublication(value);
-        setAuthor(value.publicAuthorName);
-        setReceipt("公开署名已保存。");
       }
+      setName(value.displayName);
+      setDescription(value.publicDescription ?? "");
+      setAuthor(value.publicAuthorName);
+      setReceipt("网站资料已保存。");
     } catch (failure) {
       if (version === epoch.current) {
         setPublication(null);
         setError(
-          "未能确认署名当前状态，请重新读取后再操作。" + message(failure),
+          "未能确认网站资料当前状态，请重新读取后再操作。" + message(failure),
         );
       }
     } finally {
@@ -141,83 +161,148 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
       }
     }
   }
-
+  const signature = author.trim() || name.trim() || publication?.displayName;
+  const changed =
+    publication &&
+    (name.trim() !== publication.displayName ||
+      description.trim() !== (publication.publicDescription ?? "") ||
+      author.trim() !== publication.publicAuthorName);
   return (
-    <section className="sub-panel" aria-label="网站发布">
-      <h2>网站发布</h2>
-      <p className="muted">
-        开启后，符合发布规则的公开内容可以被所有人浏览。新空间默认关闭公开网站。
-      </p>
-      {publication && (
-        <p>
-          网站开关：<strong>{publication.enabled ? "已开启" : "已关闭"}</strong>
-        </p>
-      )}
-      {receipt && (
-        <p className="notice" role="status">
-          {receipt}
-        </p>
-      )}
-      {error && (
-        <p className="notice danger" role="alert">
-          {error}
-        </p>
-      )}
-      {pending && <p role="status">正在处理网站状态…</p>}
-      {publication ? (
-        <button
-          disabled={pending || (!publication.enabled && !publication.eligible)}
-          onClick={() => void change()}
-        >
-          {publication.enabled ? "关闭公开网站" : "开启公开网站"}
-        </button>
-      ) : (
-        <button disabled={pending} onClick={() => void read()}>
-          重新读取网站状态
-        </button>
-      )}
-      {publication && !publication.eligible && (
-        <div className="notice" role="status">
-          <p>
-            公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
-            恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
-          </p>
-          <PublicationRestrictions key={workspaceId} base={base} />
+    <div className="management-panel">
+      <section className="sub-panel" aria-label="网站发布">
+        <div className="panel-heading">
+          <h2>公开网站</h2>
+          {publication?.effectiveEnabled && (
+            <a href={`/s/${encodeURIComponent(publication.slug)}`}>
+              查看公开网站
+            </a>
+          )}
         </div>
-      )}
-      {publication?.effectiveEnabled && (
-        <p>
-          <a href={`/s/${encodeURIComponent(publication.slug)}`}>
-            查看公开网站
-          </a>
+        <p className="muted">
+          开启后，放在「已发布」里的内容会出现在这个空间的网站上，所有人都能看到；草稿始终只有空间成员能看到。新空间默认关闭公开网站。
         </p>
-      )}
-      {publication && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void saveAuthor();
-          }}
-        >
-          <label htmlFor={`public-author-${workspaceId}`}>空间公开署名</label>
-          <input
-            id={`public-author-${workspaceId}`}
-            value={author}
-            disabled={pending}
-            maxLength={240}
-            placeholder={publication.displayName}
-            onChange={(event) => setAuthor(event.target.value)}
-            aria-describedby={`public-author-help-${workspaceId}`}
-          />
-          <p id={`public-author-help-${workspaceId}`} className="muted">
-            最多 120
-            个字符。文章填写了公开署名时优先使用文章署名；这里留空时使用空间名称。
+        {publication && (
+          <p>
+            网站开关：
+            <strong>{publication.enabled ? "已开启" : "已关闭"}</strong>
+            {publication.effectiveEnabled && (
+              <span className="muted"> · 网址 /s/{publication.slug}</span>
+            )}
           </p>
-          <button disabled={pending || author === publication.publicAuthorName}>
-            保存公开署名
+        )}
+        {receipt && (
+          <p className="notice success" role="status">
+            {receipt}
+          </p>
+        )}
+        {error && (
+          <p className="notice danger" role="alert">
+            {error}
+          </p>
+        )}
+        {pending && (
+          <p role="status" className="muted">
+            正在处理网站状态…
+          </p>
+        )}
+        {publication ? (
+          <button
+            disabled={
+              pending || (!publication.enabled && !publication.eligible)
+            }
+            onClick={() => void change()}
+          >
+            {publication.enabled ? "关闭公开网站" : "开启公开网站"}
           </button>
-        </form>
+        ) : (
+          <button disabled={pending} onClick={() => void read()}>
+            重新读取网站状态
+          </button>
+        )}
+        {publication && !publication.eligible && (
+          <div className="notice" role="status">
+            <p>
+              公开展示已受限：空间所有者的站点资格不满足展示要求。你仍可编辑和预览内容，完成整改后请联系管理员。
+              恢复创作者资格后，已开启的网站会自动恢复；你也可以先关闭网站。
+            </p>
+            <PublicationRestrictions key={workspaceId} base={base} />
+          </div>
+        )}
+      </section>
+      {publication && (
+        <section
+          className="sub-panel"
+          aria-labelledby={`profile-${workspaceId}`}
+        >
+          <div className="panel-heading">
+            <h2 id={`profile-${workspaceId}`}>网站资料</h2>
+          </div>
+          <div className="profile-editor">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveProfile();
+              }}
+            >
+              <label>
+                空间名称
+                <input
+                  value={name}
+                  disabled={pending}
+                  required
+                  maxLength={120}
+                  onChange={(event) => setName(event.target.value)}
+                />
+                <span className="form-help">
+                  这个空间叫什么。显示在网站标题、首页发现卡片和工作台里。
+                </span>
+              </label>
+              <label>
+                空间简介
+                <textarea
+                  value={description}
+                  disabled={pending}
+                  rows={3}
+                  maxLength={280}
+                  placeholder="一两句话，介绍这里写些什么。"
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+                <span className="form-help">
+                  显示在网站首页的空间名称下方，最多 280 字，可以留空。
+                </span>
+              </label>
+              <label htmlFor={`public-author-${workspaceId}`}>
+                公开署名
+                <input
+                  id={`public-author-${workspaceId}`}
+                  value={author}
+                  disabled={pending}
+                  maxLength={240}
+                  placeholder={name || publication.displayName}
+                  onChange={(event) => setAuthor(event.target.value)}
+                  aria-describedby={`public-author-help-${workspaceId}`}
+                />
+                <span
+                  id={`public-author-help-${workspaceId}`}
+                  className="form-help"
+                >
+                  文章「作者」一栏显示的名字，比如你的笔名。留空时直接用空间名称。某篇文章想换个署名，可以在它开头写{" "}
+                  <code>public_author: 名字</code>。
+                </span>
+              </label>
+              <button disabled={pending || !changed || !name.trim()}>
+                保存网站资料
+              </button>
+            </form>
+            <aside className="profile-preview" aria-label="网站上的样子">
+              <p className="eyebrow">网站上会这样显示</p>
+              <strong>{name.trim() || publication.displayName}</strong>
+              {description.trim() && <p>{description.trim()}</p>}
+              <p className="muted">文章署名：{signature}</p>
+            </aside>
+          </div>
+        </section>
       )}
-    </section>
+    </div>
   );
 }

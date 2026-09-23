@@ -261,6 +261,16 @@ class PublicSiteSearchTests {
         }
 
         @Override
+        public Publication setDisplayName(WorkspaceId workspace, String name) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Publication setDescription(WorkspaceId workspace, String description) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void requireEnabled(WorkspaceId workspace) {
             if (settings(workspace).enabled() == false) {
                 throw new IllegalStateException("disabled");

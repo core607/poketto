@@ -45,7 +45,12 @@ export function discovery(parameters: Record<string, string> = {}) {
 export const article = cache(function article(route: string) {
   return get<Article>("/api/public/document?" + new URLSearchParams({ route }));
 });
-export type PublicSpace = { slug: string; displayName: string };
+export type PublicSpace = {
+  slug: string;
+  displayName: string;
+  /** Owner-written plain text, possibly empty; older servers omit it. */
+  description?: string;
+};
 export const defaultSpace = cache(() =>
   get<PublicSpace>("/api/public/default-space"),
 );
