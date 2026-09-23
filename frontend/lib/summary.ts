@@ -4,21 +4,23 @@
  * at a sentence boundary near `limit` characters when one is close enough.
  */
 export function plainSummary(markdown: string, title = "", limit = 120) {
-  const paragraphs = markdown
-    .replace(/^---\n[\s\S]*?\n---\n/, "")
-    .replace(/```[\s\S]*?```/g, "\n")
-    .split(/\n\s*\n/);
+  // Public bodies arrive without frontmatter, so a leading `---` is the author's own rule.
+  const paragraphs = markdown.replace(/```[\s\S]*?```/g, "\n").split(/\n\s*\n/);
   const kept: string[] = [];
   let afterImage = false;
   for (const raw of paragraphs) {
     const paragraph = raw.trim();
     if (!paragraph) continue;
     const withoutImages = paragraph.replace(/!\[[^\]]*\]\([^)]*\)/g, "").trim();
-    // A paragraph that only italicises a line under an image is its caption, not prose.
-    const caption = afterImage && /^([*_]).+\1$/s.test(withoutImages);
+    // A caption is one short italic line right under an image; bold or longer prose stays.
+    const caption =
+      afterImage && /^([*_])(?!\1)[^*_\n]{1,80}\1$/.test(withoutImages);
     afterImage = withoutImages.length === 0;
-    // Headings name the article or its sections; the summary is the prose under them.
-    if (afterImage || caption || /^#{1,6}\s/.test(withoutImages)) continue;
+    // Headings name the article or its sections, and rules only separate; the summary is prose.
+    const structure =
+      /^#{1,6}\s/.test(withoutImages) ||
+      /^([-*_])(\s*\1){2,}$/.test(withoutImages);
+    if (afterImage || caption || structure) continue;
     const text = withoutImages
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replace(/<[^>]+>/g, "")

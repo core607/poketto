@@ -22,6 +22,17 @@ test("summaries start at the prose, skipping the heading, figure and its caption
   );
 });
 
+test("bold prose under an image and a leading rule are kept as prose", () => {
+  assert.equal(
+    plainSummary("![图](a.png)\n\n**这一整段加粗的正文不是图片说明。**"),
+    "这一整段加粗的正文不是图片说明。",
+  );
+  assert.equal(
+    plainSummary("---\n\n第一段正文。\n\n---\n\n第二段正文。"),
+    "第一段正文。 第二段正文。",
+  );
+});
+
 test("long summaries end at a nearby sentence or an ellipsis", () => {
   const sentence = "这是一句足够长的正文，用来确认摘要会在句号处收尾。";
   assert.equal(plainSummary(sentence.repeat(10), "", 60), sentence.repeat(2));
