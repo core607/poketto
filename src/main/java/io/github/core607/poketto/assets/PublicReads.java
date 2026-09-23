@@ -204,7 +204,10 @@ final class PublicReads {
         return new PreparedCover(album, firstImage(workspace, candidates.values()));
     }
 
-    /** Inline images in document order; private and unreadable references are skipped, not substituted. */
+    /**
+     * Inline images in document order, repository paths and managed references alike; private and
+     * unreadable references are skipped, not substituted.
+     */
     private PreparedCover prepareArticleCover(
             WorkspaceId workspace, String commit, PublicArticle article, RepositoryMediaSnapshot catalog) {
         var candidates = new LinkedHashMap<String, Target>();
@@ -212,6 +215,14 @@ final class PublicReads {
             for (String authored : MarkdownDestinations.parse(article.body()).images()) {
                 if (candidates.size() >= COVER_CANDIDATES) {
                     break;
+                }
+                if (authored.startsWith("managed:")) {
+                    // A public page shows its managed references as authored, so its cover may use them too.
+                    if (!candidates.containsKey(authored)) {
+                        media.target(workspace, commit, article.repositoryPath(), authored, catalog)
+                                .ifPresent(target -> candidates.put(authored, target));
+                    }
+                    continue;
                 }
                 var path = MarkdownDestinations.path(article.repositoryPath(), authored);
                 if (path.isEmpty() || candidates.containsKey(path.orElseThrow())) {
