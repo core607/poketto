@@ -42,11 +42,11 @@ async function fixture(t: TestContext) {
       else Reflect.deleteProperty(globalThis, name);
     }
   });
-  const mount = async (id = "first") =>
+  const mount = async (id = "first", onRenamed?: () => void) =>
     act(async () =>
       root.render(
         <ConfirmationProvider>
-          <SpacePublication key={id} workspaceId={id} />
+          <SpacePublication key={id} workspaceId={id} onRenamed={onRenamed} />
         </ConfirmationProvider>,
       ),
     );
@@ -222,7 +222,8 @@ test("a profile save that fails part-way keeps what was saved and the unsaved ed
     }
     return Response.json(current);
   };
-  await f.mount();
+  let renamed = 0;
+  await f.mount("first", () => renamed++);
   const type = async (selector: string, value: string) => {
     const field = f.container.querySelector(selector) as
       HTMLInputElement | HTMLTextAreaElement | null;
@@ -249,6 +250,8 @@ test("a profile save that fails part-way keeps what was saved and the unsaved ed
     ),
   );
   assert.deepEqual(writes, ["name", "description"]);
+  // The confirmed name is announced even though a later field failed.
+  assert.equal(renamed, 1);
   const notice = f.container.querySelector(".profile-editor [role=alert]");
   assert.match(notice?.textContent ?? "", /空间名称已保存；空间简介没有保存/);
   assert.equal(valueOf(".profile-editor input"), "雨后的口袋");

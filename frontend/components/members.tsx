@@ -134,8 +134,8 @@ export function Members() {
           <tbody>
             {members.map((member) => (
               <tr key={member.accountId}>
-                <td>{member.loginName}</td>
-                <td>
+                <td data-label="成员">{member.loginName}</td>
+                <td data-label="角色">
                   <select
                     aria-label={member.loginName + "的角色"}
                     value={member.role}
@@ -150,13 +150,13 @@ export function Members() {
                     <option value="MEMBER">成员</option>
                   </select>
                 </td>
-                <td>{member.active ? "正常" : "已停用"}</td>
-                <td>
+                <td data-label="状态">{member.active ? "正常" : "已停用"}</td>
+                <td data-label="内容权限">
                   {member.role === "OWNER"
                     ? "全部权限"
                     : permissionSummary(member.permissions)}
                 </td>
-                <td>
+                <td data-label="操作">
                   {member.role === "MEMBER" && (
                     <button
                       className="text-button"
@@ -238,8 +238,8 @@ export function Members() {
             <tbody>
               {invitations.map((invite) => (
                 <tr key={invite.id}>
-                  <td>{date(invite.expiresAt)}</td>
-                  <td>
+                  <td data-label="有效期至">{date(invite.expiresAt)}</td>
+                  <td data-label="状态">
                     {invite.used
                       ? "已使用"
                       : invite.revoked
@@ -248,8 +248,10 @@ export function Members() {
                           ? "已过期"
                           : "待接受"}
                   </td>
-                  <td>{permissionSummary(invite.permissions)}</td>
-                  <td>
+                  <td data-label="初始权限">
+                    {permissionSummary(invite.permissions)}
+                  </td>
+                  <td data-label="操作">
                     {!invite.used && !invite.revoked && (
                       <button
                         className="text-button"
