@@ -118,10 +118,14 @@ class BrowserSessionStoreIntegrationIT {
             assertThat(cookie).isNotEqualTo(guestCookie);
             // The login itself stores the long timeout; no later request is needed for it.
             assertThat(idleSeconds(cookie)).isEqualTo(ACCOUNT_SECONDS);
+            long expiresAfterLogin = expiry(cookie);
 
             // Every request reads the stored context back from PostgreSQL through the attribute filter.
+            Thread.sleep(1100);
             assertThat(send(client, get("/api/auth/account", cookie)).statusCode())
                     .isEqualTo(200);
+            // The idle bound slides: a later request moves the stored expiry forward.
+            assertThat(expiry(cookie)).isGreaterThanOrEqualTo(expiresAfterLogin + 1000);
             assertThat(jdbc.queryForObject(
                             "select principal_name from spring_session where session_id = ?",
                             String.class,
@@ -189,6 +193,11 @@ class BrowserSessionStoreIntegrationIT {
                 "select max_inactive_interval from spring_session where session_id = ?",
                 Integer.class,
                 sessionId(cookie));
+    }
+
+    private long expiry(String cookie) {
+        return jdbc.queryForObject(
+                "select expiry_time from spring_session where session_id = ?", Long.class, sessionId(cookie));
     }
 
     private static String sessionId(String cookie) {
