@@ -1,4 +1,4 @@
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { article, defaultSpace, PublicApiError } from "../../../lib/public-api";
 import { articleHref } from "../../../lib/format";
 import {
@@ -51,7 +51,8 @@ export default async function Article({
     throw error;
   });
   const space = await defaultSpace();
-  permanentRedirect(
+  // The target follows the current default space, so the redirect stays temporary.
+  redirect(
     articleHref(route, space.slug) +
       carryReadingSearch((await searchParams) ?? {}),
   );

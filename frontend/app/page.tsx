@@ -28,9 +28,7 @@ export default async function Home({
         <div className="discover-bar">
           <HomeNavigation following />
         </div>
-        <div className="legacy">
-          <CommunityDashboard embedded />
-        </div>
+        <CommunityDashboard embedded />
       </div>
     );
   const batch =

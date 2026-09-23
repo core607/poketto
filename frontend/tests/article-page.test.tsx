@@ -198,7 +198,7 @@ test("default article redirect preserves literal route bytes and never redirects
       typeof error === "object" &&
       "digest" in error &&
       String(error.digest).includes(
-        "/s/home/read/100%25/%23%E6%A0%87%E9%A2%98;308;",
+        "/s/home/read/100%25/%23%E6%A0%87%E9%A2%98;307;",
       ),
   );
   await assert.rejects(

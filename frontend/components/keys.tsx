@@ -183,7 +183,7 @@ export function Keys({ identity }: { identity: Identity }) {
           </div>
         </fieldset>
         <button disabled={pending || memberPage.loading || !selectedHolder}>
-          创建密钥 ↗
+          创建密钥
         </button>
       </form>
       <section className="sub-panel">

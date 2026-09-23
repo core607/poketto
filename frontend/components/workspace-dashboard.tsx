@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/browser-api";
 import { message, type Identity } from "./admin";
 import { AccountPanel, type AccountProfile } from "./account-panel";
-import { AdminPagination, useAdminPage } from "./admin-pagination";
+import { useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
 import { WorkspaceProvider } from "./workspace-context";
 import { Editor } from "./editor";
@@ -13,6 +13,9 @@ import { Connections } from "./connections";
 import { RepositoryConnection } from "./repository-connection";
 import { SpacePublication } from "./space-publication";
 import type { ContentLocation } from "../lib/repository-navigation";
+import { SiteAdministration } from "./site-administration";
+import { SpaceSwitcher } from "./space-switcher";
+import { Avatar, Icon, type IconName } from "./ui/icons";
 
 export type SpaceSummary = {
   workspaceId: string;
@@ -28,8 +31,27 @@ const tabs = {
   connections: "已连接应用",
   repository: "仓库连接",
   publication: "网站发布",
+  site: "站务",
 };
 type Tab = keyof typeof tabs;
+const icons: Record<Tab, IconName> = {
+  content: "file",
+  account: "user",
+  members: "users",
+  keys: "key",
+  connections: "link",
+  repository: "branch",
+  publication: "globe",
+  site: "shield",
+};
+const spaceSections: Tab[] = [
+  "content",
+  "publication",
+  "members",
+  "keys",
+  "connections",
+  "repository",
+];
 
 function historyPosition() {
   const position: unknown = window.history.state?.pokettoAdminPosition;
@@ -209,39 +231,50 @@ export function WorkspaceDashboard({
       window.removeEventListener("popstate", restore);
     };
   }, [dirty]);
-  const activeTab = !identity
-    ? "account"
-    : identity.role !== "OWNER" &&
-        !["content", "account", "connections"].includes(tab)
-      ? "content"
-      : tab;
+  const administrator = account.account.siteAdministrator;
+  const activeTab: Tab =
+    tab === "site" && administrator
+      ? "site"
+      : !identity
+        ? "account"
+        : identity.role !== "OWNER" &&
+            !["content", "account", "connections"].includes(tab)
+          ? "content"
+          : tab;
+  const available = (key: Tab) =>
+    key === "account" ||
+    (key === "site" && administrator) ||
+    (identity !== null &&
+      key !== "site" &&
+      (key === "content" ||
+        key === "connections" ||
+        identity.role === "OWNER"));
+  const navItem = (key: Tab) =>
+    available(key) && (
+      <button
+        key={key}
+        type="button"
+        className="studio-nav-item"
+        aria-current={activeTab === key ? "page" : undefined}
+        onClick={async () => {
+          if (!(await discard())) return;
+          setDirty(false);
+          setTab(key);
+          writeUrl(selected, key, false, true);
+        }}
+      >
+        <Icon name={icons[key]} />
+        {tabs[key]}
+      </button>
+    );
+  const summary = page.items.find((space) => space.workspaceId === selected);
+  const current =
+    summary ??
+    (identity
+      ? { displayName: identity.displayName ?? selected, role: identity.role }
+      : undefined);
   const content = (
     <>
-      <nav className="admin-tabs" aria-label="管理功能">
-        {(Object.entries(tabs) as [Tab, string][])
-          .filter(
-            ([key]) =>
-              key === "account" ||
-              (identity &&
-                (key === "content" ||
-                  key === "connections" ||
-                  identity.role === "OWNER")),
-          )
-          .map(([key, label]) => (
-            <button
-              key={key}
-              aria-pressed={activeTab === key}
-              onClick={async () => {
-                if (!(await discard())) return;
-                setDirty(false);
-                setTab(key);
-                writeUrl(selected, key, false, true);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-      </nav>
       {activeTab === "content" && identity && (
         <Editor
           identity={identity}
@@ -284,82 +317,89 @@ export function WorkspaceDashboard({
           }}
         />
       )}
+      {activeTab === "site" && administrator && (
+        <SiteAdministration account={account} />
+      )}
     </>
   );
   return (
-    <div className="admin-shell">
-      <header className="admin-heading">
-        <div>
-          <p className="eyebrow">{displayName} · 自己的工作台</p>
-          <h1>整理，续写。</h1>
-        </div>
-        <button
-          className="button-secondary"
-          onClick={async () => {
-            if (await discard()) await onLogout();
+    <div className="studio">
+      <aside className="studio-side">
+        <SpaceSwitcher
+          page={page}
+          selected={selected}
+          current={current}
+          disabled={loading}
+          onSelect={async (workspaceId) => {
+            if (await discard()) await select(workspaceId);
           }}
-        >
-          退出登录
-        </button>
-      </header>
-      <section className="sub-panel" aria-label="我的空间">
-        <label>
-          当前空间
-          <select
-            value={selected}
-            disabled={loading}
-            onChange={async (event) => {
-              const value = event.target.value;
-              if (await discard()) await select(value);
+          onManage={async () => {
+            if (!(await discard())) return;
+            setDirty(false);
+            setTab("account");
+            writeUrl(selected, "account", false, true);
+          }}
+        />
+        <nav className="studio-nav" aria-label="管理功能">
+          {identity && (
+            <>
+              <p className="studio-nav-label">这个空间</p>
+              {spaceSections.map(navItem)}
+            </>
+          )}
+          <p className="studio-nav-label">账号</p>
+          {navItem("account")}
+          {navItem("site")}
+        </nav>
+        <div className="studio-side-foot">
+          <span className="studio-user">
+            <Avatar name={displayName} />
+            <span>{displayName}</span>
+          </span>
+          <button
+            type="button"
+            className="link-btn"
+            onClick={async () => {
+              if (await discard()) await onLogout();
             }}
           >
-            <option value="">账号与空间</option>
-            {selected &&
-              !page.items.some((space) => space.workspaceId === selected) && (
-                <option value={selected}>
-                  {identity?.displayName ?? selected}
-                </option>
-              )}
-            {page.items.map((space) => (
-              <option key={space.workspaceId} value={space.workspaceId}>
-                {space.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <AdminPagination label="空间" page={page} disabled={loading} />
-        {page.error && (
-          <p>
-            空间列表暂时无法读取，你的账号仍已登录。
-            <button onClick={page.reload}>重新读取空间</button>
+            退出登录
+          </button>
+        </div>
+      </aside>
+      <section className="studio-main" aria-label={tabs[activeTab]}>
+        {receipt && (
+          <p className="notice success" role="status">
+            {receipt}
           </p>
         )}
+        {error && (
+          <p className="notice danger" role="alert">
+            {error}{" "}
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => void select(selected, tab, true, true)}
+            >
+              重新读取空间
+            </button>
+          </p>
+        )}
+        {loading ? (
+          <p role="status" className="muted">
+            正在打开空间…
+          </p>
+        ) : identity ? (
+          <WorkspaceProvider
+            key={identity.workspaceId}
+            workspaceId={identity.workspaceId}
+          >
+            {content}
+          </WorkspaceProvider>
+        ) : (
+          content
+        )}
       </section>
-      {receipt && (
-        <p className="notice" role="status">
-          {receipt}
-        </p>
-      )}
-      {error && (
-        <p className="notice danger" role="alert">
-          {error}{" "}
-          <button onClick={() => void select(selected, tab, true, true)}>
-            重新读取空间
-          </button>
-        </p>
-      )}
-      {loading ? (
-        <p role="status">正在打开空间…</p>
-      ) : identity ? (
-        <WorkspaceProvider
-          key={identity.workspaceId}
-          workspaceId={identity.workspaceId}
-        >
-          {content}
-        </WorkspaceProvider>
-      ) : (
-        content
-      )}
     </div>
   );
 }

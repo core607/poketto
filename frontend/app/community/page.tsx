@@ -11,13 +11,11 @@ export default async function CommunityPage({
 }) {
   const { tab } = await searchParams;
   return (
-    <div className="legacy">
-      <CommunityDashboard
-        initialTab={
-          communityTabs.find((item) => item === tab && item !== "reports") ??
-          "feed"
-        }
-      />
-    </div>
+    <CommunityDashboard
+      initialTab={
+        communityTabs.find((item) => item === tab && item !== "reports") ??
+        "feed"
+      }
+    />
   );
 }

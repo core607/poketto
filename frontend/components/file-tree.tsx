@@ -1,4 +1,5 @@
 "use client";
+import { Icon } from "./ui/icons";
 import { useWorkspaceApi } from "./workspace-context";
 import { useEffect, useRef, useState } from "react";
 import { readDirectory, movablePath } from "../lib/repository-directory";
@@ -126,7 +127,7 @@ function DirectoryBranch({
               disabled={props.busy || entry.kind !== "FILE"}
               onClick={() => props.onOpen(entry.path)}
             >
-              <span aria-hidden>{entry.kind === "FILE" ? "▤" : "↗"}</span>
+              <Icon name={entry.kind === "FILE" ? "file" : "link"} />
               <span>{entry.path.split("/").at(-1)}</span>
             </button>
             {entry.kind === "FILE" &&
@@ -209,31 +210,33 @@ function DirectoryBranch({
       >
         {path.split("/").at(-1)}
       </summary>
-      {props.onMove && props.commit && movablePath(path) && (
-        <button
-          className="tree-move"
-          type="button"
-          disabled={props.busy}
-          aria-label={`移动文件夹 ${path}`}
-          onClick={(event) =>
-            props.onMove!(path, props.commit!, event.currentTarget)
-          }
-        >
-          移动文件夹
-        </button>
-      )}
+      <span className="tree-actions">
+        {props.onMove && props.commit && movablePath(path) && (
+          <button
+            className="tree-move"
+            type="button"
+            disabled={props.busy}
+            aria-label={`移动文件夹 ${path}`}
+            onClick={(event) =>
+              props.onMove!(path, props.commit!, event.currentTarget)
+            }
+          >
+            移动
+          </button>
+        )}
+        {opened && props.onExport && exportablePath(path) && (
+          <button
+            type="button"
+            className="tree-move"
+            aria-label={`导出文件夹 ${path}`}
+            disabled={props.busy}
+            onClick={(event) => props.onExport!(path, event.currentTarget)}
+          >
+            导出
+          </button>
+        )}
+      </span>
       <div>{opened && content}</div>
-      {opened && props.onExport && exportablePath(path) && (
-        <button
-          type="button"
-          className="tree-move"
-          aria-label={`导出文件夹 ${path}`}
-          disabled={props.busy}
-          onClick={(event) => props.onExport!(path, event.currentTarget)}
-        >
-          导出文件夹
-        </button>
-      )}
     </details>
   );
 }

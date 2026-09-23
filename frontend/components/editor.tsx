@@ -30,6 +30,7 @@ import { FolderPicker } from "./folder-picker";
 import { ExportDialog } from "./export-dialog";
 import { HistoryDialog } from "./history-dialog";
 import { DiagnosticMessage } from "./diagnostic";
+import { Icon } from "./ui/icons";
 import {
   contentRoot,
   inContentRoot,
@@ -786,28 +787,31 @@ export function Editor({
             </button>
           </form>
         </details>
-        <form
-          className="open-path private-search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void searchText(
-              String(new FormData(event.currentTarget).get("query")),
-            );
-          }}
-        >
-          <label>
-            搜索库内正文
-            <input
-              name="query"
-              required
-              maxLength={200}
-              placeholder="包括有权读取的私有内容"
-            />
-          </label>
-          <button className="button-secondary" disabled={busy}>
-            搜索正文
-          </button>
-        </form>
+        <details className="body-search" open={search !== null || undefined}>
+          <summary>搜索库内正文</summary>
+          <form
+            className="open-path private-search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void searchText(
+                String(new FormData(event.currentTarget).get("query")),
+              );
+            }}
+          >
+            <label>
+              <span className="sr-only">搜索库内正文</span>
+              <input
+                name="query"
+                required
+                maxLength={200}
+                placeholder="包括有权读取的私有内容"
+              />
+            </label>
+            <button className="button-secondary" disabled={busy}>
+              搜索正文
+            </button>
+          </form>
+        </details>
         {search && (
           <section className="private-results">
             <div className="sidebar-title">
@@ -971,7 +975,23 @@ export function Editor({
                     移动…
                   </button>
                 )}
-                <span className="save-state">
+                {contentRoot(path) && (
+                  <span
+                    className="visibility-badge"
+                    data-root={contentRoot(path)}
+                  >
+                    <Icon
+                      name={contentRoot(path) === "public" ? "globe" : "lock"}
+                    />
+                    {contentRoot(path) === "public" ? "公开" : "私密"}
+                  </span>
+                )}
+                <span
+                  className="save-state"
+                  data-state={
+                    file.expectedAbsence ? "new" : dirty ? "dirty" : "saved"
+                  }
+                >
                   {file.expectedAbsence
                     ? "新文件"
                     : dirty
@@ -1027,24 +1047,29 @@ export function Editor({
             ) : (
               <>
                 <div className="view-tabs">
-                  <button
-                    aria-pressed={view === "write"}
-                    onClick={() => setView("write")}
-                  >
-                    编辑
-                  </button>
-                  <button
-                    aria-pressed={view === "preview"}
-                    onClick={() => setView("preview")}
-                  >
-                    预览
-                  </button>
-                  <button
-                    aria-pressed={view === "split"}
-                    onClick={() => setView("split")}
-                  >
-                    并排
-                  </button>
+                  <span className="segmented" role="group" aria-label="视图">
+                    <button
+                      type="button"
+                      aria-pressed={view === "write"}
+                      onClick={() => setView("write")}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={view === "preview"}
+                      onClick={() => setView("preview")}
+                    >
+                      预览
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={view === "split"}
+                      onClick={() => setView("split")}
+                    >
+                      并排
+                    </button>
+                  </span>
                   <button className="text-button" onClick={resolvePreview}>
                     更新图片预览
                   </button>
@@ -1166,8 +1191,10 @@ export function Editor({
             ))}
           </>
         ) : (
-          <div className="empty-state">
-            <span aria-hidden>▤</span>
+          <div className="editor-empty">
+            <span className="empty-mark">
+              <Icon name="pen" />
+            </span>
             <h2>从一篇记录开始。</h2>
             <p>在左侧选择目录、新建笔记，或打开已有文件。</p>
           </div>
