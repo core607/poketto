@@ -47,7 +47,6 @@ export function LoginDialog({
               embedded
               onLogin={async () => {
                 setOpen(false);
-                window.dispatchEvent(new Event("poketto:session"));
                 await onLogin();
               }}
             />

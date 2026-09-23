@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -178,14 +180,42 @@ class GoogleIdentityController {
             if (mode == null || returnTo == null || returnTo.length() > 4096) {
                 throw new IllegalArgumentException("Google login requires a mode and a bounded local destination");
             }
-            URI uri = URI.create(returnTo);
-            if (uri.isAbsolute()
-                    || uri.getRawAuthority() != null
-                    || uri.getRawFragment() != null
-                    || !List.of("/admin", "/connect").contains(uri.getRawPath())) {
-                throw new IllegalArgumentException("Google login may return only to the account or connection page");
+            if (!localPage(returnTo)) {
+                throw new IllegalArgumentException("Google login may return only to a page on this site");
             }
         }
+    }
+
+    /**
+     * Accepts a path-and-query on this origin that names a page, so sign-in can return a reader to the
+     * article or list they started from. Rejects anything a browser could resolve elsewhere or into an API:
+     * schemes, authorities, fragments, backslashes, encoded slashes or dots, dot segments, and the API, MCP
+     * and well-known namespaces.
+     */
+    static boolean localPage(String target) {
+        URI uri;
+        try {
+            uri = URI.create(target);
+        } catch (IllegalArgumentException malformed) {
+            return false;
+        }
+        String path = uri.getRawPath();
+        if (uri.isAbsolute()
+                || uri.getRawAuthority() != null
+                || uri.getRawFragment() != null
+                || path == null
+                || !path.startsWith("/")
+                || path.startsWith("//")
+                || target.contains("\\")
+                || !path.equals(uri.normalize().getRawPath())) {
+            return false;
+        }
+        String lower = path.toLowerCase(Locale.ROOT);
+        if (lower.contains("%2f") || lower.contains("%5c") || lower.contains("%2e")) {
+            return false;
+        }
+        return Stream.of("/api", "/mcp", "/.well-known")
+                .noneMatch(prefix -> lower.equals(prefix) || lower.startsWith(prefix + "/"));
     }
 
     record Destination(String url) {

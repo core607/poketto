@@ -191,6 +191,16 @@
   opacity: 1;
   pointer-events: auto;
 }
+/* Touch screens have no hover, so row actions stay visible there. */
+@media (hover: none) {
+  .tree-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .file-tree .tree-file-row > .tree-move {
+    display: inline-flex;
+  }
+}
 .tree-actions .tree-move {
   display: inline-flex;
 }

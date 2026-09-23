@@ -42,8 +42,10 @@ component structure are new.
 - **Space sites** (`/s/{slug}`): a masthead with the space name, record count and a
   follow action, and the space's own tabs (home, tags, archive, search). The home
   tab shows the root note in an intro panel above the article list; the archive is
-  grouped by year. Root `/read`, `/tags` and `/archive` redirect temporarily to the
-  default space, because the default space can change.
+  grouped by year. Each space site offers its own RSS feed at `/s/{slug}/rss.xml`,
+  declared in the page head and linked from the footer. Root `/read`, `/tags` and
+  `/archive` redirect temporarily to the default space, because the default space can
+  change.
 - **Reading**: one measured column with breadcrumbs from the space; collections sit
   in a side rail on wide screens and inline on narrow ones, with previous/next links
   at the end of an article read through a collection. Interactions render only for
@@ -59,7 +61,8 @@ component structure are new.
 - **Editor**: a file sidebar (creation, filename search, local drafts, repository
   tree, body search, advanced path, diagnostics), a sticky toolbar with the path,
   public or private root, save state and actions, a segmented view switcher, and
-  the media picker. Tree rows reveal move and export on hover or focus.
+  the media picker. Tree rows reveal move and export on hover or focus, and keep
+  them visible on touch screens.
 - **Personal** (`/community`): notifications, bookmarks, likes, followed spaces, the
   following feed and blocks. `?tab=` selects any personal list. The report queue is
   part of site administration together with site account management.
@@ -110,6 +113,3 @@ space, a collection article, sign-in and the editor.
 - The theme follows the system preference; there is no manual switch.
 - The space masthead has no description: the public space API returns only a slug
   and a display name.
-- `/rss.xml` still covers only the default space; space sites have no feed.
-- Tree row actions rely on hover or keyboard focus; on touch screens they appear
-  once a row's button has focus.
