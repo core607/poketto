@@ -1,10 +1,15 @@
 "use client";
 
-export const contentPermissions = [
-  { key: "READ_PRIVATE", label: "查看草稿" },
-  { key: "WRITE_PRIVATE", label: "修改草稿" },
-  { key: "PUBLISH", label: "发布，并修改已发布的内容" },
-] as const;
+/** The one name each content permission has wherever people grant it: members, keys and AI clients. */
+export const permissionLabels = {
+  READ_PRIVATE: "查看草稿",
+  WRITE_PRIVATE: "修改草稿",
+  PUBLISH: "发布，并修改已发布的内容",
+} as const;
+
+export const contentPermissions = (
+  ["READ_PRIVATE", "WRITE_PRIVATE", "PUBLISH"] as const
+).map((key) => ({ key, label: permissionLabels[key] }));
 
 export function PermissionFields({
   value,

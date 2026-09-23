@@ -998,7 +998,7 @@ export function Editor({
                     <Icon
                       name={contentRoot(path) === "public" ? "globe" : "lock"}
                     />
-                    {contentRoot(path) === "public" ? "公开" : "私密"}
+                    {contentRoot(path) === "public" ? "已发布" : "草稿"}
                   </span>
                 )}
                 <span

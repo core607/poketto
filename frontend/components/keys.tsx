@@ -6,21 +6,22 @@ import type { Member } from "./members";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
+import { permissionLabels } from "./content-permissions";
 const capabilities = [
   {
     key: "READ_PRIVATE",
-    label: "读取私有内容",
-    detail: "读取此空间中的私有笔记与图片。",
+    label: permissionLabels.READ_PRIVATE,
+    detail: "读取这个空间草稿里的笔记与图片。",
   },
   {
     key: "WRITE_PRIVATE",
-    label: "修改私有内容",
-    detail: "创建、编辑或删除私有文本。",
+    label: permissionLabels.WRITE_PRIVATE,
+    detail: "创建、编辑或删除草稿里的文字。",
   },
   {
     key: "PUBLISH",
-    label: "发布与修改公开内容",
-    detail: "允许更新公开站点上的内容与引用关系。",
+    label: permissionLabels.PUBLISH,
+    detail: "允许更新网站上已发布的内容与引用关系。",
   },
   {
     key: "MANAGE_KEYS",
