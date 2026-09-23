@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SiteBar, SiteFooter } from "../components/site-chrome";
+import { GoogleReturnNotice } from "../components/google-login";
 
 export const metadata: Metadata = {
   title: { default: "Poketto · 记录与收藏", template: "%s · Poketto" },
@@ -15,6 +16,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           跳转到正文
         </a>
         <SiteBar />
+        <div className="global-notice">
+          {/* A failed Google sign-in returns here with loginError; the first reader shows it. */}
+          <GoogleReturnNotice />
+        </div>
         <main id="main">{children}</main>
         <SiteFooter />
       </body>

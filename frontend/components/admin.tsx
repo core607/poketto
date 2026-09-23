@@ -67,6 +67,7 @@ function AdminContent() {
         window.location.pathname,
       );
       setAccount(null);
+      window.dispatchEvent(new Event("poketto:session"));
     } catch (error) {
       setError(message(error));
     }

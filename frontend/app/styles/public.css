@@ -1286,3 +1286,11 @@ body:has(.image-lightbox[open]) {
 .state-page form {
   width: min(100%, 320px);
 }
+.global-notice {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+.global-notice:not(:empty) {
+  padding-top: 1rem;
+}

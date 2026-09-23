@@ -187,10 +187,30 @@ class GoogleIdentityHttpIntegrationIT {
     }
 
     @Test
+    void signInReturnsReadersToThePageTheyStartedFrom() throws Exception {
+        for (String destination :
+                new String[] {"/", "/community?tab=bookmarks", "/s/home/read/%E9%9B%A8%E5%90%8E?collection=%2F"}) {
+            MockHttpSession session = new MockHttpSession();
+            String state = start(session, "LOGIN", destination);
+            callback(session, state).andExpect(header().string("Location", destination));
+        }
+    }
+
+    @Test
     void unsafeReturnsAndAnonymousLinkingAreRejectedAndCancellationConsumesOnlyThatFlow() throws Exception {
         MockHttpSession session = new MockHttpSession();
         for (String destination : new String[] {
-            "https://evil.example", "//evil.example", "/%2f%2fevil.example", "/admin#fragment", "/api/auth/logout"
+            "https://evil.example",
+            "//evil.example",
+            "/%2f%2fevil.example",
+            "/admin#fragment",
+            "/api/auth/logout",
+            "/API/auth/logout",
+            "/mcp",
+            "/s/../api/auth/logout",
+            "/s/%2e%2e/api/auth/logout",
+            "/\\\\evil.example",
+            "admin"
         }) {
             mvc.perform(csrf(session, post("/api/auth/identity/google/start"))
                             .contentType("application/json")

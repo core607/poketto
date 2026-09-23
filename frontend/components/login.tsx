@@ -83,6 +83,8 @@ export function Login({
         method: "POST",
         form: new URLSearchParams({ username, password }),
       });
+      // The global bar and other session readers refresh on this event.
+      window.dispatchEvent(new Event("poketto:session"));
       await onLogin();
     } catch (error) {
       setError(message(error));

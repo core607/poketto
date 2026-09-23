@@ -171,6 +171,9 @@ function AccountEntrance() {
 }
 
 export function SiteFooter() {
+  const pathname = usePathname();
+  // Inside a space site the feed link follows that space.
+  const space = /^\/s\/([^/]+)/.exec(pathname)?.[1];
   return (
     <footer className="site-footer">
       <div className="site-footer-inner">
@@ -179,7 +182,7 @@ export function SiteFooter() {
           Poketto · 给想法一个留下来的地方
         </span>
         <nav aria-label="站点信息">
-          <a href="/rss.xml">RSS</a>
+          <a href={space ? `/s/${space}/rss.xml` : "/rss.xml"}>RSS</a>
           <a href="/privacy">隐私政策</a>
           <a href="/terms">服务条款</a>
         </nav>
