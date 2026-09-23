@@ -55,12 +55,12 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
      * unfiltered browse with an empty page.
      */
     public boolean matches(String title, String body, List<String> tags, Instant createdAt) {
-        return (query.isEmpty()
-                        || title.contains(query)
-                        || MarkdownText.visible(body).contains(query))
-                && (tag.isEmpty() || tags.contains(tag))
+        return (tag.isEmpty() || tags.contains(tag))
                 && (from == null || !createdAt.isBefore(from))
-                && (to == null || !createdAt.isAfter(to));
+                && (to == null || !createdAt.isAfter(to))
+                && (query.isEmpty()
+                        || title.contains(query)
+                        || MarkdownText.visible(body).contains(query));
     }
 
     /** The requested window of an already-filtered result; the caller still reports the full count. */

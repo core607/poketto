@@ -1,12 +1,33 @@
 package io.github.core607.poketto.content;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
 
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class MarkdownTextTests {
+    @Test
+    void metadataExclusionsDoNotParseOtherwiseMatchingMarkdown() {
+        Instant created = Instant.parse("2026-09-01T00:00:00Z");
+        List<DocumentSearch> excluded = List.of(
+                new DocumentSearch("needle", "missing", null, null, 0, 20),
+                new DocumentSearch("needle", "", created.plusSeconds(1), null, 0, 20),
+                new DocumentSearch("needle", "", null, created.minusSeconds(1), 0, 20));
+        try (var text = mockStatic(MarkdownText.class, CALLS_REAL_METHODS)) {
+            for (DocumentSearch search : excluded) {
+                assertThat(search.matches("Title", "# Title\n\n**needle**", List.of("sample"), created))
+                        .isFalse();
+            }
+            text.verifyNoInteractions();
+        }
+        var inclusive = new DocumentSearch("needle", "sample", created, created, 0, 20);
+        assertThat(inclusive.matches("Title", "# Title\n\n**needle**", List.of("sample"), created))
+                .isTrue();
+    }
+
     @Test
     void extractsRenderedLabelsBeforeTruncationAndPreservesCodeLiterals() {
         String markdown = "# 雨天\n\n[城市 **漫步**](https://example.org/%E9%9B%A8) &amp; `![code](literal)`"
