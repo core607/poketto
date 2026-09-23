@@ -21,9 +21,13 @@ export function proxy(request: NextRequest) {
   response.headers.set("Content-Security-Policy", csp);
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set("Cache-Control", "no-store");
+  // Pages carry a per-request nonce and are never reused; a header set here would replace the
+  // caching that the cover address and the share image declare for themselves.
+  if (!OWN_CACHING.test(request.nextUrl.pathname))
+    response.headers.set("Cache-Control", "no-store");
   return response;
 }
+const OWN_CACHING = /^\/(?:share\.png$|s\/[^/]+\/cover(?:\/|$))/;
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

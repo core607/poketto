@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import test, { type TestContext } from "node:test";
+import { NextRequest } from "next/server";
 import { renderToStaticMarkup } from "react-dom/server";
 import { GET as cover } from "../app/s/[space]/cover/[[...slug]]/route";
 import Article, {
   generateMetadata,
 } from "../app/s/[space]/read/[[...slug]]/page";
 import { coverHref, routeFromSegments } from "../lib/format";
+import { proxy } from "../proxy";
 
 async function backend(
   t: TestContext,
@@ -85,6 +87,23 @@ test("the cover address serves the thumbnail, redirects when there is none and 4
   assert.equal((await call("/s/home/cover/withdrawn")).status, 404);
   assert.equal((await call("/s/home/cover/%2e%2e")).status, 404);
   assert.deepEqual(routes, ["/雨后/100%", "/plain", "/withdrawn"]);
+});
+
+test("pages are never cached, while the cover address and share image keep their own caching", () => {
+  const caching = (path: string) =>
+    proxy(new NextRequest("https://poketto.example" + path)).headers.get(
+      "Cache-Control",
+    );
+  for (const page of [
+    "/",
+    "/s/home",
+    "/s/home/read/cover",
+    "/s/cover/read/a",
+    "/s/home/covers",
+  ])
+    assert.equal(caching(page), "no-store", page);
+  for (const own of ["/s/home/cover", "/s/home/cover/news/a", "/share.png"])
+    assert.equal(caching(own), null, own);
 });
 
 test("an article declares its cover for previews and describes itself as structured data", async (t) => {
