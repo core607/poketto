@@ -56,6 +56,7 @@ export type Article = Snapshot &
     images?: Record<string, string>;
     links?: Record<string, string>;
     downloads?: Record<string, string>;
+    playback?: Record<string, string>;
     gallery?: { src: string; original: string; alt: string }[];
     galleryStatus: GalleryStatus;
     navigation: CollectionNavigation;

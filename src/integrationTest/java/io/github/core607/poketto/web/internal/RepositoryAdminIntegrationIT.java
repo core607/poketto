@@ -7,9 +7,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.community.Community;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import java.awt.image.BufferedImage;
@@ -28,6 +30,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -786,6 +789,135 @@ class RepositoryAdminIntegrationIT {
                     404);
         }
         portableExportsOverHttp(client, csrf, bytes);
+        playbackOverHttp(client, csrf);
+    }
+
+    private void playbackOverHttp(HttpClient client, JsonNode csrf) throws Exception {
+        byte[] wave = new byte[16 * 1024];
+        System.arraycopy("RIFF".getBytes(StandardCharsets.US_ASCII), 0, wave, 0, 4);
+        System.arraycopy("WAVE".getBytes(StandardCharsets.US_ASCII), 0, wave, 8, 4);
+        for (int index = 12; index < wave.length; index++) {
+            wave[index] = (byte) index;
+        }
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + scoped("/api/admin/media")))
+                .timeout(Duration.ofSeconds(15))
+                .header(csrf.get("headerName").stringValue(), csrf.get("token").stringValue())
+                .header("Content-Type", "application/octet-stream")
+                .header("X-Media-Type", "audio/wav")
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .POST(HttpRequest.BodyPublishers.ofByteArray(wave))
+                .build();
+        var uploaded = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(uploaded.statusCode()).isEqualTo(200);
+        ManagedAsset asset = json.readValue(uploaded.body(), ManagedAsset.class);
+        publishPlayback(client, csrf, asset);
+        JsonNode page = http(client, "GET", "/api/public/document?route=/http-playback", null, null, 200);
+        assertThat(page.get("playback").get("sound.wav").stringValue()).isEqualTo("audio");
+        String address = page.get("downloads").get("sound.wav").stringValue() + "&play=true";
+        try (var anonymous = HttpClient.newHttpClient()) {
+            assertPlaybackHttp(anonymous, address, wave);
+            assertPlaybackHttp(client, scoped("/api/admin/media?path=private/sound.wav&play=true"), wave);
+            http(anonymous, "GET", address.replace("public%2Fsound.wav", "private%2Fsound.wav"), null, null, 404);
+            http(anonymous, "GET", scoped("/api/admin/media?path=private/sound.wav&play=true"), null, null, 401);
+            JsonNode article = http(
+                    client, "GET", scoped("/api/admin/repository/file?path=public/http-playback.md"), null, null, 200);
+            var removeReference = new RepositoryAdminController.Change(
+                    "public/http-playback.md",
+                    false,
+                    article.get("revision").stringValue(),
+                    "---\nroute: /http-playback\n---\nReference withdrawn\n");
+            http(
+                    client,
+                    "POST",
+                    scoped("/api/admin/repository/patch"),
+                    csrf,
+                    new RepositoryAdminController.PatchRequest(
+                            article.get("commit").stringValue(), List.of(removeReference)),
+                    200);
+            http(anonymous, "GET", address, null, null, 404);
+        }
+    }
+
+    private void publishPlayback(HttpClient client, JsonNode csrf, ManagedAsset asset) throws Exception {
+        JsonNode current =
+                http(client, "GET", scoped("/api/admin/repository/file?path=.poketto/assets.json"), null, null, 200);
+        var entries = new TreeMap<>(
+                RepositoryMediaIndex.parse(current.get("source").stringValue().getBytes(StandardCharsets.UTF_8))
+                        .files());
+        var entry = new RepositoryMediaIndex.Media(
+                asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
+        entries.put("public/sound.wav", entry);
+        entries.put("private/sound.wav", entry);
+        var index = new RepositoryAdminController.Change(
+                RepositoryMediaIndex.PATH,
+                false,
+                current.get("revision").stringValue(),
+                new String(new RepositoryMediaIndex(entries).encode(), StandardCharsets.UTF_8));
+        var article = new RepositoryAdminController.Change(
+                "public/http-playback.md", true, null, "---\nroute: /http-playback\n---\n[Sound](sound.wav)\n");
+        http(
+                client,
+                "POST",
+                scoped("/api/admin/repository/patch"),
+                csrf,
+                new RepositoryAdminController.PatchRequest(
+                        current.get("commit").stringValue(), List.of(index, article)),
+                200);
+    }
+
+    private void assertPlaybackHttp(HttpClient client, String address, byte[] bytes) throws Exception {
+        var uri = URI.create("http://127.0.0.1:" + port + address);
+        for (String range : List.of("bytes=0-31", "bytes=8000-", "bytes=-17")) {
+            int start = range.equals("bytes=0-31") ? 0 : range.equals("bytes=8000-") ? 8000 : bytes.length - 17;
+            int end = range.equals("bytes=0-31") ? 32 : bytes.length;
+            var response = client.send(
+                    HttpRequest.newBuilder(uri)
+                            .timeout(Duration.ofSeconds(15))
+                            .header("Range", range)
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(response.statusCode()).isEqualTo(206);
+            assertThat(response.body()).containsExactly(Arrays.copyOfRange(bytes, start, end));
+            assertThat(response.headers().firstValue("Content-Range").orElseThrow())
+                    .isEqualTo("bytes " + start + "-" + (end - 1) + "/" + bytes.length);
+            assertThat(response.headers().firstValue("Content-Length").orElseThrow())
+                    .isEqualTo(String.valueOf(end - start));
+            assertThat(response.headers().firstValue("Content-Type").orElseThrow())
+                    .isEqualTo("audio/wav");
+            assertThat(response.headers().firstValue("Content-Disposition").orElseThrow())
+                    .startsWith("inline;");
+            assertThat(response.headers().firstValue("Cache-Control").orElseThrow())
+                    .isEqualTo("no-store");
+            assertThat(response.headers().firstValue("X-Content-Type-Options").orElseThrow())
+                    .isEqualTo("nosniff");
+        }
+        var invalid = client.send(
+                HttpRequest.newBuilder(uri)
+                        .header("Range", "bytes=9999999-")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(invalid.statusCode()).isEqualTo(416);
+        assertThat(invalid.headers().firstValue("Content-Range").orElseThrow()).isEqualTo("bytes */" + bytes.length);
+        var head = client.send(
+                HttpRequest.newBuilder(uri)
+                        .header("Range", "bytes=0-1")
+                        .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(head.statusCode()).isEqualTo(200);
+        assertThat(head.body()).isEmpty();
+        assertThat(head.headers().firstValue("Content-Length").orElseThrow()).isEqualTo(String.valueOf(bytes.length));
+        var ifRange = client.send(
+                HttpRequest.newBuilder(uri)
+                        .header("Range", "bytes=0-1")
+                        .header("If-Range", "unknown")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(ifRange.statusCode()).isEqualTo(200);
+        assertThat(ifRange.body()).containsExactly(bytes);
     }
 
     private void portableExportsOverHttp(HttpClient client, JsonNode csrf, byte[] original) throws Exception {

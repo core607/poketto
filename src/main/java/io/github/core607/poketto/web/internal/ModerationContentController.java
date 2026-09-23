@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.ModerationContent;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
@@ -67,8 +68,10 @@ class ModerationContentController {
             @RequestParam String commit,
             @RequestParam String route,
             @RequestParam String path,
+            @RequestParam(defaultValue = "false") boolean play,
+            HttpServletRequest request,
             HttpServletResponse response) {
         MediaFileController.send(
-                content.download(actor, WorkspaceId.parse(workspaceId), commit, route, path), response);
+                content.download(actor, WorkspaceId.parse(workspaceId), commit, route, path), play, request, response);
     }
 }

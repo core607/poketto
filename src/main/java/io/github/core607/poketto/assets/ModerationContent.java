@@ -91,6 +91,7 @@ public final class ModerationContent {
                 original.commit(),
                 original.links(),
                 rewrite(original.downloads(), download),
+                original.playback(),
                 rewrite(original.images(), image),
                 original.gallery().stream()
                         .map(entry -> new ResolvedMedia.GalleryImage(

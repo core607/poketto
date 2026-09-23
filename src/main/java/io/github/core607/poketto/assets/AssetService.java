@@ -424,7 +424,14 @@ public final class AssetService {
             }
         }
         return new ResolvedMedia(
-                prepared.body(), prepared.commit(), prepared.links(), prepared.downloads(), images, gallery, status);
+                prepared.body(),
+                prepared.commit(),
+                prepared.links(),
+                prepared.downloads(),
+                prepared.playback(),
+                images,
+                gallery,
+                status);
     }
 
     String imageUrl(

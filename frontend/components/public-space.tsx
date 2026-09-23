@@ -118,6 +118,7 @@ export async function PublicSpacePage({
             images={root.images}
             links={root.links}
             downloads={root.downloads}
+            playback={root.playback}
             space={slug}
             collection={
               root.navigation && {

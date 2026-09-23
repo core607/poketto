@@ -97,6 +97,7 @@ export default async function Article({
         images={value.images}
         links={value.links}
         downloads={value.downloads}
+        playback={value.playback}
         collection={
           value.navigation && {
             route: value.route,
