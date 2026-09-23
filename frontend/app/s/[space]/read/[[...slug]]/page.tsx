@@ -1,10 +1,20 @@
 import { notFound } from "next/navigation";
-import { spaceArticle, PublicApiError } from "../../../../../lib/public-api";
+import {
+  spaceArticle,
+  spaceInfo,
+  PublicApiError,
+} from "../../../../../lib/public-api";
 import { date, spaceHref } from "../../../../../lib/format";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
 import { ArticleCommunity } from "../../../../../components/article-community";
-import { CollectionNavigation } from "../../../../../components/collection-navigation";
+import {
+  CollectionPanel,
+  hasCollectionPanel,
+  selectedMembership,
+  SequenceNavigation,
+} from "../../../../../components/collection-navigation";
+import { Avatar, Icon } from "../../../../../components/ui/icons";
 import {
   readingSearchReturn,
   type ReadingSearchParameters,
@@ -56,61 +66,114 @@ export default async function Article({
     if (error instanceof PublicApiError && error.status === 404) notFound();
     throw error;
   });
+  // The space name only labels the breadcrumb; the article stays readable without it.
+  const spaceName = await spaceInfo(space)
+    .then((info) => info.displayName || space)
+    .catch(() => space);
   const parameters = (await searchParams) ?? {};
-  const selected = parameters.collection;
+  const selected =
+    typeof parameters.collection === "string"
+      ? parameters.collection
+      : undefined;
   const returnToSearch = readingSearchReturn(parameters, space);
+  const folders = segments.slice(0, -1);
+  const collection = (
+    <CollectionPanel
+      navigation={value.navigation}
+      selected={selected}
+      route={value.route}
+      space={space}
+    />
+  );
   return (
-    <article className="reading-shell">
-      <a href={returnToSearch ?? spaceHref(space)} className="back-link">
-        {returnToSearch ? "← 返回搜索结果" : "← 回到这个空间"}
-      </a>
-      <header className="reading-header">
-        <div className="article-meta">
-          <span className="author-name" title="作者自行填写的署名">
-            作者署名：{value.authorName}
-          </span>
-          <time dateTime={value.createdAt}>{date(value.createdAt)}</time>
-          {value.folderPage && <span>文件夹笔记</span>}
-        </div>
-        <h1>{value.title}</h1>
-        <div className="tag-row">
-          {value.tags.map((tag) => (
-            <a
-              href={spaceHref(space) + "/tags?tag=" + encodeURIComponent(tag)}
-              key={tag}
-            >
-              {tag}
-            </a>
+    <div
+      className={
+        hasCollectionPanel(value.navigation)
+          ? "read-layout has-rail"
+          : "read-layout"
+      }
+    >
+      <article className="reading-shell">
+        {returnToSearch && (
+          <a href={returnToSearch} className="back-link">
+            <Icon name="arrowLeft" />
+            返回搜索结果
+          </a>
+        )}
+        <nav className="crumbs" aria-label="所在位置">
+          <a href={spaceHref(space)}>
+            <Avatar name={spaceName} />
+            {spaceName}
+          </a>
+          {folders.map((folder, index) => (
+            <span key={index}>
+              <span className="sep">/</span> {folder}
+            </span>
           ))}
+        </nav>
+        <header>
+          <h1 className="read-title">{value.title}</h1>
+          <div className="read-meta">
+            {value.authorName !== spaceName && (
+              <span className="author-name" title="作者自行填写的署名">
+                {value.authorName}
+              </span>
+            )}
+            <time dateTime={value.createdAt}>{date(value.createdAt)}</time>
+            {value.folderPage && <span className="kind">目录</span>}
+            {value.tags.length > 0 && (
+              <span className="card-tags">
+                {value.tags.map((tag) => (
+                  <a
+                    className="tag"
+                    href={
+                      spaceHref(space) + "/tags?tag=" + encodeURIComponent(tag)
+                    }
+                    key={tag}
+                  >
+                    #{tag}
+                  </a>
+                ))}
+              </span>
+            )}
+          </div>
+        </header>
+        {hasCollectionPanel(value.navigation) && (
+          <div className="read-inline-collection">{collection}</div>
+        )}
+        <div className="read-body">
+          <Markdown
+            space={space}
+            source={value.body}
+            pageTitle={value.title}
+            images={value.images}
+            links={value.links}
+            downloads={value.downloads}
+            playback={value.playback}
+            collection={
+              value.navigation && {
+                route: value.route,
+                entries: value.navigation.entries,
+              }
+            }
+          />
+          <Gallery items={value.gallery} status={value.galleryStatus} />
         </div>
-      </header>
-      <CollectionNavigation
-        navigation={value.navigation}
-        selected={typeof selected === "string" ? selected : undefined}
-        route={value.route}
-        space={space}
-      />
-      <Markdown
-        space={space}
-        source={value.body}
-        pageTitle={value.title}
-        images={value.images}
-        links={value.links}
-        downloads={value.downloads}
-        playback={value.playback}
-        collection={
-          value.navigation && {
-            route: value.route,
-            entries: value.navigation.entries,
-          }
-        }
-      />
-      <Gallery items={value.gallery} status={value.galleryStatus} />
-      <footer className="article-footer">
-        最后更新于 {date(value.updatedAt)}
-        <a href={spaceHref(space)}>更多记录 ↗</a>
-      </footer>
-      <ArticleCommunity space={space} articleId={value.articleId} />
-    </article>
+        <SequenceNavigation
+          membership={selectedMembership(value.navigation, selected)}
+          space={space}
+        />
+        <footer className="read-end">
+          <span>最后更新于 {date(value.updatedAt)}</span>
+          <a href={spaceHref(space)}>更多来自「{spaceName}」的记录 →</a>
+        </footer>
+        <ArticleCommunity space={space} articleId={value.articleId} />
+      </article>
+      {hasCollectionPanel(value.navigation) && (
+        <aside className="read-rail" aria-label="合集">
+          {collection}
+        </aside>
+      )}
+    </div>
   );
 }

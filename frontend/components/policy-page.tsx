@@ -13,8 +13,9 @@ export function PolicyPage({
       ? email
       : "";
   return (
-    <article className="page-shell narrow policy-page">
-      <header className="page-heading">
+    <article className="page doc">
+      <header className="page-head">
+        <p className="eyebrow">站点信息</p>
         <h1>{title}</h1>
       </header>
       {children}
@@ -32,9 +33,9 @@ export function PolicyPage({
           提出账号或数据处理请求时，请说明相关账号和内容；处理前可能需要核实你与该账号的关系。请勿发送密码、验证码或访问密钥。
         </p>
       </section>
-      <p>
+      <p className="muted">
         <a href="/privacy">隐私政策</a> · <a href="/terms">服务条款</a> ·{" "}
-        <a href="/admin">账号管理</a>
+        <a href="/admin?tab=account">账号管理</a>
       </p>
     </article>
   );

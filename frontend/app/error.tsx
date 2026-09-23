@@ -1,11 +1,16 @@
 "use client";
 export default function ErrorPage() {
   return (
-    <section className="page-shell empty-state">
-      <span aria-hidden>☁</span>
+    <section className="state-page">
+      <p className="state-code">···</p>
       <h1>内容暂时无法读取。</h1>
-      <p>稍等片刻，再回来看看。</p>
-      <button onClick={() => window.location.reload()}>重新加载</button>
+      <p>服务可能正在同步或重启，稍等片刻再试一次。</p>
+      <button
+        className="btn btn-primary"
+        onClick={() => window.location.reload()}
+      >
+        重新加载
+      </button>
     </section>
   );
 }

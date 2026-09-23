@@ -39,6 +39,13 @@ test("article page sends decoded route bytes to HTTP API while metadata keeps li
   const requests: string[] = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url!, "http://localhost");
+    if (url.pathname === "/api/public/spaces/second-site") {
+      response.setHeader("Content-Type", "application/json");
+      response.end(
+        JSON.stringify({ slug: "second-site", displayName: "第二个空间" }),
+      );
+      return;
+    }
     assert.equal(url.pathname, "/api/public/spaces/second-site/document");
     const route = url.searchParams.get("route")!;
     requests.push(route);
@@ -108,7 +115,8 @@ test("home and article keep text and empty gallery status in their initial HTML"
     response.setHeader("Content-Type", "application/json");
     response.end(
       JSON.stringify(
-        url.pathname === "/api/public/spaces/home"
+        url.pathname === "/api/public/spaces/home" ||
+          url.pathname === "/api/public/spaces/second-site"
           ? { slug: "home", displayName: "Home" }
           : url.pathname.endsWith("/documents")
             ? { commit: "fixture", items: [], total: 0, offset: 0, limit: 12 }

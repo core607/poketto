@@ -7,12 +7,15 @@ import {
   spaceTags,
   type PublicSpace,
 } from "../lib/public-api";
-import { spaceHref } from "../lib/format";
+import type { ArticlePage } from "../lib/types";
+import { articleHref, date, spaceHref } from "../lib/format";
 import { pageOffset } from "../lib/pagination";
 import { ArticleList } from "./articles";
 import { Markdown } from "./markdown";
 import { Gallery } from "./gallery";
 import { SpaceFollow } from "./article-community";
+import { Avatar, Icon } from "./ui/icons";
+import { Pager } from "./ui/pager";
 
 export async function requirePublicSpace(slug: string) {
   return spaceInfo(slug).catch((error) => {
@@ -21,19 +24,48 @@ export async function requirePublicSpace(slug: string) {
   });
 }
 
-export function SpaceNavigation({ space }: { space: PublicSpace }) {
+type View = "home" | "search" | "tags" | "archive";
+
+function SpaceMast({
+  space,
+  view,
+  total,
+}: {
+  space: PublicSpace;
+  view: View;
+  total?: number;
+}) {
   const base = spaceHref(space.slug);
+  const current = (target: View) => (view === target ? "page" : undefined);
   return (
-    <header className="page-heading">
-      <p className="eyebrow">公开空间</p>
-      <h1>{space.displayName}</h1>
-      <nav className="tag-row" aria-label="空间导航">
-        <a href={base}>空间首页</a>
-        <a href={base + "/search"}>搜索</a>
-        <a href={base + "/tags"}>标签</a>
-        <a href={base + "/archive"}>归档</a>
+    <header className="space-mast">
+      <div className="space-mast-top">
+        <Avatar name={space.displayName} large />
+        <div>
+          <h1>{space.displayName}</h1>
+          <p className="space-sub">
+            公开空间
+            {total !== undefined && ` · ${total} 篇公开记录`}
+          </p>
+        </div>
+        <div className="space-actions">
+          <SpaceFollow space={space.slug} />
+        </div>
+      </div>
+      <nav className="tabs" aria-label="空间导航">
+        <a href={base} aria-current={current("home")}>
+          首页
+        </a>
+        <a href={base + "/tags"} aria-current={current("tags")}>
+          标签
+        </a>
+        <a href={base + "/archive"} aria-current={current("archive")}>
+          归档
+        </a>
+        <a href={base + "/search"} aria-current={current("search")}>
+          搜索
+        </a>
       </nav>
-      <SpaceFollow space={space.slug} />
     </header>
   );
 }
@@ -50,7 +82,7 @@ export async function PublicSpacePage({
   parameters,
 }: {
   slug: string;
-  view: "home" | "search" | "tags" | "archive";
+  view: View;
   parameters: SpaceParameters;
 }) {
   const space = await requirePublicSpace(slug);
@@ -65,7 +97,7 @@ export async function PublicSpacePage({
           query: view === "search" ? query : "",
           tag: view === "tags" ? tag : "",
           offset: pageOffset(parameters.offset),
-          limit: "12",
+          limit: view === "archive" ? "100" : "12",
         })
       : null;
   const tags = tagListing
@@ -86,33 +118,19 @@ export async function PublicSpacePage({
     throw new PublicApiError(503);
   const listPath = base + (view === "home" ? "" : `/${view}`);
   return (
-    <div className="page-shell">
-      <SpaceNavigation space={space} />
-      {view === "search" && (
-        <form action={base + "/search"} className="search-form">
-          <label htmlFor="query" className="sr-only">
-            搜索这个空间
-          </label>
-          <input
-            id="query"
-            name="query"
-            type="search"
-            defaultValue={query}
-            maxLength={200}
-            required
-            placeholder="搜索这个空间的公开文字…"
-          />
-          <button>搜索 ↗</button>
-        </form>
-      )}
+    <div className="page">
+      <SpaceMast
+        space={space}
+        view={view}
+        total={view === "home" ? page?.total : undefined}
+      />
       {invalid && (
-        <p role="alert" className="notice danger">
+        <p role="alert" className="notice danger" style={{ marginTop: 24 }}>
           搜索内容或标签过长，请缩短后再试。
         </p>
       )}
       {root && (
-        <section className="root-note">
-          <p className="article-meta author-name">{root.authorName}</p>
+        <section className="space-intro" aria-label="空间介绍">
           <Markdown
             source={root.body}
             images={root.images}
@@ -130,61 +148,154 @@ export async function PublicSpacePage({
           <Gallery items={root.gallery} status={root.galleryStatus} />
         </section>
       )}
+      {view === "search" && (
+        <form
+          action={base + "/search"}
+          className="search-box space-search"
+          role="search"
+        >
+          <Icon name="search" />
+          <label htmlFor="query" className="sr-only">
+            搜索这个空间
+          </label>
+          <input
+            id="query"
+            className="input"
+            name="query"
+            type="search"
+            defaultValue={query}
+            maxLength={200}
+            required
+            placeholder={`在「${space.displayName}」中搜索`}
+          />
+          <button className="btn btn-primary">搜索</button>
+        </form>
+      )}
       {tags && (
         <>
-          <h2>标签</h2>
-          <div className="tag-cloud">
-            {tags.tags.map((value) => (
-              <a
-                key={value}
-                href={base + "/tags?tag=" + encodeURIComponent(value)}
-              >
-                #{value}
-              </a>
-            ))}
+          <div className="section-head">
+            <h2>所有标签</h2>
+            <span>共 {tags.total} 个</span>
           </div>
-          {!tags.tags.length && <p>这个空间还没有公开标签。</p>}
-          <nav className="pagination" aria-label="标签翻页">
-            {tags.offset > 0 ? (
-              <a
-                href={
-                  base + "/tags?offset=" + Math.max(0, tags.offset - tags.limit)
-                }
-              >
-                ← 上一页
-              </a>
-            ) : (
-              <span />
-            )}
-            <span>共 {tags.total} 个标签</span>
-            {tags.offset + tags.limit < tags.total && (
-              <a href={base + "/tags?offset=" + (tags.offset + tags.limit)}>
-                下一页 →
-              </a>
-            )}
-          </nav>
+          {tags.tags.length ? (
+            <div className="chip-row">
+              {tags.tags.map((value) => (
+                <a
+                  className="chip"
+                  key={value}
+                  href={base + "/tags?tag=" + encodeURIComponent(value)}
+                >
+                  #{value}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">这个空间还没有公开标签。</p>
+          )}
+          <Pager
+            label="标签翻页"
+            previous={
+              tags.offset > 0
+                ? base + "/tags?offset=" + Math.max(0, tags.offset - tags.limit)
+                : null
+            }
+            next={
+              tags.offset + tags.limit < tags.total
+                ? base + "/tags?offset=" + (tags.offset + tags.limit)
+                : null
+            }
+          />
         </>
       )}
-      {page && (
+      {page && view === "archive" && (
+        <Archive page={page} space={slug} base={listPath} />
+      )}
+      {page && view !== "archive" && (
         <>
-          <h2>
-            {view === "search"
-              ? "搜索结果"
-              : view === "archive"
-                ? "归档"
+          <div className="section-head">
+            <h2>
+              {view === "search"
+                ? `「${query}」的搜索结果`
                 : tag
                   ? `#${tag}`
-                  : "公开记录"}
-          </h2>
+                  : "全部记录"}
+            </h2>
+            {tag ? (
+              <a className="link-btn" href={base + "/tags"}>
+                所有标签
+              </a>
+            ) : (
+              <span>共 {page.total} 篇</span>
+            )}
+          </div>
           <ArticleList
             page={page}
             space={slug}
             base={listPath}
             parameters={view === "search" ? { query } : tag ? { tag } : {}}
             searchQuery={view === "search" ? query : undefined}
+            spaceName={space.displayName}
+            empty={
+              view === "search"
+                ? "没有找到匹配的公开文字，换个说法试试。"
+                : undefined
+            }
           />
         </>
       )}
     </div>
+  );
+}
+
+function Archive({
+  page,
+  space,
+  base,
+}: {
+  page: ArticlePage;
+  space: string;
+  base: string;
+}) {
+  const years = Map.groupBy(page.items, (item) => item.createdAt.slice(0, 4));
+  return (
+    <>
+      <div className="section-head">
+        <h2>按时间翻阅</h2>
+        <span>共 {page.total} 篇</span>
+      </div>
+      {Array.from(years, ([year, items]) => (
+        <section className="archive-year" key={year}>
+          <h2>{year}</h2>
+          <div>
+            {items.map((item) => (
+              <a
+                className="archive-row"
+                href={articleHref(item.route, space)}
+                key={item.route}
+              >
+                <time dateTime={item.createdAt}>
+                  {date(item.createdAt).replace(/^\d+年/, "")}
+                </time>
+                <span>{item.title}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+      {!page.total && <p className="muted">第一篇记录还在路上。</p>}
+      <Pager
+        label="归档翻页"
+        previous={
+          page.offset > 0
+            ? base + "?offset=" + Math.max(0, page.offset - page.limit)
+            : null
+        }
+        next={
+          page.offset + page.limit < page.total
+            ? base + "?offset=" + (page.offset + page.limit)
+            : null
+        }
+      />
+    </>
   );
 }

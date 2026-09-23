@@ -10,12 +10,14 @@ import {
 } from "../lib/community";
 import { CommunityCommentForm } from "./community-comment-form";
 import { CommunityCommentItem } from "./community-comment";
-import { Login } from "./login";
+import { LoginDialog } from "./login-dialog";
+import { Icon } from "./ui/icons";
 
 export function SpaceFollow({ space }: { space: string }) {
   const [state, setState] = useState<SpaceParticipation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     let active = true;
     void api<SpaceParticipation>(
@@ -30,14 +32,29 @@ export function SpaceFollow({ space }: { space: string }) {
     return () => {
       active = false;
     };
-  }, [space]);
+  }, [space, version]);
   if (!state) return null;
+  if (!state.accountId)
+    return (
+      <div className="follow">
+        <LoginDialog
+          label="关注"
+          className="btn btn-secondary"
+          onLogin={async () => setVersion((value) => value + 1)}
+        />
+      </div>
+    );
   return (
-    <div className="community-follow">
+    <div className="follow">
       <button
-        className="button-secondary"
+        className="btn btn-secondary"
         disabled={busy || (!state.mayParticipate && !state.following)}
         aria-pressed={state.following}
+        title={
+          !state.mayParticipate && !state.following
+            ? "社区成员及以上可关注空间"
+            : undefined
+        }
         onClick={async () => {
           setBusy(true);
           setError("");
@@ -54,28 +71,17 @@ export function SpaceFollow({ space }: { space: string }) {
           }
         }}
       >
-        {state.following ? "已关注 · 取消关注" : "关注这个空间"}
+        <Icon name={state.following ? "check" : "plus"} />
+        {state.following ? "已关注" : "关注"}
       </button>
-      {!state.accountId ? (
-        <details>
-          <summary>登录后关注空间</summary>
-          <Login
-            onLogin={async () =>
-              setState(
-                await api<SpaceParticipation>(
-                  `${publicCommunityRoot}/spaces/${encodeURIComponent(space)}`,
-                ),
-              )
-            }
-          />
-        </details>
-      ) : (
-        !state.mayParticipate &&
-        !state.following && (
-          <small className="muted">社区成员及以上可关注空间。</small>
-        )
+      {!state.mayParticipate && !state.following && (
+        <small>社区成员及以上可关注</small>
       )}
-      {error && <span role="alert">{error}</span>}
+      {error && (
+        <span role="alert" className="muted">
+          {error}
+        </span>
+      )}
     </div>
   );
 }
@@ -87,13 +93,8 @@ export function ArticleCommunity({
   space: string;
   articleId: string | null;
 }) {
-  if (!articleId)
-    return (
-      <section className="community-section">
-        <SpaceFollow space={space} />
-        <p className="muted">这篇文章尚未启用互动。</p>
-      </section>
-    );
+  // Without a stable article identity there is nothing to attach interactions to.
+  if (!articleId) return null;
   return (
     <ArticleDiscussion
       key={`${space}/${articleId}`}
@@ -155,58 +156,53 @@ function ArticleDiscussion({
     }
   }
   if (unavailable) return null;
+  const relation = (kind: "LIKE" | "BOOKMARK", enabled: boolean) =>
+    act(() =>
+      api(`${communityRoot}${path}/relations/${kind}`, {
+        method: "PUT",
+        body: { enabled },
+      }),
+    );
   return (
     <section
       className="community-section"
       aria-label="文章互动"
       id="discussion"
     >
-      <div className="community-heading">
-        <h2>讨论</h2>
-        <a href="/community">我的收藏与动态 ↗</a>
-      </div>
       {error && (
         <p className="notice danger" role="alert">
           {error}
         </p>
       )}
       {!thread ? (
-        <p role="status">正在读取互动…</p>
+        <p role="status" className="muted">
+          正在读取互动…
+        </p>
       ) : (
         <>
-          <div className="community-actions">
+          <div className="reactions">
             <button
-              className="button-secondary"
+              className="btn btn-secondary"
               aria-pressed={thread.liked}
               disabled={busy || (!thread.mayParticipate && !thread.liked)}
-              onClick={() =>
-                void act(() =>
-                  api(`${communityRoot}${path}/relations/LIKE`, {
-                    method: "PUT",
-                    body: { enabled: !thread.liked },
-                  }),
-                )
-              }
+              onClick={() => void relation("LIKE", !thread.liked)}
             >
-              {thread.liked ? "已点赞" : "点赞"} · {thread.likes}
+              <Icon name="heart" />
+              {thread.liked ? "已点赞" : "点赞"}
+              <span className="count">{thread.likes}</span>
             </button>
             <button
-              className="button-secondary"
+              className="btn btn-secondary"
               aria-pressed={thread.bookmarked}
               disabled={busy || (!thread.mayParticipate && !thread.bookmarked)}
-              onClick={() =>
-                void act(() =>
-                  api(`${communityRoot}${path}/relations/BOOKMARK`, {
-                    method: "PUT",
-                    body: { enabled: !thread.bookmarked },
-                  }),
-                )
-              }
+              title="收藏仅自己可见"
+              onClick={() => void relation("BOOKMARK", !thread.bookmarked)}
             >
-              {thread.bookmarked ? "已收藏 · 仅自己可见" : "私密收藏"}
+              <Icon name="bookmark" />
+              {thread.bookmarked ? "已收藏" : "收藏"}
             </button>
             <button
-              className="button-secondary"
+              className="btn btn-secondary"
               aria-pressed={thread.following}
               disabled={busy || (!thread.mayParticipate && !thread.following)}
               onClick={() =>
@@ -218,14 +214,15 @@ function ArticleDiscussion({
                 )
               }
             >
-              {thread.following ? "已关注空间" : "关注这个空间"}
+              <Icon name={thread.following ? "check" : "plus"} />
+              {thread.following ? "已关注空间" : "关注空间"}
             </button>
           </div>
           {!thread.accountId ? (
-            <details>
-              <summary>登录后，社区成员及以上可参与互动。</summary>
-              <Login onLogin={async () => refresh()} />
-            </details>
+            <div className="join-prompt">
+              <span>登录后，社区成员及以上可以点赞、收藏和参与讨论。</span>
+              <LoginDialog onLogin={async () => refresh()} />
+            </div>
           ) : (
             !thread.mayParticipate && (
               <p className="muted">
@@ -233,6 +230,10 @@ function ArticleDiscussion({
               </p>
             )
           )}
+          <div className="community-heading">
+            <h2>讨论</h2>
+            <a href="/community">我的收藏与动态</a>
+          </div>
           {thread.mayParticipate && (
             <CommunityCommentForm
               endpoint={`${communityRoot}${path}/comments`}
@@ -243,21 +244,23 @@ function ArticleDiscussion({
           <p className="muted community-identity-note">
             评论显示账号昵称；文章署名由作者自行填写。
           </p>
-          {thread.comments.items.length === 0 && (
-            <p className="muted">还没有评论。</p>
-          )}
-          {thread.comments.items.map((comment) => (
-            <CommunityCommentItem
-              key={comment.id}
-              comment={comment}
-              path={path}
-              thread={thread}
-              busy={busy}
-              act={act}
-              refresh={refresh}
-              version={version}
-            />
-          ))}
+          <div className="comment-list">
+            {thread.comments.items.length === 0 && (
+              <p className="muted">还没有评论。</p>
+            )}
+            {thread.comments.items.map((comment) => (
+              <CommunityCommentItem
+                key={comment.id}
+                comment={comment}
+                path={path}
+                thread={thread}
+                busy={busy}
+                act={act}
+                refresh={refresh}
+                version={version}
+              />
+            ))}
+          </div>
           <div className="community-actions">
             {before > 0 && (
               <button className="text-button" onClick={() => setBefore(0)}>

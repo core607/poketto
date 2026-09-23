@@ -14,16 +14,10 @@ import {
   type CommunityReport,
 } from "../lib/community";
 import { Login } from "./login";
+import type { CommunityTab } from "../lib/community";
 import type { AccountProfile } from "./account-panel";
 
-type Tab =
-  | "feed"
-  | "bookmarks"
-  | "likes"
-  | "notifications"
-  | "following"
-  | "blocks"
-  | "reports";
+type Tab = CommunityTab;
 type Results = {
   feed?: { items: CommunityArticle[]; nextCursor: string | null };
   bookmarks?: CommunityPage<SavedArticle>;
@@ -47,7 +41,7 @@ export function CommunityDashboard({
   initialTab = "feed",
   embedded = false,
 }: {
-  initialTab?: "feed" | "bookmarks";
+  initialTab?: Tab;
   embedded?: boolean;
 }) {
   const [account, setAccount] = useState<AccountProfile | null>(null);
@@ -109,7 +103,7 @@ function CommunityLists({
   feedOnly,
 }: {
   account: AccountProfile;
-  initialTab: "feed" | "bookmarks";
+  initialTab: Tab;
   feedOnly: boolean;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);

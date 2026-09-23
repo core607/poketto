@@ -71,19 +71,26 @@ function AdminContent() {
       setError(message(error));
     }
   }
-  if (loading) return <p role="status">正在确认会话…</p>;
-  return (
-    <>
-      {account ? (
-        <WorkspaceDashboard account={account} onLogout={logout} />
-      ) : (
-        <Login onLogin={refresh} />
-      )}
-      {error && (
-        <p role="alert" className="notice danger">
-          {error}
-        </p>
-      )}
-    </>
+  if (loading)
+    return (
+      <p role="status" className="page muted">
+        正在确认会话…
+      </p>
+    );
+  const alert = error && (
+    <p role="alert" className="notice danger">
+      {error}
+    </p>
+  );
+  return account ? (
+    <div className="legacy">
+      <WorkspaceDashboard account={account} onLogout={logout} />
+      {alert}
+    </div>
+  ) : (
+    <div className="page">
+      <Login onLogin={refresh} />
+      {alert}
+    </div>
   );
 }
