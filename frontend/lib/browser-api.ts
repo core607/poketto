@@ -85,7 +85,7 @@ export async function api<T>(
     if (response.status === 503 && code === "REPOSITORY_RECONNECT")
       throw new ApiError(
         response.status,
-        "仓库连接需要恢复。请由原授权的空间主人前往“仓库连接”核对并恢复连接。",
+        "仓库连接需要恢复。请由原授权的空间主人前往空间的“存储位置”核对并恢复连接。",
         code,
       );
     if (response.status === 503 && code === "REPOSITORY_RETRY")

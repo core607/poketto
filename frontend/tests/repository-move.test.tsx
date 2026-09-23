@@ -217,24 +217,16 @@ test("folder selection cancels without writing and moves via the host service be
   await act(async () => trigger.click());
   dialog = container.querySelector("dialog[open]");
   assert.ok(dialog);
-  await act(async () =>
-    button("公开目录", dialog! as typeof container).click(),
-  );
+  await act(async () => button("已发布", dialog! as typeof container).click());
   assert.match(dialog.textContent!, /目标：public\/note.md/);
   assert.equal(
-    button("公开目录", dialog! as typeof container).getAttribute(
-      "aria-pressed",
-    ),
+    button("已发布", dialog! as typeof container).getAttribute("aria-pressed"),
     "true",
   );
-  await act(async () =>
-    button("私有目录", dialog! as typeof container).click(),
-  );
+  await act(async () => button("草稿", dialog! as typeof container).click());
   assert.match(dialog.textContent!, /目标：private\/note.md/);
   assert.ok(button("移动到这里", dialog! as typeof container).disabled);
-  await act(async () =>
-    button("公开目录", dialog! as typeof container).click(),
-  );
+  await act(async () => button("已发布", dialog! as typeof container).click());
   assert.equal(writes.length, 0);
   await act(async () =>
     button("移动到这里", dialog! as typeof container).click(),
@@ -295,9 +287,7 @@ test("folder selection cancels without writing and moves via the host service be
   await act(async () => button("移动…").click());
   dialog = container.querySelector("dialog[open]");
   assert.ok(dialog);
-  await act(async () =>
-    button("私有目录", dialog! as typeof container).click(),
-  );
+  await act(async () => button("草稿", dialog! as typeof container).click());
   await act(async () =>
     button("移动到这里", dialog! as typeof container).click(),
   );
@@ -315,11 +305,11 @@ test("folder selection cancels without writing and moves via the host service be
     ...container.querySelectorAll("details[open] > summary"),
   ].map((item) => item.textContent);
   assert.ok(
-    expandedPaths.includes("private"),
+    expandedPaths.includes("草稿"),
     "The originally selected directory stays expanded across commits",
   );
   assert.ok(
-    expandedPaths.includes("public"),
+    expandedPaths.includes("已发布"),
     "The moved file's directory expands and survives a later conflict",
   );
 });

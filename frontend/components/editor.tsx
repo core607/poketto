@@ -34,6 +34,7 @@ import { Icon } from "./ui/icons";
 import { NoteLibrary } from "./note-library";
 import {
   contentRoot,
+  folderLocation,
   inContentRoot,
   readDirectory,
 } from "../lib/repository-directory";
@@ -108,6 +109,7 @@ export function Editor({
   const currentSource = useRef(source);
   currentSource.current = source;
   const editorRoot = useRef<HTMLDivElement>(null);
+  const editorMain = useRef<HTMLElement>(null);
   const unreadable =
     file !== null && file.source === null && !file.expectedAbsence;
   const writable = identity.capabilities.includes(
@@ -231,7 +233,7 @@ export function Editor({
         if (!directory.expectedAbsence)
           throw new ApiError(
             409,
-            "文件夹已经存在，请换一个名称，或在文件树选择它。",
+            "这个分类已经存在，请换一个名称，或在文件树选择它。",
           );
       }
       if (dirty) recovery.discard();
@@ -245,11 +247,16 @@ export function Editor({
       );
       setPreviewVersion((version) => version + 1);
       navigate(result.path, options.folder ?? folder, options.replace);
+      // Narrow screens stack the file list under the editor; bring the opened note into view.
+      if (window.matchMedia?.("(max-width: 1100px)").matches)
+        requestAnimationFrame(() =>
+          editorMain.current?.scrollIntoView?.({ block: "start" }),
+        );
       if (options.create) {
         setCreation(null);
         setNotice(
           options.create === "folder"
-            ? "文件夹入口已准备，保存后创建文件夹。"
+            ? "分类的介绍页已打开，保存后分类就建好了。"
             : "笔记草稿已打开，保存后写入仓库。",
         );
         requestAnimationFrame(() => {
@@ -656,16 +663,20 @@ export function Editor({
           disabled={busy}
           onOpen={(draftPath) => void open(draftPath)}
         />
-        <section className="content-creation" aria-label="当前目录与新建">
-          <p className="selected-folder">当前目录：{folder || "仓库根目录"}</p>
-          <button
-            type="button"
-            className="text-button"
-            disabled={busy}
-            onClick={() => navigate(file?.path ?? "", "")}
-          >
-            选择根目录
-          </button>
+        <section className="content-creation" aria-label="新建位置">
+          <p className="selected-folder">
+            新建到：{folderLocation(inContentRoot(folder, "private"))}
+          </p>
+          {folder && (
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => navigate(file?.path ?? "", "")}
+            >
+              回到最外层
+            </button>
+          )}
           <div className="creation-actions">
             {(["note", "folder"] as const).map((kind) => (
               <button
@@ -680,7 +691,7 @@ export function Editor({
                   setCreation(kind);
                 }}
               >
-                {kind === "note" ? "新建笔记" : "新建文件夹"}
+                {kind === "note" ? "新建笔记" : "新建分类"}
               </button>
             ))}
           </div>
@@ -706,7 +717,7 @@ export function Editor({
               }}
             >
               <label>
-                {creation === "note" ? "笔记名称" : "文件夹名称"}
+                {creation === "note" ? "笔记名称" : "分类名称"}
                 <input
                   name="name"
                   required
@@ -722,7 +733,7 @@ export function Editor({
                 默认创建在 {inContentRoot(folder, "private")}/，保存后生效。
               </p>
               <button disabled={busy}>
-                准备{creation === "note" ? "笔记" : "文件夹"}
+                准备{creation === "note" ? "笔记" : "分类"}
               </button>
               <button
                 type="button"
@@ -738,11 +749,6 @@ export function Editor({
             </form>
           )}
         </section>
-        <FilenameSearch
-          busy={busy}
-          commit={tree?.commit ?? null}
-          onOpen={(path) => void open(path)}
-        />
         <nav className="file-tree" aria-label="仓库文件">
           {tree && (
             <FileTree
@@ -761,35 +767,16 @@ export function Editor({
             />
           )}
         </nav>
-        <details className="advanced-path">
-          <summary>高级：完整路径</summary>
-          <form
-            className="open-path"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const target = String(
-                new FormData(event.currentTarget).get("path"),
-              );
-              void open(target);
-            }}
-          >
-            <label>
-              打开或新建路径
-              <input
-                name="path"
-                defaultValue="private/"
-                placeholder="private/笔记/新文章.md"
-                required
-                maxLength={255}
-              />
-            </label>
-            <button className="button-secondary" disabled={busy}>
-              打开路径
-            </button>
-          </form>
+        <details className="filename-details">
+          <summary>按文件名查找</summary>
+          <FilenameSearch
+            busy={busy}
+            commit={tree?.commit ?? null}
+            onOpen={(path) => void open(path)}
+          />
         </details>
         <details className="body-search" open={search !== null || undefined}>
-          <summary>搜索库内正文</summary>
+          <summary>搜索笔记正文</summary>
           <form
             className="open-path private-search"
             onSubmit={(event) => {
@@ -800,7 +787,7 @@ export function Editor({
             }}
           >
             <label>
-              <span className="sr-only">搜索库内正文</span>
+              <span className="sr-only">搜索笔记正文</span>
               <input
                 name="query"
                 required
@@ -840,6 +827,33 @@ export function Editor({
             )}
           </section>
         )}
+        <details className="advanced-path">
+          <summary>高级：完整路径</summary>
+          <form
+            className="open-path"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const target = String(
+                new FormData(event.currentTarget).get("path"),
+              );
+              void open(target);
+            }}
+          >
+            <label>
+              打开或新建路径
+              <input
+                name="path"
+                defaultValue="private/"
+                placeholder="private/笔记/新文章.md"
+                required
+                maxLength={255}
+              />
+            </label>
+            <button className="button-secondary" disabled={busy}>
+              打开路径
+            </button>
+          </form>
+        </details>
         {tree?.diagnostics.length ? (
           <details className="diagnostics">
             <summary>仓库诊断 · {tree.diagnostics.length}</summary>
@@ -852,7 +866,7 @@ export function Editor({
           </details>
         ) : null}
       </aside>
-      <section className="editor-main">
+      <section className="editor-main" ref={editorMain}>
         {error && (
           <div className="notice danger" role="alert">
             {error}

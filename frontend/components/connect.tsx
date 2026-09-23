@@ -233,7 +233,7 @@ export function Connect() {
                   </label>
                 ))}
             </fieldset>
-            <p>未勾选的权限不会授予。可在管理页面的“已连接应用”中断开连接。</p>
+            <p>未勾选的权限不会授予。可在工作台的“AI 助手”中断开连接。</p>
             <div className="oauth-actions">
               <button
                 disabled={

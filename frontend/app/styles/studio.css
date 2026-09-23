@@ -850,6 +850,10 @@ label.oauth-permission {
 details.sub-panel > summary {
   list-style: none;
 }
+/* A closed fold keeps no grid gap for its hidden content. */
+details.sub-panel:not([open]) {
+  gap: 0;
+}
 details.sub-panel > summary::before {
   content: "+ ";
   color: var(--accent);

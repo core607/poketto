@@ -502,9 +502,15 @@
   .editor-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Below the note, the file list can take its natural height instead of scrolling inside. */
   .file-sidebar {
     position: static;
-    max-height: 45vh;
+    max-height: none;
+    overflow: visible;
+  }
+  /* The note list or the open note comes first; the full file list follows it. */
+  .editor-main {
+    order: -1;
   }
   .editor-panes {
     grid-template-columns: 1fr;

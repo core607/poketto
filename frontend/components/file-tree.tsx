@@ -2,7 +2,11 @@
 import { Icon } from "./ui/icons";
 import { useWorkspaceApi } from "./workspace-context";
 import { useEffect, useRef, useState } from "react";
-import { readDirectory, movablePath } from "../lib/repository-directory";
+import {
+  folderLabel,
+  movablePath,
+  readDirectory,
+} from "../lib/repository-directory";
 import type { RepositoryDirectory } from "../lib/types";
 import { message } from "./admin";
 
@@ -208,7 +212,7 @@ function DirectoryBranch({
           else props.onSelectFolder(path);
         }}
       >
-        {path.split("/").at(-1)}
+        {folderLabel(path)}
       </summary>
       <span className="tree-actions">
         {props.onMove && props.commit && movablePath(path) && (
