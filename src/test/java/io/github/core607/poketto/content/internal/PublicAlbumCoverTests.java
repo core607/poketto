@@ -233,6 +233,35 @@ class PublicAlbumCoverTests {
     }
 
     @Test
+    void folderPageWithoutFurtherImagesUsesItsInlineFigure() throws Exception {
+        var workspace = WorkspaceId.random();
+        String commit = "b".repeat(40);
+        var article = article("public/news/index.md", "/news", true, "# News\n\n![Figure](figure.png)");
+        var snapshot = snapshot(workspace, commit, article);
+        var snapshots = mock(PublicContentSnapshots.class);
+        install(snapshots, snapshot);
+        var blobs = mock(RepositoryBlobReader.class);
+        byte[] image = png();
+        var figure = blob(workspace, commit, "public/news/figure.png", image);
+        when(blobs.siblings(any(), any(), any(), anyInt(), anyBoolean(), any()))
+                .thenReturn(new SiblingImages(List.of(), false));
+        when(blobs.find(workspace, commit, figure.path())).thenReturn(Optional.of(figure));
+        when(blobs.media(any(), any()))
+                .thenReturn(new RepositoryMediaSnapshot(workspace, commit, RepositoryMediaIndex.empty(), Set.of()));
+        when(blobs.read(figure)).thenReturn(image);
+
+        var service = service(blobs, snapshots, mock(ManagedBlobStore.class));
+        var cover = service.publicCovers(snapshot, List.of(article)).get(article.route());
+
+        assertThat(cover).isNotNull();
+        assertThat(cover.album()).isFalse();
+        assertThat(cover.src()).startsWith("/api/public/assets/");
+        assertThat(service.readPublicImage(workspace, token(cover.src())).source())
+                .isEqualTo(new AssetSource.Repository(Optional.of(commit), figure.path()));
+        verify(blobs).siblings(eq(workspace), eq(commit), eq(article.repositoryPath()), eq(8), eq(true), any());
+    }
+
+    @Test
     void articleWithoutPublicImagesHasNoCover() {
         var workspace = WorkspaceId.random();
         String commit = "b".repeat(40);

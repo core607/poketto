@@ -193,7 +193,11 @@ final class PublicReads {
         } catch (AssetStorageException | ContentRepositoryException | MarkdownResolutionLimitException unavailable) {
             // Card text remains readable when its optional image inventory is unavailable.
         }
-        return new PreparedCover(!candidates.isEmpty(), firstImage(workspace, candidates.values()));
+        if (candidates.isEmpty()) {
+            // Without further images the folder is a directory, not an album; its own figure can still be its cover.
+            return prepareArticleCover(workspace, commit, article, catalog);
+        }
+        return new PreparedCover(true, firstImage(workspace, candidates.values()));
     }
 
     /** Inline images in document order; private and unreadable references are skipped, not substituted. */
