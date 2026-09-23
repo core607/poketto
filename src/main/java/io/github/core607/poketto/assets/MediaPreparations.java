@@ -113,7 +113,14 @@ final class MediaPreparations {
                 destinations = MarkdownDestinations.parse(body);
             } catch (MarkdownResolutionLimitException limit) {
                 return new PreparedMedia(
-                        body, commit, Map.of(), Map.of(), Map.of(), List.of(), ResolvedMedia.GalleryStatus.UNAVAILABLE);
+                        body,
+                        commit,
+                        Map.of(),
+                        Map.of(),
+                        Map.of(),
+                        Map.of(),
+                        List.of(),
+                        ResolvedMedia.GalleryStatus.UNAVAILABLE);
             }
             if (commit != null
                     && (folder
@@ -125,7 +132,8 @@ final class MediaPreparations {
             }
             Map<String, String> links = new LinkedHashMap<>();
             Map<String, String> downloads = new LinkedHashMap<>();
-            resolveLinks(destinations, links, downloads);
+            Map<String, String> playback = new LinkedHashMap<>();
+            resolveLinks(destinations, links, downloads, playback);
             Set<String> inlinePaths = new HashSet<>();
             for (String authored : destinations.images()) {
                 MarkdownDestinations.path(path, authored).ifPresent(inlinePaths::add);
@@ -134,7 +142,8 @@ final class MediaPreparations {
             Gallery gallery = folder && commit != null
                     ? gallery(inlinePaths)
                     : new Gallery(List.of(), ResolvedMedia.GalleryStatus.COMPLETE);
-            return new PreparedMedia(body, commit, links, downloads, images, gallery.items(), gallery.status());
+            return new PreparedMedia(
+                    body, commit, links, downloads, playback, images, gallery.items(), gallery.status());
         }
 
         // A fragment stays as authored; a repository path becomes its route, or a download when it
@@ -142,7 +151,8 @@ final class MediaPreparations {
         private void resolveLinks(
                 MarkdownDestinations.Destinations destinations,
                 Map<String, String> links,
-                Map<String, String> downloads) {
+                Map<String, String> downloads,
+                Map<String, String> playback) {
             Set<String> publicRoutes = publicOnly ? Set.copyOf(routes.values()) : Set.of();
             for (String authored : destinations.links()) {
                 if (authored.startsWith("#")
@@ -162,6 +172,9 @@ final class MediaPreparations {
                                 authored,
                                 downloadUrl(workspace, anonymous, commit, routes.get(path), target)
                                         + fragment(authored));
+                        MediaPlayback.forType(
+                                        catalog.index().files().get(target).mediaType())
+                                .ifPresent(type -> playback.put(authored, type.kind()));
                     }
                     if (selected != null) {
                         links.put(authored, selected + fragment(authored));
@@ -421,6 +434,7 @@ final class MediaPreparations {
             String commit,
             Map<String, String> links,
             Map<String, String> downloads,
+            Map<String, String> playback,
             Map<String, Target> images,
             List<PreparedGallery> gallery,
             ResolvedMedia.GalleryStatus galleryStatus) {}

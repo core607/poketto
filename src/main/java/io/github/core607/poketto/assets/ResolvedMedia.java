@@ -10,12 +10,14 @@ public record ResolvedMedia(
         String commit,
         Map<String, String> links,
         Map<String, String> downloads,
+        Map<String, String> playback,
         Map<String, String> images,
         List<GalleryImage> gallery,
         GalleryStatus galleryStatus) {
     public ResolvedMedia {
         links = Map.copyOf(links);
         downloads = Map.copyOf(downloads);
+        playback = Map.copyOf(playback);
         images = Map.copyOf(images);
         gallery = List.copyOf(gallery);
         Objects.requireNonNull(galleryStatus);

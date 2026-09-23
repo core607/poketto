@@ -36,6 +36,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -117,6 +118,98 @@ class MediaFileServiceTests {
                         invocation -> ((Function<PublicContentSnapshot, ?>) invocation.getArgument(1)).apply(snapshot));
         when(snapshots.refresh(workspace)).thenAnswer(call -> snapshot);
         service = new MediaFileService(auth, repository, snapshots, snapshots, () -> store);
+    }
+
+    @Test
+    void playbackKeepsReferenceAuthorityAndExactRanges() {
+        playableWave();
+        var full = new ByteArrayOutputStream();
+        var download = service.publicDownload(workspace, commit, "/note", "public/source.pdf");
+        download.playTo(full, 0, bytes.length);
+        assertThat(full.toByteArray()).containsExactly(bytes);
+        var range = new ByteArrayOutputStream();
+        download.playTo(range, 12345, 131);
+        assertThat(range.toByteArray()).containsExactly(Arrays.copyOfRange(bytes, 12345, 12476));
+        assertMissing(() -> service.publicDownload(workspace, commit, "/note", "private/source.pdf"));
+        snapshot = new PublicContentSnapshot(
+                workspace, Optional.empty(), snapshot.verifiedAt(), snapshot.expiresAt(), List.of());
+        var withdrawn = new ByteArrayOutputStream();
+        assertMissing(() -> download.playTo(withdrawn, bytes.length - 32, 32));
+        assertThat(withdrawn.size()).isZero();
+    }
+
+    @Test
+    void playbackRejectsFalseTypesAndCorruptOriginalsBeforeOutput() throws Exception {
+        var fake = store.uploadFile(
+                workspace,
+                "false-audio-type-01",
+                "audio/wav",
+                new ByteArrayInputStream("<html>not audio</html>".getBytes(StandardCharsets.UTF_8)));
+        var entry = new RepositoryMediaIndex.Media(
+                fake.reference().assetId(), fake.reference().revision(), fake.mediaType(), fake.size());
+        var download = service.privateOriginal(actor, workspace, "private/fake.wav", entry);
+        var output = new ByteArrayOutputStream();
+        assertThatThrownBy(() -> download.playTo(output, 0, fake.size())).isInstanceOf(IllegalArgumentException.class);
+        assertThat(output.size()).isZero();
+        download.writeTo(output);
+        assertThat(output.toString(StandardCharsets.UTF_8)).isEqualTo("<html>not audio</html>");
+        playableWave();
+        var corrupted = service.publicDownload(workspace, commit, "/note", "public/source.pdf");
+        Path stored = directory
+                .resolve("originals")
+                .resolve(workspace.toString())
+                .resolve("objects")
+                .resolve(asset.reference().assetId().toString())
+                .resolve("bytes");
+        Files.write(stored, new byte[bytes.length]);
+        var corruptOutput = new ByteArrayOutputStream();
+        assertThatThrownBy(() -> corrupted.playTo(corruptOutput, 5000, 100)).isInstanceOf(AssetStorageException.class);
+        assertThat(corruptOutput.size()).isZero();
+    }
+
+    @Test
+    void playbackStopsAtTheNextAuthorizationBlockAndReleasesAdmission() {
+        playableWave();
+        var revoked = new AtomicBoolean();
+        when(auth.authorize(actor, workspace, Capability.READ_PRIVATE)).thenAnswer(call -> {
+            if (revoked.get()) {
+                throw new IllegalStateException("revoked during playback");
+            }
+            return null;
+        });
+        var received = new ByteArrayOutputStream();
+        var output = new OutputStream() {
+            @Override
+            public void write(int value) {
+                received.write(value);
+                revoked.set(true);
+            }
+
+            @Override
+            public void write(byte[] value, int offset, int length) {
+                received.write(value, offset, length);
+                revoked.set(true);
+            }
+        };
+        var download = service.privateDownload(actor, workspace, Optional.of(commit), "private/source.pdf");
+        assertThatThrownBy(() -> download.playTo(output, 5000, bytes.length - 5000))
+                .hasMessage("revoked during playback");
+        assertThat(received.size()).isEqualTo(256 * 1024);
+        revoked.set(false);
+        var retry = new ByteArrayOutputStream();
+        download.playTo(retry, 5000, 1);
+        assertThat(retry.toByteArray()).containsExactly(bytes[5000]);
+    }
+
+    private void playableWave() {
+        System.arraycopy("RIFF".getBytes(StandardCharsets.US_ASCII), 0, bytes, 0, 4);
+        System.arraycopy("WAVE".getBytes(StandardCharsets.US_ASCII), 0, bytes, 8, 4);
+        asset = store.uploadFile(workspace, "synthetic-audio-01", "audio/wav", new ByteArrayInputStream(bytes));
+        var entry = new RepositoryMediaIndex.Media(
+                asset.reference().assetId(), asset.reference().revision(), asset.mediaType(), asset.size());
+        var index = new RepositoryMediaIndex(Map.of("public/source.pdf", entry, "private/source.pdf", entry));
+        when(repository.media(workspace, commit))
+                .thenReturn(new RepositoryMediaSnapshot(workspace, commit, index, Set.of("public/source.pdf")));
     }
 
     @Test

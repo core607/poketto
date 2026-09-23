@@ -126,6 +126,69 @@ test("download mappings keep exact HTTP destinations separate from article route
     );
 });
 
+test("media players require an allowed resolved download and retain its ordinary download", () => {
+  const target =
+    "/api/public/media?path=public%2Fsound.wav&commit=abc&route=%2Fnote";
+  const source = "[声音](sound.wav)";
+  const html = renderToStaticMarkup(
+    <Markdown
+      source={source}
+      downloads={{ "sound.wav": target }}
+      playback={{ "sound.wav": "audio" }}
+    />,
+  );
+  assert.match(html, /<audio controls="" preload="none"/);
+  assert.match(html, /src="[^\"]*&amp;play=true"/);
+  assert.ok(html.includes('href="' + target.replaceAll("&", "&amp;") + '"'));
+  assert.match(html, /下载原文件/);
+  assert.doesNotMatch(html, /autoplay/i);
+  for (const invalid of [
+    "https://evil.invalid/file",
+    "//evil.invalid/file",
+    "/api/public/media/../auth?x",
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media?path=private%2Fsound.wav",
+  ])
+    assert.doesNotMatch(
+      renderToStaticMarkup(
+        <Markdown
+          source={source}
+          downloads={{ "sound.wav": invalid }}
+          playback={{ "sound.wav": "audio" }}
+        />,
+      ),
+      /<audio|<video/,
+    );
+  assert.doesNotMatch(
+    renderToStaticMarkup(
+      <Markdown source={source} playback={{ "sound.wav": "audio" }} />,
+    ),
+    /<audio|<video/,
+  );
+  assert.doesNotMatch(
+    renderToStaticMarkup(
+      <Markdown
+        source={source}
+        downloads={{ "sound.wav": target }}
+        playback={{ "sound.wav": "iframe" }}
+      />,
+    ),
+    /<audio|<video/,
+  );
+  const privateTarget =
+    "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/media?path=private%2Fclip.webm";
+  assert.match(
+    renderToStaticMarkup(
+      <Markdown
+        source="[影片](clip.webm)"
+        downloads={{ "clip.webm": privateTarget }}
+        playback={{ "clip.webm": "video" }}
+        preview
+      />,
+    ),
+    /<video controls="" playsInline="" preload="none"/,
+  );
+});
+
 test("safe URL rules reject protocols, external image grants, and normalized traversal", () => {
   for (const value of [
     "javascript:alert(1)",

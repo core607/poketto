@@ -4,6 +4,7 @@ import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { articleHref, safeImage, safeLink } from "../lib/format";
 import { readingHeading } from "../lib/reading-heading";
+import { MediaPlayer } from "./media-player";
 
 const HEADING_PREFIX = "poketto-heading-";
 
@@ -12,6 +13,7 @@ export function Markdown({
   images = {},
   links = {},
   downloads = {},
+  playback = {},
   preview = false,
   space,
   collection,
@@ -21,6 +23,7 @@ export function Markdown({
   images?: Record<string, string>;
   links?: Record<string, string>;
   downloads?: Record<string, string>;
+  playback?: Record<string, string>;
   preview?: boolean;
   space?: string;
   collection?: { route: string; entries: { route: string }[] };
@@ -42,6 +45,12 @@ export function Markdown({
     Object.entries(downloads).map(([authored, target]) => [
       normalizeUri(authored),
       safeDownload(target, preview),
+    ]),
+  );
+  const resolvedPlayback = new Map(
+    Object.entries(playback).map(([authored, kind]) => [
+      normalizeUri(authored),
+      kind,
     ]),
   );
   return (
@@ -74,6 +83,21 @@ export function Markdown({
                       ? headingFragment(href)
                       : href,
                   );
+            const kind = resolvedPlayback.get(href);
+            if (
+              target &&
+              resolvedDownloads.get(href) === target &&
+              (kind === "audio" || kind === "video")
+            ) {
+              const address = new URL(target, "https://placeholder.invalid");
+              address.searchParams.set("play", "true");
+              const src = address.pathname + address.search + address.hash;
+              return (
+                <MediaPlayer key={src} kind={kind} src={src} download={target}>
+                  {children}
+                </MediaPlayer>
+              );
+            }
             return target ? (
               <a href={target} id={footnoteId} rel="noreferrer noopener">
                 {children}
