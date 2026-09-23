@@ -5,7 +5,8 @@ import { message } from "./admin";
 import { AccountSecurity } from "./account-security";
 import { CreateWorkspace } from "./create-workspace";
 import { GitHubSpace } from "./github-space";
-import { SiteAccounts, SiteGroup, siteGroups } from "./site-accounts";
+import { SiteGroup, siteGroups } from "./site-accounts";
+import { Avatar } from "./ui/icons";
 
 export type AccountProfile = {
   account: {
@@ -71,36 +72,49 @@ export function AccountPanel({
   }
   return (
     <div className="management-panel">
-      <p>当前策略组：{siteGroups[profile.account.group]}</p>
-      <button className="text-button" onClick={() => setSecurity(!security)}>
-        {security ? "收起登录与安全" : "登录与安全"}
-      </button>
+      <section className="profile-card" aria-label="账号">
+        <Avatar name={profile.account.displayName} large />
+        <div>
+          <h2>{profile.account.displayName}</h2>
+          <p className="muted">
+            {profile.account.loginName} ·{" "}
+            <span className="group-badge">
+              {siteGroups[profile.account.group]}
+            </span>
+          </p>
+        </div>
+        <button
+          type="button"
+          className="button-secondary"
+          aria-expanded={security}
+          onClick={() => setSecurity(!security)}
+        >
+          {security ? "收起登录与安全" : "登录与安全"}
+        </button>
+      </section>
       {security && <AccountSecurity onDisplayName={onDisplayName} />}
-      {profile.account.siteAdministrator && <SiteAccounts />}
+      <div className="panel-intro">
+        <h2>我的空间</h2>
+        <p className="muted">
+          {!hasWorkspace && !workspaceUnavailable
+            ? "你已登录，还没有可访问的空间。可以新建一个，或者用邀请码加入别人的空间。"
+            : "新建一个空间，或者用邀请码加入别人的空间。"}
+        </p>
+      </div>
       <GitHubSpace
         key={profile.account.accountId}
         accountId={profile.account.accountId}
         onBeforeLeave={onBeforeJoin}
         onCreated={(workspaceId) => onJoined(workspaceId, true)}
       />
-      <details>
-        <summary>手动连接已有仓库（高级）</summary>
-        <CreateWorkspace
-          accountId={profile.account.accountId}
-          onCreated={(workspaceId) => onJoined(workspaceId, true)}
-        />
-      </details>
-      <section>
+      <section className="sub-panel" aria-labelledby="join-space">
         <div className="panel-heading">
-          <h2>加入空间</h2>
+          <h2 id="join-space">加入空间</h2>
         </div>
-        {!hasWorkspace && !workspaceUnavailable && (
-          <p>你已登录，还没有可访问的空间。</p>
-        )}
         <p className="muted">
           输入空间主人提供的邀请码。加入空间不会授予站点管理权限。
         </p>
-        <form onSubmit={join}>
+        <form onSubmit={join} className="inline-form">
           <label>
             空间邀请码
             <input name="token" required maxLength={256} autoComplete="off" />
@@ -115,6 +129,13 @@ export function AccountPanel({
           </p>
         )}
       </section>
+      <details className="sub-panel advanced">
+        <summary>手动连接已有仓库（高级）</summary>
+        <CreateWorkspace
+          accountId={profile.account.accountId}
+          onCreated={(workspaceId) => onJoined(workspaceId, true)}
+        />
+      </details>
     </div>
   );
 }

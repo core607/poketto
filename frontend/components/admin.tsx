@@ -83,10 +83,10 @@ function AdminContent() {
     </p>
   );
   return account ? (
-    <div className="legacy">
+    <>
       <WorkspaceDashboard account={account} onLogout={logout} />
       {alert}
-    </div>
+    </>
   ) : (
     <div className="page">
       <Login onLogin={refresh} />

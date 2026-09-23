@@ -188,7 +188,7 @@ export function SpacePublication({ workspaceId }: { workspaceId: string }) {
       {publication?.effectiveEnabled && (
         <p>
           <a href={`/s/${encodeURIComponent(publication.slug)}`}>
-            查看公开网站 ↗
+            查看公开网站
           </a>
         </p>
       )}

@@ -63,6 +63,8 @@ export function AdminPagination({
   };
   disabled?: boolean;
 }) {
+  // A single page needs no navigation; a failed read still offers its retry.
+  if (!page.error && page.offset === 0 && page.total <= page.limit) return null;
   return (
     <nav className="pagination" aria-label={label + "分页"}>
       {page.error && (

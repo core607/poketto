@@ -1,0 +1,742 @@
+/* The studio at /admin: an application shell around space, account and site sections. */
+body:has(.studio) .site-footer {
+  display: none;
+}
+.studio {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  min-height: calc(100vh - var(--bar-height));
+}
+.studio-side {
+  position: sticky;
+  top: var(--bar-height);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: calc(100vh - var(--bar-height));
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+}
+.studio-main {
+  min-width: 0;
+  padding: 2rem clamp(1rem, 3vw, 2.75rem) 4rem;
+}
+.studio-nav {
+  display: grid;
+  gap: 2px;
+}
+.studio-nav-label {
+  margin: 1rem 0.7rem 0.35rem;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+.studio-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.studio-nav-item .icon {
+  color: var(--muted);
+}
+.studio-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--ink);
+}
+.studio-nav-item[aria-current="page"] {
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.studio-nav-item[aria-current="page"] .icon {
+  color: var(--accent);
+}
+.studio-side-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding: 0.85rem 0.5rem 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.studio-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.studio-user > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-side-error {
+  margin: 0.5rem 0.25rem 0;
+  color: var(--danger);
+  font-size: var(--text-xs);
+}
+@media (max-width: 900px) {
+  .studio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-side {
+    position: static;
+    height: auto;
+    padding: 0.75rem var(--gutter);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .studio-nav {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .studio-nav-label,
+  .studio-side-foot {
+    display: none;
+  }
+  .studio-nav-item {
+    flex: none;
+    width: auto;
+  }
+  .studio-main {
+    padding-top: 1.25rem;
+  }
+}
+
+.space-switcher {
+  position: relative;
+}
+.space-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.space-switcher-trigger:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+.space-switcher-trigger .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 0.85rem;
+}
+.space-switcher-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+.space-switcher-name strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.space-switcher-name small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.space-switcher-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 40;
+  display: grid;
+  gap: 4px;
+  max-height: 60vh;
+  padding: 6px;
+  overflow-y: auto;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+}
+.space-switcher-panel ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.space-switcher-panel li button,
+.space-switcher-manage {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.space-switcher-panel li button span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.space-switcher-panel li button:hover,
+.space-switcher-manage:hover {
+  background: var(--bg-hover);
+}
+.space-switcher-panel li button[aria-selected="true"] {
+  font-weight: 650;
+}
+.space-switcher-panel li button .icon {
+  color: var(--accent);
+}
+.space-switcher-empty {
+  padding: 0.5rem 0.6rem;
+  font-size: var(--text-sm);
+}
+.space-switcher-pages {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0.6rem;
+  font-size: var(--text-xs);
+}
+.space-switcher-manage {
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* Studio panels. Element defaults use :where() so scoped legacy rules still win. */
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: 1.35;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) p {
+  margin: 0;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) form {
+  display: grid;
+  gap: 1rem;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  fieldset {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  legend {
+  margin-bottom: 0.5rem;
+  font-weight: 650;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog) label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  :is(
+    input:not([type="checkbox"], [type="radio"], [type="file"]),
+    select,
+    textarea
+  ) {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--ink);
+  font-size: var(--text-base);
+  font-weight: 400;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  textarea {
+  line-height: 1.7;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  :is([type="checkbox"], [type="radio"]) {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  details
+  > summary {
+  color: var(--ink-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  blockquote {
+  margin: 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--line-strong);
+  color: var(--ink-2);
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  button:not([class]),
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  :is(.button-primary, .button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  justify-self: start;
+  min-height: 36px;
+  padding: 0 1rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg-raised);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  .button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  justify-self: start;
+  min-height: 36px;
+  padding: 0 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  .button-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+:where(.studio-main, .oauth-shell, .confirmation-dialog, .export-dialog)
+  :is(button, .button-secondary):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.management-panel {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 980px;
+}
+.management-panel > p:first-child {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.sub-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: clamp(1.1rem, 2.5vw, 1.6rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+.sub-panel .sub-panel {
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.panel-heading p {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.danger-text {
+  color: var(--danger);
+}
+.form-help {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.studio-main .pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: var(--text-sm);
+}
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.table-scroll th {
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-sunken);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.table-scroll td {
+  padding: 0.7rem 0.85rem;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
+.capabilities {
+  display: grid;
+  gap: 0.5rem;
+}
+label.capability {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  cursor: pointer;
+}
+label.capability:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--bg-raised));
+}
+label.capability input {
+  margin-top: 0.2rem;
+}
+label.capability span {
+  display: grid;
+  gap: 0.1rem;
+}
+label.capability small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.key-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.key-item,
+.connection-card {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.secret-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent-soft) 50%, var(--bg-raised));
+}
+.secret-panel code,
+.secret-panel pre {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.confirmation-dialog,
+.export-dialog {
+  width: min(92vw, 480px);
+  max-height: 90dvh;
+  margin: auto;
+  padding: 1.5rem;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+}
+.export-dialog {
+  width: min(94vw, 640px);
+}
+.confirmation-dialog::backdrop,
+.export-dialog::backdrop {
+  background: rgb(20 18 14 / 45%);
+  backdrop-filter: blur(2px);
+}
+.confirmation-dialog h2,
+.export-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+.confirmation-dialog p {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+/* Personal lists at /community and the report queue. */
+.personal-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.personal-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.personal-tabs button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 0.75rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.personal-tabs button:hover {
+  color: var(--ink);
+}
+.personal-tabs button[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.community-dashboard > .notice {
+  margin-bottom: 1rem;
+}
+.personal-list {
+  display: grid;
+}
+.personal-list > .entry:first-child,
+.personal-list > .personal-item:first-child,
+.personal-list > .report-item:first-child {
+  border-top: 1px solid var(--line);
+}
+.personal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.personal-item .entry {
+  flex: 1;
+  padding: 0;
+  border: 0;
+}
+.personal-body {
+  display: grid;
+  flex: 1;
+  gap: 0.2rem;
+}
+.personal-unread {
+  box-shadow: inset 3px 0 0 var(--accent);
+  padding-left: 0.9rem;
+}
+.report-item {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.personal-more {
+  margin-top: 1rem;
+}
+
+/* OAuth consent at /connect */
+.oauth-shell {
+  display: grid;
+  gap: 1rem;
+}
+.oauth-shell > h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+}
+label.oauth-permission {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.oauth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+:where(.studio-main) :is(.text-button, .link-btn) {
+  justify-self: start;
+  text-align: left;
+}
+.profile-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+.profile-card > div {
+  flex: 1;
+  min-width: 12rem;
+}
+.profile-card h2 {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+.group-badge {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+.panel-intro {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+.inline-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+@media (max-width: 560px) {
+  .inline-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+details.sub-panel > summary {
+  list-style: none;
+}
+details.sub-panel > summary::before {
+  content: "+ ";
+  color: var(--accent);
+}
+details.sub-panel[open] > summary::before {
+  content: "− ";
+}
+:where(.studio-main) a:not([class]) {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+:where(.studio-main) a:not([class]):hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+:where(.studio-main) :is(ul, ol):not([class]) {
+  margin: 0;
+  padding-left: 1.3em;
+  list-style: disc;
+}
+:where(.studio-main) code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}

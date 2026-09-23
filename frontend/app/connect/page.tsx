@@ -6,7 +6,7 @@ export const metadata = {
 };
 export default function ConnectPage() {
   return (
-    <div className="legacy">
+    <div className="page page-narrow">
       <Connect />
     </div>
   );

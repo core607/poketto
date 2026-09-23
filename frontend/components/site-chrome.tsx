@@ -154,7 +154,7 @@ function AccountEntrance() {
             账号与安全
           </a>
           {account.siteAdministrator && (
-            <a href="/admin?tab=account">
+            <a href="/admin?tab=site">
               <Icon name="shield" />
               站务
             </a>

@@ -37,6 +37,7 @@ export function SiteAccounts() {
     <section className="sub-panel">
       <h2>站点账号管理</h2>
       <form
+        className="inline-form"
         onSubmit={(event) => {
           event.preventDefault();
           setQuery(
