@@ -147,7 +147,10 @@ class OAuthController {
                     value,
                     decision.scopes(),
                     decision.allow());
-            pending(session).remove(decision.request());
+            var values = pending(session);
+            values.remove(decision.request());
+            // A stored session persists attribute writes, not changes made inside a value it returned.
+            session.setAttribute(PENDING, values);
             return new Redirect(redirect);
         }
     }

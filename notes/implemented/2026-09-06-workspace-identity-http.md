@@ -3,6 +3,9 @@
 Date: 2026-09-06
 Status: Implemented
 
+[Long-lived browser sessions](2026-09-23-long-lived-browser-sessions.md) moves browser sessions
+into PostgreSQL, so a restart no longer clears them as recorded below.
+
 ## Problem and scope
 
 The [workspace boundary](2026-08-27-workspace-tenancy.md) needs independently revocable human and machine identities. This record implements the backend identity portion of [invitation-only membership](2026-08-27-invitation-only-membership.md) and [phase-one delivery](2026-09-05-phase-one-daily-use.md). Administration pages, content authoring entrances, MCP tools, and execution services remain outside this implementation. Consumer registration and personal-workspace provisioning retain their [separate proposal](2026-09-11-multiuser-workspaces-and-discovery.md).

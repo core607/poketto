@@ -230,7 +230,8 @@ class GoogleIdentityController {
             Mode mode,
             AuthPrincipal actor,
             String returnTo,
-            Instant expiresAt) {
+            Instant expiresAt)
+            implements java.io.Serializable {
         @Override
         public String toString() {
             return "GooglePending[REDACTED]";

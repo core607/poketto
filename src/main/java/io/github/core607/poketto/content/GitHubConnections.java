@@ -40,7 +40,8 @@ public interface GitHubConnections {
             @JsonIgnore Instant issuedAt,
             @JsonIgnore UUID accountId,
             @JsonIgnore long credentialVersion,
-            @JsonIgnore long grantVersion) {
+            @JsonIgnore long grantVersion)
+            implements java.io.Serializable {
         @Override
         public String toString() {
             return "GitHubAuthorization[redacted]";

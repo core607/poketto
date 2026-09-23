@@ -125,7 +125,8 @@ class BrowserSecurityConfiguration {
             @Value("${poketto.security.login-limit-per-account:10}") int perAccount,
             @Value("${poketto.security.login-limit-per-address:40}") int perAddress,
             @Value("${poketto.security.login-throttle-max-entries:10000}") int maxEntries,
-            @Value("${poketto.security.login-throttle-window-seconds:300}") long windowSeconds)
+            @Value("${poketto.security.login-throttle-window-seconds:300}") long windowSeconds,
+            @Value("${poketto.security.account-session-idle-days:90}") long accountSessionIdleDays)
             throws Exception {
         http.authenticationProvider(accountAuthenticationProvider)
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
@@ -167,7 +168,9 @@ class BrowserSecurityConfiguration {
                 .headers(headers -> headers.contentSecurityPolicy(
                         csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'")))
                 .addFilterBefore(new AdminBodyFilter(adminBodyConcurrency), CsrfFilter.class)
-                .addFilterBefore(new WorkspaceIdentityFilter(auth, false, issuer), AdminBodyFilter.class)
+                .addFilterBefore(
+                        new WorkspaceIdentityFilter(auth, false, issuer, Duration.ofDays(accountSessionIdleDays)),
+                        AdminBodyFilter.class)
                 .addFilterBefore(new OriginAndBodyFilter(origins(origins)), WorkspaceIdentityFilter.class)
                 .addFilterBefore(
                         new LoginThrottleFilter(

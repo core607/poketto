@@ -3,6 +3,10 @@
 Date: 2026-08-27
 Implemented: 2026-09-06
 
+[Long-lived browser sessions](2026-09-23-long-lived-browser-sessions.md) stores browser sessions
+in PostgreSQL and keeps a signed-in session for 90 idle days. The 30-minute expiry and the
+process-local sessions recorded below no longer apply.
+
 [Consumer identity and site policy](2026-09-20-consumer-identity-and-site-policy.md)
 replaces registration invitations with verified email registration and Google login,
 and adds email password recovery. Workspace invitations keep the membership semantics recorded here.

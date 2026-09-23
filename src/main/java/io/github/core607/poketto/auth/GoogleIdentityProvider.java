@@ -8,7 +8,7 @@ public interface GoogleIdentityProvider {
 
     GoogleAccounts.Identity exchange(Authorization authorization, String code);
 
-    record Authorization(String url, String state, String nonce, String verifier) {
+    record Authorization(String url, String state, String nonce, String verifier) implements java.io.Serializable {
         @Override
         public String toString() {
             return "GoogleAuthorization[REDACTED]";
