@@ -49,6 +49,23 @@ const clarificationTool = tool(
   },
   ["question", "options"],
 );
+const evidenceTool = tool(
+  "submit_evidence",
+  "Finish retrieval with up to ten original document IDs, most relevant first. Directory README files are not evidence.",
+  {
+    ids: {
+      type: "array",
+      maxItems: 10,
+      items: {
+        type: "string",
+        pattern: "^[A-Za-z0-9_-]+$",
+        description:
+          "Original document ID, without directory or .md extension; for example 12345, not corpus/topic/page/12345.md.",
+      },
+    },
+  },
+  ["ids"],
+);
 const agentTools = [
   tool(
     "execute_shell",
@@ -67,23 +84,7 @@ const agentTools = [
     },
     ["artifactId", "offset"],
   ),
-  tool(
-    "submit_evidence",
-    "Finish retrieval with up to ten original document IDs, most relevant first. Directory README files are not evidence.",
-    {
-      ids: {
-        type: "array",
-        maxItems: 10,
-        items: {
-          type: "string",
-          pattern: "^[A-Za-z0-9_-]+$",
-          description:
-            "Original document ID, without directory or .md extension; for example 12345, not corpus/topic/page/12345.md.",
-        },
-      },
-    },
-    ["ids"],
-  ),
+  evidenceTool,
 ];
 
 export function validateAnswer(raw: Json, evidence: Evidence[]): Answer {
@@ -640,7 +641,7 @@ export class Engine {
     ];
     const artifacts = new Set<string>();
     try {
-      while (result.tools < experiment.maxToolCalls) {
+      while (true) {
         signal.throwIfAborted();
         const submitting = result.tools === experiment.maxToolCalls - 1;
         if (submitting) {
@@ -652,7 +653,7 @@ export class Engine {
         }
         const message = await this.models.chat(
           messages,
-          submitting ? [agentTools[2]!] : agentTools,
+          submitting ? [evidenceTool] : agentTools,
           signal,
           this.record(run),
           submitting ? "submit_evidence" : undefined,
@@ -751,8 +752,6 @@ export class Engine {
           });
         }
       }
-      result.limited = true;
-      return [];
     } catch (error) {
       if (signal.aborted && !outer.aborted) {
         result.limited = true;
