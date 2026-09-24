@@ -56,15 +56,33 @@ export type FollowedSpace = {
   displayName: string | null;
   available: boolean;
 };
+/** A comment, or a correction event with commentId null; older servers omit the correction fields. */
 export type CommunityNotification = {
   position: number;
-  commentId: string;
+  commentId: string | null;
   actor: CommunityProfile | null;
   excerpt: string;
   article: CommunityArticle;
   createdAt: string;
   read: boolean;
+  correctionId?: string | null;
+  event?: "PROPOSED" | "ACCEPTED" | "DECLINED" | "STALE" | null;
 };
+/** What a notification says happened, after the actor's name. */
+export function noticeAction(item: CommunityNotification) {
+  switch (item.event) {
+    case "PROPOSED":
+      return `对《${item.article.title}》提了修改建议`;
+    case "ACCEPTED":
+      return `采纳了你对《${item.article.title}》的修改建议`;
+    case "DECLINED":
+      return `没有采纳你对《${item.article.title}》的修改建议`;
+    case "STALE":
+      return `处理时发现《${item.article.title}》已经改过，你的建议已过期`;
+    default:
+      return `回复了《${item.article.title}》`;
+  }
+}
 export type CommunityReport = {
   position: number;
   commentId: string;

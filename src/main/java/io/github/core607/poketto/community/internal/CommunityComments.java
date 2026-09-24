@@ -82,30 +82,9 @@ final class CommunityComments {
                     input.body(),
                     digest);
             List<UUID> recipients = parent == null ? accounts.owners(workspace) : List.of(parent.author());
-            notifyRecipients(id, identity.accountId(), recipients);
+            activity.deliver(identity.accountId(), recipients, id, null, null);
             return id;
         });
-    }
-
-    private void notifyRecipients(UUID id, UUID actor, List<UUID> recipients) {
-        for (UUID recipient : recipients) {
-            if (recipient.equals(actor) || activity.blocked(actor, recipient)) {
-                continue;
-            }
-            // Separate from account locks: recovery may hold the recipient while awaiting this workspace.
-            jdbc.queryForObject(
-                    "select pg_advisory_xact_lock(hashtextextended('community-inbox:' || ?::text,0))",
-                    Object.class,
-                    recipient);
-            jdbc.update(
-                    "insert into community_notifications(recipient_id,comment_id) values (?,?) on conflict do nothing",
-                    recipient,
-                    id);
-            jdbc.update(
-                    "delete from community_notifications where recipient_id=? and position < coalesce((select position from community_notifications where recipient_id=? order by position desc offset 999 limit 1),0)",
-                    recipient,
-                    recipient);
-        }
     }
 
     Page<Comment> page(

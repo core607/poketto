@@ -137,6 +137,10 @@ public interface Community {
         }
     }
 
+    /**
+     * Either a comment, or a correction event: {@code PROPOSED} for owners, {@code ACCEPTED},
+     * {@code DECLINED} or {@code STALE} for the proposer. The other subject's fields are null.
+     */
     record Notification(
             long position,
             UUID commentId,
@@ -144,7 +148,9 @@ public interface Community {
             String excerpt,
             ArticleCard article,
             Instant createdAt,
-            boolean read) {}
+            boolean read,
+            UUID correctionId,
+            String event) {}
 
     record BlockedAccount(long position, Profile account) {}
 

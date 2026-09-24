@@ -47,6 +47,20 @@ class OriginAndBodyFilterTests {
     }
 
     @Test
+    void aCorrectionMayCarryAWholeArticleWhileOtherCommunityBodiesStaySmall() throws Exception {
+        String article = "x".repeat(1024 * 1024);
+        var correction = unknown("/api/auth/community/spaces/home/corrections", article, "application/json");
+        var passed = new AtomicBoolean();
+        filter.doFilter(correction, new MockHttpServletResponse(), (wrapped, ignored) -> passed.set(true));
+        assertThat(passed).isTrue();
+
+        var comment = unknown("/api/auth/community/spaces/home/articles/a/comments", article, "application/json");
+        var response = new MockHttpServletResponse();
+        filter.doFilter(comment, response, (wrapped, ignored) -> {});
+        assertThat(response.getStatus()).isEqualTo(413);
+    }
+
+    @Test
     void chunkedFormPreservesQueryPrecedenceRepeatedValuesAndUtf8() throws Exception {
         var request = unknown(
                 "/api/auth/login",
