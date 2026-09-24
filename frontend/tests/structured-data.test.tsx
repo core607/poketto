@@ -8,7 +8,7 @@ import { GET as cover } from "../app/s/[space]/cover/[[...slug]]/route";
 import Article, {
   generateMetadata,
 } from "../app/s/[space]/read/[[...slug]]/page";
-import { coverHref, routeFromSegments } from "../lib/format";
+import { coverHref, coverRoute, routeFromSegments } from "../lib/format";
 import { proxy } from "../proxy";
 
 async function backend(
@@ -56,6 +56,17 @@ test("cover addresses sit beside reading addresses and decode like them", () => 
   assert.equal(routeFromSegments([]), "/");
   for (const bad of [["%"], ["%2F"], [".."], [""], ["%00"]])
     assert.equal(routeFromSegments(bad), null);
+  for (const route of ["/", "/随记/雨后", "/read/a"])
+    assert.equal(coverRoute(coverHref(route, "read")), route);
+  assert.equal(coverRoute("/s/home/cover/"), "/");
+  assert.equal(coverRoute("/s/home/cover/%2e%2e"), null);
+  for (const other of [
+    "/s/home/read/a",
+    "/s/home/covers",
+    "/s/cover",
+    "/cover/a",
+  ])
+    assert.equal(coverRoute(other), undefined, other);
 });
 
 test("the cover address serves the thumbnail, redirects when there is none and 404s when withdrawn", async (t) => {
@@ -89,7 +100,7 @@ test("the cover address serves the thumbnail, redirects when there is none and 4
   assert.deepEqual(routes, ["/雨后/100%", "/plain", "/withdrawn"]);
 });
 
-test("pages are never cached, while the cover address and share image keep their own caching", () => {
+test("pages are never cached, while the cover address and build-time files keep their own caching", () => {
   const caching = (path: string) =>
     proxy(new NextRequest("https://poketto.example" + path)).headers.get(
       "Cache-Control",
@@ -102,7 +113,12 @@ test("pages are never cached, while the cover address and share image keep their
     "/s/home/covers",
   ])
     assert.equal(caching(page), "no-store", page);
-  for (const own of ["/s/home/cover", "/s/home/cover/news/a", "/share.png"])
+  for (const own of [
+    "/s/home/cover",
+    "/s/home/cover/news/a",
+    "/share.png",
+    "/icon.svg",
+  ])
     assert.equal(caching(own), null, own);
 });
 

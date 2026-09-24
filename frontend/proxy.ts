@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { coverRoute } from "./lib/format";
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
@@ -22,12 +23,14 @@ export function proxy(request: NextRequest) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // Pages carry a per-request nonce and are never reused; a header set here would replace the
-  // caching that the cover address and the share image declare for themselves.
-  if (!OWN_CACHING.test(request.nextUrl.pathname))
+  // caching that build-time files and the cover address declare for themselves.
+  const path = request.nextUrl.pathname;
+  if (!BUILD_FILES.has(path) && coverRoute(path) === undefined)
     response.headers.set("Cache-Control", "no-store");
   return response;
 }
-const OWN_CACHING = /^\/(?:share\.png$|s\/[^/]+\/cover(?:\/|$))/;
+/** Files fixed at build time under paths this proxy matches: app/icon.svg and public/. */
+const BUILD_FILES = new Set(["/icon.svg", "/share.png"]);
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };
