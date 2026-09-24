@@ -1,8 +1,27 @@
-import { experiment, queryInput, type Config } from "./config.js";
+import { experiment, queryInput, type Config, type Prices } from "./config.js";
 import type { Evidence, Json, Usage } from "./types.js";
 import { randomUUID } from "node:crypto";
 
 export type RecordCall = (type: string, data: unknown) => void;
+export function usageCost(usage: Usage, prices: Prices): number | null {
+  if (
+    usage.status !== "completed" ||
+    usage.input === null ||
+    usage.output === null
+  )
+    return null;
+  const inputPrice =
+    usage.operation === "chat"
+      ? prices.deepseekInput
+      : usage.operation === "embed"
+        ? prices.embedding
+        : usage.operation === "rerank"
+          ? prices.rerank
+          : undefined;
+  const outputPrice = usage.operation === "chat" ? prices.deepseekOutput : 0;
+  if (inputPrice === undefined || outputPrice === undefined) return null;
+  return (usage.input * inputPrice + usage.output * outputPrice) / 1e6;
+}
 export class Models {
   constructor(private config: Config) {}
   async request(
@@ -70,22 +89,7 @@ export class Models {
         : deepseek
           ? null
           : 0;
-      const prices = this.config.prices;
-      const inputPrice =
-        kind === "chat"
-          ? prices.deepseekInput
-          : kind === "embed"
-            ? prices.embedding
-            : prices.rerank;
-      const outputPrice = kind === "chat" ? prices.deepseekOutput : 0;
-      if (
-        usage.input !== null &&
-        usage.output !== null &&
-        inputPrice !== undefined &&
-        outputPrice !== undefined
-      )
-        usage.cost =
-          (usage.input * inputPrice + usage.output * outputPrice) / 1e6;
+      usage.cost = usageCost(usage, this.config.prices);
       return body;
     } finally {
       usage.milliseconds = performance.now() - started;

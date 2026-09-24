@@ -47,7 +47,7 @@ Query compatibility makes three development-query embedding calls and compares 4
 
 ## Evaluation
 
-The defaults in [config.ts](src/config.ts) are part of each run's fingerprint:
+The defaults in [config.ts](src/config.ts) are part of each run's fingerprint. Prices are recorded separately: changing rates preserves compatibility and completed development samples. Formal estimates reprice recorded usage at the current configured rates without rewriting historical charges:
 
 - RAG: 100 lexical and 100 float32 cosine candidates, RRF constant 60, neural reranking of 50 candidates, ten selected documents. Upstream BM25 options are FTS column weights, not tunable BM25 b/k1. The experiment uses the upstream defaults.
 - Agentic: shell/search/Python, captured-output reads, and ranked ID submission; twelve tools, thirty seconds per command and five minutes for investigation. Limit stops remain visible and never turn all visited files into retrieved evidence.

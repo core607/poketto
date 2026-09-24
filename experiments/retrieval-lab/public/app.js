@@ -47,7 +47,7 @@ async function refresh() {
     ? `按 ${status.estimate.pricedPairs} 道开发题估算，100 题约 $${status.estimate.estimated100Pairs.USD.toFixed(4)} + ¥${status.estimate.estimated100Pairs.CNY.toFixed(4)}。`
     : "尚无完整计价的开发样本，正式批次保持关闭。";
   $("test-batch").disabled =
-    status.estimate.samplePairs < 20 || !status.estimate.estimated100Pairs;
+    status.estimate.pricedPairs < 20 || !status.estimate.estimated100Pairs;
   if ($("benchmark").options.length === 1)
     for (const qid of status.splits.dev) {
       const option = el("option", `FiQA 开发题 ${qid}`);

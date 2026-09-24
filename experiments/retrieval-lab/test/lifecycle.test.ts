@@ -9,7 +9,7 @@ import { Store } from "../src/store.js";
 import { Engine, validateAnswer } from "../src/engine.js";
 import { createLab } from "../src/server.js";
 import { request } from "node:http";
-import type { Run } from "../src/types.js";
+import type { Run, Usage } from "../src/types.js";
 
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "retrieval-test-"));
@@ -235,6 +235,79 @@ test("stop-all prevents an in-flight batch query lookup from enqueuing new work"
     release("Question");
     await assert.rejects(batch, /cancelled/);
     assert.deepEqual(f.store.list(), []);
+  } finally {
+    f.close();
+  }
+});
+
+test("price changes preserve compatibility and reprice development usage without changing historical charges", async () => {
+  const f = fixture();
+  try {
+    f.store.setMetadata("compatibility", {
+      passed: true,
+      fingerprint: f.engine.runFingerprint,
+    });
+    const usage: Usage = {
+      callId: "chat",
+      operation: "chat",
+      model: "fake",
+      input: 1_000_000,
+      output: 100_000,
+      milliseconds: 1,
+      currency: "USD",
+      cost: null,
+      status: "completed",
+      prices: {},
+    };
+    const run: Run = {
+      id: "priced",
+      createdAt: "2026-09-24",
+      updatedAt: "",
+      query: "q",
+      task: "q",
+      qid: "dev",
+      split: "dev",
+      status: "completed",
+      routes: ["rag", "agentic"],
+      clarify: false,
+      results: {},
+      usage: [usage],
+      config: f.engine.snapshot,
+      fingerprint: f.engine.runFingerprint,
+    };
+    f.store.save(run, "completed", {});
+    const changed = new Engine(
+      {
+        ...f.settings,
+        prices: { ...f.settings.prices, deepseekInput: 1, deepseekOutput: 2 },
+      },
+      f.store,
+    );
+    assert.equal(changed.runFingerprint, f.engine.runFingerprint);
+    assert.deepEqual(changed.summary().compatibility, {
+      passed: true,
+      fingerprint: changed.runFingerprint,
+    });
+    assert.equal(changed.estimate().pricedPairs, 1);
+    assert.equal(changed.estimate().estimated100Pairs!.USD, 120);
+    assert.equal(f.store.get(run.id).usage[0]!.cost, null);
+    for (let i = 0; i < 19; i++)
+      f.store.save(
+        {
+          ...run,
+          id: `unknown-${i}`,
+          qid: `unknown-${i}`,
+          usage: [{ ...usage, input: null }],
+        },
+        "completed",
+        {},
+      );
+    assert.equal(changed.estimate().samplePairs, 20);
+    await assert.rejects(changed.batch("test"), /development/);
+    run.usage[0]!.status = "uncertain";
+    f.store.save(run, "uncertain", {});
+    assert.equal(changed.estimate().pricedPairs, 0);
+    await assert.rejects(changed.batch("test"), /development/);
   } finally {
     f.close();
   }

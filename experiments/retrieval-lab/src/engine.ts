@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { Data } from "./data.js";
 import { experiment, fingerprint, readJson, type Config } from "./config.js";
-import { Models } from "./models.js";
+import { Models, usageCost } from "./models.js";
 import { Store } from "./store.js";
 import { Worker, type CorpusManifest } from "./worker.js";
 import { batchReport } from "./report.js";
@@ -149,12 +149,12 @@ export class Engine {
       corpusSha256: audit.databaseSha256,
       corpusCommit: this.manifest.commit,
       dataset: audit.pins,
-      prices: config.prices,
       promptRevision: "v1",
     };
     this.runFingerprint = createHash("sha256")
       .update(fingerprint + JSON.stringify(this.snapshot))
       .digest("hex");
+    this.snapshot.prices = config.prices;
     this.worker = new Worker(config, store, this.manifest);
   }
   summary() {
@@ -216,11 +216,12 @@ export class Engine {
     const priced = sample.filter(
       (r) =>
         calls(r).length > 0 &&
-        calls(r).every((u) => u.status === "completed" && u.cost !== null),
+        calls(r).every((u) => usageCost(u, this.config.prices) !== null),
     );
     const cost = { USD: 0, CNY: 0 };
     for (const run of priced)
-      for (const usage of calls(run)) cost[usage.currency] += usage.cost!;
+      for (const usage of calls(run))
+        cost[usage.currency] += usageCost(usage, this.config.prices)!;
     return {
       samplePairs: sample.length,
       pricedPairs: priced.length,
@@ -230,7 +231,8 @@ export class Engine {
             CNY: (cost.CNY / priced.length) * 100,
           }
         : null,
-      note: "Measured-sample estimate, not a cap. Unknown prices/usage remain unknown; currencies are separate.",
+      prices: this.config.prices,
+      note: "Measured usage at current configured rates, not a cap. Historical charges remain unchanged. Unknown prices/usage remain unknown; currencies are separate.",
     };
   }
   async create(input: {
@@ -405,7 +407,7 @@ export class Engine {
       throw new Error("Unknown benchmark split");
     if (
       split === "test" &&
-      (this.estimate().samplePairs < 20 || !this.estimate().estimated100Pairs)
+      (this.estimate().pricedPairs < 20 || !this.estimate().estimated100Pairs)
     )
       throw new Error(
         "Formal test batch needs twenty completed development pairs and measured pricing",

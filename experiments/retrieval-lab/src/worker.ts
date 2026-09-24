@@ -110,7 +110,10 @@ export class Worker {
       this.hello.version !== 1 ||
       !this.hello.workerBootId ||
       !Number.isInteger(this.hello.leaseSeconds) ||
-      this.hello.leaseSeconds < 5
+      this.hello.leaseSeconds < 5 ||
+      !Number.isInteger(this.hello.renewAfterSeconds) ||
+      this.hello.renewAfterSeconds < 1 ||
+      this.hello.renewAfterSeconds >= this.hello.leaseSeconds
     )
       throw new Error("Incompatible executor HELLO");
     for (const marker of [
@@ -236,21 +239,18 @@ export class Worker {
         bundleBytes: this.manifest.bundleBytes,
         commit: this.manifest.commit,
       });
-      timer = setInterval(
-        () => {
-          if (renewing) return;
-          renewing = true;
-          void this.send(identity, "RENEW")
-            .then(
-              () => {},
-              () => lost.abort(new Error("Executor lease renewal failed")),
-            )
-            .finally(() => {
-              renewing = false;
-            });
-        },
-        Math.max(1000, Number(this.hello!.renewAfterSeconds) * 1000),
-      );
+      timer = setInterval(() => {
+        if (renewing) return;
+        renewing = true;
+        void this.send(identity, "RENEW")
+          .then(
+            () => {},
+            () => lost.abort(new Error("Executor lease renewal failed")),
+          )
+          .finally(() => {
+            renewing = false;
+          });
+      }, this.hello!.renewAfterSeconds * 1000);
       const opened = await opening;
       if (opened.state !== "READY")
         throw new Error("Executor did not become ready");

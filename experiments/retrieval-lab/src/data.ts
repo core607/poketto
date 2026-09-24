@@ -31,6 +31,10 @@ export class Data {
       },
     );
     this.process = child;
+    const fail = (message: string) => {
+      if (this.process === child) this.stop(new Error(message));
+    };
+    child.stdin.on("error", () => fail("Corpus helper input failed"));
     child.stderr.resume();
     createInterface({ input: child.stdout }).on("line", (line) => {
       try {
@@ -42,14 +46,12 @@ export class Data {
         if (message.error) request.reject(new Error(message.error));
         else request.resolve(message.result);
       } catch {
-        this.stop(new Error("Malformed corpus helper response"));
+        fail("Malformed corpus helper response");
       }
     });
-    child.on("error", () =>
-      this.stop(new Error("Corpus helper could not start")),
-    );
+    child.on("error", () => fail("Corpus helper could not start"));
     child.on("exit", () => {
-      if (this.process === child) this.stop(new Error("Corpus helper exited"));
+      fail("Corpus helper exited");
     });
   }
   call<T>(request: object): Promise<T> {
@@ -61,7 +63,15 @@ export class Data {
         120_000,
       );
       this.pending.set(id, { resolve, reject, timer });
-      this.process!.stdin.write(JSON.stringify({ ...request, id }) + "\n");
+      const child = this.process!;
+      if (child.stdin.destroyed) {
+        this.stop(new Error("Corpus helper input is closed"));
+        return;
+      }
+      child.stdin.write(JSON.stringify({ ...request, id }) + "\n", (error) => {
+        if (error && this.process === child)
+          this.stop(new Error("Corpus helper input failed"));
+      });
     });
   }
   query(qid: string) {
