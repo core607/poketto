@@ -66,7 +66,8 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     private final Set<UUID> exports = ConcurrentHashMap.newKeySet();
     private boolean initialized;
 
-    private record PublicRevision(WorkspaceId workspace, String commit) {}
+    // Within one commit the public set only grows as scheduled articles fall due, so the count tells views apart.
+    private record PublicRevision(WorkspaceId workspace, String commit, int articles) {}
 
     private final Map<PublicRevision, String> publicFingerprints =
             Collections.synchronizedMap(new LinkedHashMap<>(64, 0.75f, true) {
@@ -106,8 +107,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         String authorityCommit = snapshot.commit().orElseThrow(RepositoryEmptyException::new);
         long deadline = System.nanoTime() + timeout.toNanos();
         var projection = projection(workspace, snapshot, deadline);
-        String fingerprint = PublicExecutionProjection.fingerprint(projection);
-        publicFingerprints.put(new PublicRevision(workspace, authorityCommit), fingerprint);
+        String fingerprint = remember(workspace, authorityCommit, snapshot, projection);
         UUID id = UUID.randomUUID();
         Path repositoryPath = staging.resolve(id + ".projection");
         Path pending = staging.resolve(id + ".pending");
@@ -160,6 +160,17 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 throw new ContentRepositoryException("public execution projection cleanup failed", exception);
             }
         }
+    }
+
+    private String remember(
+            WorkspaceId workspace,
+            String commit,
+            PublicContentSnapshot snapshot,
+            PublicExecutionProjection.Projection projection) {
+        String fingerprint = PublicExecutionProjection.fingerprint(projection);
+        publicFingerprints.put(
+                new PublicRevision(workspace, commit, snapshot.articles().size()), fingerprint);
+        return fingerprint;
     }
 
     // The projection becomes one root commit with a fixed author, so equal projections hash equally.
@@ -278,7 +289,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
         var current = snapshots.withCurrent(workspace, value -> value);
         String commit = current.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
-        var revision = new PublicRevision(workspace, commit);
+        var revision = new PublicRevision(workspace, commit, current.articles().size());
         String fingerprint = publicFingerprints.get(revision);
         if (fingerprint == null) {
             fingerprint = PublicExecutionProjection.fingerprint(
@@ -290,7 +301,8 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         snapshots.withCurrent(workspace, latest -> {
-            if (!latest.commit().equals(current.commit())) {
+            if (!latest.commit().equals(current.commit())
+                    || latest.articles().size() != current.articles().size()) {
                 throw unavailable();
             }
             return null;

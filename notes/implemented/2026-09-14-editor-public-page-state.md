@@ -8,7 +8,7 @@ The [multi-user administration contract](2026-09-11-multiuser-workspaces-and-dis
 
 ## Decision
 
-The authorized file response adds a public-page presentation state alongside the existing commit and publication scope. It reports an unsaved path, a private file, a disabled website, an unavailable page, or an available public article. Only the available case carries a space slug and logical route. The browser builds the canonical internal article URL from those fields.
+The authorized file response adds a public-page presentation state alongside the existing commit and publication scope. It reports an unsaved path, a private file, a disabled website, an unavailable page, an article [scheduled](2026-09-24-scheduled-publishing.md) for later with its release instant, or an available public article. Only the available case carries a logical route. The browser builds the canonical internal article URL from those fields.
 
 Availability uses the selected file's exact commit and path, the current verified public snapshot and the current workspace website switch. It does not parse the draft, fetch Git again, load media or infer publication from a path prefix. Missing or expired snapshots keep file reading usable but report page availability as unknown or unavailable. Reading this file-level presentation does not permit a member to change the owner-only website settings.
 

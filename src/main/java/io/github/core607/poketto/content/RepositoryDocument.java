@@ -17,7 +17,9 @@ public record RepositoryDocument(
         boolean privatePath,
         String publicAuthor,
         UUID articleId,
-        boolean featured) {
+        boolean featured,
+        /** When a publishable article may first appear on public surfaces; null when not scheduled. */
+        Instant publishAt) {
     public RepositoryDocument {
         tags = List.copyOf(tags);
     }
