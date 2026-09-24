@@ -107,10 +107,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         String authorityCommit = snapshot.commit().orElseThrow(RepositoryEmptyException::new);
         long deadline = System.nanoTime() + timeout.toNanos();
         var projection = projection(workspace, snapshot, deadline);
-        String fingerprint = remember(
-                new PublicRevision(
-                        workspace, authorityCommit, snapshot.articles().size()),
-                projection);
+        String fingerprint = remember(workspace, authorityCommit, snapshot, projection);
         UUID id = UUID.randomUUID();
         Path repositoryPath = staging.resolve(id + ".projection");
         Path pending = staging.resolve(id + ".pending");
@@ -165,9 +162,14 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
     }
 
-    private String remember(PublicRevision revision, PublicExecutionProjection.Projection projection) {
+    private String remember(
+            WorkspaceId workspace,
+            String commit,
+            PublicContentSnapshot snapshot,
+            PublicExecutionProjection.Projection projection) {
         String fingerprint = PublicExecutionProjection.fingerprint(projection);
-        publicFingerprints.put(revision, fingerprint);
+        publicFingerprints.put(
+                new PublicRevision(workspace, commit, snapshot.articles().size()), fingerprint);
         return fingerprint;
     }
 
