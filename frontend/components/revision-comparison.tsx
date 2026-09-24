@@ -11,9 +11,12 @@ export function RevisionComparison({ versions }: { versions: Version[] }) {
   const newest = versions.length - 1;
   const [before, setBefore] = useState(Math.max(newest - 1, 0));
   const [after, setAfter] = useState(newest);
+  // The diff always runs from the earlier to the later version, whichever box holds which, so a
+  // removed passage can never be shown as added.
+  const [older, newer] = before <= after ? [before, after] : [after, before];
   const difference = sourceDifference(
-    versions[before].body,
-    versions[after].body,
+    versions[older].body,
+    versions[newer].body,
   );
   const label = (index: number) =>
     `第 ${index + 1} 版 · ${dateTime(versions[index].savedAt)}`;
@@ -41,6 +44,11 @@ export function RevisionComparison({ versions }: { versions: Version[] }) {
       <div className="revision-choices">
         {choice("较早", before, setBefore)}
         {choice("较新", after, setAfter)}
+        {before > after && (
+          <p className="muted">
+            已按时间先后比较：从第 {older + 1} 版到第 {newer + 1} 版。
+          </p>
+        )}
       </div>
       {difference.kind === "unchanged" && <p>两个版本的正文相同。</p>}
       {difference.kind === "lines" && (
@@ -64,12 +72,12 @@ export function RevisionComparison({ versions }: { versions: Version[] }) {
           <p>正文较长，改为并排显示两个版本。</p>
           <div className="history-sources">
             <section>
-              <h2>{label(before)}</h2>
-              <pre>{versions[before].body}</pre>
+              <h2>{label(older)}</h2>
+              <pre>{versions[older].body}</pre>
             </section>
             <section>
-              <h2>{label(after)}</h2>
-              <pre>{versions[after].body}</pre>
+              <h2>{label(newer)}</h2>
+              <pre>{versions[newer].body}</pre>
             </section>
           </div>
         </>
