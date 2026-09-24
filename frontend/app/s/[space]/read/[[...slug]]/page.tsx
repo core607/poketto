@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
+  articleViews,
   spaceArticle,
   spaceInfo,
   PublicApiError,
@@ -17,6 +18,7 @@ import {
 import { plainSummary } from "../../../../../lib/summary";
 import { readingGuide } from "../../../../../lib/reading";
 import { TableOfContents } from "../../../../../components/table-of-contents";
+import { ViewBeacon } from "../../../../../components/view-beacon";
 import { JsonLd, absoluteUrl } from "../../../../../components/json-ld";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
@@ -95,9 +97,12 @@ export default async function Article({
     throw error;
   });
   // The space name only labels the breadcrumb; the article stays readable without it.
-  const spaceName = await spaceInfo(space)
-    .then((info) => info.displayName || space)
-    .catch(() => space);
+  const [spaceName, views] = await Promise.all([
+    spaceInfo(space)
+      .then((info) => info.displayName || space)
+      .catch(() => space),
+    articleViews(space, route),
+  ]);
   const parameters = (await searchParams) ?? {};
   const selected =
     typeof parameters.collection === "string"
@@ -171,6 +176,9 @@ export default async function Article({
             {!value.folderPage && (
               <span title="预计阅读时长">约 {guide.minutes} 分钟</span>
             )}
+            {views ? (
+              <span title="匿名读者的每日计数">阅读 {views}</span>
+            ) : null}
             {value.folderPage && <span className="kind">目录</span>}
             {value.tags.length > 0 && (
               <span className="card-tags">
@@ -221,6 +229,7 @@ export default async function Article({
           <a href={spaceHref(space)}>更多来自「{spaceName}」的记录 →</a>
         </footer>
         <ArticleCommunity space={space} articleId={value.articleId} />
+        <ViewBeacon space={space} route={value.route} />
       </article>
       {(hasCollection || contents.length > 0) && (
         <aside className="read-rail" aria-label="阅读导航">
