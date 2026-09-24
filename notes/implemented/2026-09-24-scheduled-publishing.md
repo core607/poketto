@@ -54,7 +54,7 @@ The content contract links here.
 
 - The article list can change within one commit. Code that compares views, such as export fingerprints and discovery batches, treats a newly due article as a content change and refreshes or refuses as it does for a new commit. Within one commit the public set only grows, so the public MCP export keys its fingerprint cache by commit and public article count, and its final recheck compares both.
 - Clock skew on the host shifts the release by the same amount.
-- Site search rechecks only the commit after its bounded scan. A search that spans a release can omit the article that just became due, and a retry shows it. It never shows an article early, because it scanned an earlier view.
+- Site search rechecks the commit and the public article count after its bounded scan, so a search that spans a release asks for a retry instead of omitting the article that just became due.
 - Git history, and members who read the public scope, see a scheduled article early. Only anonymous readers wait.
 - An older server ignores the key and publishes at once. The key is documented only with the release that enforces it.
 
