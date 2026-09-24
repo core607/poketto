@@ -595,7 +595,7 @@ jobs:
           POKETTO_GITHUB_WEBHOOK_SECRET: ${{ secrets.POKETTO_GITHUB_WEBHOOK_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
+          POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10
         run: |
           settings=""
           for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL \
@@ -645,7 +645,7 @@ jobs:
           POKETTO_GITHUB_WEBHOOK_SECRET: ${{ secrets.POKETTO_GITHUB_WEBHOOK_SECRET }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes
+          POKETTO_SSH: ssh -i ${{ runner.temp }}/poketto-ssh/deploy_key -o UserKnownHostsFile=${{ runner.temp }}/poketto-ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10
         run: |
           settings=""
           [ -z "$REPOSITORY_PASSWORD" ] || settings="POKETTO_REPOSITORY_PASSWORD=$REPOSITORY_PASSWORD"
