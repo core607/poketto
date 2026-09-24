@@ -29,6 +29,16 @@ unavailable. The workspace is part of the identity: another space cannot claim i
 history. Changing an ID starts a different history; restoring it reconnects the
 retained records. Space following also works for articles without IDs.
 
+Article pages count anonymous daily readers by space and route, with or without an
+article ID, and show **阅读 N** once N is at least one. The page reports a reader
+after five continuously visible seconds, at most once a day per browser. The
+server counts a route only while it is public, ignores common crawler user agents,
+admits at most 300 reports per client address a day, and counts one client once per article and UTC day, using salted digests held in
+memory and replaced daily; addresses are never stored. `POST /api/public/community/spaces/{slug}/views?route=…`
+needs no session or CSRF token and always answers 204. `GET` on the same address
+returns `{ "views": n }`, or 404 when the route is not public. A moved article starts
+a new count. See [public view counts](../notes/implemented/2026-09-24-public-view-counts.md).
+
 Comments are plain text with up to 4,000 Unicode code points and one level of
 replies. Retrying the same comment request is idempotent. Deleting your comment
 cannot be undone; a root becomes a tombstone when replies remain and accepts no
@@ -139,7 +149,7 @@ To schedule a publishable article, add `publish_at` to its frontmatter, either a
 
 Public articles, album and collection landings, discovery cards and search summaries show the nonblank `public_author` frontmatter string first. Otherwise they use the workspace public signature from the studio's **Website** section, falling back to the space name when unset. Both signatures are trimmed single-line text, limited to 120 Unicode code points. The same section renames the space (1–120 characters, single line; `PUT …/publication/name`) and sets an optional description of at most 280 Unicode code points that space sites show under their name (`PUT …/publication/description`, both taking `{ "text": … }`). Only a signed-in owner can change the signature, name or description. Existing arbitrary metadata such as `author`, account details and Git commit identities remain private.
 
-Article pages estimate reading time at about 400 CJK characters or 200 other words a minute. An article with at least three headings at its two shallowest levels, h1 to h3, also lists them as in-page links: beside the text on wide screens and in a collapsible **目录** above it on narrow ones. An opening heading that repeats the title is left out. Fenced code blocks that name a language, such as ```` ```ts ````, are highlighted in both themes; unnamed or unknown languages stay plain text, and the language is never guessed. The editor preview uses the same rules. See [reading aids](../notes/implemented/2026-09-24-reading-aids.md).
+Article pages estimate reading time at about 400 CJK characters or 200 other words a minute. An article with at least three headings at its two shallowest levels, h1 to h3, also lists them as in-page links: beside the text on wide screens and in a collapsible **目录** above it on narrow ones. An opening heading that repeats the title is left out. Fenced code blocks that name a language, such as ```` ```ts ````, are highlighted in both themes; unnamed or unknown languages stay plain text, and the language is never guessed. Math uses doubled dollars only: `$$x^2$$` inline, and `$$` on lines of their own or a ```` ```math ```` block for display; a single `$` stays text. A ```` ```mermaid ```` block is drawn as a diagram in the browser and shows its source where script does not run. The editor preview uses the same rules. See [reading aids](../notes/implemented/2026-09-24-reading-aids.md).
 
 Public and authorized management search match literal titles and parsed Markdown reading text. Link labels, image descriptions, code, table cells and referenced footnotes participate; hidden destinations, raw HTML and unused footnote definitions do not. Summaries collapse whitespace and omit an opening level-one heading only when its text repeats the page title, then take a bounded excerpt around the match. Stored Markdown and article bodies remain unchanged.
 

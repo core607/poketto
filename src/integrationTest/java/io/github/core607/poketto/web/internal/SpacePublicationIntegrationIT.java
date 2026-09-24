@@ -233,6 +233,7 @@ class SpacePublicationIntegrationIT {
                 "/api/public/spaces/home/documents",
                 "/api/public/spaces/home/document?route=/note",
                 "/api/public/spaces/home/cover?route=/note",
+                "/api/public/community/spaces/home/views?route=/note",
                 "/api/public/spaces/home/sitemap")) {
             mvc.perform(get(path).session(ownerSession)).andExpect(status().isNotFound());
         }
@@ -604,9 +605,37 @@ class SpacePublicationIntegrationIT {
                 .andExpect(header().string("Cache-Control", "no-store"));
         mvc.perform(get("/api/public/spaces/home/cover").param("route", "/missing"))
                 .andExpect(status().isNotFound());
+        verifyReaderCounts();
         verifyDiscoveryAlbumCards(owner, workspace, root);
         service.setEnabled(owner, workspace, false);
         mvc.perform(get(endpoint).param("route", "/guide")).andExpect(status().isNotFound());
+    }
+
+    private void verifyReaderCounts() throws Exception {
+        String views = "/api/public/community/spaces/home/views";
+        // Counting needs no session or CSRF token, and never starts a session.
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var counted = mvc.perform(post(views)
+                            .param("route", "/note")
+                            .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0")
+                            .with(request -> {
+                                request.setRemoteAddr("203.0.113.5");
+                                return request;
+                            }))
+                    .andExpect(status().isNoContent())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(header().doesNotExist("Set-Cookie"))
+                    .andReturn();
+            assertThat(counted.getRequest().getSession(false)).isNull();
+        }
+        mvc.perform(post(views).param("route", "/missing").header("User-Agent", "Mozilla/5.0"))
+                .andExpect(status().isNoContent());
+        mvc.perform(post(views).param("route", "/note").header("Origin", "https://elsewhere.example"))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(views).param("route", "/note"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.views").value(1));
+        mvc.perform(get(views).param("route", "/missing")).andExpect(status().isNotFound());
     }
 
     private void verifyDiscoveryAlbumCards(AuthPrincipal owner, WorkspaceId workspace, Path root) throws Exception {

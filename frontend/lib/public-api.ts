@@ -27,6 +27,18 @@ async function get<T>(path: string): Promise<T> {
     throw new PublicApiError(503);
   }
 }
+/** All-time readers of a public article; null when unknown, so pages simply leave the count out. */
+export async function articleViews(slug: string, route: string) {
+  try {
+    const { views } = await get<{ views: number }>(
+      `/api/public/community/spaces/${encodeURIComponent(slug)}/views?` +
+        new URLSearchParams({ route }),
+    );
+    return Number.isSafeInteger(views) && views >= 0 ? views : null;
+  } catch {
+    return null;
+  }
+}
 /** An article's cover thumbnail from its stable address; null when the article has no cover. */
 export async function spaceCover(slug: string, route: string) {
   const base = process.env.POKETTO_API_BASE_URL ?? "http://127.0.0.1:8080";
