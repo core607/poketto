@@ -40,7 +40,8 @@ returns `{ "views": n }`, or 404 when the route is not public. A moved article s
 a new count. See [public view counts](../notes/implemented/2026-09-24-public-view-counts.md).
 
 Signed-in community members can propose a correction below a public article with
-**建议修改**: they edit the served body and may add a reason of up to 500 characters.
+**建议修改**: they edit the served body, may add a reason of up to 500 characters, and
+choose whether to be thanked by name if it is accepted.
 A proposal is refused when the article changed since the page was loaded, when it
 changes nothing, when the proposer and a space owner have blocked each other, or
 while the proposer already has an open proposal for the article; the limits are 5 a
@@ -48,9 +49,10 @@ minute and 30 a day. Owners are notified. Members holding `PUBLISH` review open
 proposals under **读者勘误** in the studio as a line diff. Accepting re-reads the
 file at the remote head and, only if its body still matches, replaces the body while
 keeping the frontmatter bytes, in a commit with a `Poketto-Suggested-By` trailer;
-otherwise the proposal becomes stale. Declining changes nothing. The proposer is
-notified either way and may withdraw an open proposal. Accepted proposers are thanked
-in the article footer. Resolved proposal text is cleared after 90 days. See
+otherwise the proposal becomes stale. While an acceptance runs, declining or
+withdrawing the proposal answers a conflict. Declining changes nothing. The proposer is
+notified either way and may withdraw an open proposal. Accepted proposers who allowed it
+are thanked in the article footer. Resolved proposal text is cleared after 90 days. See
 [reader corrections](../notes/implemented/2026-09-24-reader-corrections.md).
 
 Comments are plain text with up to 4,000 Unicode code points and one level of

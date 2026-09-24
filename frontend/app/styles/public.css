@@ -1498,6 +1498,11 @@ body:has(.image-lightbox[open]) {
   gap: 0.3rem;
   font-size: var(--text-sm);
 }
+.correction-dialog label.correction-credit {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
 .correction-dialog .dialog-actions {
   display: flex;
   justify-content: flex-end;

@@ -12,7 +12,8 @@ A reader who spots a typo or a wrong figure can only describe it in a comment. T
 - the route;
 - `baseDigest`, the SHA-256 of the UTF-8 body the reader started from;
 - the proposed body, non-blank and at most 1 MiB, with the article's CRLF line endings restored when the served body uses them;
-- the reason.
+- the reason;
+- whether the proposer may be thanked by name once accepted, checked by default and stated in the dialog.
 
 [CommunityCorrections](../../src/main/java/io/github/core607/poketto/community/internal/CommunityCorrections.java) refuses the proposal unless:
 - the route is public in the current snapshot;
@@ -23,7 +24,7 @@ A reader who spots a typo or a wrong figure can only describe it in a comment. T
 
 Proposals count against 5 a minute and 30 a day per account in `community_rate_limits`. Only browser account sessions reach these routes; API keys and connection tokens cannot propose. The request body limit for this route is 3 MiB, enough for a 1 MiB body after JSON escaping; other community bodies stay at 64 KiB.
 
-**Storage.** `community_corrections` (migration `V22`) stores the route, the proposer, `base_digest`, `proposed_body`, `reason`, a status of OPEN, ACCEPTED, DECLINED, WITHDRAWN or STALE, the creation and resolution times, `resolver_id` and the accepting commit. Routes key corrections because most articles have no frontmatter `id`; the base digest prevents applying a proposal to different text.
+**Storage.** `community_corrections` (migration `V22`) stores the route, the proposer, `base_digest`, `proposed_body`, `reason`, `credited`, a status of OPEN, ACCEPTING, ACCEPTED, DECLINED, WITHDRAWN or STALE, the creation, claim and resolution times, `resolver_id` and the accepting commit. Routes key corrections because most articles have no frontmatter `id`; the base digest prevents applying a proposal to different text.
 
 **Notifying.** A `community_notifications` row now references either a comment or a correction event. Space owners receive PROPOSED; the proposer receives ACCEPTED, DECLINED or STALE. The comment rules apply: the actor is never notified, blocked pairs are skipped, and each inbox keeps its newest 1,000 rows.
 
@@ -34,12 +35,19 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
   3. writes the original bytes before the body, including a byte-order mark and frontmatter, followed by the proposed body, through `RepositoryPatchService` with the file's exact revision;
   4. adds the trailer `Poketto-Suggested-By: account:<id>` after `Poketto-Principal`.
 
-  A remote that moves during the write is re-read up to three times. The Git write happens outside any database transaction; a conditional update from OPEN then records ACCEPTED or STALE, so concurrent reviewers settle on one resolution.
+  A remote that moves during the write is re-read up to three times.
+
+  The Git write cannot share a database transaction, because preparing GitHub credentials refuses to run inside one. Acceptance therefore first claims the proposal:
+  - a conditional update moves it from OPEN to ACCEPTING for this reviewer;
+  - after the write, a second update from this reviewer's ACCEPTING records ACCEPTED or STALE;
+  - a failed write returns the proposal to OPEN.
+
+  While a proposal is ACCEPTING, decline, withdrawal and a second acceptance answer `COMMUNITY_REQUEST_CONFLICT`. Any resolution whose update misses answers the same conflict rather than reporting success. A claim left for ten minutes, for example by a stopped process, can be taken again. Repeating the write is safe, because a body that already equals the proposal is reported as applied without a new commit.
 - **Decline** records the resolution without touching Git.
 - A stale proposal can only be marked stale, which tells the proposer to start again from the current text.
 - The proposer may withdraw an open proposal from the article page.
 
-**Credit.** `GET /api/public/community/spaces/{slug}/corrections/credits?route=…` returns the display names of accepted proposers, earliest first and at most 20. The article footer shows them as 「感谢 … 的勘误」. A proposer who has since blocked an owner, or been blocked by one, is left out, and so is an account whose profile is gone.
+**Credit.** `GET /api/public/community/spaces/{slug}/corrections/credits?route=…` returns the display names of accepted proposers who allowed credit, earliest first and at most 20. The article footer shows them as 「感谢 … 的勘误」. A proposer who has since blocked an owner, or been blocked by one, is left out, and so is an account whose profile is gone.
 
 **Retention.** Proposal text and reasons are cleared once resolved for 90 days. The clearing runs whenever a new proposal is stored, so text can outlive 90 days on a space that receives no further proposals. The row stays for credit and notification history.
 
@@ -67,6 +75,8 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
   - owners are notified with the proposer and reason;
   - review and acceptance require `PUBLISH`;
   - acceptance passes the proposer as suggester, credits the proposer and notifies them;
+  - while a proposal is being accepted, decline, withdrawal and a second acceptance conflict, a failed write reopens it, and resolving it again conflicts;
+  - a proposer who declined credit is not named;
   - decline and stale outcomes notify the proposer;
   - blocking removes the credit and refuses new proposals.
 - [RepositoryReviewedBodyEditsTests](../../src/test/java/io/github/core607/poketto/content/internal/RepositoryReviewedBodyEditsTests.java) writes to a real remote. A byte-order mark and CRLF frontmatter survive byte for byte, the commit ends with both trailers, a repeated acceptance writes nothing, and a changed body or an unserved route is stale.

@@ -48,6 +48,7 @@ export function CorrectionProposal({
   const [mine, setMine] = useState<Mine | null>(null);
   const [draft, setDraft] = useState(body);
   const [reason, setReason] = useState("");
+  const [credited, setCredited] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -63,9 +64,10 @@ export function CorrectionProposal({
         if (!active) return;
         setState(value);
         if (!value.accountId) return;
+        // An unreadable earlier proposal only hides its status, never the entrance.
         const latest = await api<Mine | undefined>(
           `${base}/mine?` + new URLSearchParams({ route }),
-        );
+        ).catch(() => undefined);
         if (active) setMine(latest ?? null);
       } catch {
         if (active) setState(null);
@@ -106,6 +108,7 @@ export function CorrectionProposal({
           baseDigest: await bodyDigest(body),
           body: proposed,
           reason,
+          credited,
         },
       });
       dialog.current?.close();
@@ -144,18 +147,23 @@ export function CorrectionProposal({
 
   return (
     <div className="correction-entry">
-      {mine?.status === "OPEN" ? (
+      {mine?.status === "OPEN" || mine?.status === "ACCEPTING" ? (
         <>
           <span className="muted">
-            {notice || "你的修改建议正在等待作者处理。"}
+            {notice ||
+              (mine.status === "OPEN"
+                ? "你的修改建议正在等待作者处理。"
+                : "作者正在采纳你的修改建议。")}
           </span>
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={busy}
-            onClick={() => void withdraw()}
-          >
-            撤回建议
-          </button>
+          {mine.status === "OPEN" && (
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => void withdraw()}
+            >
+              撤回建议
+            </button>
+          )}
         </>
       ) : (
         <>
@@ -201,6 +209,14 @@ export function CorrectionProposal({
               placeholder="例如：第二段的年份应为 2019"
               onChange={(event) => setReason(event.target.value)}
             />
+          </label>
+          <label className="correction-credit">
+            <input
+              type="checkbox"
+              checked={credited}
+              onChange={(event) => setCredited(event.target.checked)}
+            />
+            采纳后在文章底部公开致谢，显示你的昵称
           </label>
           {error && (
             <p className="notice danger" role="alert">

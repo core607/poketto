@@ -65,6 +65,7 @@ class CorrectionsIntegrationIT {
     private AuthPrincipal other;
     private final List<String> written = new ArrayList<>();
     private ReviewedBodyEdits.Result result = ReviewedBodyEdits.Result.APPLIED;
+    private Runnable duringWrite = () -> {};
 
     @BeforeEach
     void setup() {
@@ -177,6 +178,43 @@ class CorrectionsIntegrationIT {
                         failure -> assertThat(failure.code()).isEqualTo(CommunityException.Code.DENIED));
     }
 
+    @Test
+    void anAcceptanceInProgressShutsOutDeclineAndWithdrawalAndAFailedWriteReopens() {
+        var id = corrections.propose(reader, SPACE, fixed());
+        duringWrite = () -> {
+            assertThatThrownBy(() -> corrections.decline(owner, workspace, id))
+                    .isInstanceOfSatisfying(
+                            CommunityException.class,
+                            failure -> assertThat(failure.code()).isEqualTo(CommunityException.Code.REQUEST_CONFLICT));
+            assertThatThrownBy(() -> corrections.withdraw(reader, id))
+                    .isInstanceOfSatisfying(
+                            CommunityException.class,
+                            failure -> assertThat(failure.code()).isEqualTo(CommunityException.Code.REQUEST_CONFLICT));
+            assertThatThrownBy(() -> corrections.accept(owner, workspace, id))
+                    .isInstanceOfSatisfying(
+                            CommunityException.class,
+                            failure -> assertThat(failure.code()).isEqualTo(CommunityException.Code.REQUEST_CONFLICT));
+            assertThat(corrections.mine(reader, SPACE, "/essay").orElseThrow().status())
+                    .isEqualTo("ACCEPTING");
+            throw new IllegalStateException("remote unavailable");
+        };
+        assertThatThrownBy(() -> corrections.accept(owner, workspace, id)).hasMessage("remote unavailable");
+        assertThat(corrections.mine(reader, SPACE, "/essay").orElseThrow().status())
+                .isEqualTo("OPEN");
+
+        duringWrite = () -> {};
+        assertThat(corrections.accept(owner, workspace, id)).isEqualTo(Corrections.Resolution.ACCEPTED);
+        assertThatThrownBy(() -> corrections.decline(owner, workspace, id))
+                .isInstanceOfSatisfying(
+                        CommunityException.class,
+                        failure -> assertThat(failure.code()).isEqualTo(CommunityException.Code.REQUEST_CONFLICT));
+
+        var anonymous = corrections.propose(
+                other, SPACE, new Proposal("/essay", digest(BODY), BODY.replace("30", "31"), "", false));
+        assertThat(corrections.accept(owner, workspace, anonymous)).isEqualTo(Corrections.Resolution.ACCEPTED);
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader");
+    }
+
     private ReviewedBodyEdits.Outcome replace(
             AuthPrincipal reviewer,
             WorkspaceId space,
@@ -185,6 +223,7 @@ class CorrectionsIntegrationIT {
             String body,
             WritePrincipal suggestedBy) {
         assertThat(baseDigest).isEqualTo(digest(BODY));
+        duringWrite.run();
         if (result == ReviewedBodyEdits.Result.APPLIED) {
             written.add(route + "|" + suggestedBy.trailerValue() + "|" + body);
         }
@@ -196,7 +235,7 @@ class CorrectionsIntegrationIT {
     }
 
     private static Proposal proposal(String route, String base, String body) {
-        return new Proposal(route, digest(base), body, "the figure is 32 km");
+        return new Proposal(route, digest(base), body, "the figure is 32 km", null);
     }
 
     private static String digest(String body) {

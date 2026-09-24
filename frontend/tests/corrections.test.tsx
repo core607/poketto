@@ -147,6 +147,7 @@ test("a reader proposes against the served body, keeps its line endings and can 
         "sha256:" + createHash("sha256").update(BODY, "utf8").digest("hex"),
       body: "# 河流\r\n\r\n全长 32 公里。\r\n",
       reason: "",
+      credited: true,
     },
   ]);
   assert.match(ui.container.textContent!, /修改建议已提交/);

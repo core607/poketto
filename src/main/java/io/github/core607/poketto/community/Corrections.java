@@ -36,8 +36,10 @@ public interface Corrections {
 
     void decline(AuthPrincipal actor, WorkspaceId workspace, UUID correctionId);
 
-    record Proposal(String route, String baseDigest, String body, String reason) {
+    /** {@code credited} lets an accepted proposer be thanked by name on the article; absent means yes. */
+    record Proposal(String route, String baseDigest, String body, String reason, Boolean credited) {
         public Proposal {
+            credited = credited == null || credited;
             if (route == null || route.length() > 256 || !route.startsWith("/")) {
                 throw new IllegalArgumentException("correction route is invalid");
             }

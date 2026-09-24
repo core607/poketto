@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
+import { api, ApiError } from "../lib/browser-api";
 import { communityMessage, type CommunityProfile } from "../lib/community";
 import { articleHref, date } from "../lib/format";
 import { sourceDifference } from "../lib/source-diff";
@@ -79,7 +79,13 @@ export function CorrectionReview({ workspaceId }: { workspaceId: string }) {
       }
       setVersion((value) => value + 1);
     } catch (failure) {
-      setError(communityMessage(failure));
+      if (
+        failure instanceof ApiError &&
+        failure.code === "COMMUNITY_REQUEST_CONFLICT"
+      ) {
+        setError("这条建议刚被处理过，或正在被别人采纳，列表已刷新。");
+        setVersion((value) => value + 1);
+      } else setError(communityMessage(failure));
     } finally {
       setBusy(false);
     }
