@@ -26,7 +26,9 @@ rechecks the catalog before returning. Each space reads one approved snapshot,
 then rechecks its publication settings. A response that exceeds sitemap protocol
 limits fails instead of truncating. No sitemap is sampled from discovery batches.
 
-`/robots.txt` allows public crawling, discourages crawling `/admin` and `/api/`,
+`/robots.txt` allows public crawling, discourages crawling `/admin` and `/api/`
+and the homepage's discovery batch addresses (`/?batch=` and `/?afterBatch=`),
+which every visit mints anew and which only reach pages the sitemaps list,
 and advertises the sitemap index at the configured public origin. It provides
 crawler guidance; repository publication and website authorization enforce privacy.
 

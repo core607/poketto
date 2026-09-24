@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import test, { type TestContext } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home, { metadata } from "../app/page";
+import { GET as robots } from "../app/robots.txt/route";
 import { plainSummary } from "../lib/summary";
 
 test("summaries start at the prose, skipping the heading, figure and its caption", () => {
@@ -93,12 +94,16 @@ test("a fresh homepage answers with its batch instead of redirecting", async (t:
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const previous = process.env.POKETTO_API_BASE_URL;
+  const previousOrigin = process.env.POKETTO_PUBLIC_URL;
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   process.env.POKETTO_API_BASE_URL = `http://127.0.0.1:${address.port}`;
+  process.env.POKETTO_PUBLIC_URL = "https://poketto.example";
   t.after(() => {
     if (previous === undefined) delete process.env.POKETTO_API_BASE_URL;
     else process.env.POKETTO_API_BASE_URL = previous;
+    if (previousOrigin === undefined) delete process.env.POKETTO_PUBLIC_URL;
+    else process.env.POKETTO_PUBLIC_URL = previousOrigin;
     server.closeAllConnections();
     server.close();
   });
@@ -109,4 +114,22 @@ test("a fresh homepage answers with its batch instead of redirecting", async (t:
   assert.match(html, /第一篇记录/);
   assert.match(html, /href="\/\?batch=fresh-batch&amp;offset=6"/);
   assert.deepEqual(metadata.alternates, { canonical: "/" });
+
+  // Each visit mints these links anew, so crawlers are kept off every one of them.
+  const disallowed = (await robots().text())
+    .split("\n")
+    .filter((line) => line.startsWith("Disallow: "))
+    .map((line) => line.slice("Disallow: ".length));
+  const batchLinks = [
+    ...html.matchAll(/href="([^"]*[?&](?:batch|afterBatch)=[^"]*)"/g),
+  ].map((match) => match[1].replaceAll("&amp;", "&"));
+  assert.deepEqual(batchLinks.sort(), [
+    "/?afterBatch=fresh-batch",
+    "/?batch=fresh-batch&offset=6",
+  ]);
+  for (const link of batchLinks)
+    assert.ok(
+      disallowed.some((rule) => link.startsWith(rule)),
+      link + " is disallowed",
+    );
 });
