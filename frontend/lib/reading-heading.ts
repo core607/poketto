@@ -2,6 +2,7 @@ import type { Element, Root, RootContent } from "hast";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import type { PluggableList } from "unified";
 
 /** Heading anchors carry this prefix, so authored IDs cannot collide with page elements. */
@@ -11,7 +12,11 @@ export const HEADING_PREFIX = "poketto-heading-";
  * The syntax and anchor steps shared by the renderer and the reading guide. Both must run exactly
  * these, in this order, for a listed heading to find its anchor on the page.
  */
-export const markdownSyntax: PluggableList = [remarkGfm];
+// Math needs doubled dollars even inline, so prices such as "$100 and $250" stay text.
+export const markdownSyntax: PluggableList = [
+  remarkGfm,
+  [remarkMath, { singleDollarTextMath: false }],
+];
 export const headingAnchors: PluggableList = [
   [rehypeSlug, { prefix: HEADING_PREFIX }],
 ];
