@@ -89,7 +89,8 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        if (WorkspaceHttpRoutes.operation(AuthHttpErrors.path(request)).equals("/api/admin/assets")
+        String operation = WorkspaceHttpRoutes.operation(AuthHttpErrors.path(request));
+        if ((operation.equals("/api/admin/assets") || operation.equals("/api/capture"))
                 && type != null
                 && type.split(";", 2)[0].trim().equalsIgnoreCase("multipart/form-data")) {
             // Servlet getParts consumes the original stream under the configured multipart limits.

@@ -32,7 +32,7 @@ The note holds:
 URLs must be absolute http or https addresses.
 
 **Entrances.** [CaptureController](../../src/main/java/io/github/core607/poketto/web/internal/CaptureController.java) serves two entrances:
-- `POST /api/capture` accepts JSON, or a multipart form with an optional `image`. It has its own stateless Bearer chain modelled on `/mcp`, and a 17 MiB body limit. The key's own workspace receives the note. OAuth connection tokens are refused, because their audience is `/mcp`.
+- `POST /api/capture` accepts JSON, or a multipart form with an optional `image`. It has its own stateless Bearer chain modelled on `/mcp`, and a 17 MiB body limit. A multipart body without a declared length is not buffered by the filter; the servlet multipart limits of 16 MB per file and 17 MB per request bound it while parts are parsed. The key's own workspace receives the note. OAuth connection tokens are refused, because their audience is `/mcp`.
 - `POST /api/admin/workspaces/{id}/capture` takes JSON with the browser session and CSRF, bounded at 128 KiB. It serves the `/capture` popup.
 
 **Interface.**

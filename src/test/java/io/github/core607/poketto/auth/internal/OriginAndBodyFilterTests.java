@@ -92,6 +92,16 @@ class OriginAndBodyFilterTests {
     }
 
     @Test
+    void chunkedMultipartCaptureKeepsTheOriginalRequestForServletPartParsing() throws Exception {
+        var request =
+                unknown("/api/capture", "--boundary\r\nphoto bytes\r\n", "multipart/form-data; boundary=boundary");
+        filter.doFilter(request, new MockHttpServletResponse(), (wrapped, ignored) -> {
+            assertThat(wrapped).isSameAs(request);
+            assertThat(wrapped.getInputStream().readAllBytes()).isEqualTo(request.getContentAsByteArray());
+        });
+    }
+
+    @Test
     void administrationBodiesRemainUnconsumedForTheIdentityAndAdmissionFilters() throws Exception {
         for (String path : new String[] {
             "/api/admin/workspaces/11111111-1111-4111-8111-111111111111/repository/patch",
