@@ -242,8 +242,11 @@ tasks.register("repoCheck") {
             } else if (!target.startsWith(repositoryRoot) || !Files.exists(target)) {
                 errors += "document budget names a missing path: $entry"
             } else {
-                val words = markdownWords.filterKeys { it.startsWith(target) }.values.sum()
-                if (words > ceiling) {
+                val covered = markdownWords.filterKeys { it.startsWith(target) }
+                val words = covered.values.sum()
+                if (covered.isEmpty()) {
+                    errors += "document budget for $entry covers no Markdown file"
+                } else if (words > ceiling) {
                     errors += "$entry has $words words, over its budget of $ceiling; move content to its " +
                         "home, condense it, or audit the notes as AGENTS.md describes"
                 }
