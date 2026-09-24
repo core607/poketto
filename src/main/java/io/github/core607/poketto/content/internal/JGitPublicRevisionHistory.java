@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicRevisionHistory;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,7 +27,9 @@ import org.eclipse.jgit.treewalk.TreeWalk;
 final class JGitPublicRevisionHistory implements PublicRevisionHistory {
     static final int MAX_COMMITS = 256;
     static final int MAX_VERSIONS = 50;
-    static final long MAX_BODY_CHARS = 4L * 1024 * 1024;
+    /** UTF-8 bytes of all returned bodies together. */
+    static final long MAX_BODY_BYTES = 2L * 1024 * 1024;
+
     private static final int MAX_COMMIT_BYTES = 1024 * 1024;
     private static final long MAX_READ_NANOS = Duration.ofSeconds(2).toNanos();
     private static final RepositoryMarkdownParser PARSER = new RepositoryMarkdownParser();
@@ -55,7 +58,7 @@ final class JGitPublicRevisionHistory implements PublicRevisionHistory {
             throws IOException {
         List<Revision> found = new ArrayList<>();
         ObjectId seen = null;
-        long chars = 0;
+        long bytes = 0;
         try (RevWalk walk = new RevWalk(objects)) {
             walk.setRetainBody(false);
             RevCommit current = commit(objects, walk, start);
@@ -68,20 +71,22 @@ final class JGitPublicRevisionHistory implements PublicRevisionHistory {
                     break;
                 }
                 Instant savedAt = Instant.ofEpochSecond(current.getCommitTime());
-                Optional<String> body = blob.get().equals(seen)
-                        ? Optional.of(found.getLast().body())
+                Read read = blob.get().equals(seen)
+                        ? new Read(Optional.of(found.getLast().body()), true)
                         : body(objects, blob.get(), path, route, now);
-                if (body.isEmpty()) {
-                    break;
+                if (read.body().isEmpty()) {
+                    return new Revisions(found, read.complete());
                 }
+                String body = read.body().get();
                 seen = blob.get();
-                if (!found.isEmpty() && found.getLast().body().equals(body.get())) {
-                    found.set(found.size() - 1, new Revision(savedAt, body.get()));
-                } else if (found.size() == MAX_VERSIONS || chars + body.get().length() > MAX_BODY_CHARS) {
+                int size = body.getBytes(StandardCharsets.UTF_8).length;
+                if (!found.isEmpty() && found.getLast().body().equals(body)) {
+                    found.set(found.size() - 1, new Revision(savedAt, body));
+                } else if (found.size() == MAX_VERSIONS || bytes + size > MAX_BODY_BYTES) {
                     return new Revisions(found, false);
                 } else {
-                    chars += body.get().length();
-                    found.add(new Revision(savedAt, body.get()));
+                    bytes += size;
+                    found.add(new Revision(savedAt, body));
                 }
                 current = current.getParentCount() == 0 ? null : commit(objects, walk, current.getParent(0));
             }
@@ -101,21 +106,29 @@ final class JGitPublicRevisionHistory implements PublicRevisionHistory {
         }
     }
 
-    private static Optional<String> body(ObjectReader objects, ObjectId blob, String path, String route, Instant now)
+    /**
+     * Another route or a future release is the author's choice, so history before it is complete. A
+     * body that cannot be read may hide earlier public text, so the history is marked incomplete.
+     */
+    private static Read body(ObjectReader objects, ObjectId blob, String path, String route, Instant now)
             throws IOException {
         var loader = objects.open(blob, Constants.OBJ_BLOB);
         if (loader.getSize() > ContentLimits.MAX_DOCUMENT_BYTES) {
-            return Optional.empty();
+            return new Read(Optional.empty(), false);
         }
         try {
             var metadata = PARSER.parse(
                     path, RepositoryMarkdownParser.decode(loader.getBytes(ContentLimits.MAX_DOCUMENT_BYTES)));
             boolean due = metadata.release(path).filter(now::isBefore).isEmpty();
-            return metadata.route().equals(route) && due ? Optional.of(metadata.body()) : Optional.empty();
+            return new Read(
+                    metadata.route().equals(route) && due ? Optional.of(metadata.body()) : Optional.empty(), true);
         } catch (IllegalArgumentException exception) {
-            return Optional.empty();
+            return new Read(Optional.empty(), false);
         }
     }
+
+    /** A body, or none together with whether the history ending here is complete. */
+    private record Read(Optional<String> body, boolean complete) {}
 
     private static RevCommit commit(ObjectReader objects, RevWalk walk, ObjectId id) throws IOException {
         if (objects.getObjectSize(id, Constants.OBJ_COMMIT) > MAX_COMMIT_BYTES) {

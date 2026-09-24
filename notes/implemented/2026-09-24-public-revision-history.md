@@ -16,7 +16,7 @@ Every space is a Git repository, so an article's earlier versions exist, but rea
 - its route equals the current route;
 - its `publish_at`, if any, is not after the time of the read.
 
-The walk stops at the first commit where any condition fails or the path is absent. Text from before a private, excluded, scheduled or unpublished stretch is never shown, even if the article was public earlier. Consecutive commits with the same body collapse into one version dated by the earliest of them, so frontmatter-only edits add no version. Renames are not followed; a moved article starts a new history.
+The walk stops at the first commit where any condition fails or the path is absent. Text from before a private, excluded, scheduled or unpublished stretch is never shown, even if the article was public earlier. A stop at a disabled policy, an excluded or absent path, another route or a future release is the author's decision, so the history is complete. A stop at a file over 1 MiB or one that does not parse may hide earlier public text, so the history is marked incomplete. Consecutive commits with the same body collapse into one version dated by the earliest of them, so frontmatter-only edits add no version. Renames are not followed; a moved article starts a new history.
 
 Path and route collisions with other files are not checked. They are not the author's choice about visibility, and detecting them needs every public file of every commit parsed. A version whose file collided at that commit is therefore listed although it was not served then, like versions that the 30-second refresh never sampled.
 
@@ -24,7 +24,7 @@ Path and route collisions with other files are not checked. They are not the aut
 
 **Reads and bounds.** `GET /api/public/spaces/{slug}/history?route=…` is served by [PublicHistory](../../src/main/java/io/github/core607/poketto/web/internal/PublicHistory.java). It takes the current snapshot, finds the served article by route, and walks through `readImmutableObjects` without fetching.
 - At most two reads run at once; a third answers 429.
-- A read scans at most 256 commits, keeps at most 50 versions and 4 Mi characters of bodies, and stops after two seconds. A bound that stops the walk returns the versions found with `complete: false`.
+- A read scans at most 256 commits, keeps at most 50 versions and 2 MiB of UTF-8 bodies, and stops after two seconds. A bound that stops the walk returns the versions found with `complete: false`. The JSON response can exceed 2 MiB only by string escaping.
 - A commit object over 1 MiB fails the read.
 - After the walk, the website switch and the history setting are checked again, and the answer stands only if the same snapshot commit still serves the route. Otherwise the request fails as repository-unavailable and the reader retries.
 

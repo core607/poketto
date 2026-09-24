@@ -2,6 +2,7 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.PublicRevisionHistory.Revision;
 import io.github.core607.poketto.content.PublicRevisionHistory.Revisions;
 import java.nio.charset.StandardCharsets;
@@ -77,6 +78,24 @@ class JGitPublicRevisionHistoryTests {
         commit(ENABLED, "---\npublish_at: 2026-12-01T00:00:00Z\n---\nscheduled for later");
         commit(ENABLED, "---\npublish_at: 2026-09-02T00:00:00Z\n---\nreleased");
         assertThat(bodies(read("/essay"))).containsExactly("released");
+    }
+
+    @Test
+    void anUnreadableEarlierVersionMarksTheHistoryIncomplete() throws Exception {
+        commit(ENABLED, "---\ntitle: never closed\nbody");
+        commit(ENABLED, "readable");
+        assertThat(bodies(read("/essay"))).containsExactly("readable");
+        assertThat(read("/essay").complete()).isFalse();
+
+        head = null;
+        commit(ENABLED, "x".repeat(ContentLimits.MAX_DOCUMENT_BYTES + 1));
+        commit(ENABLED, "after an oversized version");
+        assertThat(read("/essay").complete()).isFalse();
+
+        head = null;
+        commit(ENABLED, "---\nroute: /old\n---\nmoved here later");
+        commit(ENABLED, "at the path route");
+        assertThat(read("/essay").complete()).isTrue();
     }
 
     @Test
