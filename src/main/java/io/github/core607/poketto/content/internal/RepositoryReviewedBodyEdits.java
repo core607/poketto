@@ -44,7 +44,7 @@ final class RepositoryReviewedBodyEdits implements ReviewedBodyEdits {
             String route,
             String baseDigest,
             String body,
-            WritePrincipal suggestedBy) {
+            Optional<WritePrincipal> suggestedBy) {
         auth.authorize(reviewer, workspace, Capability.PUBLISH);
         String proposed = digest(body);
         RepositoryConflictException last = null;
@@ -83,7 +83,7 @@ final class RepositoryReviewedBodyEdits implements ReviewedBodyEdits {
                                 file.commit(),
                                 List.of(new RepositoryTextChange(
                                         path.get(), false, file.revision(), Optional.of(text))),
-                                Optional.of(suggestedBy)));
+                                suggestedBy));
                 return new Outcome(Result.APPLIED, Optional.of(written.commit()));
             } catch (RepositoryConflictException moved) {
                 last = moved;

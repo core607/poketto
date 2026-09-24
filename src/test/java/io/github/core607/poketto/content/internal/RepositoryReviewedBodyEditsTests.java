@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -37,8 +38,8 @@ class RepositoryReviewedBodyEditsTests {
     private final WorkspaceId workspace = WorkspaceId.random();
     private final AuthPrincipal reviewer = mock(AuthPrincipal.class);
     private final AuthService auth = mock(AuthService.class, RETURNS_DEEP_STUBS);
-    private final WritePrincipal reader =
-            new WritePrincipal(PrincipalType.ACCOUNT, "0d9b7c1e-8f7a-4a52-9d1e-3c2f4b5a6d7e");
+    private final Optional<WritePrincipal> reader =
+            Optional.of(new WritePrincipal(PrincipalType.ACCOUNT, "0d9b7c1e-8f7a-4a52-9d1e-3c2f4b5a6d7e"));
 
     @TempDir
     Path directory;

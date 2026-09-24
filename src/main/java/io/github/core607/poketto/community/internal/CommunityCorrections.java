@@ -29,7 +29,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 final class CommunityCorrections implements Corrections {
     private static final String COLUMNS =
-            "correction_id,position,workspace_id,route,author_id,base_digest,proposed_body,reason,status,created_at,resolved_at,resolver_id";
+            "correction_id,position,workspace_id,route,author_id,base_digest,proposed_body,reason,credited,status,created_at,resolved_at,resolver_id";
+    /**
+     * A claim whose acceptance never settled, for example because the process stopped during the Git
+     * write. Such a proposal counts as open again everywhere: listed, withdrawable, declinable, claimable.
+     */
+    private static final String STRANDED =
+            "status='ACCEPTING' and claimed_at<current_timestamp - interval '10 minutes'";
+
+    private static final String AVAILABLE = "(status='OPEN' or (" + STRANDED + "))";
     private final JdbcTemplate jdbc;
     private final AuthService auth;
     private final CommunityAccounts accounts;
@@ -105,7 +113,8 @@ final class CommunityCorrections implements Corrections {
                 actor,
                 identity -> jdbc
                         .query(
-                                "select correction_id,status,created_at from community_corrections where author_id=? and workspace_id=? and route=? order by position desc limit 1",
+                                "select correction_id,case when " + STRANDED
+                                        + " then 'OPEN' else status end,created_at from community_corrections where author_id=? and workspace_id=? and route=? order by position desc limit 1",
                                 (row, number) -> new Mine(
                                         row.getObject(1, UUID.class),
                                         row.getString(2),
@@ -121,7 +130,8 @@ final class CommunityCorrections implements Corrections {
     public void withdraw(AuthPrincipal actor, UUID correctionId) {
         scope.personal(actor, identity -> {
             int changed = jdbc.update(
-                    "update community_corrections set status='WITHDRAWN',resolved_at=current_timestamp where correction_id=? and author_id=? and status='OPEN'",
+                    "update community_corrections set status='WITHDRAWN',claimed_at=null,resolved_at=current_timestamp where correction_id=? and author_id=? and "
+                            + AVAILABLE,
                     correctionId,
                     identity.accountId());
             if (changed != 1) {
@@ -158,7 +168,8 @@ final class CommunityCorrections implements Corrections {
         auth.authorize(actor, workspace, Capability.PUBLISH);
         List<Row> rows = jdbc.query(
                 "select " + COLUMNS
-                        + " from community_corrections where workspace_id=? and status='OPEN' and position<? order by position desc limit 21",
+                        + " from community_corrections where workspace_id=? and " + AVAILABLE
+                        + " and position<? order by position desc limit 21",
                 CommunityCorrections::row,
                 workspace.value(),
                 CommunityActivity.before(before));
@@ -204,7 +215,11 @@ final class CommunityCorrections implements Corrections {
                     row.route(),
                     row.base(),
                     row.body(),
-                    new WritePrincipal(PrincipalType.ACCOUNT, row.author().toString()));
+                    // A proposer who declined credit is not named in the commit either.
+                    row.credited()
+                            ? Optional.of(new WritePrincipal(
+                                    PrincipalType.ACCOUNT, row.author().toString()))
+                            : Optional.empty());
         } catch (RuntimeException failure) {
             jdbc.update(
                     "update community_corrections set status='OPEN',claimed_at=null,resolver_id=null where correction_id=? and status='ACCEPTING' and resolver_id=?",
@@ -238,7 +253,8 @@ final class CommunityCorrections implements Corrections {
     private Row claim(AuthPrincipal actor, WorkspaceId workspace, UUID correctionId) {
         return scope.personal(actor, identity -> {
             int claimed = jdbc.update(
-                    "update community_corrections set status='ACCEPTING',claimed_at=current_timestamp,resolver_id=? where correction_id=? and workspace_id=? and (status='OPEN' or (status='ACCEPTING' and claimed_at<current_timestamp - interval '10 minutes'))",
+                    "update community_corrections set status='ACCEPTING',claimed_at=current_timestamp,resolver_id=? where correction_id=? and workspace_id=? and "
+                            + AVAILABLE,
                     identity.accountId(),
                     correctionId,
                     workspace.value());
@@ -253,7 +269,9 @@ final class CommunityCorrections implements Corrections {
     private void resolve(AuthPrincipal actor, WorkspaceId workspace, Row row, String status, String commit) {
         scope.personal(actor, identity -> {
             int changed = jdbc.update(
-                    "update community_corrections set status=?,claimed_at=null,resolved_at=current_timestamp,resolver_id=?,commit_id=? where correction_id=? and workspace_id=? and (status='OPEN' and ?='DECLINED' or status='ACCEPTING' and ?<>'DECLINED' and resolver_id=?)",
+                    "update community_corrections set status=?,claimed_at=null,resolved_at=current_timestamp,resolver_id=?,commit_id=? where correction_id=? and workspace_id=? and ("
+                            + AVAILABLE
+                            + " and ?='DECLINED' or status='ACCEPTING' and ?<>'DECLINED' and resolver_id=?)",
                     status,
                     identity.accountId(),
                     commit,
@@ -305,6 +323,7 @@ final class CommunityCorrections implements Corrections {
                 row.getString("base_digest"),
                 row.getString("proposed_body"),
                 row.getString("reason"),
+                row.getBoolean("credited"),
                 row.getString("status"),
                 row.getTimestamp("created_at").toInstant(),
                 row.getTimestamp("resolved_at") == null
@@ -322,6 +341,7 @@ final class CommunityCorrections implements Corrections {
             String base,
             String body,
             String reason,
+            boolean credited,
             String status,
             Instant createdAt,
             Instant resolvedAt,

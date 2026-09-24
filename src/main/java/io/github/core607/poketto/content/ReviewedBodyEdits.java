@@ -12,7 +12,7 @@ public interface ReviewedBodyEdits {
     /**
      * Re-reads the article behind {@code route} at the remote head as {@code reviewer}, who needs
      * {@code PUBLISH}, and writes {@code body} when the current body still has {@code baseDigest}.
-     * The commit carries {@code suggestedBy} as its {@code Poketto-Suggested-By} trailer. A remote
+     * A present {@code suggestedBy} becomes the commit's {@code Poketto-Suggested-By} trailer. A remote
      * that moves during the write is re-read and retried a bounded number of times.
      */
     Outcome replaceBody(
@@ -21,7 +21,7 @@ public interface ReviewedBodyEdits {
             String route,
             String baseDigest,
             String body,
-            WritePrincipal suggestedBy);
+            Optional<WritePrincipal> suggestedBy);
 
     enum Result {
         /** The body was written in {@link Outcome#commit()}. */

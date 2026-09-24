@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -213,6 +214,36 @@ class CorrectionsIntegrationIT {
                 other, SPACE, new Proposal("/essay", digest(BODY), BODY.replace("30", "31"), "", false));
         assertThat(corrections.accept(owner, workspace, anonymous)).isEqualTo(Corrections.Resolution.ACCEPTED);
         assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader");
+        assertThat(written.getLast()).startsWith("/essay|unnamed|");
+    }
+
+    @Test
+    void aClaimStrandedForTenMinutesCountsAsOpenAgain() {
+        var withdrawn = corrections.propose(reader, SPACE, fixed());
+        strand(withdrawn);
+        assertThat(corrections.mine(reader, SPACE, "/essay").orElseThrow().status())
+                .isEqualTo("OPEN");
+        assertThat(corrections.open(owner, workspace, 0).items())
+                .extracting(Corrections.Review::id)
+                .containsExactly(withdrawn);
+        corrections.withdraw(reader, withdrawn);
+
+        var declined = corrections.propose(reader, SPACE, fixed());
+        strand(declined);
+        corrections.decline(owner, workspace, declined);
+        assertThat(corrections.mine(reader, SPACE, "/essay").orElseThrow().status())
+                .isEqualTo("DECLINED");
+
+        var retaken = corrections.propose(other, SPACE, fixed());
+        strand(retaken);
+        assertThat(corrections.accept(owner, workspace, retaken)).isEqualTo(Corrections.Resolution.ACCEPTED);
+    }
+
+    private void strand(UUID id) {
+        jdbc.update(
+                "update community_corrections set status='ACCEPTING',claimed_at=current_timestamp - interval '11 minutes',resolver_id=? where correction_id=?",
+                owner.accountId(),
+                id);
     }
 
     private ReviewedBodyEdits.Outcome replace(
@@ -221,11 +252,12 @@ class CorrectionsIntegrationIT {
             String route,
             String baseDigest,
             String body,
-            WritePrincipal suggestedBy) {
+            Optional<WritePrincipal> suggestedBy) {
         assertThat(baseDigest).isEqualTo(digest(BODY));
         duringWrite.run();
         if (result == ReviewedBodyEdits.Result.APPLIED) {
-            written.add(route + "|" + suggestedBy.trailerValue() + "|" + body);
+            written.add(
+                    route + "|" + suggestedBy.map(WritePrincipal::trailerValue).orElse("unnamed") + "|" + body);
         }
         return new ReviewedBodyEdits.Outcome(result, Optional.empty());
     }

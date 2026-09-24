@@ -216,7 +216,7 @@ export function CorrectionProposal({
               checked={credited}
               onChange={(event) => setCredited(event.target.checked)}
             />
-            采纳后在文章底部公开致谢，显示你的昵称
+            署名：采纳后在文章底部致谢你的昵称，并在仓库提交里记下你的账号编号
           </label>
           {error && (
             <p className="notice danger" role="alert">

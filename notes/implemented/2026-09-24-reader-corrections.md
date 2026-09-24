@@ -13,7 +13,7 @@ A reader who spots a typo or a wrong figure can only describe it in a comment. T
 - `baseDigest`, the SHA-256 of the UTF-8 body the reader started from;
 - the proposed body, non-blank and at most 1 MiB, with the article's CRLF line endings restored when the served body uses them;
 - the reason;
-- whether the proposer may be thanked by name once accepted, checked by default and stated in the dialog.
+- whether the proposer may be named once accepted, checked by default. The dialog states that naming means both the footer credit and the account id in the commit trailer.
 
 [CommunityCorrections](../../src/main/java/io/github/core607/poketto/community/internal/CommunityCorrections.java) refuses the proposal unless:
 - the route is public in the current snapshot;
@@ -33,7 +33,7 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
   1. re-reads the served article's file at the remote head through the authorized reader;
   2. requires its current body to match `baseDigest`, answering STALE otherwise, or already-applied when the body equals the proposal;
   3. writes the original bytes before the body, including a byte-order mark and frontmatter, followed by the proposed body, through `RepositoryPatchService` with the file's exact revision;
-  4. adds the trailer `Poketto-Suggested-By: account:<id>` after `Poketto-Principal`.
+  4. adds the trailer `Poketto-Suggested-By: account:<id>` after `Poketto-Principal`, only when the proposer allowed naming.
 
   A remote that moves during the write is re-read up to three times.
 
@@ -42,7 +42,14 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
   - after the write, a second update from this reviewer's ACCEPTING records ACCEPTED or STALE;
   - a failed write returns the proposal to OPEN.
 
-  While a proposal is ACCEPTING, decline, withdrawal and a second acceptance answer `COMMUNITY_REQUEST_CONFLICT`. Any resolution whose update misses answers the same conflict rather than reporting success. A claim left for ten minutes, for example by a stopped process, can be taken again. Repeating the write is safe, because a body that already equals the proposal is reported as applied without a new commit.
+  While a proposal is ACCEPTING, decline, withdrawal and a second acceptance answer `COMMUNITY_REQUEST_CONFLICT`. Any resolution whose update misses answers the same conflict rather than reporting success.
+
+  A claim left for ten minutes, for example by a stopped process or a failure after the Git write, counts as open again everywhere:
+  - it reappears in the review list;
+  - the proposer sees it as open and can withdraw it;
+  - a reviewer can decline it or accept it again.
+
+  Repeating the write is safe, because a body that already equals the proposal is reported as applied without a new commit.
 - **Decline** records the resolution without touching Git.
 - A stale proposal can only be marked stale, which tells the proposer to start again from the current text.
 - The proposer may withdraw an open proposal from the article page.
@@ -76,7 +83,8 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
   - review and acceptance require `PUBLISH`;
   - acceptance passes the proposer as suggester, credits the proposer and notifies them;
   - while a proposal is being accepted, decline, withdrawal and a second acceptance conflict, a failed write reopens it, and resolving it again conflicts;
-  - a proposer who declined credit is not named;
+  - a claim stranded for ten minutes is listed, withdrawable, declinable and acceptable again;
+  - a proposer who declined naming is left out of both the credit and the commit trailer;
   - decline and stale outcomes notify the proposer;
   - blocking removes the credit and refuses new proposals.
 - [RepositoryReviewedBodyEditsTests](../../src/test/java/io/github/core607/poketto/content/internal/RepositoryReviewedBodyEditsTests.java) writes to a real remote. A byte-order mark and CRLF frontmatter survive byte for byte, the commit ends with both trailers, a repeated acceptance writes nothing, and a changed body or an unserved route is stale.
