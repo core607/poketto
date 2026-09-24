@@ -136,6 +136,22 @@ class RepositoryCaptureInboxTests {
     }
 
     @Test
+    void aFullMinuteFailsBeforeTheImageIsStored() {
+        when(reader.getFile(eq(workspace), any(), anyString()))
+                .thenAnswer(invocation -> file(invocation.getArgument(2), false, "a".repeat(40)));
+        var inbox = inbox(30);
+
+        assertThatThrownBy(() -> inbox.capture(
+                        actor,
+                        workspace,
+                        new CaptureInbox.Capture("", "", "", ""),
+                        Optional.of(new ByteArrayInputStream(new byte[] {1}))))
+                .isInstanceOf(RepositoryConflictException.class);
+        verify(assets, never()).uploadCaptured(any(), any(), anyString(), any());
+        assertThat(written).isEmpty();
+    }
+
+    @Test
     void emptyCapturesAndExhaustedSendersStoreNothing() {
         absent("a".repeat(40));
         var inbox = inbox(1);

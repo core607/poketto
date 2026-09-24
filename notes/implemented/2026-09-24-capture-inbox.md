@@ -17,8 +17,9 @@ Poketto presents itself as a place to record and collect, but adding anything ne
 
 **Service.** The `capture` module's [RepositoryCaptureInbox](../../src/main/java/io/github/core607/poketto/capture/internal/RepositoryCaptureInbox.java) authorizes `CAPTURE`, then:
 1. applies per-account limits: 30 a minute and 500 a UTC day, in memory, with at most 10,000 accounts, so every key and the browser entrance of one holder share one bucket;
-2. stores an image if one was sent;
-3. writes `private/inbox/<UTC YYYY-MM-DD-HHmm>-<title slug>.md` create-only against the fetched head.
+2. picks a free name `private/inbox/<UTC YYYY-MM-DD-HHmm>-<title slug>.md` on the fetched head;
+3. stores an image if one was sent;
+4. writes the note create-only against that head.
 
 A taken name gets `-2` up to `-20`. A remote that moved in between is re-read and retried up to four times before the conflict is reported.
 
@@ -54,7 +55,7 @@ URLs must be absolute http or https addresses.
 
 - Each capture is one commit in the member's repository, so heavy collecting grows history. The daily limit bounds it.
 - A lost capture key allows appending notes and images to the inbox until revoked. It cannot read or change existing content.
-- An image is stored before its note is written. If the write then fails after its retries, the original stays in managed storage unreferenced, as acknowledged originals are retained, and the attempt still counts against the limit.
+- An image is stored after a free name is found and before its note is written. If the write then fails after its retries, the original stays unreferenced in the space's managed images, where every upload is listed, and the attempt still counts against the limit.
 - Managed originals are stored on Linux hosts only. Elsewhere an image capture answers 503 and nothing is written.
 
 ## Verification

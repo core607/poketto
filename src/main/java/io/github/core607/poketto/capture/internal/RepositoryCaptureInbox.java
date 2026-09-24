@@ -71,16 +71,21 @@ final class RepositoryCaptureInbox implements CaptureInbox {
         }
         // One bucket per account: a second key or the browser entrance shares the holder's limit.
         limits.consume(actor.accountId());
-        Optional<ManagedAsset> stored =
-                image.map(bytes -> assets.uploadCaptured(actor, workspace, "capture-" + UUID.randomUUID(), bytes));
         Instant saved = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         String title = title(capture);
-        String markdown = markdown(capture, title, saved, stored);
         String stem = CaptureInboxPaths.ROOT + STAMP.format(saved) + "-" + slug(title);
+        // A name is found before the image is stored, so a full minute fails without leaving an upload behind.
+        RepositoryFile first = reader.getFile(workspace, Optional.empty(), stem + ".md");
+        String path = free(workspace, first, stem);
+        Optional<ManagedAsset> stored =
+                image.map(bytes -> assets.uploadCaptured(actor, workspace, "capture-" + UUID.randomUUID(), bytes));
+        String markdown = markdown(capture, title, saved, stored);
         RepositoryConflictException last = null;
         for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
-            RepositoryFile first = reader.getFile(workspace, Optional.empty(), stem + ".md");
-            String path = free(workspace, first, stem);
+            if (attempt > 0) {
+                first = reader.getFile(workspace, Optional.empty(), stem + ".md");
+                path = free(workspace, first, stem);
+            }
             try {
                 var written = patches.apply(
                         actor,
