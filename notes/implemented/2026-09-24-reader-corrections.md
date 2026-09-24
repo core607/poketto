@@ -31,7 +31,7 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
 **Reviewing.** Members holding `PUBLISH` see a 「读者勘误」 section in the studio. [CorrectionReview](../../frontend/components/correction-review.tsx) shows each open proposal's reason and a line diff from the served body to the proposed body. A proposal whose base no longer matches the served body is marked stale.
 - **Accept** calls [ReviewedBodyEdits](../../src/main/java/io/github/core607/poketto/content/ReviewedBodyEdits.java) as the reviewer. It:
   1. re-reads the served article's file at the remote head through the authorized reader;
-  2. requires its current body to match `baseDigest`, answering STALE otherwise, or already-applied when the body equals the proposal;
+  2. requires its current body to match `baseDigest`, answering STALE otherwise. When the body already equals the proposal, it writes nothing and answers already-applied with the commit it read; the proposal is recorded as accepted against that commit, and the reviewer is told no new commit was made;
   3. writes the original bytes before the body, including a byte-order mark and frontmatter, followed by the proposed body, through `RepositoryPatchService` with the file's exact revision;
   4. adds the trailer `Poketto-Suggested-By: account:<id>` after `Poketto-Principal`, only when the proposer allowed naming.
 
@@ -54,9 +54,9 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
 - A stale proposal can only be marked stale, which tells the proposer to start again from the current text.
 - The proposer may withdraw an open proposal from the article page.
 
-**Credit.** `GET /api/public/community/spaces/{slug}/corrections/credits?route=…` returns the display names of accepted proposers who allowed credit, earliest first and at most 20. The article footer shows them as 「感谢 … 的勘误」. A proposer who has since blocked an owner, or been blocked by one, is left out, and so is an account whose profile is gone.
+**Credit.** `GET /api/public/community/spaces/{slug}/corrections/credits?route=…` returns the display names of accepted proposers who allowed credit, earliest first and at most 20. Each proposal records the article it was made for: the frontmatter id, or the creation time when there is none. Credit shows only while that same article is served at the route, so a new article at a reused route starts without it. An article without an id also loses its credit if its creation date is edited. The article footer shows them as 「感谢 … 的勘误」. A proposer who has since blocked an owner, or been blocked by one, is left out, and so is an account whose profile is gone.
 
-**Retention.** Proposal text and reasons are cleared once resolved for 90 days. The clearing runs whenever a new proposal is stored, so text can outlive 90 days on a space that receives no further proposals. The row stays for credit and notification history.
+**Retention.** Proposal text and reasons are cleared once resolved for 90 days. The clearing runs whenever a new proposal is stored, through an index on resolution time limited to rows still holding text, so text can outlive 90 days on a space that receives no further proposals. The row stays for credit and notification history.
 
 **Moderation.** Proposals are visible only to the space's publishing members, who decline them and can block the proposer. They are not reportable to site administrators. Unlike comments, their text never appears to other readers.
 
@@ -85,6 +85,7 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
   - while a proposal is being accepted, decline, withdrawal and a second acceptance conflict, a failed write reopens it, and resolving it again conflicts;
   - a claim stranded for ten minutes is listed, withdrawable, declinable and acceptable again;
   - a proposer who declined naming is left out of both the credit and the commit trailer;
+  - credit disappears when another article is served at the route, whether identified by id or by creation time, and a repeated acceptance reports that nothing was written;
   - decline and stale outcomes notify the proposer;
   - blocking removes the credit and refuses new proposals.
 - [RepositoryReviewedBodyEditsTests](../../src/test/java/io/github/core607/poketto/content/internal/RepositoryReviewedBodyEditsTests.java) writes to a real remote. A byte-order mark and CRLF frontmatter survive byte for byte, the commit ends with both trailers, a repeated acceptance writes nothing, and a changed body or an unserved route is stale.

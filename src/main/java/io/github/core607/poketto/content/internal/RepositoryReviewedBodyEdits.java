@@ -68,7 +68,7 @@ final class RepositoryReviewedBodyEdits implements ReviewedBodyEdits {
                 return new Outcome(Result.STALE, Optional.empty());
             }
             if (digest(current).equals(proposed)) {
-                return new Outcome(Result.ALREADY_APPLIED, Optional.empty());
+                return new Outcome(Result.ALREADY_APPLIED, file.commit());
             }
             if (!digest(current).equals(baseDigest)) {
                 return new Outcome(Result.STALE, Optional.empty());

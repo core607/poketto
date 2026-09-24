@@ -181,7 +181,7 @@ test("reversed selections still compare from the earlier version to the later on
     assert.equal(container.querySelector(".history-line.added"), null);
     assert.match(
       container.textContent!,
-      /已按时间先后比较：从第 1 版到第 2 版。/,
+      /第 1 版 → 第 2 版（已按时间先后排列）/,
     );
   } finally {
     await act(async () => root.unmount());

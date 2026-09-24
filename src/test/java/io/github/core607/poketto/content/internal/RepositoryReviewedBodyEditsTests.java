@@ -59,9 +59,9 @@ class RepositoryReviewedBodyEditsTests {
                         + "Poketto-Suggested-By: account:0d9b7c1e-8f7a-4a52-9d1e-3c2f4b5a6d7e\n");
 
         var head = fixture.remoteHead(workspace);
-        assertThat(edits.replaceBody(reviewer, workspace, "/essay", digest(BODY), PROPOSED, reader)
-                        .result())
-                .isEqualTo(Result.ALREADY_APPLIED);
+        var repeated = edits.replaceBody(reviewer, workspace, "/essay", digest(BODY), PROPOSED, reader);
+        assertThat(repeated.result()).isEqualTo(Result.ALREADY_APPLIED);
+        assertThat(repeated.commit()).contains(head.name());
         assertThat(fixture.remoteHead(workspace)).isEqualTo(head);
     }
 

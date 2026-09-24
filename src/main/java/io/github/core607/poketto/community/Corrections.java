@@ -76,7 +76,10 @@ public interface Corrections {
             Instant createdAt) {}
 
     enum Resolution {
+        /** The proposed body was written in a new commit. */
         ACCEPTED,
+        /** The body already equalled the proposal; the acceptance is recorded against the current commit. */
+        ALREADY_APPLIED,
         STALE
     }
 }

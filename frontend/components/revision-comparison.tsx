@@ -44,11 +44,10 @@ export function RevisionComparison({ versions }: { versions: Version[] }) {
       <div className="revision-choices">
         {choice("较早", before, setBefore)}
         {choice("较新", after, setAfter)}
-        {before > after && (
-          <p className="muted">
-            已按时间先后比较：从第 {older + 1} 版到第 {newer + 1} 版。
-          </p>
-        )}
+        <p className="muted">
+          第 {older + 1} 版 → 第 {newer + 1} 版
+          {before > after && "（已按时间先后排列）"}
+        </p>
       </div>
       {difference.kind === "unchanged" && <p>两个版本的正文相同。</p>}
       {difference.kind === "lines" && (

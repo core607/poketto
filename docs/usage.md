@@ -55,7 +55,7 @@ otherwise the proposal becomes stale. While an acceptance runs, declining or
 withdrawing the proposal answers a conflict; an acceptance that has not settled
 within ten minutes counts as open again. Declining changes nothing. The proposer is
 notified either way and may withdraw an open proposal. Accepted proposers who allowed it
-are thanked in the article footer. Resolved proposal text is cleared after 90 days. See
+are thanked in the article footer while the same article is served at that address. Resolved proposal text is cleared after 90 days. See
 [reader corrections](../notes/implemented/2026-09-24-reader-corrections.md).
 
 Comments are plain text with up to 4,000 Unicode code points and one level of

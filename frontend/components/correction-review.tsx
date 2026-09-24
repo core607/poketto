@@ -62,14 +62,18 @@ export function CorrectionReview({ workspaceId }: { workspaceId: string }) {
     setReceipt("");
     try {
       if (accept) {
-        const { result } = await api<{ result: "ACCEPTED" | "STALE" }>(
-          `${base}/${encodeURIComponent(review.id)}/accept`,
-          { method: "POST", timeoutMs: 90000 },
-        );
+        const { result } = await api<{
+          result: "ACCEPTED" | "ALREADY_APPLIED" | "STALE";
+        }>(`${base}/${encodeURIComponent(review.id)}/accept`, {
+          method: "POST",
+          timeoutMs: 90000,
+        });
         setReceipt(
           result === "ACCEPTED"
             ? `已采纳，《${review.title}》的正文已更新。`
-            : `《${review.title}》在建议提交后改过，这条建议已标记为过期。`,
+            : result === "ALREADY_APPLIED"
+              ? `《${review.title}》的正文本来就是建议的内容，已记为采纳，没有产生新的提交。`
+              : `《${review.title}》在建议提交后改过，这条建议已标记为过期。`,
         );
       } else {
         await api(`${base}/${encodeURIComponent(review.id)}/decline`, {
