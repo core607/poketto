@@ -1,6 +1,9 @@
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import ReactMarkdown from "react-markdown";
+import type { Element } from "hast";
+import { toString } from "hast-util-to-string";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import { articleHref, safeImage, safeLink } from "../lib/format";
 import {
   HEADING_PREFIX,
@@ -10,6 +13,7 @@ import {
   readingHeading,
 } from "../lib/reading-heading";
 import { MediaPlayer } from "./media-player";
+import { MermaidDiagram } from "./mermaid-diagram";
 
 export function Markdown({
   source,
@@ -64,11 +68,21 @@ export function Markdown({
         rehypePlugins={[
           ...headingAnchors,
           [readingHeading, { title: preview ? undefined : pageTitle }],
+          // KaTeX renders untrusted input: commands such as \href stay disabled.
+          [rehypeKatex, { throwOnError: false, trust: false }],
           // Only fenced blocks that name their language are highlighted; nothing is guessed.
           [rehypeHighlight, { detect: false }],
         ]}
         urlTransform={(value) => value}
         components={{
+          pre({ children, node }) {
+            const code = node?.children[0];
+            return mermaid(code) ? (
+              <MermaidDiagram source={toString(code)} />
+            ) : (
+              <pre>{children}</pre>
+            );
+          },
           a({ href = "", children, node }) {
             const footnote =
               node?.properties.dataFootnoteRef !== undefined ||
@@ -191,4 +205,15 @@ function headingFragment(fragment: string) {
   return fragment === "#"
     ? fragment
     : headingHref(HEADING_PREFIX + fragment.slice(1));
+}
+
+function mermaid(node: unknown): node is Element {
+  const element = node as Element | undefined;
+  const classes = element?.properties?.className;
+  return (
+    element?.type === "element" &&
+    element.tagName === "code" &&
+    Array.isArray(classes) &&
+    classes.includes("language-mermaid")
+  );
 }

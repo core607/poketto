@@ -67,8 +67,9 @@ test("only fenced code that names its language is highlighted", () => {
   assert.match(html, /still fine/);
 });
 
-test("a long article shows its contents and reading time; a short one only the time", async (t) => {
+test("a long article shows its contents, reading time and readers; a short one only the time", async (t) => {
   let source = body;
+  let views: number | null = 3;
   const server = createServer((request, response) => {
     const url = new URL(request.url!, "http://localhost");
     response.setHeader("Content-Type", "application/json");
@@ -76,6 +77,11 @@ test("a long article shows its contents and reading time; a short one only the t
       return response.end(
         JSON.stringify({ slug: "home", displayName: "三里屯分部" }),
       );
+    if (url.pathname === "/api/public/community/spaces/home/views") {
+      assert.equal(url.searchParams.get("route"), "/note");
+      if (views === null) response.statusCode = 404;
+      return response.end(JSON.stringify(views === null ? {} : { views }));
+    }
     response.end(
       JSON.stringify({
         route: "/note",
@@ -114,13 +120,16 @@ test("a long article shows its contents and reading time; a short one only the t
 
   const long = await render();
   assert.match(long, /约 1 分钟/);
+  assert.match(long, /阅读 3/);
   assert.match(long, /class="read-layout has-rail"/);
   assert.equal(long.match(/aria-label="文章目录"/g)?.length, 2);
   assert.match(long, /href="#poketto-heading-%E7%BB%86%E8%8A%82"/);
 
   source = "## 只有一个标题\n\n短文。";
+  views = null;
   const short = await render();
   assert.match(short, /约 1 分钟/);
   assert.doesNotMatch(short, /文章目录/);
+  assert.doesNotMatch(short, /阅读 \d/);
   assert.match(short, /class="read-layout"/);
 });
