@@ -364,7 +364,7 @@ jobs:
   # Only a verified main commit of the canonical repository becomes an image. This is the only
   # job with package-write authority.
   publish:
-    needs: verify
+    needs: [verify, changes]
     # Optional lanes can be skipped upstream. Use the completed verification gate,
     # rather than the implicit success() condition over every ancestor job.
     if: ${{ !cancelled() && needs.verify.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto' }}
@@ -377,6 +377,7 @@ jobs:
       image: ${{ steps.summary.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
       frontend_image: ${{ steps.summary.outputs.frontend_image }}
+      experiment_only: ${{ needs.changes.outputs.experiment_only }}
 
     steps:
       - name: Check out repository
@@ -493,8 +494,8 @@ jobs:
   # Existing installations must install the current privileged updater before enabling
   # this delivery version; transfer never replaces an operator's privileged executable.
   deploy:
-    needs: [publish, mirror, changes]
-    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.changes.outputs.experiment_only != 'true' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
+    needs: [publish, mirror]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.publish.outputs.experiment_only != 'true' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-24.04
     # Full image archives may need a slow-link transfer window; updater deadlines remain bounded.
     timeout-minutes: 180
