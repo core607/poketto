@@ -19,7 +19,7 @@ Authors could not tell whether anyone read an article, and readers had no signal
   - The Origin check of `OriginAndBodyFilter` still applies.
 - **Read:** `GET` on the same address returns `{ "views": n }`, or 404 when the space or route is not public.
 
-**Counting.** [JdbcReadership](../../src/main/java/io/github/core607/poketto/community/internal/JdbcReadership.java) counts a route only while it is present in the current website snapshot. It ignores:
+**Counting.** [JdbcReadership](../../src/main/java/io/github/core607/poketto/community/internal/JdbcReadership.java) first admits the report by client address: each address gets at most `poketto.community.reader-reports-per-address` reports a day (default 300). This check runs before any snapshot read or write, so rotating user agents cannot force either. It then counts a route only while the route is present in the current website snapshot. It ignores:
 - blank user agents and user agents matching common crawler and HTTP-library names;
 - routes that do not start with `/` or are longer than 2,048 characters.
 
@@ -29,7 +29,9 @@ Authors could not tell whether anyone read an article, and readers had no signal
 - the space;
 - the route.
 
-It keeps the first eight bytes of each digest in memory. At the first view of a new UTC day it replaces the salt and forgets every digest. Once `poketto.community.reader-capacity` digests (default 100,000) are held, further readers that day are not counted. Addresses and digests are never written to the database or logs.
+It keeps the first eight bytes of each digest in memory, together with a per-address report count under the same salt. If storing a count fails, the digest is forgotten and a warning is logged, so a later report from that reader can still count; the endpoint answers 204 either way. At the first view of a new UTC day it replaces the salt and forgets every digest. Once `poketto.community.reader-capacity` digests (default 100,000) are held, further readers that day are not counted. Addresses and digests are never written to the database or logs.
+
+**Client addresses.** The servlet sees the reader's address only when forwarded headers from the gateway are trusted. The [Compose deployment](../../deploy/compose.yaml) sets `SERVER_FORWARDHEADERSSTRATEGY=native` and trusts only the gateway's address. Without that, every reader shares the gateway's address, readers with the same browser build count once a day, and the per-address limit applies to the whole site.
 
 **Storage.** Migration V19 creates `article_views(workspace_id, route, day, views)`, keyed by workspace, logical route and day.
 - The route is the key because most existing articles carry no frontmatter `id`, and [community interactions](2026-09-23-community-interactions.md) cannot address such articles.
@@ -64,12 +66,16 @@ It keeps the first eight bytes of each digest in memory. At the first view of a 
   - once per client, article and day;
   - salt rotation;
   - the capacity bound;
-  - length-prefixed parts.
+  - length-prefixed parts;
+  - per-address admission;
+  - forgetting a read.
 - [ReadershipIntegrationIT](../../src/integrationTest/java/io/github/core607/poketto/community/internal/ReadershipIntegrationIT.java) runs against PostgreSQL and covers:
   - daily counting;
   - crawlers, blank agents and malformed or unknown routes;
   - closed spaces and an expired snapshot;
-  - withdrawal and return.
+  - withdrawal and return;
+  - rotating user agents from one address;
+  - a failed write that stays quiet and counts on a later report.
 - `SpacePublicationIntegrationIT` exercises the HTTP entrance:
   - no CSRF token and no session or `Set-Cookie`;
   - one count for repeated beacons;

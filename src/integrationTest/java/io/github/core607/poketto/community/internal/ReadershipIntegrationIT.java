@@ -64,8 +64,12 @@ class ReadershipIntegrationIT {
     }
 
     private Readership readership(int capacity) {
+        return readership(capacity, 300);
+    }
+
+    private Readership readership(int capacity, int perAddress) {
         var targets = new CommunityTargets(CommunityPublicationFixture.publications(jdbc), snapshots);
-        return new JdbcReadership(jdbc, targets, new ReaderDigests(capacity, () -> new byte[] {7}), clock);
+        return new JdbcReadership(jdbc, targets, new ReaderDigests(capacity, perAddress, () -> new byte[] {7}), clock);
     }
 
     @Test
@@ -116,6 +120,29 @@ class ReadershipIntegrationIT {
         snapshots.snapshot = snapshot("/elsewhere");
         assertThat(readers.total("readers", "/雨后/100%")).isEmpty();
         snapshots.snapshot = snapshot("/雨后/100%");
+        assertThat(readers.total("readers", "/雨后/100%")).isEqualTo(OptionalLong.of(1));
+    }
+
+    @Test
+    void oneAddressCannotInflateCountsByRotatingUserAgents() {
+        Readership readers = readership(100, 2);
+        for (int agent = 0; agent < 5; agent++) {
+            readers.record("readers", "/雨后/100%", "203.0.113.5", BROWSER + " build/" + agent);
+        }
+        assertThat(readers.total("readers", "/雨后/100%")).isEqualTo(OptionalLong.of(2));
+    }
+
+    @Test
+    void aFailedWriteStillAnswersQuietlyAndLetsTheReaderCountLater() {
+        Readership readers = readership(100);
+        jdbc.execute("alter table article_views rename to article_views_offline");
+        try {
+            readers.record("readers", "/雨后/100%", "203.0.113.5", BROWSER);
+        } finally {
+            jdbc.execute("alter table article_views_offline rename to article_views");
+        }
+        assertThat(readers.total("readers", "/雨后/100%")).isEqualTo(OptionalLong.of(0));
+        readers.record("readers", "/雨后/100%", "203.0.113.5", BROWSER);
         assertThat(readers.total("readers", "/雨后/100%")).isEqualTo(OptionalLong.of(1));
     }
 

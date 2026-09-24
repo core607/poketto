@@ -177,7 +177,9 @@ export default async function Article({
               <span title="预计阅读时长">约 {guide.minutes} 分钟</span>
             )}
             {views ? (
-              <span title="匿名读者的每日计数">阅读 {views}</span>
+              <span title="累计阅读次数，同一读者每天只计一次">
+                阅读 {views}
+              </span>
             ) : null}
             {value.folderPage && <span className="kind">目录</span>}
             {value.tags.length > 0 && (

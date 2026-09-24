@@ -46,9 +46,10 @@ class CommunityConfiguration {
             JdbcTemplate jdbc,
             WorkspacePublications publications,
             PublicContentSnapshots snapshots,
-            @Value("${poketto.community.reader-capacity:100000}") int capacity) {
+            @Value("${poketto.community.reader-capacity:100000}") int capacity,
+            @Value("${poketto.community.reader-reports-per-address:300}") int perAddress) {
         var random = new SecureRandom();
-        var seen = new ReaderDigests(capacity, () -> {
+        var seen = new ReaderDigests(capacity, perAddress, () -> {
             byte[] salt = new byte[32];
             random.nextBytes(salt);
             return salt;

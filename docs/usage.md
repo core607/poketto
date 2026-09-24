@@ -33,7 +33,7 @@ Article pages count anonymous daily readers by space and route, with or without 
 article ID, and show **阅读 N** once N is at least one. The page reports a reader
 after five continuously visible seconds, at most once a day per browser. The
 server counts a route only while it is public, ignores common crawler user agents,
-and counts one client once per article and UTC day, using salted digests held in
+admits at most 300 reports per client address a day, and counts one client once per article and UTC day, using salted digests held in
 memory and replaced daily; addresses are never stored. `POST /api/public/community/spaces/{slug}/views?route=…`
 needs no session or CSRF token and always answers 204. `GET` on the same address
 returns `{ "views": n }`, or 404 when the route is not public. A moved article starts
