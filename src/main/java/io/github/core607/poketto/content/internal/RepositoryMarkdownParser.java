@@ -74,7 +74,8 @@ final class RepositoryMarkdownParser {
                 metadata != null
                         && metadata.has("featured")
                         && metadata.get("featured").isBoolean()
-                        && metadata.get("featured").booleanValue());
+                        && metadata.get("featured").booleanValue(),
+                date(metadata, "publish_at"));
     }
 
     private static UUID articleId(JsonNode metadata) {
@@ -280,5 +281,14 @@ final class RepositoryMarkdownParser {
             String publicAuthor,
             UUID articleId,
             boolean invalidArticleId,
-            boolean featured) {}
+            boolean featured,
+            Optional<Instant> publishAt) {
+        /**
+         * The release that also dates a scheduled article lacking its own dates. publish_at schedules only
+         * files under public/; on a private file it changes nothing, dates included.
+         */
+        Optional<Instant> release(String path) {
+            return RepositoryPathRules.privatePath(path) ? Optional.empty() : publishAt;
+        }
+    }
 }

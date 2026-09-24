@@ -23,6 +23,39 @@ const rotationErrors: Record<string, string> = {
   INVALID_INPUT: "请检查 Git 用户名和新令牌是否填写完整。",
 };
 
+// The folders each set adds are listed in content-template/sets; "general" adds none.
+const TEMPLATES = [
+  {
+    slug: "general",
+    label: "通用",
+    description: "只有私有区、公开区和它们的说明文件。",
+  },
+  {
+    slug: "journal",
+    label: "周记与日记",
+    description: "journal 文件夹：按天或按周记一篇。",
+  },
+  {
+    slug: "reading-notes",
+    label: "读书笔记",
+    description: "reading 文件夹：每本书一篇，摘录和想法分开写。",
+  },
+  {
+    slug: "albums",
+    label: "相册",
+    description: "albums 文件夹：每个相册一个目录，同目录照片自动组成图库。",
+  },
+  {
+    slug: "digest",
+    label: "新闻摘编",
+    description: "digest 文件夹：每条新闻一篇，写明要点和来源。",
+  },
+];
+
+function templateQuery(template: string) {
+  return template === "general" ? "" : "?" + new URLSearchParams({ template });
+}
+
 export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
   const base = `/api/auth/workspaces/${encodeURIComponent(workspaceId)}`;
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
@@ -34,6 +67,9 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
   );
   const [initializationError, setInitializationError] = useState("");
   const [initializing, setInitializing] = useState(false);
+  const [template, setTemplate] = useState("general");
+  // A slower answer for an earlier choice must not replace the list for the current one.
+  const selected = useRef("general");
   const active = useRef(false);
 
   async function load() {
@@ -47,17 +83,18 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
       if (active.current) setError(message(failure));
     }
   }
-  async function loadInitialization() {
+  async function loadInitialization(chosen = template) {
     try {
       const result = await api<Initialization>(
-        base + "/repository-initialization",
+        base + "/repository-initialization" + templateQuery(chosen),
       );
-      if (active.current) {
+      if (active.current && selected.current === chosen) {
         setInitialization(result);
         setInitializationError("");
       }
     } catch (failure) {
-      if (active.current) setInitializationError(message(failure));
+      if (active.current && selected.current === chosen)
+        setInitializationError(message(failure));
     }
   }
   useEffect(() => {
@@ -77,7 +114,11 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
     try {
       const outcome = await api<InitializationOutcome>(
         base + "/repository-initialization",
-        { method: "POST", timeoutMs: 90000 },
+        {
+          method: "POST",
+          timeoutMs: 90000,
+          ...(template === "general" ? {} : { body: { template } }),
+        },
       );
       if (active.current) {
         setReceipt(
@@ -228,11 +269,39 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
               </button>
             </p>
           )}
+          <fieldset className="template-choices" disabled={initializing}>
+            <legend>空间用途</legend>
+            {TEMPLATES.map((choice) => (
+              <label key={choice.slug} className="template-choice">
+                <input
+                  type="radio"
+                  name="template"
+                  value={choice.slug}
+                  checked={template === choice.slug}
+                  onChange={() => {
+                    selected.current = choice.slug;
+                    setTemplate(choice.slug);
+                    setInitialization(null);
+                    setReceipt("");
+                    void loadInitialization(choice.slug);
+                  }}
+                />
+                <span>
+                  <strong>{choice.label}</strong>
+                  <span className="muted">{choice.description}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           {!initialization && !initializationError && (
             <p role="status">正在检查仓库指引文件…</p>
           )}
           {initialization && initialization.missingFiles.length === 0 && (
-            <p>仓库已包含内容模板的指引文件和发布策略，不需要初始化。</p>
+            <p>
+              {template === "general"
+                ? "仓库已包含内容模板的指引文件和发布策略，不需要初始化。"
+                : "仓库已包含这个模板的全部文件。"}
+            </p>
           )}
           {initialization && initialization.missingFiles.length > 0 && (
             <>

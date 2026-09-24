@@ -45,6 +45,9 @@ export function EditorPublicPage({
         <span>公开展示已受限，仍可编辑整改。</span>
       )}
       {page.state === "UNAVAILABLE" && <span>公开页面暂不可用</span>}
+      {page.state === "SCHEDULED" && page.publishAt && (
+        <span>定时发布：{scheduledTime(page.publishAt)}</span>
+      )}
       {(page.state === "UNAVAILABLE" ||
         page.state === "WEBSITE_DISABLED" ||
         page.state === "WEBSITE_RESTRICTED") && (
@@ -71,4 +74,11 @@ export function EditorPublicPage({
       )}
     </div>
   );
+}
+
+function scheduledTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }

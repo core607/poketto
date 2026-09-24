@@ -108,19 +108,21 @@ public final class SpaceCreationService {
         }
     }
 
-    public RepositoryInitialization.Status initializationStatus(AuthPrincipal actor, WorkspaceId workspace) {
+    public RepositoryInitialization.Status initializationStatus(
+            AuthPrincipal actor, WorkspaceId workspace, RepositoryInitialization.Template template) {
         accounts.account(actor);
-        return initialization.status(actor, workspace);
+        return initialization.status(actor, workspace, template);
     }
 
     /** One owner action; creation's admission bound keeps remote work per instance small. */
-    public RepositoryInitialization.Outcome initialize(AuthPrincipal actor, WorkspaceId workspace) {
+    public RepositoryInitialization.Outcome initialize(
+            AuthPrincipal actor, WorkspaceId workspace, RepositoryInitialization.Template template) {
         accounts.account(actor);
         if (!admission.tryAcquire()) {
             throw new RepositoryConnectionException(RepositoryConnectionException.Code.BUSY);
         }
         try {
-            return initialization.apply(actor, workspace);
+            return initialization.apply(actor, workspace, template);
         } finally {
             admission.release();
         }
@@ -252,7 +254,7 @@ public final class SpaceCreationService {
     // A failure leaves the space ready and the repository empty; the repository connection view offers the same change.
     private void initializeEmptyRepository(AuthPrincipal actor, WorkspaceId workspace) {
         try {
-            initialization.apply(actor, workspace);
+            initialization.apply(actor, workspace, RepositoryInitialization.Template.GENERAL);
         } catch (RuntimeException failure) {
             log.warn(
                     "workspace {} could not receive the content template as its first commit: {}",

@@ -129,7 +129,10 @@ final class PublicSiteSearch {
         for (Source source : sources) {
             budget.checkTime();
             snapshots.withCurrent(source.publication().workspaceId(), current -> {
-                if (!current.commit().equals(source.snapshot().commit())) {
+                // Within one commit the public set only grows as scheduled articles fall due.
+                if (!current.commit().equals(source.snapshot().commit())
+                        || current.articles().size()
+                                != source.snapshot().articles().size()) {
                     throw changed();
                 }
                 return null;

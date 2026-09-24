@@ -1046,3 +1046,34 @@ details.sub-panel[open] > summary::before {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
+.template-choices {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0;
+  border: 0;
+}
+.template-choices legend {
+  margin-bottom: 0.4rem;
+  font-weight: 650;
+}
+.template-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.template-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.template-choice input {
+  margin-top: 0.25rem;
+}
+.template-choice > span {
+  display: grid;
+  gap: 0.15rem;
+}
