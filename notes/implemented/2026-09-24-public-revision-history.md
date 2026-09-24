@@ -28,7 +28,7 @@ Path and route collisions with other files are not checked. They are not the aut
 - A commit object over 1 MiB fails the read.
 - After the walk, the website switch and the history setting are checked again, and the answer stands only if the same snapshot commit still serves the route. Otherwise the request fails as repository-unavailable and the reader retries.
 
-**Pages.** `/s/{slug}/history/{route}` lists the versions oldest first, numbered from 1, and compares two selected versions line by line with [lib/source-diff.ts](../../frontend/lib/source-diff.ts), defaulting to the two newest. Long bodies fall back to side-by-side text. The page shows a retry message when history is unavailable. It is `noindex` and absent from sitemaps. While the setting is on, every article footer links 「修订历史」 without a version count, because counting would walk Git on every article view.
+**Pages.** `/s/{slug}/history/{route}` lists the versions oldest first, numbered from 1, and compares two selected versions line by line with [lib/source-diff.ts](../../frontend/lib/source-diff.ts), defaulting to the two newest. The diff always runs from the earlier to the later of the two, whichever box holds which, so a removed passage is never shown as added. Long bodies fall back to side-by-side text. The page shows a retry message when history is unavailable. It is `noindex` and absent from sitemaps. While the setting is on, every article footer links 「修订历史」 without a version count, because counting would walk Git on every article view.
 
 ## Alternatives
 
