@@ -1,9 +1,22 @@
 import {
   PublicSpacePage,
+  spaceListingMetadata,
   type SpaceParameters,
 } from "../../../../components/public-space";
 
-export const metadata = { title: "搜索" };
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ space: string }>;
+  searchParams: Promise<SpaceParameters>;
+}) {
+  return spaceListingMetadata(
+    (await params).space,
+    "search",
+    await searchParams,
+  );
+}
 
 export default async function Page({
   params,

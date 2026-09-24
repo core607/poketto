@@ -5,6 +5,9 @@ import test, { type TestContext } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home, { metadata } from "../app/page";
 import { GET as robots } from "../app/robots.txt/route";
+import { metadata as siteSearch } from "../app/search/page";
+import { spaceListingMetadata } from "../components/public-space";
+import { tagHref } from "../lib/format";
 import { plainSummary } from "../lib/summary";
 
 test("summaries start at the prose, skipping the heading, figure and its caption", () => {
@@ -132,4 +135,60 @@ test("a fresh homepage answers with its batch instead of redirecting", async (t:
       disallowed.some((rule) => link.startsWith(rule)),
       link + " is disallowed",
     );
+});
+
+test("space listings name their canonical page, tags read as their own pages, and searches stay out of the index", async (t: TestContext) => {
+  const server = createServer((request, response) => {
+    assert.equal(request.url, "/api/public/spaces/home");
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ slug: "home", displayName: "三里屯分部" }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const previous = process.env.POKETTO_API_BASE_URL;
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  process.env.POKETTO_API_BASE_URL = `http://127.0.0.1:${address.port}`;
+  t.after(() => {
+    if (previous === undefined) delete process.env.POKETTO_API_BASE_URL;
+    else process.env.POKETTO_API_BASE_URL = previous;
+    server.closeAllConnections();
+    server.close();
+  });
+  const feed = {
+    "application/rss+xml": [{ url: "/s/home/rss.xml", title: "三里屯分部" }],
+  };
+
+  const archive = await spaceListingMetadata("home", "archive", {
+    offset: "100",
+  });
+  assert.deepEqual(archive.alternates, {
+    canonical: "/s/home/archive",
+    types: feed,
+  });
+  assert.equal(archive.robots, undefined);
+
+  const tag = await spaceListingMetadata("home", "tags", {
+    tag: "AI 与数学",
+    offset: "12",
+  });
+  assert.equal(tag.title, "「AI 与数学」标签");
+  assert.equal(tag.description, "「三里屯分部」中标记为「AI 与数学」的文章。");
+  // The canonical is spelled exactly like the tag links pages render.
+  assert.equal(
+    tag.alternates?.canonical,
+    "/s/home/tags?tag=AI%20%E4%B8%8E%E6%95%B0%E5%AD%A6",
+  );
+  assert.equal(tag.alternates?.canonical, tagHref("AI 与数学", "home"));
+  const tooLong = await spaceListingMetadata("home", "tags", {
+    tag: "长".repeat(65),
+  });
+  assert.equal(tooLong.alternates?.canonical, "/s/home/tags");
+
+  const search = await spaceListingMetadata("home", "search", {
+    query: "AI",
+  });
+  assert.deepEqual(search.robots, { index: false, follow: true });
+  assert.deepEqual(search.alternates, { types: feed });
+  assert.deepEqual(siteSearch.robots, { index: false, follow: true });
 });

@@ -12,6 +12,7 @@ import {
   routeFromSegments,
   spaceFeed,
   spaceHref,
+  tagHref,
 } from "../../../../../lib/format";
 import { plainSummary } from "../../../../../lib/summary";
 import { JsonLd, absoluteUrl } from "../../../../../components/json-ld";
@@ -165,13 +166,7 @@ export default async function Article({
             {value.tags.length > 0 && (
               <span className="card-tags">
                 {value.tags.map((tag) => (
-                  <a
-                    className="tag"
-                    href={
-                      spaceHref(space) + "/tags?tag=" + encodeURIComponent(tag)
-                    }
-                    key={tag}
-                  >
+                  <a className="tag" href={tagHref(tag, space)} key={tag}>
                     #{tag}
                   </a>
                 ))}

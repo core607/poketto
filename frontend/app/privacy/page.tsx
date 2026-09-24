@@ -1,6 +1,10 @@
 import { PolicyPage } from "../../components/policy-page";
 
-export const metadata = { title: "隐私政策" };
+export const metadata = {
+  title: "隐私政策",
+  description: "Poketto 如何处理账号、内容和访问数据。",
+  alternates: { canonical: "/privacy" },
+};
 
 export default function Privacy() {
   return (

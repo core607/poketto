@@ -1,6 +1,10 @@
 import { PolicyPage } from "../../components/policy-page";
 
-export const metadata = { title: "服务条款" };
+export const metadata = {
+  title: "服务条款",
+  description: "使用 Poketto 内容工作空间、公开网站和 MCP 访问的条款。",
+  alternates: { canonical: "/terms" },
+};
 
 export default function Terms() {
   return (
