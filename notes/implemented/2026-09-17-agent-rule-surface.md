@@ -16,7 +16,7 @@ Three specific costs had accumulated.
 
 ## Decision
 
-Five skills are deleted: `ui-evidence`, `archive-notes`, `doc-standards`, `trim-cot-leakage`, and `translate-docs`. Four remain: `prose-standard`, `review`, `find-simplifications`, and `pre-push-checks`.
+Five skills are deleted: `ui-evidence`, `archive-notes`, `doc-standards`, `trim-cot-leakage`, and `translate-docs`. Four remain: `prose-standard`, `review`, `find-simplifications`, and `pre-push-checks`. On 2026-09-25, [note lifecycle and document budgets](2026-09-25-note-lifecycle-and-document-budgets.md) added a fifth, `maintain-notes`.
 
 The rules that were load-bearing moved rather than disappearing. AGENTS.md absorbs the placement routing, including the rule that machine-specific runbooks never enter this repository; the archiving mechanics and the same-topic audit, both one line; and the resolvability rule, which is what makes a note readable by an agent that lacks the authoring conversation. The prose standard absorbs the ban on change narration in current-state documents. The bilingual rule survives as the single sentence it always was in practice: when one side changes, make the smallest corresponding change to the other side.
 

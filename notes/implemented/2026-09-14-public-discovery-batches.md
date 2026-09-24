@@ -4,7 +4,7 @@ Date: 2026-09-14
 
 ## Decision
 
-The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires stable random browsing across enabled spaces. A server-issued batch retains card metadata and immutable page identities, never document bodies or authority. The homepage redirects to a URL containing its batch ID; pagination preserves that ID. An explicit new-batch link selects and shuffles another bounded sample.
+The [multi-user discovery contract](2026-09-11-multiuser-workspaces-and-discovery.md) requires stable random browsing across enabled spaces. A server-issued batch retains card metadata and immutable page identities, never document bodies or authority. The homepage answers at `/`, so crawlers see content rather than a redirect, and a client script then writes the new batch ID into the address bar; pagination preserves that ID. Without scripts, a reload starts a new batch. An explicit new-batch link selects and shuffles another bounded sample.
 
 A batch samples up to four documents per space from up to 32 enabled spaces. A continuation batch advances the catalog keyset, returning to the beginning after its final page. Unavailable or expired repository snapshots contribute no cards; HTTP requests never fetch remote Git. This is a discovery sample, not an exhaustive site-search index.
 
@@ -16,12 +16,10 @@ Before emitting each retained card, check current website permission and the exa
 
 Retain at most 256 batches and 8 MiB of card string data, with at most 128 cards per batch. Count and text limits bound metadata separately; the text limit is not an exact Java heap measurement. At most two builds run concurrently; excess requests receive 429. This does not establish total public-snapshot cache capacity, which remains a separate requirement.
 
-## Alternatives and remaining work
+## Alternatives and verification
 
 Reshuffling on every page would repeat or skip cards. Storing document bodies in each batch would duplicate repository snapshots and retain unnecessary content after withdrawal. Reusing stored metadata without current permission checks would expose withdrawn cards.
 
-The initial entrance identifies each space and links articles and folder pages. [Public signatures](2026-09-14-public-author-names.md), [collection reading](2026-09-14-collection-reading.md), [album thumbnails](2026-09-14-album-thumbnails.md) and [album and collection cards](2026-09-14-discovery-album-cards.md) own their subsequent extensions. [Public search return](2026-09-14-search-highlights-and-reading-return.md) owns result-position restoration; complete cross-workspace site search remains required by the parent contract.
+[Public signatures](2026-09-14-public-author-names.md), [collection reading](2026-09-14-collection-reading.md), [album thumbnails](2026-09-14-album-thumbnails.md) and [album and collection cards](2026-09-14-discovery-album-cards.md) extend the cards; [site search](2026-09-14-public-site-search.md) provides complete cross-space search, and [public search return](2026-09-14-search-highlights-and-reading-return.md) result-position restoration.
 
-Real PostgreSQL/HTTP integration verifies mixing two independent repositories, replaying a batch, withholding private content and removing withdrawn-space cards. Browser acceptance with the real frontend and backend verifies pagination without repetition, stable order after article/back navigation, withdrawal without shifting remaining cards, explicit expiry recovery and the mobile layout. These checks do not establish large-catalog capacity or complete the remaining reading features.
-
-The same-topic audit retains the parent multi-user proposal and the [website delivery boundary](2026-09-14-workspace-public-delivery.md). Their product scope and authorization decisions remain applicable.
+`PublicDiscoveryTests` and `SpacePublicationIntegrationIT` pin batch replay, mixing of independent repositories, private-content exclusion, withdrawal without shifting positions and tag binding; `frontend/tests/pagination-pages.test.tsx` covers expiry recovery. Large-catalog capacity is not measured.

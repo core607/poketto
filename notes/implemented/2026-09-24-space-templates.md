@@ -37,10 +37,7 @@ Because nothing is overwritten, a set can be added to a space that already has c
 
 **Creation flows.** Token-based and GitHub-authorized creation still write the base files only; the owner adds a set afterwards.
 
-**Packaging.** The build keeps copying `content-template/` into application resources, sets included. [ContentRepositoryInitializerTests](../../src/test/java/io/github/core607/poketto/content/internal/ContentRepositoryInitializerTests.java) pins that:
-- the base files outside `sets/` equal `FILES`;
-- every set directory is a known template;
-- each set's directory equals its declared files, with identical contents.
+**Packaging.** The build copies `content-template/` into application resources, sets included, and the shipped files must equal the declared base and set files.
 
 ## Alternatives
 
@@ -57,11 +54,4 @@ Because nothing is overwritten, a set can be added to a space that already has c
 
 ## Verification
 
-- `ContentRepositoryInitializerTests.aTemplateSetAddsItsFoldersOnTopWithoutTouchingExistingFiles` runs against a real Git fixture:
-  - after base initialization and a customised `public/journal/AGENTS.md`, the journal status lists only the private guide, and applying it adds only that file with the shipped contents;
-  - applying again adds nothing;
-  - an unknown template name is refused.
-- `theShippedTemplateIsTheRepositoryTemplate` pins base and set files to the directory.
-- [tests/repository-connection.test.tsx](../../frontend/tests/repository-connection.test.tsx):
-  - choosing 「周记与日记」 reads the status with `?template=journal` and posts `{ "template": "journal" }`;
-  - the existing tests keep the unparameterised requests for the general case.
+[ContentRepositoryInitializerTests](../../src/test/java/io/github/core607/poketto/content/internal/ContentRepositoryInitializerTests.java) pins create-only set application against a real Git fixture and the shipped files against `content-template/`; [tests/repository-connection.test.tsx](../../frontend/tests/repository-connection.test.tsx) pins the template parameter in the Storage section's requests.

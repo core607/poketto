@@ -1,9 +1,9 @@
 # Optional Serverless Deployment Profile
 
 Date: 2026-09-01
-Status: Proposed
+Status: Rejected
 
-This remains an independent future profile. [Phase-one delivery](../implemented/2026-09-05-phase-one-daily-use.md) targets the primary single-host profile with local managed originals, derived image caches, and local SRT.
+Rejected on 2026-09-25. The execution model this profile assumed has moved: [account working copies](../implemented/2026-09-14-account-working-copies.md) are durable per-account disk copies under XFS project quotas, kept across restarts until seven days without use, and the [local execution supervisor](../implemented/2026-09-05-local-execution-supervisor.md) reaches its worker over a host Unix socket, where this profile expected disposable snapshot jobs on remote workers. Several shipped parts deliberately keep state in the running process: the login throttle of [workspace identity](../implemented/2026-09-06-workspace-identity-http.md), the reader digests of [public view counts](../implemented/2026-09-24-public-view-counts.md), the image-grant table of [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) and the [discovery batches](../implemented/2026-09-14-public-discovery-batches.md). No start-gate environment exists: deployment targets one Compose host, and no non-production serverless environment, isolated object store or remote worker host has been provided. A replicated or serverless deployment needs a new proposal written against the current architecture; the alternatives below still record why their options lost.
 
 ## Problem
 
@@ -18,7 +18,7 @@ The serverless request environment, object storage, shared relational service, r
 ### Profile boundary
 
 - Both profiles use [remote Git repository authority](../implemented/2026-09-01-remote-repository-authority.md). There is no local Git authority profile.
-- The primary single-server profile uses a local filesystem [ManagedBlobStore and disposable repository-image cache](../rejected/2026-09-01-repository-asset-blob-store.md) plus a local SRT executor service under a dedicated low-privilege identity.
+- The primary single-server profile uses a local filesystem [ManagedBlobStore and disposable repository-image cache](../implemented/2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery) plus a local SRT executor service under a dedicated low-privilege identity.
 - The optional serverless profile runs Spring and the frontend without required persistent application volumes. It uses OSS-compatible authoritative managed storage and derived repository-image caching, shared PostgreSQL, and remote SRT workers outside replaceable request instances.
 - Both profiles use the same application artifacts, domain modules, workspace model, authorization rules, content format, publishing policy, write preconditions, repository acknowledgement, and image-ownership semantics. Startup configuration selects explicit adapters; missing or invalid external configuration fails closed and never falls back to container disk, local Git authority, or direct command execution.
 - Business modules depend on Poketto-owned ports and contain no provider API, repository URL, bucket name, filesystem path, transport credential, or deployment-specific retry rule.
@@ -27,7 +27,7 @@ The serverless request environment, object storage, shared relational service, r
 
 Request instances may keep bounded commit-keyed repository caches, but deleting an instance and its disk loses no acknowledged Markdown, publishing policy, repository history, or managed image because those authorities remain in remote Git, shared PostgreSQL, and authoritative OSS rather than ephemeral disk.
 
-The serverless OSS-compatible [ManagedBlobStore](../rejected/2026-09-01-repository-asset-blob-store.md) is the byte authority only for images uploaded through Poketto. Repository images remain exact remote Git files and use a separately identifiable derived OSS cache on demand. Source Markdown is never rewritten to a provider URL. Losing authoritative managed objects requires encrypted backup restoration; losing the repository-image cache causes rematerialization rather than data recovery.
+The serverless OSS-compatible ManagedBlobStore is the byte authority only for images uploaded through Poketto. Repository images remain exact remote Git files and use a separately identifiable derived OSS cache on demand. Source Markdown is never rewritten to a provider URL. Losing authoritative managed objects requires encrypted backup restoration; losing the repository-image cache causes rematerialization rather than data recovery.
 
 ### Sandbox execution
 
@@ -41,7 +41,7 @@ If the selected environment cannot preserve SRT's declared boundary, remote exec
 
 Request instances keep no authoritative repository, required managed object, session, job, budget, rate-limit, provisioning, or lease state only on local disk or in process memory. PostgreSQL transactions and constraints, remote repository-ref compare-and-swap, and durable leases provide shared correctness. Local caches and locks may reduce work but never decide correctness.
 
-Account registration and existing-repository workspace creation are specified by [consumer accounts and personal workspaces](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md). Serverless does not invent a second repository-provisioning path. Its workspace setup adds provider-neutral managed-object scope, derived-cache scope, and remote executor routing with idempotent steps keyed by `WorkspaceId`.
+Account registration and existing-repository workspace creation are specified by [multi-user workspaces](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md). Serverless does not invent a second repository-provisioning path. Its workspace setup adds provider-neutral managed-object scope, derived-cache scope, and remote executor routing with idempotent steps keyed by `WorkspaceId`.
 
 ### Deployment behavior
 
@@ -72,18 +72,6 @@ It does not implement consumer product flows, billing, a new sandbox runtime, a 
 **Mount one shared filesystem into every request instance.** This can host caches and sessions, but it restores filesystem coordination and a stateful platform dependency instead of exercising replaceable authority and lease contracts.
 
 **Replace SRT only for serverless.** Two execution runtimes would create different security and resource semantics. A different hosted sandbox requires an explicit decision rather than entering as an adapter detail.
-
-## Acceptance
-
-- The same application artifacts start in the production single-server profile and optional serverless profile through configuration only. Business modules contain no profile branch or provider coordinate.
-- Both profiles resolve and write the same remote Git authority semantics. Neither starts with local Git authority or falls back to it when remote configuration is unavailable.
-- The single-server profile stores managed images in the authoritative local filesystem ManagedBlobStore, materializes repository images into a disposable cache, and uses local SRT. It remains fully supported after serverless ships.
-- The serverless profile stores managed images in a real isolated authoritative OSS-compatible namespace and repository images in a separately identifiable derived cache. Deleting request-instance disks changes neither authority; deleting a managed object exercises restore, while deleting a cached repository image exercises rematerialization.
-- Replacing or concurrently running request instances preserves session, authorization, provisioning, lease, budget, and rate-limit correctness through shared owners.
-- The remote SRT worker enforces the same command, filesystem, identity, network, timeout, output, process, and resource limits as the local executor. It receives no authority, object-store, or database credential.
-- Missing Git, OSS, PostgreSQL, SRT, credential, or lease configuration fails startup or the affected capability closed. No fallback writes to ephemeral disk or executes commands in the request process.
-- Production-like evidence covers cold and warm repository reads, cold and warm image delivery, a remote SRT twenty-command reused session, a compare-and-swap write, instance replacement, concurrency, and external-service failure without identifying private infrastructure.
-- Requirements, README counterparts, deployment and backup documentation, focused integration tests, `./gradlew check`, and `git diff --check` pass before the profile is described as implemented.
 
 ## Risks
 

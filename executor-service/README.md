@@ -26,7 +26,7 @@ The prepared sandbox tool directory provides `python` as an alias for
 Existing installations can add that root-owned symlink at
 `TOOLS/extracted/usr/bin/python` without changing host-wide Python commands.
 
-Provision the [content toolkit](../notes/implemented/2026-09-15-sandbox-content-toolkit.md)
+Provision the [content toolkit](../notes/implemented/2026-09-05-local-execution-supervisor.md#sandbox-toolkit)
 on the Debian-compatible worker host after preparing its root-owned tools directory:
 
 ```sh
@@ -157,7 +157,7 @@ authority; it cannot assume an earlier successful request keeps a lease alive.
 {"expectedCopyId":"new","command":"pwd"}
 ```
 
-An explicit copy ID retains its original reading scope when a grant gains private-read permission. A public-only grant cannot select a full copy. Reconnection is automatic. Results contain `retention.expiresAt` in epoch milliseconds, `retention.resumed` and nullable `retention.lastInterruptedCommand`. No generation or resume input is required. The copy keeps its original baseline and local edits; it is never reconstructed against current main merely because its metadata is missing. Artifacts and `/tmp` have shorter lifetimes than the copy.
+An explicit copy ID retains its original reading scope when a grant gains private-read permission. A public-only grant cannot select a full copy. Reconnection is automatic. Results contain `retention.expiresAt` in epoch milliseconds, `retention.resumed` and nullable `retention.lastInterruptedCommand`. No generation or resume input is required. The copy keeps its acknowledged baseline and local edits; it is never reconstructed against current main merely because its metadata is missing. Artifacts and `/tmp` have shorter lifetimes than the copy.
 
 `SESSION_REPLACED` identifies an absent, closing or different copy. `EXECUTION_REFUSED` reports `executed: false`, a bounded reason and whether recovery remains available. Reasons distinguish `RECOVERY_REQUIRED`, `BUSY`, `CAPACITY`, `MISSING_COPY`, `EXPIRED` and `UNAVAILABLE`. These refusals describe this request, not an earlier command's outcome. `EXECUTION_UNCONFIRMED` supplies the actual copy ID and expiry when a command may have partly executed. Do not replay it: inspect the same copy and `poketto status`, and reconcile uncertain remote saves with `poketto recover`.
 
@@ -370,10 +370,14 @@ The worker retains at most 16 artifacts and 256 MiB per lease, with a 128 MiB
 per-file bound and a five-minute lifetime. Retained bytes count against the lease
 disk quota. The protected copies are inaccessible to sandbox commands. There is
 no shared object registry or cross-workspace deduplication; closing or revoking
-the session invalidates handles and cleans up their storage.
+the lease invalidates handles and cleans up their storage.
 
-The `get_artifact` MCP tool returns artifacts only to the originating execution
-session after current authorization. Its default `auto` format renders validated
+The `get_artifact` MCP tool serves a handle to any MCP session of the same account,
+workspace and reading scope while the lease that captured it stays open, after
+current authorization; it is not bound to the originating MCP session. A request
+under a different credential of that account first moves the copy to a new lease,
+which closes the old lease and its artifacts. A public-only grant never reads a
+full copy's artifacts. Its default `auto` format renders validated
 PNG, JPEG, GIF or WebP images up to 16 MiB in full, pages UTF-8 text, and returns
 other files, including SVG, as exact binary resource pages. Invalid raster bytes
 or a mismatched image digest fail preview validation; use `format=bytes` to read

@@ -32,7 +32,7 @@ A same-commit renewal reuses the installed articles, and the filter runs at read
 
 **Editor.** [PublicFilePresentation](../../src/main/java/io/github/core607/poketto/web/internal/PublicFilePresentation.java) reports `SCHEDULED` with the release instant for a file in the view's `scheduled()` map. The editor shows 「定时发布：<local time>」.
 
-**Members.** Space members see scheduled files before they are due whenever they can read the public scope: through the studio tree and files, public-scope keys over MCP, and exports of repository files. Those reads follow the path policy, as the [editor public page state](2026-09-14-editor-public-page-state.md) and member grants do. Members with public editing need the file to edit it.
+**Members.** Space members who can read the public scope see scheduled files before they are due in the studio tree and file reads, which follow the path policy as the [editor public page state](2026-09-14-editor-public-page-state.md) and member grants do. Members with public editing need the file to edit it. A public-only MCP copy is built from the filtered view, so it omits scheduled articles until they are due; a full-read copy contains them.
 
 ## Relationship to the rejected visibility flag
 
@@ -40,8 +40,6 @@ The [content contract](2026-09-09-codeact-content-and-media.md) rejects a metada
 - It cannot widen publication.
 - Media become public only through a reference from a served article, so an image referenced only by a scheduled article gets no grant until the article is due.
 - A consumer that bypasses the snapshot service can only publish content early, and only content the author already placed in the public root.
-
-The content contract links here.
 
 ## Alternatives
 
@@ -60,14 +58,4 @@ The content contract links here.
 
 ## Verification
 
-- [ScheduledPublishingTests](../../src/test/java/io/github/core607/poketto/content/internal/ScheduledPublishingTests.java) uses a real Git fixture and a moving clock:
-  - before its instant, only the unscheduled article is public, and both scheduled paths appear in `scheduled()` with their instants;
-  - `current` and `withCurrent` return the same view until the release;
-  - at the instant, both articles appear without a new commit;
-  - the article without its own date takes the release as its creation and update time, while the article with `created_at` keeps its own date;
-  - a same-commit refresh keeps the due articles;
-  - an invalid value reports `INVALID_MARKDOWN`;
-  - a `private/` file with a past `publish_at` stays private;
-  - a `private/` file with a future `publish_at` keeps its commit dates and carries no release.
-- [PublicFilePresentationTests](../../src/test/java/io/github/core607/poketto/web/internal/PublicFilePresentationTests.java) covers `SCHEDULED` with its instant, `AVAILABLE` with its route, and `UNAVAILABLE`.
-- [tests/scheduled-publishing.test.tsx](../../frontend/tests/scheduled-publishing.test.tsx) checks that the editor names the release time and offers no public link.
+[ScheduledPublishingTests](../../src/test/java/io/github/core607/poketto/content/internal/ScheduledPublishingTests.java) pins the read-time filter, release without a new commit, the derived dates and private-file immunity against a real Git fixture and a moving clock; [PublicFilePresentationTests](../../src/test/java/io/github/core607/poketto/web/internal/PublicFilePresentationTests.java) and [tests/scheduled-publishing.test.tsx](../../frontend/tests/scheduled-publishing.test.tsx) pin the editor state.

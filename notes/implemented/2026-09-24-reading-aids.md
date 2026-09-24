@@ -8,7 +8,7 @@ Long articles gave readers no outline and no sense of length. Fenced code render
 
 ## Decision
 
-**Table of contents.** [lib/reading.ts](../../frontend/lib/reading.ts) parses the body with the syntax and heading-anchor steps that [reading-heading](../../frontend/lib/reading-heading.ts) exports for both the renderer and itself, so every listed anchor is the anchor on the page. The same module owns the title-repeat rule and the anchor link spelling. The guide lists headings from h1 to h3 at the two shallowest levels in use. It skips an opening heading that repeats the title, which the page hides, and skips the generated footnote label. The reading page shows the list only for three or more headings: in the sticky rail beside the text on wide screens, and as a collapsible **目录** above the text below 1080 px. The rail keeps any collection panel below the contents.
+**Table of contents.** [lib/reading.ts](../../frontend/lib/reading.ts) parses the body with the syntax and heading-anchor steps that [reading-heading](../../frontend/lib/reading-heading.ts) exports for both the renderer and itself, so every listed anchor is the anchor on the page. The same module owns the anchor link spelling and the title-repeat rule: article rendering hides only an opening level-one heading whose visible text equals the page title, keeping its ID as an empty anchor so authored fragments still resolve, while distinct or later headings and editor previews stay unchanged. The guide lists headings from h1 to h3 at the two shallowest levels in use. It skips an opening heading that repeats the title, which the page hides, and skips the generated footnote label. The reading page shows the list only for three or more headings: in the sticky rail beside the text on wide screens, and as a collapsible **目录** above the text below 1080 px. The rail keeps any collection panel below the contents.
 
 **Reading time.** The page counts CJK characters at about 400 a minute and other words at about 200 a minute, rounded, never below one minute. Folder pages show no estimate.
 
@@ -47,16 +47,4 @@ Long articles gave readers no outline and no sense of length. Fenced code render
 
 ## Verification
 
-[tests/reading-guide.test.tsx](../../frontend/tests/reading-guide.test.tsx) covers:
-- contents that skip a title heading, drop h4, keep duplicate headings distinct and match the rendered anchors;
-- the reading-time counts;
-- highlighting of named, unnamed and unknown languages;
-- a rendered article that shows contents and time when long, and only time when short.
-
-[tests/math-diagrams.test.tsx](../../frontend/tests/math-diagrams.test.tsx) covers:
-- inline, display and fenced math, and prices left as text;
-- invalid input and a disabled `\href`;
-- the server-rendered Mermaid source;
-- contents anchors for a heading that contains math.
-
-A standalone build under the production CSP was checked in Chrome in both themes. The KaTeX fonts loaded, both formulas rendered, and the Mermaid SVG drew with no console errors from the page.
+[tests/reading-guide.test.tsx](../../frontend/tests/reading-guide.test.tsx) pins the contents, its anchors, reading time and highlighting; [tests/math-diagrams.test.tsx](../../frontend/tests/math-diagrams.test.tsx) pins math, the disabled `\href`, server-rendered Mermaid source and headings that contain math. A test also compares the `katex` version with the one rehype-katex renders.

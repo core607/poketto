@@ -41,35 +41,20 @@ floor and are not a service latency promise.
 ## Replay method
 
 [SearchParsingProbe](../../src/test/java/io/github/core607/poketto/content/SearchParsingProbe.java)
-is an explicit test-runtime program, not a timed CI test. It creates ASCII
-Markdown with headings, emphasis, links, inline code, lists, quotes and GFM tables.
-One document in twenty contains the body query; titles do not match. All documents
-have the same known tag and date. Each run first warms 1,000 four-KiB documents ten
-times, then warms each scenario four times and records nine samples. It reports
-median and maximum wall time, median current-thread CPU time and allocated bytes.
-It retains a checksum of match count plus returned snippet lengths.
+is an explicit test-runtime program, not a timed CI test. It generates ASCII
+Markdown in which one document in twenty contains the body query and no title
+matches, warms the JVM, and reports median and maximum wall time, current-thread
+CPU time, allocated bytes and a match checksum. Its control scans pre-extracted
+strings: the unfiltered 1,000-document controls took about 0.22–0.24 ms at 4,096
+characters and 1.78–1.94 ms at 32,768 characters, a diagnostic lower bound that
+excludes projection construction, retained storage, invalidation and
+authorization.
 
-The control scans pre-extracted strings and skips snippet construction. Across
-the two runs, the unfiltered 1,000-document controls took about 0.22–0.24 ms at
-4,096 characters and 1.78–1.94 ms at 32,768 characters. This isolates the scale of
-parsing work but is only a diagnostic lower bound: projection construction,
-retained storage, invalidation and authorization costs are excluded.
-
-The measured runtime is the pinned Linux Temurin 26 image, one CPU quota, 768 MiB
-container memory and a 256–512 MiB Java heap. The container has no network. Replay
-from a Linux checkout with Docker:
-
-```sh
-./gradlew stageLinuxStorageTest
-docker run --rm --network none --cpus 1 --memory 768m \
-  --mount "type=bind,source=$PWD/build/linuxStorageTest/runtime,target=/runtime,readonly" \
-  eclipse-temurin:26-jdk@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc \
-  java -Xms256m -Xmx512m -cp '/runtime/classes:/runtime/jars/*' \
-  io.github.core607.poketto.content.SearchParsingProbe
-```
-
-Use the same probe source when comparing another matcher revision. Results vary
-with the corpus, JVM and host; no latency threshold gates CI.
+The measured runtime was the pinned Linux Temurin 26 image of `linuxStorageTest`
+with one CPU, 768 MiB container memory, a 256–512 MiB heap and no network, run
+from the classes staged by `./gradlew stageLinuxStorageTest`. Compare another
+matcher revision with the same probe source; results vary with corpus, JVM and
+host, and no latency threshold gates CI.
 
 ## Alternatives and scope
 
@@ -90,10 +75,6 @@ not change.
 
 ## Verification
 
-A valid-Markdown regression first fails against the baseline because each of
-three metadata exclusions still invokes reading-text extraction. After the
-reorder it verifies zero parser calls for excluded tags, dates before the lower
-bound and dates after the upper bound, while inclusive date boundaries still
-match. Shared reading-text, repository-reader and public site search tests pass.
-The source probe records equal match/snippet-length checksums before and after;
-it does not assert wall-clock timing in CI.
+A valid-Markdown regression in `MarkdownTextTests` verifies zero reading-text parser calls for documents
+excluded by tag or by either date bound, while inclusive date boundaries still
+match; shared reading-text, repository-reader and public site search tests pass.

@@ -76,7 +76,7 @@ jobs:
             while IFS= read -r file; do
               case "$file" in
                 experiments/retrieval-lab/*) has_experiment=true ;;
-                notes/proposed/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-03-continuous-delivery.md | .github/workflows/ci.yml) ;;
+                notes/implemented/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-03-continuous-delivery.md | .github/workflows/ci.yml) ;;
                 *) allowed=false ;;
               esac
             done <<< "$files"

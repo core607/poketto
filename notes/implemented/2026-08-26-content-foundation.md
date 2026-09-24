@@ -7,13 +7,13 @@ Status: Implemented
 
 ## Problem
 
-Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. The [requirements](2026-08-25-requirements-and-architecture.md) establish that a separate git repository is the source of truth, document identity is a repository-wide UUID, and revisions are content hashes. The implemented [workspace boundary](2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. This decision defines the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, and revision encoding.
+Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. At the time, the [requirements](2026-08-25-requirements-and-architecture.md) made a separate git repository the source of truth, document identity a repository-wide UUID, and revisions content hashes. The implemented [workspace boundary](2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. This decision defines the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, and revision encoding.
 
 If those details emerge independently inside later features, the same document will acquire incompatible representations across the content, projection, web, and MCP modules.
 
 [Remote repository authority](2026-09-01-remote-repository-authority.md) supersedes this note's original local-bootstrap boundary and owns current materialization and acknowledgement behavior. The revision decisions below remain in force.
 
-[Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path reads and atomic patches without the `documents/` layout or frontmatter identifiers; the UUID write path below is a transitional internal implementation awaiting removal. The path safety rules, normalized collision detection and exact-blob revisions remain in force.
+[Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path reads and atomic patches without the `documents/` layout or frontmatter identifiers; the UUID write path below is a transitional internal implementation with no production caller, awaiting removal. The path safety rules, normalized collision detection and exact-blob revisions remain in force.
 
 ## Decision
 
@@ -56,12 +56,12 @@ Markdown body.
 - `title` is required, trimmed, non-empty, and contains no control characters.
 - `visibility` is exactly `private` or `public`.
 - `tags` is an explicit YAML sequence. Values are trimmed, non-empty strings; duplicates after Unicode normalization and case folding are invalid while original display spelling is preserved.
-- `created_at` and `updated_at` are required RFC 3339 UTC instants. Machine writes preserve `created_at` and advance `updated_at` whenever the serialized document changes. This layer's canonical serialization owns that transition rule; [document write operations](2026-08-29-document-write-operations.md) reuse it rather than restating it.
+- `created_at` and `updated_at` are required RFC 3339 UTC instants. The transitional UUID writer preserves `created_at` and advances `updated_at` whenever the serialized document changes; this layer's canonical serialization owns that rule, and [document write operations](2026-08-29-document-write-operations.md) reuse it. The live repository writer does not maintain these fields: it commits the submitted bytes, and on read authored date fields take precedence while Git history supplies missing dates ([phase-one delivery](2026-09-05-phase-one-daily-use.md)).
 - `published_at` is optional. The first publish operation sets it; later edits or a visibility change back to private do not erase it.
 - Unknown fields, duplicate YAML keys, aliases, custom tags, multiple YAML documents, malformed delimiters, invalid UTF-8, and a byte-order mark are invalid for machine writes.
 - The body may be empty. This layer preserves it as text and does not render Markdown, sanitize HTML, fetch links, or interpret instructions.
 
-Machine writes serialize frontmatter in the field order shown above, add `published_at` after `updated_at` when present, use UTF-8 and LF line endings, place one blank line before the body, and end the file with one newline. Human commits need not use the canonical layout; projection will lint invalid files as required by the architecture.
+Machine writes serialize frontmatter in the field order shown above, add `published_at` after `updated_at` when present, use UTF-8 and LF line endings, place one blank line before the body, and end the file with one newline. Human commits need not use the canonical layout; the repository reader reports invalid files as per-file diagnostics.
 
 ### Identity and revision types
 
@@ -72,7 +72,7 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 ### Implemented scope
 
-The content module binds the data directory, resolves per-workspace remote authority into disposable caches, parses and canonically serializes documents, exposes the content value types, and scans commit-pinned `main` trees. Document writes now build on this boundary; projection, HTTP, and MCP entry points remain outside it.
+The content module binds the data directory, resolves per-workspace remote authority into disposable caches, parses and canonically serializes documents, exposes the content value types, and scans commit-pinned `main` trees. The transitional UUID writer builds on this boundary; HTTP and MCP writes use the patch service of the repository authoring foundations.
 
 [Repository-native publishing and images](../rejected/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement that replacement; this note records the transitional UUID layout and the rules that outlived it.
 
@@ -94,11 +94,7 @@ Allowing arbitrary frontmatter fields would make extensions easy, but misspellin
 
 ## Verification
 
-- `ContentRepositoryBootstrapTests` covers missing binding, empty remote materialization, disposable-cache replacement, direct pushes, local edit removal, cache bounds, and secret non-disclosure in temporary data directories.
-- `CanonicalDocumentCodecTests`, `DocumentValueTests`, and `DocumentPathRulesTests` cover field invariants, YAML restrictions, canonical bytes, empty and Unicode bodies, path validation, tag normalization, timestamp transitions, publication round trips, and exact-byte revisions.
-- `ContentRepositoryScanTests` proves workspace isolation, committed-tree reads, duplicate UUID detection, and cross-platform path-collision reporting.
-- `ModularityTests` verifies that public content contracts depend on `WorkspaceId` without exposing JGit or YAML implementation types.
-- `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` cover this implementation. The integration suite verifies that workspace catalog initialization and content repository bootstrap complete together against PostgreSQL.
+`ContentRepositoryBootstrapTests`, `CanonicalDocumentCodecTests`, `DocumentValueTests`, `DocumentPathRulesTests`, `ContentRepositoryScanTests` and `ModularityTests` pin these rules. The integration suite checks that workspace catalog initialization and repository bootstrap complete together against PostgreSQL.
 
 ## Risks
 
@@ -110,4 +106,4 @@ Repository-wide scanning is linear in document count. It is the simplest correct
 
 Per-workspace repositories increase the number of Git handles, caches, and scans. Repository resources open only for the scoped operation and close deterministically; the configured cache bound prevents unbounded materialized workspace growth.
 
-`scan` fails the whole repository when any managed file is invalid, so one malformed break-glass commit blocks reading every committed document. The architecture requires projection to lint rather than reject human commits, so projection needs per-document error reporting or its own tree read; that contract belongs to the projection proposal and may reshape this scan interface.
+`scan` fails the whole repository when any managed file is invalid, so one malformed break-glass commit blocks every document on the transitional UUID path. The repository reader of the [phase-one delivery](2026-09-05-phase-one-daily-use.md) instead reports per-file diagnostics and excludes only the affected files.

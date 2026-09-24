@@ -43,10 +43,4 @@ unchanged; derivation replaces rejection of redundant or stale override metadata
 
 ## Verification
 
-Real PostgreSQL, JGit and authenticated HTTP integration verifies folder route
-overrides, an unrelated sibling override, public and private moves, preserved
-frontmatter, repaired backlinks, publication withdrawal and unsafe-path rejection.
-Parser and content-reader tests retain ordinary article route behavior. The
-existing indexed-media move regression passes in the required Linux storage
-replay. The PostgreSQL fixture uses Git media, not managed originals; it does not
-claim managed-storage execution on Windows.
+Real PostgreSQL, JGit and authenticated HTTP integration pins folder route overrides, public and private moves with preserved frontmatter and repaired backlinks, and unsafe-path rejection; parser and content-reader tests retain ordinary article route behavior.

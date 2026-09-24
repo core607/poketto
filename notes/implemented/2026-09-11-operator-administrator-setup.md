@@ -12,9 +12,9 @@ The application recognizes `admin init` before starting Spring HTTP services. Th
 
 Java Console prompts for the login name and two hidden password entries. Password arguments and piped input are rejected. The command uses the shared account normalization and password encoder, and clears its input character arrays afterward. Missing configuration, connection failure, uninitialized schema, and rejected database operations have distinct fixed messages rather than exceptions that could expose connection credentials. Unexpected failures do not claim that account creation was rolled back.
 
-The existing durable initialization singleton is locked in the account-creation transaction. Exactly one account becomes site administrator and default-workspace owner; concurrent commands cannot create a second administrator. A completed installation is rejected before asking for credentials. Cancellation, invalid input, and mismatched passwords create no account. This command cannot recover passwords, replace an owner, or reopen initialization.
+The existing durable initialization singleton is locked in the account-creation transaction. Exactly one account becomes a site administrator (the `ADMINISTRATOR` group) and default-workspace owner; concurrent commands cannot create a second administrator. A completed installation is rejected before asking for credentials. Cancellation, invalid input, and mismatched passwords create no account. This command cannot recover passwords, replace an owner, or reopen initialization.
 
-There is no browser initialization controller or login-page initialization option. Deployment configuration does not accept or forward `POKETTO_AUTH_INITIALIZATION_TOKEN`; remove that key from literal deployment `.env` files before installing the updated script. Existing account rows, memberships, and login credentials are preserved.
+There is no browser initialization controller or login-page initialization option. Deployment configuration carries no initialization token.
 
 ## Alternatives and consequences
 
@@ -24,4 +24,4 @@ Default passwords and command-line password arguments can escape into logs or sh
 
 ## Verification
 
-PostgreSQL tests cover account creation, password login, array clearing, cancellation, validation failure, repeat rejection before prompting, and durable concurrent initialization. HTTP tests prove the initialization route is absent and retain login/session/CSRF checks. Streaming body-limit coverage uses the registration endpoint and verifies no account or invitation consumption occurs before complete body validation. Deployment tests reject noninteractive setup and combinations with deployment mutations.
+`AdministratorSetupTests` and `AdministratorSetupIntegrationIT` pin hidden input, rejection before prompting and durable concurrent initialization; `BrowserSecurityIntegrationIT` proves the initialization route is absent, and `deploy/tests/test_configuration.sh` rejects noninteractive setup and combinations with deployment changes.

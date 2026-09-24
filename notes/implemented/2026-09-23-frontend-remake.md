@@ -33,39 +33,13 @@ component structure are new.
 
 ### Places
 
-- **Discovery** (`/`, `/search`): a thin global bar holds the brand, discovery,
-  search and an account menu (studio, notifications, bookmarks, followed spaces,
-  account, site administration for administrators, sign-out). The home page opens
-  with a search field, offers tag chips from the current batch beside the exact-tag
-  form, and shows whole clickable cards. Following is a segment of the same page;
-  anonymous readers get a sign-in prompt.
-- **Space sites** (`/s/{slug}`): a masthead with the space name, record count and a
-  follow action, and the space's own tabs (home, tags, archive, search). The home
-  tab shows the root note in an intro panel above the article list; the archive is
-  grouped by year. Each space site offers its own RSS feed at `/s/{slug}/rss.xml`,
-  declared in the page head and linked from the footer. Root `/read`, `/tags` and
-  `/archive` redirect temporarily to the default space, because the default space can
-  change.
-- **Reading**: one measured column with breadcrumbs from the space; collections sit
-  in a side rail on wide screens and inline on narrow ones, with previous/next links
-  at the end of an article read through a collection. Interactions render only for
-  articles with an identity; other articles offer following their space. Anonymous
-  readers sign in through a dialog without leaving the article, and the global bar
-  picks up the new session.
-- **Studio** (`/admin`): an application shell with a sidebar. A filterable space
-  switcher shows the current space and role; the space sections (content, website,
-  members, access keys, connected apps, repository) follow, then account and, for
-  administrators, site administration. Section URLs, the unsaved-draft guard and
-  history positions are unchanged. The account section opens with a profile card and
-  groups creating, joining and manually connecting spaces.
-- **Editor**: a file sidebar (creation, filename search, local drafts, repository
-  tree, body search, advanced path, diagnostics), a sticky toolbar with the path,
-  public or private root, save state and actions, a segmented view switcher, and
-  the media picker. Tree rows reveal move and export on hover or focus, and keep
-  them visible on touch screens.
-- **Personal** (`/community`): notifications, bookmarks, likes, followed spaces, the
-  following feed and blocks. `?tab=` selects any personal list. The report queue is
-  part of site administration together with site account management.
+Each place has its own navigation; [frontend/README.md](../../frontend/README.md) lists the routes.
+
+- **Discovery** (`/`, `/search`) sits under a thin global bar holding the brand, discovery, search and an account menu; following is a segment of the same page.
+- **Space sites** (`/s/{slug}`) carry the space's own tabs and RSS feed, so links on one space's site never open the default space. Root `/read`, `/tags` and `/archive` redirect temporarily to the default space, because the default space can change.
+- **Reading** shows interactions only for articles with an identity; other articles offer following their space. Anonymous readers sign in through a dialog without leaving the article.
+- **Studio** (`/admin`) is an application shell whose sidebar separates space sections, account and site administration. Section URLs, the unsaved-draft guard and history positions keep the [content navigation](2026-09-14-admin-content-navigation.md) contract.
+- **Personal** (`/community`) holds only personal lists; the report queue belongs to site administration with account management.
 
 ### Visual language
 
@@ -98,16 +72,9 @@ navigation and the mixed administration tabs, which were the main problems. A
 separate administration application would duplicate authentication, drafts and API
 clients.
 
-## Delivery and verification
+## Verification
 
-The remake shipped in three steps: the design system, chrome and public places; the
-studio shell, personal lists, site administration and editor, which retired the
-scoped legacy stylesheet; then the dark theme and narrow-screen polish. Each step
-passed `./gradlew frontendCheck` and the frontend contract tests, which were updated
-only where routes or wording deliberately changed. Each was exercised in the
-isolated browser entrance with this frontend at 1440 px and 390 px, anonymous and
-signed in as the fixture owner, and the dark theme was captured for discovery, a
-space, a collection article, sign-in and the editor.
+`./gradlew frontendCheck` and the frontend contract tests pin routes and wording. Layouts were checked in the [isolated browser entrance](../../acceptance/README.md) at 1440 px and 390 px, anonymous and signed in, in both themes.
 
 ## Gaps
 

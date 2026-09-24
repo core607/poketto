@@ -3,13 +3,11 @@
 Date: 2026-08-27
 Status: Implemented
 
-[Stock PostgreSQL](2026-09-05-stock-postgresql.md) replaces the custom integration image and its tokenizer smoke test with a pinned official image and UTF-8 verification. The build and workspace ownership decisions in this record remain applicable.
-
 ## Problem
 
 Without an explicit tenant boundary, content repositories, projections, caches, authorization, and background work could form around an implicit default tenant. Adding independent knowledge spaces after those features existed would require isolation conditions to be threaded through every layer. Search, caches, and asynchronous work are the easiest paths to miss because they do not all appear in the primary request flow.
 
-Poketto needs multiple workspaces in its core data model while retaining single-workspace self-hosting as the implemented default topology. The proposed [consumer accounts and personal workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) build registration and personal provisioning on this boundary without making an account the tenant. The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) changes deployment adapters without changing this boundary.
+Poketto needs multiple workspaces in its core data model while keeping single-workspace self-hosting possible. [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md), [consumer identity](2026-09-20-consumer-identity-and-site-policy.md) and [GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md) build registration and space creation on this boundary without making an account the tenant.
 
 ## Decision
 
@@ -18,15 +16,15 @@ Poketto needs multiple workspaces in its core data model while retaining single-
 - A `workspace` is the tenant, security, and data-destruction boundary. Each workspace has an immutable canonical lowercase UUID as its `workspace_id`; its name, public domain, and display slug are not identifiers.
 - The application always uses the workspace model internally. A default deployment creates one workspace on the first successful database-backed start and exposes it through `WorkspaceCatalog`.
 - `WorkspaceCatalog` supports lookup of the default workspace and lookup by `WorkspaceId`. [Managed workspace connections](2026-09-11-managed-workspace-connections.md) add transactional creation through `WorkspaceRegistry` and account-level HTTP operations; catalog lookup remains separate from membership authorization.
-- An account may join multiple workspaces. A role belongs to the membership between an account and a workspace, not to the account globally. The [invitation-only membership proposal](2026-08-27-invitation-only-membership.md) owns the joining flow and attaches the first owner to the existing default workspace.
+- An account may join multiple workspaces. A role belongs to the membership between an account and a workspace, not to the account globally. [Invitation-only membership](2026-08-27-invitation-only-membership.md) owns the joining flow, and [operator administrator setup](2026-09-11-operator-administrator-setup.md) attaches the first owner to the default workspace.
 
 ### Data isolation
 
 - Each workspace owns a separate private remote content repository. `<data-dir>/workspaces/<workspace-id>/content` is only its disposable cache. `WorkspacePaths` derives that cache path only from an absolute data directory and a validated `WorkspaceId`; it does not accept workspace names, slugs, repository coordinates, or caller-supplied path fragments. The authority adapter resolves the remote binding from the same authorized workspace scope.
-- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it. A projection checkpoint is keyed by its workspace, stores that workspace's last indexed commit, and is never shared across workspaces.
-- Blobs use a workspace namespace. Even when two workspaces upload identical bytes, external paths, queries, and errors must not reveal that another workspace has the same hash. Physical deduplication is outside this decision.
+- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it.
+- Blobs use a workspace namespace. Even when two workspaces upload identical bytes, external paths, queries, and errors must not reveal that another workspace has the same hash. Physical deduplication happens only within one workspace ([storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)).
 - API keys, member permissions, visitor-Q&A budgets, audit records, cache keys, and background tasks belong to a workspace. Cross-workspace administration uses a distinct instance-level authority; a workspace owner is not implicitly an instance administrator.
-- Deleting a workspace will destroy its remote repository binding and provider resource, blob namespace, authoritative database rows, and derived projection. No deletion operation may be implemented until a separate proposal defines its waiting period, ownership proof, backup boundary, and recovery behavior.
+- Deleting a workspace will destroy its remote repository binding and provider resource, blob namespace, and authoritative database rows. No deletion operation may be implemented until a separate proposal defines its waiting period, ownership proof, backup boundary, and recovery behavior.
 
 ### Context propagation and authorization
 
@@ -46,17 +44,13 @@ The `workspace` Spring Modulith module owns the public value types, catalog cont
 
 Setting `poketto.workspace.catalog.enabled=false` disables the catalog and its initializer. The switch exists only so the no-database application-context smoke test can start; it is not a supported deployment option.
 
-### Default topology and implementation scope
+### Topology and scope
 
-The default remains one instance, one workspace, one operator-provisioned remote content repository, one disposable local repository cache, local PostgreSQL, and a future local blob directory. Multi-workspace isolation changes the data model; it does not require Kubernetes, open registration, or multiple application replicas.
+One instance serves any number of workspaces. The database-created default workspace binds to the operator-provisioned repository, and each further space brings its own repository. Every workspace has one disposable local repository cache; the instance uses local PostgreSQL and a local managed-original store. Multi-workspace isolation is a data-model property; it requires no Kubernetes or multiple application replicas.
 
 Cloud PostgreSQL uses the same JDBC contract and does not need a provider-specific driver abstraction. Kubernetes and object storage enter the repository only with a runnable implementation and automated verification; multi-workspace support does not depend on either.
 
-The implemented [content repository foundation](2026-08-26-content-foundation.md) and proposed invitation-only membership build independently on this boundary. Content writes, projection, search, MCP, and visitor Q&A use `WorkspaceId` instead of implementing a single-workspace path first.
-
-This implementation does not include an additional-workspace UI, open registration, billing, tenant migration, cross-workspace search, shared documents, or workspace deletion.
-
-The consumer-accounts proposal adds personal-workspace provisioning while retaining `WorkspaceId`, one repository per workspace, explicit scope propagation, and cross-workspace non-disclosure. [Remote repository authority](2026-09-01-remote-repository-authority.md) already keeps production repository truth off the request host. [Managed assets and repository image materialization](../rejected/2026-09-01-repository-asset-blob-store.md) will keep authoritative managed objects and disposable repository-image caches workspace-scoped. The optional serverless profile changes managed storage, derived caching, database, and SRT placement rather than workspace isolation.
+Content writes, public snapshots, search, MCP, and execution take a `WorkspaceId` rather than a single-workspace path. [Remote repository authority](2026-09-01-remote-repository-authority.md) keeps repository truth off the request host, and managed originals and repository-image caches are workspace-scoped. Billing, tenant migration, private cross-workspace search, shared documents, and workspace deletion are not implemented.
 
 ## Alternatives considered
 
@@ -70,16 +64,12 @@ The consumer-accounts proposal adds personal-workspace provisioning while retain
 
 ## Consequences
 
-Explicit scope on all workspace-owned data adds parameters to keys, queries, and tests. This is the intended cost of isolation. Features that introduce documents, blobs, caches, audit rows, background tasks, or projection checkpoints must prove cross-workspace isolation for that state.
+Explicit scope on all workspace-owned data adds parameters to keys, queries, and tests. This is the intended cost of isolation. Features that introduce documents, blobs, caches, audit rows, or background tasks must prove cross-workspace isolation for that state.
 
 A repository per workspace increases repository and background-worker counts. Workspaces have no cross-repository transaction dependency, so they can be sharded and processed in parallel while writes remain serialized within each repository. Distributed locks and message queues remain unnecessary until measured scale exceeds one process.
 
-Application startup now requires a configured PostgreSQL data source. Flyway owns schema creation, and startup fails instead of running with an in-memory or process-local workspace identity when the database is unavailable.
+Application startup requires a configured PostgreSQL data source. Flyway owns schema creation, and startup fails instead of running with an in-memory or process-local workspace identity when the database is unavailable.
 
 ## Verification
 
-- `WorkspaceIdTests` covers canonical parsing and rejects case variants and path-like input.
-- `WorkspacePathsTests` proves that two workspace IDs resolve to disjoint content directories below the configured absolute data directory.
-- `ModularityTests` verifies the `workspace` module together with the existing application modules.
-- `PostgresIntegrationIT` runs against pinned official PostgreSQL 17. It verifies Flyway migration, creation of one default workspace that a rerun of initialization reuses, catalog lookup, PostgreSQL 17, and UTF-8 text support.
-- `./gradlew test`, `./gradlew integrationTest`, `./gradlew repoCheck`, and `git diff --check` pass.
+`WorkspaceIdTests`, `WorkspacePathsTests`, `ModularityTests` and `PostgresIntegrationIT` pin canonical parsing, disjoint cache paths, module ownership, and creation and reuse of the default workspace.

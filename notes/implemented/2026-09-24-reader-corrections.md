@@ -76,22 +76,4 @@ Proposals count against 5 a minute and 30 a day per account in `community_rate_l
 
 ## Verification
 
-- [CorrectionsIntegrationIT](../../src/integrationTest/java/io/github/core607/poketto/community/internal/CorrectionsIntegrationIT.java) runs against PostgreSQL:
-  - an unpublished route, a stale base, an unchanged body and a viewer account are refused;
-  - a second open proposal conflicts, and withdrawal works once;
-  - owners are notified with the proposer and reason;
-  - review and acceptance require `PUBLISH`;
-  - acceptance passes the proposer as suggester, credits the proposer and notifies them;
-  - while a proposal is being accepted, decline, withdrawal and a second acceptance conflict, a failed write reopens it, and resolving it again conflicts;
-  - a claim stranded for ten minutes is listed, withdrawable, declinable and acceptable again;
-  - a proposer who declined naming is left out of both the credit and the commit trailer;
-  - credit disappears when another article is served at the route, survives the article gaining an id, follows the id through a date edit, and a repeated acceptance reports that nothing was written;
-  - decline and stale outcomes notify the proposer;
-  - blocking removes the credit and refuses new proposals.
-- [RepositoryReviewedBodyEditsTests](../../src/test/java/io/github/core607/poketto/content/internal/RepositoryReviewedBodyEditsTests.java) writes to a real remote. A byte-order mark and CRLF frontmatter survive byte for byte, the commit ends with both trailers, a repeated acceptance writes nothing, and a changed body or an unserved route is stale.
-- [OriginAndBodyFilterTests](../../src/test/java/io/github/core607/poketto/auth/internal/OriginAndBodyFilterTests.java): a 1 MiB proposal passes while a comment of that size is refused.
-- [corrections.test.tsx](../../frontend/tests/corrections.test.tsx):
-  - the browser digest equals a server-side SHA-256;
-  - a proposal restores CRLF line endings and can be withdrawn;
-  - the review shows the diff and accepts only after confirmation;
-  - notification wording covers each event.
+[CorrectionsIntegrationIT](../../src/integrationTest/java/io/github/core607/poketto/community/internal/CorrectionsIntegrationIT.java) pins the proposal, claim, stale, credit, notification and blocking rules against PostgreSQL; [RepositoryReviewedBodyEditsTests](../../src/test/java/io/github/core607/poketto/content/internal/RepositoryReviewedBodyEditsTests.java) pins byte-exact acceptance and the trailers against a real remote; [OriginAndBodyFilterTests](../../src/test/java/io/github/core607/poketto/auth/internal/OriginAndBodyFilterTests.java) pins the route's body limit; and [corrections.test.tsx](../../frontend/tests/corrections.test.tsx) pins the browser digest and review flow.

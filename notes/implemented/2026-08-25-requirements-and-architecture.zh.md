@@ -2,15 +2,15 @@
 
 Date: 2026-08-25
 
-[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。[博客与浏览器管理界面](2026-09-06-blog-browser-interface.md)通过受限 Markdown 渲染呈现这些 HTTP API，并提供隔离浏览器验收入口。MCP API 与[本地 worker 适配器](2026-09-05-local-execution-supervisor.md)提供仓库工具及显式启用的隔离执行。[交付验收](2026-09-15-multiuser-daily-use-acceptance.md)记录了 HTTPS 安装与部署拓扑验证。
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现任意路径文本读取、有界公开快照与搜索、原子文本补丁、本地托管存储和精确版本图片交付。[身份 HTTP 后端](2026-09-06-workspace-identity-http.md)提供浏览器认证、邀请、成员与作用域 key。[博客与浏览器管理界面](2026-09-06-blog-browser-interface.md)通过受限 Markdown 渲染呈现这些 HTTP API，并提供隔离浏览器验收入口。MCP API 与[本地 worker 适配器](2026-09-05-local-execution-supervisor.md)提供仓库工具及显式启用的隔离执行。
 
-[第一阶段交付契约](2026-09-05-phase-one-daily-use.md)定义可日常使用的安装范围与验收标准，包含博客、管理端及仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、在托管平台上代建仓库或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
+[第一阶段交付契约](2026-09-05-phase-one-daily-use.md)定义可日常使用的交付范围与验收规则，包含博客、管理端及仓库 MCP 工具。本次交付不包含备份、恢复演练、访客问答、在托管平台上代建仓库或 serverless；这些排除项不构成部署前置条件，拟议能力不代表已实现。
 
 ## 本文范围
 
-本文保留主要的单服务器基线及为其选定的产品边界。[远程仓库权威](2026-09-01-remote-repository-authority.md)、[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)和[已验证内容快照](2026-09-04-validated-content-snapshot.md)记录最初实现。新的创作基础与第一阶段记录定义替代契约；下文的历史与后续设计章节不代表已交付行为。
+本文保留主要的单服务器基线及为其选定的产品边界。[远程仓库权威](2026-09-01-remote-repository-authority.md)和[HTTP 入口基线](2026-09-03-http-entrance-baseline.md)记录最初实现。新的创作基础与第一阶段记录定义替代契约；下文的历史与后续设计章节不代表已交付行为。
 
-更广泛的[前端](2026-08-30-nextjs-frontend.md)与[检索与沙箱执行](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)记录已实现；[托管资产](../rejected/2026-09-01-repository-asset-blob-store.md)与[发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提案已被后续决定取代并拒绝。[多用户空间](2026-09-11-multiuser-workspaces-and-discovery.md)已纳入交付。[账号与站点策略](2026-09-20-consumer-identity-and-site-policy.md)取代其邀请制注册，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)在注册后提供显式创建仓库。注册时自动创建仓库的方案仍[被拒绝](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md)，[可选 serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md)仍为提案。这些选择均不改变工作空间租户边界。
+更广泛的[前端](2026-08-30-nextjs-frontend.md)与[检索与沙箱执行](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)记录已实现；托管资产存储与[发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提案已被后续决定取代并拒绝。[多用户空间](2026-09-11-multiuser-workspaces-and-discovery.md)已纳入交付。[账号与站点策略](2026-09-20-consumer-identity-and-site-policy.md)取代其邀请制注册，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)在注册后提供显式创建仓库。注册时自动创建仓库的方案仍[被拒绝](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md)，[可选 serverless profile](../rejected/2026-09-01-optional-serverless-deployment-profile.md)已被拒绝。这些选择均不改变工作空间租户边界。
 
 ## 定位
 
@@ -26,10 +26,10 @@ Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应�
 
 ## 核心架构决策
 
-1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库。仅保留历史选型：从未实现，现已废止，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：当时计划让 PostgreSQL 只做内容的派生投影（search_documents 表），可随时全量重建。每个工作空间的投影用 checkpoint 记录已处理的 commit，崩溃后重放追赶；投影变更与 checkpoint 推进在同一个数据库事务内完成。
+1. 文件为真理之源。每个工作空间拥有一个存放 Markdown 的 git 仓库。PostgreSQL 不保存派生的内容投影（[官方 PostgreSQL](2026-09-05-stock-postgresql.md)）；本文最初选定的可重建投影与 commit checkpoint 方案从未实现。
 2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。管理端与 MCP 共用有界 UTF-8 补丁服务，保留未修改的源码，构建带调用者归属的候选提交，并且只从预期 base 推进远端 ref。竞争 push 返回冲突；回包丢失时须向远端 `main` 对账，绝不盲目重试。可选元数据错误与不安全文件产生文件级诊断；无效发布策略关闭公开服务。仓库确认与快照安装是独立状态。
-3. 仅保留历史选型：从未实现，现已废止，由[官方 PostgreSQL](2026-09-05-stock-postgresql.md)和[仓库原生检索](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)取代：当时计划默认使用 agentic 检索，由服务端提供廉价检索原语：全文检索（zhparser + tsvector + GIN + ts_rank_cd）、标签与时间过滤、只返回摘要；调用方 AI 自行迭代查询。embedding 是可插拔实验位（独立侧表，不强制安装 pgvector），是否引入由真实查询的评测决定。
-4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY；AI key 默认不含后三项。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。[显式成员权限](2026-09-12-member-content-permissions.md)分别控制私密读取、私密修改和公开发布；普通成员与邀请默认仅能读取当前公开范围。连接不能超出持有人的权限，也不会随其权限增加而自动扩大。
+3. 检索采用[仓库原生](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)方式：agent 在仓库上组合使用普通的列目录、搜索与读取工具。本文最初选定的 PostgreSQL 全文检索方案（zhparser、tsvector）从未实现。embedding 检索只在独立的[检索实验室](2026-09-24-retrieval-lab.md)中评测，经过真实查询评测后才可进入产品。
+4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS、EXECUTE_REPOSITORY 与 [CAPTURE](2026-09-24-capture-inbox.md)；CAPTURE 只能在 `private/inbox/` 中新建 Markdown 笔记并上传其图片，WRITE_PRIVATE 隐含该能力。AI key 默认不含 PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。[显式成员权限](2026-09-12-member-content-permissions.md)分别控制私密读取、私密修改和公开发布；普通成员与邀请默认仅能读取当前公开范围。连接不能超出持有人的权限，也不会随其权限增加而自动扩大。
 5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)允许具备资格的账号在自己的 GitHub 账号下创建仓库作为新空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开发现由[多用户交付契约](2026-09-11-multiuser-workspaces-and-discovery.md)定义。
 
 从仓库路径派生或由可选元数据指定的[路由](2026-09-06-logical-repository-routes.md)保留原始名称，包括空格、`%`、`?` 和 `#`，不做 URI 编码、解码或首尾裁剪。原有路径安全与长度限制继续适用；调用方在 URI 边界编码逻辑路由。
@@ -42,9 +42,9 @@ Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应�
 
 Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐层读取内容仓库自己的 `AGENTS.md`。服务端不解释这些指引。[目录导航](2026-09-08-repository-directory-navigation.md)仍通过共享读取服务向浏览器 HTTP 提供功能，无须执行器。
 
-文件使用仓库相对路径，无须 frontmatter ID。可选的小写标准 UUID 标识使社区互动随文章移动，空间也是身份的一部分。PostgreSQL 保存互动，不保存文章正文或内容投影。浏览器读取返回权威 UTF-8 字节、解析出的提交、服务端 revision、诊断和明确的缺失状态。由宿主介入的 CLI 通过同一原子写入服务检查 base commit 及各选定文件的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通编辑在保存前留在本地。CLI 对媒体操作、选定文件保存、含引用修复的原子移动、单文件同步和不确定写入恢复执行授权。保存保留未选中编辑和各文件独立的基线。浏览器读取权威对象，shell 读取会话副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
+文件使用仓库相对路径，无须 frontmatter ID。可选的小写标准 UUID 标识使社区互动随文章移动，空间也是身份的一部分。PostgreSQL 保存互动，不保存文章正文或内容投影。浏览器读取返回权威 UTF-8 字节、解析出的提交、服务端 revision、诊断和明确的缺失状态。由宿主介入的 CLI 通过同一原子写入服务检查 base commit 及各选定文件的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通编辑在保存前留在本地。CLI 对媒体操作、选定文件保存、含引用修复的原子移动、[整个工作区同步](2026-09-15-workspace-synchronization.md)和不确定写入恢复执行授权。保存保留未选中编辑和各文件独立的基线。浏览器读取权威对象，shell 读取会话副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。
 
-[副本身份契约](2026-09-12-executor-copy-identity.md)要求每次执行请求明确新建副本，或携带此前返回的副本 ID。ID 不匹配时在执行前拒绝，即使重连后的 commit 相同也如此。这层保护尚不保证会话关闭后未保存工作仍可恢复。
+[副本身份契约](2026-09-14-account-working-copies.md)要求每次执行请求明确新建副本，或携带此前返回的副本 ID。ID 不匹配时在执行前拒绝，即使重连后的 commit 相同也如此。账号工作副本的文件在传输关闭、重连和应用重启后仍然保留：只有显式丢弃或连续七天没有授权使用才会删除它们，运行租约结束只丢失其运行时状态：shell 状态、私有 `/tmp` 与保留的产物。未保存的工作没有异地备份。
 
 ## 后续访客问答设计
 
@@ -60,7 +60,7 @@ clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环�
 
 ## 图片
 
-第一阶段资产契约取代最初仅用 hash 引用与图片索引的选型。本地托管原图在 Git 之外按工作空间存储，使用不可变的资产标识与 revision 引用。Git 图片保持只读，按需物化到可丢弃缓存。公开授权绑定页面快照和精确图片版本，最长五分钟且不超过快照有效期；私有读取重新验证当前权限。所有已确认的托管原图均保留。图片加工、pHash、图片描述与持久化图片索引不在本次交付范围内。
+第一阶段资产契约取代最初仅用 hash 引用与图片索引的选型。本地托管原图在 Git 之外按工作空间存储，使用不可变的资产标识与 revision 引用。Git 图片保持只读，按需物化到可丢弃缓存。公开授权绑定页面快照和精确图片版本，最长五分钟且不超过快照有效期；私有读取重新验证当前权限。所有已确认的托管原图均保留。除可丢弃的[公开相册缩略图](2026-09-14-album-thumbnails.md)外，图片加工、pHash、图片描述与持久化图片索引不在本次交付范围内。
 
 [存储端口](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)支持其他原始文件的有界流式读写，物理字节去重严格限定在单个工作空间内，并保留独立上传身份。[逻辑媒体索引](2026-09-09-logical-media-index.md)定义路径发现与索引、文本的原子保存。[索引媒体交付](2026-09-09-indexed-media-delivery.md)增加原始字节 HTTP 上传、相对图片渲染与经过授权的原件附件下载，并限制并发、持续重查权限。[可移植导出](2026-09-10-portable-content-exports.md)按授权范围打包已保存文档和实际原件。
 

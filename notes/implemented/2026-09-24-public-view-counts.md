@@ -62,23 +62,4 @@ It keeps the first eight bytes of each digest in memory, together with a per-add
 
 ## Verification
 
-- [ReaderDigestsTests](../../src/test/java/io/github/core607/poketto/community/internal/ReaderDigestsTests.java) covers:
-  - once per client, article and day;
-  - salt rotation;
-  - the capacity bound;
-  - length-prefixed parts;
-  - per-address admission;
-  - forgetting a read.
-- [ReadershipIntegrationIT](../../src/integrationTest/java/io/github/core607/poketto/community/internal/ReadershipIntegrationIT.java) runs against PostgreSQL and covers:
-  - daily counting;
-  - crawlers, blank agents and malformed or unknown routes;
-  - closed spaces and an expired snapshot;
-  - withdrawal and return;
-  - rotating user agents from one address;
-  - a failed write that stays quiet and counts on a later report.
-- `SpacePublicationIntegrationIT` exercises the HTTP entrance:
-  - no CSRF token and no session or `Set-Cookie`;
-  - one count for repeated beacons;
-  - 403 for a foreign Origin and 404 for an unknown route;
-  - 404 once the website is restricted.
-- [tests/view-count.test.tsx](../../frontend/tests/view-count.test.tsx) covers the beacon: the visible-time wait, the restart on hiding, once per day, and a separate article.
+[ReaderDigestsTests](../../src/test/java/io/github/core607/poketto/community/internal/ReaderDigestsTests.java) pins deduplication, salt rotation, capacity and per-address admission; [ReadershipIntegrationIT](../../src/integrationTest/java/io/github/core607/poketto/community/internal/ReadershipIntegrationIT.java) pins counting rules against PostgreSQL; `SpacePublicationIntegrationIT` pins the HTTP entrance without CSRF, session or `Set-Cookie`; and [tests/view-count.test.tsx](../../frontend/tests/view-count.test.tsx) pins the beacon.

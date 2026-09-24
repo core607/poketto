@@ -23,8 +23,8 @@ selection rather than silently skip or repeat entries. A different selection sta
 at offset zero. Discovery does not fetch original bytes and does not assert their
 availability. Current authorization is checked before delivery, and withdrawal
 invalidates the public session. The [worker reference](../../executor-service/README.md)
-owns CLI arguments and limits; the [CodeAct plan](2026-09-09-codeact-workspaces.md)
-retains session admission and remaining agent-tool cutover work.
+owns CLI arguments and limits; [CodeAct workspaces](2026-09-09-codeact-workspaces.md)
+own session admission.
 
 ## Writes and authorization
 
@@ -34,11 +34,11 @@ Changed media mappings require `PUBLISH` when either their prior or candidate pa
 
 ## Related decisions and limits
 
-[Authoring foundations](2026-09-05-repository-authoring-foundations.md) retain original storage, durability and atomic Git ownership. [Directory navigation](2026-09-08-repository-directory-navigation.md) retains commit-pinned pagination and filesystem discovery. This record extends both without introducing a second asset database. [Indexed media delivery](2026-09-09-indexed-media-delivery.md) owns logical-path images, galleries and original-file HTTP transfers; inline managed image references remain supported. [Atomic content moves](../implemented/2026-09-09-atomic-content-moves.md) records the shared service, browser picker and CLI integration. [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns public-root conversion, materialization and portable exports.
+[Authoring foundations](2026-09-05-repository-authoring-foundations.md) retain original storage, durability and atomic Git ownership. [Directory navigation](2026-09-08-repository-directory-navigation.md) retains commit-pinned pagination and filesystem discovery. This record extends both without introducing a second asset database. [Indexed media delivery](2026-09-09-indexed-media-delivery.md) owns logical-path images, galleries and original-file HTTP transfers; inline managed image references remain supported. [Atomic content moves](2026-09-09-atomic-content-moves.md) records the shared service, browser picker and CLI integration. [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns public-root conversion, materialization and portable exports.
 
 Directory reads with media scan at most 100,000 Git entries to reject namespace overlays. Original metadata validation does not hash all original bytes on every text save; uploads acknowledge durable immutable objects and delivery verifies bytes. Index state is not proof of current read or publication authority.
 
-`RepositoryMediaIndexTests`, `RepositoryDirectoryReaderTests`, `RepositoryPatchServiceTests` and `ManagedAssetDeliveryTests` cover strict parsing, namespace collisions, pinned virtual directories, explicit media reads, index/text atomicity, publication authorization and workspace metadata resolution. Native storage replay and real Spring/PostgreSQL integration remain required before release.
+`RepositoryMediaIndexTests`, `RepositoryDirectoryReaderTests`, `RepositoryPatchServiceTests` and `ManagedAssetDeliveryTests` pin the format, namespace, atomicity and authorization rules.
 
 ## Linking existing originals
 

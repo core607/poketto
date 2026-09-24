@@ -13,14 +13,12 @@ revocation, or restart contract.
 
 ## Decision
 
-This record was consolidated on 2026-09-17 after the work shipped. Its transport,
-resource and lifecycle guarantees are current; three later records refine parts of
-it and are named where they apply. The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md)
-owns the tool catalog, the [account-copy decision](2026-09-14-account-working-copies.md)
-owns disk quotas, shared copy identity, expiry and restart persistence, and
-[executor command ownership](2026-09-16-executor-command-ownership.md) owns the
-Java adapter's internal structure. Runtime leases and command containment remain
-separate from stored-copy lifetime.
+The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) owns the tool
+catalog, [account working copies](2026-09-14-account-working-copies.md) own disk
+quotas, shared copy identity, expiry and restart persistence, and
+[per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) own unit
+reuse and reset reporting. Runtime leases and command containment remain separate
+from stored-copy lifetime.
 
 ### Supervisor and worker
 
@@ -43,8 +41,11 @@ the account/workspace copy persists across transports. Runtime, CPU, memory, swa
 descendant count, output, temporary storage, and repository storage are bounded
 outside the command. Only one command runs per shared copy. Lease and request
 admission have explicit bounds. Sandbox failure never invokes an ordinary
-subprocess. The [per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md)
-decision owns unit reuse and reset reporting; this record retains the privileged boundary.
+subprocess. A lease admits at most `maxExecutionsPerSession` commands; the worker
+refuses the next one with a signed `EXECUTION_CAPACITY` before it runs, and the
+application reports `EXECUTION_REFUSED` with `CAPACITY` without recording an
+interruption and closes the exhausted lease. The next call attaches the same disk
+copy under a fresh lease.
 
 A dedicated systemd slice supplies the aggregate memory, swap, process and CPU
 budget. The root supervisor and every transient command explicitly use the same
@@ -85,6 +86,23 @@ grant also covers it. The native probe therefore places runtime state under
 remain in a separate disposable directory. No special relaxation for `/run`
 or broader grant to the session parent is part of this decision.
 
+### Sandbox toolkit
+
+The worker host installs a content-processing toolkit from its configured
+Debian-compatible package repositories with `executor-service/install-sandbox-tools.sh`,
+a root-operated host step separate from application deployment and sandbox
+execution; the [worker reference](../../executor-service/README.md#runtime) lists
+the packages. Distribution packages install once under the existing system paths
+and resolve their native-library dependencies through the package manager. Every
+copy reads the same root-owned tools; there is no per-copy installation, network
+access or package manager inside the sandbox. The prepared tool directory supplies
+`awk` directly from `/usr/bin/mawk` and the `python` alias for `/usr/bin/python3`,
+because the host's `/etc/alternatives` indirection lies outside the sandbox read
+allowlist. Provisioning does not discard copies, modify content or require an
+application or worker restart. Office libraries read and write DOCX/XLSX without
+a full renderer, PDF text extraction performs no OCR, and audio/video processing,
+OCR engines and large scientific environments are outside the toolkit.
+
 ### MCP and Java integration
 
 Spring AI supplies WebMVC Streamable HTTP at `/mcp`. Browser sessions do not
@@ -96,23 +114,23 @@ the default copy within the same reading scope. Tools use the
 [repository authoring services](2026-09-05-repository-authoring-foundations.md) for
 authoritative files, exact images, idempotent uploads and revision-checked saves.
 
-[MCP request admission removal](2026-09-15-mcp-request-admission-removal.md)
-superseded the former 16 KiB initialization and 32 MiB session-body limits, global
-filter slots and filter-owned image reservations. All request bodies share a
-128 KiB bound and the bounded streaming envelope preflight. Image import and
-response owners retain the shared image budget through actual processing and
-response writes. SDK transport exceptions become JSON-RPC error envelopes
-without exception internals; HTTP status, headers and cookies remain intact.
-Errors without an identifiable request omit `id`, and ordinary RPC responses and
-event streams retain SDK handling.
+[MCP request admission removal](2026-09-15-mcp-request-admission-removal.md) owns the
+request bounds: all request bodies share a 128 KiB bound and the bounded streaming
+envelope preflight, and image import and response owners retain the shared image
+budget through actual processing and response writes. SDK transport exceptions
+become JSON-RPC error envelopes without exception internals; HTTP status, headers
+and cookies remain intact. Errors without an identifiable request omit `id`, and
+ordinary RPC responses and event streams retain SDK handling.
 
 The `executor` Java module implements `RepositoryExecutor` through the signed local
 worker client. It validates root-owned protected socket paths, root peer
 credentials and a private Ed25519 PKCS8 signing key. Snapshot exports contain exact
 authoritative Git history without credentials, source object inode sharing or
 alternates. Authoritative file reads never use a command-modified execution copy.
-An omitted commit keeps the original copy baseline pinned, and a save does not
-silently switch it.
+A lease keeps its original export commit as provenance. An omitted commit selects
+the copy's current acknowledged baseline, which only an acknowledged save, move or
+explicit synchronization advances ([mutable working copy baselines](2026-09-15-mutable-working-copy-baselines.md));
+a requested commit that differs from that baseline is refused.
 
 `POKETTO_EXECUTOR_ENABLED=true` is set only on Linux with the separate worker
 configured. Application settings include `POKETTO_EXECUTOR_SOCKET`,
@@ -156,47 +174,33 @@ risks. Explicit bundles isolate the transfer boundary at the cost of copying
 historical objects. Ordinary Git history transfer remains in scope; partial
 clone remains excluded.
 
+Vendoring the toolkit's packages into a second filesystem tree would require
+maintaining Python and dynamic-library search paths beside the host interpreter;
+the already readable system paths avoid that duplicate installation logic.
+Package versions follow the host distribution and its security updates rather
+than Python packages installed independently with pip.
+
 The supervisor is security-sensitive privileged code. Its executable, toolchain,
 configuration, verification key, and generated records must be root-owned.
 Signed requests do not excuse unsafe filesystem cleanup or arbitrary systemd
-properties. Resource examples require real corpus sizing before production, which
-the acceptance below supplied.
+properties. Resource examples require real corpus sizing before production.
 
 ## Verification and acceptance
 
-The original [native evidence](../../executor-service/evidence.jsonl) covers a synthetic
-bundle, twenty directory reuses, same-key client isolation, denied host and
-cross-session reads, PID namespace and network checks, external resource limits,
-source immutability, cancellation, revocation, abandoned leases, and supervisor
-SIGKILL cleanup. Unit tests use real Ed25519 signatures and exercise replay,
-identity, expiration, admission, and initialization races. The required Gradle
-`executorServiceTests` task runs those tests on Linux with zero skipped or aborted
-tests; Windows uses a pinned Linux container. The normal `check` also runs actual
-HTTP MCP protocol and PostgreSQL tests, Java socket tests, module checks and native
-managed-storage replay. These gates do not rerun the privileged SRT probe. The
-same-key directory separation in that evidence predates shared account copies;
-current ownership, retention and disposal evidence is linked from the account-copy
-decision.
+The Gradle `executorServiceTests` task runs the worker's tests, with real Ed25519
+signatures, on Linux with zero skipped or aborted tests; Windows uses a pinned
+Linux container. `WorkerSocketTests`, `WorkerAnswerTests` and
+`WorkerFrameContractTests` pin the Java adapter, and `McpProtocolIntegrationIT` the
+HTTP MCP entrance. These gates do not rerun the privileged SRT probe. The
+privileged runs are recorded in the [native evidence](../../executor-service/evidence.jsonl),
+the [combined Java/worker evidence](../../executor-native/evidence/2026-09-05-combined.json),
+the [real-corpus worker sample](../../acceptance/evidence/2026-09-15-real-corpus-worker-timing.json)
+(a 173 MB retained bundle and twenty reused executions on the installed worker),
+and the [sandbox toolkit run](../../acceptance/evidence/2026-09-15-sandbox-toolkit.json).
 
-The checked-in [combined Java/worker evidence](../../executor-native/evidence/2026-09-05-combined.json)
-records the exact synthetic runtime and source hashes, including lease and restart
-behavior. The conditions that kept this record pending, deployment integration in
-the exact production topology, real corpus and history costs, production resource
-values and callable client acceptance, were met on 2026-09-15: the
-[real-corpus worker sample](../../acceptance/evidence/2026-09-15-real-corpus-worker-timing.json)
-measures an isolated initial disk copy of a 173 MB retained bundle and twenty reused
-native executions on the installed worker and SRT; the
-[sandbox toolkit run](../../acceptance/evidence/2026-09-15-sandbox-toolkit.json) exercises
-the host-installed toolkit; and the [multi-user daily-use acceptance](2026-09-15-multiuser-daily-use-acceptance.md)
-records the executor on the authorized HTTPS installation with its four execution
-slots and 32 GiB pool.
-
-## Same-topic audit
-
-- [Repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) is retained: this record narrowed its local transport and substituted bundle handoff for executor read access to application caches, and its composable execution and isolation contracts remain; [directory navigation](2026-09-08-repository-directory-navigation.md) extends basic reads independently of the worker.
-- [Remote repository authority](2026-09-01-remote-repository-authority.md) is retained. Execution copies never become write authority.
-- [Phase-one delivery](2026-09-05-phase-one-daily-use.md) is retained; it owns completion criteria and excludes partial clone.
-- [Account working copies](2026-09-14-account-working-copies.md), the [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) and [executor command ownership](2026-09-16-executor-command-ownership.md) are retained as the authorities named above.
-- The [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) stays an independent proposal; this local socket and systemd topology does not implement remote workers. [Per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) owns the implemented runtime reuse.
-
-No note is archived or rejected by this consolidation.
+Related: [repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)
+owns the composable execution and isolation contract, and execution copies never
+become write authority under [remote repository authority](2026-09-01-remote-repository-authority.md).
+This local socket and systemd topology does not implement remote workers; the
+[optional serverless profile](../rejected/2026-09-01-optional-serverless-deployment-profile.md)
+that proposed them is rejected.

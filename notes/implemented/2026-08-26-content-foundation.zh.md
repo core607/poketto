@@ -7,13 +7,13 @@ Status: Implemented
 
 ## 问题
 
-Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检索、渲染或 MCP 工具。[需求文档](2026-08-25-requirements-and-architecture.zh.md)已经确定：独立的 git 仓库是真理之源，文档身份是全仓唯一的 UUID，revision 是内容 hash。已实现的[工作空间边界](2026-08-27-workspace-tenancy.md)进一步规定每个工作空间拥有一个仓库。本决策定义仓库初始化契约、受管路径布局、frontmatter schema、机器写入的规范形式和 revision 编码。
+Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检索、渲染或 MCP 工具。当时的[需求文档](2026-08-25-requirements-and-architecture.zh.md)确定：独立的 git 仓库是真理之源，文档身份是全仓唯一的 UUID，revision 是内容 hash。已实现的[工作空间边界](2026-08-27-workspace-tenancy.md)进一步规定每个工作空间拥有一个仓库。本决策定义仓库初始化契约、受管路径布局、frontmatter schema、机器写入的规范形式和 revision 编码。
 
 如果这些细节分别在后续功能中自行成形，同一份文档就会在 content、projection、web 和 MCP 模块中得到互不兼容的表示。
 
 [远程仓库权威](2026-09-01-remote-repository-authority.md)取代了本文最初的本地初始化边界，并持有当前的物化与确认语义。下文的 revision 决策仍然有效。
 
-[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现不依赖 `documents/` 布局与 frontmatter 标识的任意路径读取和原子补丁；下文的 UUID 写入路径是等待移除的过渡性内部实现。路径安全规则、归一化碰撞检测与精确 blob revision 仍然有效。
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现不依赖 `documents/` 布局与 frontmatter 标识的任意路径读取和原子补丁；下文的 UUID 写入路径是没有生产调用方、等待移除的过渡性内部实现。路径安全规则、归一化碰撞检测与精确 blob revision 仍然有效。
 
 ## 决策
 
@@ -56,12 +56,12 @@ Markdown 正文。
 - `title` 必填；去除首尾空白后不得为空，也不得包含控制字符。
 - `visibility` 只能是 `private` 或 `public`。
 - `tags` 必须是显式 YAML 序列。每项去除首尾空白后必须是非空字符串；经 Unicode 规范化和大小写折叠后重复的标签无效，但保留原始显示拼写。
-- `created_at` 与 `updated_at` 是必填的 RFC 3339 UTC 时间。机器写入必须保留 `created_at`；序列化后的文档发生变化时必须推进 `updated_at`。这条变更规则由本层的规范序列化持有；[文档写操作](2026-08-29-document-write-operations.md)复用它，而不是各自重述。
+- `created_at` 与 `updated_at` 是必填的 RFC 3339 UTC 时间。过渡性 UUID 写入路径保留 `created_at`；序列化后的文档发生变化时推进 `updated_at`。这条规则由本层的规范序列化持有，[文档写操作](2026-08-29-document-write-operations.md)复用它。当前的仓库写入服务不维护这两个字段：它提交调用方给出的字节；读取时作者填写的日期字段优先，缺失的日期由 Git 历史补足（[第一阶段交付](2026-09-05-phase-one-daily-use.md)）。
 - `published_at` 可选。第一次 publish 操作设置它；后续编辑或把 visibility 改回 private 都不得清除它。
 - 机器写入不得包含未知字段、重复 YAML key、alias、自定义 tag、多份 YAML 文档、错误的分隔符、无效 UTF-8 或字节顺序标记。
 - 正文可以为空。本层只把它作为文本保存，不负责渲染 Markdown、清理 HTML、抓取链接或解释其中的指令。
 
-机器写入按上例字段顺序序列化 frontmatter；存在 `published_at` 时把它放在 `updated_at` 之后；使用 UTF-8 与 LF 换行；正文前保留一个空行；文件末尾保留一个换行。人工提交不必采用规范布局；架构规定投影对无效文件作 lint 标记。
+机器写入按上例字段顺序序列化 frontmatter；存在 `published_at` 时把它放在 `updated_at` 之后；使用 UTF-8 与 LF 换行；正文前保留一个空行；文件末尾保留一个换行。人工提交不必采用规范布局；仓库读取服务把无效文件报告为逐文件诊断。
 
 ### 身份与 revision 类型
 
@@ -72,7 +72,7 @@ Markdown 正文。
 
 ### 已实现范围
 
-content 模块绑定数据目录，把各工作空间的远程权威解析为一次性缓存，解析并规范序列化文档，对外提供内容值类型，并扫描 commit-pinned `main` tree。文档写入已经建立在本边界之上；投影、HTTP 与 MCP 入口仍在边界之外。
+content 模块绑定数据目录，把各工作空间的远程权威解析为一次性缓存，解析并规范序列化文档，对外提供内容值类型，并扫描 commit-pinned `main` tree。过渡性 UUID 写入路径建立在本边界之上；HTTP 与 MCP 写入使用仓库创作基础的补丁服务。
 
 [仓库原生发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仅按 hash 引用图片的要求，改为任意层级 Markdown、仓库发布策略、不可变受管引用与只读同目录图片图库。[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现这一替换；本文记录过渡期的 UUID 布局以及沿用至今的规则。
 
@@ -94,11 +94,7 @@ content 模块绑定数据目录，把各工作空间的远程权威解析为一
 
 ## 验证
 
-- `ContentRepositoryBootstrapTests` 在临时数据目录中覆盖绑定缺失、空远端物化、一次性缓存替换、直接 push、本地改动移除、缓存上限与 secret 不泄露。
-- `CanonicalDocumentCodecTests`、`DocumentValueTests` 与 `DocumentPathRulesTests` 覆盖字段不变量、YAML 限制、规范字节、空正文与 Unicode 正文、路径校验、标签规范化、时间变更、发布时间往返解析和精确字节 revision。
-- `ContentRepositoryScanTests` 验证工作空间隔离、已提交 tree 读取、重复 UUID 检测和跨平台路径冲突报告。
-- `ModularityTests` 验证 content 对外契约依赖 `WorkspaceId`，且不暴露 JGit 或 YAML 实现类型。
-- `./gradlew test`、`./gradlew integrationTest`、`./gradlew repoCheck` 与 `git diff --check` 覆盖本实现。集成测试验证工作空间 catalog 初始化与内容仓库引导能在 PostgreSQL 环境中共同完成。
+`ContentRepositoryBootstrapTests`、`CanonicalDocumentCodecTests`、`DocumentValueTests`、`DocumentPathRulesTests`、`ContentRepositoryScanTests` 与 `ModularityTests` 固定这些规则。集成测试验证工作空间 catalog 初始化与仓库引导能在 PostgreSQL 环境中共同完成。
 
 ## 风险
 
@@ -110,4 +106,4 @@ content 模块绑定数据目录，把各工作空间的远程权威解析为一
 
 按工作空间拆仓会增加 Git 句柄、缓存和扫描数量。仓库资源只为作用域操作打开并确定性关闭；配置的缓存上限阻止已物化工作空间无限增长。
 
-任一受管文件无效都会让 `scan` 对整个仓库失败，一次带坏文档的 break-glass 提交就会阻塞读取所有已提交文档。架构要求投影对人工提交做 lint 标记而非拒收，因此投影需要按文档报告错误或自建 tree 读取；该契约归投影提案定义，届时可能重塑本扫描接口。
+任一受管文件无效都会让 `scan` 对整个仓库失败，一次带坏文档的 break-glass 提交就会阻塞过渡性 UUID 路径上的所有文档。[第一阶段交付](2026-09-05-phase-one-daily-use.md)的仓库读取服务则按文件报告诊断，只排除受影响的文件。

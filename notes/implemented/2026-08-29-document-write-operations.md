@@ -1,11 +1,9 @@
 # Document Write Operations
 
 Date: 2026-08-29
-
-The current agent file entrance is [CodeAct](2026-09-10-codeact-mcp-entrance.md). Standalone MCP file
-CRUD described here is superseded; the shared domain and browser HTTP contracts
-remain applicable.
 Status: Implemented
+
+`DocumentWriteService` and its JGit implementation have no production caller and await removal; the change that removes them consolidates this record. Every repository write goes through the atomic writer of [repository authoring foundations](2026-09-05-repository-authoring-foundations.md#atomic-authoring), which owns conflict, attribution and commit-metadata privacy rules for current writes. [Member content permissions](2026-09-12-member-content-permissions.md) own the capability each change needs, and [CodeAct](2026-09-10-codeact-mcp-entrance.md) is the agent file entrance. The sections below describe the legacy UUID API as it remains in the code, and the alternatives it settled.
 
 ## Problem
 
@@ -21,22 +19,22 @@ MCP tools, the admin UI, and projection replay all need the same commit semantic
 
 `create` and `update` carry the same `DocumentDraft` of path, title, tags, and body. A draft is complete caller-supplied state, so an update replaces every field it carries rather than merging.
 
-- `create` assigns the document UUID, sets `created_at` and `updated_at` to the current UTC instant, serializes canonically, and commits. Every created document is `private`; no create parameter selects `public`.
+- `create` assigns the document UUID, sets `created_at` and `updated_at` to the current UTC instant, serializes canonically, and commits. Every document it creates is `private`; no create parameter selects `public`. In the repository-native layout a file's path decides publication instead, and creating one at a path the publication policy makes public needs `PUBLISH`.
 - `update` takes the document UUID, `expected_revision`, and a draft. It preserves `id`, `created_at`, `published_at`, and visibility. A path change is a move, and a move is an edit: any change to the bytes or the path advances `updated_at` and therefore produces a new revision, so a concurrent move surfaces as a conflict instead of being silently relocated back. An update that changes neither bytes nor path succeeds without a new commit.
 - `delete` takes the document UUID and `expected_revision` and removes the document file.
-- `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. No operation returns a public document to `private`; reverting is a break-glass repository edit followed by explicit reindexing.
+- `publish` takes the document UUID and `expected_revision`, sets visibility to `public`, sets `published_at` on the first publish only, and commits. Publishing an already-public document whose `expected_revision` matches the live revision succeeds without a new commit. A retry after a lost publish acknowledgement carries the pre-publish revision and returns a conflict; the caller re-reads and observes the completed publish. This API has no operation that returns a public document to `private`. Repository-native content has no such restriction: moving a file from `public/` to `private/` withdraws it, as [CodeAct content and media](2026-09-09-codeact-content-and-media.md) describes.
 
-`DocumentWriteService` accepts the revision as opaque input and does not define an agent read entrance. [Repository-native retrieval](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) proposes the structured `get_file` read that supplies opaque blob revisions from one committed snapshot, and [repository-native publishing and images](../rejected/2026-09-01-repository-native-publishing-and-assets.md) proposes the `repo_patch` bridge that consumes them for repository-native Markdown writes.
+`DocumentWriteService` accepts the revision as opaque input and defines no read entrance.
 
 ### Concurrency and acknowledgement
 
 One in-JVM lock per workspace cache prevents two local operations from mutating the same candidate worktree. Locks and caches are independent across workspaces. They are a local coordination optimization, not the correctness boundary: independent application processes use separate caches, and [remote repository authority](2026-09-01-remote-repository-authority.md) applies an exact expected-ref update so only one candidate can advance a shared base.
 
-The cache is fully machine-owned. Before a write, the authority adapter fetches remote `main`, resets tracked state to that commit, and removes untracked and ignored files. Owners author by pushing the private remote; cache edits are disposable and never block or become content.
+The cache is fully machine-owned. Before a write, the authority's materializing mode fetches remote `main`, resets tracked state to that commit, and removes untracked and ignored files. Owners author by pushing the private remote; cache edits are disposable and never block or become content.
 
 The operation reads the resolved remote `main` tree, verifies `expected_revision` against the committed blob hash, applies the change, and builds a candidate commit. A mismatch changes nothing and raises `DocumentConflictException` carrying the live revision so the caller re-reads instead of retrying blind. A missing document raises `DocumentNotFoundException`, distinct from a conflict: after a lost `delete` acknowledgement, a retry reads as already applied. `create` and a path-changing `update` verify that the target path is free after Unicode normalization and case folding, and `create` verifies document-UUID uniqueness, under the same local lock. The first successful write on an unborn remote `main` creates the root commit.
 
-A committed change always carries a later `updated_at`, and therefore a new revision. Canonical serialization advances it when the document's own fields change; the write service advances it for a move, and for a write that rewrites a hand-edited file whose fields already match into canonical form.
+A committed change always carries a later `updated_at`, and therefore a new revision. Canonical serialization advances it when the document's own fields change; the write service advances it for a move, and for a write that rewrites a hand-edited file whose fields already match into canonical form. The change time is read inside the workspace lock and is the later of the clock and the stored `updated_at` plus one millisecond, so a stepped-back host clock or a direct push stamped in the future cannot fail a write.
 
 Before mutating the candidate worktree, the operation records the paths it will touch in an intent journal inside the cache's git directory. A failed stage or commit resets those paths to the resolved base and removes the journal before the lock releases. A process crash needs no durable local recovery contract: the next operation rematerializes the entire disposable cache from remote `main` before building another candidate.
 
@@ -44,21 +42,15 @@ Before mutating the candidate worktree, the operation records the paths it will 
 
 ### Attribution
 
-Commits use the fixed service author and committer identity `Poketto <poketto@invalid>`, whose domain is reserved and routes nowhere. The acting principal — `WritePrincipal`, a principal type and a stable identifier — is recorded in a `Poketto-Principal` commit trailer, and the commit subject names the operation and document UUID. [Invitation-only membership](2026-08-27-invitation-only-membership.md) supplies real account and API-key identities later; these operations accept the principal as data and do not depend on login existing.
-
-Commit metadata must never contain display names, email addresses, credentials, or session tokens: content repositories may be mirrored off-host, so identity in git history stays limited to durable opaque identifiers. Entrances map credentials and sessions to stable principal identifiers before constructing `WritePrincipal`. The value type accepts up to 64 characters of `[A-Za-z0-9._-]` after an alphanumeric first character, making email addresses, display names, and trailer-breaking newlines unrepresentable. This syntax check cannot determine whether an otherwise valid token is secret.
+The service uses the same `Poketto <poketto@invalid>` identity and `Poketto-Principal` trailer as the live writer, and its commit subject names the operation and document UUID. [Repository authoring foundations](2026-09-05-repository-authoring-foundations.md#atomic-authoring) own the attribution and commit-metadata privacy rule. [Invitation-only membership](2026-08-27-invitation-only-membership.md) supplies account and API-key identities; these operations accept the principal as data and do not depend on login.
 
 ### Capability mapping
 
-These operations do not authorize. Entry points resolve an authorized workspace and capability before invoking them, per the [workspace boundary](2026-08-27-workspace-tenancy.md). The contract entry points must enforce: mutating a private document requires `WRITE_PRIVATE`; `publish`, and every mutation of an already-public document, requires `PUBLISH`. A key holding only `WRITE_PRIVATE` therefore can never change what the public site serves. An entrance checks the target's visibility from its own read, and `expected_revision` closes the race between that check and the write: a publish in between changes the bytes and turns the stale write into a conflict.
-
-### Implemented scope
-
-The implementation covers the four operations, per-cache locking, candidate journaling and rollback, remote compare-and-swap acknowledgement, validation, attribution, and write results, reusing the foundation's canonical serialization and validation. It excludes HTTP, MCP, and admin entry points, capability enforcement, projection and indexing, and an unpublish operation.
+These operations do not authorize; an entry point must resolve an authorized workspace and capability first, per the [workspace boundary](2026-08-27-workspace-tenancy.md). Mutating a private document requires `WRITE_PRIVATE`; `publish`, and every mutation of an already-public document, requires `PUBLISH`. A key holding only `WRITE_PRIVATE` therefore can never change what the public site serves. An entrance checks the target's visibility from its own read, and `expected_revision` closes the race between that check and the write: a publish in between changes the bytes and turns the stale write into a conflict. No HTTP, MCP or browser entrance calls these operations.
 
 ## Alternatives
 
-**Use commit SHAs for optimistic concurrency.** A commit SHA identifies repository history, not the document the caller read; any unrelated commit would invalidate it. The requirements make the content-hash revision the concurrency token and commit SHAs audit-only.
+**Use commit SHAs for optimistic concurrency.** A commit SHA identifies repository history, not the document the caller read; any unrelated commit would invalidate it. The requirements made the content-hash revision this API's concurrency token and commit SHAs audit-only. The live writer does require the exact base commit, together with per-path revisions, for the reasons the [authoring foundations](2026-09-05-repository-authoring-foundations.md#atomic-authoring) record.
 
 **Last-writer-wins instead of `expected_revision`.** Simpler for callers, but a stale agent would silently destroy newer content. The requirements require a conflict instead of an overwrite.
 
@@ -72,12 +64,7 @@ The implementation covers the four operations, per-cache locking, candidate jour
 
 ## Verification
 
-- `DocumentWriteServiceTests` covers the root commit on an unborn `main`, private creation, path validation before the repository is reached, revision and `updated_at` advance, the unchanged-update and republish no-ops, moves, conflicts carrying the live revision, not-found against conflict, occupied and normalization-colliding targets, single-publication time, workspace independence, and commit subject and trailer contents.
-- `DocumentWriteRecoveryTests` covers disposable dirty-cache recovery, a lost successful push response applying exactly once, an unverifiable ambiguous result, and independent application caches advancing the same base with one success and one conflict.
-- `WritePrincipalTests` covers trailer rendering and the identifiers the value type refuses.
-- `ModularityTests` verifies that the write contracts live in the content module's API package while its JGit implementation stays internal.
-- The document-UUID uniqueness guard in `create` is unreachable through the service, which assigns a fresh random UUID, so it stands as a guard against a repository that already violates the foundation's uniqueness rule rather than a tested path.
-- `./gradlew test`, `./gradlew repoCheck`, and `git diff --check` cover this implementation. Docker is not required because these operations add no database state.
+`DocumentWriteServiceTests`, `DocumentWriteRecoveryTests` and `WritePrincipalTests` pin this API against real disposable bare remotes; `ModularityTests` keeps its contracts in the content API package and its JGit implementation internal. The document-UUID uniqueness guard in `create` is unreachable through the service, which assigns a fresh random UUID; it guards against a repository that already violates the foundation's uniqueness rule.
 
 ## Risks
 
@@ -87,6 +74,6 @@ The write lock is process-local, so application instances must not share one cac
 
 A definite remote conflict leaves the candidate unacknowledged even though its objects may already exist remotely. They are unreachable and can be collected by ordinary Git maintenance; no caller treats object transfer as commit success.
 
-A write needs a clock that has advanced past the document's `updated_at`. A backwards clock step fails the write rather than committing a document whose update time precedes the one it replaced.
+Its workspace byte check does not credit replaced bytes, so it can refuse a replacement at the very edge of the bound; the live writer measures the candidate tree exactly. Comparing an existing document does not impose the serialized-size bound on its canonical form, so a valid owner-authored file at the size limit can still be shortened.
 
-Remote unavailability now blocks current reads and writes. A populated cache avoids retransferring unchanged objects but never becomes an offline acknowledgement mode.
+Remote unavailability blocks reads and writes. A populated cache avoids retransferring unchanged objects but never becomes an offline acknowledgement mode.

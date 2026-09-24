@@ -39,7 +39,7 @@ User-Agent，每个客户端地址每天最多受理 300 次上报，同一客�
 评论为纯文本，最多 4,000 个 Unicode 字符，只支持一级回复。同一评论请求重试不会重复发布。
 删除自己的评论后无法恢复；根评论保留已有回复的位置，但不能继续接受新回复。
 空间 owner 和站点管理员可移除评论，根评论被移除时，其回复也不再公开。
-管理员在社区页处理举报，此权限不包含私有 Git 内容。举报原因最多 1,000 个字符。
+管理员在工作台的“站务”分区处理举报，此权限不包含私有 Git 内容。举报原因最多 1,000 个字符。
 评论显示账号昵称，文章署名则由作者自行填写。
 
 屏蔽后，你将看不到该账号的评论和通知，双方不能新增相互回复；公开文章仍可被匿名阅读。
@@ -126,9 +126,9 @@ exclude:
 
 只有精确根目录 `public/` 下的路径才有资格公开。排除规则使用完整仓库相对路径并优先生效；任意大小写的 `AGENTS.md` 和含隐藏路径段的文件保持私有。两个根目录内部的名称都是普通分类。策略缺失或禁用时不发布任何内容；策略无效时关闭公开服务。采用旧默认公开格式的仓库须在升级前完成[协调内容转换](../notes/implemented/2026-09-09-codeact-content-and-media.md#implementation-and-acceptance)；直接覆盖模板不能替代转换。
 
-Markdown 元数据可选，未修改的源码字节保持原样。默认路由省略 `public/` 和 `.md`；普通文章的显式路由保持不变，但不能赋予公开权限。目录入口始终从所属目录计算路由，忽略 frontmatter 中的路由覆盖；移动后也遵循该规则，作者原文保持不变。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由（`public/index.md` 对应 `/`）；不存在符合读取范围且有效的 index 时，使用 `README.md`。两者均提供不递归、不重复正文图片的同目录图库；同时有效时，结构化阅读使用 index，README 原文保留。图库图片可在弹窗内用按钮或左右方向键切换，按 Escape 关闭并返回原入口焦点。公开图库先加载最长边不超过 640 像素的缩略图，打开弹窗后再读取未改动的原图。透明缩略图使用 PNG，不透明缩略图使用 JPEG；保留 JPEG 的方向信息，动画预览使用第一帧。WebP 缩略图接受最多 400 万源像素；本版不为带 EXIF 元数据的 PNG/WebP 生成缩略图。预览不可用时仍可点击查看已授权的原图。管理端预览继续读取原始图片。
+Markdown 元数据可选，未修改的源码字节保持原样。默认路由省略 `public/` 和 `.md`；普通文章的显式路由保持不变，但不能赋予公开权限。目录入口始终从所属目录计算路由，忽略 frontmatter 中的路由覆盖；移动后也遵循该规则，作者原文保持不变。公开详情入口为 `GET /api/public/document?route=...`；列表、搜索与标签响应包含快照元数据。`index.md` 拥有所属文件夹的路由（`public/index.md` 对应 `/`）；不存在符合读取范围且有效的 index 时，使用 `README.md`。两者均提供不递归、不重复正文图片的同目录图库；同时有效时，结构化阅读使用 index，README 原文保留。图库图片可在弹窗内用按钮或左右方向键切换，按 Escape 关闭并返回原入口焦点。公开图库先加载最长边不超过 640 像素的缩略图，打开弹窗后再读取未改动的原图。透明缩略图使用 PNG，不透明缩略图使用 JPEG；JPEG、PNG 与 WebP 源图的 EXIF 方向信息都会应用，动画预览使用第一帧。WebP 缩略图接受最多 400 万源像素；EXIF 数据无效或重复出现时不生成缩略图。预览不可用时仍可点击查看已授权的原图。管理端预览继续读取原始图片。
 
-要定时发布一篇可公开的文章，在 frontmatter 中加入 `publish_at`：可写 `YYYY-MM-DD`（按 UTC 零点），或带时区的时间，如 `2026-10-01T09:00:00+08:00`。到点之前，这篇文章不会出现在任何匿名可见的地方，包括页面、列表、标签、归档、发现、搜索、站点地图、订阅、封面、图片授权和社区；到点后自动出现，不需要新的提交。未填写 `created_at` 或 `date` 时，文章日期取 `publish_at`，因此会作为新文章排在前面。无法解析的值会报告 `INVALID_MARKDOWN`，文章保持不公开。该字段不会让 `public/` 以外的内容公开。能在工作台或通过 MCP 读取公开范围的空间成员会提前看到这个文件，编辑器显示「定时发布」及时间。详见[定时发布](../notes/implemented/2026-09-24-scheduled-publishing.md)。
+要定时发布一篇可公开的文章，在 frontmatter 中加入 `publish_at`：可写 `YYYY-MM-DD`（按 UTC 零点），或带时区的时间，如 `2026-10-01T09:00:00+08:00`。到点之前，这篇文章不会出现在任何匿名可见的地方，包括页面、列表、标签、归档、发现、搜索、站点地图、订阅、封面、图片授权和社区；到点后自动出现，不需要新的提交。未填写 `created_at` 或 `date` 时，文章日期取 `publish_at`，因此会作为新文章排在前面。无法解析的值会报告 `INVALID_MARKDOWN`，文章保持不公开。该字段不会让 `public/` 以外的内容公开。能读取公开范围的空间成员会在工作台提前看到这个文件，编辑器显示「定时发布」及时间。完整读取的执行副本包含该文件；仅公开读取的执行副本在到点前不含该文件。详见[定时发布](../notes/implemented/2026-09-24-scheduled-publishing.md)。
 
 空间所有者可以在网站设置里开启「公开修订历史」，默认关闭。开启期间，每篇文章底部都会链接「修订历史」，`/s/{slug}/history/{route}` 按从早到晚列出这篇文章公开过的正文，任选两个版本逐行比较。从正在提供的提交沿第一父提交往回走，遇到第一个文章在同一路径、同一地址下不可公开的提交就停止：发布关闭或路径被排除、文件不存在、超过 1 MiB 或无法解析、地址不同，或 `publish_at` 尚未到达。正文相同的连续提交算作一个版本，时间取其中最早的一个。提交号、提交说明、身份信息和 frontmatter 都不会显示。一次读取最多扫描 256 个提交、50 个版本和 2 MiB（UTF-8）的正文，限时两秒，同时最多两个读取。因上限停止，或更早的版本超过 1 MiB、无法解析时，历史标记为不完整，页面会说明更早的版本没有列出。修订历史页面带 `noindex`。设置关闭时，`GET /api/public/spaces/{slug}/history?route=…` 返回 404。详见[公开修订历史](../notes/implemented/2026-09-24-public-revision-history.md)。
 
@@ -308,9 +308,9 @@ MCP 请求体上限为 128 KiB。图片导入和图片响应在各自的处理�
 
 超限的 MCP 请求体在工具执行前返回 413；传输错误只返回协议字段，不暴露异常内部信息。请求与并发上限见[集成记录](../notes/implemented/2026-09-05-local-execution-supervisor.md#mcp-and-java-integration)。
 
-`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳两个会话、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
+`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证独立 root supervisor 和低权限 SRT 账号。应用默认接纳四个会话（`POKETTO_EXECUTOR_MAX_SESSIONS`）、最多导出 128 MiB bundle；应用接纳与导出限制须对齐 worker，并在使用前测量生产限制。
 
-完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。同一账号的授权客户端在同一空间和读取范围内共享磁盘副本；完整源码和公开投影仍然隔离。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 按单个文件自己的基线合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
+完整读取权限的执行会话保留授权范围内的当前文件和原始 Git 历史；仅公开读取的会话获得新的当前公开投影，不含原始历史或私密元数据。同一账号的授权客户端在同一空间和读取范围内共享磁盘副本；完整源码和公开投影仍然隔离。普通编辑留在本地。`poketto save` 通过共用原子写入服务提交选定文件和明确删除，并保留未选中的编辑；`poketto sync` 将整个工作空间与同一个远端提交合并，`poketto recover` 核实待处理的保存或移动，不会重放后续编辑。取消、撤权和续租失败会关闭执行权限。worker 缺失、CodeAct 协议不匹配或隔离能力不受支持时，不会降级为普通子进程。
 
 `poketto media import` 存储工作空间内的不可变原件并更新本地逻辑索引；将索引与引用它的文本一起保存，才能持久化这些引用。`poketto media link PATH --asset ID --revision REV` 将已经上传的原件接入该本地索引，不传输原件字节。完整读取会话中的 `poketto media fetch` 使用本地索引或明确选定的历史提交，仅公开读取的会话则使用服务端持有的已批准映射。CLI 路径相对仓库根目录；命令和文件生命周期见 `poketto --help`。[worker 参考文档](../executor-service/README.md)定义限制、权限、冲突处理和配套安装。
 
@@ -327,15 +327,15 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 分页时保持 `--prefix` 和 `--commit` 不变；更换范围时从偏移零重新开始。
 历史列表共用原件读取的并发限制，名额占满时可能返回 `MEDIA_UNAVAILABLE`。
 
-`poketto artifact create FILE --type MIME` 为当前 MCP 会话保留不可变的临时结果。
+`poketto artifact create FILE --type MIME` 在捕获它的租约中保留不可变的临时结果。租约保持打开期间，同一账号、同一空间和读取范围内的任何 MCP 会话都可通过 `get_artifact` 读取；该账号以另一凭证发起的请求会把副本移到新租约，旧租约及其制品随之关闭。
 `get_artifact` 可展示通过校验的位图，或分页返回文本、二进制；长命令输出也会附带制品句柄。
-句柄在五分钟后或会话关闭时失效，不会上传、保存或发布文件。
-资源限制或取消会关闭会话，此时长输出只保留预览，并明确报告制品不可用。
+句柄在五分钟后或租约关闭时失效，不会上传、保存或发布文件。
+资源限制或取消会关闭租约，此时长输出只保留预览，并明确报告制品不可用。
 [worker 参考文档](../executor-service/README.md#returned-artifacts)定义配额、按字节分页和授权规则。
 
 ## 部署
 
-每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、一次性 owner 初始化凭证、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
+每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录。私有运行配置需提供域名与 DNS、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。部署不配置初始化凭证：应用运行后，在交互式终端运行 `./deploy.sh --initialize-admin` 创建首个管理员。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。
 
 对于使用自行维护的 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并选择 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 的三种取值都可用：`pull` 由主机使用部署任务自带的包读取令牌，从规范镜像仓库拉取两个摘要；`mirror` 使用配置好的交付镜像站；`transfer` 通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用。Compose 文件、环境文件、无关配置和依赖服务继续由运维配置维护。
 
@@ -343,7 +343,7 @@ Markdown 引用。未选中的本地编辑和未保存索引条目仍留在本�
 
 将 `POKETTO_SUPPORT_EMAIL` 设置为 `/privacy` 和 `/terms` 页面展示的公开联系方式，并按实际部署的数据处理方式核对页面说明。两种部署方式均接受此设置，现有安装更新仅将它传给前端；CI 从同名 repository variable 读取。Google 品牌配置可使用站点首页、`/privacy` 和 `/terms` 地址。
 
-Caddy 负责公开 HTTPS，把 `/api` 与 `/mcp` 转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](../notes/implemented/2026-09-05-blog-stack-delivery.md)。
+Caddy 负责公开 HTTPS，把 `/api`、`/mcp` 以及 `/.well-known/` 下的 OAuth 发现路径转交 Spring，其余路径转交 Next.js，并阻断管理探针。只有容器健康且本地网站与 API 通过证书校验的 HTTPS 请求后才确认部署成功。HTTPS 检查在 `POKETTO_HEALTH_TIMEOUT` 的剩余时间内重试，等待证书和路由就绪；默认时限为 180 秒。主机无法访问 GHCR 时，`deploy/transfer.sh` 传输两个应用镜像；数据库与网关仍要求可访问 Docker Hub，或已缓存其精确 digest。`--pull --sync` 模式在主机拉取应用镜像的同时同步当前部署文件。自动部署仍需通过 production 环境单独启用。先独立安装并验证主机执行服务，再设置 `POKETTO_EXECUTOR_ENABLED=true`；缺少隔离前置条件时部署失败关闭。镜像身份、配置、持久化边界和待完成的真实安装验收见[部署栈记录](../notes/implemented/2026-09-05-blog-stack-delivery.md)。
 
 把 `POKETTO_NETWORK_SUBNET` 设置为未被占用、至少含 16 个地址的 RFC1918 IPv4 CIDR，把 `POKETTO_NETWORK_DYNAMIC_RANGE` 设置为规范且严格包含于主网、至少含八个地址的动态子池。把 `POKETTO_GATEWAY_INTERNAL_IP` 设置为池外的 Caddy 固定地址，排除主网的网络地址、供网桥使用的首个可用地址和广播地址。部署会在启动容器前拒绝无效范围；Docker 只从动态池为其他服务分配地址。只有该部署启用 Tomcat 转发解析，且仅信任网关的 `/32`；Caddy 重建客户端地址、协议和主机头，并在转交 Spring 前移除 `X-Forwarded-Port`。其它入口显式默认为 `server.forward-headers-strategy=none`。`./gradlew proxyForwardingCheck` 需要 Docker 和 Python 3.10+，验证真实 Compose 地址分配、客户端独立登录限流与共享账号限流；`check` 和 CI 必须执行它。
 

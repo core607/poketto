@@ -35,12 +35,7 @@ URLs must be absolute http or https addresses.
 - `POST /api/capture` accepts JSON, or a multipart form with an optional `image`. It has its own stateless Bearer chain modelled on `/mcp`, and a 17 MiB body limit. A multipart body without a declared length is not buffered by the filter; the servlet multipart limits of 16 MB per file and 17 MB per request bound it while parts are parsed. The key's own workspace receives the note. OAuth connection tokens are refused, because their audience is `/mcp`.
 - `POST /api/admin/workspaces/{id}/capture` takes JSON with the browser session and CSRF, bounded at 128 KiB. It serves the `/capture` popup.
 
-**Interface.**
-- The space's AI assistant section gains 「收集入口」:
-  - owners can issue a capture-only key, shown once, and read the iOS Shortcut steps;
-  - every member who can write privately gets the bookmarklet code.
-- The bookmarklet only opens the same-origin popup, because the frontend CSP forbids framing. It carries the page's title, address and selection as query parameters. Opening the popup never writes; only its form saves.
-- Key management lists `CAPTURE` as 「收集到收件箱」 and offers it only for holders who can write privately.
+**Interface.** Owners issue capture-only keys from the space's AI assistant section; members who can write privately get a bookmarklet. The bookmarklet only opens the same-origin popup, because the frontend CSP forbids framing, and opening the popup never writes; only its form saves. Key management offers `CAPTURE` only to holders who can write privately.
 
 ## Alternatives
 
@@ -60,24 +55,4 @@ URLs must be absolute http or https addresses.
 
 ## Verification
 
-- `AuthIntegrationIT.captureKeysNeedPrivateWritingGrantNothingElseAndWritingImpliesCapture`:
-  - a capture key is authorized for `CAPTURE` only;
-  - a default writing key captures while reporting its granted set;
-  - narrowing the holder to reading revokes capture and refuses new capture keys.
-- `RepositoryPatchIntegrationIT` runs over real HTTP and Git:
-  - a capture key's JSON post creates the inbox note with its source, quote and note;
-  - an image post links a managed original on Linux and answers 503 elsewhere;
-  - a missing key answers 401, and a `javascript:` URL answers 400;
-  - the same key cannot create elsewhere, overwrite the note, or create inside a nested inbox folder.
-- [RepositoryCaptureInboxTests](../../src/test/java/io/github/core607/poketto/capture/internal/RepositoryCaptureInboxTests.java) covers:
-  - header escaping and body layout;
-  - image references;
-  - name suffixes;
-  - retry after a moved remote;
-  - empty captures and limits;
-  - slugs.
-- [tests/capture.test.tsx](../../frontend/tests/capture.test.tsx) covers:
-  - the popup offering only writable spaces and saving only on submit;
-  - the signed-out message;
-  - key issuance with `["CAPTURE"]` for owners;
-  - the bookmarklet for writers and nothing for readers.
+`AuthIntegrationIT.captureKeysNeedPrivateWritingGrantNothingElseAndWritingImpliesCapture` pins the capability rules; `RepositoryPatchIntegrationIT` pins the capture entrance over real HTTP and Git, including refusal outside the inbox, of overwrites and of nested inbox folders; [RepositoryCaptureInboxTests](../../src/test/java/io/github/core607/poketto/capture/internal/RepositoryCaptureInboxTests.java) and [tests/capture.test.tsx](../../frontend/tests/capture.test.tsx) pin note layout, naming, retries, limits and the interface.

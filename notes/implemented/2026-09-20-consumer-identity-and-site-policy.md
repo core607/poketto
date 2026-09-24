@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Problem
 
-[Multi-user spaces](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md)
+[Multi-user spaces](2026-09-11-multiuser-workspaces-and-discovery.md)
 required a registration invitation but let every account connect a repository. This
 did not support open reader registration followed by an operator's decision to
 permit community participation or personal-space creation. Removing an author's
@@ -20,6 +20,25 @@ membership semantics. An email registration supplies a verified email, password
 and display name; it does not require another login name. Existing account IDs,
 passwords, login names, memberships and content remain intact. Existing accounts
 can verify and bind an email after logging in.
+
+Registration invitations, the mechanism this replaces, gated account creation
+behind an issuer-owned credential: 256 random bits stored only as a digest,
+single-use, valid for seven days and revocable by its issuer. Site administrators
+issued them, and ordinary accounts could too when the operator enabled it. They
+let an operator admit trusted people before verification and send limits existed,
+and they kept account creation apart from workspace joining. They stopped fitting
+once ordinary readers were meant to join freely: what needed gating was space
+creation and website eligibility, which the groups below now control, while email
+proofs, send limits and the VIEWER default bound anonymous abuse. Migration `V10`
+drops the invitation table, and the former registration routes answer 404. An
+invitation gate may return only if open registration must close again, for
+example under abuse the send limits cannot bound. It must stay a credential
+separate from workspace invitations: reusing a workspace invitation to create an
+account would grant unrelated access and let any workspace owner bypass the site's
+registration policy, so a workspace invitation never creates an account.
+
+`GET /api/auth/account` returns the signed-in account's identity and requires no
+workspace membership.
 
 Google login requests only basic identity scopes. Validate the provider identity,
 signature, audience, issuer, expiry and callback state; use the provider subject as
@@ -90,7 +109,7 @@ each group, its previous and new value, the time and the operator's reason.
 
 ## Website withdrawal and restoration
 
-Extend [website delivery](../implemented/2026-09-14-workspace-public-delivery.md)
+Extend [website delivery](2026-09-14-workspace-public-delivery.md)
 with owner eligibility. A website is available only if its owner-controlled switch
 is enabled, it has owners, every OWNER account is CREATOR or ADMINISTRATOR, and the
 existing repository-policy and valid-snapshot requirements pass. A downgraded
@@ -139,55 +158,31 @@ change from the operator.
 
 ## Delivery and data
 
-This delivery explicitly permits incremental relational changes instead of the
-development-phase rebuild default. Preserve account IDs, spaces, grants, content
-and originals. Existing administrators become ADMINISTRATOR. Existing workspace
-owners or members with content-write or publication grants become CREATOR; other
-existing accounts become VIEWER. New accounts always use the VIEWER default.
+Migration `V8` preserved account IDs, spaces, grants, content and originals, and
+assigned initial groups: former instance administrators became ADMINISTRATOR,
+workspace owners and members holding private-write or publication grants became
+CREATOR, and every other account became VIEWER. New accounts always start as VIEWER.
 
-The backend receives Resend credentials through deployment configuration, using
-the GitHub secret POKETTO_RESEND_API_KEY. The from-address is operator configuration.
-Google client ID, secret and redirect settings are separate configuration. Both
-standard and existing-installation deployment paths must deliver runtime settings
-without logging secrets or baking them into artifacts. Tests use fake providers;
-real mail delivery and Google login require separate live verification.
-
-The existing-installation updater accepts only `POKETTO_RESEND_API_KEY`,
-`POKETTO_EMAIL_FROM`, `POKETTO_EMAIL_DAILY_LIMIT`, `POKETTO_GOOGLE_CLIENT_ID` and
-`POKETTO_GOOGLE_CLIENT_SECRET` through `--set-stdin`. `POKETTO_SUPPORT_EMAIL`
-configures the frontend's public contact independently of backend credentials.
-This extends the image-only
-boundary of [existing-installation delivery](../implemented/2026-09-08-existing-installation-delivery.md)
+Resend credentials, the from-address and the Google client settings are separate
+deployment configuration; [usage](../../docs/usage.md) owns their names and the
+updater procedure. Both deployment paths deliver them without logging secrets or
+baking them into artifacts. The existing-installation updater accepts only the
+identity keys, the public support contact and the [GitHub App settings](2026-09-21-github-authorized-personal-spaces.md)
+through its protected stdin channel. This extends the image-only boundary of
+[existing-installation delivery](2026-09-08-existing-installation-delivery.md)
 without admitting repository credentials or other runtime changes. Registry
-credentials reach only the pull helper. Install the current privileged updater
-before sending identity settings; the transfer script never replaces it.
-The [GitHub-authorized personal-spaces decision](2026-09-21-github-authorized-personal-spaces.md)
-defines a further extension for GitHub App settings through this same protected
-channel; it does not authorize changes to unrelated repository credentials.
-
-Keep supplied identity settings in the existing protected Compose overlay, with
-literal dollar signs escaped for Compose. Omitted values retain their effective
-settings; explicit empty values disable the corresponding provider, with both
-Google fields cleared together. Validate the combined configuration before
-restarting, and adjust runtime fingerprints only for supplied identity keys.
-CI supplies every identity key, using explicit empty values when GitHub settings
-are removed and a daily limit of 100 when unset. Both deployment layouts reject
-an incomplete Google credential pair. Archive delivery rejects registry
-credentials because only pull delivery consumes them.
-Operator Compose and environment files, other frontend settings, resources, mounts
-and dependency containers remain unchanged. The overlay is mode 0600; deployment
-state and command output contain fingerprints, not the credentials. A pending
-attempt accepts only the same images and candidate configuration, including the
-identity values. There is no automatic rollback.
+credentials reach only the pull helper, and archive delivery rejects them. The
+transfer script never replaces the privileged updater. The protected overlay is
+mode 0600; deployment state and command output contain fingerprints, not
+credentials. The combined configuration is validated before restarting, both
+layouts reject an incomplete Google credential pair, a pending attempt accepts
+only the same images and candidate configuration, and there is no automatic
+rollback.
 
 Public `/privacy` and `/terms` pages describe account data, basic Google identity,
 Resend delivery, workspace visibility, moderation, and content retention. The
 footer and login form link to both. The public contact is frontend runtime
 configuration so installations do not inherit another operator's email address.
-
-Update the English and Chinese README only where shipped capabilities or existing
-descriptions change. README is a product overview, not a progress or verification
-report. Usage documentation owns configuration details; PRs own execution evidence.
 
 ## Alternatives
 
@@ -204,39 +199,20 @@ Making administrators universal workspace owners would expose private content
 unrelated to moderation. A bounded public-content review entrance provides the
 necessary inspection without that authority.
 
-## Acceptance
+## Verification
 
-- Email registration, binding and recovery cover expiration, replay, cooldown,
-  failed delivery, rate bounds, concurrent consumption and unique account creation.
-- Google tests cover callback rejection, subject identity, explicit linking,
-  duplicate email handling and last-login-method protection.
-- PostgreSQL migration tests preserve existing identities and grants and verify
-  initial groups; all newly registered identities are viewers.
-- Creation is refused at the service boundary for ineligible accounts. Site
-  administration rechecks the current group and cannot bypass private authorization.
-- Downgrade withdraws all owned public sites and old public-media grants while
-  member operations and machine sessions continue. Shared-owner and non-owner
-  cases distinguish the intended withdrawal scope.
-- Re-promotion restores eligible websites without overriding an owner-disabled
-  switch. Concurrent group/publication changes cannot return an unauthorized public
-  response after their final authorization check.
-- The prescribed browser entrance verifies account flows, policy changes, owner
-  remediation and public withdrawal/restoration on the changed tree. Real Resend
-  and Google checks are reported separately from fixtures.
+`EmailChallengesIntegrationIT`, `EmailAccountsHttpIntegrationIT`,
+`GoogleIdentityHttpIntegrationIT`, `GoogleOidcProviderTests`, `GoogleTokenClientTests`,
+`SiteGroupMigrationIntegrationIT`, `SitePolicyIntegrationIT` and
+`ModerationDownloadsTests` pin these rules with fake providers; real Resend delivery
+and Google login need separate live verification.
 
-## Same-topic decisions
-
-[Multi-user spaces](../implemented/2026-09-11-multiuser-workspaces-and-discovery.md)
-retains its workspace boundaries. This record supersedes its invitation-only
-registration and unrestricted account eligibility to create spaces, and the
-retired [registration invitation interface](../implemented/2026-09-11-registration-invitations.md).
-[Member permissions](../implemented/2026-09-12-member-content-permissions.md) and
-[MCP OAuth](../implemented/2026-09-11-mcp-oauth.md) retain their workspace boundaries.
-[Website delivery](../implemented/2026-09-14-workspace-public-delivery.md) gains the
-owner-eligibility condition without replacing member access.
-
-The rejected [consumer-account proposal](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md)
-does not become active: this delivery does not provision a repository during
-registration. User-authorized GitHub repository creation is a separate next phase.
-Social interactions, personalized ranking, automatic repository creation, media
-playback and persistent command shells are outside this first delivery.
+Related: [multi-user spaces](2026-09-11-multiuser-workspaces-and-discovery.md),
+[member permissions](2026-09-12-member-content-permissions.md) and
+[MCP OAuth](2026-09-11-mcp-oauth.md) keep their workspace boundaries, and
+[website delivery](2026-09-14-workspace-public-delivery.md) gains the
+owner-eligibility condition without replacing member access. Registration
+provisions no repository, so the [consumer-account proposal](../rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md)
+stays rejected; [GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md)
+add explicit repository creation and [community interactions](2026-09-23-community-interactions.md)
+add social features.

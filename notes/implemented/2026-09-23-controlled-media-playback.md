@@ -73,18 +73,7 @@ storage path. Existing per-instance and per-workspace transfer admission applies
 
 ## Verification
 
-Native storage tests verify exact full and ranged bytes, false types, corruption,
-public/private aliases, withdrawal, midstream revocation and released admission.
-Range tests cover closed, open-ended, suffix, invalid and overflowing inputs.
-The real Spring/PostgreSQL/Git HTTP integration verifies full and partial bodies,
-headers, HEAD and If-Range behavior, public/private isolation and invalidation of
-an old playback address after its reference is withdrawn. Frontend rendering tests
-refuse external, private-in-public and unrecognized playback mappings while
-retaining ordinary downloads. Browser acceptance uses the
-[documented entrance](../../acceptance/README.md): synthetic WAV, MP3, M4A, WebM
-audio, H.264 MP4 and VP9 WebM video decode in Chrome; private preview, native seek,
-mobile layout and failed-format feedback work. Withdrawing the article through
-the editor removes its public page and makes all six old playback addresses fail.
+`MediaPlaybackTests`, `MediaFileServiceTests` and `MediaFileControllerTests` cover container recognition, exact full and ranged bytes, range parsing, false types, corruption, withdrawal and midstream revocation; `RepositoryAdminIntegrationIT` verifies full and partial bodies, headers, HEAD and If-Range behavior, public/private isolation and invalidation of a withdrawn playback address over real PostgreSQL and Git. `frontend/tests/rendering.test.tsx` refuses external, private-in-public and unrecognized playback mappings while keeping downloads.
 
 ## Related decisions
 
@@ -94,8 +83,8 @@ an explicit constrained playback mode. The
 [CodeAct content contract](../implemented/2026-09-09-codeact-content-and-media.md)
 retains immutable originals, logical paths and independent publication authority.
 Its original delivery excluded playback; this record extends that boundary.
-[Sandbox content tools](../implemented/2026-09-15-sandbox-content-toolkit.md)
-continue to exclude audio/video processing.
+The [sandbox toolkit](2026-09-05-local-execution-supervisor.md#sandbox-toolkit)
+continues to exclude audio/video processing.
 
 [HTTP range semantics](https://httpwg.org/specs/rfc9110.html#field.range) and the
 [MIME container patterns](https://mimesniff.spec.whatwg.org/#matching-an-audio-or-video-type-pattern)

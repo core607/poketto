@@ -229,7 +229,7 @@ Grant versions still prevent late refresh results from restoring revoked access.
 Epochs and revocation receipts contain identifiers only, never provider payloads
 or credentials. Accounts, memberships, remote repositories and originals survive.
 
-## Configuration and acceptance
+## Configuration and verification
 
 The operator supplies the App ID, client ID, client secret, private signing key
 and webhook secret through protected deployment configuration. Require the App's
@@ -257,26 +257,15 @@ account session and CSRF protection. The callback consumes its matching browser
 state once and rechecks that session after provider exchange, before persisting
 credentials; it never signs the browser into a Poketto account.
 
-Tests must cover duplicate requests, concurrent attempts, lost creation responses,
-same-name conflicts, initialization interruption, token expiry/refresh races,
-foreign callbacks, stale sessions, downgrade during creation, installation owner
-or repository mismatch, revoked access and repository transfer. Real GitHub
-acceptance must create a user-confirmed disposable private repository, complete
-selected-repository authorization, initialize and synchronize through a scoped
-installation token, and verify reconnection behavior. Synthetic provider tests
-cannot establish these provider capabilities.
-
-Real GitHub acceptance on 2026-09-21 verified browser authorization, installation
-limited to an explicitly approved empty private repository, App-created private
-repository access, template initialization and content saves through scoped
-installation credentials. Removing that repository from the installation delivered
-a signed webhook that revoked its binding before another application operation.
-The browser retained a rejected write as an unsaved draft and the remote commit
-did not change. Restoring GitHub access left the binding revoked until the owner
-explicitly verified the same repository; reads and saves then succeeded, with
-public delivery still disabled. Two regression tests reproduced the initial
-installation-permission denial being misclassified as uncertain creation; the
-preflight and explicit-denial recovery cover that failure.
+`GitHubSpaceCreationIntegrationIT`, `GitHubSpaceCompletionIntegrationIT`,
+`GitHubAppGrantsIntegrationIT`, `GitHubRepositoryBindingsIntegrationIT`,
+`GitHubWebhookIntegrationIT`, `GitHubReconnectionHttpIntegrationIT` and the
+`GitHubApp*Tests` pin these rules against a synthetic provider, which cannot
+establish provider capabilities. A real GitHub run on 2026-09-21 created an
+App-owned private repository under a selected-repository installation, initialized
+and saved it through scoped installation tokens, and confirmed that removing the
+repository from the installation revoked its binding until the owner verified the
+same repository again.
 
 ## Alternatives and related decisions
 

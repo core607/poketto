@@ -77,44 +77,28 @@ as their publication authority, matching the public image service. Public export
 apply the same image-preview validation before copying those originals; arbitrary
 files require indexed-media authorization. Removing or changing the article reference
 invalidates outstanding public packages through the article fingerprint.
+`LocalPortableContentExports` owns protected staging, exclusive root ownership,
+bounded reservations, expiring handles, download integrity checks and session
+cleanup. The content-owned `RepositoryOriginalTransfers` port keeps media storage
+behind its assets implementation without a module dependency cycle. The
+[usage reference](../../docs/usage.md#export-http-interface) describes the HTTP
+interface and its limits.
 
-Real Git and native local-storage tests verify mixed media bytes, relative links,
-private metadata removal, missing dependencies, cross-workspace identity denial,
-private-only updates and image withdrawal. `LocalPortableContentExports` owns
-protected staging, exclusive root ownership, bounded reservations, expiring
-workspace/principal/client handles, download integrity checks and session cleanup.
-The content-owned `RepositoryOriginalTransfers` port keeps media storage behind
-its assets implementation without a module dependency cycle. The authenticated
-[HTTP contract](../../docs/usage.md#export-http-interface) exposes creation, download
-and release. [Native HTTP acceptance](../../acceptance/evidence/2026-09-10-export-http.json)
-verifies actual ZIP bytes and scoped delivery through the real application.
-The CLI implements `poketto export PATH... --output FILE [--public]`, with
-host-owned public path translation, protected ZIP materialization and per-attempt
-and session-close cleanup. Public directory selection expands to at most 128
+The CLI command `poketto export PATH... --output FILE [--public]` translates
+public paths on the host; a public directory selection expands to at most 128
 approved source paths. The transfer protocol permits up to 1 GiB while the
 server's ZIP limit, ordinary command deadline and lease disk quota remain active.
 The worker admits transfers against current free space with 1 MiB of bridge
 headroom and repeats the space check while streaming. Known disk-capacity
 failures return controlled errors, release staging and retain existing session
-files; unexpected transfer/storage failures still close the session.
-[Native capacity acceptance](../../executor-native/evidence/2026-09-11-export-capacity.json)
-and its [authenticated HTTP replay](../../acceptance/clients/evidence/2026-09-11-export-capacity.json)
-verify same-session recovery, retained scratch files and identical ZIP reuse.
-The shared incoming-file channel also preserves a stored-original receipt when
-a media import cannot update its local index. [Native and HTTP recovery evidence](../../executor-native/evidence/2026-09-11-import-capacity.json)
-verifies that retrying the same key after freeing space completes the index
-without creating another original.
-Different local files are preserved; handles and source coordinates never enter
-the command reply. [Native execution](../../executor-native/evidence/2026-09-10-cli-exports.json)
-and [HTTP MCP client acceptance](../../acceptance/clients/evidence/2026-09-10-cli-exports.json)
-verify the flow.
+files; unexpected transfer or storage failures still close the session. The
+shared incoming-file channel also preserves a stored-original receipt when a
+media import cannot update its local index, so retrying the same key after
+freeing space completes the index without creating another original.
 
-The editor provides file, folder and workspace export selection, scope choice,
-native browser downloads and focus restoration. [Browser acceptance](https://github.com/core607/poketto/blob/37b4b24c9ef54444797e9dde019512d855649594/README.md)
-records the real application flow and independently verified ZIP contents.
-Browser handles use owner/workspace/expiry binding and do not claim MCP-session
-cleanup. An unoffered handle received after dialog cancellation is released;
-a handle already offered for download remains valid until expiry.
+Browser handles bind owner, workspace and expiry and do not claim MCP-session
+cleanup. A handle received after the dialog was cancelled is released; a handle
+already offered for download remains valid until expiry.
 
 Reusing Git bundles would expose history and omit original media. Asking the
 agent to assemble every package duplicates authorization, reference rewriting and
@@ -124,12 +108,11 @@ export into publication. A shared deterministic service avoids those changes.
 The [logical index](2026-09-09-logical-media-index.md) retains media
 ownership, [indexed delivery](2026-09-09-indexed-media-delivery.md)
 retains exact-original transfer, and [CodeAct workspaces](2026-09-09-codeact-workspaces.md)
-retains session and materialization boundaries. These decisions remain active;
-this record does not replace the separate public-root conversion.
+retain session and materialization boundaries.
 
-Verification covers real Git and local originals, ZIP contents and relative
-links, mixed media, missing/corrupt bytes, private selection refusal, cross-workspace
-and cross-client handle denial, publication withdrawal, limits and cleanup.
-Native Linux storage checks and real browser/HTTP MCP acceptance exercise the
-shared service. Model benchmarks are not an export correctness gate. Final
-production HTTPS and live-corpus acceptance remain installation-level work.
+`PortableContentPlannerTests`, `PortableArchiveWriterTests`, `LocalPortableContentExportsTests`
+and `SessionExportSelectionTests` pin selection, packaging, handles and cleanup;
+[native capacity evidence](../../executor-native/evidence/2026-09-11-export-capacity.json)
+and [import recovery evidence](../../executor-native/evidence/2026-09-11-import-capacity.json)
+record the worker capacity paths. Final production HTTPS and live-corpus
+acceptance are installation-level work.

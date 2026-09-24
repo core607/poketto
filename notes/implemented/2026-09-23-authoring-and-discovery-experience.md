@@ -121,28 +121,6 @@ withdrawal, isolation or capacity contract.
 
 ## Verification and related decisions
 
-Chrome acceptance against the isolated Spring/PostgreSQL/Git/Next.js entrance
-verifies private creation, explicit restoration after reload, cross-tab revision
-conflicts without overwriting the saved file, real PNG clipboard upload and preview,
-save/publish/withdraw with stable article identity, tag-filtered batches and their
-continuations, withdrawal from an existing batch, following, direct private bookmarks,
-workspace isolation, logout cleanup and stale-tab refusal. The refreshed frontend
-also verifies cleanup after returning to the saved source. Desktop and 390-pixel
-layouts retain usable discovery controls; anonymous following requires login.
+`frontend/tests/local-drafts.test.tsx` pins draft scoping, count and byte quotas, malformed records and storage failures; `frontend/tests/editor-navigation.test.tsx` and `workspace-navigation.test.tsx` pin recovery preconditions, paste and drop uploads under one idempotency key, late acknowledgements and publish/withdraw moves. `DiscoverySelectionTests` covers the selection slots, and `SpacePublicationIntegrationIT` verifies tag-bound replay and mismatched-tag rejection over real PostgreSQL and HTTP. Dragging from an OS file manager has not been exercised.
 
-Mounted component tests cover paste and drop events, uncertain upload retries
-under one idempotency key, late acknowledgements after unmount, permission revocation
-before recovery, publication restrictions, undo cleanup and intentionally empty
-new drafts. OS file-manager drag was not exercised in Chrome. Storage tests cover
-multiple accounts/tabs, count and multibyte quotas, malformed records and browser
-storage failures. Selection tests cover authored, recent, diverse and older content;
-real PostgreSQL/HTTP tests verify tag-bound replay and mismatched-tag rejection.
-Unit, style, frontend production-build and Linux storage gates cover adjacent
-interfaces. Synthetic acceptance does not claim production-corpus scale or new
-provider interoperability.
-
-The [browser interface](2026-09-06-blog-browser-interface.md),
-[CodeAct content contract](2026-09-09-codeact-content-and-media.md),
-atomic move record, discovery batch record and community record retain ownership
-of their existing mechanisms. This decision extends their user entrances and
-supersedes no permission, repository ownership or media-delivery rule.
+The [browser interface](2026-09-06-blog-browser-interface.md), [CodeAct content contract](2026-09-09-codeact-content-and-media.md), atomic move record, discovery batch record and community record keep their mechanisms. This decision extends their user entrances and supersedes no permission, repository ownership or media-delivery rule.
