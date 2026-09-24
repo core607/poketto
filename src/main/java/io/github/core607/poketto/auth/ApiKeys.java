@@ -103,7 +103,7 @@ final class ApiKeys {
             auth.lockWorkspace(workspace);
             WorkspaceAccess access = oauth ? auth.authorize(actor, workspace) : requireKeyManager(actor, workspace);
             if (actor.kind() == AuthPrincipal.Kind.API_KEY
-                    && !access.capabilities().containsAll(capabilities)) {
+                    && !AuthService.withImplied(access.capabilities()).containsAll(capabilities)) {
                 throw AuthService.failure(DENIED);
             }
             List<Membership> holders = jdbc.query(
@@ -113,9 +113,9 @@ final class ApiKeys {
                     workspace.value(),
                     holder);
             if (holders.isEmpty()
-                    || !AuthService.memberCapabilities(
+                    || !AuthService.withImplied(AuthService.memberCapabilities(
                                     holders.getFirst().role(),
-                                    holders.getFirst().permissions())
+                                    holders.getFirst().permissions()))
                             .containsAll(capabilities)) {
                 throw AuthService.failure(DENIED);
             }

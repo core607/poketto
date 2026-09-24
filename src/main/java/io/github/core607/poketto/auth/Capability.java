@@ -14,5 +14,10 @@ public enum Capability {
     WRITE_PRIVATE,
     PUBLISH,
     MANAGE_KEYS,
-    EXECUTE_REPOSITORY
+    EXECUTE_REPOSITORY,
+    /**
+     * Creates new Markdown notes in the private capture inbox and uploads their images, nothing else.
+     * {@link #WRITE_PRIVATE} implies it, so it can be issued alone to a phone or bookmarklet.
+     */
+    CAPTURE
 }
