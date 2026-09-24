@@ -1,17 +1,21 @@
 "use client";
 import { useEffect, useId, useState } from "react";
 
+// Every draw gets its own element id, so a superseded draw never shares one with its successor.
+let draws = 0;
+
 /**
  * A Mermaid diagram drawn in the browser. Mermaid loads only on pages that contain a diagram, runs
  * with `securityLevel: "strict"` (no click handlers, HTML labels escaped), and the page CSP still
  * refuses inline script. Until it draws, or if it fails, readers see the diagram source as code.
  */
 export function MermaidDiagram({ source }: { source: string }) {
-  const id = "mermaid-" + useId().replace(/[^\w-]/g, "");
+  const base = "mermaid-" + useId().replace(/[^\w-]/g, "");
   const dark = useDarkTheme();
   const [svg, setSvg] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
+    const id = `${base}-${++draws}`;
     import("mermaid")
       .then(async ({ default: mermaid }) => {
         mermaid.initialize({
@@ -29,7 +33,7 @@ export function MermaidDiagram({ source }: { source: string }) {
     return () => {
       live = false;
     };
-  }, [id, source, dark]);
+  }, [base, source, dark]);
   return svg ? (
     <div
       className="mermaid-diagram"

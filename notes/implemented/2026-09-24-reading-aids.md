@@ -17,7 +17,7 @@ Long articles gave readers no outline and no sense of length. Fenced code render
 - A single dollar stays text, so prices such as "$100 and $250" keep reading as prose.
 - rehype-katex renders on the server with `trust: false`, which disables commands such as `\href` and `\url`.
 - Invalid input renders as a marked error instead of failing the page.
-- The KaTeX stylesheet and fonts are bundled from the pinned `katex` package, and the page CSP allows same-origin fonts.
+- The stylesheet and fonts come from `katex` 0.16.47, pinned to the version rehype-katex renders with, so markup and styles always match. A test compares the two versions. The page CSP allows same-origin fonts.
 
 **Diagrams.** A ```` ```mermaid ```` block renders on the server as its source code.
 - In the browser, [MermaidDiagram](../../frontend/components/mermaid-diagram.tsx) loads Mermaid only on pages that contain a diagram. It draws with `securityLevel: "strict"`, which escapes labels and drops click handlers.
@@ -40,6 +40,8 @@ Long articles gave readers no outline and no sense of length. Fenced code render
 
 - The editor bundle includes the highlighter and KaTeX, because the preview is a client component that uses the same renderer. Mermaid stays in a separately loaded chunk.
 - A diagram appears only after script runs. Readers without script, crawlers and feeds see its source.
+- The contents and reading time see math as its TeX source. A heading containing `$$x^2$$` is listed as `x^2`, and TeX commands count as words.
+- Each diagram draw uses a fresh element id, so a redraw after a theme change never collides with the draw it replaces.
 - A heading level that jumps from h2 to h4 lists only the h2 headings, since h4 is outside the listed range.
 - Readers still see anchors on every heading. The contents list only helps navigation and does not change rendered Markdown.
 

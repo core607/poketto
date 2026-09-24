@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Markdown } from "../components/markdown";
@@ -21,6 +22,14 @@ test("math needs doubled dollars, so prices stay text", () => {
   const prices = render("Pro 送 $100，Max 送 $250。");
   assert.doesNotMatch(prices, /katex/);
   assert.match(prices, /Pro 送 \$100，Max 送 \$250。/);
+});
+
+test("the KaTeX stylesheet comes from the same KaTeX that renders the markup", () => {
+  const renderer = createRequire(require.resolve("rehype-katex"));
+  assert.equal(
+    renderer("katex/package.json").version,
+    createRequire(import.meta.url)("katex/package.json").version,
+  );
 });
 
 test("broken or unsafe math renders as an error and never as a link", () => {
