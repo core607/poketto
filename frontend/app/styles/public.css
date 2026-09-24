@@ -822,6 +822,22 @@
   background: none;
   font-size: inherit;
 }
+.markdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+.markdown .katex-error {
+  color: var(--danger);
+}
+.markdown .mermaid-diagram {
+  overflow-x: auto;
+  text-align: center;
+}
+.markdown .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
 .markdown .hljs-keyword,
 .markdown .hljs-built_in,
 .markdown .hljs-type,
