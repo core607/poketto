@@ -136,8 +136,12 @@ class BrowserSecurityConfiguration {
             AccountSessionLifetime accountSessions)
             throws Exception {
         http.authenticationProvider(accountAuthenticationProvider)
+                // Reader counts change no account state; a token would give every anonymous reader a session.
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
-                        "/api/auth/oauth/register", "/api/auth/oauth/token", "/api/auth/oauth/revoke"))
+                        "/api/auth/oauth/register",
+                        "/api/auth/oauth/token",
+                        "/api/auth/oauth/revoke",
+                        "/api/public/community/spaces/*/views"))
                 .authorizeHttpRequests(requests -> requests.requestMatchers("/api/auth/csrf", "/api/auth/login")
                         .permitAll()
                         .requestMatchers(
