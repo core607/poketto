@@ -69,7 +69,8 @@ final class RepositoryCaptureInbox implements CaptureInbox {
         if (capture.empty() && image.isEmpty()) {
             throw new IllegalArgumentException("a capture needs a link, text, a note or an image");
         }
-        limits.consume(actor.subjectId());
+        // One bucket per account: a second key or the browser entrance shares the holder's limit.
+        limits.consume(actor.accountId());
         Optional<ManagedAsset> stored =
                 image.map(bytes -> assets.uploadCaptured(actor, workspace, "capture-" + UUID.randomUUID(), bytes));
         Instant saved = clock.instant().truncatedTo(ChronoUnit.SECONDS);

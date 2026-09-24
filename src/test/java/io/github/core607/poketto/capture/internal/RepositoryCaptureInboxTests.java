@@ -51,7 +51,7 @@ class RepositoryCaptureInboxTests {
     private final List<RepositoryPatch> written = new ArrayList<>();
 
     private RepositoryCaptureInbox inbox(int perMinute) {
-        when(actor.subjectId()).thenReturn(sender);
+        when(actor.accountId()).thenReturn(sender);
         when(patches.apply(eq(actor), eq(workspace), any(RepositoryPatch.class)))
                 .thenAnswer(invocation -> {
                     written.add(invocation.getArgument(2));
