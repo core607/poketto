@@ -108,10 +108,9 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         long deadline = System.nanoTime() + timeout.toNanos();
         var projection = projection(workspace, snapshot, deadline);
         String fingerprint = PublicExecutionProjection.fingerprint(projection);
-        publicFingerprints.put(
-                new PublicRevision(
-                        workspace, authorityCommit, snapshot.articles().size()),
-                fingerprint);
+        var revision = new PublicRevision(
+                workspace, authorityCommit, snapshot.articles().size());
+        publicFingerprints.put(revision, fingerprint);
         UUID id = UUID.randomUUID();
         Path repositoryPath = staging.resolve(id + ".projection");
         Path pending = staging.resolve(id + ".pending");
