@@ -131,7 +131,12 @@ The [content-template](../content-template/AGENTS.md) is what initialization add
 independent `private/` and `public/` trees with their own guides, and a publication policy that
 starts disabled. Nothing existing is modified or moved, and content outside the two trees stays
 private. A deployment-managed repository is initialized the same way from its space's **Storage**
-section. Create new content under `private/`. To publish selected content, move it and its
+section. The same section offers template sets for the space's purpose: journal, reading notes,
+albums and news digest. Each adds a folder pair under `private/` and `public/`, with guides that tell
+agents how to name, structure and publish that kind of content. A set only creates absent files, so
+it can be added to a space that already has content; `GET …/repository-initialization?template=journal`
+lists what it would add, and `POST` with `{ "template": "journal" }` adds it. See
+[space templates](../notes/implemented/2026-09-24-space-templates.md). Create new content under `private/`. To publish selected content, move it and its
 required media into `public/`, then configure `.poketto/publishing.yaml`:
 
 ```yaml

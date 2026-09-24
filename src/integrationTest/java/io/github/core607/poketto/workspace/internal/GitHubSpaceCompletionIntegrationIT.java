@@ -277,17 +277,17 @@ class GitHubSpaceCompletionIntegrationIT {
         private Runnable afterWrite = () -> {};
 
         @Override
-        public Status status(AuthPrincipal principal, WorkspaceId workspace) {
+        public Status status(AuthPrincipal principal, WorkspaceId workspace, Template template) {
             return new Status(!complete, complete ? List.of() : FILES);
         }
 
         @Override
-        public Outcome apply(AuthPrincipal principal, WorkspaceId workspace) {
+        public Outcome apply(AuthPrincipal principal, WorkspaceId workspace, Template template) {
             throw new AssertionError("creation requires the lease guard");
         }
 
         @Override
-        public Outcome apply(AuthPrincipal principal, WorkspaceId workspace, Runnable guard) {
+        public Outcome apply(AuthPrincipal principal, WorkspaceId workspace, Template template, Runnable guard) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
             if (!complete) {
