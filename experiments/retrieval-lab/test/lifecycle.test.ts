@@ -261,6 +261,13 @@ for (const { batchSize, searchReplies, skipped } of [
                 id: "done",
                 function: { name: "submit_evidence", arguments: '{"ids":[]}' },
               },
+              {
+                id: "after-submission",
+                function: {
+                  name: "execute_shell",
+                  arguments: '{"command":"must not execute after submission"}',
+                },
+              },
             ],
           };
         }

@@ -660,10 +660,7 @@ export class Engine {
         const calls = message.tool_calls;
         if (!Array.isArray(calls) || !calls.length)
           throw new Error("Agent must issue at least one retrieval tool call");
-        if (
-          submitting &&
-          (calls.length !== 1 || calls[0].function?.name !== "submit_evidence")
-        )
+        if (submitting && calls[0].function?.name !== "submit_evidence")
           throw new Error(
             "Agent must submit evidence with its final tool call",
           );
