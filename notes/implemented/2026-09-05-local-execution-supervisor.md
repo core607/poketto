@@ -76,9 +76,11 @@ The [worker reference](../../executor-service/README.md) owns the exact wire
 schema, state transitions, operational requirements, and executable tests.
 
 SRT's Linux mount ordering requires disjoint read-only and writable grants.
-The worker grants read access to the trusted bootstrap directory and, during
-initialization only, the bundle file; working and home directories receive
-their own write grants. A read grant for the whole session parent can install
+The worker grants read access to the trusted bootstrap directory, the bridge
+lock, state and response paths, and, only while initializing or installing a
+baseline, the snapshot or baseline bundle; working, home and bridge request
+directories receive their own write grants. It never grants read access to the
+whole session directory: a read grant for the whole session parent can install
 a later read-only bind over the writable children. Keeping test runtime state
 under `/tmp` can conceal that error because the invocation's temporary-write
 grant also covers it. The native probe therefore places runtime state under
