@@ -39,25 +39,28 @@ Use [pre-push-checks](.agents/skills/pre-push-checks/SKILL.md) for delivery veri
 
 ## Decision records (notes/)
 
-- The directory encodes status: proposed/ holds proposals awaiting implementation, implemented/ holds settled decisions, rejected/ holds declined proposals, archived/ holds retired records.
-- A decision that needs no implementation goes directly into implemented/. One that needs implementation starts in proposed/; whoever implements it moves it into implemented/ in the same change and updates it to describe what was actually built.
-- Proposals must land in the repository: something agreed in conversation exists only once written as a proposed note. A future implementer may not have this conversation; the repository is the shared memory.
+- The directory encodes status: proposed/ holds proposals awaiting implementation, implemented/ holds settled decisions, rejected/ holds declined proposals, archived/ holds frozen history. A decision that needs no implementation goes directly into implemented/.
+- Write or update a note only for lasting rationale that code, tests, and current docs do not explain: a real alternative, a trade-off, or an ownership, security, durability, or reintroduction rule. What a feature does belongs in docs/ or its README; local UI and mechanical changes need no note. Updating the note that owns the decision satisfies the rule ([rationale](notes/implemented/2026-09-25-note-lifecycle-and-document-budgets.md)).
+- Proposals must land in the repository: work agreed in conversation exists only once written as a proposed note, because a future implementer may not have that conversation. Whoever implements it, in the same change, either moves it into implemented/ rewritten as what was built, or deletes it when it holds no lasting rationale once the behavior is documented where it belongs.
 - Every note must stand alone: a reader who sees only the repository must be able to resolve every reference, so cite committed paths and never a chat, a plan, a review round, or a private machine path. A well-written proposed note can serve directly as a subagent's task brief.
-- File name: yyyy-mm-dd-topic.md. Add or update a note when a non-trivial product, architecture, process, or data-format decision has rationale or trade-offs a future maintainer may revisit. Purely mechanical edits and self-contained refinements to an existing standing rule or skill are exempt. A note records the problem, decision or proposal, real alternatives, and consequences or risks.
-- Never rewrite an old note into a different decision. A reversal gets a new cross-linked note; an implemented note may still update paths, names, and other facts while its decision remains the same.
-- A rejected note is kept only while it still prevents the same proposal from being raised again; delete it once it no longer does. A stale proposal moves to rejected/, never to archived/.
-- archived/ takes only implemented notes whose decision has fully shipped and whose rationale no longer guides future work. Judge by guidance value only, never by length, age, or count. Archiving is a move plus an `Archived: YYYY-MM-DD` line below the note's date, with inbound links redirected to current authority first; afterwards the note is frozen, with no edits, moves, or authority over current behavior.
-- When adding a note, search active notes for the same decision, mechanism, or rejected alternative, and resolve every match in the same change rather than deferring it.
+- File name: yyyy-mm-dd-topic.md. A note records the problem, the decision or proposal, real alternatives, and consequences; its verification names the tests or checks that pin the decision without restating their cases.
+- Never rewrite an old note into a different decision. A reversal gets a new cross-linked note or consolidates the old one into it; an implemented note keeps its paths, names, and other facts current.
+- Every new note triggers a same-topic audit resolved in the same change, never deferred. [maintain-notes](.agents/skills/maintain-notes/SKILL.md) classifies notes for deletion, consolidation into their current owner, archiving, or rejection.
+- archived/ is frozen: archiving is a move plus an `Archived: YYYY-MM-DD` line below the note's date, with inbound links redirected first; afterwards the note takes no edits and has no authority over current behavior.
+- [Document budgets](config/document-budgets.properties) cap the active notes and the standing documents, and `repoCheck` enforces them. When one fails, move content to its home, condense it, or audit the notes; raise a ceiling only when the words are needed, and say why in the pull request.
 
 ## Where content belongs
 
 Each fact has exactly one home; everywhere else links to it.
 
-- Rules: this file, one to three lines with the rationale behind a link.
-- Decision rationale and rejected alternatives: notes/.
-- Reusable workflows: .agents/skills/.
-- Current-state description: docs/ or the relevant README.
-- Runbooks tied to a specific machine or environment: never in this repository; they live in the operator's private storage.
+| Home | Holds | Does not hold |
+|---|---|---|
+| This file | Rules, one to three lines each, with the rationale behind a link | Examples, procedures, anything restated from its home |
+| notes/ | Decision rationale, rejected alternatives, consequences | What a feature does, plans or acceptance checklists after shipping, restated test cases, authoring-session narration |
+| .agents/skills/ | Reusable workflows and decision standards | Product behavior and contracts |
+| docs/ and READMEs | Current behavior, configuration, and operation | Rationale, change history, implementation walkthroughs |
+
+Runbooks tied to a specific machine or environment never enter this repository; they live in the operator's private storage.
 
 ## Rules
 
@@ -82,6 +85,7 @@ Skills own reusable workflows and specialized decision standards. Keep a rule on
 | [review](.agents/skills/review/SKILL.md) | Semantic review of a change: correctness, lifecycle, security, evidence |
 | [find-simplifications](.agents/skills/find-simplifications/SKILL.md) | Find simplification candidates |
 | [pre-push-checks](.agents/skills/pre-push-checks/SKILL.md) | Choose the checks that cover the outgoing change |
+| [maintain-notes](.agents/skills/maintain-notes/SKILL.md) | Write, audit, delete, consolidate, and archive decision records |
 
 ## Editing this file
 

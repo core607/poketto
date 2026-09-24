@@ -40,7 +40,7 @@ The four-state note lifecycle and the decision-record format are unchanged, deli
 
 **Delete the notes format as well and keep a flat register of invariants.** Considered on 2026-09-17 and rejected by the user: an agent that believes a one-line rule will be enough later is wrong about its own future comprehension. The register idea survives as a possible addition, not a replacement.
 
-**Relax the archive criterion so the corpus can shrink.** Deferred. The criterion asks only whether a note's rationale may guide a future change, never where that guidance is now authoritative, so nothing becomes archivable while its subsystem lives. Changing it is a real policy change and needs its own note; `archived/` remains empty in the meantime.
+**Relax the archive criterion so the corpus can shrink.** Deferred. The criterion asks only whether a note's rationale may guide a future change, never where that guidance is now authoritative, so nothing becomes archivable while its subsystem lives. Changing it is a real policy change and needs its own note; [note lifecycle and document budgets](2026-09-25-note-lifecycle-and-document-budgets.md) is that note.
 
 ## Consequences
 
