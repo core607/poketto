@@ -47,4 +47,3 @@ Chrome acceptance verifies selection, missing-configuration feedback, persisted 
 ## Related decisions
 
 [Stock PostgreSQL](2026-09-05-stock-postgresql.md), [remote repository authority](2026-09-01-remote-repository-authority.md), [public site search](2026-09-14-public-site-search.md), [repository directory navigation](2026-09-08-repository-directory-navigation.md), and the [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) retain their scopes. This experiment neither reinstates production projections nor implements the future product QA module.
-
