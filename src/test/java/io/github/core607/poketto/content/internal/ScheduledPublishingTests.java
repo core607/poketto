@@ -43,7 +43,9 @@ class ScheduledPublishingTests {
                         "public/typo.md",
                         text("---\npublish_at: next monday\n---\n# Typo"),
                         "private/draft.md",
-                        text("---\npublish_at: 2026-09-24T00:00:00Z\n---\n# Private stays private")));
+                        text("---\npublish_at: 2026-09-24T00:00:00Z\n---\n# Private stays private"),
+                        "private/someday.md",
+                        text("---\npublish_at: 2026-12-01\n---\n# Never published from here")));
 
         PublicContentSnapshot before = snapshots.refresh(workspace);
         assertThat(before.articles()).extracting(PublicArticle::route).containsExactly("/now");
@@ -68,12 +70,18 @@ class ScheduledPublishingTests {
         // A renewal of the same commit keeps the due articles.
         clock.now = clock.now.plusSeconds(60);
         assertThat(snapshots.refresh(workspace).articles()).hasSize(3);
-        assertThat(new JGitRepositoryContentReader(fixture.authority())
-                        .readTree(workspace, Optional.empty())
-                        .diagnostics())
+        var tree = new JGitRepositoryContentReader(fixture.authority()).readTree(workspace, Optional.empty());
+        assertThat(tree.diagnostics())
                 .filteredOn(diagnostic -> diagnostic.path().equals("public/typo.md"))
                 .extracting(RepositoryDiagnostic::code)
                 .containsExactly("INVALID_MARKDOWN");
+        // On a private file the key schedules nothing, so its dates stay the commit's.
+        var someday = tree.documents().stream()
+                .filter(document -> document.file().path().equals("private/someday.md"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(someday.publishAt()).isNull();
+        assertThat(someday.createdAt()).isBefore(Instant.parse("2026-12-01T00:00:00Z"));
     }
 
     private static byte[] text(String text) {

@@ -365,7 +365,9 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         List<RepositoryDiagnostic> diagnostics = scan.diagnostics();
         List<String> fallbackPaths = scan.parsed().stream()
                 .filter(document -> (document.metadata().createdAt().isEmpty()
-                                && document.metadata().publishAt().isEmpty())
+                                && document.metadata()
+                                        .release(document.file().path())
+                                        .isEmpty())
                         || document.metadata().updatedAt().isEmpty())
                 .map(document -> document.file().path())
                 .toList();
@@ -446,11 +448,10 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             ParsedDocument document, RepositoryHistoryDates.Dates dates, List<RepositoryDiagnostic> diagnostics) {
         RepositoryFile file = document.file();
         var metadata = document.metadata();
-        // A scheduled article dates from its release unless it names its own creation date.
-        Instant createdAt = metadata.createdAt().or(metadata::publishAt).orElseGet(() -> dates.createdAt());
+        Optional<Instant> release = metadata.release(file.path());
+        Instant createdAt = metadata.createdAt().or(() -> release).orElseGet(() -> dates.createdAt());
         Instant updatedAt = metadata.updatedAt()
-                .orElseGet(() -> metadata.publishAt()
-                        .filter(release -> release.isAfter(dates.updatedAt()))
+                .orElseGet(() -> release.filter(instant -> instant.isAfter(dates.updatedAt()))
                         .orElseGet(() -> dates.updatedAt()));
         if (metadata.invalidArticleId()) {
             diagnostics.add(
@@ -472,7 +473,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 metadata.publicAuthor(),
                 metadata.articleId(),
                 metadata.featured(),
-                metadata.publishAt().orElse(null));
+                release.orElse(null));
     }
 
     @Override
