@@ -66,7 +66,8 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     private final Set<UUID> exports = ConcurrentHashMap.newKeySet();
     private boolean initialized;
 
-    private record PublicRevision(WorkspaceId workspace, String commit) {}
+    // Within one commit the public set only grows as scheduled articles fall due, so the count tells views apart.
+    private record PublicRevision(WorkspaceId workspace, String commit, int articles) {}
 
     private final Map<PublicRevision, String> publicFingerprints =
             Collections.synchronizedMap(new LinkedHashMap<>(64, 0.75f, true) {
@@ -107,7 +108,10 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         long deadline = System.nanoTime() + timeout.toNanos();
         var projection = projection(workspace, snapshot, deadline);
         String fingerprint = PublicExecutionProjection.fingerprint(projection);
-        publicFingerprints.put(new PublicRevision(workspace, authorityCommit), fingerprint);
+        publicFingerprints.put(
+                new PublicRevision(
+                        workspace, authorityCommit, snapshot.articles().size()),
+                fingerprint);
         UUID id = UUID.randomUUID();
         Path repositoryPath = staging.resolve(id + ".projection");
         Path pending = staging.resolve(id + ".pending");
@@ -278,7 +282,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
         var current = snapshots.withCurrent(workspace, value -> value);
         String commit = current.commit().orElseThrow(JGitRepositorySnapshotExports::unavailable);
-        var revision = new PublicRevision(workspace, commit);
+        var revision = new PublicRevision(workspace, commit, current.articles().size());
         String fingerprint = publicFingerprints.get(revision);
         if (fingerprint == null) {
             fingerprint = PublicExecutionProjection.fingerprint(
@@ -290,7 +294,8 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         snapshots.withCurrent(workspace, latest -> {
-            if (!latest.commit().equals(current.commit())) {
+            if (!latest.commit().equals(current.commit())
+                    || latest.articles().size() != current.articles().size()) {
                 throw unavailable();
             }
             return null;

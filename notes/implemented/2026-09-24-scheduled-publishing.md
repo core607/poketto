@@ -28,7 +28,7 @@ In the view:
 
 A same-commit renewal reuses the installed articles, and the filter runs at read time, so an article becomes public at its instant without a new commit. Every anonymous surface reads through this service, so all of them are covered: pages, listings, tags, archive, discovery, site search, sitemaps, RSS, covers, image grants, community targets and feeds, moderation review, public exports and the public-only MCP projection.
 
-**Dates.** For a file under `public/` without `created_at` or `date`, `createdAt` is the `publish_at` instant rather than the first commit time, so a due article sorts as new. Without `updated_at`, `updatedAt` is the later of the last commit time and `publish_at`. On a private file the key changes nothing, dates included.
+**Dates.** For a file under `public/` without `created_at` or `date`, `createdAt` is the `publish_at` instant rather than the first commit time, so a due article sorts as new. Without `updated_at`, `updatedAt` is the later of the last commit time and `publish_at`. On a private file the key changes nothing, dates included. A file under `public/` that the publication policy excludes is still dated from its `publish_at`, since the key states the author's intended release.
 
 **Editor.** [PublicFilePresentation](../../src/main/java/io/github/core607/poketto/web/internal/PublicFilePresentation.java) reports `SCHEDULED` with the release instant for a file in the view's `scheduled()` map. The editor shows 「定时发布：<local time>」.
 
@@ -52,7 +52,7 @@ The content contract links here.
 
 ## Consequences and risks
 
-- The article list can change within one commit. Code that compares views, such as export fingerprints and discovery batches, treats a newly due article as a content change and refreshes or refuses as it does for a new commit.
+- The article list can change within one commit. Code that compares views, such as export fingerprints and discovery batches, treats a newly due article as a content change and refreshes or refuses as it does for a new commit. Within one commit the public set only grows, so the public MCP export keys its fingerprint cache by commit and public article count, and its final recheck compares both.
 - Clock skew on the host shifts the release by the same amount.
 - Site search rechecks only the commit after its bounded scan. A search that spans a release can omit the article that just became due, and a retry shows it. It never shows an article early, because it scanned an earlier view.
 - Git history, and members who read the public scope, see a scheduled article early. Only anonymous readers wait.
