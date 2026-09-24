@@ -14,6 +14,8 @@ export function MermaidDiagram({ source }: { source: string }) {
   const dark = useDarkTheme();
   const [svg, setSvg] = useState<string | null>(null);
   useEffect(() => {
+    // Draw once the real theme is known, so a dark page never flashes a light diagram first.
+    if (dark === null) return;
     let live = true;
     const id = `${base}-${++draws}`;
     import("mermaid")
@@ -49,7 +51,7 @@ export function MermaidDiagram({ source }: { source: string }) {
 }
 
 function useDarkTheme() {
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState<boolean | null>(null);
   useEffect(() => {
     const query = matchMedia("(prefers-color-scheme: dark)");
     const update = () => {
