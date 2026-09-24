@@ -313,6 +313,15 @@ already buffered bytes cannot be recalled. [Playback limits and rationale](../no
 
 Members editing public content without private-read permission use **Choose public images**. The picker lists current eligible Git images and indexed managed images, inserts relative paths, and excludes private or withdrawn content. Uploading a new original still requires private-write permission.
 
+## Capture inbox
+
+A capture creates one new private note directly in `private/inbox/`, from a link, a selected passage, a note and an optional image. The server names the file `YYYY-MM-DD-HHmm-<title>.md` in UTC, adding `-2`, `-3` … when the name is taken. The frontmatter holds a fresh `id`, `title`, `source` and `saved`; the passage becomes a block quote, and an image is stored as a managed original and linked. Nothing existing is read back, changed or published. Each account may capture 30 times a minute and 500 times a UTC day, across all its keys and the browser.
+
+- **Phone.** A key with only the `CAPTURE` capability posts to `POST /api/capture` with `Authorization: Bearer <key>`, as JSON (`title`, `url`, `text`, `note`) or as a multipart form that may add a file field `image` of up to 16 MiB. The key's own space receives the note, and the answer is `201` with `{ "path", "commit" }`. The space's **AI assistant** section issues such a key to an owner and lists the iOS Shortcut steps. OAuth connection tokens are refused here; they belong to `/mcp`.
+- **Browser.** The same section offers a bookmarklet that opens `/capture` as a popup with the page's title, address and selection. The popup saves with the signed-in session through `POST /api/admin/workspaces/{id}/capture`; opening it never writes.
+
+`CAPTURE` can be granted only to a holder with private writing, and private writing includes it, so ordinary writing keys and members can capture too. It cannot read, overwrite, move, delete or publish anything, and it cannot create files anywhere except directly inside the inbox. See [capture inbox](../notes/implemented/2026-09-24-capture-inbox.md).
+
 ## Export HTTP interface
 
 In the editor, use **Export** beside a file or inside an expanded folder, or the

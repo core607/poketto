@@ -1001,6 +1001,51 @@ details.sub-panel[open] > summary::before {
   overflow-wrap: anywhere;
 }
 
+.capture-page {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 1.5rem var(--gutter) 2rem;
+}
+.capture-page h1 {
+  margin: 0 0 1rem;
+  font-size: var(--text-xl);
+}
+.capture-form {
+  display: grid;
+  gap: 0.85rem;
+}
+.capture-form label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.capture-form input,
+.capture-form select,
+.capture-form textarea {
+  width: 100%;
+  font-weight: 400;
+}
+.capture-done {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+.capture-done code,
+.capture-steps code {
+  overflow-wrap: anywhere;
+}
+.capture-steps {
+  display: grid;
+  gap: 0.4rem;
+  padding-left: 1.2rem;
+  line-height: 1.6;
+}
+.capture-bookmarklet {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
 .template-choices {
   display: grid;
   gap: 0.5rem;

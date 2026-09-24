@@ -9,6 +9,7 @@ import { WorkspaceProvider } from "./workspace-context";
 import { Editor } from "./editor";
 import { Members } from "./members";
 import { Keys } from "./keys";
+import { CaptureSetup } from "./capture-setup";
 import { Connections } from "./connections";
 import { RepositoryConnection } from "./repository-connection";
 import { SpacePublication } from "./space-publication";
@@ -332,6 +333,7 @@ export function WorkspaceDashboard({
         <div className="management-panel">
           <McpGuide />
           <Connections />
+          {identity && <CaptureSetup identity={identity} />}
           {identity?.role === "OWNER" && (
             <details
               className="sub-panel advanced"

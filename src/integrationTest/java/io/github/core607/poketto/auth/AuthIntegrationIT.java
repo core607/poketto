@@ -200,6 +200,35 @@ class AuthIntegrationIT {
     }
 
     @Test
+    void captureKeysNeedPrivateWritingGrantNothingElseAndWritingImpliesCapture() {
+        AuthPrincipal owner = owner();
+        AuthPrincipal writer = member(owner, "writer");
+        AuthPrincipal capture = auth.authenticateApiKey(
+                auth.createApiKey(owner, workspace, writer.accountId(), Set.of(Capability.CAPTURE))
+                        .token());
+        assertThat(auth.authorize(capture, workspace, Capability.CAPTURE).capabilities())
+                .containsExactly(Capability.CAPTURE);
+        for (Capability denied : Set.of(Capability.READ_PRIVATE, Capability.WRITE_PRIVATE, Capability.PUBLISH)) {
+            assertCode(() -> auth.authorize(capture, workspace, denied), AuthException.Code.DENIED);
+        }
+        assertThat(auth.connectionBacked(capture)).isFalse();
+
+        // An ordinary writing key captures too, and reports only what it was granted.
+        AuthPrincipal writing = auth.authenticateApiKey(
+                auth.createApiKey(owner, workspace, owner.accountId(), null).token());
+        assertThat(auth.authorize(writing, workspace, Capability.CAPTURE).capabilities())
+                .isEqualTo(AuthService.DEFAULT_AI_CAPABILITIES);
+
+        // Without private writing, a holder can neither receive nor use capture.
+        auth.changeMembership(
+                owner, workspace, writer.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
+        assertCode(() -> auth.authorize(capture, workspace, Capability.CAPTURE), AuthException.Code.DENIED);
+        assertCode(
+                () -> auth.createApiKey(owner, workspace, writer.accountId(), Set.of(Capability.CAPTURE)),
+                AuthException.Code.DENIED);
+    }
+
+    @Test
     void machineKeyManagersCannotEscalateTheirOwnCapabilitiesOrCreateInvitations() {
         AuthPrincipal owner = owner();
         IssuedToken token = auth.createApiKey(

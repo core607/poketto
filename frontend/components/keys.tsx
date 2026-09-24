@@ -33,6 +33,12 @@ const capabilities = [
     label: "执行仓库分析",
     detail: "允许在隔离环境中运行仓库分析命令。",
   },
+  {
+    key: "CAPTURE",
+    label: "收集到收件箱",
+    detail:
+      "只能在 private/inbox/ 新建笔记和上传配图，不能读取或修改其他内容。",
+  },
 ];
 type Key = {
   id: string;
@@ -60,7 +66,10 @@ export function Keys({ identity }: { identity: Identity }) {
     (capability) =>
       holderMember?.role === "OWNER" ||
       capability.key === "EXECUTE_REPOSITORY" ||
-      holderMember?.permissions.includes(capability.key),
+      holderMember?.permissions.includes(
+        // Private writing includes capture.
+        capability.key === "CAPTURE" ? "WRITE_PRIVATE" : capability.key,
+      ),
   );
   const [secret, setSecret] = useState("");
   const [pending, setPending] = useState(false);

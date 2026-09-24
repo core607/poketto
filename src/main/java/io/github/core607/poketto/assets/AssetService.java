@@ -98,6 +98,16 @@ public final class AssetService {
                 () -> managed.get().upload(workspace, operationKey, original));
     }
 
+    /** Stores an image for a capture note; a capture key may do this and nothing else with assets. */
+    public ManagedAsset uploadCaptured(
+            AuthPrincipal actor, WorkspaceId workspace, String operationKey, InputStream original) {
+        return auth.withAuthorization(
+                actor,
+                workspace,
+                Set.of(Capability.CAPTURE),
+                () -> managed.get().upload(workspace, operationKey, original));
+    }
+
     public ManagedAssetPage list(AuthPrincipal actor, WorkspaceId workspace, int offset, int limit) {
         return auth.withAuthorization(
                 actor,

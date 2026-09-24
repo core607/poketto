@@ -174,9 +174,9 @@ public final class AuthService {
                 throw failure(DENIED);
             }
             capabilities = new HashSet<>(stored.getFirst());
-            capabilities.retainAll(holderCapabilities);
+            capabilities.retainAll(withImplied(holderCapabilities));
         }
-        if (!capabilities.containsAll(Arrays.asList(required))) {
+        if (!withImplied(capabilities).containsAll(Arrays.asList(required))) {
             throw failure(DENIED);
         }
         return new WorkspaceAccess(workspace, principal, role, capabilities);
@@ -191,6 +191,19 @@ public final class AuthService {
         Set<Capability> result = EnumSet.of(Capability.EXECUTE_REPOSITORY);
         result.addAll(permissions);
         return result;
+    }
+
+    /**
+     * Capabilities as checked: private writing includes capturing into the private inbox. Reported
+     * access keeps the granted set, so the implication never appears as a separate grant.
+     */
+    static Set<Capability> withImplied(Set<Capability> capabilities) {
+        Set<Capability> implied = EnumSet.noneOf(Capability.class);
+        implied.addAll(capabilities);
+        if (implied.contains(Capability.WRITE_PRIVATE)) {
+            implied.add(Capability.CAPTURE);
+        }
+        return implied;
     }
 
     static Set<Capability> contentPermissions(Set<Capability> requested) {
@@ -211,6 +224,16 @@ public final class AuthService {
 
     record Membership(MembershipRole role, Set<Capability> permissions) {}
     /** Machine workspace selection comes exclusively from the durable credential binding. */
+    /** True for the backing key of an OAuth connection, whose tokens are for the MCP entrance only. */
+    public boolean connectionBacked(AuthPrincipal principal) {
+        return principal != null
+                && principal.kind() == AuthPrincipal.Kind.API_KEY
+                && Boolean.TRUE.equals(jdbc.queryForObject(
+                        "select exists(select 1 from oauth_connections where key_id=?)",
+                        Boolean.class,
+                        principal.subjectId()));
+    }
+
     public WorkspaceId workspaceForKey(AuthPrincipal principal) {
         if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) {
             throw failure(DENIED);

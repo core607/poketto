@@ -16,6 +16,7 @@ class ModularityTests {
                 .containsExactlyInAnyOrder(
                         "assets",
                         "auth",
+                        "capture",
                         "community",
                         "content",
                         "executor",
