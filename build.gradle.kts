@@ -23,7 +23,7 @@ tasks.named("check") {
     dependsOn("spotlessCheck")
 }
 
-// The Java style section of AGENTS.md owns the rules; config/checkstyle/ holds the gate and its suppressions.
+// docs/java-style.md owns the rules; config/checkstyle/ holds the gate and its suppressions.
 checkstyle {
     toolVersion = "14.1.0"
     maxWarnings = 0

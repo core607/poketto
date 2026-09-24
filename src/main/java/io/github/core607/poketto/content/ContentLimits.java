@@ -5,7 +5,7 @@ package io.github.core607.poketto.content;
  * content rather than a configuration matter, so the bounds are constants, not properties.
  *
  * <p>Every value here is the one in the bounds table of the decision record
- * {@code notes/implemented/2026-09-04-validated-content-snapshot.md}, which owns them. Changing one
+ * {@code notes/implemented/2026-09-05-repository-authoring-foundations.md}, which owns them. Changing one
  * here without changing that record leaves the repository disagreeing with itself about what a
  * valid workspace is.
  */
